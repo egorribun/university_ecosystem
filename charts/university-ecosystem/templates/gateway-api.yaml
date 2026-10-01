@@ -1,0 +1,187 @@
+{{- if .Values.gatewayApi.enabled -}}
+{{- $root := . -}}
+{{- $fullname := include "university-ecosystem.fullname" . -}}
+{{- range $tls := .Values.ingress.tls }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $tls.secretName }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" $root | nindent 4 }}
+spec:
+  secretName: {{ $tls.secretName }}
+  issuerRef:
+    name: {{ $root.Values.ingress.issuer.name }}
+    kind: {{ $root.Values.ingress.issuer.kind }}
+    group: cert-manager.io
+  dnsNames:
+    {{- range $host := $tls.hosts }}
+    - {{ $host | quote }}
+    {{- end }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gatewayApi.gatewayClassName }}
+  listeners:
+    {{- range $hostIndex, $host := .Values.ingress.hosts }}
+    {{- $tlsSecret := "" }}
+    {{- range $tls := $.Values.ingress.tls }}
+      {{- if has $host.host $tls.hosts }}
+        {{- $tlsSecret = $tls.secretName }}
+      {{- end }}
+    {{- end }}
+    - name: http-{{ $hostIndex }}
+      hostname: {{ $host.host | quote }}
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https-{{ $hostIndex }}
+      hostname: {{ $host.host | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: {{ $tlsSecret }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ $fullname }}-tls-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    {{- range $hostIndex, $host := .Values.ingress.hosts }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $fullname }}
+      sectionName: https-{{ $hostIndex }}
+    {{- end }}
+  tls:
+    minVersion: "1.3"
+{{- range $hostIndex, $host := .Values.ingress.hosts }}
+{{- $routeSuffix := printf "-route-%d" $hostIndex -}}
+{{- $routeName := printf "%s%s" ($fullname | trunc (int (sub 63 (len $routeSuffix))) | trimSuffix "-") $routeSuffix -}}
+{{- $redirectSuffix := printf "-redirect-%d" $hostIndex -}}
+{{- $redirectName := printf "%s%s" ($fullname | trunc (int (sub 63 (len $redirectSuffix))) | trimSuffix "-") $redirectSuffix }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $routeName }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" $root | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $fullname }}
+      sectionName: https-{{ $hostIndex }}
+  hostnames:
+    - {{ $host.host | quote }}
+  rules:
+    {{- range $path := $host.paths }}
+    - matches:
+        - path:
+            type: {{ if eq $path.pathType "Exact" }}Exact{{ else }}PathPrefix{{ end }}
+            value: {{ $path.path | quote }}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ printf "%s-%s" $fullname $path.service }}
+          port: {{ if eq $path.service "backend" }}{{ $root.Values.backend.service.port }}{{ else if eq $path.service "gateway" }}{{ $root.Values.gateway.service.port }}{{ else if eq $path.service "frontend" }}{{ $root.Values.frontend.service.port }}{{ else if eq $path.service "ws-hub" }}{{ $root.Values.wsHub.service.port }}{{ else }}{{ fail (printf "unsupported Gateway API service %q" $path.service) }}{{ end }}
+    {{- end }}
+{{- $hasGatewayCatchAll := false }}
+{{- range $path := $host.paths }}
+  {{- if and (eq $path.path "/") (eq $path.pathType "Prefix") (eq $path.service "gateway") }}
+    {{- $hasGatewayCatchAll = true }}
+  {{- end }}
+{{- end }}
+{{- if $hasGatewayCatchAll }}
+{{- $apiRouteHash := printf "%s-api-v1-%d" $fullname $hostIndex | sha256sum | trunc 8 }}
+{{- $apiRouteName := printf "%s-api-%s" ($fullname | trunc 50 | trimSuffix "-") $apiRouteHash }}
+{{- $apiBufferPolicyName := printf "%s-buf-%s" ($fullname | trunc 50 | trimSuffix "-") $apiRouteHash }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $apiRouteName }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" $root | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $fullname }}
+      sectionName: https-{{ $hostIndex }}
+  hostnames:
+    - {{ $host.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ printf "%s-gateway" $fullname }}
+          port: {{ $root.Values.gateway.service.port }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $apiBufferPolicyName }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" $root | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $apiRouteName }}
+  requestBuffer:
+    limit: {{ $root.Values.gatewayApi.requestBuffer.limit | quote }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $redirectName }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" $root | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $fullname }}
+      sectionName: http-{{ $hostIndex }}
+  hostnames:
+    - {{ $host.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+{{- end }}
+{{- end }}

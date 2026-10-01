@@ -152,6 +152,16 @@ run/attempt либо локальную команду, конфигурацию
 - Целево проверить интегрированные auth/MFA, lifespan/schema drift, chat,
   attachments/storage, login/reset и role paths. Регрессионный тест должен дать
   воспроизводимый RED перед исправлением и GREEN после него.
+- Зафиксировать остаточный риск password-reset delivery: 45-минутная ссылка с
+  bearer-токеном сериализуется в JSON payload файлового JetStream `TASK_QUEUE`,
+  где `Limits` допускает хранение до 7 дней; fallback/error logs маскируют token,
+  но tracked Compose не задаёт шифрование JetStream-at-rest, а фактическая
+  настройка внешнего NATS deployment не проверена. MVP-приёмка ограничена
+  синтетическими учётками и Mailpit. До любого production use выбрать и проверить
+  scoped auth-task stream/credentials или шифрование payload и управляемый ключ.
+  Не включать `AllowMsgTTL` в общую очередь как shortcut: настройка необратима,
+  а `Nats-TTL: never` может обойти `MaxAge` ([TTL](https://docs.nats.io/learn/jetstream/message-ttl),
+  [шифрование JetStream](https://docs.nats.io/learn/security/encryption)).
 - Security/auth/data-review включает как минимум: клиент не может подделать
   серверное `new_message` через WebSocket; удаление участника группы прекращает
   его активную доставку во всех соединениях этой группы и не допускает повторный
@@ -318,10 +328,22 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
 - Завершить idempotent RU/EN demo seed на синтетических ролях: news, events,
   расписание, карта, личные/групповые чаты, stories, текущий Activity и пустые/
   частично заполненные состояния. Seed должен подтверждать владельца стенда,
-  повторный запуск не умножает данные и режим явно opt-in. Существующие аккаунты
-  нельзя незаметно promote/reset; пароль demo-admin должен быть стабилен только в
-  пределах подписанного стенда и одинаковым для seed и повторного live E2E, чтобы
-  stop/start не ломал вход и не требовал изменения hash. Секрет хранить в
+  повторный запуск не умножает данные и режим явно opt-in. Для Messenger создавать
+  только явно demo-owned синтетические аккаунты: DM требует двух участников,
+  group — трёх. У Chat seed-id должен быть nullable, unique, внутренним полем
+  существующей модели, с additive migration и exact-member validation; существующие
+  неразмеченные или изменённые пользователем чаты не присваивать и не переписывать.
+  Карта уже представлена локализованным frontend fixture, поэтому её приёмка
+  проверяет RU/EN данные, а не создаёт лишнюю DB-модель.
+  `/stats/summary` строит Grades из `Notification(type='grade')`, тогда как текущий
+  `GradeService` записывает `Grade` и audit event без такого Notification. Не
+  создавать синтетические оценки/уведомления для заполнения Activity; до появления
+  поддержанного production-источника проверять допустимое пустое состояние и
+  явно фиксировать эту границу. Новые предметные функции Activity не добавлять.
+  Существующие аккаунты нельзя незаметно promote/reset; пароль demo-admin должен
+  быть стабилен только в пределах подписанного стенда и одинаковым для seed и
+  повторного live E2E, чтобы stop/start не ломал вход и не требовал изменения hash.
+  Секрет хранить в
   проверенном owner-scoped `.secrets` файле с ограниченными правами; не выводить в
   argv/log/artifact и не читать файл чужого worktree. Lifecycle wrapper перед
   запуском повторно проверяет подписанный owner marker и Docker daemon, а дочерний

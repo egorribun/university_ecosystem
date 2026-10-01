@@ -101,17 +101,8 @@ def test_secure_audit_rejects_empty_explicit_key_list():
 
 def test_find_valid_key_returns_none_when_rust_matches_but_key_recheck_fails():
     service = SecureAuditService(signing_keys=[b"old", b"new"])
-    log = SimpleNamespace(
-        id=uuid4(),
-        actor_user_id=None,
-        subject_user_id=None,
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        ip_address=None,
-        created_at=datetime.now(UTC),
-        signature="signature",
-    )
+    log = _audit_log_stub()
+    log.signature = service._compute_signature(log)
     rust = MagicMock()
     rust.verify_audit_signature.return_value = True
 
@@ -120,6 +111,21 @@ def test_find_valid_key_returns_none_when_rust_matches_but_key_recheck_fails():
         patch.object(service, "_compute_signature", return_value="different"),
     ):
         assert service._find_valid_key(log) is None
+
+
+@pytest.mark.parametrize("signature", ["v2:short", "v2:" + "g" * 64])
+def test_find_valid_key_rejects_malformed_v2_digest(signature: str) -> None:
+    service = SecureAuditService(signing_key=b"test-key")
+    log = _audit_log_stub(signature=signature)
+
+    assert service._find_valid_key(log) is None
+
+
+def test_find_valid_key_rejects_unversioned_non_digest_signature() -> None:
+    service = SecureAuditService(signing_key=b"test-key")
+    log = _audit_log_stub(signature="not-a-digest")
+
+    assert service._find_valid_key(log) is None
 
 
 def test_find_valid_key_falls_back_to_python_when_rust_is_unavailable():
@@ -160,6 +166,33 @@ def test_resign_log_updates_mutable_orm_log():
         assert service.resign_log(log) is True
 
     assert log.signature == service._compute_signature(log)
+
+
+def test_resign_legacy_log_preserves_unauthenticated_metadata_during_key_rotation():
+    service = SecureAuditService(signing_keys=[b"new-primary", b"legacy-key"])
+    log = DataAccessLog(
+        id=uuid4(),
+        resource_type="user",
+        resource_id="42",
+        action="read",
+        context={"detail": "synthetic-original"},
+        user_agent="synthetic-agent-original",
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    log.signature = service._compute_legacy_signature(log, key=b"legacy-key")
+    log.context = {"detail": "synthetic-tampered"}
+    log.user_agent = "synthetic-agent-tampered"
+    rust = MagicMock()
+    rust.verify_audit_signature.return_value = True
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert service.verify_integrity(log) is True
+        assert service.signature_covers_metadata(log) is False
+        assert service.resign_log(log) is True
+
+    assert log.signature == service._compute_legacy_signature(log, key=b"new-primary")
+    assert service.verify_integrity(log) is True
+    assert service.signature_covers_metadata(log) is False
 
 
 def test_resign_log_rejects_unsigned_log():

@@ -234,6 +234,34 @@ async def test_broadcast_to_chat_keeps_local_delivery_when_nats_fails() -> None:
         assert await manager.broadcast_to_chat(chat_id, {"type": "message"}) == 2
 
 
+@pytest.mark.asyncio
+async def test_broadcast_to_chat_can_propagate_nats_failure_for_outbox_retry() -> None:
+    from app.api.ws import connection_manager as module
+
+    manager = module.ConnectionManager()
+    chat_id = uuid.uuid4()
+    recipient = uuid.uuid4()
+    manager._get_chat_participants_cached = AsyncMock(return_value=[recipient])
+    manager.send_to_user = AsyncMock(return_value=1)
+    broker = SimpleNamespace(
+        publish_core=AsyncMock(side_effect=ConnectionError("nats unavailable"))
+    )
+
+    with (
+        patch("app.core.nats_broker.broker", broker),
+        pytest.raises(ConnectionError, match="nats unavailable"),
+    ):
+        await manager.broadcast_to_chat(
+            chat_id,
+            {"type": "message_edited", "room": str(chat_id)},
+            propagate_nats_failure=True,
+        )
+
+    manager.send_to_user.assert_awaited_once_with(
+        recipient, {"type": "message_edited", "room": str(chat_id)}
+    )
+
+
 def test_presence_throttle_decision_matrix() -> None:
     from app.api.ws import connection_manager as module
 

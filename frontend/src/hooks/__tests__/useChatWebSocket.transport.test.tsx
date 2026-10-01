@@ -1069,7 +1069,6 @@ describe("frame side effects", () => {
   it.each([
     ["read", { user_id: "peer", read_at: null }],
     ["message_edited", { message_id: "m-1", content: "x", edited_at: "2026-08-25T12:00:00Z" }],
-    ["message_deleted", { message_id: "m-1", deleted_at: "2026-08-25T12:00:00Z" }],
     ["reaction_changed", { message_id: "m-1", emoji: "👍", action: "added", user_id: "peer" }],
   ])("marks the chat history stale without refetching on %s", async (type, fields) => {
     const { socket, invalidateQueries } = await connected()
@@ -1079,6 +1078,28 @@ describe("frame side effects", () => {
     expect(invalidateQueries).toHaveBeenCalledExactlyOnceWith({
       queryKey: ["messages", CHAT],
       refetchType: "none",
+    })
+  })
+
+  it("invalidates the active sidebar after a message deletion", async () => {
+    const { socket, invalidateQueries } = await connected()
+
+    act(() =>
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT,
+        message_id: "m-1",
+        deleted_at: "2026-08-25T12:00:00Z",
+      })
+    )
+
+    expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
+      queryKey: ["messages", CHAT],
+      refetchType: "none",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ["chats"],
+      refetchType: "active",
     })
   })
 

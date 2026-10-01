@@ -141,6 +141,7 @@ class TestGetChats:
 
         assert len(result.items) == 1
         assert result.items[0].unread_count == 2
+        repo.get_last_messages.assert_awaited_once_with([msg_id], user_id=user.id)
 
     @pytest.mark.asyncio
     async def test_chat_list_resolves_profile_names_for_participants(self):
@@ -224,6 +225,8 @@ class TestGetChatDetails:
 
         assert result.id == chat.id
         assert result.unread_count == 3
+        repo.get_unread_count.assert_awaited_once_with(chat.id, user.id, chat.chat_type)
+        repo.get_last_message.assert_awaited_once_with(chat.id, user_id=user.id)
 
     @pytest.mark.asyncio
     async def test_returns_group_identity(self):
@@ -340,6 +343,7 @@ class TestGetMessages:
 
         assert len(result.items) == 1
         assert result.has_more is False
+        repo.get_messages.assert_awaited_once_with(chat.id, None, 20, user_id=user.id)
 
     @pytest.mark.asyncio
     async def test_empty_messages(self):

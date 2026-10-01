@@ -7,7 +7,11 @@ These handlers are registered with the EventBus during application startup.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from typing import cast
+from uuid import UUID
+
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
 from app.core.database import async_session
@@ -19,6 +23,8 @@ from app.core.events import (
     DurableEventDeferred,
     EventCreated,
     EventRegistration,
+    MessageDeleted,
+    MessageEdited,
     MessageSent,
     MfaEmailDeliveryRequested,
     MfaEnabled,
@@ -32,6 +38,7 @@ from app.core.events import (
     event_bus,
 )
 from app.core.logging import get_logger
+from app.models.chat import chat_participants
 from app.services.vector_service import VectorService
 
 logger = get_logger(__name__)
@@ -187,21 +194,62 @@ async def generate_news_embedding(event: NewsCreated) -> None:
         await db.commit()
 
 
+async def _set_message_rls_identity(db: AsyncSession, chat_id: UUID) -> UUID | None:
+    """Set a transaction-local messages RLS identity from live chat membership.
+
+    Event payloads intentionally contain identifiers only. Select an identity
+    from the non-RLS association table before touching ``messages``; a removed
+    or empty chat has no identity and must not fall back to a privileged read.
+    """
+    member_result = await db.execute(
+        select(chat_participants.c.user_id)
+        .where(chat_participants.c.chat_id == chat_id)
+        .order_by(chat_participants.c.user_id)
+        .limit(1)
+    )
+    member_id = cast(UUID | None, member_result.scalar_one_or_none())
+    if member_id is None:
+        return None
+
+    if db.get_bind().dialect.name == "postgresql":
+        await db.execute(
+            text("SELECT set_config('app.current_user_id', :uid, true)"),
+            {"uid": str(member_id)},
+        )
+    return member_id
+
+
 async def handle_message_sent(event: MessageSent) -> None:
     """
     Handle message sent events by triggering notifications.
     (RZ-F-11 Outbox Pattern implementation)
     """
+    if event.message_id is None or event.chat_id is None:
+        logger.error("Message sent event is missing its identifiers")
+        return
+
     from app.repositories.chat_repository import ChatRepository
     from app.services.chat.notification_service import ChatNotificationService
 
     async with async_session() as db:
         repo = ChatRepository(db)
 
+        # Messages use FORCE ROW LEVEL SECURITY. A current identity comes only
+        # from membership in the event's chat; sender_id from the outbox payload
+        # is not a substitute for a membership check.
+        member_id = await _set_message_rls_identity(db, event.chat_id)
+        if member_id is None:
+            return
+
         # 1. Fetch the message.
         message = await db.get(models.Message, event.message_id)
         if not message:
             logger.error("Message %s not found for notification", event.message_id)
+            return
+        if message.chat_id != event.chat_id:
+            logger.error(
+                "Message %s does not belong to its event chat", event.message_id
+            )
             return
 
         # 1b. Fetch the sender EXPLICITLY. Message.sender is lazy="noload" (the
@@ -229,12 +277,7 @@ async def handle_message_sent(event: MessageSent) -> None:
         # an in-memory relationship set, no extra query / flush.
         message.sender = sender
 
-        # 2. Fetch chat with participants
-        if event.chat_id is None:
-            logger.error(
-                "Message %s has no chat_id, skipping notification", event.message_id
-            )
-            return
+        # 2. Fetch chat with participants.
         chat = await repo.get_by_id(event.chat_id)
         if not chat:
             logger.error("Chat %s not found for notification", event.chat_id)
@@ -247,7 +290,11 @@ async def handle_message_sent(event: MessageSent) -> None:
         # a reply, or when the target was hard-deleted (the SET NULL self-FK has
         # already nulled message.reply_to_message_id by the time we read it here).
         replied = (
-            await repo.get_message_by_id(message.reply_to_message_id)
+            await repo.get_message_by_id(
+                message.reply_to_message_id,
+                user_id=member_id,
+                chat_id=event.chat_id,
+            )
             if message.reply_to_message_id is not None
             else None
         )
@@ -267,6 +314,69 @@ async def handle_message_sent(event: MessageSent) -> None:
         )
         # Handle transaction for delivery.py updates
         await db.commit()
+
+
+async def handle_message_edited(event: MessageEdited) -> None:
+    """Broadcast the committed current state for an edited-message event."""
+    if event.message_id is None or event.chat_id is None:
+        raise ValueError("message edit event is missing its identifiers")
+
+    async with async_session() as db:
+        if await _set_message_rls_identity(db, event.chat_id) is None:
+            return
+        message = await db.get(models.Message, event.message_id)
+        if message is None:
+            return
+        if message.chat_id != event.chat_id:
+            raise ValueError("message edit event chat does not match the row")
+        # A later delete may commit before this event is delivered. Do not send
+        # the old text after a tombstone; the ordered delete event will publish it.
+        if message.deleted_at is not None:
+            return
+        if message.edited_at is None:
+            raise ValueError("message edit event points to an unedited row")
+        frame = {
+            "type": "message_edited",
+            "message_id": str(message.id),
+            "chat_id": str(message.chat_id),
+            "content": message.content,
+            "edited_at": message.edited_at.isoformat(),
+        }
+
+    from app.api.ws.connection_manager import manager as ws_manager
+
+    await ws_manager.broadcast_to_chat(
+        event.chat_id, frame, propagate_nats_failure=True
+    )
+
+
+async def handle_message_deleted(event: MessageDeleted) -> None:
+    """Broadcast the committed tombstone for a soft-deleted message."""
+    if event.message_id is None or event.chat_id is None:
+        raise ValueError("message delete event is missing its identifiers")
+
+    async with async_session() as db:
+        if await _set_message_rls_identity(db, event.chat_id) is None:
+            return
+        message = await db.get(models.Message, event.message_id)
+        if message is None:
+            return
+        if message.chat_id != event.chat_id:
+            raise ValueError("message delete event chat does not match the row")
+        if message.deleted_at is None:
+            raise ValueError("message delete event points to a live row")
+        frame = {
+            "type": "message_deleted",
+            "message_id": str(message.id),
+            "chat_id": str(message.chat_id),
+            "deleted_at": message.deleted_at.isoformat(),
+        }
+
+    from app.api.ws.connection_manager import manager as ws_manager
+
+    await ws_manager.broadcast_to_chat(
+        event.chat_id, frame, propagate_nats_failure=True
+    )
 
 
 async def handle_chat_deleted(event: ChatDeleted) -> None:
@@ -439,6 +549,8 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
+    event_bus.subscribe("chat.message_edited", handle_message_edited)  # type: ignore[arg-type]
+    event_bus.subscribe("chat.message_deleted", handle_message_deleted)  # type: ignore[arg-type]
     # Outbox-delivered lesson changes notify the affected groups (schedule.changed).
     event_bus.subscribe("SCHEDULE_UPDATED", handle_schedule_changed)  # type: ignore[arg-type]
     event_bus.subscribe("SCHEDULE_DELETED", handle_schedule_changed)  # type: ignore[arg-type]
@@ -474,6 +586,9 @@ __all__ = [
     "configure_event_handlers",
     "handle_event_created",
     "handle_event_registration",
+    "handle_message_deleted",
+    "handle_message_edited",
+    "handle_message_sent",
     "handle_mfa_email_delivery_requested",
     "handle_mfa_enabled",
     "handle_notification_sent",

@@ -103,20 +103,11 @@
     {
       "rule_id": "go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check",
       "path": "services/ws-hub/pkg/hub/handlers.go",
-      "start_line": 202,
-      "end_line": 202,
+      "start_line": 206,
+      "end_line": 206,
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "The package-level gorilla Upgrader uses CheckOrigin=isUpgradeOriginAllowed; explicit WS_ALLOWED_ORIGINS allowlists reject unknown non-empty origins before ticket consumption/upgrade, while empty Origin is intentionally accepted only for native clients. handlers_edge_cases_test.go and handlers_unit_test.go cover allowed and rejected origins."
-    },
-    {
-      "rule_id": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
-      "path": "scripts/backup_db.py",
-      "start_line": 611,
-      "end_line": 613,
-      "owner": "@egorribun",
-      "expires": "2026-12-31",
-      "reason": "This is psycopg Connection.execute, not SQLAlchemy raw SQL. The CREATE DATABASE name is strictly fullmatched by _RESTORE_DATABASE_RE and composed only with psycopg.sql.Identifier, which safely quotes identifiers; PostgreSQL does not allow a database identifier to be bound as a query parameter. Tests reject injection-shaped names before database or pg_restore side effects, and the disposable PostgreSQL image check exercises safe creation and rejection of an existing target."
     }
   ]
 }

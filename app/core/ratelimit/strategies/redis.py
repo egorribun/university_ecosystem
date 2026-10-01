@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import math
+import threading
 import time
 from typing import Any, cast
+from weakref import ReferenceType, WeakKeyDictionary, ref
 
 from redis.exceptions import NoScriptError, RedisError, ResponseError
 
@@ -15,14 +17,27 @@ from app.core.ratelimit.strategies.base import get_shared_client
 # instead of sending the full ~500-byte script on every request.
 # Invalidated (set to None) on NoScriptError so it's reloaded after Redis restart.
 #
-# RZ-W14-04 (audit 2026-03-23 Wave 14): both globals are created eagerly at
-# module level to avoid a lazy-init race condition under Python 3.13
-# free-threading (PEP 703 / PYTHON_GIL=0).  The previous pattern
-#   if _SHA_LOCK is None: _SHA_LOCK = asyncio.Lock()
-# allowed two OS threads to simultaneously see None and create two separate
-# Lock objects, silently defeating the double-checked locking on _RATE_LIMIT_SHA.
+# RZ-W14-04 (audit 2026-03-23 Wave 14): protect the loop-keyed lock registry
+# with a threading lock so concurrent callers on different loops cannot create
+# competing locks for the same loop. Values are weak references because a
+# contended asyncio.Lock holds its event loop; strong values would keep weak
+# keys (and closed loops) alive through that back-reference.
 _RATE_LIMIT_SHA: str | None = None
-_SHA_LOCK: asyncio.Lock = asyncio.Lock()  # eager — safe under free-threading
+_SHA_LOCKS: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, ReferenceType[asyncio.Lock]
+] = WeakKeyDictionary()
+_SHA_LOCKS_GUARD = threading.Lock()
+
+
+def _get_sha_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    with _SHA_LOCKS_GUARD:
+        lock_ref = _SHA_LOCKS.get(loop)
+        lock = lock_ref() if lock_ref is not None else None
+        if lock is None:
+            lock = asyncio.Lock()
+            _SHA_LOCKS[loop] = ref(lock)
+        return lock
 
 
 async def _load_script_sha(client: Any) -> str:
@@ -30,7 +45,7 @@ async def _load_script_sha(client: Any) -> str:
     global _RATE_LIMIT_SHA
     if _RATE_LIMIT_SHA is not None:
         return _RATE_LIMIT_SHA
-    async with _SHA_LOCK:
+    async with _get_sha_lock():
         if _RATE_LIMIT_SHA is None:
             _RATE_LIMIT_SHA = await cast(Any, client).script_load(_RATE_LIMIT_SCRIPT)
         return _RATE_LIMIT_SHA
@@ -103,7 +118,7 @@ class RedisSlidingWindowStrategy:
         except NoScriptError:
             # RZ-25-04: Invalidate under lock to prevent TOCTOU race with _load_script_sha.
             # RZ-33-05: `global` required to clear the module-level SHA cache.
-            async with _SHA_LOCK:
+            async with _get_sha_lock():
                 global _RATE_LIMIT_SHA
                 _RATE_LIMIT_SHA = None
             eval_result = await cast(Any, client).eval(

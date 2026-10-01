@@ -27,9 +27,11 @@ password, or access key in command arguments or logs.
 - BACKUP_RESTORE_ADMIN_DATABASE_URL: separate administrative PostgreSQL URL
   used only for restore; it must have permission to create a database.
 
-The script requires pg_dump and pg_restore on PATH. Their diagnostics are
-suppressed so a driver error cannot print connection material. S3 credentials
-are never added to subprocess arguments.
+The script requires pg_dump, pg_restore, and createdb on PATH. Client utility
+diagnostics are suppressed so a driver error cannot print connection material.
+Database credentials are passed through the PostgreSQL client environment;
+database names are separate validated arguments. S3 credentials are never
+added to subprocess arguments.
 
 ## Create a backup
 
@@ -53,8 +55,9 @@ database and refuses to use an existing database.
 
 Restore validates the manifest schema, downloads the referenced dump to a
 temporary file, verifies its byte count and SHA-256, checks the custom archive
-with pg_restore --list, then creates the new database and restores without
-owner/privilege changes. It never drops databases or replaces existing data.
+with pg_restore --list, then creates the new database with createdb and
+restores without owner/privilege changes. It never drops databases or replaces
+existing data.
 If restore fails after database creation, the partial target is left for
 operator inspection; use a new target name after resolving it.
 
@@ -65,16 +68,92 @@ backup command:
 uv run python scripts/backup_db.py restore --manifest-key database/university-20260930T123000Z-00000000000000000000000000000000.dump.manifest.json --target-database restore_university_20260930
 ~~~
 
+## Create a coordinated database and object snapshot
+
+The `snapshot` command creates schema-v2 paired snapshots. Before invoking it,
+pause all application writes to PostgreSQL and the configured application S3
+bucket, and keep them paused until the command reports success. Then run:
+
+~~~powershell
+uv run python scripts/backup_db.py snapshot --confirm-source-quiesced
+~~~
+
+The required flag is an operator attestation; the script cannot pause or prove
+that external writers have stopped. It records the confirmation timestamp and
+`operator_quiesced` consistency mode in the v2 manifest. It also compares the
+database name and Alembic revision before and after the dump. The application
+object source must be configured with `STORAGE_BACKEND=s3` or `minio` and the
+existing `StorageSettings` fields `STORAGE_S3_BUCKET`,
+`STORAGE_S3_ENDPOINT_URL`, `STORAGE_S3_REGION`,
+`STORAGE_S3_ACCESS_KEY_ID`, and `STORAGE_S3_SECRET_ACCESS_KEY`. Empty endpoint
+uses the SDK's configured AWS endpoint; empty region defaults to `us-east-1`.
+Credentials can come from the configured environment, application `.env` or
+the AWS SDK credential provider chain. Never put credentials in arguments.
+
+The source object bucket and `BACKUP_S3_BUCKET` must differ. The snapshot
+inventory includes every current object returned by paginated `ListObjectsV2`;
+each read is pinned to the listed ETag and records a source VersionId when the
+endpoint returns one. Endpoints must expose complete pagination markers and
+object ETags. Unversioned sources are supported only while the operator keeps
+the source quiesced; their bytes and ETag are recorded. Archived database and
+object artifacts use run-scoped keys, conditional create-only writes, and
+read-back size/SHA-256 checks. The paired manifest, which links the database
+dump and every object copy, is written last as the commit marker. The current
+limits are 100,000 source objects and a 64 MiB manifest; larger inventories
+fail closed and are never truncated or published.
+
+If a process stops before publishing the manifest, the run can leave
+unreferenced immutable objects under its `snapshots/<snapshot-id>/` prefix.
+The script does not delete them. A failure while publishing or reading back
+the final manifest has an uncertain outcome: inspect that run's manifest and
+artifacts before retrying. Use storage lifecycle policy or a separately
+reviewed cleanup procedure; do not delete by broad prefix without proving run
+ownership.
+
+## Restore a paired snapshot into isolated targets
+
+Pre-create a new empty object bucket for the restore, distinct from both the
+source object bucket and `BACKUP_S3_BUCKET`. Configure
+`BACKUP_RESTORE_ADMIN_DATABASE_URL` to a PostgreSQL administrative database,
+choose a nonexistent database named `restore_<name>`, and run:
+
+~~~powershell
+uv run python scripts/backup_db.py restore-snapshot --manifest-key database/snapshots/<snapshot-id>/database.manifest.json --target-database restore_university_demo --objects-target-bucket university-restore-20261001
+~~~
+
+Before writes, restore validates the v2 manifest, downloads and verifies the
+database dump and every unique object copy, checks that the database target
+does not exist, and checks that the target bucket has no current objects,
+versions, delete markers, or incomplete multipart uploads. The target S3
+endpoint must support `ListObjectVersions`, `ListMultipartUploads`, pinned
+`GetObject` reads, and `If-None-Match: *` for `PutObject` and
+`CompleteMultipartUpload`. Unsupported or incomplete preflight/conditional
+operations fail closed. The destination checks its empty inventory first;
+conditional creates then prevent a concurrent writer from replacing an
+object. Object bytes are restored under their original keys, and listed HTTP
+metadata is preserved.
+
+The restore is isolated, not a distributed transaction. PostgreSQL and S3 do
+not share an atomic commit. If the command stops after the database restore or
+some object writes, it leaves the newly created database and any target
+objects untouched for inspection; it never removes source data or performs
+best-effort cleanup. Keep the target database and bucket disconnected from the
+application until the command succeeds and an operator validates the result.
+After a partial restore, inspect the isolated targets and use new empty target
+names for another attempt. The script never overwrites a database or object.
+
 ## Scope and limits
 
-This is a database-only artifact. It does not back up or restore user objects
-from S3 and does not establish a coordinated recovery point between PostgreSQL
-rows and object storage. The manifest revision is the Alembic database revision,
-not the application source commit. Compare the revision before and after the
-dump; a change aborts publication.
+The original `backup` and `restore` commands remain schema-v1 database-only
+operations for compatibility. Use `snapshot` and `restore-snapshot` when a
+coordinated database/object recovery point is required. The v2 manifest's
+revision is the Alembic database revision, not the application source commit.
+Quiescence is attested by the operator and cannot be independently established
+by the CLI.
 
 The Helm CronJob still has its separate direct pg_dump/rclone implementation
-and is not yet wired to this manifest/restore CLI. No restore has been run
-against a deployed Docker/kind stack, and this implementation does not certify
-RPO ≤24 hours or RTO ≤30 minutes. Those require an isolated end-to-end database
-and object-storage restore, freshness monitoring, and measured recovery evidence.
+and is not yet wired to this manifest/restore CLI. Only mocked S3/database
+checks have been run for this code path. No restore has been run against a
+deployed Docker/kind stack, and this implementation does not certify RPO ≤24
+hours or RTO ≤30 minutes. Those require an isolated end-to-end restore,
+freshness monitoring, concurrent-write controls, and measured recovery evidence.

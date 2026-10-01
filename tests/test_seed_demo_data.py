@@ -74,7 +74,10 @@ async def test_seed_user_repairs_missing_demo_relations(
     try:
         group = await seed_demo_data.seed_group(db_session)
         existing = await user_factory(
-            email="test@university.dev", role="student", group_id=None
+            email=seed_demo_data.DEMO_PRIMARY_USER_EMAIL,
+            demo_seed_key=seed_demo_data.DEMO_PRIMARY_USER_SEED_KEY,
+            role="student",
+            group_id=group.id,
         )
         profile = await db_session.scalar(
             select(seed_demo_data.UserProfile).where(
@@ -172,13 +175,13 @@ async def test_seed_content_backfills_missing_english_fields(
         legacy_news = seed_demo_data.News(
             title=news_data["title"],
             title_en="Preserved existing English headline",
-            content="Existing Russian news content",
+            content=news_data["content"],
             author_id=user.id,
         )
         legacy_story = seed_demo_data.Story(
             title=story_data["title"],
             title_en="Preserved existing English story headline",
-            short_text="Existing Russian story text",
+            short_text=story_data["short_text"],
             cover_url=story_data["cover_url"],
             is_active=True,
             published_at=now,
@@ -188,7 +191,7 @@ async def test_seed_content_backfills_missing_english_fields(
         legacy_event = seed_demo_data.Event(
             title=event_data["title"],
             title_en="Preserved existing English event headline",
-            description="Existing Russian event description",
+            description=event_data["description"],
             location=event_data["location"],
             event_type=event_data["event_type"],
             starts_at=event_data["starts_at"],
@@ -205,15 +208,15 @@ async def test_seed_content_backfills_missing_english_fields(
 
         assert legacy_news.title_en == "Preserved existing English headline"
         assert legacy_news.content_en == news_data["content_en"]
-        assert legacy_news.content == "Existing Russian news content"
+        assert legacy_news.content == news_data["content"]
         assert legacy_story.title_en == "Preserved existing English story headline"
         assert legacy_story.short_text_en == story_data["short_text_en"]
-        assert legacy_story.short_text == "Existing Russian story text"
+        assert legacy_story.short_text == story_data["short_text"]
         assert legacy_event.title_en == "Preserved existing English event headline"
         assert legacy_event.description_en == event_data["description_en"]
         assert legacy_event.location_en == event_data["location_en"]
         assert legacy_event.event_type_en == event_data["event_type_en"]
-        assert legacy_event.description == "Existing Russian event description"
+        assert legacy_event.description == event_data["description"]
     finally:
         capsys.readouterr()
 
@@ -329,17 +332,38 @@ async def test_seed_target_rejects_non_admin_smoke_workflow_context(
         seed_target.require_owned_live_stand_target()
 
 
+def _admin_smoke_database_url_for_target_case(
+    host: str, port: int, database: str
+) -> str:
+    from sqlalchemy.engine import URL
+
+    return URL.create(
+        drivername="postgresql+asyncpg",
+        username="test",
+        host=host,
+        port=port,
+        database=database,
+    ).render_as_string()
+
+
 @pytest.mark.parametrize(
-    "database_url",
+    ("host", "port", "database"),
     (
-        "postgresql+asyncpg://test:test@localhost:5432/other_db",
-        "postgresql+asyncpg://test:test@127.0.0.1:5433/test_admin_smoke",
-        "postgresql+asyncpg://test:test@remote-db:5432/test_admin_smoke",
+        ("localhost", 5432, "other_db"),
+        ("127.0.0.1", 5433, "test_admin_smoke"),
+        ("remote-db", 5432, "test_admin_smoke"),
     ),
 )
 async def test_seed_target_rejects_database_outside_admin_smoke_service(
-    monkeypatch, database_url: str
+    monkeypatch, host: str, port: int, database: str
 ) -> None:
+    from sqlalchemy.engine import make_url
+
+    database_url = _admin_smoke_database_url_for_target_case(host, port, database)
+    parsed_url = make_url(database_url)
+    assert parsed_url.username == "test"
+    assert parsed_url.password is None
+
     workspace = str(Path(seed_target.__file__).resolve().parents[1])
     for key, value in {
         "ENVIRONMENT": "testing",

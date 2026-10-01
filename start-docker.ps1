@@ -6,6 +6,8 @@
     Builds and starts all Docker containers for the full site.
     Generates secure secrets if .env / .env.docker don't exist.
     Reconciles the configured S3 bucket and auxiliary databases on every start.
+    Use -PrepareOnly with the owned live overlay to prepare local configuration
+    without invoking Docker or starting services.
     Use -Core (or its -Lean alias) for an explicit local resource-constrained
     topology that omits search, Temporal, and observability containers while
     preserving their images and named volumes.
@@ -15,6 +17,7 @@
     .\start-docker.ps1 -Build     # Build (cached) then start
     .\start-docker.ps1 -Rebuild   # Build (no-cache) then start
     .\start-docker.ps1 -Core      # Start only the application/core dependencies
+    .\start-docker.ps1 -PrepareOnly -ExtraCompose docker-compose.live.yml # Prepare owned live config only
     .\start-docker.ps1 -Build -ExtraCompose docker-compose.live.yml  # Owned acceptance stand
     .\start-docker.ps1 -Down      # Stop all containers
     .\start-docker.ps1 -Logs                  # Follow all logs
@@ -38,6 +41,8 @@ param(
     [switch]$Rebuild,
     [switch]$Down,
     [switch]$Logs,
+    [switch]$PrepareOnly,
+    [switch]$AllowExistingOwnedVolumes,
     [Alias("Lean")]
     [switch]$Core,
     [string[]]$ExtraCompose = @(),
@@ -163,7 +168,120 @@ function Assert-CoreServiceAllowlist {
     }
 }
 
+function Assert-PrepareOnlyLiveInputs {
+    # This mode is the first phase of the owner-checked live-stand startup.
+    # Restrict it to the exact overlay and signed project/port/key environment
+    # supplied by live_stand.py; never turn it into a generic config writer.
+    if ($Build -or $Rebuild -or $Down -or $Logs -or $Core -or $AllowExistingOwnedVolumes -or
+        -not [string]::IsNullOrWhiteSpace($LogService)) {
+        throw "PrepareOnly cannot be combined with build, lifecycle, log, or core-mode switches."
+    }
+    if (@($ExtraCompose).Count -ne 1 -or
+        $ExtraCompose[0] -cne "docker-compose.live.yml") {
+        throw "PrepareOnly requires exactly -ExtraCompose docker-compose.live.yml."
+    }
+    if ($env:COMPOSE_PROJECT_NAME -cnotmatch '^ue-live-[0-9a-f]{16}$') {
+        throw "PrepareOnly requires a valid owned live-stand project name."
+    }
+
+    $secretsDirectory = Join-Path $ProjectRoot ".secrets"
+    if (Test-Path -LiteralPath $secretsDirectory) {
+        $secretsItem = Get-Item -LiteralPath $secretsDirectory -Force
+        if (-not $secretsItem.PSIsContainer -or
+            ($secretsItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            throw "PrepareOnly requires a private secrets directory owned by this worktree."
+        }
+    }
+    foreach ($path in @($EnvFile, $EnvCompose, $WorkerEnvFile)) {
+        $absolutePath = Join-Path $ProjectRoot $path
+        if (Test-Path -LiteralPath $absolutePath) {
+            $environmentItem = Get-Item -LiteralPath $absolutePath -Force
+            if ($environmentItem.PSIsContainer -or
+                ($environmentItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                throw "PrepareOnly refuses an unsafe environment file path."
+            }
+        }
+    }
+
+    $portNames = @(
+        "BACKEND", "FRONTEND", "POSTGRES", "GATEWAY", "WS_HUB",
+        "TEMPORAL_GRPC", "TEMPORAL_WEB", "IMGPROXY", "GRAFANA",
+        "PROMETHEUS", "ALLOY", "PYROSCOPE", "CADDY_HTTP", "CADDY_HTTPS",
+        "MAILPIT"
+    )
+    $publishedPorts = @{}
+    $seenPorts = @{}
+    foreach ($portName in $portNames) {
+        $variableName = if ($portName -eq "MAILPIT") {
+            "LIVE_MAILPIT_PORT"
+        } else {
+            "LIVE_HOST_PORT_$portName"
+        }
+        $rawPort = [Environment]::GetEnvironmentVariable($variableName)
+        $port = 0
+        if ([string]::IsNullOrWhiteSpace($rawPort) -or
+            $rawPort -notmatch '^\d+$' -or
+            -not [int]::TryParse($rawPort, [ref]$port) -or
+            $port -lt 1024 -or $port -gt 65535 -or
+            $seenPorts.ContainsKey($port)) {
+            throw "PrepareOnly requires a complete, unique live-stand port map."
+        }
+        $publishedPorts[$portName] = $port
+        $seenPorts[$port] = $true
+    }
+
+    $expectedBaseUrl = "http://localhost:$($publishedPorts['CADDY_HTTP'])"
+    if ($env:LIVE_BASE_URL -cne $expectedBaseUrl) {
+        throw "PrepareOnly requires the live-stand loopback base URL."
+    }
+
+    $publicKey = $env:LIVE_VAPID_PUBLIC_KEY
+    $privateKey = $env:LIVE_VAPID_PRIVATE_KEY
+    if ($publicKey -notmatch '^[A-Za-z0-9_-]{87}$' -or
+        $privateKey -notmatch '^[A-Za-z0-9_-]{43}$') {
+        throw "PrepareOnly requires a valid live-stand VAPID key pair."
+    }
+
+    $vapidPath = Join-Path $ProjectRoot ".secrets/live-vapid.json"
+    $vapidItem = Get-Item -LiteralPath $vapidPath -Force -ErrorAction SilentlyContinue
+    if ($null -eq $vapidItem -or $vapidItem.PSIsContainer -or
+        ($vapidItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "PrepareOnly requires the current worktree's VAPID key file."
+    }
+    try {
+        $vapidData = Get-Content -LiteralPath $vapidPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "PrepareOnly could not validate the current worktree's VAPID key file."
+    }
+    if ([string]$vapidData.public -cne $publicKey -or
+        [string]$vapidData.private -cne $privateKey) {
+        throw "PrepareOnly VAPID inputs do not match the current worktree's key file."
+    }
+
+    $standardPublicKey = $publicKey.Replace('-', '+').Replace('_', '/') + "="
+    $standardPrivateKey = $privateKey.Replace('-', '+').Replace('_', '/') + "="
+    try {
+        $publicBytes = [Convert]::FromBase64String($standardPublicKey)
+        $privateBytes = [Convert]::FromBase64String($standardPrivateKey)
+    } catch {
+        throw "PrepareOnly requires a valid live-stand VAPID key pair."
+    }
+    if ($publicBytes.Length -ne 65 -or $publicBytes[0] -ne 4 -or
+        $privateBytes.Length -ne 32) {
+        throw "PrepareOnly requires a valid live-stand VAPID key pair."
+    }
+}
+
+if ($AllowExistingOwnedVolumes) {
+    if (@($ExtraCompose).Count -ne 1 -or
+        $ExtraCompose[0] -cne "docker-compose.live.yml" -or
+        $env:COMPOSE_PROJECT_NAME -cnotmatch '^ue-live-[0-9a-f]{16}$') {
+        throw "AllowExistingOwnedVolumes is restricted to a verified live-stand project."
+    }
+}
+
 Assert-CoreServiceAllowlist
+if ($PrepareOnly) { Assert-PrepareOnlyLiveInputs }
 
 function New-Secret {
     param([int]$Length = 32)
@@ -451,7 +569,10 @@ function Test-JwtRs256PrivateKey {
 # Closes W135 sec.Honesty #9 SSR auth-at-edge layer (jose.createRemoteJWKSet
 # requires RS256; pre-W137 dev backend signed HS256).
 function New-JwtRs256Key {
-    param([string]$OutputPath = ".secrets/jwt_rs256.pem")
+    param(
+        [string]$OutputPath = ".secrets/jwt_rs256.pem",
+        [switch]$NoDockerFallback
+    )
 
     $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
     if (Test-JwtRs256PrivateKey -Path $absoluteOutputPath) {
@@ -493,7 +614,8 @@ function New-JwtRs256Key {
         }
 
         # Path C: docker fallback (runs openssl in lightweight container if host openssl unavailable)
-        if (-not $pem -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+        if (-not $pem -and -not $NoDockerFallback -and
+            (Get-Command docker -ErrorAction SilentlyContinue)) {
             Write-Status "Falling back to Docker openssl for keypair generation..."
             $pem = docker run --rm $OpenSslFallbackImage sh -c "apk add --no-cache openssl >/dev/null 2>&1; openssl genrsa 2048 2>/dev/null" 2>&1 | Out-String
             if ($LASTEXITCODE -ne 0 -or $pem -notmatch "BEGIN (RSA )?PRIVATE KEY") {
@@ -522,7 +644,8 @@ function New-JwtRs256Key {
 function New-JwtRs256PublicKey {
     param(
         [string]$PrivateKeyPath = ".secrets/jwt_rs256.pem",
-        [string]$OutputPath = ".secrets/jwt_rs256.pub.pem"
+        [string]$OutputPath = ".secrets/jwt_rs256.pub.pem",
+        [switch]$NoDockerFallback
     )
 
     $absolutePrivateKeyPath = Join-Path $ProjectRoot $PrivateKeyPath
@@ -555,7 +678,8 @@ function New-JwtRs256PublicKey {
         }
 
         # Path C: docker fallback (mounts .secrets dir and runs openssl rsa -pubout)
-        if (-not $publicPem -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+        if (-not $publicPem -and -not $NoDockerFallback -and
+            (Get-Command docker -ErrorAction SilentlyContinue)) {
             $secretDirAbs = Split-Path $absolutePrivateKeyPath -Parent
             $privKeyFile = Split-Path $absolutePrivateKeyPath -Leaf
             $publicPem = docker run --rm -v "${secretDirAbs}:/secrets:ro" $OpenSslFallbackImage sh -c "apk add --no-cache openssl >/dev/null 2>&1; openssl rsa -in /secrets/${privKeyFile} -pubout 2>/dev/null" 2>&1 | Out-String
@@ -679,7 +803,8 @@ function New-TemporalServiceToken {
         [string]$OutputPath = ".secrets/temporal_api_key",
         [string]$Subject = "file-processor-service",
         [string]$Audience = "temporal",
-        [int]$ExpirationSeconds = 31536000  # 1 year (dev-only)
+        [int]$ExpirationSeconds = 31536000, # 1 year (dev-only)
+        [switch]$NoDockerFallback
     )
 
     $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
@@ -756,7 +881,8 @@ function New-TemporalServiceToken {
         }
 
         # Path C: docker fallback (runs openssl in alpine container)
-        if (-not $signatureB64 -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+        if (-not $signatureB64 -and -not $NoDockerFallback -and
+            (Get-Command docker -ErrorAction SilentlyContinue)) {
             $secretDirAbs = Split-Path $absolutePrivateKeyPath -Parent
             $privKeyFile  = Split-Path $absolutePrivateKeyPath -Leaf
             $sigOut = docker run --rm -v "${secretDirAbs}:/secrets:ro" $OpenSslFallbackImage sh -c "apk add --no-cache openssl >/dev/null 2>&1; printf '%s' '$signingInput' | openssl dgst -sha256 -sign /secrets/${privKeyFile} 2>/dev/null | base64 | tr -d '\r\n' | tr '+/' '-_' | tr -d '='" 2>&1 | Out-String
@@ -779,6 +905,51 @@ function New-TemporalServiceToken {
     )
 
     Write-Ok "Generated Temporal service token at $OutputPath ($days days valid)"
+}
+
+function Assert-PreparedLiveStandConfiguration {
+    # The owner will render and sign the resolved Compose volume projection
+    # after this phase. Validate local inputs without emitting their contents.
+    foreach ($path in @($EnvFile, $EnvCompose, $WorkerEnvFile)) {
+        $absolutePath = Join-Path $ProjectRoot $path
+        if (-not (Test-Path -LiteralPath $absolutePath -PathType Leaf)) {
+            throw "Live-stand environment preparation did not create a required file."
+        }
+    }
+
+    $requiredKeys = @(
+        "POSTGRES_PASSWORD", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
+        "ELASTIC_PASSWORD", "NATS_USER", "NATS_PASSWORD",
+        "SPICEDB_PRESHARED_KEY", "WS_HUB_INTERNAL_SECRET",
+        "GRAFANA_ADMIN_PASSWORD", "REDIS_PASSWORD",
+        "REVOCATION_REDIS_PASSWORD", "SECRET_KEY", "INTERNAL_HMAC_SECRET",
+        "METRICS_BASIC_AUTH_PASSWORD", "IMGPROXY_KEY", "IMGPROXY_SALT",
+        "VAPID_SUBJECT"
+    )
+    $invalidKeys = @()
+    foreach ($key in $requiredKeys) {
+        $dockerValue = Get-EnvEntry -Path $EnvFile -Key $key
+        $composeValue = Get-EnvEntry -Path $EnvCompose -Key $key
+        if ([string]::IsNullOrWhiteSpace($dockerValue) -or
+            $composeValue -cne $dockerValue) {
+            $invalidKeys += $key
+        }
+    }
+    if ($invalidKeys.Count -gt 0) {
+        throw "Live-stand environment is incomplete or unsynchronized: $($invalidKeys -join ', ')"
+    }
+
+    $workerEnvironment = [System.IO.File]::ReadAllText(
+        (Join-Path $ProjectRoot $WorkerEnvFile)
+    )
+    if ($workerEnvironment -match '(?m)^\s*REVOCATION_REDIS_(?:URL|PASSWORD)=') {
+        throw "Live-stand worker environment contains a forbidden revocation credential."
+    }
+    if (-not (Test-JwtRs256PrivateKey -Path (Join-Path $ProjectRoot ".secrets/jwt_rs256.pem")) -or
+        -not (Test-Path -LiteralPath (Join-Path $ProjectRoot ".secrets/jwt_rs256.pub.pem") -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $ProjectRoot ".secrets/temporal_api_key") -PathType Leaf)) {
+        throw "Live-stand signing configuration is incomplete or invalid."
+    }
 }
 
 function Test-ServiceHttp {
@@ -848,26 +1019,178 @@ function Wait-PrometheusTargets {
     return $false
 }
 
+function Assert-ManagedComposeVolumeOwnership {
+    param([Parameter(Mandatory)][object]$ComposeModel)
+
+    # Compose's automatic volume prefix is not an ownership proof. Check the
+    # exact resolved names and labels before build/up can create or reuse them.
+    $projectName = $ComposeModel.name
+    if (-not ($projectName -is [string]) -or
+        [string]::IsNullOrWhiteSpace($projectName)) {
+        throw "Resolved Compose configuration has no valid project identity."
+    }
+    $isLiveStand = @($ExtraCompose).Count -eq 1 -and
+        $ExtraCompose[0] -ceq "docker-compose.live.yml"
+    if ($isLiveStand -and ($env:COMPOSE_PROJECT_NAME -cne $projectName -or
+        $projectName -cnotmatch '^ue-live-[0-9a-f]{16}$')) {
+        throw "Resolved Compose project does not match the owned live stand."
+    }
+    if (-not $isLiveStand -and $projectName -cne "university_ecosystem") {
+        throw "Resolved Compose project does not match the repository's default project."
+    }
+    if ($AllowExistingOwnedVolumes -and -not $isLiveStand) {
+        throw "Existing owned volumes are allowed only for the live stand overlay."
+    }
+
+    $volumeProperty = $ComposeModel.PSObject.Properties["volumes"]
+    $serviceProperty = $ComposeModel.PSObject.Properties["services"]
+    if ($null -eq $volumeProperty -or $null -eq $volumeProperty.Value -or
+        $null -eq $serviceProperty -or $null -eq $serviceProperty.Value) {
+        throw "Resolved Compose volume or service inventory is invalid."
+    }
+
+    $managedVolumes = @()
+    $resolvedNames = @{}
+    foreach ($definitionProperty in $volumeProperty.Value.PSObject.Properties) {
+        $volumeKey = [string]$definitionProperty.Name
+        $definition = $definitionProperty.Value
+        if ([string]::IsNullOrWhiteSpace($volumeKey) -or $null -eq $definition) {
+            throw "Resolved Compose volume inventory is invalid."
+        }
+        $externalProperty = $definition.PSObject.Properties["external"]
+        $isExternal = $false
+        if ($null -ne $externalProperty) {
+            if ($externalProperty.Value -isnot [bool]) {
+                throw "Resolved Compose volume ownership is ambiguous."
+            }
+            $isExternal = [bool]$externalProperty.Value
+        }
+        if ($isExternal) { continue }
+
+        $nameProperty = $definition.PSObject.Properties["name"]
+        $resolvedName = if ($null -ne $nameProperty -and
+            -not [string]::IsNullOrWhiteSpace([string]$nameProperty.Value)) {
+            [string]$nameProperty.Value
+        } else {
+            "${projectName}_$volumeKey"
+        }
+        if ($resolvedName -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*$' -or
+            -not $resolvedName.StartsWith("${projectName}_", [StringComparison]::Ordinal)) {
+            throw "Resolved Compose volume is outside the owned project namespace."
+        }
+        if ($resolvedNames.ContainsKey($resolvedName)) {
+            throw "Multiple Compose volumes resolve to one managed resource."
+        }
+        $resolvedNames[$resolvedName] = $true
+        $managedVolumes += [pscustomobject]@{
+            Key = $volumeKey
+            Name = $resolvedName
+        }
+    }
+
+    foreach ($service in $serviceProperty.Value.PSObject.Properties) {
+        $serviceModel = $service.Value
+        if ($null -eq $serviceModel) {
+            throw "Resolved Compose service inventory is invalid."
+        }
+        $volumesFromProperty = $serviceModel.PSObject.Properties["volumes_from"]
+        if ($null -ne $volumesFromProperty -and
+            @($volumesFromProperty.Value).Count -gt 0) {
+            throw "Compose volumes_from is unsupported for owner-checked startup."
+        }
+        $mountsProperty = $serviceModel.PSObject.Properties["volumes"]
+        if ($null -eq $mountsProperty) { continue }
+        foreach ($mount in @($mountsProperty.Value)) {
+            if ($null -eq $mount) {
+                throw "Resolved Compose mount inventory is invalid."
+            }
+            if ([string]$mount.type -ceq "volume") {
+                $source = [string]$mount.source
+                if ([string]::IsNullOrWhiteSpace($source) -or
+                    $null -eq $volumeProperty.Value.PSObject.Properties[$source]) {
+                    throw "Resolved Compose volume mount is anonymous or undeclared."
+                }
+            }
+        }
+    }
+
+    if ($managedVolumes.Count -eq 0) { return }
+    $listedVolumes = @(docker volume ls --format '{{.Name}}' 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cannot inspect Docker volume inventory; refusing to start services."
+    }
+    $existingNames = @($listedVolumes | ForEach-Object { [string]$_ })
+    foreach ($volume in $managedVolumes) {
+        if ($existingNames -cnotcontains $volume.Name) { continue }
+        if ($isLiveStand -and -not $AllowExistingOwnedVolumes) {
+            throw "A resolved live-stand volume already exists; refusing to reuse an unowned resource."
+        }
+
+        $labelOutput = @(docker volume inspect --format '{{json .Labels}}' $volume.Name 2>$null)
+        $inspectExitCode = $LASTEXITCODE
+        if ($inspectExitCode -ne 0) {
+            throw "Cannot inspect an existing Compose volume; refusing to start services."
+        }
+        try {
+            $labels = ($labelOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            throw "Existing Compose volume labels are unreadable; refusing to start services."
+        }
+        if ($null -eq $labels -or
+            $null -eq $labels.PSObject.Properties["com.docker.compose.project"] -or
+            [string]$labels.'com.docker.compose.project' -cne $projectName -or
+            $null -eq $labels.PSObject.Properties["com.docker.compose.volume"] -or
+            [string]$labels.'com.docker.compose.volume' -cne $volume.Key) {
+            throw "Existing volume does not carry the exact Compose ownership labels."
+        }
+    }
+}
+
+function Assert-ComposeConfiguration {
+    # Compose config can contain credentials in its rendered JSON. Capture it
+    # only to validate the exact startup model, and never print or persist it.
+    Write-Status "Validating Docker Compose configuration..."
+    $configOutput = @(docker compose @ComposeArgs --env-file $EnvFile config --format json 2>$null)
+    $composeExitCode = $LASTEXITCODE
+    if ($composeExitCode -ne 0) {
+        throw "Docker Compose configuration validation failed; refusing to start services."
+    }
+    try {
+        $composeModel = ($configOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "Docker Compose configuration could not be read safely; refusing to start services."
+    }
+    return $composeModel
+}
+
 # -- Prerequisite: Docker running ---------------------------------------------
 
-Write-Status "Checking Docker..."
-$dockerOk = $false
-try {
-    $null = docker info 2>$null
-    $dockerOk = $LASTEXITCODE -eq 0
-} catch { }
+if (-not $PrepareOnly) {
+    Write-Status "Checking Docker..."
+    $dockerOk = $false
+    try {
+        $null = docker info 2>$null
+        $dockerOk = $LASTEXITCODE -eq 0
+    } catch { }
 
-if (-not $dockerOk) {
-    Write-Err "Docker is not running. Start Docker Desktop and try again."
-    exit 1
+    if (-not $dockerOk) {
+        Write-Err "Docker is not running. Start Docker Desktop and try again."
+        exit 1
+    }
 }
 
 # -- Handle -Down -------------------------------------------------------------
 
 if ($Down) {
+    if (@($ExtraCompose).Count -gt 0) {
+        throw "-Down only targets the default Compose project; use scripts/live_stand.py for an owned live stand."
+    }
     Write-Status "Stopping all containers..."
     $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
-    docker compose @ComposeArgs @envArgs down
+    # Pin this destructive command to the repository's declared default
+    # project. A process or .env.docker COMPOSE_PROJECT_NAME override must not
+    # redirect -Down to an unrelated Compose project.
+    docker compose --project-name "university_ecosystem" @ComposeArgs @envArgs down
     $composeExitCode = $LASTEXITCODE
     if ($composeExitCode -ne 0) {
         Write-Err "Failed to stop containers."
@@ -959,7 +1282,9 @@ function Assert-LegacyS3VolumeGuard {
     Write-Warn "Verified S3 migration attestation matches project '$composeProject', source '$($legacy -join ', ')', and target '$storageVolume'. Legacy data remains untouched."
 }
 
-Assert-LegacyS3VolumeGuard
+if (-not $PrepareOnly) {
+    Assert-LegacyS3VolumeGuard
+}
 
 # -- Generate secrets ---------------------------------------------------------
 
@@ -1170,12 +1495,12 @@ if (-not $generated) {
 # -- Wave 137 SW1: Generate RSA-2048 keypair for JWT RS256 signing -------------
 # Backend reads .secrets/jwt_rs256.pem at startup (jwt_settings.py:202-205).
 # Volume-mounted into container at /app/.secrets/jwt_rs256.pem.
-New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem"
+New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem" -NoDockerFallback:$PrepareOnly
 
 # Derive the public key used directly by file-processor. Temporal obtains the
 # same key from backend's JWKS endpoint and now waits for backend readiness, so
 # its first authenticated request cannot race an empty key-provider cache.
-New-JwtRs256PublicKey -PrivateKeyPath ".secrets/jwt_rs256.pem" -OutputPath ".secrets/jwt_rs256.pub.pem"
+New-JwtRs256PublicKey -PrivateKeyPath ".secrets/jwt_rs256.pem" -OutputPath ".secrets/jwt_rs256.pub.pem" -NoDockerFallback:$PrepareOnly
 
 # -- Wave 141 SW4: Mint Temporal service token (RS256 JWT) ---------------------
 # file-processor (W141 SW5) reads .secrets/temporal_api_key and attaches it to
@@ -1183,7 +1508,7 @@ New-JwtRs256PublicKey -PrivateKeyPath ".secrets/jwt_rs256.pem" -OutputPath ".sec
 # default JWT claim mapper (W141 SW2 verified) validates via the JWKS endpoint
 # at /.well-known/jwks.json. Existing tokens are retained only after their
 # claims, expiry, algorithm, and RSA signature pass validation.
-New-TemporalServiceToken
+    New-TemporalServiceToken -NoDockerFallback:$PrepareOnly
 
 # -- Wave 137 SW2: SECRET_KEY drift detection .env <-> .env.docker ---------------
 # Closes W136 polish-v2 finding: gateway's JWT_SECRET env reads from .env via
@@ -1211,6 +1536,15 @@ if ((Test-Path $EnvFile) -and (Test-Path $EnvCompose)) {
         Write-Ok "Synced .env SECRET_KEY (defense-in-depth for HS256 fallback path)"
     }
 }
+
+if ($PrepareOnly) {
+    Assert-PreparedLiveStandConfiguration
+    Write-Ok "Live stand environment prepared for owner fingerprint registration; no services were started."
+    exit 0
+}
+
+$resolvedComposeModel = Assert-ComposeConfiguration
+Assert-ManagedComposeVolumeOwnership -ComposeModel $resolvedComposeModel
 
 # -- Core resource guard ------------------------------------------------------
 
@@ -1265,7 +1599,7 @@ if ($Core) {
     # a final `--no-deps` step after core dependencies are up; no optional
     # service can be pulled in implicitly.
     Write-Status "Starting core infrastructure..."
-    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans $CoreBootstrapServices
+    docker compose @ComposeArgs --env-file $EnvFile up -d $CoreBootstrapServices
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start core infrastructure."
         docker compose @ComposeArgs --env-file $EnvFile ps --all
@@ -1273,7 +1607,7 @@ if ($Core) {
     }
 
     Write-Status "Starting core database initialization..."
-    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans $CoreInitServices
+    docker compose @ComposeArgs --env-file $EnvFile up -d $CoreInitServices
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start core database initialization."
         docker compose @ComposeArgs --env-file $EnvFile ps --all
@@ -1292,7 +1626,7 @@ if ($Core) {
         "ws-hub",
         "imgproxy"
     )
-    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans $coreApplicationServices
+    docker compose @ComposeArgs --env-file $EnvFile up -d $coreApplicationServices
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start core application services."
         docker compose @ComposeArgs --env-file $EnvFile ps --all
@@ -1301,7 +1635,7 @@ if ($Core) {
     }
 
     Write-Status "Starting gateway and Caddy without optional observability dependencies..."
-    docker compose @ComposeArgs --env-file $EnvFile up -d --no-deps --remove-orphans gateway caddy
+    docker compose @ComposeArgs --env-file $EnvFile up -d --no-deps gateway caddy
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start the core edge services."
         docker compose @ComposeArgs --env-file $EnvFile ps --all
@@ -1311,9 +1645,10 @@ if ($Core) {
 } else {
     Write-Status "Starting containers..."
     # Compose recreates only services whose image or effective configuration
-    # changed. This keeps repeat starts fast while --remove-orphans retires services
-    # removed from the supported topology.
-    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans
+    # changed. Do not request automatic orphan removal: a Compose project name
+    # is a shared namespace, not proof that an orphan belongs to this run.
+    # Retired containers require a separate ownership-reviewed cleanup.
+    docker compose @ComposeArgs --env-file $EnvFile up -d
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start containers."
         docker compose @ComposeArgs --env-file $EnvFile ps --all
@@ -1479,7 +1814,7 @@ Write-Host "  Use the owner-checked stand for synthetic demo data; direct seedin
 Write-Host "  It creates a separate full Compose stack; stop this stack first to avoid resource contention."
 Write-Host "  Run only when no other full Compose stack is active."
 Write-Host "       python scripts/live_stand.py up --ref HEAD"
-Write-Host "       python scripts/live_stand.py seed"
+Write-Host "       python scripts/live_stand.py seed --demo"
 Write-Host "       python scripts/live_stand.py e2e (optional)"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray

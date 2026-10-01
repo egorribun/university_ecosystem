@@ -26,10 +26,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select
 
+from app.core.events import register_event_listeners
 from app.models.chat import (
     Message,
     MessageReaction,
 )
+from app.models.domain_events import StoredEvent
 from app.repositories.chat_repository import ChatRepository
 
 _NOW = datetime.now(UTC)
@@ -161,7 +163,9 @@ async def test_edit_message_author_succeeds(db_session, user_factory):
     repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "original")
 
-    edited_at, affected = await repo.edit_message(msg.id, u1.id, "edited")
+    edited_at, affected = await repo.edit_message(
+        msg.id, u1.id, "edited", chat_id=chat.id
+    )
 
     assert affected == 1
     assert edited_at is not None
@@ -175,10 +179,56 @@ async def test_edit_message_non_author_is_noop(db_session, user_factory):
     repo, chat, u1, u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "original")
 
-    edited_at, affected = await repo.edit_message(msg.id, u2.id, "hijack")
+    edited_at, affected = await repo.edit_message(
+        msg.id, u2.id, "hijack", chat_id=chat.id
+    )
 
     assert affected == 0
     assert edited_at is None
+
+
+@pytest.mark.asyncio
+async def test_edit_message_rejects_message_from_different_chat(
+    db_session, user_factory
+):
+    repo, source_chat, author, _source_peer = await _make_dm(db_session, user_factory)
+    destination_peer = await user_factory()
+    other_chat = await repo.create_chat([author, destination_peer])
+    msg = await _add_message(repo, source_chat.id, author.id, "source text")
+    assert await repo.remove_participant(source_chat.id, author.id) == 1
+    assert await repo.check_participant(other_chat.id, author.id)
+
+    edited_at, affected = await repo.edit_message(
+        msg.id, author.id, "cross-chat edit", chat_id=other_chat.id
+    )
+
+    assert affected == 0
+    assert edited_at is None
+    refreshed = await repo.get_message_by_id(msg.id)
+    assert refreshed is not None
+    assert refreshed.content == "source text"
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_message_rejects_message_from_different_chat(
+    db_session, user_factory
+):
+    repo, source_chat, author, _source_peer = await _make_dm(db_session, user_factory)
+    destination_peer = await user_factory()
+    other_chat = await repo.create_chat([author, destination_peer])
+    msg = await _add_message(repo, source_chat.id, author.id, "source text")
+    assert await repo.remove_participant(source_chat.id, author.id) == 1
+    assert await repo.check_participant(other_chat.id, author.id)
+
+    deleted_at, affected = await repo.soft_delete_message(
+        msg.id, author.id, chat_id=other_chat.id
+    )
+
+    assert affected == 0
+    assert deleted_at is None
+    refreshed = await repo.get_message_by_id(msg.id)
+    assert refreshed is not None
+    assert refreshed.content == "source text"
 
 
 @pytest.mark.asyncio
@@ -186,7 +236,9 @@ async def test_soft_delete_message_clears_content(db_session, user_factory):
     repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "secret")
 
-    deleted_at, affected = await repo.soft_delete_message(msg.id, u1.id)
+    deleted_at, affected = await repo.soft_delete_message(
+        msg.id, u1.id, chat_id=chat.id
+    )
 
     assert affected == 1
     assert deleted_at is not None
@@ -195,8 +247,112 @@ async def test_soft_delete_message_clears_content(db_session, user_factory):
     assert refreshed is not None
     assert refreshed.content == ""
     # A repeat delete is a no-op (deleted_at IS NULL guard).
-    _, again = await repo.soft_delete_message(msg.id, u1.id)
+    _, again = await repo.soft_delete_message(msg.id, u1.id, chat_id=chat.id)
     assert again == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "event_type"),
+    [
+        ("edit", "chat.message_edited"),
+        ("delete", "chat.message_deleted"),
+    ],
+)
+async def test_message_mutation_outbox_event_commits_atomically(
+    db_session, user_factory, operation, event_type
+):
+    await register_event_listeners()
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "original")
+    message_id = message.id
+    chat_id = chat.id
+    await db_session.commit()
+    # Start the transaction used by the service's preceding chat read; the
+    # identity map can satisfy get_by_id without SQL after the setup commit.
+    await db_session.execute(select(1))
+
+    if operation == "edit":
+        timestamp, affected = await repo.edit_message(
+            message_id, author.id, "edited", chat_id=chat_id
+        )
+    else:
+        timestamp, affected = await repo.soft_delete_message(
+            message_id, author.id, chat_id=chat_id
+        )
+
+    assert affected == 1
+    assert timestamp is not None
+    await db_session.commit()
+
+    stored = await db_session.scalar(
+        select(StoredEvent).where(
+            StoredEvent.aggregate_type == "Message",
+            StoredEvent.aggregate_id == str(message_id),
+            StoredEvent.event_type == event_type,
+        )
+    )
+    assert stored is not None
+    assert stored.payload["message_id"] == str(message_id)
+    assert stored.payload["chat_id"] == str(chat_id)
+    # Outbox events carry identity only; handlers read the committed row rather
+    # than duplicating message text in durable history.
+    assert "content" not in stored.payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "event_type"),
+    [
+        ("edit", "chat.message_edited"),
+        ("delete", "chat.message_deleted"),
+    ],
+)
+async def test_message_mutation_rollback_discards_outbox_event(
+    db_session, user_factory, operation, event_type
+):
+    await register_event_listeners()
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "original")
+    message_id = message.id
+    chat_id = chat.id
+    await db_session.commit()
+    await db_session.execute(select(1))
+
+    if operation == "edit":
+        await repo.edit_message(message_id, author.id, "edited", chat_id=chat_id)
+    else:
+        await repo.soft_delete_message(message_id, author.id, chat_id=chat_id)
+
+    # Force the ORM event capture/StoredEvent INSERT, then roll back the same
+    # transaction that contains the message mutation and its outbox row.
+    await db_session.flush()
+    pending_count = await db_session.scalar(
+        select(func.count())
+        .select_from(StoredEvent)
+        .where(
+            StoredEvent.aggregate_type == "Message",
+            StoredEvent.aggregate_id == str(message_id),
+            StoredEvent.event_type == event_type,
+        )
+    )
+    assert pending_count == 1
+    await db_session.rollback()
+
+    refreshed = await repo.get_message_by_id(message_id)
+    assert refreshed is not None
+    assert refreshed.content == "original"
+    assert refreshed.deleted_at is None
+    stored_count = await db_session.scalar(
+        select(func.count())
+        .select_from(StoredEvent)
+        .where(
+            StoredEvent.aggregate_type == "Message",
+            StoredEvent.aggregate_id == str(message_id),
+            StoredEvent.event_type == event_type,
+        )
+    )
+    assert stored_count == 0
 
 
 # --------------------------------------------------------------------------- #

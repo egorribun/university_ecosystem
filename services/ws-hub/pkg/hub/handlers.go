@@ -195,6 +195,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if h.stopped.Load() {
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	// CheckOrigin is configured on the package-level upgrader and validates
 	// the request Origin against the configured allow-list before upgrading.
@@ -225,9 +229,13 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		cancel:     clientCancel,
 	}
 
-	h.Register <- client
-	StartTrackedGoroutine(client.WritePump)
-	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
+	if !h.registerClient(client) {
+		client.cancelConnection()
+		client.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "hub is shutting down")
+		client.closeOnce.Do(func() { safeClose(client.Send) })
+		return
+	}
+	h.startClientPumps(client, clientCtx)
 }
 
 // HandleWebTransport upgrades HTTP/3 connections to WebTransport and registers clients.
@@ -278,6 +286,10 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if h.stopped.Load() {
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	sess, err := upgradeWTFunc(h.webTransportServer, w, r)
 	if err != nil {
@@ -303,9 +315,13 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		cancel:     clientCancel,
 	}
 
-	h.Register <- client
-	StartTrackedGoroutine(client.WritePump)
-	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
+	if !h.registerClient(client) {
+		client.cancelConnection()
+		client.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "hub is shutting down")
+		client.closeOnce.Do(func() { safeClose(client.Send) })
+		return
+	}
+	h.startClientPumps(client, clientCtx)
 }
 
 // validateUpgradeTicket atomically consumes a one-time WS upgrade ticket from

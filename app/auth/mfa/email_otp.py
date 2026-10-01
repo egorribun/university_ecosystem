@@ -12,7 +12,7 @@ import secrets
 import ssl
 import string
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from operator import attrgetter
@@ -195,8 +195,8 @@ class IssuedEmailOtp:
     """Internal-only handoff; API schemas deliberately never expose ``otp``."""
 
     challenge_id: uuid.UUID
-    challenge_token: str
-    otp: str
+    challenge_token: str = field(repr=False)
+    otp: str = field(repr=False)
     revision: int
     expires_at: datetime
     resend_available_at: datetime
@@ -436,7 +436,9 @@ class EmailOtpService:
     ) -> tuple[User, str]:
         stmt = select(User).where(User.id == user_id)
         if for_update:
-            stmt = stmt.with_for_update(nowait=False)
+            stmt = stmt.with_for_update(nowait=False).execution_options(
+                populate_existing=True
+            )
         user = (await db.execute(stmt)).scalar_one_or_none()
         if user is None or not user.is_active:
             raise MfaOtpRejected()
@@ -578,6 +580,7 @@ class EmailOtpService:
                 select(MfaChallenge)
                 .where(MfaChallenge.id == challenge_id)
                 .with_for_update(nowait=False)
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if challenge is None:
@@ -761,6 +764,7 @@ class EmailOtpService:
             or not hmac.compare_digest(expected_recipient, challenge.recipient_digest)
             or challenge.state != ChallengeState.PENDING
             or _aware(challenge.expires_at) <= checked_at
+            or challenge.attempt_count >= OTP_MAX_FAILED_ATTEMPTS
         ):
             raise MfaOtpRejected()
         if not await verify_recovery_code(db, user=user, code=code):
@@ -789,7 +793,6 @@ class EmailOtpService:
         now: datetime | None = None,
     ) -> MfaChallenge:
         await self._rate_limit(action="verify", user_id=user_id, client_ip=client_ip)
-        checked_at = now or datetime.now(UTC)
         user, recipient = await self._resolve_recipient(
             db,
             user_id=user_id,
@@ -804,6 +807,7 @@ class EmailOtpService:
             session_identifier=session_identifier,
             client_fingerprint=client_fingerprint,
         )
+        checked_at = now or datetime.now(UTC)
         expected_recipient = self._recipient_digest(
             key_id=challenge.token_key_id,
             email=recipient,
@@ -915,7 +919,10 @@ class EmailOtpService:
             expected_recipient, challenge.recipient_digest
         ):
             raise MfaOtpRejected()
-        if challenge.state != ChallengeState.PENDING:
+        if (
+            challenge.state != ChallengeState.PENDING
+            or challenge.attempt_count >= OTP_MAX_FAILED_ATTEMPTS
+        ):
             raise MfaOtpRejected()
         if (
             challenge.resend_available_at is not None

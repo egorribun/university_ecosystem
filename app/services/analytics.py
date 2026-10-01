@@ -188,6 +188,14 @@ class AnalyticsService:
         """
         from sqlalchemy import text
 
+        if session.get_bind().dialect.name == "postgresql":
+            if not session.in_transaction():
+                await session.begin()
+            await session.execute(
+                text("SELECT set_config('app.current_user_id', :uid, true)"),
+                {"uid": str(user_id)},
+            )
+
         # Get user's activity in one query
         query = text(
             """

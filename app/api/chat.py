@@ -3,15 +3,17 @@
 TD-W9-01/05 (audit 2026-03-16): The dead ChatService wrapper is removed.
 Each endpoint now injects the narrowest service it needs:
   - POST /chats           → ChatCreationService
-  - GET  /chats*          → ChatQueryService   (read replica)
+  - GET  /chats*          → ChatQueryService   (primary; membership revocation)
   - POST /chats/{id}/messages, /{id}/read, /{id}/clear, DELETE /{id}
                           → ChatCommandService (write DB)
+
+Membership-derived chat reads use the primary component. A lagging read replica
+could otherwise keep authorizing a removed participant and return private data.
 """
 
 import uuid
 from typing import Annotated
 
-from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
@@ -32,11 +34,11 @@ from app.api.deps import (
 from app.api.validation import raise_forbidden, raise_not_found
 from app.core.config import settings
 from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
-from app.core.di.read_replica import READ_COMPONENT
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.models import Attachment, Chat, Message, User
 from app.models.chat import chat_participants
+from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
     AddParticipant,
     ChatCreate,
@@ -57,6 +59,7 @@ from app.services.chat.command_service import (
 from app.services.chat.creation_service import ChatCreationService
 from app.services.chat.query_service import ChatQueryService
 from app.services.private_attachments import (
+    _path_segments,
     private_attachment_filename,
     private_attachment_response,
     private_attachment_storage_key,
@@ -64,6 +67,27 @@ from app.services.private_attachments import (
 from app.utils.files import _get_storage_backend
 
 router = APIRouter(prefix="/chats", tags=["chats"])
+
+
+def _chat_attachment_url_matches_resource(
+    storage_url: str,
+    chat_id: uuid.UUID,
+    filename: str,
+) -> bool:
+    """Require a private storage key to carry the same chat identity as its row."""
+    segments = _path_segments(storage_url)
+    expected_directory = f"chat_{chat_id}"
+    for index, segment in enumerate(segments):
+        if segment != "chat_uploads":
+            continue
+        tail = segments[index + 1 :]
+        if len(tail) == 1 and tail[0] == filename:
+            # Current flat keys embed the owner in the generated filename.
+            return filename.startswith(f"{expected_directory}_")
+        if len(tail) == 2 and tail[1] == filename:
+            # Historical hierarchical keys carry the owner in the directory.
+            return tail[0] == expected_directory
+    return False
 
 
 @router.get(
@@ -81,7 +105,7 @@ router = APIRouter(prefix="/chats", tags=["chats"])
 @inject
 async def get_chats(
     current_user: Annotated[User, Depends(get_current_user_from_dishka)],
-    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
+    query_service: FromDishka[ChatQueryService],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=100, description="Number of chats to return"),
 ) -> ChatsListOut:
@@ -139,7 +163,7 @@ async def create_group(
 async def get_chat(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user_from_dishka)],
-    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
+    query_service: FromDishka[ChatQueryService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatResponse:
     """Get details for a specific chat."""
@@ -184,11 +208,12 @@ async def download_chat_attachment(
     if membership.scalar_one_or_none() is None:
         raise_forbidden(locale, "errors.chat.not_participant")
 
+    await ChatRepository(db).set_message_rls_user(current_user.id)
     attachments = (
         await db.execute(
             select(Attachment)
             .join(Message, Attachment.message_id == Message.id)
-            .where(Message.chat_id == chat_id)
+            .where(Message.chat_id == chat_id, Message.deleted_at.is_(None))
         )
     ).scalars()
     attachment = next(
@@ -196,15 +221,24 @@ async def download_chat_attachment(
             item
             for item in attachments
             if private_attachment_filename(item.url, "chat") == filename
+            and _chat_attachment_url_matches_resource(item.url, chat_id, filename)
         ),
         None,
     )
     if attachment is None:
         raise_not_found("attachment", locale, exact_key="errors.not_found")
 
+    max_size_bytes = int(settings.chat_attachment_max_size_bytes)
+    if max_size_bytes <= 0 or attachment.size < 0 or attachment.size > max_size_bytes:
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+
     try:
-        data = await _get_storage_backend().read_file(attachment.url)
+        data = await _get_storage_backend().read_file(
+            attachment.url, max_bytes=attachment.size
+        )
     except (FileNotFoundError, ValueError):
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+    if len(data) != attachment.size:
         raise_not_found("attachment", locale, exact_key="errors.not_found")
     return private_attachment_response(data, filename)
 
@@ -218,7 +252,7 @@ async def download_chat_attachment(
 async def get_messages(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user_from_dishka)],
-    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
+    query_service: FromDishka[ChatQueryService],
     locale: Annotated[str, Depends(get_locale)],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(50, ge=1, le=100, description="Number of messages to return"),
@@ -417,7 +451,7 @@ async def get_reactors(
     chat_id: uuid.UUID,
     message_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user_from_dishka)],
-    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
+    query_service: FromDishka[ChatQueryService],
     locale: Annotated[str, Depends(get_locale)],
     emoji: str = Query(..., min_length=1, max_length=16),
 ) -> list[ReactorOut]:

@@ -39,6 +39,8 @@ test("live Playwright disables reports and attachments that could retain credent
 
   for (const file of [
     "../tests/e2e-live/auth-roles.live.spec.ts",
+    "../tests/e2e-live/messenger-group-isolation.live.spec.ts",
+    "../tests/e2e-live/messenger-realtime.live.spec.ts",
     "../tests/e2e-live/password-reset.live.spec.ts",
   ]) {
     const spec = await readFile(new URL(file, import.meta.url), "utf8")
@@ -130,4 +132,75 @@ test("live Playwright rejects CLI output flags that bypass validated environment
     assert.throws(() => assertNoLiveE2EOutputOverride(args), /cannot be overridden/u)
   }
   assert.doesNotThrow(() => assertNoLiveE2EOutputOverride(["--grep", "live smoke"]))
+})
+
+test("live messenger acceptance observes edit and delete frames over a second real WebSocket", async () => {
+  const spec = await readFile(
+    new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(spec, /browser\.newContext\(/u)
+  assert.match(spec, /receiverPage\.on\(["']websocket["']/u)
+  assert.match(spec, /socket\.on\(["']framereceived["']/u)
+  assert.match(spec, /message_edited/u)
+  assert.match(spec, /message_deleted/u)
+  assert.match(spec, /editedAt|edited_at/u)
+  assert.match(spec, /deletedAt|deleted_at/u)
+  assert.doesNotMatch(spec, /routeWebSocket|WebSocket\s*=\s*new\s+Mock/u)
+})
+
+test("live messenger reactions reach another user and persist as viewer-specific history", async () => {
+  const spec = await readFile(
+    new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(
+    spec,
+    /test\("a receiver reaction is delivered to the sender over the live WebSocket"/u
+  )
+  assert.match(spec, /senderReactions/u)
+  assert.match(spec, /const senderHistoryResponse = await page\.request\.get/u)
+  assert.match(spec, /const receiverHistoryResponse = await receiverPage\.request\.get/u)
+  assert.match(spec, /reacted_by_me: false/u)
+  assert.match(spec, /reacted_by_me: true/u)
+  assert.match(spec, /count: 1/u)
+  assert.doesNotMatch(spec, /routeWebSocket|WebSocket\s*=\s*new\s+Mock/u)
+})
+
+test("live group messenger acceptance checks member delivery and non-member isolation", async () => {
+  const spec = await readFile(
+    new URL("../tests/e2e-live/messenger-group-isolation.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(spec, /browser\.newContext\(/u)
+  assert.match(spec, /findReusableGroup\(page, LIVE_GROUP_CHAT_NAME\)/u)
+  assert.match(spec, /expect\(group\.created_by\)\.toBe\(ownerId\)/u)
+  assert.match(spec, /matches\.length\)\.toBeLessThanOrEqual\(1\)/u)
+  assert.doesNotMatch(spec, /live-group-\$\{crypto\.randomUUID/u)
+  assert.match(spec, /socket\.on\(["']framesent["']/u)
+  assert.match(spec, /socket\.on\(["']framereceived["']/u)
+  assert.match(spec, /nonMemberSocket\.roomJoins/u)
+  assert.match(spec, /deniedChatResponse\.status\(\)\)\.toBe\(403\)/u)
+  assert.match(spec, /message_edited/u)
+  assert.match(spec, /message_deleted/u)
+  assert.match(
+    spec,
+    /eventsForMessage\(nonMemberSocket, chatId, sentMessage\.id\)\)\.toEqual\(\[\]\)/u
+  )
+  const outsiderJoinAttempt = spec.indexOf("nonMemberSocket.roomJoins")
+  const messageSent = spec.indexOf("const message =")
+  const outsiderDeliveryAssertion = spec.indexOf(
+    "eventsForMessage(nonMemberSocket, chatId, sentMessage.id)"
+  )
+  assert.ok(outsiderJoinAttempt >= 0 && outsiderJoinAttempt < messageSent)
+  assert.ok(outsiderDeliveryAssertion > messageSent)
+  assert.match(spec, /trace:\s*["']off["']/u)
+  assert.match(spec, /screenshot:\s*["']off["']/u)
+  assert.doesNotMatch(
+    spec,
+    /loginAs\([^\n]*["']admin["']|routeWebSocket|WebSocket\s*=\s*new\s+Mock/u
+  )
 })

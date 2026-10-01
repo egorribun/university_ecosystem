@@ -695,6 +695,7 @@ also_copy = [
     "frontend/rust-crypto/fuzz/fuzz_targets",
     "frontend/rust-crypto/fuzz/Cargo.toml",
     "frontend/scripts",
+    "frontend/knip.json",
     "frontend/openapi.json",
     # Generated SDK/types and MSW handlers are asserted by auth contract tests
     # during mutmut's isolated baseline run; include their exact source roots

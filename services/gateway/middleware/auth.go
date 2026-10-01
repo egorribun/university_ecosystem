@@ -39,6 +39,7 @@ var errRevocationStoreUnavailable = errors.New("session revocation store unavail
 const (
 	// DefaultJWTAudience must match app/core/config/mixins/jwt_settings.py.
 	DefaultJWTAudience            = "university-ecosystem-api"
+	defaultJWKSRefreshInterval    = 5 * time.Minute
 	jwtMaxClockSkew               = 5 * time.Minute
 	jwtMaxTokenAge                = 24 * time.Hour
 	revocationHealthCheckInterval = 500 * time.Millisecond
@@ -305,6 +306,10 @@ var (
 // the JWKS from endpoint and atomically swaps the RSA public key.  The caller
 // must cancel ctx to stop the goroutine on shutdown.
 func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string, interval time.Duration, logger *slog.Logger) {
+	if interval <= 0 {
+		interval = defaultJWKSRefreshInterval
+	}
+
 	// Mark RS256 mode before starting any asynchronous work.  If the initial
 	// fetch fails, authentication must remain fail-closed until a valid JWKS
 	// snapshot is available; HS256 is never an outage fallback in JWKS mode.
@@ -820,6 +825,13 @@ func validateIAT(claims *Claims) error {
 	return nil
 }
 
+func validateSubject(claims *Claims) error {
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		return fmt.Errorf("token missing sub claim")
+	}
+	return nil
+}
+
 // extractAlgFromHeader decodes the JWT header without validating the signature
 // and returns the "alg" field.  Reading the algorithm BEFORE calling
 // jwt.ParseWithClaims provides a defense-in-depth check against algorithm-
@@ -963,6 +975,10 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			})
 			return
 		}
+		if err := validateSubject(claims); err != nil {
+			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token claims", "https://api.university.edu/probs/invalid-token")
+			return
+		}
 
 		// GW-P1-02: enforce iat temporal bounds (issued-at must not be in the future
 		// or older than jwtMaxTokenAge).
@@ -1071,6 +1087,12 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 
 		claims, ok := token.Claims.(*Claims)
 		if !ok || !token.Valid {
+			c.Next()
+			return
+		}
+		if validateSubject(claims) != nil || !claims.IsActive {
+			// Optional authentication must not promote incomplete or inactive
+			// claims into a signed downstream identity assertion.
 			c.Next()
 			return
 		}

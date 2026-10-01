@@ -324,6 +324,39 @@ func TestProxyHandler_DropsForgedSignatureWhenNoSecret(t *testing.T) {
 	assert.Empty(t, capturedSig, "Client-supplied X-Internal-Signature must always be stripped")
 }
 
+func TestProxyHandlerDropsUnverifiedIdentityHeaders(t *testing.T) {
+	var captured http.Header
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backendServer.Close()
+
+	router := gin.New()
+	router.GET(
+		"/api/*path",
+		ProxyHandler(createTestProxy(backendServer.URL), []byte("synthetic-hmac-test-key")),
+	)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil)
+	request.Header.Set("X-User-ID", "attacker-user")
+	request.Header.Set("X-Session-ID", "attacker-session")
+	request.Header.Set("X-Tenant-ID", "attacker-tenant")
+	request.Header.Set("X-Internal-Signature", "attacker-signature")
+	recorder := newCloseNotifyingRecorder()
+
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	for _, name := range []string{
+		"X-User-ID",
+		"X-Session-ID",
+		"X-Tenant-ID",
+		"X-Internal-Signature",
+	} {
+		assert.Empty(t, captured.Get(name), "%s must not pass through without verified claims", name)
+	}
+}
+
 func createTestProxy(targetURL string) *httputil.ReverseProxy {
 	target, err := url.Parse(targetURL)
 	if err != nil {

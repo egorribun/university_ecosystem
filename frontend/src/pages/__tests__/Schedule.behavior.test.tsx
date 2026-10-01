@@ -66,6 +66,7 @@ const {
     uiState: {
       weekOffset: 0,
       showPastLessons: true,
+      hiddenWeekdays: [] as number[],
       resetPreferences: vi.fn(),
     },
     pageState: {
@@ -146,6 +147,7 @@ vi.mock("@/stores/scheduleUIStore", () => ({
   useWeekOffset: () => uiState.weekOffset,
   useScheduleDisplayPreferences: () => ({ showPastLessons: uiState.showPastLessons }),
   useScheduleUIActions: () => ({ resetPreferences: uiState.resetPreferences }),
+  useHiddenWeekdays: () => uiState.hiddenWeekdays,
 }))
 
 vi.mock("@/contexts/SchedulePageContext", () => ({
@@ -344,6 +346,7 @@ describe("Schedule page behavior", () => {
     scheduleState.currentParity = "odd"
     uiState.weekOffset = 0
     uiState.showPastLessons = true
+    uiState.hiddenWeekdays = []
     mediaState.mobile = false
     mediaState.reduced = false
     mediaState.online = true
@@ -386,6 +389,37 @@ describe("Schedule page behavior", () => {
     await waitFor(() => expect(screen.getByTestId("shortcuts-overlay")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: "Close shortcuts" }))
     expect(screen.queryByTestId("shortcuts-overlay")).not.toBeInTheDocument()
+  })
+
+  it("opens the lesson at the active keyboard grid cell with Enter", async () => {
+    await renderSchedule()
+
+    expect(keyboardState.options).toMatchObject({
+      onOpen: expect.any(Function),
+    })
+
+    act(() => keyboardState.options.onOpen(0, 0))
+
+    expect(pageState.openDialog).toHaveBeenCalledWith("details", baseLesson)
+  })
+
+  it("maps keyboard columns to the visible weekdays", async () => {
+    const tuesdayLesson = { ...baseLesson, id: "lesson-tuesday", weekday: "Tuesday" }
+    scheduleState.weekdayBackend = ["Monday", "Tuesday"]
+    scheduleState.weekdayLabels = ["Monday", "Tuesday"]
+    scheduleState.hasToday = true
+    scheduleState.todayIdx = 1
+    scheduleState.schedule = [baseLesson, tuesdayLesson]
+    scheduleState.rawSchedule = [baseLesson, tuesdayLesson]
+    uiState.hiddenWeekdays = [0]
+
+    await renderSchedule()
+
+    expect(keyboardState.options.colCount).toBe(1)
+    expect(keyboardState.options.todayColIdx).toBe(0)
+    act(() => keyboardState.options.onOpen(0, 0))
+
+    expect(pageState.openDialog).toHaveBeenCalledWith("details", tuesdayLesson)
   })
 
   it("renders mobile view and resets a filter that hides every lesson", async () => {

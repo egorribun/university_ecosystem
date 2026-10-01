@@ -71,6 +71,17 @@ def test_id_and_cache_helpers_cover_boundaries() -> None:
     assert exc.value.status_code == 422
 
 
+def test_event_attachment_storage_key_rejects_unrecognized_nested_layout() -> None:
+    event_id = uuid.uuid4()
+    storage_url = f"/static/event_files/event_{event_id}/nested/agenda.pdf"
+
+    assert not api._event_attachment_url_matches_resource(
+        storage_url,
+        event_id,
+        "agenda.pdf",
+    )
+
+
 @pytest.mark.asyncio
 async def test_event_cache_version_helpers() -> None:
     cache = MagicMock()

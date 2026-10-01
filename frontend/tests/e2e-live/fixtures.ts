@@ -22,6 +22,21 @@ export const ROLES = {
 
 export type Role = keyof typeof ROLES
 
+/** Additional seeded accounts used only to form an isolated live group chat. */
+export const GROUP_CHAT_ACCOUNTS = {
+  secondMember: {
+    email: "ivan.sokolov@university.dev",
+    password: "Student@2024test", // pragma: allowlist secret -- disposable stand seed account
+  },
+  nonMember: {
+    email: "sergey.lebedev@university.dev",
+    password: "Teacher@2024test", // pragma: allowlist secret -- disposable stand seed account
+  },
+} as const
+
+/** Stable name lets the live group isolation scenario safely reuse its own group. */
+export const LIVE_GROUP_CHAT_NAME = "University Ecosystem live Messenger isolation"
+
 const configuredMailpitURL = process.env.LIVE_MAILPIT_URL
 if (!configuredMailpitURL) {
   throw new Error("LIVE_MAILPIT_URL must be set to the endpoint printed by scripts/live_stand.py")

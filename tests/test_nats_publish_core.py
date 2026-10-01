@@ -141,3 +141,26 @@ async def test_publish_core_skips_when_not_connected() -> None:
         "nats_publish_skipped_not_connected", subject="chat.abc"
     )
     assert nats_broker_module.nats_publish_core_skipped_total._value.get() == before + 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ["disconnected", "publish"])
+async def test_publish_core_strict_mode_propagates_retryable_failure(
+    failure_kind: str,
+) -> None:
+    """Outbox-backed chat frames must surface publisher failure for retry."""
+    broker = NatsTaskBroker()
+    mock_nc = MagicMock()
+    if failure_kind == "disconnected":
+        mock_nc.is_connected = False
+    else:
+        mock_nc.is_connected = True
+        mock_nc.publish = AsyncMock(side_effect=ConnectionError("nats unavailable"))
+    broker._nc = mock_nc
+
+    with pytest.raises(ConnectionError):
+        await broker.publish_core(
+            "chat.abc",
+            {"type": "message_edited", "room": "abc"},
+            strict=True,
+        )

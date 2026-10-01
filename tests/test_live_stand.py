@@ -346,6 +346,12 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
         "_require_owned_docker_daemon",
         lambda checked_owner: daemon_checks.append(checked_owner),
     )
+    resource_checks: list[live_stand.StandOwner] = []
+    monkeypatch.setattr(
+        live_stand,
+        "_verify_stand_owner_compose_resources",
+        lambda _path, checked_owner, **_kwargs: resource_checks.append(checked_owner),
+    )
     monkeypatch.setattr(
         live_stand,
         "load_vapid",
@@ -367,8 +373,8 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
         lambda command, *, cwd, env: runs.append((list(command), dict(env))),
     )
 
-    assert live_stand.main(["seed"]) == 0
-    assert live_stand.main(["seed"]) == 0
+    assert live_stand.main(["seed", "--demo"]) == 0
+    assert live_stand.main(["seed", "--demo"]) == 0
 
     if len(runs) != 4 or token_sizes != [32]:
         pytest.fail("repeated seed invocations must reuse one owner-scoped password")
@@ -390,8 +396,10 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
                 for index in range(len(command))
             ):
                 pytest.fail("live seed command omitted its verified owner target")
-    if daemon_checks != [owner, owner]:
-        pytest.fail("each seed run must verify the owned Docker daemon")
+    if daemon_checks != [owner] * 6:
+        pytest.fail("each seed subprocess must reverify the owned Docker daemon")
+    if resource_checks != [owner] * 4:
+        pytest.fail("each seed subprocess must verify signed Compose resources")
     if any("TEST_PASSWORD" in environment for environment in demo_environments):
         pytest.fail("demo-data seeding must not receive the admin password")
 
@@ -533,8 +541,12 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         dependency_runs.append((frontend, dict(environment)))
         event_order.append("bootstrap")
 
-    def capture_playwright(*, cwd: Path, environment: dict[str, str]) -> None:
-        print("+", " ".join(live_stand.LIVE_E2E_COMMAND))
+    def capture_playwright(
+        *, cwd: Path, environment: dict[str, str], mode: str = "full"
+    ) -> None:
+        if mode != "full":
+            pytest.fail("the default E2E mode must continue to run the full suite")
+        print("+", " ".join(live_stand._live_e2e_command(mode=mode)))
         event_order.append("playwright")
         output_directory = environment.get("LIVE_E2E_OUTPUT_DIR", "")
         output_path = Path(output_directory)
@@ -581,6 +593,11 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
     monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda _owner: None)
+    monkeypatch.setattr(
+        live_stand,
+        "_verify_stand_owner_compose_resources",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(
         live_stand,
         "load_vapid",
@@ -1178,6 +1195,61 @@ def test_live_e2e_command_handles_windows_npm_shim_without_secret_interpolation(
         pytest.fail("Windows must use the static cmd.exe launcher for npm.cmd")
 
 
+@pytest.mark.parametrize(
+    ("mode", "selected_files"),
+    [
+        ("full", ()),
+        (
+            "smoke",
+            (
+                "tests/e2e-live/auth-roles.live.spec.ts",
+                "tests/e2e-live/password-reset.live.spec.ts",
+            ),
+        ),
+    ],
+)
+def test_live_e2e_mode_maps_to_fixed_playwright_selection(
+    mode: str, selected_files: tuple[str, ...]
+) -> None:
+    expected_suffix = ("--", *selected_files) if selected_files else ()
+    assert live_stand._live_e2e_command(mode=mode, platform="posix") == (
+        *live_stand.LIVE_E2E_COMMAND,
+        *expected_suffix,
+    )
+    windows_base = live_stand.LIVE_E2E_WINDOWS_COMMAND
+    if selected_files:
+        expected_windows = (
+            *windows_base[:-1],
+            f"{windows_base[-1]} -- {' '.join(selected_files)}",
+        )
+    else:
+        expected_windows = windows_base
+    assert live_stand._live_e2e_command(mode=mode, platform="nt") == expected_windows
+
+
+def test_e2e_cli_forwards_explicit_mode_without_starting_a_stand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from contextlib import nullcontext
+
+    observed: list[tuple[str, str]] = []
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: object())
+    monkeypatch.setattr(
+        live_stand,
+        "load_or_create_stand_admin_password",
+        lambda _path, _owner: "synthetic-password-marker",
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_e2e_locked",
+        lambda password, *, mode="full": observed.append((password, mode)),
+    )
+
+    assert live_stand.main(["e2e", "--mode", "smoke"]) == 0
+    assert observed == [("synthetic-password-marker", "smoke")]
+
+
 def test_busy_published_port_blocks_the_stand() -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
@@ -1317,6 +1389,7 @@ def _prepare_owned_stand(
     tmp_path: Path,
     *,
     daemon_fingerprint: str = "a" * 64,
+    compose_config_calls: list[tuple[list[str], Path, dict[str, str]]] | None = None,
 ) -> tuple[Path, live_stand.StandOwner, dict[str, str]]:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1333,12 +1406,72 @@ def _prepare_owned_stand(
         lambda: daemon_fingerprint,
         raising=False,
     )
+    _install_compose_config_mock(
+        monkeypatch, worktree, compose_config_calls=compose_config_calls
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_compose_volume_ownership",
+        lambda _project, _volumes, **_kwargs: (),
+    )
     owner = live_stand.create_stand_owner(worktree)
-    keys = {"public": "pub", "private": "priv"}
-    key_path = worktree / live_stand.VAPID_FILE
-    key_path.parent.mkdir(parents=True, exist_ok=True)
-    key_path.write_text(json.dumps(keys), encoding="utf-8")
+    keys = live_stand.load_or_create_vapid(worktree)
+    owner = live_stand._bind_stand_owner_compose_resources(worktree, owner)
     return worktree, owner, keys
+
+
+def _install_compose_config_mock(
+    monkeypatch: pytest.MonkeyPatch,
+    worktree: Path,
+    *,
+    compose_config_calls: list[tuple[list[str], Path, dict[str, str]]] | None = None,
+) -> None:
+    """Model the owned resolved volume without invoking Docker or reading stand files."""
+    config_calls = compose_config_calls if compose_config_calls is not None else []
+    original_run = subprocess.run
+
+    def fake_run(command: Sequence[str], *args: Any, **kwargs: Any) -> Any:
+        if tuple(command[:2]) != ("docker", "compose"):
+            return original_run(command, *args, **kwargs)
+        if tuple(command[-3:]) != ("config", "--format", "json"):
+            pytest.fail("owned Compose commands must not invoke Docker in this fixture")
+
+        project_name = command[command.index("-p") + 1]
+        assert list(command) == live_stand.compose_command(
+            "config", "--format", "json", project_name=project_name
+        )
+        assert kwargs["cwd"] == worktree
+        assert kwargs["check"] is True
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        if "COMPOSE_PROJECT_NAME" in environment:
+            assert environment["COMPOSE_PROJECT_NAME"] == project_name
+        config_calls.append((list(command), worktree, dict(environment)))
+
+        model = {
+            "name": project_name,
+            "volumes": {
+                "app-data": {
+                    "name": f"{project_name}_app-data",
+                    "external": False,
+                }
+            },
+            "services": {
+                "backend": {
+                    "volumes": [
+                        {"type": "volume", "source": "app-data", "target": "/data"}
+                    ],
+                    "volumes_from": [],
+                }
+            },
+        }
+        return subprocess.CompletedProcess(
+            command, 0, stdout=json.dumps(model), stderr=""
+        )
+
+    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
 
 
 def _write_legacy_owner_marker(
@@ -1352,6 +1485,9 @@ def _write_legacy_owner_marker(
     }
     if version >= 3:
         payload["published_ports"] = dict(owner.published_ports)
+    if version >= live_stand.PREVIOUS_OWNER_SCHEMA_VERSION:
+        assert owner.daemon_fingerprint is not None
+        payload["daemon_fingerprint"] = owner.daemon_fingerprint
     marker = {
         **payload,
         "signature": live_stand._owner_signature(
@@ -1387,7 +1523,7 @@ def test_docker_daemon_fingerprint_hashes_engine_id_without_printing(
     assert engine_id not in capsys.readouterr().out
 
 
-def test_new_owner_marker_stores_only_the_daemon_fingerprint(
+def test_new_owner_marker_stores_fingerprints_without_raw_docker_identity(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     engine_id = "fixture-engine-id"
@@ -1400,12 +1536,18 @@ def test_new_owner_marker_stores_only_the_daemon_fingerprint(
     marker = json.loads(marker_text)
 
     assert owner.daemon_fingerprint == fingerprint
+    assert owner.compose_resource_fingerprint is not None
+    assert len(owner.compose_resource_fingerprint) == 64
+    assert all(
+        char in "0123456789abcdef" for char in owner.compose_resource_fingerprint
+    )
     assert marker["version"] == live_stand.OWNER_SCHEMA_VERSION
     assert marker["daemon_fingerprint"] == fingerprint
+    assert marker["compose_resource_fingerprint"] == owner.compose_resource_fingerprint
     assert engine_id not in marker_text
 
 
-@pytest.mark.parametrize("version", [2, 3])
+@pytest.mark.parametrize("version", [2, 3, 4])
 def test_status_reads_legacy_owner_markers_without_migrating_them(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1427,7 +1569,7 @@ def test_status_reads_legacy_owner_markers_without_migrating_them(
     assert marker_path.read_bytes() == marker_before
 
 
-@pytest.mark.parametrize("version", [2, 3])
+@pytest.mark.parametrize("version", [2, 3, 4])
 @pytest.mark.parametrize("operation", ["stop", "teardown"])
 def test_destructive_lifecycle_preserves_legacy_markers_and_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
@@ -1443,12 +1585,25 @@ def test_destructive_lifecycle_preserves_legacy_markers_and_fails_closed(
         live_stand, "_run", lambda command, **_: commands.append(list(command))
     )
 
-    with pytest.raises(
-        live_stand.StandError, match="cannot verify Docker daemon ownership"
-    ):
-        getattr(live_stand, operation)()
+    if version < live_stand.PREVIOUS_OWNER_SCHEMA_VERSION:
+        with pytest.raises(
+            live_stand.StandError, match="cannot verify Docker daemon ownership"
+        ):
+            getattr(live_stand, operation)()
+        assert commands == []
+    elif operation == "stop":
+        with pytest.raises(
+            live_stand.StandError, match="lacks Compose resource evidence"
+        ):
+            live_stand.stop()
+        assert commands == []
+    else:
+        with pytest.raises(
+            live_stand.StandError, match="lacks Compose resource evidence"
+        ):
+            live_stand.teardown()
+        assert commands == []
 
-    assert commands == []
     assert marker_path.read_bytes() == marker_before
 
 
@@ -1466,6 +1621,7 @@ def test_owner_marker_persists_and_authenticates_the_port_map(
     monkeypatch.setattr(
         live_stand, "docker_daemon_fingerprint", lambda: "a" * 64, raising=False
     )
+    _install_compose_config_mock(monkeypatch, worktree)
     ports = _port_map()
 
     owner = live_stand.create_stand_owner(worktree, published_ports=ports)
@@ -1706,6 +1862,30 @@ def test_status_does_not_generate_missing_owner_or_vapid_files(
     assert commands == []
 
 
+def test_status_cli_missing_owner_is_read_only_and_does_not_use_docker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    worktree = tmp_path / "ue-live"
+    worktree.mkdir()
+    (worktree / live_stand.OVERLAY).write_text("services: {}\n")
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+
+    def reject_docker(*_: Any, **__: Any) -> None:
+        pytest.fail("status must not invoke Docker")
+
+    monkeypatch.setattr(live_stand, "_run", reject_docker)
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", reject_docker)
+
+    assert live_stand.main(["status"]) == 2
+    assert "ownership metadata" in capsys.readouterr().err
+    assert not (worktree / live_stand.STAND_FILE).exists()
+    assert not (worktree / live_stand.VAPID_FILE).exists()
+    assert not (worktree / live_stand.ADMIN_PASSWORD_FILE).exists()
+    assert not (worktree / ".secrets").exists()
+
+
 @pytest.mark.parametrize("operation", ["status", "stop", "teardown"])
 def test_compose_control_commands_never_read_or_pass_vapid_keys(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: str
@@ -1736,7 +1916,7 @@ def test_compose_control_commands_never_read_or_pass_vapid_keys(
     compose_args = {
         "status": ("ps",),
         "stop": ("stop",),
-        "teardown": ("down", "--volumes", "--remove-orphans"),
+        "teardown": ("down", "--volumes"),
     }[operation]
     assert commands == [
         live_stand.compose_command(*compose_args, project_name=owner.project_name)
@@ -1763,6 +1943,15 @@ def test_status_is_read_only_and_uses_the_owned_project(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    protected_files = {
+        ".env": b"STATUS_SENTINEL=keep\n",
+        ".env.docker": b"LIVE_TEST_VOLUME=owned-data\n",
+        "backups/status-sentinel.dump": b"synthetic-backup-bytes",
+    }
+    for relative_path, content in protected_files.items():
+        path = worktree / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
     marker = worktree / live_stand.STAND_FILE
     vapid = worktree / live_stand.VAPID_FILE
     marker_before = marker.read_bytes()
@@ -1795,12 +1984,25 @@ def test_status_is_read_only_and_uses_the_owned_project(
     _assert_compose_port_environment(environments[0], owner.published_ports)
     assert marker.read_bytes() == marker_before
     assert vapid.read_bytes() == vapid_before
+    assert {
+        relative_path: (worktree / relative_path).read_bytes()
+        for relative_path in protected_files
+    } == protected_files
 
 
 def test_stop_preserves_owned_volumes_and_worktree(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    protected_files = {
+        ".env": b"STOP_SENTINEL=keep\n",
+        ".env.docker": b"LIVE_TEST_VOLUME=owned-data\n",
+        "backups/stop-sentinel.dump": b"synthetic-backup-bytes",
+    }
+    for relative_path, content in protected_files.items():
+        path = worktree / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
     commands: list[list[str]] = []
     environments: list[dict[str, str]] = []
 
@@ -1818,6 +2020,10 @@ def test_stop_preserves_owned_volumes_and_worktree(
     assert worktree.exists()
     assert not any("--volumes" in command for command in commands)
     _assert_compose_port_environment(environments[0], owner.published_ports)
+    assert {
+        relative_path: (worktree / relative_path).read_bytes()
+        for relative_path in protected_files
+    } == protected_files
 
 
 @pytest.mark.parametrize("operation", ["stop", "teardown"])
@@ -1877,9 +2083,19 @@ def test_destructive_lifecycle_fails_closed_when_daemon_identity_is_unavailable(
 def test_teardown_removes_only_the_owned_compose_project_and_preserves_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
-    env_file = worktree / ".env"
-    env_file.write_text("KEEP_ME=1\n", encoding="utf-8")
+    compose_config_calls: list[tuple[list[str], Path, dict[str, str]]] = []
+    worktree, owner, _ = _prepare_owned_stand(
+        monkeypatch, tmp_path, compose_config_calls=compose_config_calls
+    )
+    protected_files = {
+        ".env": b"KEEP_ME=1\n",
+        ".env.docker": b"LIVE_TEST_VOLUME=owned-data\n",
+        "backups/teardown-sentinel.dump": b"synthetic-backup-bytes",
+    }
+    for relative_path, content in protected_files.items():
+        path = worktree / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
     commands: list[list[str]] = []
     environments: list[dict[str, str]] = []
     git_calls: list[tuple[str, ...]] = []
@@ -1894,14 +2110,28 @@ def test_teardown_removes_only_the_owned_compose_project_and_preserves_env(
     live_stand.teardown()
 
     assert commands == [
-        live_stand.compose_command(
-            "down", "--volumes", "--remove-orphans", project_name=owner.project_name
-        )
+        live_stand.compose_command("down", "--volumes", project_name=owner.project_name)
     ]
     assert git_calls == []
     assert worktree.exists()
-    assert env_file.read_text(encoding="utf-8") == "KEEP_ME=1\n"
+    assert {
+        relative_path: (worktree / relative_path).read_bytes()
+        for relative_path in protected_files
+    } == protected_files
     _assert_compose_port_environment(environments[0], owner.published_ports)
+    assert len(compose_config_calls) == 2
+    config_command = live_stand.compose_command(
+        "config", "--format", "json", project_name=owner.project_name
+    )
+    assert [call[0] for call in compose_config_calls] == [
+        config_command,
+        config_command,
+    ]
+    assert all(call[1] == worktree for call in compose_config_calls)
+    assert all(
+        call[2]["COMPOSE_PROJECT_NAME"] == owner.project_name
+        for call in compose_config_calls
+    )
 
 
 def test_teardown_refuses_owner_metadata_from_another_worktree(
@@ -1941,6 +2171,90 @@ def test_teardown_refuses_a_project_name_changed_after_owner_creation(
 
     assert commands == []
     assert owner.project_name != data["project_name"]
+
+
+def test_teardown_preflight_rejects_unregistered_anonymous_container_volume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_name = "ue-live-0123456789abcdef"
+    managed_volume = f"{project_name}_app-data"
+    container_id = "0123456789ab"
+    commands: list[list[str]] = []
+
+    def fake_run(command: Sequence[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        normalized = list(command)
+        commands.append(normalized)
+        if normalized[:4] == ["docker", "volume", "ls", "--format"]:
+            return subprocess.CompletedProcess(
+                normalized, 0, stdout=f"{managed_volume}\n", stderr=""
+            )
+        if normalized[:3] == ["docker", "volume", "inspect"]:
+            return subprocess.CompletedProcess(
+                normalized,
+                0,
+                stdout=json.dumps(
+                    {
+                        "com.docker.compose.project": project_name,
+                        "com.docker.compose.volume": "app-data",
+                    }
+                ),
+                stderr="",
+            )
+        if normalized[:3] == ["docker", "ps", "--all"]:
+            return subprocess.CompletedProcess(
+                normalized, 0, stdout=f"{container_id}\n", stderr=""
+            )
+        if normalized[:4] == [
+            "docker",
+            "inspect",
+            "--format",
+            "{{json .Mounts}}",
+        ]:
+            return subprocess.CompletedProcess(
+                normalized,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "Type": "volume",
+                            "Name": "anonymous-image-volume",
+                            "Destination": "/var/lib/postgresql/data",
+                        }
+                    ]
+                ),
+                stderr="",
+            )
+        if normalized[:4] == [
+            "docker",
+            "inspect",
+            "--format",
+            "{{json .Config.Labels}}",
+        ]:
+            return subprocess.CompletedProcess(
+                normalized,
+                0,
+                stdout=json.dumps(
+                    {
+                        "com.docker.compose.project": project_name,
+                        "com.docker.compose.service": "backend",
+                    }
+                ),
+                stderr="",
+            )
+        pytest.fail(f"unexpected fake Docker call: {normalized}")
+
+    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
+
+    with pytest.raises(live_stand.StandError, match=r"unregistered.*volume"):
+        live_stand._assert_compose_volume_ownership(
+            project_name,
+            [("app-data", managed_volume)],
+            allow_existing_owned=True,
+            managed_services=["backend"],
+            declared_volume_names=[managed_volume],
+        )
+
+    assert any("{{json .Mounts}}" in command for command in commands)
 
 
 def test_lifecycle_lock_serializes_competing_operations(
@@ -2157,7 +2471,12 @@ def test_up_preflights_every_port_before_stopping_or_building(
 
     def run(command: list[str], **_: Any) -> None:
         compose_calls.append(list(command))
-        events.append("compose-stop" if command[-1] == "stop" else "build")
+        if command[-1] == "stop":
+            events.append("compose-stop")
+        elif "-PrepareOnly" in command:
+            events.append("prepare")
+        else:
+            events.append("build")
 
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(
@@ -2183,13 +2502,35 @@ def test_up_preflights_every_port_before_stopping_or_building(
         "compose-stop",
         "ensure:resolved-sha",
         "ports",
+        "prepare",
         "build",
     ]
     assert checked_port_maps == [new_ports, new_ports]
     assert compose_calls[0] == live_stand.compose_command(
         "stop", project_name=owner.project_name
     )
-    assert dict(live_stand.load_stand_owner(worktree).published_ports) == new_ports
+    assert compose_calls[1] == [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "start-docker.ps1",
+        "-PrepareOnly",
+        "-ExtraCompose",
+        live_stand.OVERLAY,
+    ]
+    assert compose_calls[2] == [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "start-docker.ps1",
+        "-Build",
+        "-ExtraCompose",
+        live_stand.OVERLAY,
+        "-AllowExistingOwnedVolumes",
+    ]
+    started_owner = live_stand.load_stand_owner(worktree)
+    assert dict(started_owner.published_ports) == new_ports
+    assert started_owner.compose_resource_fingerprint is not None
 
 
 def test_up_port_conflict_preserves_the_running_stand_and_never_builds(

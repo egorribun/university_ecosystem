@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
+import re
+import socket
 import uuid
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -17,6 +20,7 @@ from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
     cast,
 )
 from urllib.parse import urlparse
+from weakref import ReferenceType, WeakKeyDictionary, ref
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
@@ -45,6 +49,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = get_logger(__name__)
+_URL_IN_ERROR_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 # HIGH-W19: defer URL computation until first use so that importing this module
 # does not immediately read settings or touch the database driver.
@@ -67,7 +72,6 @@ def _get_sync_url() -> URL:
 _sync_engine: Engine | None = None
 _Session: sessionmaker[Session] | None = None
 _sync_init_lock = Lock()
-_async_init_lock = asyncio.Lock()
 
 # TD-002 / PERF-001: Cap concurrent outgoing WebPush HTTP connections to prevent
 # self-DoS when broadcasting to large subscriber lists (e.g. 500+ recipients).
@@ -206,6 +210,86 @@ def _create_pinned_webpush_session(
     )
 
 
+def _reject_non_global_endpoint_host(endpoint: str) -> None:
+    """Reject IP literals that are not globally routable unicast addresses."""
+    hostname = urlparse(endpoint).hostname
+    if not hostname:
+        return
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return
+    if not address.is_global:
+        raise ValueError("URL host must be a globally routable address")
+
+
+def _reject_non_global_resolved_addresses(
+    addresses: Sequence[tuple[str, int] | str],
+) -> None:
+    """Reject DNS answers that are not globally routable before opening a socket."""
+    for resolved in addresses:
+        if isinstance(resolved, str):
+            raw_address = resolved
+        elif isinstance(resolved, tuple) and resolved and isinstance(resolved[0], str):
+            raw_address = resolved[0]
+        else:
+            raise ValueError("DNS resolver returned an invalid address")
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("DNS resolver returned an invalid address") from exc
+        if not address.is_global:
+            if address.is_unspecified:
+                raise ValueError("URL resolved to an unspecified address")
+            raise ValueError("URL resolved to a non-global address")
+
+
+async def _validate_public_endpoint_dns(endpoint: str) -> None:
+    """Resolve a push endpoint once and reject every non-global DNS answer."""
+    parsed = urlparse(endpoint)
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL has no hostname")
+
+    _reject_non_global_endpoint_host(endpoint)
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        return
+
+    port = parsed.port or 443
+    loop = asyncio.get_running_loop()
+    try:
+        resolved = await loop.getaddrinfo(
+            hostname,
+            port,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+    except socket.gaierror as exc:
+        raise ValueError(f"DNS resolution failed for {hostname}") from exc
+
+    if not resolved:
+        raise ValueError("DNS resolver returned no addresses")
+
+    addresses: list[str] = []
+    for result in resolved:
+        if not isinstance(result, tuple) or len(result) != 5:
+            raise ValueError("DNS resolver returned an invalid address")
+        sockaddr = result[4]
+        if (
+            not isinstance(sockaddr, tuple)
+            or len(sockaddr) < 2
+            or not isinstance(sockaddr[0], str)
+        ):
+            raise ValueError("DNS resolver returned an invalid address")
+        addresses.append(sockaddr[0])
+
+    _reject_non_global_resolved_addresses(addresses)
+
+
 def _initialize_sync_resources() -> None:
     global _sync_engine, _Session
     if _Session is not None:
@@ -227,9 +311,7 @@ def _ensure_sync_sessionmaker() -> sessionmaker[Session]:
 
 async def _ensure_async_sessionmaker() -> sessionmaker[Session]:
     if _Session is None:
-        async with _async_init_lock:
-            if _Session is None:
-                await asyncio.to_thread(_ensure_sync_sessionmaker)
+        await asyncio.to_thread(_ensure_sync_sessionmaker)
     return cast("sessionmaker[Session]", _Session)
 
 
@@ -286,15 +368,27 @@ _RATE_LIMIT_WINDOW_SECONDS = 60
 # has min(32, os.cpu_count()+4) workers; saturating it with slow push vendors
 # blocks all asyncio.to_thread calls across the application.
 _PUSH_CONCURRENT_LIMIT = 30
-_push_semaphore: asyncio.Semaphore | None = None
+_push_semaphores: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, ReferenceType[asyncio.Semaphore]
+] = WeakKeyDictionary()
+_push_semaphores_lock = Lock()
 
 
 def _get_push_semaphore() -> asyncio.Semaphore:
-    """Return the shared push semaphore, creating it lazily inside the event loop."""
-    global _push_semaphore
-    if _push_semaphore is None:
-        _push_semaphore = asyncio.Semaphore(_PUSH_CONCURRENT_LIMIT)
-    return _push_semaphore
+    """Return the push semaphore owned by the current event loop.
+
+    Semaphore instances bind to their loop once contended. Keep both the loop
+    key and semaphore value weakly reachable: a semaphore strongly references
+    its bound loop, so a strong value in a WeakKeyDictionary would retain it.
+    """
+    loop = asyncio.get_running_loop()
+    with _push_semaphores_lock:
+        semaphore_ref = _push_semaphores.get(loop)
+        semaphore = semaphore_ref() if semaphore_ref is not None else None
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(_PUSH_CONCURRENT_LIMIT)
+            _push_semaphores[loop] = ref(semaphore)
+        return semaphore
 
 
 def json_dumps(obj: Any) -> str:
@@ -312,9 +406,21 @@ def _mask_endpoint(endpoint: str | None) -> str | None:
         parsed = urlparse(value)
     except ValueError:
         parsed = None
-    if parsed and parsed.scheme and parsed.netloc:
-        return f"{parsed.scheme}://{parsed.netloc}/…#{digest}"
+    if parsed and parsed.scheme and parsed.hostname:
+        # Keep credentials out of logs even for legacy or malformed rows.  The
+        # endpoint path and userinfo can both contain bearer-like secrets.
+        hostname = parsed.hostname
+        if ":" in hostname:
+            hostname = f"[{hostname}]"
+        return f"{parsed.scheme}://{hostname}/…#{digest}"
     return f"…#{digest}"
+
+
+def _redact_urls_in_error(message: str) -> str:
+    """Remove bearer-like URL paths before errors reach logs or delivery rows."""
+    return _URL_IN_ERROR_RE.sub(
+        lambda match: _mask_endpoint(match.group(0)) or "[redacted URL]", message
+    )
 
 
 def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
@@ -749,49 +855,43 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     session: _NoRedirectWebPushSession | None = None
     try:
         validate_public_https_url(endpoint)
-        try:
-            # Resolve immediately before delivery and bind the transport to
-            # the returned address.  Validating the hostname alone would leave
-            # a DNS TOCTOU gap between this check and requests' connection.
-            resolved_addresses = validate_and_resolve(endpoint)
-        except ValueError as exc:
-            try:
-                is_development = bool(settings.is_development)
-            except AttributeError:
-                # Missing development configuration must remain fail-closed.
-                is_development = False  # pragma: no mutate
-            if not (is_development and "DNS resolution failed" in str(exc)):
-                raise
-            # Development fixtures may use provider placeholders that do not
-            # resolve.  Preserve that explicit local-only compatibility path,
-            # while every resolvable endpoint uses the pinned transport below.
-            resolved_addresses = []
+        _reject_non_global_endpoint_host(endpoint)
+        # Resolve immediately before delivery and bind the transport to the
+        # returned address.  Never fall back to requests' resolver after this
+        # check: a failed/empty lookup could otherwise be rebound to a private
+        # target between validation and connection.
+        resolved_addresses = validate_and_resolve(endpoint)
         if not isinstance(resolved_addresses, list):
             # The resolver contract is a list.  Treat an invalid result as a
             # failure rather than accidentally taking the unvalidated
             # no-address fallback path.
             raise ValueError("DNS resolver returned an invalid address list")
-        if resolved_addresses:
-            session = _create_pinned_webpush_session(endpoint, resolved_addresses[0])
-        else:
-            session = _NoRedirectWebPushSession()
+        if not resolved_addresses:
+            raise ValueError("DNS resolver returned no addresses")
+        _reject_non_global_resolved_addresses(resolved_addresses)
+        session = _create_pinned_webpush_session(endpoint, resolved_addresses[0])
         webpush(
             subscription_info=subscription_info,
             data=json_dumps(normalized_payload),
             vapid_private_key=settings.VAPID_PRIVATE_KEY,
             vapid_claims={"sub": settings.WEBPUSH_SUBJECT},
             headers=headers,
+            timeout=_PUSH_CALL_TIMEOUT_SECONDS,
             ttl=ttl,
             requests_session=session,
         )
     except WebPushException as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
         message = str(exc)
-        gone = False
-        if status_code in (404, 410):
-            gone = True
-        elif message:
-            gone = "404" in message or "410" in message
+        safe_message = _redact_urls_in_error(message)
+        message_without_urls = _URL_IN_ERROR_RE.sub("", message)
+        gone = status_code in (404, 410) or bool(
+            re.match(
+                r"^\s*(?:WebPushException:\s*)?(?:HTTP\s+)?(?:404|410)\b",
+                message_without_urls,
+                re.I,
+            )
+        )
         if gone:
             _log_event(
                 "send",
@@ -806,7 +906,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
                 user_id=uuid.UUID(str(user_id)) if user_id else None,
                 status="gone",
                 status_code=status_code,
-                error=message or None,
+                error=safe_message or None,
             )
         _log_event(
             "send",
@@ -821,27 +921,34 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             user_id=uuid.UUID(str(user_id)) if user_id else None,
             status="error",
             status_code=status_code,
-            error=message or None,
+            error=safe_message or None,
         )
     except (ConnectionError, TimeoutError, OSError, ValueError) as exc:
         # RZ-20-04: Narrowed — WebPush send errors (HTTP/crypto/network).
+        safe_message = _redact_urls_in_error(str(exc))
         _log_event(
             "send",
             level=logging.ERROR,
             user_id=user_id,
             endpoint=sub.endpoint,
             status="error",
+            error_type=type(exc).__name__,
         )
-        logger.exception(
+        logger.error(
             "webpush.send",
-            extra={"user_id": user_id, "endpoint": _mask_endpoint(str(sub.endpoint))},
+            extra={
+                "user_id": user_id,
+                "endpoint": _mask_endpoint(str(sub.endpoint)),
+                "error_type": type(exc).__name__,
+                "error": safe_message,
+            },
         )
         return WebPushResult(
             subscription_id=sub.id,
             endpoint=str(sub.endpoint),
             user_id=uuid.UUID(str(user_id)) if user_id else None,
             status="error",
-            error=str(exc),
+            error=safe_message,
         )
     finally:
         if session is not None:
@@ -859,38 +966,66 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
 _PUSH_CALL_TIMEOUT_SECONDS = 15.0
 
 
+async def _send_push_with_slot(
+    sub: PushSubscription,
+    prepared: dict[str, Any],
+    slot_acquired: asyncio.Event,
+) -> WebPushResult:
+    """Run one blocking delivery while retaining its concurrency permit."""
+    async with _get_push_semaphore():
+        slot_acquired.set()
+        return await asyncio.to_thread(send_web_push, sub, prepared)
+
+
+def _retrieve_push_task_exception(task: asyncio.Task[WebPushResult]) -> None:
+    """Retrieve failures from a worker that outlived its cancelled caller."""
+    if not task.cancelled():
+        task.exception()
+
+
 async def _send_push_async(
     sub: PushSubscription, prepared: dict[str, Any]
 ) -> WebPushResult:
     """Async wrapper for send_web_push with concurrency limit and per-call timeout.
 
     RED-07 (audit 2026-03-14): Semaphore prevents thread-pool exhaustion;
-    asyncio.timeout ensures stuck vendors do not hold threads indefinitely.
+    asyncio.timeout bounds caller wait. A started sync worker cannot be cancelled,
+    so its background task retains the semaphore slot until the thread finishes.
     """
-    semaphore = _get_push_semaphore()
-    async with semaphore:
-        try:
-            async with asyncio.timeout(_PUSH_CALL_TIMEOUT_SECONDS):
-                return await asyncio.to_thread(send_web_push, sub, prepared)
-        except TimeoutError:
-            import uuid as _uuid
+    slot_acquired = asyncio.Event()
+    worker = asyncio.create_task(_send_push_with_slot(sub, prepared, slot_acquired))
+    worker.add_done_callback(_retrieve_push_task_exception)
+    try:
+        async with asyncio.timeout(_PUSH_CALL_TIMEOUT_SECONDS):
+            return await asyncio.shield(worker)
+    except TimeoutError:
+        if not slot_acquired.is_set():
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
 
-            user_id = getattr(sub, "user_id", None)
-            _log_event(
-                "send",
-                level=logging.WARNING,
-                user_id=user_id,
-                endpoint=sub.endpoint,
-                status="error",
-                error="push_timeout",
-            )
-            return WebPushResult(
-                subscription_id=sub.id,
-                endpoint=str(sub.endpoint),
-                user_id=_uuid.UUID(str(user_id)) if user_id else None,
-                status="error",
-                error="push delivery timed out",
-            )
+        import uuid as _uuid
+
+        user_id = getattr(sub, "user_id", None)
+        _log_event(
+            "send",
+            level=logging.WARNING,
+            user_id=user_id,
+            endpoint=sub.endpoint,
+            status="error",
+            error="push_timeout",
+        )
+        return WebPushResult(
+            subscription_id=sub.id,
+            endpoint=str(sub.endpoint),
+            user_id=_uuid.UUID(str(user_id)) if user_id else None,
+            status="error",
+            error="push delivery timed out",
+        )
+    except asyncio.CancelledError:
+        if not slot_acquired.is_set():
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+        raise
 
 
 def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:

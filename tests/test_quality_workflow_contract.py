@@ -732,6 +732,32 @@ def test_ci_success_publishes_current_run_health_artifact() -> None:
     }
 
 
+def test_ci_success_allows_performance_gate_skip_only_after_frontend_failure() -> None:
+    """A dependency skip must not add a misleading second CI failure."""
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    ci_success = workflow["jobs"]["ci-success"]
+    run = ci_success["steps"][0]["run"]
+
+    assert "frontend-tests" in ci_success["needs"]
+    assert "performance-gate" in ci_success["needs"]
+    assert (
+        ci_success["steps"][0]["env"].get("FRONTEND_TESTS_RESULT")
+        == "${{ needs.frontend-tests.result }}"
+    )
+    assert '"frontend-tests|${{ needs.frontend-tests.result }}"' in run
+    assert '"performance-gate|${{ needs.performance-gate.result }}"' in run
+    assert "performance_expected_result=success" in run
+    assert (
+        'if [[ "$FRONTEND_TESTS_RESULT" == "failure" || '
+        '"$FRONTEND_TESTS_RESULT" == "skipped" ]]; then\n'
+        "  performance_expected_result=skipped\n"
+        "fi"
+    ) in run
+    assert 'elif [[ "$job" == "performance-gate" ]]; then' in run
+    assert 'expected_result="$performance_expected_result"' in run
+
+
 def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -> None:
     policies = {
         document["metadata"]["name"]
@@ -3884,6 +3910,35 @@ def test_frontend_unit_aggregate_publishes_hidden_junit_reports() -> None:
         aggregate_upload["with"]["name"]
         == "frontend-vitest-report-attempt-${{ github.run_attempt }}"
     )
+
+
+def test_semgrep_upload_uses_policy_filtered_sarif_and_keeps_raw_gate() -> None:
+    security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = security["jobs"]["semgrep"]["steps"]
+    prepare = next(
+        step
+        for step in steps
+        if step.get("name") == "Prepare policy-filtered SARIF for GitHub"
+    )
+    upload = next(
+        step
+        for step in steps
+        if step.get("name") == "Upload SARIF to GitHub Advanced Security"
+    )
+    gate = next(
+        step
+        for step in steps
+        if step.get("name") == "Fail if Semgrep reported findings or scan errors"
+    )
+
+    assert "--prepare-github-upload semgrep-github.sarif" in prepare["run"]
+    assert "--report semgrep.sarif" in prepare["run"]
+    assert "security/semgrep-suppression-policy.json" in prepare["run"]
+    assert upload["if"] == "always()"
+    assert upload["with"]["sarif_file"] == "semgrep-github.sarif"
+    assert "--report semgrep.sarif" in gate["run"]
+    assert '--scanner-status "$scan_status"' in gate["run"]
+    assert steps.index(prepare) < steps.index(upload) < steps.index(gate)
 
 
 def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:

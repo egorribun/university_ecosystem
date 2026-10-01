@@ -126,7 +126,7 @@ class CredentialValidator:
         (
             lock_until,
             triggered,
-            attempts,
+            _,
         ) = await self.lockout_service.register_failed_attempt(email, None)
         self.audit.log(
             "auth.login.failure",
@@ -149,7 +149,9 @@ class CredentialValidator:
                 reason="lockout",
                 until=lock_until.isoformat(),
             )
-            await self._trigger_lockout_alert(email, "", lock_until, attempts, locale)
+            # This email is only an unverified login identifier, not a trusted
+            # account address; notifying it would let attackers send arbitrary
+            # lockout messages by submitting nonexistent accounts.
             from app.api.validation import raise_http_error
 
             raise_http_error(
@@ -214,9 +216,12 @@ class CredentialValidator:
                 reason="lockout",
                 until=lock_until.isoformat(),
             )
-            await self._trigger_lockout_alert(
-                email, user.full_name or "", lock_until, attempts, locale
-            )
+            # Do not send a security notification to an address the account has
+            # not proven it controls.
+            if getattr(user, "email_verified_at", None) is not None:
+                await self._trigger_lockout_alert(
+                    email, user.full_name or "", lock_until, attempts, locale
+                )
             from app.api.validation import raise_http_error
 
             raise_http_error(

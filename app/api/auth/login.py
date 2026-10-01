@@ -66,6 +66,22 @@ def _mfa_rate_limit_error(exc: RateLimitExceeded, *, detail: str) -> HTTPExcepti
     )
 
 
+def _login_auth_error_for_request_locale(
+    exc: HTTPException, request: Request
+) -> HTTPException | None:
+    message_key = {
+        status.HTTP_401_UNAUTHORIZED: "errors.auth.credentials_invalid",
+        status.HTTP_423_LOCKED: "errors.auth.account_locked",
+    }.get(exc.status_code)
+    if message_key is None:
+        return None
+    return HTTPException(
+        status_code=exc.status_code,
+        detail=translate(message_key, locale=resolve_locale(request=request)),
+        headers=exc.headers,
+    )
+
+
 async def _load_optional_active_session(
     request: Request, db: AsyncDatabaseSession
 ) -> Any:
@@ -116,6 +132,11 @@ async def login(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
         ) from exc
+    except HTTPException as exc:
+        request_locale_error = _login_auth_error_for_request_locale(exc, request)
+        if request_locale_error is None:
+            raise
+        raise request_locale_error from exc
     if isinstance(result, PendingMfaResponse):
         await db.commit()
     return result
@@ -155,6 +176,11 @@ async def login_json(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
         ) from exc
+    except HTTPException as exc:
+        request_locale_error = _login_auth_error_for_request_locale(exc, request)
+        if request_locale_error is None:
+            raise
+        raise request_locale_error from exc
     if isinstance(result, PendingMfaResponse):
         await db.commit()
     return result

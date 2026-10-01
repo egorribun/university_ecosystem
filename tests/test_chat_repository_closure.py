@@ -55,6 +55,7 @@ def _repo() -> tuple[ChatRepository, MagicMock]:
 
 async def test_properties_rls_and_get_by_id_variants() -> None:
     repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
     assert repo.model is chat_module.Chat
     assert repo.dto_class is chat_module.ChatDTO
 
@@ -67,10 +68,46 @@ async def test_properties_rls_and_get_by_id_variants() -> None:
     row = SimpleNamespace(id=CHAT_ID)
     repo._to_dto = MagicMock(return_value="chat-dto")  # type: ignore[method-assign]
     db.get.return_value = row
+    db.in_transaction.return_value = True
     assert await repo.get_by_id(CHAT_ID) == "chat-dto"
-    assert await repo.get_by_id(CHAT_ID, load_messages=True) == "chat-dto"
+    assert (
+        await repo.get_by_id(CHAT_ID, load_messages=True, user_id=USER_ID) == "chat-dto"
+    )
     db.get.return_value = None
     assert await repo.get_by_id(CHAT_ID) is None
+
+
+async def test_public_message_rls_setter_starts_postgres_transaction() -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.in_transaction.return_value = False
+
+    async def begin_transaction() -> None:
+        db.in_transaction.return_value = True
+
+    db.begin = AsyncMock(side_effect=begin_transaction)
+
+    await repo.set_message_rls_user(USER_ID)
+
+    db.begin.assert_awaited_once()
+    db.execute.assert_awaited_once()
+    statement, parameters = db.execute.await_args.args
+    assert "set_config('app.current_user_id'" in str(statement)
+    assert parameters == {"uid": str(USER_ID)}
+
+
+async def test_get_by_id_refreshes_identity_map_for_authorized_message_load() -> None:
+    repo, db = _repo()
+    row = SimpleNamespace(id=CHAT_ID)
+    repo._to_dto = MagicMock(return_value="chat-dto")  # type: ignore[method-assign]
+    db.get.return_value = row
+
+    assert (
+        await repo.get_by_id(CHAT_ID, load_messages=True, user_id=USER_ID) == "chat-dto"
+    )
+
+    db.get.assert_awaited_once()
+    assert db.get.await_args.kwargs["populate_existing"] is True
 
 
 async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() -> None:
@@ -142,6 +179,41 @@ async def test_message_and_user_lookup_helpers() -> None:
         USER_ID: "Alice",
         OTHER_ID: None,
     }
+
+
+async def test_message_lookup_sets_explicit_rls_identity_before_query() -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.in_transaction.return_value = False
+    executed: list[object] = []
+
+    async def record_execute(statement: object, *args: object) -> MagicMock:
+        executed.append(statement)
+        return _result(scalar_one_or_none=None)
+
+    async def begin_transaction() -> None:
+        db.in_transaction.return_value = True
+
+    db.begin = AsyncMock(side_effect=begin_transaction)
+    db.execute.side_effect = record_execute
+
+    await repo.get_message_by_id(CHAT_ID, user_id=USER_ID, chat_id=OTHER_ID)
+
+    db.begin.assert_awaited_once()
+    assert len(executed) == 2
+    assert "set_config('app.current_user_id'" in str(executed[0])
+    assert "messages.id =" in str(executed[1])
+    assert "messages.chat_id =" in str(executed[1])
+
+
+async def test_message_lookup_requires_identity_for_postgresql() -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
+
+    with pytest.raises(ValueError, match="user_id is required"):
+        await repo.get_message_by_id(CHAT_ID)
+
+    db.execute.assert_not_awaited()
 
 
 async def test_get_user_display_names_projects_identity_and_profile_columns() -> None:
@@ -224,7 +296,7 @@ async def test_unread_and_last_message_paths() -> None:
 
 async def test_get_messages_covers_rls_cursor_and_next_cursor() -> None:
     repo, db = _repo()
-    repo._set_rls_user = AsyncMock()  # type: ignore[method-assign]
+    repo._set_message_rls_user = AsyncMock()  # type: ignore[method-assign]
     messages = [
         SimpleNamespace(id=CHAT_ID, created_at=NOW),
         SimpleNamespace(id=OTHER_ID, created_at=NOW),
@@ -247,7 +319,7 @@ async def test_get_messages_covers_rls_cursor_and_next_cursor() -> None:
     assert has_more is True
     assert next_cursor == "cursor-next"
     encode.assert_called_once_with(NOW, str(OTHER_ID))
-    repo._set_rls_user.assert_awaited_once_with(USER_ID)
+    repo._set_message_rls_user.assert_awaited_once_with(USER_ID)
 
     db.execute.return_value = _result(rows=[])
     with patch.object(chat_module, "MessageDTO", _FakeMessageDTO):
@@ -290,24 +362,48 @@ async def test_create_message_and_mark_read_dm_and_group() -> None:
 
 async def test_edit_delete_exists_and_reactions_cover_rowcount_edges() -> None:
     repo, db = _repo()
-    db.execute.return_value = _result(rowcount=1)
-    edited_at, affected = await repo.edit_message(CHAT_ID, USER_ID, "new")
+    message = SimpleNamespace(
+        id=CHAT_ID,
+        chat_id=CHAT_ID,
+        content="old",
+        edited_at=None,
+        deleted_at=None,
+        record_event=MagicMock(),
+    )
+    db.execute.return_value = _result(scalar_one_or_none=message)
+    edited_at, affected = await repo.edit_message(
+        CHAT_ID, USER_ID, "new", chat_id=CHAT_ID
+    )
     assert edited_at is not None and affected == 1
-    db.execute.return_value = _result(rowcount=0)
-    edited_at, affected = await repo.edit_message(CHAT_ID, USER_ID, "new")
+    db.execute.return_value = _result(scalar_one_or_none=None)
+    edited_at, affected = await repo.edit_message(
+        CHAT_ID, USER_ID, "new", chat_id=CHAT_ID
+    )
     assert edited_at is None and affected == 0
-    db.execute.return_value = _result(rowcount=-1)
-    _, affected = await repo.edit_message(CHAT_ID, USER_ID, "new")
+    db.execute.return_value = _result(scalar_one_or_none=None)
+    _, affected = await repo.edit_message(CHAT_ID, USER_ID, "new", chat_id=CHAT_ID)
     assert affected == 0
 
-    db.execute.return_value = _result(rowcount=1)
-    deleted_at, affected = await repo.soft_delete_message(CHAT_ID, USER_ID)
+    message = SimpleNamespace(
+        id=CHAT_ID,
+        chat_id=CHAT_ID,
+        content="old",
+        edited_at=None,
+        deleted_at=None,
+        record_event=MagicMock(),
+    )
+    db.execute.return_value = _result(scalar_one_or_none=message)
+    deleted_at, affected = await repo.soft_delete_message(
+        CHAT_ID, USER_ID, chat_id=CHAT_ID
+    )
     assert deleted_at is not None and affected == 1
-    db.execute.return_value = _result(rowcount=0)
-    deleted_at, affected = await repo.soft_delete_message(CHAT_ID, USER_ID)
+    db.execute.return_value = _result(scalar_one_or_none=None)
+    deleted_at, affected = await repo.soft_delete_message(
+        CHAT_ID, USER_ID, chat_id=CHAT_ID
+    )
     assert deleted_at is None and affected == 0
-    db.execute.return_value = _result(rowcount=-1)
-    _, affected = await repo.soft_delete_message(CHAT_ID, USER_ID)
+    db.execute.return_value = _result(scalar_one_or_none=None)
+    _, affected = await repo.soft_delete_message(CHAT_ID, USER_ID, chat_id=CHAT_ID)
     assert affected == 0
 
     db.execute.return_value = _result(scalar=True)
@@ -325,6 +421,49 @@ async def test_edit_delete_exists_and_reactions_cover_rowcount_edges() -> None:
     assert await repo.remove_reaction(CHAT_ID, USER_ID, "👍") == 0
 
 
+@pytest.mark.parametrize("operation", ["edit", "delete"])
+async def test_message_mutations_set_rls_identity_before_chat_scoped_update(
+    operation: str,
+) -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    executed: list[tuple[object, tuple[object, ...]]] = []
+    message = SimpleNamespace(
+        id=CHAT_ID,
+        chat_id=OTHER_ID,
+        content="old",
+        edited_at=None,
+        deleted_at=None,
+        record_event=MagicMock(),
+    )
+
+    async def record_execute(statement: object, *args: object) -> MagicMock:
+        executed.append((statement, args))
+        if len(executed) == 1:
+            return _result()
+        return _result(scalar_one_or_none=message)
+
+    db.execute.side_effect = record_execute
+
+    if operation == "edit":
+        await repo.edit_message(CHAT_ID, USER_ID, "edited", chat_id=OTHER_ID)
+    else:
+        await repo.soft_delete_message(CHAT_ID, USER_ID, chat_id=OTHER_ID)
+
+    assert len(executed) == 2
+    rls_statement, rls_args = executed[0]
+    assert "set_config('app.current_user_id'" in str(rls_statement)
+    assert rls_args == ({"uid": str(USER_ID)},)
+
+    scoped_select, _select_args = executed[1]
+    compiled_select = scoped_select.compile()  # type: ignore[union-attr]
+    assert "messages.chat_id =" in str(scoped_select)
+    assert any(
+        key.startswith("chat_id") and value == OTHER_ID
+        for key, value in compiled_select.params.items()
+    )
+
+
 async def test_reactors_deletes_and_simple_crud_helpers() -> None:
     repo, db = _repo()
     users = [SimpleNamespace(id=USER_ID), SimpleNamespace(id=OTHER_ID)]
@@ -337,10 +476,33 @@ async def test_reactors_deletes_and_simple_crud_helpers() -> None:
     db.execute.return_value = _result(rowcount=-1)
     assert await repo.delete_messages([CHAT_ID]) == 0
 
+    db.get_bind.return_value.dialect.name = "postgresql"
+    prior_execute_count = db.execute.await_count
+    with pytest.raises(ValueError, match="chat_id is required"):
+        await repo.delete_messages([CHAT_ID], user_id=USER_ID)
+    assert db.execute.await_count == prior_execute_count + 1
+    assert "set_config('app.current_user_id'" in str(db.execute.await_args.args[0])
+
     await repo.delete_chat(CHAT_ID)
     await repo.update_timestamp_by_id(CHAT_ID, NOW)
     db.get.return_value = "user-row"
     assert await repo.get_user(USER_ID) == "user-row"
+
+
+async def test_delete_messages_scopes_delete_to_requested_chat() -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "sqlite"
+    db.execute.return_value = _result(rowcount=1)
+
+    assert await repo.delete_messages([CHAT_ID], chat_id=OTHER_ID) == 1
+
+    statement = db.execute.await_args.args[0]
+    assert "messages.chat_id =" in str(statement)
+    compiled = statement.compile()
+    assert any(
+        key.startswith("chat_id") and value == OTHER_ID
+        for key, value in compiled.params.items()
+    )
 
 
 async def test_participants_receipts_type_message_and_presence() -> None:

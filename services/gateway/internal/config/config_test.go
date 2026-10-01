@@ -127,6 +127,22 @@ func TestGetEnvInt_ParsesZero(t *testing.T) {
 	assert.Equal(t, 0, result)
 }
 
+func TestLoadFromEnvironment_TrustedProxiesDefaultToEmpty(t *testing.T) {
+	t.Setenv("GATEWAY_TRUSTED_PROXIES", "")
+
+	cfg := loadFromEnvironment()
+
+	assert.Empty(t, cfg.TrustedProxies)
+}
+
+func TestLoadFromEnvironment_ParsesExplicitTrustedProxies(t *testing.T) {
+	t.Setenv("GATEWAY_TRUSTED_PROXIES", " 172.28.4.0/28,10.30.0.12 ")
+
+	cfg := loadFromEnvironment()
+
+	assert.Equal(t, []string{"172.28.4.0/28", "10.30.0.12"}, cfg.TrustedProxies)
+}
+
 func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	// Save original env
 	originalJWT := os.Getenv("JWT_SECRET")

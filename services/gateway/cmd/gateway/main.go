@@ -187,6 +187,10 @@ func callSetTrustedProxies(router *gin.Engine, proxies []string) error {
 	return fn(router, proxies)
 }
 
+func configureTrustedProxies(router *gin.Engine, cfg *config.Config) error {
+	return callSetTrustedProxies(router, cfg.TrustedProxies)
+}
+
 func callRegisterPrometheusCollector(collector prometheus.Collector) error {
 	hooksMu.RLock()
 	fn := registerPrometheusCollectorFunc
@@ -570,8 +574,10 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
-	// FIX 1.4: Security Hardening: Explicitly trust only internal networks and local proxies.
-	if err := callSetTrustedProxies(router, []string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}); err != nil {
+	// Trust forwarded client IPs only from operator-configured proxy addresses.
+	// An empty list disables X-Forwarded-For/X-Real-IP trust; broad private
+	// ranges would let sibling containers forge client identities directly.
+	if err := configureTrustedProxies(router, cfg); err != nil {
 		logger.ErrorContext(ctx, "Failed to set trusted proxies", "err", err)
 		return nil, fmt.Errorf("configure trusted proxies: %w", err)
 	}

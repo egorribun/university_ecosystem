@@ -26,7 +26,7 @@ if TYPE_CHECKING:
         MessageResponse,
         MessagesListOut,
     )
-    from app.schemas.dtos.chat import MessageReactionDTO
+    from app.schemas.dtos.chat import MessageDTO, MessageReactionDTO
 
 from app.api.validation import ensure_exists, raise_forbidden, raise_not_found
 from app.api.ws.presence import build_presence_map
@@ -71,6 +71,13 @@ def _aggregate_reactions(
     ]
 
 
+def _without_deleted_attachments(message: MessageDTO) -> MessageDTO:
+    """Keep tombstones visible without exposing their attachment references."""
+    if message.deleted_at is None or not message.attachments:
+        return message
+    return message.model_copy(update={"attachments": []})
+
+
 class ChatQueryService:
     """Handles read-only operations for chats and messages. (TD-1)"""
 
@@ -108,7 +115,14 @@ class ChatQueryService:
         last_message_ids = [
             d["last_message_id"] for d in chat_data_map.values() if d["last_message_id"]
         ]
-        last_messages_map = await self.repository.get_last_messages(last_message_ids)
+        last_messages_map = {
+            message_id: _without_deleted_attachments(message)
+            for message_id, message in (
+                await self.repository.get_last_messages(
+                    last_message_ids, user_id=user.id
+                )
+            ).items()
+        }
         participant_names = (
             await self.repository.get_user_display_names(list(participant_ids))
             if participant_ids
@@ -212,7 +226,9 @@ class ChatQueryService:
         unread_count = await self.repository.get_unread_count(
             chat_id, user.id, chat.chat_type
         )
-        last_message = await self.repository.get_last_message(chat_id)
+        last_message = await self.repository.get_last_message(chat_id, user_id=user.id)
+        if last_message is not None:
+            last_message = _without_deleted_attachments(last_message)
 
         presence_map = await build_presence_map(
             [p.id for p in chat.participants], db=self.session
@@ -266,10 +282,12 @@ class ChatQueryService:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         messages, has_more, next_cursor = await self.repository.get_messages(
-            chat_id, cursor, limit
+            chat_id, cursor, limit, user_id=user.id
         )
 
-        messages = list(reversed(messages))
+        messages = [
+            _without_deleted_attachments(message) for message in reversed(messages)
+        ]
 
         presence_map = await build_presence_map(
             {msg.sender_id for msg in messages}, db=self.session
@@ -341,7 +359,9 @@ class ChatQueryService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+        if not await self.repository.message_exists_in_chat(
+            message_id, chat_id, user_id=user.id
+        ):
             raise_not_found("message", locale)
 
         reactors = await self.repository.get_reactors(message_id, emoji)

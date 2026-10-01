@@ -271,13 +271,18 @@ async def websocket_chat(websocket: WebSocket) -> None:
             ConnectionError,
         ):  # RZ-22-01: narrowed — DB/network errors during last_seen update
             last_seen = datetime.now(UTC)
-        await manager.broadcast_presence(
-            user.id,
-            False,
-            last_seen,
-            source=PRESENCE_SOURCE_DISCONNECT,
-            force=True,
-        )
+        # A user can own several tabs/devices.  Closing one socket must not
+        # publish an offline transition while another socket remains active.
+        # Check after the awaited last-seen update so a reconnect completed
+        # during that I/O is reflected in the decision.
+        if not manager.is_online(user.id):
+            await manager.broadcast_presence(
+                user.id,
+                False,
+                last_seen,
+                source=PRESENCE_SOURCE_DISCONNECT,
+                force=True,
+            )
         metrics.dec_ws_connections(path="/ws/chat")
         logger.info("WebSocket cleanup for user %s", user.id)
 

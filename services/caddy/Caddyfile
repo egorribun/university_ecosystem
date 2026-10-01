@@ -19,6 +19,19 @@
 	# Auto-HTTPS certificate management email (required for ACME production).
 	# In dev environments without a real domain, Caddy falls back to self-signed.
 	email {$ACME_EMAIL}
+
+	# Runtime errors can include the original request URI. Redact bearer values
+	# while retaining useful request details; access logs have their own filter.
+	log default {
+		format filter {
+			request>uri multi_regexp {
+				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
+				regexp ([?&]token=)[^&]* ${1}REDACTED
+				regexp ([?&]ticket=)[^&]* ${1}REDACTED
+			}
+		}
+		exclude http.log.access
+	}
 }
 
 # Main HTTPS site — matches the public hostname or falls back to :443.
@@ -164,6 +177,11 @@
 	# --- Security hardening -----------------------------------------------
 	# HSTS: tell browsers to always use HTTPS for this domain (1 year).
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+	# Apply the shared browser security policy at the TLS edge, including Node SSR.
+	header X-Content-Type-Options nosniff
+	header X-Frame-Options DENY
+	header X-XSS-Protection "0"
+	header Referrer-Policy strict-origin-when-cross-origin
 
 	# Prevent Caddy from leaking its version in the Server header.
 	header -Server
@@ -175,8 +193,10 @@
 		# query string for the upgrade, but it is a bearer credential. Keep the
 		# request shape for diagnostics while never persisting the token value.
 		format filter {
-			request>uri query {
-				replace ticket REDACTED
+			request>uri multi_regexp {
+				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
+				regexp ([?&]token=)[^&]* ${1}REDACTED
+				regexp ([?&]ticket=)[^&]* ${1}REDACTED
 			}
 		}
 		level INFO

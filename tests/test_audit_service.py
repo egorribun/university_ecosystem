@@ -1,5 +1,7 @@
 """Tests for the enhanced audit service."""
 
+import hashlib
+import hmac
 import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -292,7 +294,9 @@ def _fake_log(signature=None):
         resource_type="user",
         resource_id="42",
         action="read",
+        context={"detail": "original"},
         ip_address="10.0.0.1",
+        user_agent="synthetic-agent-original",
         created_at=datetime.now(UTC),
         signature=signature,
     )
@@ -305,9 +309,27 @@ def test_secure_audit_init_with_single_key_and_explicit_keys():
     assert svc2._primary_key == b"a"
 
 
+def test_secure_audit_init_uses_configured_rotation_keys(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.audit_service.settings",
+        SimpleNamespace(audit_log_secret=" current-key , previous-key "),
+    )
+
+    service = SecureAuditService()
+
+    assert service._signing_keys == [b"current-key", b"previous-key"]
+
+
 def test_secure_audit_parse_signing_keys_empty_raises():
     with pytest.raises(ValueError, match="must not be empty"):
         SecureAuditService._parse_signing_keys("  ,  ")
+
+
+def test_secure_audit_parse_signing_keys_keeps_nonempty_rotation_entries():
+    assert SecureAuditService._parse_signing_keys(" first , , second ") == [
+        b"first",
+        b"second",
+    ]
 
 
 def test_secure_audit_compute_signature_is_deterministic():
@@ -316,7 +338,8 @@ def test_secure_audit_compute_signature_is_deterministic():
     sig1 = svc._compute_signature(log)
     sig2 = svc._compute_signature(log)
     assert sig1 == sig2
-    assert len(sig1) == 64  # hex SHA-256
+    assert sig1.startswith("v2:")
+    assert len(sig1.removeprefix("v2:")) == 64  # hex SHA-256
 
 
 def test_secure_audit_verify_integrity_roundtrip_and_tamper():
@@ -329,6 +352,41 @@ def test_secure_audit_verify_integrity_roundtrip_and_tamper():
     # Tampering the payload (or the signature) breaks verification.
     log.action = "delete"
     assert svc.verify_integrity(log) is False
+
+
+@pytest.mark.parametrize("field", ["context", "user_agent"])
+def test_secure_audit_integrity_detects_metadata_tampering(field: str) -> None:
+    svc = SecureAuditService(signing_key=b"signing-key")
+    log = _fake_log()
+    log.signature = svc._compute_signature(log)
+
+    if field == "context":
+        log.context = {"detail": "changed"}
+    else:
+        log.user_agent = "synthetic-agent-changed"
+
+    assert svc.verify_integrity(log) is False
+
+
+def test_secure_audit_verify_integrity_accepts_legacy_signature() -> None:
+    svc = SecureAuditService(signing_key=b"signing-key")
+    log = _fake_log()
+    legacy_parts = [
+        str(log.id or ""),
+        str(log.actor_user_id or ""),
+        str(log.subject_user_id or ""),
+        str(log.resource_type or ""),
+        str(log.resource_id or ""),
+        str(log.action or ""),
+        str(log.ip_address or ""),
+        log.created_at.isoformat(),
+    ]
+    legacy_data = "|".join(legacy_parts)
+    log.signature = hmac.new(
+        b"signing-key", legacy_data.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    assert svc.verify_integrity(log) is True
 
 
 def test_secure_audit_verify_integrity_unsigned_is_false():

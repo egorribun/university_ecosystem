@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -130,7 +131,7 @@ def _finding_key(result: dict[str, Any]) -> FindingKey:
         or end_line < start_line
     ):
         raise ValidationError(f"Semgrep result {rule_id!r} has invalid line range")
-    return FindingKey(rule_id.strip(), path, start_line, end_line)
+    return FindingKey(rule_id, path, start_line, end_line)
 
 
 def _is_line_bound_in_source_suppression(result: dict[str, Any]) -> bool:
@@ -191,12 +192,111 @@ def validate_report(
         )
 
 
+def prepare_github_upload_report(
+    report_path: Path, policy_path: Path, upload_path: Path
+) -> None:
+    """Write a GHAS-compatible report without ledger-approved suppressions.
+
+    GitHub's third-party SARIF ingestion does not use SARIF ``suppressions``
+    when creating alerts. Preserve the raw Semgrep report for validation, and
+    remove a result from the upload copy only when its exact rule/path/line
+    identity is covered by the reviewed policy and Semgrep marks it in-source.
+    If preparation fails, leave an unfiltered copy in place so uncertain
+    findings remain visible in GitHub; the blocking validator still rejects
+    the malformed report or policy.
+    """
+
+    if report_path.resolve() == upload_path.resolve():
+        raise ValidationError("GitHub upload report must not replace raw SARIF")
+
+    try:
+        upload_path.parent.mkdir(parents=True, exist_ok=True)
+        upload_path.unlink(missing_ok=True)
+        raw_report = report_path.read_bytes()
+        upload_path.write_bytes(raw_report)
+    except OSError as error:
+        raise ValidationError(
+            "unable to preserve raw SARIF for GitHub upload"
+        ) from error
+
+    report = _load_object(report_path, "Semgrep SARIF report")
+    policy = _load_object(policy_path, "Semgrep suppression policy")
+    allowed = _policy_keys(policy)
+    runs = report.get("runs")
+    if not isinstance(runs, list):
+        return
+
+    filtered_report = dict(report)
+    filtered_runs: list[object] = []
+    for run in runs:
+        if not isinstance(run, dict):
+            filtered_runs.append(run)
+            continue
+        results = run.get("results", [])
+        if not isinstance(results, list):
+            filtered_runs.append(run)
+            continue
+
+        filtered_results: list[object] = []
+        for result in results:
+            if not isinstance(result, dict):
+                filtered_results.append(result)
+                continue
+            try:
+                finding = _finding_key(result)
+            except ValidationError:
+                filtered_results.append(result)
+                continue
+            if finding in allowed and _is_line_bound_in_source_suppression(result):
+                continue
+            filtered_results.append(result)
+
+        filtered_run = dict(run)
+        filtered_run["results"] = filtered_results
+        filtered_runs.append(filtered_run)
+
+    filtered_report["runs"] = filtered_runs
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=f".{upload_path.name}.",
+            suffix=".tmp",
+            dir=upload_path.parent,
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(json.dumps(filtered_report, ensure_ascii=False))
+        temporary_path.replace(upload_path)
+    except OSError as error:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise ValidationError("unable to write filtered GitHub SARIF report") from error
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--policy", type=Path, required=True)
-    parser.add_argument("--scanner-status", type=int, required=True)
+    parser.add_argument("--scanner-status", type=int)
+    parser.add_argument("--prepare-github-upload", type=Path)
     args = parser.parse_args(argv)
+    if args.prepare_github_upload is not None:
+        try:
+            prepare_github_upload_report(
+                args.report, args.policy, args.prepare_github_upload
+            )
+        except ValidationError as error:
+            print(f"::error::{error}", file=sys.stderr)
+            return 1
+        print("Prepared policy-filtered Semgrep SARIF for GitHub upload.")
+        return 0
+    if args.scanner_status is None:
+        parser.error("--scanner-status is required unless preparing a GitHub upload")
     try:
         validate_report(args.report, args.policy, scanner_status=args.scanner_status)
     except ValidationError as error:

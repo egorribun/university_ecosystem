@@ -1,10 +1,71 @@
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
+import { spawn } from "node:child_process"
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { createServer } from "node:http"
+import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 
 import { warmSsrRuntime } from "./server-readiness.mjs"
 import { resolveStaticFile } from "./server-static.mjs"
+
+async function reserveLoopbackPort() {
+  const probe = createServer()
+  await new Promise((resolve, reject) => {
+    probe.once("error", reject)
+    probe.listen(0, "127.0.0.1", resolve)
+  })
+  const address = probe.address()
+  if (!address || typeof address === "string") {
+    await new Promise((resolve) => probe.close(resolve))
+    throw new Error("Could not reserve a loopback port for the isolated SSR fixture")
+  }
+  await new Promise((resolve, reject) =>
+    probe.close((error) => (error ? reject(error) : resolve()))
+  )
+  return address.port
+}
+
+async function waitForFixtureServer(child, url) {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error("Isolated SSR fixture exited before becoming ready")
+    }
+    try {
+      return await fetch(url, { signal: AbortSignal.timeout(500) })
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+  throw new Error("Isolated SSR fixture did not become ready")
+}
+
+async function stopFixtureServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  child.kill("SIGTERM")
+  const stopped = await waitForChildExit(child, 2_000)
+  if (stopped) return
+
+  child.kill("SIGKILL")
+  await waitForChildExit(child, 1_000)
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
+
+  return new Promise((resolve) => {
+    const onExit = () => finish(true)
+    const finish = (exited) => {
+      clearTimeout(timeout)
+      child.off("exit", onExit)
+      resolve(exited)
+    }
+    const timeout = setTimeout(() => finish(false), timeoutMs)
+    child.once("exit", onExit)
+  })
+}
 
 test("warmSsrRuntime consumes the complete SSR body before readiness", async () => {
   let bodyCompleted = false
@@ -55,6 +116,75 @@ test("warmSsrRuntime aborts a hung render before advertising readiness", async (
   )
   assert.equal(signal.aborted, true)
 })
+
+test(
+  "server-prod returns a generic 500 when an isolated synthetic renderer throws",
+  { timeout: 10_000 },
+  async () => {
+    const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "ue-server-prod-error-"))
+    const serverDirectory = path.join(fixtureRoot, "dist", "server")
+    await mkdir(serverDirectory, { recursive: true })
+    await writeFile(path.join(fixtureRoot, "package.json"), '{"type":"module"}\n')
+    await writeFile(
+      path.join(serverDirectory, "server.js"),
+      [
+        "export default {",
+        "  async fetch(request) {",
+        "    const pathname = new URL(request.url).pathname",
+        '    if (pathname === "/login") {',
+        '      return new Response("synthetic warmup", { status: 200, headers: { "content-type": "text/html; charset=utf-8" } })',
+        "    }",
+        '    if (pathname === "/__synthetic_ssr_error__") {',
+        '      throw new Error("SYNTHETIC_RENDER_DIAGNOSTIC_ONLY\\n    at fixtureRenderer (fixture.js:1:1)")',
+        "    }",
+        '    return new Response("Not Found", { status: 404 })',
+        "  },",
+        "}",
+        "",
+      ].join("\n")
+    )
+
+    let child
+    try {
+      const port = await reserveLoopbackPort()
+      child = spawn(
+        process.execPath,
+        [fileURLToPath(new URL("./server-prod.mjs", import.meta.url))],
+        {
+          cwd: fixtureRoot,
+          env: {
+            PATH: process.env.PATH ?? "",
+            SYSTEMROOT: process.env.SYSTEMROOT ?? "",
+            WINDIR: process.env.WINDIR ?? "",
+            TEMP: process.env.TEMP ?? os.tmpdir(),
+            TMP: process.env.TMP ?? os.tmpdir(),
+            HOST: "127.0.0.1",
+            PORT: String(port),
+          },
+          stdio: "ignore",
+        }
+      )
+
+      const origin = `http://127.0.0.1:${port}`
+      const warmupResponse = await waitForFixtureServer(child, `${origin}/login`)
+      assert.equal(warmupResponse.status, 200)
+      await warmupResponse.body?.cancel()
+
+      const response = await fetch(`${origin}/__synthetic_ssr_error__`)
+      assert.equal(response.status, 500)
+      assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8")
+      const responseBody = await response.text()
+      assert.equal(responseBody, "Internal Server Error")
+      assert.doesNotMatch(
+        responseBody,
+        /SYNTHETIC_RENDER_DIAGNOSTIC_ONLY|Traceback|fixtureRenderer|notFound\.(?:title|description|home|login)/u
+      )
+    } finally {
+      if (child) await stopFixtureServer(child)
+      await rm(fixtureRoot, { recursive: true, force: true })
+    }
+  }
+)
 
 test("server startup warms SSR before binding the readiness port", async () => {
   const source = await readFile(new URL("./server-prod.mjs", import.meta.url), "utf8")

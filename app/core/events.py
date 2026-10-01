@@ -565,11 +565,84 @@ class MessageSent(DomainEvent):
 
     EVENT_TYPE: ClassVar[str] = "chat.message_sent"
 
+    def __post_init__(self) -> None:
+        """Normalize JSON-decoded identifiers back to UUIDs for dispatch."""
+        for field_name in ("message_id", "chat_id", "sender_id"):
+            value: Any = getattr(self, field_name)
+            if value is not None and not isinstance(value, UUID):
+                setattr(self, field_name, UUID(str(value)))
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MessageSent:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class MessageEdited(DomainEvent):
+    """Fired when an existing chat message is edited."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    message_id: UUID | None = None
+    chat_id: UUID | None = None
+
+    EVENT_TYPE: ClassVar[str] = "chat.message_edited"
+
+    def __post_init__(self) -> None:
+        """Normalize JSON-decoded identifiers back to UUIDs for dispatch."""
+        message_id: Any = self.message_id
+        chat_id: Any = self.chat_id
+        if message_id is not None and not isinstance(message_id, UUID):
+            self.message_id = UUID(str(message_id))
+        if chat_id is not None and not isinstance(chat_id, UUID):
+            self.chat_id = UUID(str(chat_id))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MessageEdited:
+        """Deserialize only the event's declared fields."""
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class MessageDeleted(DomainEvent):
+    """Fired when a chat message is soft-deleted."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    message_id: UUID | None = None
+    chat_id: UUID | None = None
+
+    EVENT_TYPE: ClassVar[str] = "chat.message_deleted"
+
+    def __post_init__(self) -> None:
+        """Normalize JSON-decoded identifiers back to UUIDs for dispatch."""
+        message_id: Any = self.message_id
+        chat_id: Any = self.chat_id
+        if message_id is not None and not isinstance(message_id, UUID):
+            self.message_id = UUID(str(message_id))
+        if chat_id is not None and not isinstance(chat_id, UUID):
+            self.chat_id = UUID(str(chat_id))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MessageDeleted:
+        """Deserialize only the event's declared fields."""
+        data.pop("_schema_version", 1)
         known = {
             f.name
             for f in dataclasses.fields(cls)
@@ -1135,6 +1208,8 @@ __all__ = [
     "EventMiddleware",
     "EventRegistration",
     "EventUpdated",
+    "MessageDeleted",
+    "MessageEdited",
     "MessageSent",
     "MfaEmailDeliveryRequested",
     "MfaEnabled",

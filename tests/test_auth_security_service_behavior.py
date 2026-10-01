@@ -220,6 +220,8 @@ async def test_get_user_activity_sql_references_real_table() -> None:
     result_proxy = MagicMock()
     result_proxy.fetchall.return_value = []
     session = AsyncMock()
+    session.get_bind = MagicMock()
+    session.get_bind.return_value.dialect.name = "sqlite"
     session.execute = AsyncMock(return_value=result_proxy)
     svc = AnalyticsService()
     await svc.get_user_activity(session, uuid.uuid4())

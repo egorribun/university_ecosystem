@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -318,6 +319,82 @@ def test_consumer_verifier_emits_only_exact_canonical_digests(tmp_path: Path) ->
             expected_build_run_attempt=BUILD_RUN_ATTEMPT,
             expected_quality_run_id=QUALITY_RUN_ID,
         )
+
+
+def test_consumer_cli_checks_and_parses_the_same_manifest_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    aggregator = _load_script()
+    verifier = _load_verifier()
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    for index, name in enumerate(sorted(EXPECTED_IMAGES), start=1):
+        _write_evidence(evidence_dir, name, format(index, "x"))
+    certification = tmp_path / "certification.json"
+    certification.write_text('{"commit_sha":"' + SHA + '"}\n', encoding="utf-8")
+    manifest = _aggregate(aggregator, evidence_dir, certification)
+
+    manifest_path = tmp_path / "release-images.json"
+    verified_bytes = json.dumps(manifest).encode("utf-8")
+    manifest_path.write_bytes(verified_bytes)
+    checksum_path = tmp_path / "release-images.json.sha256"
+    checksum_path.write_text(
+        f"{hashlib.sha256(verified_bytes).hexdigest()}  {manifest_path.name}\n",
+        encoding="utf-8",
+    )
+    verified_backend_digest = next(
+        item["digest"] for item in manifest["images"] if item["image_name"] == "backend"
+    )
+    changed_manifest = json.loads(verified_bytes)
+    changed_backend = next(
+        item for item in changed_manifest["images"] if item["image_name"] == "backend"
+    )
+    changed_backend["digest"] = "sha256:" + "f" * 64
+    changed_backend["reference"] = (
+        changed_backend["subject_name"] + "@" + (changed_backend["digest"])
+    )
+    real_read_bytes = Path.read_bytes
+
+    def replace_after_read(path: Path) -> bytes:
+        contents = real_read_bytes(path)
+        if path == manifest_path:
+            path.write_text(json.dumps(changed_manifest), encoding="utf-8")
+        return contents
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_read)
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(VERIFIER),
+            "--manifest",
+            str(manifest_path),
+            "--checksum",
+            str(checksum_path),
+            "--repository",
+            REPOSITORY,
+            "--source-sha",
+            SHA,
+            "--build-run-id",
+            str(BUILD_RUN_ID),
+            "--build-run-attempt",
+            str(BUILD_RUN_ATTEMPT),
+            "--quality-run-id",
+            str(QUALITY_RUN_ID),
+            "--github-output",
+            str(output_path),
+        ],
+    )
+
+    assert verifier.main() == 0
+
+    outputs = dict(
+        line.split("=", 1)
+        for line in output_path.read_text(encoding="utf-8").splitlines()
+    )
+    assert outputs["backend-digest"] == verified_backend_digest
+    assert outputs["manifest-sha256"] == hashlib.sha256(verified_bytes).hexdigest()
 
 
 def test_frontend_build_contract_schema_fails_closed_on_field_collection() -> None:

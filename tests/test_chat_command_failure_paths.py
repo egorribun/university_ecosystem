@@ -206,7 +206,7 @@ async def test_send_message_corrupt_idempotency_entry_falls_through(
     uow.chats.add = MagicMock()
     created = _capture_create_message(uow)
 
-    async def _get_last(ids):
+    async def _get_last(ids, **_kwargs):
         m = created[0]
         resp = MagicMock()
         resp.model_dump.return_value = {
@@ -461,6 +461,7 @@ async def test_forward_messages_degraded_reload_refreshes_orm(monkeypatch):
     src.sender_id = uuid.uuid4()
     src.content = "forwarded text"
     src.attachments = []
+    src.deleted_at = None
 
     uow.chats.get_by_id = AsyncMock(return_value=dest_chat)
     uow.chats.check_participant = AsyncMock(return_value=True)

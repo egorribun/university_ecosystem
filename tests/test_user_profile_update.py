@@ -1,5 +1,6 @@
 import asyncio
 import io
+import secrets
 import uuid
 from datetime import UTC, datetime
 
@@ -235,6 +236,34 @@ async def test_update_profile_timezone_invalid(async_client, user_factory):
     detail = response.json()["detail"][0]
     assert detail["loc"][-1] == "timezone"
     assert detail["msg"] == "Enter a valid time zone identifier"
+
+
+@pytest.mark.asyncio
+async def test_self_profile_responses_include_nested_profile_detail(
+    async_client, user_factory
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    headers = await _login(async_client, user.email, password)
+
+    update_response = await async_client.put(
+        "/users/me",
+        json={"full_name": "Profile Detail User", "about": "Synthetic profile bio"},
+        headers=headers,
+    )
+
+    assert update_response.status_code == 200
+    update_body = update_response.json()
+    assert update_body["about"] == "Synthetic profile bio"
+    assert update_body["profile_detail"]["about"] == "Synthetic profile bio"
+
+    read_response = await async_client.get("/users/me", headers=headers)
+
+    assert read_response.status_code == 200
+    read_body = read_response.json()
+    assert read_body["about"] == "Synthetic profile bio"
+    assert read_body["profile_detail"]["about"] == "Synthetic profile bio"
 
 
 @pytest.mark.asyncio

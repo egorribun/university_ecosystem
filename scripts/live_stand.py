@@ -9,8 +9,8 @@ It adds Mailpit and locally generated VAPID keys through
 Usage::
 
     python scripts/live_stand.py up [--ref HEAD]   # create/refresh the worktree and start
-    python scripts/live_stand.py seed               # load demo users and content
-    python scripts/live_stand.py e2e                # reseed and run live Playwright safely
+    python scripts/live_stand.py seed --demo        # load demo users and content
+    python scripts/live_stand.py e2e [--mode smoke|full]  # reseed and run live Playwright safely
     python scripts/live_stand.py status             # read-only status
     python scripts/live_stand.py stop               # stop containers; preserve data
     python scripts/live_stand.py teardown           # remove only this run's Compose data
@@ -93,13 +93,19 @@ ADMIN_PASSWORD_FILE = Path(".secrets") / "live-admin-password.json"
 STAND_FILE = Path(".secrets") / "live-stand.json"
 PROJECT_PREFIX = "ue-live-"
 PROJECT_PATTERN = re.compile(r"^ue-live-[0-9a-f]{16}$")
-OWNER_SCHEMA_VERSION = 4
-PREVIOUS_OWNER_SCHEMA_VERSION = 3
+OWNER_SCHEMA_VERSION = 6
+RESOURCE_OWNER_SCHEMA_VERSION = 5
+PREVIOUS_OWNER_SCHEMA_VERSION = 4
+VOLUME_OWNER_SCHEMA_VERSION = 3
 LEGACY_OWNER_SCHEMA_VERSION = 2
 DAEMON_FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
 SEED_SCRIPTS = ("scripts/seed_demo_data.py", "scripts/seed_admin_data.py")
 LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
+LIVE_E2E_SMOKE_FILES = (
+    "tests/e2e-live/auth-roles.live.spec.ts",
+    "tests/e2e-live/password-reset.live.spec.ts",
+)
 LIVE_E2E_WINDOWS_COMMAND = (
     "cmd.exe",
     "/d",
@@ -162,6 +168,19 @@ class StandOwner:
     published_ports: tuple[tuple[str, int], ...]
     schema_version: int
     daemon_fingerprint: str | None = None
+    compose_resource_fingerprint: str | None = None
+    resume_compose_resource_fingerprint: str | None = None
+
+
+@dataclass(frozen=True)
+class ComposeResourceEvidence:
+    """Canonical project resources in the resolved Compose model."""
+
+    fingerprint: str
+    managed_volumes: tuple[tuple[str, str], ...]
+    declared_volume_names: tuple[str, ...] = ()
+    managed_networks: tuple[tuple[str, str], ...] = ()
+    managed_services: tuple[str, ...] = ()
 
 
 def _stand_base_url(published_ports: Mapping[str, int]) -> str:
@@ -282,17 +301,19 @@ def _read_stand_admin_password(worktree: Path, path: Path, owner: StandOwner) ->
         raise StandError(
             "cannot read owner-scoped live stand admin credential"
         ) from None
+    if not isinstance(payload, dict):
+        raise StandError("admin credential belongs to a different live stand")
+    password = payload.get("password")
     if (
-        not isinstance(payload, dict)
-        or set(payload) != {"version", "project_name", "password"}
+        set(payload) != {"version", "project_name", "password"}
         or payload.get("version") != 1
         or payload.get("project_name") != owner.project_name
-        or not isinstance(payload.get("password"), str)
-        or len(payload["password"]) < 32
-        or len(payload["password"]) > 128
+        or not isinstance(password, str)
+        or len(password) < 32
+        or len(password) > 128
     ):
         raise StandError("admin credential belongs to a different live stand")
-    return payload["password"]
+    return password
 
 
 def load_or_create_stand_admin_password(worktree: Path, owner: StandOwner) -> str:
@@ -315,10 +336,11 @@ def load_or_create_stand_admin_password(worktree: Path, owner: StandOwner) -> st
 
     path.parent.mkdir(parents=True, exist_ok=True)
     _assert_worktree_paths_safe(worktree, (ADMIN_PASSWORD_FILE,))
+    password = _new_test_password()
     payload = {
         "version": 1,
         "project_name": owner.project_name,
-        "password": _new_test_password(),
+        "password": password,
     }
     try:
         descriptor = os.open(
@@ -343,7 +365,7 @@ def load_or_create_stand_admin_password(worktree: Path, owner: StandOwner) -> st
         raise StandError(
             "cannot persist owner-scoped live stand admin credential"
         ) from None
-    return payload["password"]
+    return password
 
 
 def _git_common_directory() -> Path:
@@ -554,14 +576,12 @@ def _expected_worktree(worktree: Path) -> Path:
 def create_stand_owner(
     worktree: Path, *, published_ports: Mapping[str, int] | None = None
 ) -> StandOwner:
-    """Create a unique ownership marker for a newly prepared worktree."""
+    """Create an incomplete signed owner reservation for a new worktree."""
     expected_worktree = _expected_worktree(worktree)
     if not expected_worktree.is_dir():
         raise StandError(f"stand worktree does not exist: {worktree}")
     _assert_worktree_paths_safe(worktree, (Path(".secrets"), STAND_FILE))
     daemon_fingerprint = docker_daemon_fingerprint()
-    secrets_dir = worktree / ".secrets"
-    secrets_dir.mkdir(parents=True, exist_ok=True)
     marker = worktree / STAND_FILE
     if marker.is_symlink() or marker.exists():
         raise StandError(f"ownership metadata already exists or is unsafe: {marker}")
@@ -571,17 +591,21 @@ def create_stand_owner(
         raise StandError(
             "cannot resolve the repository path for the live stand"
         ) from error
+    project_name = f"{PROJECT_PREFIX}{secrets.token_hex(8)}"
+    _validate_project_name(project_name)
+    port_map = _validate_published_ports(
+        published_ports if published_ports is not None else choose_published_ports()
+    )
     owner = StandOwner(
         repository=repository,
         worktree=str(expected_worktree),
-        project_name=f"{PROJECT_PREFIX}{secrets.token_hex(8)}",
-        published_ports=_validate_published_ports(
-            published_ports if published_ports is not None else choose_published_ports()
-        ),
+        project_name=project_name,
+        published_ports=port_map,
         schema_version=OWNER_SCHEMA_VERSION,
         daemon_fingerprint=daemon_fingerprint,
+        compose_resource_fingerprint=None,
+        resume_compose_resource_fingerprint=None,
     )
-    _validate_project_name(owner.project_name)
     payload = {
         "version": OWNER_SCHEMA_VERSION,
         "repository": owner.repository,
@@ -589,12 +613,15 @@ def create_stand_owner(
         "project_name": owner.project_name,
         "published_ports": dict(owner.published_ports),
         "daemon_fingerprint": daemon_fingerprint,
+        "compose_resource_fingerprint": None,
+        "resume_compose_resource_fingerprint": None,
     }
     marker_data = {
         **payload,
         "signature": _owner_signature(payload, _owner_signing_key(create=True)),
     }
     try:
+        (worktree / ".secrets").mkdir(parents=True, exist_ok=True)
         with marker.open("x", encoding="utf-8") as marker_file:
             marker_file.write(json.dumps(marker_data, indent=2) + "\n")
         if os.name != "nt":
@@ -621,21 +648,32 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         raise StandError(f"invalid ownership metadata: {marker}")
     schema_version = data.get("version")
     legacy_keys = {"version", "repository", "worktree", "project_name", "signature"}
-    previous_keys = legacy_keys | {"published_ports"}
-    current_keys = previous_keys | {"daemon_fingerprint"}
+    volume_keys = legacy_keys | {"published_ports"}
+    daemon_keys = volume_keys | {"daemon_fingerprint"}
+    resource_keys = daemon_keys | {"compose_resource_fingerprint"}
+    resumable_resource_keys = resource_keys | {"resume_compose_resource_fingerprint"}
     if (
         not isinstance(schema_version, int)
         or isinstance(schema_version, bool)
         or (schema_version == LEGACY_OWNER_SCHEMA_VERSION and set(data) != legacy_keys)
+        or (schema_version == VOLUME_OWNER_SCHEMA_VERSION and set(data) != volume_keys)
         or (
-            schema_version == PREVIOUS_OWNER_SCHEMA_VERSION
-            and set(data) != previous_keys
+            schema_version == PREVIOUS_OWNER_SCHEMA_VERSION and set(data) != daemon_keys
         )
-        or (schema_version == OWNER_SCHEMA_VERSION and set(data) != current_keys)
+        or (
+            schema_version == RESOURCE_OWNER_SCHEMA_VERSION
+            and set(data) not in (resource_keys, resumable_resource_keys)
+        )
+        or (
+            schema_version == OWNER_SCHEMA_VERSION
+            and set(data) not in (resource_keys, resumable_resource_keys)
+        )
         or schema_version
         not in {
             LEGACY_OWNER_SCHEMA_VERSION,
+            VOLUME_OWNER_SCHEMA_VERSION,
             PREVIOUS_OWNER_SCHEMA_VERSION,
+            RESOURCE_OWNER_SCHEMA_VERSION,
             OWNER_SCHEMA_VERSION,
         }
         or not all(
@@ -644,7 +682,12 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         )
     ):
         raise StandError(f"invalid ownership metadata: {marker}")
-    if schema_version in {PREVIOUS_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
+    if schema_version in {
+        VOLUME_OWNER_SCHEMA_VERSION,
+        PREVIOUS_OWNER_SCHEMA_VERSION,
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+    }:
         raw_ports = data["published_ports"]
         if not isinstance(raw_ports, dict):
             raise StandError(f"invalid port map in ownership metadata: {marker}")
@@ -652,7 +695,11 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     else:
         port_map = LEGACY_PUBLISHED_PORTS.copy()
     daemon_fingerprint: str | None = None
-    if schema_version == OWNER_SCHEMA_VERSION:
+    if schema_version in {
+        PREVIOUS_OWNER_SCHEMA_VERSION,
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+    }:
         raw_fingerprint = data["daemon_fingerprint"]
         if not isinstance(
             raw_fingerprint, str
@@ -661,6 +708,35 @@ def load_stand_owner(worktree: Path) -> StandOwner:
                 f"invalid Docker daemon fingerprint in ownership metadata: {marker}"
             )
         daemon_fingerprint = raw_fingerprint
+    compose_resource_fingerprint: str | None = None
+    resume_compose_resource_fingerprint: str | None = None
+    if schema_version in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
+        raw_resource_fingerprint = data["compose_resource_fingerprint"]
+        if raw_resource_fingerprint is not None and (
+            not isinstance(raw_resource_fingerprint, str)
+            or not DAEMON_FINGERPRINT_PATTERN.fullmatch(raw_resource_fingerprint)
+        ):
+            raise StandError(
+                f"invalid Compose resource fingerprint in ownership metadata: {marker}"
+            )
+        compose_resource_fingerprint = raw_resource_fingerprint
+        if "resume_compose_resource_fingerprint" in data:
+            raw_resume_fingerprint = data["resume_compose_resource_fingerprint"]
+            if raw_resume_fingerprint is not None and (
+                not isinstance(raw_resume_fingerprint, str)
+                or not DAEMON_FINGERPRINT_PATTERN.fullmatch(raw_resume_fingerprint)
+            ):
+                raise StandError(
+                    "invalid resumable Compose resource fingerprint in ownership metadata"
+                )
+            resume_compose_resource_fingerprint = raw_resume_fingerprint
+            if (
+                compose_resource_fingerprint is not None
+                and resume_compose_resource_fingerprint is not None
+            ):
+                raise StandError(
+                    "ownership metadata cannot contain active and resumable Compose evidence"
+                )
     try:
         marker_repository = Path(data["repository"]).resolve(strict=False)
         expected_repository = REPO_ROOT.resolve(strict=True)
@@ -679,10 +755,25 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         "worktree": data["worktree"],
         "project_name": project_name,
     }
-    if schema_version in {PREVIOUS_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
+    if schema_version in {
+        VOLUME_OWNER_SCHEMA_VERSION,
+        PREVIOUS_OWNER_SCHEMA_VERSION,
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+    }:
         payload["published_ports"] = port_map
-    if schema_version == OWNER_SCHEMA_VERSION:
+    if schema_version in {
+        PREVIOUS_OWNER_SCHEMA_VERSION,
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+    }:
         payload["daemon_fingerprint"] = daemon_fingerprint
+    if schema_version in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
+        payload["compose_resource_fingerprint"] = compose_resource_fingerprint
+        if "resume_compose_resource_fingerprint" in data:
+            payload["resume_compose_resource_fingerprint"] = (
+                resume_compose_resource_fingerprint
+            )
     signature = data["signature"]
     if not isinstance(signature, str) or not hmac.compare_digest(
         signature, _owner_signature(payload, _owner_signing_key(create=False))
@@ -695,6 +786,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         published_ports=tuple(port_map.items()),
         schema_version=schema_version,
         daemon_fingerprint=daemon_fingerprint,
+        compose_resource_fingerprint=compose_resource_fingerprint,
+        resume_compose_resource_fingerprint=resume_compose_resource_fingerprint,
     )
 
 
@@ -704,6 +797,12 @@ def verify_live_endpoints(base_url: str, mailpit_url: str) -> None:
         owner = load_stand_owner(WORKTREE)
         if owner.schema_version == LEGACY_OWNER_SCHEMA_VERSION:
             raise StandError("ownership metadata does not sign a current port map")
+        if (
+            owner.schema_version
+            in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}
+            and owner.compose_resource_fingerprint is None
+        ):
+            raise StandError("live stand startup is incomplete")
         published = dict(owner.published_ports)
         expected_base_url = _stand_base_url(published)
         expected_mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"
@@ -720,11 +819,13 @@ def update_stand_owner_ports(
     owner: StandOwner,
     published_ports: Mapping[str, int],
 ) -> StandOwner:
-    """Atomically sign a new port map into this already-owned stand marker."""
+    """Sign a new port map and invalidate resource evidence before re-preparing."""
     current = load_stand_owner(worktree)
     if current != owner:
         raise StandError("ownership metadata changed before port map update")
     ports = _validate_published_ports(published_ports)
+    if current.daemon_fingerprint is None:
+        raise StandError("cannot verify Docker daemon ownership before port map update")
     updated = StandOwner(
         repository=current.repository,
         worktree=current.worktree,
@@ -732,9 +833,21 @@ def update_stand_owner_ports(
         published_ports=ports,
         schema_version=OWNER_SCHEMA_VERSION,
         daemon_fingerprint=current.daemon_fingerprint,
+        compose_resource_fingerprint=None,
+        resume_compose_resource_fingerprint=(
+            current.compose_resource_fingerprint
+            or current.resume_compose_resource_fingerprint
+        ),
     )
+    return _write_stand_owner_update(worktree, updated)
+
+
+def _write_stand_owner_update(worktree: Path, updated: StandOwner) -> StandOwner:
+    """Atomically sign a version-five owner update, including incomplete reservations."""
+    if updated.schema_version != OWNER_SCHEMA_VERSION:
+        raise StandError("cannot write an unsupported live stand owner version")
     if updated.daemon_fingerprint is None:
-        raise StandError("cannot verify Docker daemon ownership before port map update")
+        raise StandError("cannot sign live stand ownership without a daemon identity")
     payload: dict[str, object] = {
         "version": OWNER_SCHEMA_VERSION,
         "repository": updated.repository,
@@ -742,6 +855,10 @@ def update_stand_owner_ports(
         "project_name": updated.project_name,
         "published_ports": dict(updated.published_ports),
         "daemon_fingerprint": updated.daemon_fingerprint,
+        "compose_resource_fingerprint": updated.compose_resource_fingerprint,
+        "resume_compose_resource_fingerprint": (
+            updated.resume_compose_resource_fingerprint
+        ),
     }
     marker_data = {
         **payload,
@@ -770,11 +887,132 @@ def update_stand_owner_ports(
         os.replace(temporary_path, marker)
         temporary_path = None
     except OSError as error:
-        raise StandError("cannot atomically update the live stand port map") from error
+        raise StandError("cannot atomically update live stand ownership") from error
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
     return updated
+
+
+def _bind_stand_owner_compose_resources(
+    worktree: Path,
+    owner: StandOwner,
+    *,
+    allow_existing_owned_volumes: bool = False,
+) -> StandOwner:
+    """Bind resolved Compose resources to an incomplete signed reservation."""
+    current = load_stand_owner(worktree)
+    if current != owner:
+        raise StandError(
+            "ownership metadata changed before Compose resource registration"
+        )
+    if current.schema_version != OWNER_SCHEMA_VERSION:
+        raise StandError(
+            "cannot register Compose resources for legacy ownership metadata"
+        )
+    if current.compose_resource_fingerprint is not None:
+        raise StandError("Compose resources are already registered for this stand")
+    _require_owned_docker_daemon(current)
+    evidence = _compose_resource_evidence(
+        worktree, current.project_name, dict(current.published_ports)
+    )
+    if (
+        current.resume_compose_resource_fingerprint is not None
+        and not hmac.compare_digest(
+            evidence.fingerprint, current.resume_compose_resource_fingerprint
+        )
+    ):
+        raise StandError(
+            "resolved Compose resource identity differs from signed resume evidence"
+        )
+    _assert_compose_volume_ownership(
+        current.project_name,
+        evidence.managed_volumes,
+        declared_volume_names=evidence.declared_volume_names,
+        allow_existing_owned=(
+            allow_existing_owned_volumes
+            or current.resume_compose_resource_fingerprint is not None
+        ),
+        managed_networks=evidence.managed_networks,
+        managed_services=evidence.managed_services,
+    )
+    _require_owned_docker_daemon(current)
+    if load_stand_owner(worktree) != current:
+        raise StandError(
+            "ownership metadata changed during Compose resource registration"
+        )
+    updated = StandOwner(
+        repository=current.repository,
+        worktree=current.worktree,
+        project_name=current.project_name,
+        published_ports=current.published_ports,
+        schema_version=OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=current.daemon_fingerprint,
+        compose_resource_fingerprint=evidence.fingerprint,
+        resume_compose_resource_fingerprint=None,
+    )
+    return _write_stand_owner_update(worktree, updated)
+
+
+def _verify_stand_owner_compose_resources(
+    worktree: Path,
+    owner: StandOwner,
+    *,
+    allow_existing_owned_volumes: bool = True,
+) -> ComposeResourceEvidence:
+    """Fail closed if the signed owner no longer matches the resolved Compose model."""
+    current = load_stand_owner(worktree)
+    if current != owner:
+        raise StandError("live stand ownership metadata changed")
+    if current.schema_version != OWNER_SCHEMA_VERSION:
+        raise StandError(
+            "live stand ownership lacks Compose resource evidence for the current schema; re-run up before lifecycle operations"
+        )
+    if current.compose_resource_fingerprint is None:
+        raise StandError(
+            "live stand ownership lacks Compose resource evidence; refusing lifecycle operation"
+        )
+    evidence = _compose_resource_evidence(
+        worktree, current.project_name, dict(current.published_ports)
+    )
+    if not hmac.compare_digest(
+        evidence.fingerprint, current.compose_resource_fingerprint
+    ):
+        raise StandError(
+            "resolved Compose resources differ from signed live stand ownership"
+        )
+    _assert_compose_volume_ownership(
+        current.project_name,
+        evidence.managed_volumes,
+        declared_volume_names=evidence.declared_volume_names,
+        allow_existing_owned=allow_existing_owned_volumes,
+        managed_networks=evidence.managed_networks,
+        managed_services=evidence.managed_services,
+    )
+    return evidence
+
+
+def _invalidate_stand_owner_compose_resources(
+    worktree: Path, owner: StandOwner
+) -> StandOwner:
+    """Revoke startup evidence after a failed pre-start revalidation."""
+    current = load_stand_owner(worktree)
+    if current != owner or current.compose_resource_fingerprint is None:
+        raise StandError("live stand ownership changed before evidence invalidation")
+    updated = StandOwner(
+        repository=current.repository,
+        worktree=current.worktree,
+        project_name=current.project_name,
+        published_ports=current.published_ports,
+        schema_version=OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=current.daemon_fingerprint,
+        compose_resource_fingerprint=None,
+        resume_compose_resource_fingerprint=(
+            current.compose_resource_fingerprint
+            or current.resume_compose_resource_fingerprint
+        ),
+    )
+    return _write_stand_owner_update(worktree, updated)
 
 
 def stand_environment(
@@ -826,6 +1064,418 @@ def compose_command(*args: str, project_name: str) -> list[str]:
     for compose_file in COMPOSE_FILES:
         command += ["-f", compose_file]
     return [*command, *args]
+
+
+def _compose_resource_evidence(
+    worktree: Path,
+    project_name: str,
+    published_ports: Mapping[str, int],
+) -> ComposeResourceEvidence:
+    """Resolve removable resources and service topology without runtime secrets."""
+    _validate_project_name(project_name)
+    command = compose_command("config", "--format", "json", project_name=project_name)
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed Compose argv and validated project
+            command,
+            cwd=worktree,
+            env=compose_control_environment(project_name, published_ports),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        raise StandError("cannot verify resolved Compose resource ownership") from None
+    try:
+        project = json.loads(completed.stdout)
+    except (json.JSONDecodeError, TypeError):
+        raise StandError("cannot parse resolved Compose resource ownership") from None
+    if not isinstance(project, dict) or project.get("name") != project_name:
+        raise StandError("resolved Compose project does not match live stand ownership")
+
+    raw_volumes = project.get("volumes", {})
+    raw_networks = project.get("networks", {})
+    raw_services = project.get("services", {})
+    if (
+        not isinstance(raw_volumes, dict)
+        or not isinstance(raw_networks, dict)
+        or not isinstance(raw_services, dict)
+    ):
+        raise StandError("resolved Compose resource inventory is invalid")
+
+    volumes: dict[str, object] = {}
+    managed_volumes: list[tuple[str, str]] = []
+    declared_volume_names: set[str] = set()
+    resolved_managed_names: set[str] = set()
+    for volume_key, raw_definition in sorted(raw_volumes.items()):
+        if not isinstance(volume_key, str) or not isinstance(raw_definition, dict):
+            raise StandError("resolved Compose volume inventory is invalid")
+        external = raw_definition.get("external", False)
+        if not isinstance(external, bool):
+            raise StandError("resolved Compose volume ownership is ambiguous")
+        resolved_name = raw_definition.get("name")
+        if resolved_name is None:
+            resolved_name = volume_key if external else f"{project_name}_{volume_key}"
+        if not isinstance(resolved_name, str) or not resolved_name:
+            raise StandError("resolved Compose volume name is invalid")
+        declared_volume_names.add(resolved_name)
+        if not external and not resolved_name.startswith(f"{project_name}_"):
+            raise StandError(
+                "refusing unscoped Compose volume outside the live stand project"
+            )
+        if not external:
+            if resolved_name in resolved_managed_names:
+                raise StandError("multiple Compose volumes resolve to one managed name")
+            resolved_managed_names.add(resolved_name)
+            managed_volumes.append((volume_key, resolved_name))
+        # Bind only the identity that Compose down can remove. Hashing the
+        # full resolved definition could capture unrelated interpolated values
+        # such as driver options or labels in the owner marker's fingerprint.
+        volumes[volume_key] = {
+            "external": external,
+            "resolved_name": resolved_name,
+        }
+
+    networks: dict[str, object] = {}
+    managed_networks: list[tuple[str, str]] = []
+    for network_key, raw_definition in sorted(raw_networks.items()):
+        if not isinstance(network_key, str) or (
+            raw_definition is not None and not isinstance(raw_definition, dict)
+        ):
+            raise StandError("resolved Compose network inventory is invalid")
+        definition = raw_definition if isinstance(raw_definition, dict) else {}
+        external = definition.get("external", False)
+        if not isinstance(external, bool):
+            raise StandError("resolved Compose network ownership is ambiguous")
+        resolved_name = definition.get("name")
+        if resolved_name is None:
+            resolved_name = network_key if external else f"{project_name}_{network_key}"
+        if (
+            not isinstance(resolved_name, str)
+            or not resolved_name
+            or "\n" in resolved_name
+            or "\r" in resolved_name
+        ):
+            raise StandError("resolved Compose network name is invalid")
+        if not external and not resolved_name.startswith(f"{project_name}_"):
+            raise StandError(
+                "refusing unscoped Compose network outside the live stand project"
+            )
+        if not external:
+            managed_networks.append((network_key, resolved_name))
+        networks[network_key] = {
+            "external": external,
+            "resolved_name": resolved_name,
+        }
+
+    service_mounts: dict[str, object] = {}
+    for service_name, raw_service in sorted(raw_services.items()):
+        if not isinstance(service_name, str) or not isinstance(raw_service, dict):
+            raise StandError("resolved Compose service inventory is invalid")
+        mounts = raw_service.get("volumes", [])
+        volumes_from = raw_service.get("volumes_from", [])
+        if not isinstance(mounts, list) or not isinstance(volumes_from, list):
+            raise StandError("resolved Compose mount inventory is invalid")
+        if volumes_from:
+            raise StandError("Compose volumes_from is unsupported for owned teardown")
+        network_mode = raw_service.get("network_mode")
+        if network_mode is not None and (
+            not isinstance(network_mode, str) or not network_mode
+        ):
+            raise StandError("resolved Compose network mode is invalid")
+        raw_service_networks = raw_service.get("networks")
+        if network_mode is not None:
+            if raw_service_networks not in (None, {}, []):
+                raise StandError("Compose service sets both networks and network_mode")
+            service_networks: list[str] = []
+        elif raw_service_networks is None:
+            service_networks = ["default"]
+        elif isinstance(raw_service_networks, dict):
+            service_networks = list(raw_service_networks)
+            if not service_networks:
+                service_networks = ["default"]
+        elif isinstance(raw_service_networks, list):
+            service_networks = raw_service_networks
+            if not service_networks:
+                service_networks = ["default"]
+        else:
+            raise StandError("resolved Compose service network inventory is invalid")
+        if any(not isinstance(name, str) or not name for name in service_networks):
+            raise StandError("resolved Compose service network reference is invalid")
+        for network_name in service_networks:
+            if network_name not in networks:
+                if network_name != "default":
+                    raise StandError(
+                        "resolved Compose service references an undeclared network"
+                    )
+                resolved_default = f"{project_name}_default"
+                networks["default"] = {
+                    "external": False,
+                    "resolved_name": resolved_default,
+                }
+                managed_networks.append(("default", resolved_default))
+        mount_identities: list[dict[str, str | None]] = []
+        for mount in mounts:
+            if not isinstance(mount, dict):
+                raise StandError("resolved Compose mount entry is invalid")
+            mount_type = mount.get("type")
+            target = mount.get("target")
+            source = mount.get("source")
+            if not isinstance(mount_type, str) or mount_type not in {
+                "volume",
+                "bind",
+                "tmpfs",
+            }:
+                raise StandError("resolved Compose mount type is unsupported")
+            if not isinstance(target, str) or not target:
+                raise StandError("resolved Compose mount target is invalid")
+            if source is not None and not isinstance(source, str):
+                raise StandError("resolved Compose mount source is invalid")
+            if mount_type in {"volume", "bind"}:
+                if not isinstance(source, str) or not source:
+                    if mount_type == "volume":
+                        raise StandError(
+                            "anonymous Compose volumes are unsupported for owned teardown"
+                        )
+                    raise StandError("resolved Compose bind source is invalid")
+                if mount_type == "volume" and source not in raw_volumes:
+                    raise StandError(
+                        "resolved Compose mount refers to an undeclared volume"
+                    )
+            elif source is not None:
+                raise StandError("resolved Compose tmpfs source is ambiguous")
+            mount_identities.append(
+                {
+                    "type": mount_type,
+                    "source": source,
+                    "target": target,
+                }
+            )
+        service_mounts[service_name] = {
+            "volumes": mount_identities,
+            "volumes_from": volumes_from,
+            "networks": sorted(service_networks),
+            "network_mode": network_mode,
+        }
+
+    projection = {
+        "project_name": project_name,
+        "volumes": volumes,
+        "networks": networks,
+        "service_mounts": service_mounts,
+    }
+    try:
+        canonical = json.dumps(
+            projection, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        )
+    except (TypeError, ValueError):
+        raise StandError(
+            "cannot canonicalize resolved Compose resource ownership"
+        ) from None
+    if COMPOSE_INSPECTION_PLACEHOLDER in canonical:
+        raise StandError(
+            "runtime VAPID inputs cannot determine Compose resource identity"
+        )
+    return ComposeResourceEvidence(
+        fingerprint=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        managed_volumes=tuple(managed_volumes),
+        declared_volume_names=tuple(sorted(declared_volume_names)),
+        managed_networks=tuple(sorted(managed_networks)),
+        managed_services=tuple(sorted(service_mounts)),
+    )
+
+
+def _compose_resource_fingerprint(
+    worktree: Path,
+    project_name: str,
+    published_ports: Mapping[str, int],
+) -> str:
+    """Fingerprint the resolved Compose identity used by destructive cleanup."""
+    return _compose_resource_evidence(
+        worktree, project_name, published_ports
+    ).fingerprint
+
+
+def _assert_compose_volume_ownership(
+    project_name: str,
+    managed_volumes: Sequence[tuple[str, str]],
+    *,
+    declared_volume_names: Sequence[str],
+    allow_existing_owned: bool,
+    managed_networks: Sequence[tuple[str, str]] = (),
+    managed_services: Sequence[str] = (),
+) -> tuple[tuple[str, str], ...]:
+    """Check every project resource that Compose teardown could remove."""
+    _validate_project_name(project_name)
+    existing: list[tuple[str, str]] = []
+    if any(not isinstance(name, str) or not name for name in declared_volume_names):
+        raise StandError("resolved Compose volume ownership is ambiguous")
+    allowed_volume_names = set(declared_volume_names)
+
+    def inventory(command: list[str], error_message: str) -> str:
+        try:
+            completed = subprocess.run(  # noqa: S603 - fixed Docker inventory probes with validated resource names
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            raise StandError(error_message) from None
+        output = completed.stdout
+        if not isinstance(output, str):
+            raise StandError(error_message)
+        return output
+
+    def inspect_labels(command: list[str], error_message: str) -> dict[str, object]:
+        output = inventory(command, error_message)
+        try:
+            labels = json.loads(output)
+        except json.JSONDecodeError:
+            raise StandError(error_message) from None
+        if not isinstance(labels, dict):
+            raise StandError(error_message)
+        return labels
+
+    def inspect_mounts(command: list[str], error_message: str) -> list[object]:
+        output = inventory(command, error_message)
+        try:
+            mounts = json.loads(output)
+        except json.JSONDecodeError:
+            raise StandError(error_message) from None
+        if not isinstance(mounts, list):
+            raise StandError(error_message)
+        return mounts
+
+    if managed_volumes:
+        existing_names = set(
+            inventory(
+                ["docker", "volume", "ls", "--format", "{{.Name}}"],
+                "cannot verify live stand Docker volume ownership",
+            ).splitlines()
+        )
+        for logical_name, resolved_name in managed_volumes:
+            if resolved_name not in existing_names:
+                continue
+            if not allow_existing_owned:
+                raise StandError(
+                    "a live stand volume already exists before its first Compose startup"
+                )
+            labels = inspect_labels(
+                [
+                    "docker",
+                    "volume",
+                    "inspect",
+                    "--format",
+                    "{{json .Labels}}",
+                    resolved_name,
+                ],
+                "cannot verify existing live stand volume labels",
+            )
+            if (
+                labels.get("com.docker.compose.project") != project_name
+                or labels.get("com.docker.compose.volume") != logical_name
+            ):
+                raise StandError(
+                    "an existing live stand volume is not owned by the expected Compose project"
+                )
+            existing.append((logical_name, resolved_name))
+
+    if managed_networks:
+        existing_networks = set(
+            inventory(
+                ["docker", "network", "ls", "--format", "{{.Name}}"],
+                "cannot verify live stand Docker network ownership",
+            ).splitlines()
+        )
+        for logical_name, resolved_name in managed_networks:
+            if resolved_name not in existing_networks:
+                continue
+            if not allow_existing_owned:
+                raise StandError(
+                    "a live stand network already exists before its first Compose startup"
+                )
+            labels = inspect_labels(
+                [
+                    "docker",
+                    "network",
+                    "inspect",
+                    "--format",
+                    "{{json .Labels}}",
+                    resolved_name,
+                ],
+                "cannot verify existing live stand network labels",
+            )
+            if (
+                labels.get("com.docker.compose.project") != project_name
+                or labels.get("com.docker.compose.network") != logical_name
+            ):
+                raise StandError(
+                    "an existing live stand network is not owned by the expected Compose project"
+                )
+
+    project_filter = f"label=com.docker.compose.project={project_name}"
+    container_ids = inventory(
+        [
+            "docker",
+            "ps",
+            "--all",
+            "--quiet",
+            "--filter",
+            project_filter,
+        ],
+        "cannot verify live stand Docker container ownership",
+    ).splitlines()
+    allowed_services = set(managed_services)
+    for container_id in container_ids:
+        if not re.fullmatch(r"[0-9a-f]{12,64}", container_id):
+            raise StandError("live stand container inventory is ambiguous")
+        if not allow_existing_owned:
+            raise StandError(
+                "a live stand container already exists before its first Compose startup"
+            )
+        labels = inspect_labels(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{json .Config.Labels}}",
+                container_id,
+            ],
+            "cannot verify existing live stand container labels",
+        )
+        if (
+            labels.get("com.docker.compose.project") != project_name
+            or labels.get("com.docker.compose.service") not in allowed_services
+        ):
+            raise StandError(
+                "an existing live stand container is not owned by the expected Compose project"
+            )
+        mounts = inspect_mounts(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{json .Mounts}}",
+                container_id,
+            ],
+            "cannot verify existing live stand container mounts",
+        )
+        for mount in mounts:
+            if not isinstance(mount, dict):
+                raise StandError("live stand container mount inventory is ambiguous")
+            mount_type = mount.get("Type")
+            if mount_type not in {"volume", "bind", "tmpfs"}:
+                raise StandError("live stand container mount inventory is ambiguous")
+            if mount_type == "volume":
+                volume_name = mount.get("Name")
+                if (
+                    not isinstance(volume_name, str)
+                    or volume_name not in allowed_volume_names
+                ):
+                    raise StandError(
+                        "live stand container uses an unregistered Docker volume"
+                    )
+    return tuple(existing)
 
 
 def port_is_free(port: int, host: str = PORT_BIND_HOST) -> bool:
@@ -901,7 +1551,14 @@ def _require_worktree() -> None:
     _assert_stand_paths_safe(WORKTREE)
     if not (WORKTREE / OVERLAY).is_file():
         raise StandError(f"no stand at {WORKTREE}; run `live_stand.py up` first")
-    load_stand_owner(WORKTREE)
+    owner = load_stand_owner(WORKTREE)
+    if (
+        owner.schema_version in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}
+        and owner.compose_resource_fingerprint is None
+    ):
+        raise StandError(
+            "live stand startup is incomplete; refusing lifecycle operation"
+        )
 
 
 def _up_locked(ref: str) -> None:
@@ -910,32 +1567,53 @@ def _up_locked(ref: str) -> None:
     published_ports = choose_published_ports()
     require_free_ports(published_ports)
     existing_owner: StandOwner | None = None
+    stop_after_resource_binding = False
+    allow_existing_owned_volumes = False
     if WORKTREE.exists():
         if not (WORKTREE / OVERLAY).is_file():
             raise StandError(
                 f"path exists but is not an owned live stand worktree: {WORKTREE}"
             )
         existing_owner = load_stand_owner(WORKTREE)
+        has_previous_resource_evidence = (
+            existing_owner.compose_resource_fingerprint is not None
+            or existing_owner.resume_compose_resource_fingerprint is not None
+        )
+        allow_existing_owned_volumes = (
+            has_previous_resource_evidence
+            or existing_owner.schema_version == PREVIOUS_OWNER_SCHEMA_VERSION
+        )
         _assert_worktree_clean(WORKTREE)
         _require_owned_docker_daemon(existing_owner)
-        # Preflight a fresh map before stopping the previous run. The old map
-        # may be in use by our own project, so this check cannot mistake it for
-        # a conflict with another local service.
-        env = stand_environment(
-            load_vapid(WORKTREE),
-            existing_owner.project_name,
-            dict(existing_owner.published_ports),
+        stop_after_resource_binding = (
+            existing_owner.schema_version == PREVIOUS_OWNER_SCHEMA_VERSION
+            or (
+                existing_owner.schema_version == RESOURCE_OWNER_SCHEMA_VERSION
+                and has_previous_resource_evidence
+            )
         )
-        _run(
-            compose_command("stop", project_name=existing_owner.project_name),
-            cwd=WORKTREE,
-            env=env,
+        should_stop_before_binding = (
+            existing_owner.schema_version == OWNER_SCHEMA_VERSION
+            and existing_owner.compose_resource_fingerprint is not None
         )
+        if should_stop_before_binding:
+            # Only current evidence covers containers and networks as well as
+            # volumes. Older signed markers are rebound before the old project
+            # is stopped; an incomplete reservation cannot authorize reuse.
+            _verify_stand_owner_compose_resources(WORKTREE, existing_owner)
+            _require_owned_docker_daemon(existing_owner)
+            _run(
+                compose_command("stop", project_name=existing_owner.project_name),
+                cwd=WORKTREE,
+                env=compose_control_environment(
+                    existing_owner.project_name,
+                    dict(existing_owner.published_ports),
+                ),
+            )
     sha = ensure_worktree(resolved_sha)
     _assert_stand_paths_safe(WORKTREE)
     if not (WORKTREE / STAND_FILE).is_file():
         owner = create_stand_owner(WORKTREE, published_ports=published_ports)
-        load_or_create_vapid(WORKTREE)
     else:
         if existing_owner is None:
             raise StandError("stand ownership metadata appeared during startup")
@@ -944,7 +1622,7 @@ def _up_locked(ref: str) -> None:
     # On failure the old stand data remains intact and no new build is started.
     require_free_ports(dict(owner.published_ports))
     env = stand_environment(
-        load_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
+        load_or_create_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
     powershell = shutil.which("pwsh") or shutil.which("powershell")
     if powershell is None:
@@ -955,13 +1633,59 @@ def _up_locked(ref: str) -> None:
             "-NoProfile",
             "-File",
             "start-docker.ps1",
-            "-Build",
+            "-PrepareOnly",
             "-ExtraCompose",
             OVERLAY,
         ],
         cwd=WORKTREE,
         env=env,
     )
+    owner = _bind_stand_owner_compose_resources(
+        WORKTREE,
+        owner,
+        allow_existing_owned_volumes=allow_existing_owned_volumes,
+    )
+    if stop_after_resource_binding:
+        try:
+            _verify_stand_owner_compose_resources(
+                WORKTREE,
+                owner,
+                allow_existing_owned_volumes=allow_existing_owned_volumes,
+            )
+            _require_owned_docker_daemon(owner)
+        except StandError:
+            _invalidate_stand_owner_compose_resources(WORKTREE, owner)
+            raise
+        _run(
+            compose_command("stop", project_name=owner.project_name),
+            cwd=WORKTREE,
+            env=compose_control_environment(
+                owner.project_name, dict(owner.published_ports)
+            ),
+        )
+    # Re-resolve immediately before handing control to the normal launcher.
+    try:
+        _verify_stand_owner_compose_resources(
+            WORKTREE,
+            owner,
+            allow_existing_owned_volumes=allow_existing_owned_volumes,
+        )
+        _require_owned_docker_daemon(owner)
+    except StandError:
+        _invalidate_stand_owner_compose_resources(WORKTREE, owner)
+        raise
+    start_command = [
+        powershell,
+        "-NoProfile",
+        "-File",
+        "start-docker.ps1",
+        "-Build",
+        "-ExtraCompose",
+        OVERLAY,
+    ]
+    if allow_existing_owned_volumes:
+        start_command.append("-AllowExistingOwnedVolumes")
+    _run(start_command, cwd=WORKTREE, env=env)
     published = dict(owner.published_ports)
     base_url = _stand_base_url(published)
     mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"
@@ -1012,6 +1736,8 @@ def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> Non
             run_options.extend(("-e", "TEST_PASSWORD"))
         run_options.extend(("backend", "python", script))
         try:
+            _verify_stand_owner_compose_resources(WORKTREE, owner)
+            _require_owned_docker_daemon(owner)
             _run(
                 compose_command(
                     *run_options,
@@ -1154,11 +1880,23 @@ def _playwright_browser_cache_path(
     )
 
 
-def _live_e2e_command(*, platform: str | None = None) -> tuple[str, ...]:
-    """Return a fixed launcher that works for npm's Windows command shim."""
+def _live_e2e_command(
+    *, mode: str = "full", platform: str | None = None
+) -> tuple[str, ...]:
+    """Return a fixed, secret-free launcher for the requested live suite."""
+    if mode not in {"smoke", "full"}:
+        raise StandError("live E2E mode must be smoke or full")
+    selected_files = LIVE_E2E_SMOKE_FILES if mode == "smoke" else ()
     if (platform or os.name) == "nt":
-        return LIVE_E2E_WINDOWS_COMMAND
-    return LIVE_E2E_COMMAND
+        if not selected_files:
+            return LIVE_E2E_WINDOWS_COMMAND
+        return (
+            *LIVE_E2E_WINDOWS_COMMAND[:-1],
+            f"{LIVE_E2E_WINDOWS_COMMAND[-1]} -- {' '.join(selected_files)}",
+        )
+    if not selected_files:
+        return LIVE_E2E_COMMAND
+    return (*LIVE_E2E_COMMAND, "--", *selected_files)
 
 
 def _live_e2e_npm_ci_command(*, platform: str | None = None) -> tuple[str, ...]:
@@ -1364,9 +2102,11 @@ def _live_playwright_counts(output: str) -> dict[str, int]:
     return counts
 
 
-def _run_live_playwright(*, cwd: Path, environment: dict[str, str]) -> None:
+def _run_live_playwright(
+    *, cwd: Path, environment: dict[str, str], mode: str = "full"
+) -> None:
     """Run Playwright privately and expose only numeric summary and exit status."""
-    command = _live_e2e_command()
+    command = _live_e2e_command(mode=mode)
     print("+", " ".join(command), flush=True)
     try:
         completed = subprocess.run(  # noqa: S603 - fixed platform-specific argv
@@ -1402,7 +2142,7 @@ def _run_live_playwright(*, cwd: Path, environment: dict[str, str]) -> None:
         raise StandError(f"live Playwright E2E failed with exit code {return_code}")
 
 
-def _e2e_locked(admin_password: str) -> None:
+def _e2e_locked(admin_password: str, *, mode: str = "full") -> None:
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
     _seed_locked(admin_password, owner=owner)
@@ -1435,9 +2175,12 @@ def _e2e_locked(admin_password: str) -> None:
                     "TEST_PASSWORD": admin_password,
                 }
             )
+            _verify_stand_owner_compose_resources(WORKTREE, owner)
+            _require_owned_docker_daemon(owner)
             _run_live_playwright(
                 cwd=frontend,
                 environment=playwright_environment,
+                mode=mode,
             )
         finally:
             playwright_environment.pop("TEST_PASSWORD", None)
@@ -1450,14 +2193,16 @@ def _e2e_locked(admin_password: str) -> None:
             environment.pop("PLAYWRIGHT_TEST_OUTPUT_DIR", None)
 
 
-def e2e() -> None:
+def e2e(mode: str = "full") -> None:
     """Seed owned roles and use the same protected account across stand reruns."""
+    if mode not in {"smoke", "full"}:
+        raise StandError("live E2E mode must be smoke or full")
     admin_password = ""
     try:
         with stand_lifecycle_lock():
             owner = load_stand_owner(WORKTREE)
             admin_password = load_or_create_stand_admin_password(WORKTREE, owner)
-            _e2e_locked(admin_password)
+            _e2e_locked(admin_password, mode=mode)
     finally:
         admin_password = ""
 
@@ -1477,7 +2222,9 @@ def _stop_locked() -> None:
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
     _require_owned_docker_daemon(owner)
+    _verify_stand_owner_compose_resources(WORKTREE, owner)
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
+    _require_owned_docker_daemon(owner)
     _run(
         compose_command("stop", project_name=owner.project_name), cwd=WORKTREE, env=env
     )
@@ -1489,15 +2236,20 @@ def stop() -> None:
 
 
 def _teardown_locked() -> None:
-    """Remove only the owned Compose project and volumes; keep local files."""
+    """Remove the signed Compose resources and volumes; keep local files."""
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
     _require_owned_docker_daemon(owner)
+    if owner.compose_resource_fingerprint is None:
+        raise StandError(
+            "live stand ownership metadata lacks Compose resource evidence; refusing teardown"
+        )
+    _verify_stand_owner_compose_resources(WORKTREE, owner)
+    # Match the secret-free control environment used for the resource projection.
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
+    _require_owned_docker_daemon(owner)
     _run(
-        compose_command(
-            "down", "--volumes", "--remove-orphans", project_name=owner.project_name
-        ),
+        compose_command("down", "--volumes", project_name=owner.project_name),
         cwd=WORKTREE,
         env=env,
     )
@@ -1523,8 +2275,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     verify_parser.add_argument("--base-url", required=True)
     verify_parser.add_argument("--mailpit-url", required=True)
-    commands.add_parser("seed")
-    commands.add_parser("e2e")
+    seed_parser = commands.add_parser("seed")
+    seed_parser.add_argument("--demo", action="store_true", required=True)
+    e2e_parser = commands.add_parser("e2e")
+    e2e_parser.add_argument("--mode", choices=("smoke", "full"), default="full")
     commands.add_parser("status")
     commands.add_parser("stop")
     commands.add_parser("down")
@@ -1539,7 +2293,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "seed":
             seed()
         elif args.command == "e2e":
-            e2e()
+            e2e(args.mode)
         elif args.command == "status":
             status()
         elif args.command in {"stop", "down"}:

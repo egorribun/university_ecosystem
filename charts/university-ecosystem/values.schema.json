@@ -412,7 +412,9 @@
           "type": "object", "additionalProperties": false,
           "properties": {
             "jwtSecret": {"type": "string"}, "jwtAudience": {"type": "string"},
-            "rateLimitRps": {"type": "integer", "minimum": 1}, "grpcUseTLS": {"type": "boolean"},
+            "rateLimitRps": {"type": "integer", "minimum": 1},
+            "trustedProxies": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "grpcUseTLS": {"type": "boolean"},
             "otelEndpoint": {"type": "string"}, "h3Enabled": {"type": "boolean"}
           }
         }
@@ -532,6 +534,33 @@
             "hosts": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
           }
         }}
+      }
+    },
+    "gatewayApi": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "gatewayClassName", "requestBuffer", "networkPolicy"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "gatewayClassName": {"$ref": "#/definitions/secretResourceName"},
+        "requestBuffer": {
+          "type": "object", "additionalProperties": false,
+          "required": ["limit"],
+          "properties": {
+            "limit": {
+              "type": "string",
+              "enum": ["50Mi"],
+              "description": "Maximum request body size for the isolated API HTTPRoute; fixed to the retained 50 MiB ingress contract."
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object", "additionalProperties": false,
+          "required": ["namespaceSelector", "podSelector"],
+          "properties": {
+            "namespaceSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+            "podSelector": {"type": "object", "additionalProperties": {"type": "string"}}
+          }
+        }
       }
     },
     "otel": {

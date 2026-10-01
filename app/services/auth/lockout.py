@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 import app.core.config
 from app.core.localization import translate
@@ -27,9 +29,11 @@ class LockoutService:
         # RZ-1: Detect PostgreSQL dialect from the database URL at construction time.
         # AsyncSession.bind was removed in SQLAlchemy 2.0; we must not access it.
         _db_url: str = str(app.core.config.settings.database_url or "")
-        self._is_postgresql: bool = any(
-            driver in _db_url for driver in ("postgresql", "asyncpg", "psycopg")
-        )
+        try:
+            database_backend = make_url(_db_url).get_backend_name()
+        except ArgumentError:
+            database_backend = ""
+        self._is_postgresql = database_backend == "postgresql"
 
     def _parse_lockout_rules(self) -> list[tuple[int, int]]:
         """Parse lockout thresholds from settings."""
@@ -86,6 +90,16 @@ class LockoutService:
         attempts = await self.repo.get_failed_attempts(email, limit)
         attempts.reverse()
         return attempts
+
+    async def _acquire_email_transaction_lock(self, email: str) -> None:
+        """Serialize PostgreSQL mutations to one email's failed-attempt history."""
+        if self._is_postgresql:
+            await self.db.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock(hashtext(:email), hashtext(reverse(:email)))"
+                ),
+                {"email": email},
+            )
 
     def _normalize_timestamp(self, value: datetime) -> datetime:
         if value.tzinfo is None:
@@ -151,13 +165,7 @@ class LockoutService:
         # pg_advisory_xact_lock() is PostgreSQL-specific; skip on SQLite (used in tests).
         # RZ-1: AsyncSession.bind was removed in SQLAlchemy 2.0. Dialect is detected
         # from the database URL string at service construction time (_is_postgresql).
-        if self._is_postgresql:
-            await self.db.execute(
-                text(
-                    "SELECT pg_advisory_xact_lock(hashtext(:email), hashtext(reverse(:email)))"
-                ),
-                {"email": email},
-            )
+        await self._acquire_email_transaction_lock(email)
 
         await self._prune_stale_attempts(email)
         # for_update=True is now redundant given the advisory lock,
@@ -177,6 +185,9 @@ class LockoutService:
         return lock_until, triggered, len(updated)
 
     async def clear_failed_attempts(self, email: str) -> int:
+        # Share the insert lock so a successful login cannot delete just before an
+        # already-running failed-attempt transaction commits its row.
+        await self._acquire_email_transaction_lock(email)
         count = await self.repo.clear_failed_attempts(email)
         await self.db.commit()
         return count

@@ -4,6 +4,10 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request, status
+from fastapi.exception_handlers import (
+    request_validation_exception_handler as fastapi_request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.core.exceptions.domain import (
@@ -117,7 +121,7 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
             "title": translate(title_key, locale=locale),
             "status": status_code,
             "detail": detail,
-            "instance": str(request.url),
+            "instance": request.url.path,
             "trace_id": get_trace_id(),
         },
     )
@@ -152,8 +156,25 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
             "title": title,
             "status": exc.status_code,
             "detail": exc.detail,
-            "instance": str(request.url),
+            # Do not reflect untrusted hosts or potentially sensitive query values.
+            "instance": request.url.path,
             "trace_id": get_trace_id(),
         },
         headers=exc.headers,
     )
+
+
+async def password_reset_request_validation_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Avoid reflecting reset credentials from malformed password-flow bodies."""
+    assert isinstance(exc, RequestValidationError)
+    path = request.url.path.rstrip("/")
+    if not path.endswith(("/password/forgot", "/password/reset")):
+        return await fastapi_request_validation_exception_handler(request, exc)
+
+    safe_errors = [
+        {key: error[key] for key in ("loc", "msg", "type") if key in error}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": safe_errors})

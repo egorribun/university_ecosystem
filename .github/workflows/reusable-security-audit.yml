@@ -686,11 +686,18 @@ jobs:
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
+      - name: Prepare policy-filtered SARIF for GitHub
+        run: |
+          python3 scripts/quality/validate_semgrep_sarif.py \
+            --report semgrep.sarif \
+            --policy security/semgrep-suppression-policy.json \
+            --prepare-github-upload semgrep-github.sarif
+
       - name: Upload SARIF to GitHub Advanced Security
         uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         if: always()
         with:
-          sarif_file: semgrep.sarif
+          sarif_file: semgrep-github.sarif
 
       - name: Fail if Semgrep reported findings or scan errors
         if: always()

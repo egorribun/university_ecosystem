@@ -292,7 +292,7 @@ describe("registerServiceWorker", () => {
     expect(registerSync).toHaveBeenCalledWith("sync-offline-mutations")
   })
 
-  it("does not reload page on controllerchange if window.name matches mock api initializer", async () => {
+  it("reloads after a controller replacement even if window.name matches the mock API sentinel", async () => {
     const swListeners: Record<string, any> = {}
     const mockRegistration: any = {
       ready: Promise.resolve(),
@@ -313,7 +313,7 @@ describe("registerServiceWorker", () => {
     await registerServiceWorker()
 
     swListeners["controllerchange"]()
-    expect(window.location.reload).not.toHaveBeenCalled()
+    expect(window.location.reload).toHaveBeenCalledTimes(1)
   })
 
   it("does not reload the current page when the service worker claims it for the first time", async () => {

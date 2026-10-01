@@ -59,15 +59,37 @@ async def test_list_feature_flags_admin(root_client: AsyncClient, user_factory):
 
 
 @pytest.mark.asyncio
-async def test_list_feature_flags_forbidden(root_client: AsyncClient, user_factory):
+@pytest.mark.parametrize("role", ["student", "teacher"])
+async def test_list_feature_flags_forbidden(
+    root_client: AsyncClient, user_factory, role: str
+):
     user = await user_factory(
-        role="student", hashed_password=await get_password_hash(TEST_PASSWORD)
+        role=role, hashed_password=await get_password_hash(TEST_PASSWORD)
     )
     await root_client.post(
         "/api/v1/auth/login", data={"username": user.email, "password": TEST_PASSWORD}
     )
 
     response = await root_client.get("/admin/feature-flags")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["student", "teacher"])
+async def test_update_feature_flag_denied_for_non_admin(
+    root_client: AsyncClient, user_factory, role: str
+):
+    user = await user_factory(
+        role=role, hashed_password=await get_password_hash(TEST_PASSWORD)
+    )
+    await root_client.post(
+        "/api/v1/auth/login", data={"username": user.email, "password": TEST_PASSWORD}
+    )
+
+    response = await root_client.patch(
+        f"/admin/feature-flags/{TEST_FLAG}", json={"enabled": True}
+    )
+
     assert response.status_code == 403
 
 

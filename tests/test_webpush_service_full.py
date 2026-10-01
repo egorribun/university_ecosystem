@@ -46,6 +46,17 @@ class TestSendWebPush:
     the gone/error classification logic even though coverage won't count them.
     """
 
+    @pytest.fixture(autouse=True)
+    def _default_public_resolution(self, monkeypatch):
+        """Keep send-path tests hermetic unless a test overrides DNS explicitly."""
+        import app.services.webpush as webpush_module
+
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _endpoint: [("93.184.216.34", 443)],
+        )
+
     def _make_sub(self, endpoint: str = "https://push.example.com/test"):
         sub = MagicMock()
         sub.id = uuid.uuid4()
@@ -55,6 +66,17 @@ class TestSendWebPush:
         sub.auth = "auth"
         sub.user = None
         return sub
+
+    @pytest.fixture(autouse=True)
+    def _use_hermetic_resolver(self, monkeypatch):
+        """Provider-error tests never need live DNS to exercise classification."""
+        import app.services.webpush as webpush_module
+
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _endpoint: [("93.184.216.35", 443)],
+        )
 
     def test_success(self, mock_pywebpush):
         sub = self._make_sub()
@@ -439,10 +461,8 @@ class TestSendWebPush:
         finally:
             session.close()
 
-    def test_no_address_uses_no_redirect_fallback_session(
-        self, mock_pywebpush, monkeypatch
-    ):
-        """An empty resolver result still gets a controlled requests session."""
+    def test_empty_resolver_result_fails_closed(self, mock_pywebpush, monkeypatch):
+        """An empty address set must never trigger a second hostname lookup."""
         import app.services.webpush as webpush_module
 
         fallback = MagicMock()
@@ -453,9 +473,10 @@ class TestSendWebPush:
 
         result = send_web_push(self._make_sub(), {"title": "Fallback"})
 
-        assert result.status == "sent"
-        assert mock_pywebpush.call_args.kwargs["requests_session"] is fallback
-        fallback.close.assert_called_once_with()
+        assert result.status == "error"
+        assert result.error == "DNS resolver returned no addresses"
+        mock_pywebpush.assert_not_called()
+        fallback.close.assert_not_called()
 
     def test_invalid_resolver_result_fails_closed(self, mock_pywebpush, monkeypatch):
         """A resolver returning None must not be mistaken for no addresses."""
@@ -483,7 +504,11 @@ class TestSendWebPush:
 
         import app.services.webpush as webpush_module
 
-        monkeypatch.setattr(webpush_module, "validate_and_resolve", lambda _: [])
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _: [("93.184.216.35", 443)],
+        )
         settings_fixture = SimpleNamespace(
             WEBPUSH_SUBJECT="mailto:push@example.test",
         )
@@ -510,7 +535,7 @@ class TestSendWebPush:
         import app.services.webpush as webpush_module
 
         sub = self._make_sub("https://push.example.test/push")
-        validated = [("203.0.113.8", 443), ("203.0.113.9", 443)]
+        validated = [("93.184.216.35", 443), ("93.184.216.36", 443)]
         resolver = MagicMock(return_value=validated)
         monkeypatch.setattr(webpush_module, "validate_and_resolve", resolver)
         sessions = []
@@ -547,7 +572,7 @@ class TestSendWebPush:
         assert result.status == "sent"
         resolver.assert_called_once_with(sub.endpoint)
         assert observed == {
-            "host": "203.0.113.8",
+            "host": "93.184.216.35",
             "port": 443,
             "server_hostname": "push.example.test",
             "host_header": "push.example.test",
@@ -561,8 +586,14 @@ class TestSendWebPush:
         """The cleanup guard also covers a transport factory returning None."""
         import app.services.webpush as webpush_module
 
-        monkeypatch.setattr(webpush_module, "validate_and_resolve", lambda _: [])
-        monkeypatch.setattr(webpush_module, "_NoRedirectWebPushSession", lambda: None)
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _: [("93.184.216.34", 443)],
+        )
+        monkeypatch.setattr(
+            webpush_module, "_create_pinned_webpush_session", lambda *_args: None
+        )
 
         result = send_web_push(self._make_sub(), {"title": "Hello"})
 
@@ -574,7 +605,7 @@ class TestSendWebPush:
         from app.services.webpush import _create_pinned_webpush_session
 
         endpoint = "https://push.example.test/push"
-        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        session = _create_pinned_webpush_session(endpoint, ("93.184.216.34", 443))
         try:
             with patch.object(
                 requests.Session,
@@ -597,7 +628,7 @@ class TestSendWebPush:
         monkeypatch.setattr(
             webpush_module,
             "validate_and_resolve",
-            MagicMock(return_value=[("203.0.113.8", 443)]),
+            MagicMock(return_value=[("93.184.216.35", 443)]),
         )
         sessions = []
         original_factory = webpush_module._create_pinned_webpush_session
@@ -666,8 +697,10 @@ class TestSendWebPush:
         assert "DNS resolution failed" in (result.error or "")
         mock_pywebpush.assert_not_called()
 
-    def test_dns_failure_is_allowed_in_development(self, mock_pywebpush, monkeypatch):
-        """Development fixtures may use provider endpoints without DNS."""
+    def test_dns_failure_remains_fail_closed_in_development(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """Development mode must not retry the hostname through requests."""
         from types import SimpleNamespace
 
         monkeypatch.setattr(
@@ -685,8 +718,9 @@ class TestSendWebPush:
 
         result = send_web_push(self._make_sub(), {"title": "Development"})
 
-        assert result.status == "sent"
-        mock_pywebpush.assert_called_once()
+        assert result.status == "error"
+        assert "DNS resolution failed" in (result.error or "")
+        mock_pywebpush.assert_not_called()
 
     def test_rejects_private_endpoint_before_network_call(self, mock_pywebpush):
         sub = self._make_sub("https://127.0.0.1/latest")
@@ -694,6 +728,31 @@ class TestSendWebPush:
         assert result.status == "error"
         assert "private" in (result.error or "").lower()
         mock_pywebpush.assert_not_called()
+
+    def test_rejects_non_global_resolved_address_before_transport(self, monkeypatch):
+        import app.services.webpush as webpush_module
+
+        session_factory = MagicMock()
+        transport = MagicMock()
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _endpoint: [("255.255.255.255", 443)],
+        )
+        monkeypatch.setattr(
+            webpush_module, "_create_pinned_webpush_session", session_factory
+        )
+        monkeypatch.setattr(webpush_module, "webpush", transport)
+
+        result = send_web_push(
+            self._make_sub("https://push.example.test/reserved-address"),
+            {"title": "Blocked"},
+        )
+
+        assert result.status == "error"
+        assert result.error is not None
+        session_factory.assert_not_called()
+        transport.assert_not_called()
 
     def test_gone_404(self, mock_pywebpush):
         from pywebpush import WebPushException
@@ -740,6 +799,28 @@ class TestSendWebPush:
         mock_pywebpush.side_effect = WebPushException("404 Not Found")
         result = send_web_push(self._make_sub(), {"title": "G"})
         assert result.status == "gone"
+
+    def test_endpoint_digits_do_not_mark_provider_error_as_gone(
+        self, mock_pywebpush, monkeypatch
+    ):
+        from pywebpush import WebPushException
+
+        import app.services.webpush as webpush_module
+
+        endpoint = "https://push.example.test/subscription-marker-404"
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _: [("93.184.216.35", 443)],
+        )
+        mock_pywebpush.side_effect = WebPushException(
+            f"provider request failed for {endpoint}"
+        )
+
+        result = send_web_push(self._make_sub(endpoint), {"title": "Retry"})
+
+        assert result.status == "error"
+        assert result.status_code is None
 
 
 # ---------------------------------------------------------------------------

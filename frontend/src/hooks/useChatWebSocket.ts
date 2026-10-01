@@ -189,11 +189,23 @@ export function applyReadFrame(
   }
 }
 
+function isEditFrameCurrent(
+  current: Pick<Message, "content" | "edited_at" | "deleted_at">,
+  frame: { content: string; edited_at: string }
+): boolean {
+  if (current.deleted_at) return false
+  if (!current.edited_at) return true
+
+  const currentTimestamp = Date.parse(current.edited_at)
+  const incomingTimestamp = Date.parse(frame.edited_at)
+  if (!Number.isFinite(incomingTimestamp)) return false
+  if (!Number.isFinite(currentTimestamp)) return true
+  return incomingTimestamp >= currentTimestamp
+}
+
 /**
- * Wave 205 — pure cache update for a `message_edited` frame. Replaces content +
- * edited_at for the matching message in the open chat. Idempotent: re-applying the
- * same frame is a no-op, so the author's own NATS echo (arriving after the optimistic
- * mutation) just reconciles its client-time edited_at to the authoritative server value.
+ * Wave 205 — pure cache update for a non-stale `message_edited` frame. A tombstone
+ * is terminal and an older edit timestamp cannot replace a newer cached version.
  */
 export function applyMessageEditedFrame(
   old: MessagesListResponse | undefined,
@@ -203,7 +215,9 @@ export function applyMessageEditedFrame(
   return {
     ...old,
     items: old.items.map((m) =>
-      m.id === frame.message_id ? { ...m, content: frame.content, edited_at: frame.edited_at } : m
+      m.id === frame.message_id && isEditFrameCurrent(m, frame)
+        ? { ...m, content: frame.content, edited_at: frame.edited_at }
+        : m
     ),
   }
 }
@@ -222,7 +236,7 @@ export function applyMessageDeletedFrame(
     ...old,
     items: old.items.map((m) =>
       m.id === frame.message_id
-        ? { ...m, deleted_at: frame.deleted_at, content: "", attachments: [] }
+        ? { ...m, deleted_at: m.deleted_at ?? frame.deleted_at, content: "", attachments: [] }
         : m
     ),
   }
@@ -394,6 +408,7 @@ export function useChatWebSocket({
   const transportEnabledRef = useRef(enabled)
   // Changes only at account boundaries, not ordinary reconnects of the same account.
   const accountEpochRef = useRef(0)
+  const lastConnectedAccountEpochRef = useRef<number | null>(null)
   const activeRoomRef = useRef<string | null>(null)
   // At-least-once delivery can replay a message after it has left the smaller
   // render cache. Keep transport deduplication independent and bounded for the
@@ -409,6 +424,7 @@ export function useChatWebSocket({
       seenMessageIdsRef.current.clear()
       seenMessageSessionRef.current = currentUserId
       activeRoomRef.current = null
+      lastConnectedAccountEpochRef.current = null
       lastSentRef.current.clear()
       reconnectAttemptRef.current = 0
     }
@@ -536,6 +552,8 @@ export function useChatWebSocket({
 
         ws.onopen = () => {
           if (!ownsTransport()) return
+          const isReconnect = lastConnectedAccountEpochRef.current === accountEpoch
+          lastConnectedAccountEpochRef.current = accountEpoch
           wsStore.setConnected(true)
           reconnectAttemptRef.current = 0
 
@@ -549,6 +567,20 @@ export function useChatWebSocket({
             } catch {
               /* WS closed between open and send — the next connect re-joins */
             }
+          }
+
+          // Core NATS edit/delete notifications are best-effort and have no
+          // replay cursor. Reconcile the active conversation and sidebar after
+          // a same-account reconnect so missed frames cannot leave stale text.
+          if (isReconnect) {
+            const activeRoom = activeRoomRef.current
+            if (activeRoom) {
+              queryClient.invalidateQueries({
+                queryKey: ["messages", activeRoom],
+                refetchType: "active",
+              })
+            }
+            queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "active" })
           }
 
           // ws-hub owns the transport heartbeat and sends WebSocket control
@@ -747,10 +779,9 @@ export function useChatWebSocket({
               }
 
               case "message_edited": {
-                // Wave 205 — no self-echo guard: the frame is REST-initiated (carries
-                // no actor) and applyMessageEditedFrame is idempotent, so the author's
-                // own echo merely reconciles its optimistic client-time edited_at to the
-                // authoritative server value. The OTHER participant sees the edit live.
+                // Wave 205 — no self-echo guard: the frame carries no actor. The
+                // timestamp guard reconciles the author's own current echo while
+                // refusing delayed edits that would roll a newer version backward.
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
                   (old) => applyMessageEditedFrame(old, validated)
@@ -758,6 +789,30 @@ export function useChatWebSocket({
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",
+                })
+                queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
+                  if (!old) return old
+                  return {
+                    ...old,
+                    items: old.items.map((chat) => {
+                      const preview = chat.last_message
+                      if (
+                        chat.id !== validated.chat_id ||
+                        preview?.id !== validated.message_id ||
+                        !isEditFrameCurrent(preview, validated)
+                      ) {
+                        return chat
+                      }
+                      return {
+                        ...chat,
+                        last_message: {
+                          ...preview,
+                          content: validated.content,
+                          edited_at: validated.edited_at,
+                        },
+                      }
+                    }),
+                  }
                 })
                 break
               }
@@ -772,6 +827,21 @@ export function useChatWebSocket({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",
                 })
+                queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
+                  if (!old) return old
+                  return {
+                    ...old,
+                    items: old.items.map((chat) =>
+                      chat.id === validated.chat_id &&
+                      chat.last_message?.id === validated.message_id
+                        ? { ...chat, last_message: undefined }
+                        : chat
+                    ),
+                  }
+                })
+                // Refetching an active sidebar restores the previous latest
+                // message if the deleted row was only its current preview.
+                queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "active" })
                 break
               }
 

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
@@ -24,6 +25,37 @@ const matchText = (text: string) => (content: string) => content.startsWith(text
 vi.mock("zxcvbn", () => ({
   default: () => ({ score: 3, feedback: { warning: "", suggestions: [] } }),
 }))
+
+vi.mock("framer-motion", async () => {
+  const React = await import("react")
+  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion")
+  const observedComponents = new Map<string, React.ComponentType<Record<string, unknown>>>()
+  const serializeMotionValue = (value: unknown): string | undefined => {
+    if (value === undefined) return undefined
+    return typeof value === "string" ? value : JSON.stringify(value)
+  }
+  const observedMotion = new Proxy(actual.m, {
+    get(target, property, receiver) {
+      if (typeof property !== "string") return Reflect.get(target, property, receiver)
+      const cached = observedComponents.get(property)
+      if (cached) return cached
+
+      const motionComponent = Reflect.get(target, property, receiver)
+      if (motionComponent == null) return motionComponent
+
+      const observedComponent: React.ComponentType<Record<string, unknown>> = (props) =>
+        React.createElement(motionComponent as React.ElementType, {
+          ...props,
+          "data-motion-initial": serializeMotionValue(props["initial"]),
+          "data-motion-animate": serializeMotionValue(props["animate"]),
+        })
+      observedComponents.set(property, observedComponent)
+      return observedComponent
+    },
+  })
+
+  return { ...actual, m: observedMotion }
+})
 
 const passwordAnalysis = vi.hoisted(() => ({
   shouldThrow: false,
@@ -74,9 +106,8 @@ vi.mock("@zxcvbn-ts/language-ru", () => ({ dictionary: {}, translations: { local
 const renderWithToken = () =>
   renderWithRouter({
     ui: ResetPassword,
-    // TanStack Router path param syntax is `$token` (vs react-router-dom `:token`).
-    path: "/reset/$token",
-    initialPath: "/reset/token123",
+    path: "/reset-password",
+    initialPath: "/reset-password?token=token123",
     // Reset-password is a public form; no auth profile synchronization is
     // needed for its behavior and would outlive the test's mounted tree.
     authProvider: false,
@@ -525,6 +556,11 @@ describe("ResetPassword behaviour details", () => {
   const motionView = (element: Element | null) => element?.closest("[style]") ?? null
   const renderNestedResetRoute = (initialPath: string) => {
     const rootRoute = createRootRoute({ component: Outlet })
+    const previousRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/previous",
+      component: () => <div>previous page</div>,
+    })
     const pageRoute = createRoute({
       getParentRoute: () => rootRoute,
       path: "/reset-password",
@@ -536,9 +572,35 @@ describe("ResetPassword behaviour details", () => {
       component: () => null,
     })
     const router = createRouter({
-      routeTree: rootRoute.addChildren([pageRoute.addChildren([tokenRoute])]),
-      history: createMemoryHistory({ initialEntries: [initialPath] }),
+      routeTree: rootRoute.addChildren([previousRoute, pageRoute.addChildren([tokenRoute])]),
+      history: createMemoryHistory({ initialEntries: ["/previous", initialPath] }),
     })
+    render(<RouterProvider router={router} />)
+    return router
+  }
+
+  const renderQueryResetRoute = async (initialPath: string) => {
+    const rootRoute = createRootRoute({ component: Outlet })
+    const previousRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/previous",
+      component: () => <div>previous page</div>,
+    })
+    const pageRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/reset",
+      component: ResetPassword,
+    })
+    const loginRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/login",
+      component: () => <div>login page</div>,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([previousRoute, loginRoute, pageRoute]),
+      history: createMemoryHistory({ initialEntries: ["/previous", initialPath] }),
+    })
+    await router.load()
     render(<RouterProvider router={router} />)
     return router
   }
@@ -582,12 +644,18 @@ describe("ResetPassword behaviour details", () => {
     await user.type(passwordInput(), "short")
     await user.tab()
     await waitFor(() => expect(passwordInput()).toHaveAttribute("aria-invalid", "true"))
+    const passwordError = screen.getByText("Password must be at least 8 characters")
+    expect(passwordError).toHaveAttribute("role", "alert")
+    expect(passwordInput()).toHaveAttribute("aria-describedby", passwordError.id)
 
     await user.clear(passwordInput())
     await user.type(passwordInput(), "Password123!")
     await user.type(confirmInput(), "Different123!")
     await user.tab()
     await waitFor(() => expect(confirmInput()).toHaveAttribute("aria-invalid", "true"))
+    const confirmError = screen.getByText("Passwords do not match")
+    expect(confirmError).toHaveAttribute("role", "alert")
+    expect(confirmInput()).toHaveAttribute("aria-describedby", confirmError.id)
   })
 
   it("shows the success copy with a way back to sign in", async () => {
@@ -600,6 +668,77 @@ describe("ResetPassword behaviour details", () => {
 
     expect(await screen.findByText(tAuth("reset.successMessage"))).toBeInTheDocument()
     expect(screen.getByRole("link", { name: tAuth("actions.goToLogin") })).toBeInTheDocument()
+  })
+
+  it("returns to login without carrying the reset token after success", async () => {
+    server.use(http.post("*/password/reset", () => HttpResponse.json({ ok: true })))
+    mockBreachRange()
+    const user = userEvent.setup()
+    const token = `synthetic-${randomUUID()}`
+    const router = await renderQueryResetRoute(`/reset?token=${token}`)
+
+    await fillMatchingPasswords(user)
+    expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+
+    const loginLink = screen.getByRole("link", { name: tAuth("actions.goToLogin") })
+    expect(loginLink).toHaveAttribute("href", "/login")
+    await user.click(loginLink)
+
+    expect(await screen.findByText("login page")).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/login")
+    expect(router.state.location.search).not.toHaveProperty("token")
+    expect(router.state.location.state).not.toHaveProperty("resetPasswordToken")
+  })
+
+  it("submits with Enter and focuses the success heading", async () => {
+    server.use(http.post("*/password/reset", () => HttpResponse.json({ ok: true })))
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    await user.type(passwordInput(), "Password123!")
+    const confirm = confirmInput()
+    await user.type(confirm, "Password123!")
+    expect(confirm).toHaveFocus()
+
+    await user.keyboard("{Enter}")
+
+    const successHeading = await screen.findByRole("heading", {
+      name: tAuth("reset.successTitle"),
+    })
+    expect(successHeading).toHaveFocus()
+  })
+
+  it("keeps focus on the login link when late password analysis updates after success", async () => {
+    server.use(http.post("*/password/reset", () => HttpResponse.json({ ok: true })))
+    passwordAnalysis.deferred = true
+    const fetchMock = mockBreachRange()
+    const user = userEvent.setup()
+
+    try {
+      await renderWithToken()
+      await user.type(passwordInput(), "Password123!")
+      await user.type(confirmInput(), "Password123!")
+      await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+
+      await screen.findByRole("heading", { name: tAuth("reset.successTitle") })
+      await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(1))
+
+      const loginLink = screen.getByRole("link", { name: tAuth("actions.goToLogin") })
+      await user.tab()
+      expect(loginLink).toHaveFocus()
+
+      await act(async () => {
+        passwordAnalysis.pending[0]!.resolve({
+          score: 3,
+          feedback: { warning: "", suggestions: ["Add another word"] },
+        })
+      })
+
+      expect(loginLink).toHaveFocus()
+    } finally {
+      fetchMock.mockRestore()
+    }
   })
 
   it.each([
@@ -855,27 +994,51 @@ describe("ResetPassword behaviour details", () => {
 
     await fillMatchingPasswords(user)
 
-    const successView = motionView(await screen.findByText(tAuth("reset.successTitle")))
-    expect(successView).toHaveStyle({ opacity: "0", transform: "scale(0.95)" })
+    const successView = (await screen.findByText(tAuth("reset.successTitle"))).closest(
+      "[data-motion-initial]"
+    )
+    expect(successView).toHaveAttribute("data-motion-initial", '{"opacity":0,"scale":0.95}')
+    expect(successView).toHaveAttribute("data-motion-animate", '{"opacity":1,"scale":1}')
   })
 
-  it("reads the reset token from the nested token route", async () => {
+  it("scrubs a legacy path token and preserves it for retry", async () => {
     const payloads: unknown[] = []
+    let attempts = 0
     server.use(
       http.post("*/password/reset", async ({ request }) => {
         payloads.push(await request.json())
-        return HttpResponse.json({ ok: true })
+        attempts += 1
+        return attempts === 1
+          ? HttpResponse.json({}, { status: 500 })
+          : HttpResponse.json({ ok: true })
       })
     )
     mockBreachRange()
     const user = userEvent.setup()
-    renderNestedResetRoute("/reset-password/nested-token")
+    const router = renderNestedResetRoute("/reset-password/nested-token")
 
     await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+    expect(router.state.location.pathname).toBe("/reset-password")
+    expect(router.state.location.search).not.toHaveProperty("token")
+    expect(router.state.location.state).toHaveProperty("resetPasswordToken", "nested-token")
     await fillMatchingPasswords(user)
 
+    expect(await screen.findByText(tAuth("reset.errorGeneric"))).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: tAuth("reset.saveButton") })).toBeEnabled()
+    await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+
     await screen.findByText(tAuth("reset.successTitle"))
-    expect(payloads).toEqual([{ password: "Password123!", token: "nested-token" }])
+    expect(payloads).toEqual([
+      { password: "Password123!", token: "nested-token" },
+      { password: "Password123!", token: "nested-token" },
+    ])
+
+    await act(() => router.history.back())
+    expect(await screen.findByText("previous page")).toBeInTheDocument()
+    await act(() => router.history.forward())
+    await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+    expect(router.state.location.pathname).toBe("/reset-password")
+    expect(router.state.location.state).toHaveProperty("resetPasswordToken", "nested-token")
   })
 
   it("flags the link as invalid once navigation drops the token", async () => {
@@ -886,6 +1049,86 @@ describe("ResetPassword behaviour details", () => {
     await act(() => router.navigate({ to: "/reset-password" }))
 
     expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+  })
+
+  it("removes a query token from the URL while preserving other search parameters", async () => {
+    const router = await renderQueryResetRoute("/reset?token=query-token&source=email")
+
+    await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+
+    expect(router.state.location.search).not.toHaveProperty("token")
+    expect(router.state.location.search).toHaveProperty("source", "email")
+
+    await act(() => router.history.back())
+    expect(await screen.findByText("previous page")).toBeInTheDocument()
+  })
+
+  it("preserves a captured query token in router state across back and forward", async () => {
+    const payloads: unknown[] = []
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push(await request.json())
+        return HttpResponse.json({ ok: true })
+      })
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    const router = await renderQueryResetRoute("/previous")
+
+    const resetMarker = `synthetic-${randomUUID()}`
+
+    await act(() =>
+      router.history.push(`/reset?token=${resetMarker}`, { preservedMarker: "keep-me" })
+    )
+
+    await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+    expect(router.state.location.search).not.toHaveProperty("token")
+    expect(router.state.location.state).toMatchObject({
+      preservedMarker: "keep-me",
+      resetPasswordToken: resetMarker,
+    })
+
+    await act(() => router.history.back())
+    expect(await screen.findByText("previous page")).toBeInTheDocument()
+    await act(() => router.history.forward())
+
+    await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+    expect(router.state.location.search).not.toHaveProperty("token")
+    await fillMatchingPasswords(user)
+
+    expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+    expect(payloads).toEqual([{ password: "Password123!", token: resetMarker }])
+  })
+
+  it("allows retry after failure using the captured query token", async () => {
+    const payloads: unknown[] = []
+    let attempts = 0
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push(await request.json())
+        attempts += 1
+        return attempts === 1
+          ? HttpResponse.json({}, { status: 500 })
+          : HttpResponse.json({ ok: true })
+      })
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    const router = await renderQueryResetRoute("/reset?token=query-token")
+
+    await fillMatchingPasswords(user)
+
+    expect(await screen.findByText(tAuth("reset.errorGeneric"))).toBeInTheDocument()
+    expect(router.state.location.search).not.toHaveProperty("token")
+    const submitButton = screen.getByRole("button", { name: tAuth("reset.saveButton") })
+    expect(submitButton).toBeEnabled()
+    await user.click(submitButton)
+
+    expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+    expect(payloads).toEqual([
+      { password: "Password123!", token: "query-token" },
+      { password: "Password123!", token: "query-token" },
+    ])
   })
 
   it("analyses strength in the resolved interface language", async () => {

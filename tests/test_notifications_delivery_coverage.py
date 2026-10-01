@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import Notification, NotificationDelivery, PushSubscription
+from app.models.users import UserPreferences
 from app.services import stats_cache
 from app.services import webpush as webpush_module
 from app.services.notifications import delivery as notifications_delivery
@@ -309,6 +310,50 @@ async def test_sent_path_normalizes_payload(
 
 
 @pytest.mark.asyncio
+async def test_push_delivery_loads_user_preferences_for_quiet_hours(
+    db_session: AsyncSession,
+    user_factory,
+    push_configured,
+    no_process_results,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = await user_factory()
+    # `lazy="noload"` caches this as None in the identity map.  Create the
+    # preference row independently so the subscription query must refresh the
+    # already-loaded relationship to honor quiet hours.
+    assert user.preferences is None
+    db_session.add(UserPreferences(user_id=user.id, dnd_enabled=True))
+    await _add_subscription(db_session, user.id)
+    await db_session.flush()
+    user_id = user.id
+    payloads: list[dict[str, object]] = []
+
+    def _fake_send(s: PushSubscription, payload: dict[str, object]) -> WebPushResult:
+        payloads.append(dict(payload))
+        return WebPushResult(
+            subscription_id=s.id,
+            endpoint=s.endpoint,
+            user_id=s.user_id,
+            status="sent",
+            status_code=201,
+        )
+
+    monkeypatch.setattr(notifications_delivery, "send_web_push", _fake_send)
+
+    created = await create_notifications_for_users(
+        db_session,
+        title="Quiet hours delivery",
+        user_ids=[user_id],
+        type="news",
+    )
+
+    assert created == 1
+    assert len(payloads) == 1
+    assert payloads[0]["silent"] is True
+    assert payloads[0]["data"]["dnd_suppressed"] is True
+
+
+@pytest.mark.asyncio
 async def test_error_result_records_error_row(
     db_session, user_factory, push_configured, no_process_results, monkeypatch
 ):
@@ -339,10 +384,10 @@ async def test_send_exception_records_exception_row(
     db_session, user_factory, push_configured, no_process_results, monkeypatch
 ):
     user = await user_factory()
-    await _add_subscription(db_session, user.id)
+    subscription = await _add_subscription(db_session, user.id)
 
     def _raise_send(s: PushSubscription, payload: dict[str, object]) -> WebPushResult:
-        raise RuntimeError("push exploded")
+        raise RuntimeError(f"push failed for {s.endpoint}")
 
     monkeypatch.setattr(notifications_delivery, "send_web_push", _raise_send)
 
@@ -351,6 +396,35 @@ async def test_send_exception_records_exception_row(
     assert [r.status for r in rows] == ["error"]
     assert rows[0].detail is not None
     assert rows[0].detail.startswith("exception:")
+    assert subscription.endpoint not in rows[0].detail
+
+
+@pytest.mark.asyncio
+async def test_outbox_exception_does_not_persist_subscription_endpoint(
+    db_session,
+    user_factory,
+    push_configured,
+    no_process_results,
+    monkeypatch,
+):
+    user = await user_factory()
+    subscription = await _add_subscription(db_session, user.id)
+    notification = await _add_notification(db_session, user.id)
+
+    async def _raise_send(_sub: PushSubscription, _payload: dict[str, object]):
+        raise RuntimeError(f"adapter failed for {subscription.endpoint}")
+
+    monkeypatch.setattr(webpush_module, "_send_push_async", _raise_send)
+
+    await notifications_delivery.redeliver_notifications(
+        db_session, notification_ids=[notification.id]
+    )
+
+    rows = await _delivery_rows_for_user(db_session, user.id)
+    assert len(rows) == 1
+    assert rows[0].detail is not None
+    assert rows[0].detail.startswith("exception:")
+    assert subscription.endpoint not in rows[0].detail
 
 
 @pytest.mark.asyncio
@@ -575,8 +649,12 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
     monkeypatch,
 ):
     user = await user_factory()
+    user.preferences = UserPreferences(user_id=user.id, dnd_enabled=True)
     subscription = await _add_subscription(db_session, user.id)
     notification = await _add_notification(db_session, user.id)
+    notification_id = notification.id
+    await db_session.commit()
+    db_session.expunge_all()
     payloads: list[dict[str, object]] = []
 
     async def _send(sub: PushSubscription, payload: dict[str, object]) -> WebPushResult:
@@ -593,13 +671,13 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
 
     first = await notifications_delivery.redeliver_notifications(
         db_session,
-        notification_ids=[notification.id, notification.id],
+        notification_ids=[notification_id, notification_id],
         channel="push",
         payload_data={"category": "news", "articleId": "42"},
     )
     second = await notifications_delivery.redeliver_notifications(
         db_session,
-        notification_ids=[notification.id],
+        notification_ids=[notification_id],
         channel="push",
     )
 
@@ -608,14 +686,16 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
     assert second.sent == 0
     assert second.already_delivered == 1
     assert len(payloads) == 1
-    assert payloads[0]["tag"] == str(notification.id)
+    assert payloads[0]["tag"] == str(notification_id)
+    assert payloads[0]["silent"] is True
     assert payloads[0]["data"] == {
         "category": "news",
         "articleId": "42",
-        "notificationId": str(notification.id),
+        "notificationId": str(notification_id),
         "topic": "news.published",
         "type": "news",
         "url": "/news/42",
+        "dnd_suppressed": True,
     }
     rows = await _delivery_rows_for_user(db_session, user.id)
     assert [(row.status, row.subscription_id) for row in rows] == [
@@ -623,6 +703,36 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
     ]
     assert rows[0].status_code == 201
     assert rows[0].attempted_at is not None
+
+    await db_session.commit()
+    db_session.expunge_all()
+    unread = await db_session.execute(
+        select(Notification.read).where(Notification.id == notification_id)
+    )
+    assert unread.scalar_one() is False
+
+
+@pytest.mark.asyncio
+async def test_outbox_redelivery_skips_inactive_user_subscriptions(
+    db_session,
+    user_factory,
+    push_configured,
+    no_process_results,
+    monkeypatch,
+):
+    inactive_user = await user_factory(is_active=False)
+    await _add_subscription(db_session, inactive_user.id)
+    notification = await _add_notification(db_session, inactive_user.id)
+    send = AsyncMock()
+    monkeypatch.setattr(webpush_module, "_send_push_async", send)
+
+    outcome = await notifications_delivery.redeliver_notifications(
+        db_session,
+        notification_ids=[notification.id],
+    )
+
+    assert outcome.sent == 0
+    send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

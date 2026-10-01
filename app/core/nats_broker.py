@@ -320,6 +320,8 @@ class NatsTaskBroker:
         payload: dict[str, Any],
         headers: dict[str, str] | None = None,
         msg_id: str | None = None,
+        *,
+        strict: bool = False,
     ) -> None:
         """Publish an ephemeral event via CORE NATS (fire-and-forget, no stream).
 
@@ -341,8 +343,10 @@ class NatsTaskBroker:
         ``json.dumps`` would raise ``TypeError``.  ``default=str`` mirrors the
         existing orjson callsite at logging.py:222.
 
-        Best-effort: never raises on infra failure so the caller's in-process
-        delivery + refetch fallback stay intact.
+        Best-effort by default: never raises on infra failure so the caller's
+        in-process delivery + refetch fallback stay intact. Outbox-backed
+        callers may opt into ``strict`` so a transient publish failure returns
+        to the outbox worker and can be retried.
         """
         # Ephemeral best-effort: publish ONLY if the broker is already connected
         # (the app lifespan connects it at startup). Do NOT trigger a connect
@@ -357,6 +361,8 @@ class NatsTaskBroker:
                 "nats_publish_skipped_not_connected",
                 subject=subject,
             )
+            if strict:
+                raise ConnectionError("NATS core publisher is not connected")
             return
 
         with tracer.start_as_current_span(
@@ -394,6 +400,8 @@ class NatsTaskBroker:
                     subject,
                     exc,
                 )
+                if strict:
+                    raise
 
     async def enqueue(self, task_name: str, *args: Any, **kwargs: Any) -> str:
         """Push a task to the JetStream queue with trace context propagation."""

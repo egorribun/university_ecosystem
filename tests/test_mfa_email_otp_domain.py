@@ -939,6 +939,60 @@ async def test_concurrent_resend_has_one_monotonic_revision_winner(
 
 
 @pytest.mark.asyncio
+async def test_resend_rejects_lost_revision_cas_without_writing_delivery(
+    otp_service: EmailOtpService,
+) -> None:
+    user = SimpleNamespace(id=uuid.uuid4(), email="student@example.edu")
+    challenge = SimpleNamespace(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        flow="login",
+        session_identifier=SESSION,
+        client_fingerprint=FINGERPRINT,
+        method=MFA_METHOD_EMAIL_OTP,
+        revision=4,
+        token_key_id="hmac-2026-08",
+        recipient_digest=otp_service._recipient_digest(
+            key_id="hmac-2026-08", email=user.email
+        ),
+        state=ChallengeState.PENDING,
+        attempt_count=0,
+        resend_available_at=NOW - timedelta(seconds=1),
+    )
+    otp_service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    otp_service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
+        return_value=(user, user.email)
+    )
+    otp_service._load_bound_challenge = AsyncMock(  # type: ignore[method-assign]
+        return_value=challenge
+    )
+    update_result = MagicMock()
+    update_result.one_or_none.return_value = None
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=update_result)
+    db.add_all = MagicMock()
+    db.flush = AsyncMock()
+
+    with pytest.raises(MfaOtpRejected):
+        await otp_service.resend(
+            db,
+            challenge_token="stale-challenge-token",
+            user_id=user.id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            locale="en",
+            now=NOW,
+        )
+
+    db.execute.assert_awaited_once()
+    db.add_all.assert_not_called()
+    db.flush.assert_not_awaited()
+    assert challenge.revision == 4
+
+
+@pytest.mark.asyncio
 async def test_hmac_and_kek_rotation_verify_old_material(
     db_session: AsyncSession,
     test_user: User,

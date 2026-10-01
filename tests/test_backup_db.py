@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,29 @@ class AsyncBody:
 
     async def close(self) -> None:
         self.closed = True
+
+
+class _RepeatedCancellationBody:
+    def __init__(self, value: bytes) -> None:
+        self._value = value
+        self._read_count = 0
+        self.second_read_started = asyncio.Event()
+        self.close_started = asyncio.Event()
+
+    async def read(self, size: int = -1) -> bytes:
+        self._read_count += 1
+        if self._read_count == 2:
+            self.second_read_started.set()
+            await asyncio.Event().wait()
+        chunk_size = size if size >= 0 else len(self._value)
+        if self._read_count == 1:
+            chunk_size = max(1, min(chunk_size, len(self._value) // 2))
+        result, self._value = self._value[:chunk_size], self._value[chunk_size:]
+        return result
+
+    async def close(self) -> None:
+        self.close_started.set()
+        await asyncio.Event().wait()
 
 
 class FakeS3:
@@ -153,6 +177,54 @@ async def test_publish_does_not_publish_manifest_when_remote_archive_is_corrupt(
         "synthetic-backups",
         backup_db.manifest_key(manifest.artifact_key),
     ) not in store.objects
+
+
+@pytest.mark.asyncio
+async def test_publish_bounds_remote_archive_readback_to_manifest_size(
+    tmp_path: Path,
+) -> None:
+    archive = _archive(tmp_path)
+    manifest = _manifest(archive)
+
+    class CountingBody:
+        def __init__(self, value: bytes) -> None:
+            self.value = value
+            self.bytes_read = 0
+            self.closed = False
+
+        async def read(self, size: int = -1) -> bytes:
+            count = len(self.value) if size < 0 else size
+            result, self.value = self.value[:count], self.value[count:]
+            self.bytes_read += len(result)
+            return result
+
+        async def close(self) -> None:
+            self.closed = True
+
+    body = CountingBody(archive.read_bytes() + b"x" * 1_000_000)
+
+    class OversizedReadbackClient:
+        def __init__(self) -> None:
+            self.put_calls = 0
+
+        async def upload_file(self, filename: str, bucket: str, key: str) -> None:
+            del filename, bucket, key
+
+        async def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+            del Bucket, Key
+            return {"Body": body}
+
+        async def put_object(self, **_kwargs: Any) -> None:
+            self.put_calls += 1
+
+    client = OversizedReadbackClient()
+
+    with pytest.raises(backup_db.BackupArtifactError, match="read-back verification"):
+        await backup_db.publish_backup(client, "synthetic-backups", archive, manifest)
+
+    assert body.bytes_read <= manifest.size_bytes + 1
+    assert body.closed
+    assert client.put_calls == 0
 
 
 @pytest.mark.asyncio
@@ -309,7 +381,7 @@ async def test_download_removes_corrupted_archive_before_returning(
     store.corrupt_reads_for.add(manifest.artifact_key)
     destination = tmp_path / "unverified.dump"
 
-    with pytest.raises(backup_db.BackupArtifactError, match="checksum"):
+    with pytest.raises(backup_db.BackupArtifactError, match=r"length|checksum"):
         await backup_db.download_verified_backup(
             store,
             "synthetic-backups",
@@ -318,6 +390,108 @@ async def test_download_removes_corrupted_archive_before_returning(
         )
 
     assert not destination.exists()
+
+
+@pytest.mark.asyncio
+async def test_repeated_cancellation_during_body_close_removes_partial_download(
+    tmp_path: Path,
+) -> None:
+    source_archive = _archive(tmp_path)
+    manifest = _manifest(source_archive)
+    manifest_object_key = backup_db.manifest_key(manifest.artifact_key)
+    body = _RepeatedCancellationBody(source_archive.read_bytes())
+
+    class Client:
+        async def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+            del Bucket
+            if Key == manifest_object_key:
+                payload = manifest.to_json_bytes()
+                return {
+                    "Body": AsyncBody(payload),
+                    "ContentLength": len(payload),
+                }
+            return {
+                "Body": body,
+                "ContentLength": source_archive.stat().st_size,
+            }
+
+    destination = tmp_path / "partial-restore.dump"
+    download = asyncio.create_task(
+        backup_db.download_verified_backup(
+            Client(), "synthetic-backups", manifest_object_key, destination
+        )
+    )
+    await body.second_read_started.wait()
+    download.cancel()
+    await body.close_started.wait()
+    download.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await download
+
+    assert not destination.exists()
+
+
+@pytest.mark.asyncio
+async def test_partial_cleanup_failure_still_closes_remote_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_archive = _archive(tmp_path)
+    manifest = _manifest(source_archive)
+    manifest_object_key = backup_db.manifest_key(manifest.artifact_key)
+
+    class BlockingBody:
+        def __init__(self) -> None:
+            self.read_count = 0
+            self.second_read_started = asyncio.Event()
+            self.closed = False
+
+        async def read(self, size: int = -1) -> bytes:
+            del size
+            self.read_count += 1
+            if self.read_count == 1:
+                return b"partial"
+            self.second_read_started.set()
+            await asyncio.Event().wait()
+            return b""
+
+        async def close(self) -> None:
+            self.closed = True
+
+    body = BlockingBody()
+
+    class Client:
+        async def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+            del Bucket
+            if Key == manifest_object_key:
+                payload = manifest.to_json_bytes()
+                return {
+                    "Body": AsyncBody(payload),
+                    "ContentLength": len(payload),
+                }
+            return {"Body": body, "ContentLength": source_archive.stat().st_size}
+
+    destination = tmp_path / "partial-cleanup-failure.dump"
+    original_unlink = Path.unlink
+
+    def fail_destination_unlink(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path == destination:
+            raise PermissionError("synthetic unlink failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_destination_unlink)
+    download = asyncio.create_task(
+        backup_db.download_verified_backup(
+            Client(), "synthetic-backups", manifest_object_key, destination
+        )
+    )
+    await body.second_read_started.wait()
+    download.cancel()
+
+    with pytest.raises(PermissionError, match="synthetic unlink failure"):
+        await download
+
+    assert body.closed
 
 
 def test_restore_creates_a_new_database_without_putting_password_in_argv(
@@ -365,9 +539,16 @@ def test_restore_creates_a_new_database_without_putting_password_in_argv(
         command_runner=run,
     )
 
-    assert len(statements) == 2
-    assert len(commands) == 2
-    assert commands[1]["command"][0] == "pg_restore"
+    assert len(statements) == 1
+    assert len(commands) == 3
+    assert commands[1]["command"] == [
+        "createdb",
+        "--no-password",
+        "--maintenance-db",
+        "postgres",
+        "restore_university_20260930",
+    ]
+    assert commands[2]["command"][0] == "pg_restore"
     assert commands[1]["env"]["PGPASSWORD"] == marker
     assert all(
         marker not in " ".join(call["command"])
@@ -391,6 +572,83 @@ def test_cli_does_not_echo_a_connection_url_passed_as_an_argument(
     captured = capsys.readouterr()
     assert result == 2
     assert marker not in captured.out + captured.err
+
+
+def test_restore_cli_rejects_raw_admin_database_url_without_access_or_echo(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = "synthetic-restore-admin-marker"
+    admin_database_url = (
+        backup_db.make_url("postgresql://restore_admin@127.0.0.1:5432/postgres")
+        .set(password=marker)
+        .render_as_string(hide_password=False)
+    )
+
+    def reject_access(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("invalid CLI arguments reached a database or S3 operation")
+
+    monkeypatch.setattr(backup_db, "s3_settings_from_environment", reject_access)
+    monkeypatch.setattr(backup_db.aioboto3, "Session", reject_access)
+    monkeypatch.setattr(backup_db.psycopg, "connect", reject_access)
+
+    result = backup_db.main(
+        [
+            "restore",
+            "--manifest-key",
+            "daily/backup.manifest.json",
+            "--target-database",
+            "restore_target",
+            "--admin-database-url",
+            admin_database_url,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert marker not in captured.out + captured.err
+
+
+def test_source_metadata_uses_static_read_only_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    statements: list[Any] = []
+
+    class Result:
+        def __init__(self, rows: list[tuple[str]]) -> None:
+            self.rows = rows
+
+        def fetchone(self) -> tuple[str] | None:
+            return self.rows[0] if self.rows else None
+
+        def fetchall(self) -> list[tuple[str]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def __enter__(self) -> Connection:
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+        def execute(self, statement: Any) -> Result:
+            statements.append(statement)
+            self.call_count += 1
+            if self.call_count == 1:
+                return Result([("synthetic_source",)])
+            return Result([("synthetic_revision",)])
+
+    monkeypatch.setattr(backup_db.psycopg, "connect", lambda _dsn: Connection())
+
+    assert backup_db.source_database_metadata(
+        "postgresql://synthetic_user@localhost/synthetic_source"
+    ) == ("synthetic_source", ("synthetic_revision",))
+    assert statements == [
+        "SELECT current_database()",
+        "SELECT version_num FROM alembic_version ORDER BY version_num",
+    ]
 
 
 def test_backup_requires_a_stable_alembic_revision_during_dump() -> None:

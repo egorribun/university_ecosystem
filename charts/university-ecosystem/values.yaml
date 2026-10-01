@@ -270,6 +270,9 @@ gateway:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     jwtAudience: "university-ecosystem-api"
     rateLimitRps: 100
+    # Exact proxy IPs/CIDRs only; empty disables forwarded-header trust and
+    # preserves the immediate peer address. Do not use broad cluster ranges.
+    trustedProxies: []
     # Plaintext is suitable only for the NetworkPolicy-isolated development
     # chart. Set true when gRPC/OTLP endpoints terminate trusted TLS.
     grpcUseTLS: false
@@ -431,6 +434,23 @@ ingress:
       hosts:
         - university.example.com
         - api.university.example.com
+
+# Gateway API preview, managed by an externally installed Envoy Gateway.
+# It is intentionally blocked until per-client limits and request-buffer
+# resource requirements are validated.
+gatewayApi:
+  enabled: false
+  # Create or verify this cluster-scoped GatewayClass in the controlled
+  # Gateway API bootstrap before enabling the chart; this chart does not own it.
+  gatewayClassName: eg
+  # Envoy Gateway v1.9 buffers a whole request before forwarding. The chart
+  # attaches this only to the isolated /api/v1 route, never upgrade routes.
+  requestBuffer:
+    limit: 50Mi
+  # Data-plane pods selected by NetworkPolicies when Gateway API is enabled.
+  networkPolicy:
+    namespaceSelector: {}
+    podSelector: {}
 
 # Network Policy ingress-controller selector.
 # DEBT-07 (RZ-W13): parametrized so the chart works with any ingress controller

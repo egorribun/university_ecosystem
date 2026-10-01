@@ -83,6 +83,194 @@ def test_approved_suppression_is_valid_even_when_semgrep_returns_findings(
     validator.validate_report(report, policy, scanner_status=1)
 
 
+def test_github_upload_drops_only_exact_policy_approved_in_source_results(
+    tmp_path: Path,
+) -> None:
+    approved = _result()
+    normalized_path = _result(path="./scripts/%65xample.py")
+    implicit_end_line = _result()
+    implicit_location = implicit_end_line["locations"][0]
+    assert isinstance(implicit_location, dict)
+    implicit_physical = implicit_location["physicalLocation"]
+    assert isinstance(implicit_physical, dict)
+    implicit_region = implicit_physical["region"]
+    assert isinstance(implicit_region, dict)
+    implicit_region.pop("endLine")
+    wrong_anchor = _result(start_line=11, end_line=11)
+    wrong_end_line = _result(start_line=10, end_line=11)
+    wrong_rule = _result(rule_id="rule.other")
+    wrong_path = _result(path="scripts/other.py")
+    traversal_alias = _result(path="scripts/%2e%2e/scripts/example.py")
+    unsuppressed = _result(
+        rule_id="rule.other",
+        path="scripts/other.py",
+        start_line=20,
+        end_line=20,
+        suppressed=False,
+    )
+    raw_report = _report(
+        approved,
+        normalized_path,
+        implicit_end_line,
+        wrong_anchor,
+        wrong_end_line,
+        wrong_rule,
+        wrong_path,
+        traversal_alias,
+        unsuppressed,
+    )
+    report_path, policy_path = _write_inputs(tmp_path, raw_report)
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    validator.prepare_github_upload_report(report_path, policy_path, upload_path)
+
+    assert json.loads(report_path.read_text(encoding="utf-8")) == raw_report
+    uploaded_results = json.loads(upload_path.read_text(encoding="utf-8"))["runs"][0][
+        "results"
+    ]
+    assert uploaded_results == [
+        wrong_anchor,
+        wrong_end_line,
+        wrong_rule,
+        wrong_path,
+        traversal_alias,
+        unsuppressed,
+    ]
+
+
+def test_github_upload_does_not_normalize_noncanonical_rule_id_to_ledger_entry(
+    tmp_path: Path,
+) -> None:
+    noncanonical_rule = _result()
+    noncanonical_rule["ruleId"] = "rule.dynamic "
+    report_path, policy_path = _write_inputs(tmp_path, _report(noncanonical_rule))
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    validator.prepare_github_upload_report(report_path, policy_path, upload_path)
+
+    assert json.loads(upload_path.read_text(encoding="utf-8"))["runs"][0][
+        "results"
+    ] == [noncanonical_rule]
+    with pytest.raises(validator.ValidationError, match="not covered"):
+        validator.validate_report(report_path, policy_path, scanner_status=1)
+
+
+@pytest.mark.parametrize(
+    "suppressions",
+    [
+        [{"kind": "inSource"}, {"kind": "inSource"}],
+        [{"kind": "inSource"}, {"kind": "external"}],
+    ],
+)
+def test_github_upload_keeps_results_with_multiple_suppressions(
+    tmp_path: Path, suppressions: list[dict[str, str]]
+) -> None:
+    result = _result()
+    result["suppressions"] = suppressions
+    report_path, policy_path = _write_inputs(tmp_path, _report(result))
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    validator.prepare_github_upload_report(report_path, policy_path, upload_path)
+
+    assert json.loads(upload_path.read_text(encoding="utf-8"))["runs"][0][
+        "results"
+    ] == [result]
+    with pytest.raises(validator.ValidationError, match="not covered"):
+        validator.validate_report(report_path, policy_path, scanner_status=1)
+
+
+def test_github_upload_preparation_falls_back_to_raw_sarif_on_invalid_policy(
+    tmp_path: Path,
+) -> None:
+    raw_report = _report(_result())
+    report_path, policy_path = _write_inputs(
+        tmp_path,
+        raw_report,
+        {**_POLICY, "entries": [*_POLICY["entries"], _POLICY["entries"][0]]},
+    )
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    with pytest.raises(validator.ValidationError, match="duplicate"):
+        validator.prepare_github_upload_report(report_path, policy_path, upload_path)
+
+    assert json.loads(upload_path.read_text(encoding="utf-8")) == raw_report
+
+
+def test_github_upload_preparation_falls_back_to_raw_sarif_on_expired_policy(
+    tmp_path: Path,
+) -> None:
+    raw_report = _report(_result())
+    report_path, policy_path = _write_inputs(
+        tmp_path,
+        raw_report,
+        {
+            **_POLICY,
+            "entries": [{**_POLICY["entries"][0], "expires": "2000-01-01"}],
+        },
+    )
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    with pytest.raises(validator.ValidationError, match="expired"):
+        validator.prepare_github_upload_report(report_path, policy_path, upload_path)
+
+    assert upload_path.read_bytes() == report_path.read_bytes()
+
+
+def test_github_upload_preparation_falls_back_to_raw_sarif_on_malformed_policy_json(
+    tmp_path: Path,
+) -> None:
+    report_path, policy_path = _write_inputs(tmp_path, _report(_result()))
+    raw_bytes = report_path.read_bytes()
+    policy_path.write_text("{malformed", encoding="utf-8")
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    with pytest.raises(validator.ValidationError, match="unable to read"):
+        validator.prepare_github_upload_report(report_path, policy_path, upload_path)
+
+    assert upload_path.read_bytes() == raw_bytes
+
+
+def test_github_upload_preparation_falls_back_to_raw_sarif_if_filter_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_report = _report(_result())
+    report_path, policy_path = _write_inputs(tmp_path, raw_report)
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    def fail_replace(self: Path, target: Path) -> Path:
+        raise OSError("injected atomic replace failure")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(validator.ValidationError, match="unable to write filtered"):
+        validator.prepare_github_upload_report(report_path, policy_path, upload_path)
+
+    assert upload_path.read_bytes() == report_path.read_bytes()
+    assert json.loads(upload_path.read_bytes()) == raw_report
+
+
+def test_github_upload_preparation_cli_needs_no_scanner_status(
+    tmp_path: Path,
+) -> None:
+    report_path, policy_path = _write_inputs(tmp_path, _report(_result()))
+    upload_path = tmp_path / "semgrep-github.sarif"
+
+    exit_code = validator.main(
+        [
+            "--report",
+            str(report_path),
+            "--policy",
+            str(policy_path),
+            "--prepare-github-upload",
+            str(upload_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert (
+        json.loads(upload_path.read_text(encoding="utf-8"))["runs"][0]["results"] == []
+    )
+
+
 def test_cdc_publication_has_no_semgrep_suppression_exception(
     tmp_path: Path,
 ) -> None:
@@ -110,9 +298,7 @@ def test_cdc_publication_has_no_semgrep_suppression_exception(
         validator.validate_report(report, policy_path, scanner_status=0)
 
 
-def test_psycopg_database_identifier_suppression_matches_reviewed_policy(
-    tmp_path: Path,
-) -> None:
+def test_database_creation_has_no_semgrep_raw_query_suppression() -> None:
     root = Path(__file__).resolve().parents[1]
     source_policy = json.loads(
         (root / "security/semgrep-suppression-policy.json").read_text(encoding="utf-8")
@@ -121,29 +307,56 @@ def test_psycopg_database_identifier_suppression_matches_reviewed_policy(
         "python.sqlalchemy.security.sqlalchemy-execute-raw-query."
         "sqlalchemy-execute-raw-query"
     )
+    source_text = (root / "scripts/backup_db.py").read_text(encoding="utf-8")
+    assert f"nosemgrep: {rule_id}" not in source_text
+    assert 'sql.SQL("CREATE DATABASE {}")' not in source_text
+    assert '"createdb"' in source_text
+    assert not any(
+        entry["path"] == "scripts/backup_db.py" and entry["rule_id"] == rule_id
+        for entry in source_policy["entries"]
+    )
+
+
+def test_websocket_origin_suppression_matches_current_source_anchor(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    source_policy = json.loads(
+        (root / "security/semgrep-suppression-policy.json").read_text(encoding="utf-8")
+    )
+    rule_id = (
+        "go.gorilla.security.audit.websocket-missing-origin-check."
+        "websocket-missing-origin-check"
+    )
     policy = {
         "version": source_policy["version"],
         "entries": [
             entry
             for entry in source_policy["entries"]
-            if entry["path"] == "scripts/backup_db.py" and entry["rule_id"] == rule_id
+            if entry["path"] == "services/ws-hub/pkg/hub/handlers.go"
+            and entry["rule_id"] == rule_id
         ],
     }
     assert len(policy["entries"]) == 1
+    entry = policy["entries"][0]
+    source_path = root / entry["path"]
+    source_lines = source_path.read_text(encoding="utf-8").splitlines()
+    assert entry["start_line"] == entry["end_line"] == 206
+    assert "upgrader.Upgrade(w, r, nil)" in source_lines[entry["start_line"] - 1]
+
     report_path, policy_path = _write_inputs(
         tmp_path,
         _report(
             _result(
                 rule_id=rule_id,
-                path="scripts/backup_db.py",
-                start_line=611,
-                end_line=613,
+                path=entry["path"],
+                start_line=entry["start_line"],
+                end_line=entry["end_line"],
                 suppressed=True,
             )
         ),
         policy,
     )
-
     validator.validate_report(report_path, policy_path, scanner_status=1)
 
 

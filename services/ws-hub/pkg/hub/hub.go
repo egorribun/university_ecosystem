@@ -17,6 +17,7 @@ import (
 
 	"log/slog"
 
+	"github.com/gorilla/websocket"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
@@ -186,9 +187,14 @@ type Hub struct {
 	clientMsgRateBurst int
 	// ctx is the lifecycle context for the Hub, cancelled when Run() exits.
 	// Used by ReadPump/WritePump goroutines to detect hub shutdown (RZ-24-02).
-	ctx           context.Context
-	ctxCancel     context.CancelFunc
-	limiterCancel context.CancelFunc
+	ctx              context.Context
+	ctxCancel        context.CancelFunc
+	runStarted       bool
+	runWG            sync.WaitGroup
+	clientPumpWG     sync.WaitGroup
+	clientEvictionWG sync.WaitGroup
+	limiterCleanupWG sync.WaitGroup
+	limiterCancel    context.CancelFunc
 	// sessionRevocationCancel owns the dedicated Redis Pub/Sub consumer.
 	// It is cancelled during Stop so the tracked listener cannot outlive the Hub.
 	sessionRevocationCancel context.CancelFunc
@@ -572,6 +578,108 @@ func (h *Hub) Context() context.Context {
 	return h.ctx
 }
 
+// registerClient transfers a newly upgraded client to Run without allowing a
+// handler to block forever when shutdown wins the race. The pump wait-group
+// entries are reserved under lifecycleMu before Stop can start waiting.
+func (h *Hub) registerClient(client *Client) bool {
+	h.lifecycleMu.Lock()
+	runCtx := h.ctx
+	if h.stopped.Load() || runCtx == nil || runCtx.Err() != nil {
+		h.lifecycleMu.Unlock()
+		return false
+	}
+	h.clientPumpWG.Add(2)
+	h.lifecycleMu.Unlock()
+
+	select {
+	case h.Register <- client:
+		return true
+	case <-runCtx.Done():
+		h.clientPumpWG.Done()
+		h.clientPumpWG.Done()
+		return false
+	}
+}
+
+func (h *Hub) startClientPumps(client *Client, clientCtx context.Context) {
+	StartTrackedGoroutine(func() {
+		defer h.clientPumpWG.Done()
+		client.WritePump()
+	})
+	StartTrackedGoroutine(func() {
+		defer h.clientPumpWG.Done()
+		client.ReadPump(clientCtx)
+	})
+}
+
+// unregisterClient routes teardown through the Run loop while it is live and
+// performs it synchronously once that loop has stopped or is stopping.
+func (h *Hub) unregisterClient(ctx context.Context, client *Client) {
+	h.lifecycleMu.Lock()
+	runCtx := h.ctx
+	stopped := h.stopped.Load()
+	h.lifecycleMu.Unlock()
+	if stopped {
+		h.handleUnregister(ctx, client)
+		return
+	}
+	if runCtx == nil {
+		select {
+		case h.Unregister <- client:
+		default:
+			h.handleUnregister(ctx, client)
+		}
+		return
+	}
+	select {
+	case h.Unregister <- client:
+	case <-runCtx.Done():
+		h.handleUnregister(ctx, client)
+	}
+}
+
+func (h *Hub) dispatchBroadcast(ctx context.Context, msg *Message, broadcastCh, sequencedBroadcastCh chan<- *Message) {
+	target := broadcastCh
+	if msg.replaySequence() > 0 {
+		target = sequencedBroadcastCh
+	}
+	select {
+	case target <- msg:
+	default:
+		BroadcastDropsTotal.Inc()
+		if msg.replaySequence() > 0 {
+			h.failRoomClients(msg.Room)
+		}
+		h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
+			"type", msg.Type,
+			"room", msg.Room)
+	}
+}
+
+func (h *Hub) beginRun(parent context.Context) (context.Context, context.CancelFunc, bool) {
+	runCtx, runCancel := context.WithCancel(parent)
+	h.lifecycleMu.Lock()
+	if h.stopped.Load() || h.runStarted {
+		h.lifecycleMu.Unlock()
+		runCancel()
+		return nil, nil, false
+	}
+	h.runStarted = true
+	h.ctx, h.ctxCancel = runCtx, runCancel
+	h.runWG.Add(1)
+	h.lifecycleMu.Unlock()
+	return runCtx, runCancel, true
+}
+
+func (h *Hub) endRun(runCancel context.CancelFunc) {
+	runCancel()
+	h.lifecycleMu.Lock()
+	h.ctx, h.ctxCancel = nil, nil
+	h.runStarted = false
+	h.lifecycleMu.Unlock()
+	h.runWG.Done()
+}
+
 // Run starts the hub's main select loop.
 //
 // PERF-14-04 (audit Wave 14): Broadcast messages are dispatched to a worker
@@ -583,16 +691,11 @@ func (h *Hub) Context() context.Context {
 // h.broadcastWorkers (set from cfg.BroadcastWorkers / WS_BROADCAST_WORKERS
 // env var, default 2×GOMAXPROCS) instead of the hard-coded constant 4.
 func (h *Hub) Run(ctx context.Context) {
-	runCtx, runCancel := context.WithCancel(ctx)
-	h.lifecycleMu.Lock()
-	h.ctx, h.ctxCancel = runCtx, runCancel
-	h.lifecycleMu.Unlock()
-	defer func() {
-		runCancel()
-		h.lifecycleMu.Lock()
-		h.ctx, h.ctxCancel = nil, nil
-		h.lifecycleMu.Unlock()
-	}()
+	runCtx, runCancel, started := h.beginRun(ctx)
+	if !started {
+		return
+	}
+	defer h.endRun(runCancel)
 
 	workers := h.broadcastWorkers
 	if workers <= 0 {
@@ -643,21 +746,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.handleUnregister(ctx, client)
 
 		case msg := <-h.Broadcast:
-			target := broadcastCh
-			if msg.replaySequence() > 0 {
-				target = sequencedBroadcastCh
-			}
-			select {
-			case target <- msg:
-			default:
-				BroadcastDropsTotal.Inc()
-				if msg.replaySequence() > 0 {
-					h.failRoomClients(msg.Room)
-				}
-				h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
-					"type", msg.Type,
-					"room", msg.Room)
-			}
+			h.dispatchBroadcast(ctx, msg, broadcastCh, sequencedBroadcastCh)
 
 		case <-queueDepthTicker.C:
 			BroadcastQueueDepth.Set(float64(len(broadcastCh) + len(sequencedBroadcastCh)))
@@ -681,9 +770,25 @@ func (h *Hub) failRoomClients(room string) {
 }
 
 func (h *Hub) handleRegister(ctx context.Context, client *Client) {
+	// Serialize final admission with Stop and Run-context cancellation. A
+	// register rendezvous can release its sender before this function starts,
+	// allowing an already-started pump to unregister synchronously while shutdown
+	// is in progress. Holding lifecycleMu through insertion and metric accounting
+	// makes either registration precede shutdown completely or be rejected.
+	h.lifecycleMu.Lock()
 	h.mu.Lock()
+	if h.stopped.Load() || (h.runStarted && (h.ctx == nil || h.ctx.Err() != nil)) {
+		h.mu.Unlock()
+		h.lifecycleMu.Unlock()
+		client.cancelConnection()
+		client.closeOnce.Do(func() { safeClose(client.Send) })
+		client.closeTransport("Failed to close connection after hub shutdown")
+		return
+	}
+
 	if h.maxClients > 0 && len(h.Clients) >= h.maxClients {
 		h.mu.Unlock()
+		h.lifecycleMu.Unlock()
 		if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelWarn) {
 			h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
 				"id", client.ID,
@@ -700,8 +805,9 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 		return
 	}
 	h.Clients[client.ID] = client
-	h.mu.Unlock()
 	ActiveConnections.Inc()
+	h.mu.Unlock()
+	h.lifecycleMu.Unlock()
 	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
 		h.Logger.InfoContext(ctx, "Client connected", "id", client.ID)
 	}
@@ -721,6 +827,7 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 		h.mu.Lock()
 		client.mu.Lock()
 		for room := range client.Rooms {
+			delete(client.Rooms, room)
 			if clients, ok := h.Rooms[room]; ok {
 				delete(clients, client)
 				if len(clients) == 0 {
@@ -884,14 +991,18 @@ func (h *Hub) isRoomMember(room string, client *Client) bool {
 }
 
 func (h *Hub) scheduleClientEviction(client *Client) {
-	StartTrackedGoroutine(func() {
-		select {
-		case h.Unregister <- client:
-		case <-h.ctx.Done():
-			// RZ-24-03: Hub shutting down; close client directly.
-			client.closeOnce.Do(func() { safeClose(client.Send) })
-		}
-	})
+	h.lifecycleMu.Lock()
+	if h.stopped.Load() {
+		h.lifecycleMu.Unlock()
+		client.Disconnect(websocket.CloseTryAgainLater, "slow client evicted")
+		return
+	}
+	h.clientEvictionWG.Add(1)
+	h.lifecycleMu.Unlock()
+
+	startTrackedGoroutine(func() {
+		client.Disconnect(websocket.CloseTryAgainLater, "slow client evicted")
+	}, h.clientEvictionWG.Done)
 }
 
 // SubscribeToNATS registers NATS subscriptions and stores them for graceful shutdown.
@@ -1593,13 +1704,22 @@ func (h *Hub) disconnectSessionContext(ctx context.Context, jti string, closeCod
 func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 	cleanupCtx, cancel := context.WithCancel(ctx)
 	h.lifecycleMu.Lock()
+	if h.stopped.Load() {
+		h.lifecycleMu.Unlock()
+		cancel()
+		return
+	}
 	if h.limiterCancel != nil {
 		h.limiterCancel()
 	}
 	h.limiterCancel = cancel
+	// Add under lifecycleMu so Stop cannot begin Wait until all admitted
+	// cleanup workers have reserved their completion count.
+	h.limiterCleanupWG.Add(1)
 	h.lifecycleMu.Unlock()
 
 	StartTrackedGoroutine(func() {
+		defer h.limiterCleanupWG.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				h.Logger.ErrorContext(cleanupCtx, "CRITICAL: Panic in LimiterCleanup goroutine avoided ws-hub crash", "panic", r)
@@ -1642,6 +1762,11 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 
 // Stop drains all NATS subscriptions (flushing in-flight messages).
 func (h *Hub) Stop() {
+	//nolint:contextcheck // Stop is a context-free lifecycle API; its shutdown cannot be canceled by callers.
+	h.stop(context.Background())
+}
+
+func (h *Hub) stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
 		h.lifecycleMu.Lock()
 		h.stopped.Store(true)
@@ -1657,13 +1782,18 @@ func (h *Hub) Stop() {
 			h.sessionRevocationCancel = nil
 		}
 		h.lifecycleMu.Unlock()
+		h.limiterCleanupWG.Wait()
+		h.runWG.Wait()
+		h.clientEvictionWG.Wait()
+		h.closeActiveClients(ctx)
+		h.clientPumpWG.Wait()
 		// A stopped Hub must not leave a Pub/Sub consumer behind. The listener's
 		// WaitGroup entry is registered while lifecycleMu is held, before Stop
 		// can set stopped and begin this join.
 		h.sessionRevocationWG.Wait()
 		for _, sub := range h.subs {
 			if err := sub.Drain(); err != nil {
-				h.Logger.WarnContext(context.Background(), "NATS subscription drain error", "err", err)
+				h.Logger.WarnContext(ctx, "NATS subscription drain error", "err", err)
 			}
 		}
 		if h.UpgradeLimiter != nil {
@@ -1675,6 +1805,22 @@ func (h *Hub) Stop() {
 		}
 		h.jwksMu.Unlock()
 	})
+}
+
+func (h *Hub) closeActiveClients(ctx context.Context) {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.Clients))
+	for _, client := range h.Clients {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		client.cancelConnection()
+		client.cancelAllRoomReplays()
+		client.closeTransportWithControlFrame(1001, "server shutting down")
+		h.handleUnregister(ctx, client)
+	}
 }
 
 // HasJWKSCache reports whether the JWKS cache has been initialised.

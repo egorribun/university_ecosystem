@@ -57,6 +57,55 @@ Production must set it to `ClusterIssuer`, producing only
 `cert-manager.io/cluster-issuer`. Do not inject either annotation through the
 free-form ingress annotation map.
 
+## Envoy Gateway API preview (fail-closed)
+
+`gatewayApi.enabled` defaults to `false`. Setting it to `true` currently makes
+Helm rendering fail with an explicit parity diagnostic; the ordinary Ingress
+path remains the only deployable chart path. A self-attested values flag was
+removed because it could not prove that the necessary Envoy policies or their
+runtime dependencies existed.
+
+The unresolved Ingress contract is concrete: `50m` request bodies, `50`
+requests/second with a `5x` per-client burst, and `20` concurrent connections
+per client. Envoy Gateway `v1.9.2` does not provide a drop-in policy combination
+for those semantics:
+
+- Its global `BackendTrafficPolicy` source-CIDR selector can distinguish IP
+  clients, but global limiting needs separately configured rate-limit service
+  infrastructure. The v1.9.2 `RateLimitValue` has requests and time unit fields,
+  with no burst control. Local limits are per-route and per Envoy instance, not
+  per client. The Go Gateway defaults to a 100 requests/second limit and a
+  configured burst of 200, but the chart does not wire those settings and the
+  limiter does not consume its burst parameter. Its trusted-proxy set is broader
+  than a target-specific Envoy-to-Gateway chain, so it does not establish the
+  legacy 50/250 contract.
+- `ClientTrafficPolicy.connection.connectionLimit` limits a Gateway or listener
+  per Envoy proxy, not each client. Setting it to 20 would cap the whole listener
+  and conflict with the 1,000-connection WebSocket acceptance target.
+- Envoy Gateway `v1.9.2` supports `BackendTrafficPolicy.requestBuffer` targeted
+  at an `HTTPRoute`, and rejects a request above its configured limit with 413.
+  The dormant chart template isolates `/api/v1` on its own route and attaches
+  the fixed `50Mi` limit there, preserving the Go Gateway as the HTTP/auth and
+  gRPC-dispatch owner. `/ws`, `/webtransport`, `/graphql`, and `/.well-known`
+  remain outside that body-buffer policy. The filter fully buffers each request
+  before forwarding it; the externally managed Envoy data plane has no accepted
+  concurrent-buffer memory budget, and this route does not prove the existing
+  ingress-wide 50 MiB cap on every other path. The backend ASGI middleware's
+  50 MiB cap does not replace an edge limit.
+
+The chart therefore still blocks full Gateway API rendering. In addition to the
+body-limit scope and data-plane memory budget above, it needs a non-spoofable
+per-client rate and burst policy and a safe per-client connection policy, each
+covered by rendered contracts. No manual override exists. Route values continue
+to assign API/auth traffic to the Go Gateway, public JWKS to the backend,
+`/ws/ticket` to the Go Gateway, and `/ws/chat` to ws-hub.
+
+This review uses the pinned [Envoy Gateway v1.9 request-buffering](https://gateway.envoyproxy.io/v1.9/tasks/traffic/request-buffering/),
+[global-rate-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/global-rate-limit/),
+[connection-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/connection-limit/),
+[ClientTrafficPolicy API](https://gateway.envoyproxy.io/v1.9/api/extension_types/),
+and [v1.9 release notes](https://gateway.envoyproxy.io/news/releases/v1.9/).
+
 CWV release metadata is configured only through the typed top-level `cwv`
 tree. Its release SHA and frontend digest must exactly match the immutable
 release inputs; `backend.env.CWV_*` overrides are not part of the deployment

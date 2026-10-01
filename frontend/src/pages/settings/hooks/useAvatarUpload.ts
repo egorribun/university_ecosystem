@@ -11,10 +11,11 @@ import type { SetSnackbar } from "@/pages/settings/types"
 import { useObjectUrlPreview } from "./useObjectUrlPreview"
 
 const DEFAULT_AVATAR = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"
-const MAX_FILE_SIZE_MB = 12
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
 
-const isImage = (file: File) => /^image\/(png|jpe?g|webp|gif|avif)$/i.test(file.type)
-const withinSize = (file: File, maxMB = MAX_FILE_SIZE_MB) => file.size / (1024 * 1024) <= maxMB
+const isImage = (file: File) => ALLOWED_IMAGE_TYPES.has(file.type.toLowerCase())
+const withinSize = (file: File) => file.size <= MAX_FILE_SIZE_BYTES
 
 export function useAvatarUpload(setSnackbar: SetSnackbar) {
   const { t } = useTranslation(["settings"])

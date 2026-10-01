@@ -121,11 +121,77 @@ def test_websocket_ticket_is_redacted_from_access_logs() -> None:
     """One-time WS tickets must never be persisted as raw bearer credentials."""
     for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
         content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        assert re.search(
-            r"format\s+filter\s*\{[^}]*request>uri\s+query\s*\{[^}]*replace\s+ticket\s+REDACTED",
-            content,
-            re.DOTALL,
+        uri_filters = re.findall(
+            r"request>uri\s+multi_regexp\s*\{(.*?)(?=\n[ \t]*\})", content, re.DOTALL
+        )
+        assert any(
+            "regexp ([?&]ticket=)[^&]* ${1}REDACTED" in block for block in uri_filters
         ), f"Caddy access-log URI must redact ticket query values in {relative_path}"
+
+
+def test_password_reset_bearers_are_redacted_from_access_and_runtime_logs() -> None:
+    """Reset bearer values must not reach Caddy's persistent/collected logs."""
+    required_redactions = (
+        "regexp ^/reset-password/[^/?]+ /reset-password/REDACTED",
+        "regexp ([?&]token=)[^&]* ${1}REDACTED",
+        "regexp ([?&]ticket=)[^&]* ${1}REDACTED",
+    )
+
+    for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        global_options, separator, site_config = content.partition("\n}\n")
+        assert separator, f"Expected global options block in {relative_path}"
+
+        assert "log default {" in global_options, relative_path
+        assert "exclude http.log.access" in global_options, relative_path
+        global_uri_filters = re.findall(
+            r"request>uri\s+multi_regexp\s*\{(.*?)(?=\n[ \t]*\})",
+            global_options,
+            re.DOTALL,
+        )
+        site_uri_filters = re.findall(
+            r"request>uri\s+multi_regexp\s*\{(.*?)(?=\n[ \t]*\})",
+            site_config,
+            re.DOTALL,
+        )
+        assert any(
+            all(redaction in block for redaction in required_redactions)
+            for block in global_uri_filters
+        ), (
+            f"Caddy runtime logs must redact reset and WS bearer values in {relative_path}"
+        )
+        assert any(
+            all(redaction in block for redaction in required_redactions)
+            for block in site_uri_filters
+        ), (
+            f"Caddy access logs must redact reset and WS bearer values in {relative_path}"
+        )
+
+
+def test_tls_edge_sets_the_shared_browser_security_headers() -> None:
+    """The public TLS edge must protect frontend SSR and proxied responses."""
+    content = (REPO_ROOT / "services" / "caddy" / "Caddyfile").read_text(
+        encoding="utf-8"
+    )
+    _global_options, separator, site_config = content.partition("\n}\n")
+    assert separator, "Expected the TLS site after Caddy's global options"
+
+    required_headers = (
+        r"^\s*header\s+X-Content-Type-Options\s+nosniff\s*$",
+        r"^\s*header\s+X-Frame-Options\s+DENY\s*$",
+        r'^\s*header\s+X-XSS-Protection\s+"0"\s*$',
+        r"^\s*header\s+Referrer-Policy\s+strict-origin-when-cross-origin\s*$",
+    )
+    for pattern in required_headers:
+        assert re.search(pattern, site_config, re.MULTILINE), (
+            f"TLS Caddy site is missing required browser security header matching {pattern!r}"
+        )
+
+    assert re.search(
+        r'^\s*header\s+Strict-Transport-Security\s+"max-age=31536000; includeSubDomains; preload"\s*$',
+        site_config,
+        re.MULTILINE,
+    ), "TLS Caddy site must retain its HSTS policy"
 
 
 def test_ws_ticket_precedes_general_ws_block() -> None:

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 
@@ -54,12 +55,12 @@ async def test_list_audit_logs_as_admin(root_client, user_factory, db_session):
     assert any(item["actor_user_id"] == str(admin.id) for item in data["items"])
 
 
-async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
-    # Create a student user
+@pytest.mark.parametrize("role", ["student", "teacher"])
+async def test_list_audit_logs_forbidden_for_non_admin(root_client, user_factory, role):
     password = "StudentPass123!"
     hashed = await get_password_hash(password)
     student = await user_factory(
-        role="student", email="student-audit@example.com", hashed_password=hashed
+        role=role, email=f"{role}-audit@example.com", hashed_password=hashed
     )
 
     login_response = await root_client.post(
@@ -74,6 +75,18 @@ async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
     )
 
     assert response.status_code == 403
+
+    time_travel_response = await root_client.get(
+        "/admin/audit/time-travel",
+        params={
+            "aggregate_type": "user",
+            "aggregate_id": str(uuid4()),
+            "target_timestamp": datetime.now(UTC).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert time_travel_response.status_code == 403
 
 
 async def test_list_audit_logs_filtering(root_client, user_factory, db_session):

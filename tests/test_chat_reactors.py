@@ -82,6 +82,9 @@ class TestGetReactors:
         assert result[0].avatar_url == "https://example.com/a.png"
         assert result[1].name == "Bob"
         assert result[1].avatar_url is None
+        repo.message_exists_in_chat.assert_awaited_once_with(
+            message_id, chat.id, user_id=user.id
+        )
         repo.get_reactors.assert_awaited_once_with(message_id, "👍")
 
     @pytest.mark.asyncio

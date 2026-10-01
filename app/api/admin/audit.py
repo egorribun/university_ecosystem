@@ -51,6 +51,11 @@ _ALLOWED_ACTIONS: frozenset[str] = frozenset(
         "data.export",
         "data.modify",
         "data.delete",
+        # Values emitted by app.services.data_access.log_data_access and
+        # batch_log_data_access for profile reads, exports, and deletions.
+        "read",
+        "export",
+        "delete",
     }
 )
 
@@ -86,7 +91,7 @@ async def list_audit_logs(
         .outerjoin(ActorProfile, Actor.id == ActorProfile.user_id)
         .outerjoin(Subject, DataAccessLog.subject_user_id == Subject.id)
         .outerjoin(SubjectProfile, Subject.id == SubjectProfile.user_id)
-        .order_by(DataAccessLog.created_at.desc())
+        .order_by(DataAccessLog.created_at.desc(), DataAccessLog.id.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -139,6 +144,9 @@ async def list_audit_logs(
 
         # Verify cryptographic signature
         is_valid = secure_audit.verify_integrity(log)
+        metadata_is_authenticated = is_valid and secure_audit.signature_covers_metadata(
+            log
+        )
 
         items.append(
             schemas.AuditLogOut(
@@ -150,9 +158,9 @@ async def list_audit_logs(
                 resource_type=log.resource_type,
                 resource_id=log.resource_id,
                 action=log.action,
-                context=log.context,
-                ip_address=log.ip_address,
-                user_agent=log.user_agent,
+                context=log.context if metadata_is_authenticated else None,
+                ip_address=log.ip_address if is_valid else None,
+                user_agent=log.user_agent if metadata_is_authenticated else None,
                 created_at=log.created_at,
                 is_valid=is_valid,
             )

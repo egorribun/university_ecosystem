@@ -50,6 +50,7 @@ from app.services.event_service import EventService
 from app.services.file_scanner import scan_for_malware
 from app.services.notification_service import NotificationService
 from app.services.private_attachments import (
+    _path_segments,
     private_attachment_filename,
     private_attachment_response,
     private_attachment_storage_key,
@@ -63,6 +64,27 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/events", tags=["events"])
 
 _EVENTS_CACHE_CONTROL = "private, max-age=180"
+
+
+def _event_attachment_url_matches_resource(
+    storage_url: str,
+    event_id: uuid.UUID | int,
+    filename: str,
+) -> bool:
+    """Require a private storage key to carry the same event identity as its row."""
+    segments = _path_segments(storage_url)
+    expected_directory = f"event_{event_id}"
+    for index, segment in enumerate(segments):
+        if segment != "event_files":
+            continue
+        tail = segments[index + 1 :]
+        if len(tail) == 1 and tail[0] == filename:
+            # Current flat keys embed the owner in the generated filename.
+            return filename.startswith(f"{expected_directory}_")
+        if len(tail) == 2 and tail[1] == filename:
+            # Historical hierarchical keys carry the owner in the directory.
+            return tail[0] == expected_directory
+    return False
 
 
 def _validate_id_type(id_val: uuid.UUID | int) -> None:
@@ -391,6 +413,9 @@ async def download_event_file(
             item
             for item in files
             if private_attachment_filename(item.file_url, "event") == filename
+            and _event_attachment_url_matches_resource(
+                item.file_url, event_id, filename
+            )
         ),
         None,
     )

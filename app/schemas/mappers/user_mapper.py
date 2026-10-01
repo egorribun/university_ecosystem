@@ -38,6 +38,18 @@ def map_user_orm_to_dict(user: Any) -> dict[str, Any]:
             "achievements": get_attr(profile, "achievements"),
             "profile_department": get_attr(profile, "department"),
             "position": get_attr(profile, "position"),
+            "profile_detail": (
+                {
+                    "about": get_attr(profile, "about"),
+                    "telegram": get_attr(profile, "telegram"),
+                    "status": get_attr(profile, "status"),
+                    "achievements": get_attr(profile, "achievements"),
+                    "department": get_attr(profile, "department"),
+                    "position": get_attr(profile, "position"),
+                }
+                if profile is not None
+                else None
+            ),
         }
     )
 

@@ -500,6 +500,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "k8s/kyverno",
         "k8s/flagd",
         "frontend/scripts",
+        "frontend/knip.json",
         "frontend/package.json",
         "frontend/src/hooks",
         "frontend/src/hooks/useChatWebSocket.ts",

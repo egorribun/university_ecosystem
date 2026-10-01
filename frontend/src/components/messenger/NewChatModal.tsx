@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react"
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useId, useRef, useState } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
@@ -9,6 +9,7 @@ import type { User } from "@/types/User"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { TextField } from "@/components/ui/TextField"
+import { useAppShell } from "@/contexts/AppShellContext"
 // PERF-20-05 (audit 2026-03-24): Debounce search to prevent API spam.
 import { useDebounced } from "@/hooks/useDebounced"
 import useFocusTrap from "@/hooks/useFocusTrap"
@@ -81,6 +82,46 @@ export function NewChatModal({
   // useEffect with [open] dep fires ONCE on modal open + RAF-defers to next
   // frame after the dialog is mounted in DOM.
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const userListRef = useRef<HTMLDivElement | null>(null)
+
+  const focusUserOption = (index: number) => {
+    const options = userListRef.current?.querySelectorAll<HTMLButtonElement>(
+      '[role="option"]:not(:disabled)'
+    )
+    options?.item(index)?.focus()
+  }
+
+  const handleUserSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "ArrowDown") return
+    const options = userListRef.current?.querySelectorAll<HTMLButtonElement>(
+      '[role="option"]:not(:disabled)'
+    )
+    if (!options?.length) return
+    event.preventDefault()
+    focusUserOption(0)
+  }
+
+  const handleUserOptionKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+    const options = userListRef.current?.querySelectorAll<HTMLButtonElement>(
+      '[role="option"]:not(:disabled)'
+    )
+    if (!options?.length) return
+    event.preventDefault()
+
+    const currentIndex = Array.from(options).indexOf(event.currentTarget)
+    if (event.key === "ArrowUp" && currentIndex === 0) {
+      searchInputRef.current?.focus()
+      return
+    }
+
+    const nextIndex =
+      event.key === "ArrowDown"
+        ? Math.min(currentIndex + 1, options.length - 1)
+        : Math.max(currentIndex - 1, 0)
+    options.item(nextIndex)?.focus()
+  }
+
   useEffect(() => {
     if (!open) return
     const rafId = requestAnimationFrame(() => searchInputRef.current?.focus())
@@ -89,7 +130,7 @@ export function NewChatModal({
 
   useEffect(() => {
     if (!open) return
-    const handler = (event: KeyboardEvent) => {
+    const handler = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault()
         onClose()
@@ -117,6 +158,15 @@ export function NewChatModal({
     trimmedGroupName.length > 0 &&
     selectedUsers.length >= MIN_GROUP_MEMBERS &&
     !isCreatingGroup
+
+  const { setOverlayState } = useAppShell()
+  const overlayStateId = `messenger-new-chat:${titleId}`
+
+  useEffect(() => {
+    if (!open) return
+    setOverlayState(overlayStateId, { blurred: false, scrollLocked: true })
+    return () => setOverlayState(overlayStateId, null)
+  }, [open, overlayStateId, setOverlayState])
 
   const toggleUserSelection = (user: User) => {
     setSelectedUsers((prev) =>
@@ -285,6 +335,7 @@ export function NewChatModal({
                 placeholder={t("messenger:searchUsers")}
                 aria-label={t("messenger:searchUsers")}
                 className="w-full"
+                onKeyDown={handleUserSearchKeyDown}
                 ref={searchInputRef}
               />
 
@@ -397,6 +448,7 @@ export function NewChatModal({
                     during async load to suppress "X options" announcement during
                     fetch. */}
                 <div
+                  ref={userListRef}
                   className="space-y-1"
                   role="listbox"
                   aria-label={t("messenger:searchUsers")}
@@ -414,6 +466,7 @@ export function NewChatModal({
                         role="option"
                         aria-selected={isGroupMode ? isSelected : false}
                         disabled={isGroupMode && isCreatingGroup}
+                        onKeyDown={handleUserOptionKeyDown}
                         whileHover={
                           prefersReducedMotion
                             ? undefined

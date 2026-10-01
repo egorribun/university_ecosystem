@@ -90,12 +90,12 @@
   },
   "media": {
     "validation": {
-      "supportedFormats": "Поддерживаются форматы: PNG, JPG, WebP, AVIF, GIF",
-      "fileTooLarge": "Файл больше 12 МБ"
+      "supportedFormats": "Поддерживаются форматы: PNG, JPG, WebP",
+      "fileTooLarge": "Файл больше 5 МБ"
     },
     "avatar": {
       "title": "Фото профиля",
-      "subtitle": "PNG, JPG, WebP, AVIF или GIF до 12 МБ",
+      "subtitle": "PNG, JPG или WebP до 5 МБ",
       "change": "Сменить",
       "delete": "Удалить фото",
       "updated": "Аватар обновлён",

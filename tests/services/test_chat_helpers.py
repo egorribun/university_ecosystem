@@ -733,6 +733,18 @@ def test_serialize_message_read_at_none_when_unread() -> None:
 # ── 5. handle_message_sent fetches the sender explicitly (Wave 205) ───────────
 
 
+def _configure_message_handler_membership(db: MagicMock, member_id: uuid.UUID) -> None:
+    async def execute(statement: object, *_args: object, **_kwargs: object):
+        if "chat_participants" in str(statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: member_id)
+        return SimpleNamespace()
+
+    db.execute = AsyncMock(side_effect=execute)
+    db.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
+
+
 @pytest.mark.asyncio
 async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship() -> (
     None
@@ -771,6 +783,7 @@ async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship(
 
     db = MagicMock()
     db.get = AsyncMock(side_effect=fake_get)
+    _configure_message_handler_membership(db, sender_id)
     db.commit = AsyncMock()
 
     session_cm = MagicMock()
@@ -1004,6 +1017,7 @@ async def test_handle_message_sent_loads_replied_for_reply() -> None:
 
     db = MagicMock()
     db.get = AsyncMock(side_effect=fake_get)
+    _configure_message_handler_membership(db, sender_id)
     db.commit = AsyncMock()
 
     session_cm = MagicMock()
@@ -1039,7 +1053,9 @@ async def test_handle_message_sent_loads_replied_for_reply() -> None:
         await eh.handle_message_sent(event)
 
     # The handler resolved the replied-to message and passed it through.
-    repo.get_message_by_id.assert_awaited_once_with(reply_target_id)
+    repo.get_message_by_id.assert_awaited_once_with(
+        reply_target_id, user_id=sender_id, chat_id=chat_id
+    )
     service.notify_new_message.assert_awaited_once()
     assert service.notify_new_message.await_args.kwargs["replied"] is replied_dto
 
@@ -1181,6 +1197,7 @@ async def test_handle_message_sent_threads_group_identity() -> None:
 
     db = MagicMock()
     db.get = AsyncMock(side_effect=fake_get)
+    _configure_message_handler_membership(db, sender_id)
     db.commit = AsyncMock()
 
     session_cm = MagicMock()

@@ -610,11 +610,12 @@ func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, 
 		}
 		capabilityClaims = claims
 		capabilityVerified = true
-		// Verify the bearer proof at the NATS boundary but never persist it in
-		// Temporal history. The workflow only needs the already-validated job
-		// fields; retaining the short-lived secret would widen its exposure.
-		job.Capability = ""
 	}
+	// Capability is transport-only metadata. Verify the original proof first
+	// when verification is configured, then always strip the field before any
+	// Temporal call so optional development-mode verification cannot persist an
+	// untrusted bearer value in workflow history.
+	job.Capability = ""
 	if c == nil {
 		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
 			"reason", "temporal_client_unavailable", "consumer", fileProcessConsumer)

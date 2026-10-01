@@ -4966,7 +4966,9 @@ jobs:
           tar xzf /tmp/k6.tar.gz -C /tmp
           sudo mv "/tmp/k6-v${k6_version}-linux-amd64/k6" /usr/local/bin/
       - name: Validate k6 script syntax
-        run: k6 inspect tests/performance/ws_hub_10k_test.js
+        run: |
+          k6 inspect tests/performance/ws_hub_10k_test.js
+          k6 inspect tests/performance/ws_hub_mvp_load_test.js
 
   coverage-policy-gate:
     name: Coverage & Quality Policy Gate
@@ -6079,6 +6081,15 @@ jobs:
             fi
           done
 
+          # Performance Gate depends directly on frontend tests. If those
+          # tests fail or are skipped, GitHub skips the dependent job too; that
+          # expected skip must not become a second, misleading CI failure.
+          # Cancellation and unrelated skips remain fail-closed.
+          performance_expected_result=success
+          if [[ "$FRONTEND_TESTS_RESULT" == "failure" || "$FRONTEND_TESTS_RESULT" == "skipped" ]]; then
+            performance_expected_result=skipped
+          fi
+
           # Mutation execution and aggregation are intentionally phase-gated on
           # the aggregate coverage contract. The Stryker preflight may overlap
           # coverage, but a failed prerequisite still blocks execution. In that
@@ -6116,6 +6127,8 @@ jobs:
             expected_result=success
             if [[ "$job" == "coverage-policy-gate" ]]; then
               expected_result="$coverage_expected_result"
+            elif [[ "$job" == "performance-gate" ]]; then
+              expected_result="$performance_expected_result"
             elif [[ "$job" == mutation-tests-* ]]; then
               expected_result="$mutation_expected_result"
             elif [[ "$job" == "chaos-tests" ]]; then

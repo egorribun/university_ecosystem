@@ -225,22 +225,9 @@ func isNormalCloseError(err error) bool {
 func (c *Client) cleanupReadPump() {
 	c.cancelConnection()
 	c.cancelAllRoomReplays()
-	c.Hub.msgLimiters.Delete(c.ID)
 	if c.Hub != nil {
-		hCtx := c.Hub.Context()
-		if hCtx != nil {
-			select {
-			case c.Hub.Unregister <- c:
-			case <-hCtx.Done():
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		} else {
-			select {
-			case c.Hub.Unregister <- c:
-			default:
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		}
+		c.Hub.msgLimiters.Delete(c.ID)
+		c.Hub.unregisterClient(c.ctx, c)
 	}
 	c.closeTransport("Failed to close session connection")
 }
@@ -1027,11 +1014,7 @@ func (c *Client) failReplayConnection() {
 	if c.Hub == nil {
 		return
 	}
-	select {
-	case c.Hub.Unregister <- c:
-	default:
-		c.closeOnce.Do(func() { safeClose(c.Send) })
-	}
+	c.Hub.unregisterClient(c.ctx, c)
 }
 
 func (c *Client) handleLeave(msg Message) {
@@ -1311,20 +1294,7 @@ func (c *Client) Disconnect(closeCode int, reason string) {
 	c.closeTransportWithControlFrame(closeCode, reason)
 
 	if c.Hub != nil {
-		hCtx := c.Hub.Context()
-		if hCtx != nil {
-			select {
-			case c.Hub.Unregister <- c:
-			case <-hCtx.Done():
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		} else {
-			select {
-			case c.Hub.Unregister <- c:
-			default:
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		}
+		c.Hub.unregisterClient(c.ctx, c)
 	}
 }
 

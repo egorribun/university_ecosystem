@@ -6,7 +6,7 @@ the narrowly scoped admin-smoke GitHub workflow target. Other direct execution
 without a verified seed target fails closed.
 
 Usage:
-    python scripts/live_stand.py seed
+    python scripts/live_stand.py seed --demo
 
 The script requires TEST_PASSWORD in its process environment. It has no built-in
 admin password; CI supplies a unique, masked value for each admin-smoke run.

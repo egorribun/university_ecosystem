@@ -292,6 +292,25 @@ coverage exclusion.
 - Fresh current-SHA coverage, mutation, schema-drift and security evidence is
   required before a phase is accepted.
 
+## Deployed-Catalog Preflight Command
+
+Run the read-only preflight against the target PostgreSQL database before and
+after each DDL phase. Set `DATABASE_URL` through the approved secret
+environment, then run:
+
+```powershell
+uv run --locked python scripts/be02_catalog_preflight.py --phase 1
+uv run --locked python scripts/be02_catalog_preflight.py --phase 3
+uv run --locked python scripts/be02_catalog_preflight.py --phase 4
+```
+
+Phase two emits no DDL and is not a selectable preflight phase. Phase four is
+the default for compatibility with existing invocations. The command runs in
+a read-only transaction and reports each target as `pending`, `converged`, or
+`blocked`; it does not apply migrations, acquire table locks, or accept the
+database URL as a command-line argument. A deployed-catalog result remains
+required evidence and cannot be replaced by an offline catalog fixture.
+
 ## Consequences
 
 ### Positive

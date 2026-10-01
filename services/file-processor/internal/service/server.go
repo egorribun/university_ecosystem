@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/university-ecosystem/file-processor/internal/jobcontract"
 	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	enumspb "go.temporal.io/api/enums/v1"
@@ -65,6 +66,9 @@ func validateProcessFileRequest(req *pb.ProcessFileRequest) error {
 func validateProcessFileIdentity(req *pb.ProcessFileRequest) error {
 	if req.Id == "" {
 		return status.Error(codes.InvalidArgument, "id is required")
+	}
+	if len(req.Id) > jobcontract.MaxIDLen {
+		return status.Errorf(codes.InvalidArgument, "id exceeds %d bytes", jobcontract.MaxIDLen)
 	}
 	if !allowedFileTypes[req.Type] {
 		return status.Errorf(codes.InvalidArgument, "unsupported file type: %q", req.Type)

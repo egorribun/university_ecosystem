@@ -91,7 +91,22 @@ func TestUpgradeHandlers_RejectEmptyValidatedUser(t *testing.T) {
 
 func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T) {
 	h := hubWithWTTicketRedis(t, "user-wt:jti-wt")
-	h.Register = make(chan *Client, 1)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	runDone := make(chan struct{})
+	go func() {
+		h.Run(runCtx)
+		close(runDone)
+	}()
+	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	t.Cleanup(func() {
+		h.Stop()
+		cancelRun()
+		select {
+		case <-runDone:
+		case <-time.After(time.Second):
+			t.Error("hub run loop did not stop")
+		}
+	})
 	oldValidate := validateUpgradeTicketIdentityFunc
 	oldUpgrade := upgradeWTFunc
 	oldSession := newWebTransportSessionFunc
@@ -107,24 +122,32 @@ func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T
 	upgradeWTFunc = func(*webtransport.Server, http.ResponseWriter, *http.Request) (*webtransport.Session, error) {
 		return nil, nil
 	}
-	newWebTransportSessionFunc = func(*webtransport.Session) Session { return &recordingSession{} }
+	newWebTransportSessionFunc = func(*webtransport.Session) Session { return newBlockingShutdownSession() }
 
 	cfg := &config.Config{MaxClients: 100, SendBufferSize: 4}
 	req := httptest.NewRequest(http.MethodGet, "/wt?ticket="+validWTTicket, nil)
 	rec := httptest.NewRecorder()
 	h.HandleWebTransport(rec, req, cfg)
 
-	select {
-	case client := <-h.Register:
+	var client *Client
+	require.Eventually(t, func() bool {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		for _, candidate := range h.Clients {
+			if candidate.UserID == "user-wt" {
+				client = candidate
+				return true
+			}
+		}
+		return false
+	}, time.Second, time.Millisecond, "successful WebTransport upgrade did not register a client")
+	{
 		assert.Equal(t, "user-wt", client.UserID)
 		assert.NotEmpty(t, client.ID)
 		assert.NotEqual(t, client.UserID, client.ID)
 		assert.Equal(t, "tenant-wt", client.Identity.TenantID)
 		assert.Equal(t, "tenant-wt", client.ctx.Value(tenantIDKey))
 		assert.Equal(t, "22222222-2222-4222-8222-222222222222", client.SessionJTI)
-		client.cancel()
-	case <-time.After(time.Second):
-		t.Fatal("successful WebTransport upgrade did not register a client")
 	}
 }
 

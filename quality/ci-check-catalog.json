@@ -68,6 +68,20 @@
       },
       "notes": "Informational or policy-independent check; never inferred to be branch-protection required."
     },
+    "live-acceptance": {
+      "classification": "advisory",
+      "required_events": [],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Non-required live evidence: pull requests run auth/reset smoke, while scheduled and manually dispatched default-branch runs execute the full suite."
+    },
     "nightly": {
       "classification": "nightly",
       "required_events": [],
@@ -5013,6 +5027,43 @@
             "first_failure_preserved": true,
             "classifier": "not_applicable",
             "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/live-acceptance.yml",
+      "name": "Owned Live Acceptance",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"types\":[\"opened\",\"synchronize\",\"reopened\",\"ready_for_review\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 3 * * *\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "live-acceptance": {
+          "profile": "live-acceptance",
+          "check_name_template": "Owned live acceptance (${{ github.event_name }})",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "playwright-one-retry",
+            "review_required": true,
+            "notes": "The live Playwright config retries once in CI; the owner-aware runner suppresses individual output and reports aggregate counts only."
           }
         }
       }

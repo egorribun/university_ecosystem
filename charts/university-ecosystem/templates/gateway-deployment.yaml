@@ -68,6 +68,8 @@ spec:
           env:
             - name: GATEWAY_PORT
               value: "8080"
+            - name: GATEWAY_TRUSTED_PROXIES
+              value: {{ join "," .Values.gateway.config.trustedProxies | quote }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

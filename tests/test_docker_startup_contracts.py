@@ -85,6 +85,222 @@ def test_start_script_uses_cryptographic_randomness_for_secrets() -> None:
     assert "HexLength" not in imgproxy_function
 
 
+def test_prepare_only_requires_live_stand_inputs_and_validates_vapid_shape() -> None:
+    script = _read("start-docker.ps1")
+    parameters = script[script.index("param(") : script.index("$ErrorActionPreference")]
+    assert "[switch]$PrepareOnly" in parameters
+
+    validation = script[
+        script.index("function Assert-PrepareOnlyLiveInputs") : script.index(
+            "function New-Secret"
+        )
+    ]
+    assert "docker-compose.live.yml" in validation
+    assert "COMPOSE_PROJECT_NAME" in validation
+    assert "ue-live-[0-9a-f]{16}" in validation
+    for port_name in (
+        "BACKEND",
+        "FRONTEND",
+        "POSTGRES",
+        "GATEWAY",
+        "WS_HUB",
+        "TEMPORAL_GRPC",
+        "TEMPORAL_WEB",
+        "IMGPROXY",
+        "GRAFANA",
+        "PROMETHEUS",
+        "ALLOY",
+        "PYROSCOPE",
+        "CADDY_HTTP",
+        "CADDY_HTTPS",
+        "MAILPIT",
+    ):
+        assert port_name in validation
+    assert "LIVE_VAPID_PUBLIC_KEY" in validation
+    assert "LIVE_VAPID_PRIVATE_KEY" in validation
+    assert "FromBase64String" in validation
+    assert "LIVE_BASE_URL" in validation
+
+
+def test_prepare_only_stops_after_local_configuration_and_skips_docker_startup() -> (
+    None
+):
+    script = _read("start-docker.ps1")
+    prerequisite = script[
+        script.index("# -- Prerequisite: Docker") : script.index("# -- Handle -Down")
+    ]
+    assert "if (-not $PrepareOnly)" in prerequisite
+    assert "docker info" in prerequisite
+
+    legacy_guard = script[
+        script.index(
+            "if (-not $PrepareOnly) {\n    Assert-LegacyS3VolumeGuard"
+        ) : script.index("# -- Generate secrets")
+    ]
+    assert "if (-not $PrepareOnly)" in legacy_guard
+
+    configuration = script[
+        script.index("# -- Generate secrets") : script.index("# -- Core resource guard")
+    ]
+    prepare_exit = configuration.index('Write-Ok "Live stand environment prepared')
+    prepare_branch = configuration.rfind("if ($PrepareOnly)", 0, prepare_exit)
+    assert prepare_branch >= 0
+    assert configuration.index("Ensure-ApplicationSecrets") < prepare_branch
+    assert configuration.index("Ensure-DockerConfigRevision") < prepare_branch
+    assert configuration.index("Write-WorkerEnvironmentFile") < prepare_branch
+    assert configuration.index("New-JwtRs256Key") < prepare_branch
+    assert configuration.index("New-TemporalServiceToken") < prepare_branch
+    assert "New-TemporalServiceToken -NoDockerFallback:$PrepareOnly" in configuration
+    assert configuration.index("Assert-PreparedLiveStandConfiguration") < prepare_exit
+    assert configuration.index("exit 0", prepare_exit) < len(configuration)
+
+    prepare_only_path = configuration[
+        prepare_branch : configuration.index("exit 0", prepare_exit)
+    ]
+    assert "docker compose" not in prepare_only_path
+    assert "migrations" not in prepare_only_path
+    assert prepare_exit < script.index("# -- Core resource guard")
+    assert prepare_exit < script.index("# -- Build")
+    assert prepare_exit < script.index("# -- Start services")
+
+
+def test_prepare_only_disables_docker_fallback_for_rsa_material() -> None:
+    script = _read("start-docker.ps1")
+    private_key_function = _powershell_function(
+        script, "New-JwtRs256Key", "New-JwtRs256PublicKey"
+    )
+    public_key_function = _powershell_function(
+        script, "New-JwtRs256PublicKey", "ConvertTo-Base64Url"
+    )
+
+    assert "[switch]$NoDockerFallback" in private_key_function
+    assert "[switch]$NoDockerFallback" in public_key_function
+    assert "-not $NoDockerFallback" in private_key_function
+    assert "-not $NoDockerFallback" in public_key_function
+    assert (
+        'New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem" '
+        "-NoDockerFallback:$PrepareOnly"
+    ) in script
+    assert (
+        'New-JwtRs256PublicKey -PrivateKeyPath ".secrets/jwt_rs256.pem" '
+        '-OutputPath ".secrets/jwt_rs256.pub.pem" -NoDockerFallback:$PrepareOnly'
+    ) in script
+
+
+def test_launcher_validates_resolved_compose_config_before_start_without_printing_it() -> (
+    None
+):
+    script = _read("start-docker.ps1")
+    validation_start = script.index("function Assert-ComposeConfiguration")
+    validation_end = script.index("# -- Prerequisite: Docker running", validation_start)
+    validation = script[validation_start:validation_end]
+    assert (
+        "docker compose @ComposeArgs --env-file $EnvFile config --format json"
+        in validation
+    )
+    assert "2>$null" in validation
+    assert "$resolvedComposeModel = Assert-ComposeConfiguration" in script
+    assert "COMPOSE_PROJECT_NAME" not in validation
+    assert "Write-Host" not in validation
+
+    validation_call = script.rindex(
+        "Assert-ComposeConfiguration", 0, script.index("# -- Core resource guard")
+    )
+    prepare_exit = script.index(
+        "exit 0", script.index('Write-Ok "Live stand environment prepared')
+    )
+    core_guard = script.index("# -- Core resource guard")
+    build_start = script.index("# -- Build")
+    start_services = script.index("# -- Start services")
+    assert prepare_exit < validation_call < core_guard < build_start < start_services
+
+    token_minter = script[
+        script.index("function New-TemporalServiceToken") : script.index(
+            "function Assert-PreparedLiveStandConfiguration"
+        )
+    ]
+    assert "-not $NoDockerFallback" in token_minter
+
+
+def test_managed_compose_volume_preflight_is_read_only_and_owner_scoped() -> None:
+    script = _read("start-docker.ps1")
+    parameters = script[script.index("param(") : script.index("$ErrorActionPreference")]
+    assert "[switch]$AllowExistingOwnedVolumes" in parameters
+
+    preflight = _powershell_function(
+        script, "Assert-ManagedComposeVolumeOwnership", "Assert-ComposeConfiguration"
+    )
+    for contract in (
+        "docker volume ls --format",
+        "docker volume inspect",
+        "com.docker.compose.project",
+        "com.docker.compose.volume",
+        "AllowExistingOwnedVolumes",
+        "PSObject.Properties",
+    ):
+        assert contract in preflight
+    assert "throw" in preflight
+    assert "docker volume rm" not in preflight
+    assert "docker volume create" not in preflight
+    assert "Write-Host" not in preflight
+
+    configuration = _powershell_function(
+        script, "Assert-ComposeConfiguration", "Assert-LegacyS3VolumeGuard"
+    )
+    assert "ConvertFrom-Json" in configuration
+    assert "return $composeModel" in configuration
+    live_guard = script[
+        script.index("if ($AllowExistingOwnedVolumes)") : script.index(
+            "function New-Secret"
+        )
+    ]
+    assert '"docker-compose.live.yml"' in live_guard
+    assert "COMPOSE_PROJECT_NAME" in live_guard
+    assert "ue-live-[0-9a-f]{16}" in live_guard
+
+    config_call = script.rindex(
+        "$resolvedComposeModel = Assert-ComposeConfiguration",
+        0,
+        script.index("# -- Core resource guard"),
+    )
+    ownership_call = script.index(
+        "Assert-ManagedComposeVolumeOwnership -ComposeModel $resolvedComposeModel",
+        config_call,
+    )
+    core_guard = script.index("# -- Core resource guard")
+    build_start = script.index("# -- Build")
+    start_services = script.index("# -- Start services")
+    assert config_call < ownership_call < core_guard < build_start < start_services
+
+
+def test_launcher_rejects_unowned_default_project_override_before_volume_probe() -> (
+    None
+):
+    script = _read("start-docker.ps1")
+    preflight = _powershell_function(
+        script, "Assert-ManagedComposeVolumeOwnership", "Assert-ComposeConfiguration"
+    )
+
+    guard = 'if (-not $isLiveStand -and $projectName -cne "university_ecosystem")'
+    assert guard in preflight
+    project_guard = preflight.index(guard)
+    volume_inventory = preflight.index("docker volume ls --format")
+    assert "$isLiveStand" in preflight
+    assert project_guard < volume_inventory
+
+
+def test_allow_existing_managed_volumes_requires_exact_compose_labels() -> None:
+    script = _read("start-docker.ps1")
+    preflight = _powershell_function(
+        script, "Assert-ManagedComposeVolumeOwnership", "Assert-ComposeConfiguration"
+    )
+    assert "-cne $projectName" in preflight
+    assert "-cne $volume.Key" in preflight
+    assert "-not $AllowExistingOwnedVolumes" in preflight
+    assert "2>$null" in preflight
+    assert "ConvertFrom-Json" in preflight
+
+
 def test_launcher_uses_the_prometheus_configured_metrics_identity() -> None:
     script = _read("start-docker.ps1")
     metrics_function = _powershell_function(
@@ -405,14 +621,13 @@ def test_compose_wrappers_always_use_the_full_stack_env_file() -> None:
         assert "docker-compose.full.yml" in wrapper
 
 
-def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack() -> (
+def test_start_script_waits_for_the_full_stack_without_auto_removing_containers() -> (
     None
 ):
     script = _read("start-docker.ps1")
     services_start = script.index("$services = [ordered]@{")
     services_block = script[services_start : script.index("do {", services_start)]
 
-    assert "up -d --remove-orphans" in script
     assert "--force-recreate" not in script
     assert "ps --all" in script
     assert (
@@ -543,11 +758,14 @@ def test_launcher_exposes_an_explicit_bounded_core_mode() -> None:
     for service in excluded_services:
         assert f'"{service}"' not in core_block, service
 
-    # Full mode remains the default and must retain its historical all-service
-    # invocation; only the explicit core opt-in is allowed to scope the command.
+    # Full mode remains the default; only the explicit core opt-in scopes the
+    # command. Both modes leave orphan cleanup to an ownership-reviewed action.
     assert "if ($Core)" in script
-    assert "up -d --no-deps --remove-orphans" in script
-    assert "up -d --remove-orphans" in script
+    assert "up -d --no-deps gateway caddy" in script
+    assert "up -d $CoreBootstrapServices" in script
+    assert "up -d $CoreInitServices" in script
+    assert "up -d $coreApplicationServices" in script
+    assert "docker compose @ComposeArgs --env-file $EnvFile up -d\n" in script
 
 
 def test_core_mode_filters_optional_health_probes_and_prometheus_validation() -> None:
@@ -886,7 +1104,7 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
     ) in launcher
     expected_commands = (
         'Write-Host "       python scripts/live_stand.py up --ref HEAD"',
-        'Write-Host "       python scripts/live_stand.py seed"',
+        'Write-Host "       python scripts/live_stand.py seed --demo"',
         'Write-Host "       python scripts/live_stand.py e2e (optional)"',
     )
     for command in expected_commands:
@@ -900,7 +1118,7 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
     assert "stop this stack first to avoid resource contention" in launcher
     assert "Run only when no other full Compose stack is active." in launcher
     live_stand_up = 'Write-Host "       python scripts/live_stand.py up --ref HEAD"'
-    live_stand_seed = 'Write-Host "       python scripts/live_stand.py seed"'
+    live_stand_seed = 'Write-Host "       python scripts/live_stand.py seed --demo"'
     live_stand_e2e = 'Write-Host "       python scripts/live_stand.py e2e (optional)"'
     assert launcher.count(live_stand_up) == 1
     assert launcher.count(live_stand_seed) == 1

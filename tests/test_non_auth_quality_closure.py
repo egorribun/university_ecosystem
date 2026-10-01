@@ -936,7 +936,9 @@ async def test_notification_redelivery_records_provider_exceptions(
     monkeypatch.setattr(
         delivery.webpush_module,
         "_send_push_async",
-        AsyncMock(side_effect=RuntimeError("provider failed")),
+        AsyncMock(
+            side_effect=RuntimeError("https://push.example.test/private-endpoint")
+        ),
     )
     build_row = MagicMock(side_effect=delivery._build_delivery_row)
     monkeypatch.setattr(delivery, "_build_delivery_row", build_row)
@@ -954,11 +956,13 @@ async def test_notification_redelivery_records_provider_exceptions(
         assert prior.status == "error"
         assert prior.delivered_at is None
         assert prior.status_code is None
-        assert prior.detail == "exception:provider failed"
+        assert prior.detail == "exception:RuntimeError"
+        assert "private-endpoint" not in prior.detail
     else:
         assert build_row.call_args is not None
         assert build_row.call_args.kwargs["status"] == "error"
-        assert build_row.call_args.kwargs["detail"] == "exception:provider failed"
+        assert build_row.call_args.kwargs["detail"] == "exception:RuntimeError"
+        assert "private-endpoint" not in build_row.call_args.kwargs["detail"]
 
 
 @pytest.mark.asyncio

@@ -133,7 +133,7 @@ npm run test:e2e --prefix frontend
 
 # Live acceptance lane: real backend, database, seeded roles and Mailpit
 python scripts/live_stand.py up
-python scripts/live_stand.py seed
+python scripts/live_stand.py seed --demo
 npm run test:e2e:live --prefix frontend
 python scripts/live_stand.py down
 ```

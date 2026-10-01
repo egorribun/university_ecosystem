@@ -50,6 +50,39 @@ async def test_deliver_and_process_uses_shared_default_deliverer(
 
 
 @pytest.mark.asyncio
+async def test_deliver_and_process_uses_an_explicit_custom_deliverer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers with a specialized sender still use canonical result processing."""
+
+    expected = delivery.WebPushResult(
+        subscription_id=uuid4(),
+        endpoint="https://push.example.test/custom",
+        user_id=uuid4(),
+        status="sent",
+        status_code=201,
+    )
+    deliverer = AsyncMock(return_value=[expected])
+    process = AsyncMock()
+    monkeypatch.setattr(delivery.webpush_module, "process_push_results", process)
+
+    payload = {"title": "Custom sender"}
+    outcome = await delivery.deliver_and_process_push_results(
+        [],
+        payload,
+        topic="news.published",
+        concurrency=3,
+        deliverer=deliverer,
+    )
+
+    assert outcome == [expected]
+    deliverer.assert_awaited_once_with(
+        [], payload, topic="news.published", concurrency=3
+    )
+    process.assert_awaited_once_with([expected])
+
+
+@pytest.mark.asyncio
 async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -344,7 +377,9 @@ async def test_redelivery_records_exception_metric_with_unknown_type_fallback(
     monkeypatch.setattr(
         delivery.webpush_module,
         "_send_push_async",
-        AsyncMock(side_effect=RuntimeError("provider down")),
+        AsyncMock(
+            side_effect=RuntimeError("https://push.example.test/private-endpoint")
+        ),
     )
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", failed)
@@ -373,7 +408,8 @@ async def test_redelivery_records_exception_metric_with_unknown_type_fallback(
     assert row_call.args[:2] == (notification.id, notification.created_at)
     assert row_call.kwargs["subscription_id"] == subscription.id
     assert row_call.kwargs["attempted_at"].tzinfo is UTC
-    assert row_call.kwargs["detail"] == "exception:provider down"
+    assert row_call.kwargs["detail"] == "exception:RuntimeError"
+    assert "private-endpoint" not in row_call.kwargs["detail"]
 
 
 @pytest.mark.asyncio

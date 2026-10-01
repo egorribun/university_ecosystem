@@ -2,6 +2,51 @@
 {{- if not (has $environment (list "development" "staging" "production")) -}}
   {{- fail "global.environment must be one of: development, staging, production" -}}
 {{- end -}}
+{{- if .Values.gatewayApi.enabled -}}
+  {{- if .Values.ingress.enabled -}}
+    {{- fail "gatewayApi.enabled and ingress.enabled cannot both be true; disable Ingress before validating the Gateway API preview" -}}
+  {{- end -}}
+  {{- if or (eq (len .Values.gatewayApi.networkPolicy.namespaceSelector) 0) (eq (len .Values.gatewayApi.networkPolicy.podSelector) 0) -}}
+    {{- fail "gatewayApi.networkPolicy namespaceSelector and podSelector must both select the Envoy data-plane pods" -}}
+  {{- end -}}
+  {{- if or (not (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/Gateway")) (not (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute")) (not (.Capabilities.APIVersions.Has "gateway.envoyproxy.io/v1alpha1/ClientTrafficPolicy")) (not (.Capabilities.APIVersions.Has "gateway.envoyproxy.io/v1alpha1/BackendTrafficPolicy")) (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) -}}
+    {{- fail "Gateway API and Envoy Gateway CRDs must be installed and declared to Helm before enabling gatewayApi" -}}
+  {{- end -}}
+  {{- if eq (len .Values.ingress.tls) 0 -}}
+    {{- fail "ingress.tls must contain host certificates when gatewayApi is enabled" -}}
+  {{- end -}}
+  {{- range $host := .Values.ingress.hosts -}}
+    {{- $certificateFound := false -}}
+    {{- range $.Values.ingress.tls -}}
+      {{- if has $host.host .hosts -}}
+        {{- $certificateFound = true -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if not $certificateFound -}}
+      {{- fail (printf "gatewayApi has no ingress.tls certificate covering host %q" $host.host) -}}
+    {{- end -}}
+    {{- range $path := $host.paths -}}
+      {{- if not (has $path.pathType (list "Exact" "Prefix")) -}}
+        {{- fail (printf "gatewayApi supports only Exact and Prefix ingress pathTypes; host %q path %q uses %q" $host.host $path.path $path.pathType) -}}
+      {{- end -}}
+      {{- if and (eq $path.service "ws-hub") (not $.Values.wsHub.enabled) -}}
+        {{- fail (printf "gatewayApi host %q routes to ws-hub but wsHub.enabled is false" $host.host) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $gatewayAPICatchAllFound := false -}}
+  {{- range $host := .Values.ingress.hosts -}}
+    {{- range $path := $host.paths -}}
+      {{- if and (eq $path.path "/") (eq $path.pathType "Prefix") (eq $path.service "gateway") -}}
+        {{- $gatewayAPICatchAllFound = true -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if not $gatewayAPICatchAllFound -}}
+    {{- fail "gatewayApi request buffering requires an ingress host with a Prefix / route to the Go Gateway" -}}
+  {{- end -}}
+  {{- fail "gatewayApi.enabled is blocked: v1.9 requestBuffer is rendered only for the isolated /api/v1 HTTPRoute and fully buffers each request; the chart has no accepted concurrent-buffer memory budget and this does not prove the 50 MiB ingress-wide body limit on other paths. The legacy 50 requests/second with 5x per-client burst and 20 concurrent connections per client are also not enforceable by the current chart. Global source-CIDR limits require separately configured rate-limit infrastructure and do not expose the required burst; listener connection limits are shared per Gateway/listener and per proxy." -}}
+{{- end -}}
 {{- $mfaSecretKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
 {{- if not .Values.applicationSecrets.keys.cwvManualTesterUserIds -}}
   {{- fail "applicationSecrets.keys.cwvManualTesterUserIds must be set" -}}
@@ -190,7 +235,10 @@
       {{- fail (printf "%s.autoscaling requires minReplicas>=2 and maxReplicas>=minReplicas in staging/production" $component) -}}
     {{- end -}}
   {{- end -}}
-  {{- if or (not .Values.ingress.enabled) (not .Values.ingress.className) (not .Values.ingress.tls) -}}
+  {{- if and (not .Values.ingress.enabled) (not .Values.gatewayApi.enabled) -}}
+    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
+  {{- end -}}
+  {{- if and .Values.ingress.enabled (or (not .Values.ingress.className) (not .Values.ingress.tls)) -}}
     {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
   {{- end -}}
   {{- if or (hasKey .Values.ingress.annotations "cert-manager.io/issuer") (hasKey .Values.ingress.annotations "cert-manager.io/cluster-issuer") -}}

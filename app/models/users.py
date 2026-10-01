@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Time,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy import (
@@ -34,6 +35,11 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     # domain to 255 chars → total max 320; we use 254 (RFC 5321 §4.5.3.1 total).
     # Prevents storage-amplification via unbounded email payloads.
     email: Mapped[str] = mapped_column(String(254), unique=True, nullable=False)
+    # Private idempotency ownership for reserved synthetic demo accounts.
+    # Deliberately omitted from all API schemas and profile write paths.
+    demo_seed_key: Mapped[str | None] = mapped_column(
+        String(96), nullable=True, default=None
+    )
     # Argon2id hash format: $argon2id$v=19$m=32768,t=3,p=4$<salt>$<hash>
     # Max length: 97 bytes encoded (hex base64). Use 256 chars for safety margin.
     hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -45,7 +51,10 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         DateTime(timezone=True), nullable=True, index=True
     )
 
-    __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
+    __table_args__ = (
+        Index("ix_users_email_lower", func.lower(email), unique=True),
+        UniqueConstraint("demo_seed_key", name="uq_users_demo_seed_key"),
+    )
 
     role: Mapped[UserRole] = mapped_column(
         SqlEnum(

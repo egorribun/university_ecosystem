@@ -253,7 +253,7 @@ class TestSendMessageSuccess:
         uow.chats.create_message = AsyncMock(side_effect=_capture_message)
 
         # get_last_messages returns by message id — we need to match dynamically
-        async def _get_last(ids):
+        async def _get_last(ids, **_kwargs):
             if not created_msgs:
                 return {}
             m = created_msgs[0]
@@ -302,6 +302,8 @@ class TestSendMessageSuccess:
         user = _mock_user()
         msg_id = uuid.uuid4()
         chat_id = uuid.uuid4()
+        uow.chats.get_by_id = AsyncMock(return_value=_mock_chat(user.id))
+        uow.chats.check_participant = AsyncMock(return_value=True)
 
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(
@@ -344,6 +346,9 @@ class TestSendMessageSuccess:
 
         assert result is not None
         uow.chats.create_message.assert_not_called()
+        uow.chats.get_message_by_id.assert_awaited_once_with(
+            msg_id, user_id=user.id, chat_id=chat_id
+        )
 
     @pytest.mark.asyncio
     async def test_with_file_upload(self, monkeypatch):
@@ -372,7 +377,7 @@ class TestSendMessageSuccess:
 
         uow.chats.create_message = AsyncMock(side_effect=_capture)
 
-        async def _get_last(ids):
+        async def _get_last(ids, **_kwargs):
             if not created_msgs:
                 return {}
             m = created_msgs[0]

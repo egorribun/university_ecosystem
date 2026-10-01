@@ -58,6 +58,10 @@ func TestEmpirical_MaxClientsPreCheck(t *testing.T) {
 	})
 
 	t.Run("Allows upgrade when hub capacity is not reached", func(t *testing.T) {
+		go h.Run(ctx)
+		require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+		t.Cleanup(h.Stop)
+
 		// Seed fresh ticket
 		ticket2 := "9988776655443322110099887766554433221100998877665544332211009988" // pragma: allowlist secret
 		require.NoError(t, rdb.Set(ctx, wsTicketKeyPrefix+ticket2, "user-maxclient-test2:"+validSessionJTI, 15*time.Second).Err())

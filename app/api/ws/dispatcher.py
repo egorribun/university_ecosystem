@@ -64,9 +64,12 @@ class MessageDispatcher:
             chat_id = data.get("chat_id")
             if chat_id:
                 try:
-                    chat_uuid = (
-                        uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
-                    )
+                    if isinstance(chat_id, str):
+                        chat_uuid = uuid.UUID(chat_id)
+                    elif isinstance(chat_id, uuid.UUID):
+                        chat_uuid = chat_id
+                    else:
+                        raise ValueError("chat_id must be a UUID string")
                 except ValueError:
                     await websocket.send_json(
                         {"type": "error", "message": "Invalid chat_id format"}

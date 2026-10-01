@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -135,10 +136,52 @@ async def test_get_user_activity_mocked_session(svc: AnalyticsService) -> None:
     result_proxy = MagicMock()
     result_proxy.fetchall.return_value = rows
     session = AsyncMock()
+    session.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
     session.execute = AsyncMock(return_value=result_proxy)
     result = await svc.get_user_activity(session, uuid.uuid4())
     assert result == {"news_created": 5, "events_attended": 2, "messages_sent": 7}
     session.execute.assert_awaited_once()
+
+
+@pytest.mark.parametrize("transaction_active", [False, True])
+async def test_get_user_activity_sets_transaction_local_rls_identity_first(
+    svc: AnalyticsService,
+    transaction_active: bool,
+) -> None:
+    user_id = uuid.uuid4()
+    operations: list[str] = []
+    result_proxy = MagicMock()
+    result_proxy.fetchall.return_value = [("messages_sent", 3)]
+    session = AsyncMock()
+    session.in_transaction = MagicMock(return_value=transaction_active)
+    session.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    )
+
+    async def begin() -> None:
+        operations.append("begin")
+
+    async def execute(statement: object, parameters: object = None) -> MagicMock:
+        sql = str(statement)
+        if "set_config('app.current_user_id'" in sql:
+            assert parameters == {"uid": str(user_id)}
+            assert ", true)" in sql
+            operations.append("rls_identity")
+            return MagicMock()
+        assert parameters == {"user_id": user_id}
+        operations.append("activity_query")
+        return result_proxy
+
+    session.begin = AsyncMock(side_effect=begin)
+    session.execute = AsyncMock(side_effect=execute)
+
+    result = await svc.get_user_activity(session, user_id)
+
+    assert result == {"messages_sent": 3}
+    expected = [] if transaction_active else ["begin"]
+    assert operations == [*expected, "rls_identity", "activity_query"]
 
 
 # ------------------------------------------------------- factory + shutdown

@@ -138,44 +138,7 @@ class ChatMessageDispatcher:
         message is created.  The key is namespaced by ``(chat_id, user_id)`` to
         prevent cross-user and cross-chat replay attacks.
         """
-        # ── Idempotency check (D-02) ────────────────────────────────────────
         _idempotency_cache_key: str | None = None
-        if idempotency_key:
-            import json as _json
-
-            from app.deps.cache import get_cache_client
-
-            _cache = await get_cache_client()
-            _idempotency_cache_key = _make_idempotency_key(
-                chat_id, user.id, idempotency_key
-            )
-            _cached = await _cache.get(_idempotency_cache_key)
-            if _cached:
-                # BE-02 (audit 2026-03-08 Wave 5): Cache now stores only the
-                # message ID (slim format) rather than the full serialised
-                # MessageResponse.  This prevents message content from sitting
-                # unencrypted in Redis for 24 h.  Re-fetch the full message from
-                # the DB on cache hit — one extra indexed PK lookup is negligible
-                # compared to avoiding plaintext content storage in the cache.
-                try:
-                    _hit = _json.loads(_cached)
-                    _msg_id = uuid.UUID(_hit["message_id"])
-                except (ValueError, KeyError, TypeError):  # RZ-28-01
-                    # Legacy entry: full JSON from before BE-02 — fall through to
-                    # re-send path (idempotency protection degraded, not broken).
-                    pass
-                else:
-                    _full = await self.repository.get_message_by_id(_msg_id)
-                    if _full is not None:
-                        # Wave 207 — exclude the raw replied_to DTO from the spread
-                        # (MessageResponse is extra="forbid"); inject the lean preview.
-                        return MessageResponse(
-                            **_full.model_dump(exclude={"replied_to"}),
-                            reply_to=ReplyPreview.from_message(_full.replied_to),
-                            sender_presence=PresenceStatus(
-                                active=ws_manager.is_online(_full.sender_id)
-                            ),
-                        )
 
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
@@ -187,6 +150,40 @@ class ChatMessageDispatcher:
         if not is_participant:
             raise_forbidden(locale, "errors.chat.not_participant")
 
+        # Check idempotency only after current membership authorization. A cached
+        # message ID is not an authorization grant; users removed from a chat must
+        # not retrieve an old response through the retry path.
+        if idempotency_key:
+            import json as _json
+
+            from app.deps.cache import get_cache_client
+
+            _cache = await get_cache_client()
+            _idempotency_cache_key = _make_idempotency_key(
+                chat_id, user.id, idempotency_key
+            )
+            _cached = await _cache.get(_idempotency_cache_key)
+            if _cached:
+                try:
+                    _hit = _json.loads(_cached)
+                    _msg_id = uuid.UUID(_hit["message_id"])
+                except (ValueError, KeyError, TypeError):  # RZ-28-01
+                    # Legacy entry: full JSON from before BE-02 — fall through to
+                    # re-send path (idempotency protection degraded, not broken).
+                    pass
+                else:
+                    _full = await self.repository.get_message_by_id(
+                        _msg_id, user_id=user.id, chat_id=chat_id
+                    )
+                    if _full is not None:
+                        return MessageResponse(
+                            **_full.model_dump(exclude={"replied_to"}),
+                            reply_to=ReplyPreview.from_message(_full.replied_to),
+                            sender_presence=PresenceStatus(
+                                active=ws_manager.is_online(_full.sender_id)
+                            ),
+                        )
+
         # Wave 207 — if this is a reply, the target must exist AND be in THIS chat.
         # message_exists_in_chat checks both (id == … AND chat_id == …) via EXISTS,
         # so a reply to a message in another chat — or a bogus id — 404s before any
@@ -194,7 +191,7 @@ class ChatMessageDispatcher:
         # the SET NULL self-FK.
         if reply_to_message_id is not None:
             target_in_chat = await self.repository.message_exists_in_chat(
-                reply_to_message_id, chat_id
+                reply_to_message_id, chat_id, user_id=user.id
             )
             if not target_in_chat:
                 raise_not_found("message", locale)
@@ -379,7 +376,9 @@ class ChatMessageDispatcher:
             raise
 
         # Reload message with attachments for the response
-        reloaded = await self.repository.get_last_messages([message.id])
+        reloaded = await self.repository.get_last_messages(
+            [message.id], user_id=user.id
+        )
         full_message = reloaded.get(message.id)
 
         if not full_message:
@@ -497,15 +496,23 @@ class ChatMessageDispatcher:
         # 3) Each id must belong to the source chat — validate ALL before creating
         #    ANY message (all-or-nothing). message_exists_in_chat is one EXISTS/id.
         for mid in ordered_ids:
-            if not await self.repository.message_exists_in_chat(mid, source_chat_id):
+            if not await self.repository.message_exists_in_chat(
+                mid, source_chat_id, user_id=user.id
+            ):
                 raise_not_found("message", locale)
 
-        # Batched load of the source messages (sender + attachments selectinload'd).
-        sources = await self.repository.get_last_messages(ordered_ids)
-        if len(sources) != len(ordered_ids):
+        # Load only live sources; a tombstone must not be forwarded with its
+        # retained attachment references. The DTO guard also fails closed if a
+        # repository implementation returns a tombstone despite the SQL filter.
+        sources = await self.repository.get_last_messages(
+            ordered_ids, user_id=user.id, live_only=True
+        )
+        if len(sources) != len(ordered_ids) or any(
+            source.deleted_at is not None for source in sources.values()
+        ):
             # Defensive TOCTOU guard — message_exists_in_chat validated each id
-            # above; a gap here would be a negligible same-session race. Fail
-            # before creating anything (all-or-nothing).
+            # above, then this live-only batch prevents a stale tombstone from
+            # reaching attachment copying or destination writes.
             raise_not_found("message", locale)
 
         # Resolve the ORIGINAL senders' display names for the "Forwarded from X"
@@ -600,7 +607,9 @@ class ChatMessageDispatcher:
         # preserving source order. forwarded_from_name auto-carries via model_dump;
         # a forward is not a reply → reply_to=None. message.id is the identity-map
         # PK (not expired on commit), so the reload-by-id is safe.
-        reloaded = await self.repository.get_last_messages([m.id for m in created])
+        reloaded = await self.repository.get_last_messages(
+            [m.id for m in created], user_id=user.id
+        )
         responses: list[MessageResponse] = []
         for message in created:
             presence = PresenceStatus(active=ws_manager.is_online(user.id))
@@ -696,10 +705,10 @@ class ChatMaintenanceService:
         new_content: str,
         locale: str,
     ) -> None:
-        """Edit a message's content (author-only) and broadcast it live.
+        """Edit a message's content (author-only) and queue durable delivery.
 
-        Wave 205 SW3 — copies the mark_read synchronous-broadcast pattern: participant
-        check → repo edit → commit → gated broadcast AFTER commit (read-your-write).
+        The transactional outbox records the event with the row mutation; its
+        handler broadcasts only after the commit succeeds.
         The repo's author-only WHERE means affected == 0 ⇒ not the author / missing /
         already deleted ⇒ 404 (raised before commit; nothing to persist).
         """
@@ -711,31 +720,14 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        edited_at, affected = await self.repository.edit_message(
-            message_id, user.id, new_content
+        _, affected = await self.repository.edit_message(
+            message_id, user.id, new_content, chat_id=chat_id
         )
         if affected == 0:
             raise_not_found("message", locale)
 
         async with self.uow:
             await self.uow.commit()
-
-        # Wave 205 SW3 — broadcast message_edited SYNCHRONOUSLY after commit so the
-        # edit flips live via the W204 bridge. exclude_user_id is omitted (broadcast
-        # to all): the NATS mirror can't exclude per-recipient anyway, and the FE
-        # cache-update is idempotent — the author's echo merely reconciles its
-        # optimistic client-time edited_at to the authoritative server value. A missed
-        # frame self-heals on refetch (edited_at is a persisted column).
-        await ws_manager.broadcast_to_chat(
-            chat_id,
-            {
-                "type": "message_edited",
-                "message_id": str(message_id),
-                "chat_id": str(chat_id),
-                "content": new_content,
-                "edited_at": edited_at.isoformat() if edited_at else None,
-            },
-        )
 
     async def soft_delete_message(
         self,
@@ -744,10 +736,11 @@ class ChatMaintenanceService:
         user: User,
         locale: str,
     ) -> None:
-        """Soft-delete a message (author-only) and broadcast the tombstone live.
+        """Soft-delete a message (author-only) and queue durable delivery.
 
-        Wave 205 SW3 — same synchronous-broadcast pattern as edit_message. The repo
-        clears content + stamps deleted_at (D1 tombstone); affected == 0 ⇒ 404.
+        The transactional outbox records the event with the tombstone mutation; its
+        handler broadcasts only after the commit succeeds. The repo clears content
+        and stamps deleted_at (D1 tombstone); affected == 0 ⇒ 404.
         """
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
@@ -757,24 +750,14 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        deleted_at, affected = await self.repository.soft_delete_message(
-            message_id, user.id
+        _, affected = await self.repository.soft_delete_message(
+            message_id, user.id, chat_id=chat_id
         )
         if affected == 0:
             raise_not_found("message", locale)
 
         async with self.uow:
             await self.uow.commit()
-
-        await ws_manager.broadcast_to_chat(
-            chat_id,
-            {
-                "type": "message_deleted",
-                "message_id": str(message_id),
-                "chat_id": str(chat_id),
-                "deleted_at": deleted_at.isoformat() if deleted_at else None,
-            },
-        )
 
     async def add_reaction(
         self,
@@ -801,7 +784,9 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+        if not await self.repository.message_exists_in_chat(
+            message_id, chat_id, user_id=user.id
+        ):
             raise_not_found("message", locale)
 
         is_new = await self.repository.add_reaction(message_id, user.id, emoji)
@@ -851,6 +836,11 @@ class ChatMaintenanceService:
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
+
+        if not await self.repository.message_exists_in_chat(
+            message_id, chat_id, user_id=user.id
+        ):
+            return
 
         affected = await self.repository.remove_reaction(message_id, user.id, emoji)
         async with self.uow:
@@ -1060,7 +1050,7 @@ class ChatMaintenanceService:
         self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:
         """Delete all messages in a chat (but keep the chat)."""
-        chat = await self.repository.get_by_id(chat_id, load_messages=True)
+        chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
         assert chat is not None  # noqa: S101
 
@@ -1073,12 +1063,27 @@ class ChatMaintenanceService:
         if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.history_clear_forbidden_non_admin")
 
+        rls_user_id = (
+            user.id
+            if user.id in participant_ids
+            else (chat.participants[0].id if chat.participants else None)
+        )
+        if rls_user_id is None:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        chat = await self.repository.get_by_id(
+            chat_id, load_messages=True, user_id=rls_user_id
+        )
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
         attachment_urls = await self.attachment_service.collect_urls(chat)
         message_count = len(chat.messages)
         attachment_count = len(attachment_urls)
 
         try:
-            await self.repository.delete_messages([m.id for m in chat.messages])
+            await self.repository.delete_messages(
+                [m.id for m in chat.messages], chat_id=chat_id, user_id=rls_user_id
+            )
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
 
             # PERF-W10-05: Durable cleanup via Outbox — StoredEvent is written in
@@ -1118,7 +1123,7 @@ class ChatMaintenanceService:
         self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:
         """Permanently delete a chat."""
-        chat = await self.repository.get_by_id(chat_id, load_messages=True)
+        chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
         assert chat is not None  # noqa: S101
 
@@ -1130,6 +1135,19 @@ class ChatMaintenanceService:
         # participant allows bad actors to delete evidence from the victim's device.
         if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.deletion_forbidden_non_admin")
+
+        rls_user_id = (
+            user.id
+            if user.id in participant_ids
+            else (chat.participants[0].id if chat.participants else None)
+        )
+        if rls_user_id is None:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        chat = await self.repository.get_by_id(
+            chat_id, load_messages=True, user_id=rls_user_id
+        )
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
 
         attachment_urls = await self.attachment_service.collect_urls(chat)
         message_count = len(chat.messages)

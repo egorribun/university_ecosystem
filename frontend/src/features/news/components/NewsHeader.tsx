@@ -41,6 +41,24 @@ export const NewsHeader = ({
   useVisualViewportStickyOffset(stickyRef)
 
   useEffect(() => {
+    const toolbar = stickyRef.current?.querySelector<HTMLElement>('[role="toolbar"]')
+    const activeCategoryButton = toolbar?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (!toolbar || !activeCategoryButton || toolbar.scrollWidth <= toolbar.clientWidth) return
+
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const activeButtonRect = activeCategoryButton.getBoundingClientRect()
+    const centerOffset =
+      activeButtonRect.left +
+      activeButtonRect.width / 2 -
+      (toolbarRect.left + toolbar.clientWidth / 2)
+    const maxScrollLeft = toolbar.scrollWidth - toolbar.clientWidth
+    const nextScrollLeft = Math.min(maxScrollLeft, Math.max(0, toolbar.scrollLeft + centerOffset))
+
+    if (Math.abs(nextScrollLeft - toolbar.scrollLeft) < 1) return
+    toolbar.scrollTo({ left: nextScrollLeft, top: toolbar.scrollTop, behavior: "instant" })
+  }, [activeCategory])
+
+  useEffect(() => {
     const sentinel = sentinelRef.current!
 
     const observer = new IntersectionObserver(
