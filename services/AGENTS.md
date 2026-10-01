@@ -67,6 +67,9 @@ if exists {
 - Messages exceeding 60 KB (61,440 bytes) must be rejected immediately.
 - The hub sends a `message_too_large` error frame to the sender client and terminates the frame processing pipeline (RZ-31-02).
 
+### 3.2.1. Per-Client Inbound Rate Limit
+- Every inbound frame (including malformed or unknown ones) consumes a token from a per-client bucket (`WS_CLIENT_MSG_RATE_LIMIT`, burst `WS_CLIENT_MSG_BURST`). Frames over budget are dropped and the client receives `{"type":"rate_limit_exceeded"}`. Each accepted frame costs a session-revocation check, so this limit also bounds Redis load.
+
 ### 3.3. Client Limits & Connection Pre-Check
 - `maxClients` limit must be validated in `HandleWebSocket` **before** executing the HTTP-to-WebSocket connection upgrade (TD-31-05).
 

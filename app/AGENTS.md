@@ -176,13 +176,11 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 - **Bcrypt Verification Removed**: Legacy bcrypt support has been completely excised (TD-21-04).
 - **Concurrency Limiting**: Argon2 hashing runs in a dedicated executor sized to the cgroup-aware CPU count (at least 2 threads); a semaphore admits at most `workers - 1` (at least 1) concurrent hashes per process (`app/auth/security.py`).
 
-### 6.2. Dual JWKS Architecture (RS256)
+### 6.2. RS256 & JWKS
 - Private RSA signing key: `.secrets/jwt_rs256.pem`.
 - Outbound tokens: Signed using RS256 algorithm.
 - `LoginSessionManager.finalize_login` injects claims: `sub`, `exp`, `aud`, and `role` (`user.role.value`).
-- Dual JWKS Endpoints:
-  - `/.well-known/jwks.json`: Public RSA JWKS (`kty=RSA`, `n`, `e`) for external and edge consumers.
-  - `/api/v1/.well-known/jwks.json`: HMAC stub (`kty=oct`) for backward compatibility.
+- JWKS Endpoint: `/.well-known/jwks.json` publishes the public RSA JWKS (`kty=RSA`, `n`, `e`) for the edge gateway, ws-hub and file-processor. The former HMAC `kty=oct` stub under `/api/v1/.well-known/jwks.json` had no consumer and was removed.
 - Cookies: `access_token_v2` must be issued as an `HttpOnly` cookie with `cookie_samesite="lax"`.
 
 ### 6.3. Storage Path Traversal Prevention

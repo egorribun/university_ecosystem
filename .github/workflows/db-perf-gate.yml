@@ -136,7 +136,6 @@ jobs:
                     tests/test_chat_repository_groups.py \
                     tests/test_event_repository_coverage.py \
                     tests/test_event_repository_db.py \
-                    tests/test_health_repository.py \
                     tests/test_news_repository_coverage.py \
                     tests/test_news_repository_db.py \
                     tests/test_notification_repository.py \

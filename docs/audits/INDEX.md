@@ -13,6 +13,9 @@ evidence, not current configuration or release certification.
   63 external-audit findings. Revalidate its evidence against the release SHA;
   the ledger is not a release certificate and is removed only after its useful
   rationale and findings have been transferred and reviewed.
+- [Codebase consolidation decisions](../adr/ADR-046-codebase-consolidation-audit.md)
+  — outcome of the 2026-10 dead-code, duplication and contract-drift audit:
+  what was fixed, retired and deliberately kept, with the evidence rules used.
 
 ## Legacy archive cleanup and recovery
 

@@ -262,6 +262,9 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 	if c.rejectOversizedMessage(data) {
 		return true
 	}
+	if c.rejectRateLimitedMessage() {
+		return true
+	}
 
 	var msg Message
 	if err := json.Unmarshal(data, &msg); err != nil {
@@ -1037,6 +1040,34 @@ func (c *Client) rejectOversizedMessage(data []byte) bool {
 		"code":   "message_too_large",
 		"detail": "message exceeds 60 KB limit",
 	}); err == nil {
+		select {
+		case c.Send <- notice:
+		default: // Send buffer full — client already overwhelmed.
+		}
+	}
+	return true
+}
+
+// allowIncomingMessage consumes one token from the per-client bucket. Every
+// inbound frame costs a session-revocation check against Redis, so an
+// unthrottled client could turn a cheap join/leave flood into backend load.
+func (c *Client) allowIncomingMessage() bool {
+	if c.Hub == nil || c.Hub.clientMsgRateLimit <= 0 || c.Hub.clientMsgRateBurst <= 0 {
+		return true
+	}
+	limiter, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
+		rate.NewLimiter(rate.Limit(c.Hub.clientMsgRateLimit), c.Hub.clientMsgRateBurst))
+	return limiter.(*rate.Limiter).Allow()
+}
+
+// rejectRateLimitedMessage drops a frame that exceeds the per-client rate and
+// tells the client (frontend schema: {"type":"rate_limit_exceeded"}).
+func (c *Client) rejectRateLimitedMessage() bool {
+	if c.allowIncomingMessage() {
+		return false
+	}
+	IncomingDropsTotal.Inc()
+	if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
 		select {
 		case c.Send <- notice:
 		default: // Send buffer full — client already overwhelmed.

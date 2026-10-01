@@ -85,6 +85,8 @@ take precedence over the corresponding plaintext variable.
 | `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation | Required outside development |
 | `NATS_URL` | NATS message bus endpoint | `nats://127.0.0.1:4222` |
 | `NATS_AUTH_TOKEN` | NATS authentication token | Empty locally; required in production |
+| `NATS_TASK_MAX_DELIVERIES` | Delivery attempts of a background task before it is parked in the dead-letter queue (`/admin/dlq`) | `5` |
+| `NATS_TASK_RETRY_BASE_DELAY_SECONDS` | First redelivery delay of a failed task; doubles per attempt up to 300 s | `5` |
 | `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` |
 | `RATE_LIMIT_DEFAULT` | Default rate | `200/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
@@ -132,11 +134,9 @@ take precedence over the corresponding plaintext variable.
 | `SPICEDB_PRESHARED_KEY` | SpiceDB auth key (`_FILE` supported); the development sentinel is rejected outside development | `development-preshared-key` (development only) |
 | `ELASTICSEARCH_URL` | Search engine endpoint; production/staging requires `https://` | `http://localhost:9200` (local only) |
 | `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Required |
-| `WS_HUB_INTERNAL_URL` | ws-hub control API | `http://ws-hub:8081` |
 | `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation | Required |
 | `INTERNAL_AUTH_TOKEN` | Token for ws-hub's exact room-participant callback; managed Compose/Helm/K8s deployments derive it from the existing ws-hub secret | Empty in development |
 | `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
-| `RUST_OPTIMIZER_URL` | Schedule optimization sidecar | `http://rust-optimizer:8080` |
 
 ---
 

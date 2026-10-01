@@ -14,6 +14,10 @@ Mechanism:
 2. **Event-driven Invalidation**: When a relationship changes in SpiceDB, the watcher receives an update and evicts corresponding entries from the local `_permission_cache`.
 3. **Grace-period Cache**: Live checks are cached for 60s (safety net), but most are invalidated proactively by the Watch stream.
 
+## Implementation
+
+The stream is started from `app.core.lifespan._startup_background_workers` in API processes outside the testing environment and cancelled with the other background tasks on shutdown. The permission cache is cleared after every stream end (error or clean close) because events can be missed while no stream is open. (Until 2026-10 the task existed but was never started; see ADR-046.)
+
 ## Rationale
 1. **Low Latency**: Most permission checks are resolved from local RAM.
 2. **Consistency**: Permission changes (e.g. revoking an "admin" role) take effect across the fleet in milliseconds.

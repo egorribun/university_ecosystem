@@ -47,18 +47,23 @@ _CACHE_LOCALES: tuple[str, ...] = tuple(sorted({DEFAULT_LOCALE, *SUPPORTED_LOCAL
 # Removed obsolete cache key helpers
 
 
-class MockStoriesVersionResolver:
+class StaticStoriesVersionResolver:
+    """Stories use no version token: invalidation is by key pattern instead.
+
+    Every mutation endpoint below calls ``cache.invalidate("ue:stories:list:*")``,
+    so the cached-endpoint decorator only needs a constant version.
+    """
+
     async def get_version(self, cache: Any) -> str:
         return "v1"
 
 
-mock_stories_version = MockStoriesVersionResolver()
+stories_version_resolver = StaticStoriesVersionResolver()
 
 
 @router.get("", response_model=list[schemas.StoryOut])
 @cached_endpoint(
-    # Mocking a trivial version resolver for the decorator since stories don't use cache_version logic here natively
-    version_resolver=mock_stories_version,
+    version_resolver=stories_version_resolver,
     cache_prefix="ue:stories:list",
     cache_control="public, max-age=180",
 )
