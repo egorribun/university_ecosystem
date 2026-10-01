@@ -70,7 +70,7 @@ uv run python scripts/backup_db.py restore --manifest-key database/university-20
 
 ## Create a coordinated database and object snapshot
 
-The `snapshot` command creates schema-v2 paired snapshots. Before invoking it,
+The `snapshot` command creates schema-v3 paired snapshots. Before invoking it,
 pause all application writes to PostgreSQL and the configured application S3
 bucket, and keep them paused until the command reports success. Then run:
 
@@ -79,10 +79,13 @@ uv run python scripts/backup_db.py snapshot --confirm-source-quiesced
 ~~~
 
 The required flag is an operator attestation; the script cannot pause or prove
-that external writers have stopped. It records the confirmation timestamp and
-`operator_quiesced` consistency mode in the v2 manifest. It also compares the
-database name and Alembic revision before and after the dump. The application
-object source must be configured with `STORAGE_BACKEND=s3` or `minio` and the
+that external writers have stopped. It records the confirmation timestamp,
+`operator_quiesced` consistency mode, and effective application storage public
+base URL in the v3 manifest. The URL contains no credentials and binds
+persisted object URLs to this snapshot; restore never accepts an
+operator-supplied source URL. It also compares the database name and Alembic
+revision before and after the dump. The application object source must be
+configured with `STORAGE_BACKEND=s3` or `minio` and the
 existing `StorageSettings` fields `STORAGE_S3_BUCKET`,
 `STORAGE_S3_ENDPOINT_URL`, `STORAGE_S3_REGION`,
 `STORAGE_S3_ACCESS_KEY_ID`, and `STORAGE_S3_SECRET_ACCESS_KEY`. Empty endpoint
@@ -113,7 +116,12 @@ ownership.
 ## Restore a paired snapshot into isolated targets
 
 Choose an object bucket distinct from both the source object bucket and
-`BACKUP_S3_BUCKET`. The restore target is a required bucket and prefix pair;
+`BACKUP_S3_BUCKET`. It must also match the application bucket configured for
+this restore process. Supply the target `STORAGE_S3_*` values through the
+process environment; do not edit `.env` for a restore. If `STORAGE_S3_BASE_URL`
+is set, pass that exact URL as the target public base. Otherwise the effective
+base is the configured endpoint plus bucket, or the standard AWS bucket URL.
+The restore target is a required bucket and prefix pair;
 the prefix may be empty when restoring keys at the bucket root. The selected
 prefix must have no current objects, versions, delete markers, or incomplete
 multipart uploads. Configure
@@ -121,10 +129,16 @@ multipart uploads. Configure
 choose a nonexistent database named `restore_<name>`, and run:
 
 ~~~powershell
-uv run python scripts/backup_db.py restore-snapshot --manifest-key database/snapshots/<snapshot-id>/database.manifest.json --target-database restore_university_demo --objects-target-bucket university-restore-20261001 --objects-target-prefix restore-20261001
+uv run python scripts/backup_db.py restore-snapshot --manifest-key database/snapshots/<snapshot-id>/database.manifest.json --target-database restore_university_demo --objects-target-bucket university-restore-20261001 --objects-target-prefix restore-20261001 --objects-target-public-base-url https://cdn.restore.example.edu/uploads
 ~~~
 
-Before writes, restore validates the v2 manifest, downloads and verifies the
+Keep `BACKUP_RESTORE_ADMIN_DATABASE_URL` and storage credentials in the process
+environment or configured secret provider; never place connection URLs or
+credentials in command arguments. `--objects-target-public-base-url` is a
+public URL and must exactly match the effective target application storage
+base URL. The target bucket argument must exactly match `STORAGE_S3_BUCKET`.
+
+Before writes, restore validates the v3 manifest, downloads and verifies the
 database dump and every unique object copy, checks that the database target
 does not exist, and checks that the selected target prefix has no current
 objects, versions, delete markers, or incomplete multipart uploads. To restore
@@ -134,7 +148,23 @@ S3 endpoint must support `ListObjectVersions`, `ListMultipartUploads`, pinned
 `CompleteMultipartUpload`. Unsupported or incomplete preflight/conditional
 operations fail closed. Conditional creates prevent a concurrent writer from
 replacing an object. Object bytes are restored under
-`<target-prefix>/<original-key>`, and listed HTTP metadata is preserved.
+`<target-prefix>/<original-key>`, and listed HTTP metadata is preserved. In the
+isolated restored database, the command checks the exact Alembic revision and
+the current schema's allowlisted storage reference columns before updating any
+rows. It maps exact source-base/source-key pairs in `user_profiles.avatar_url`,
+`user_profiles.cover_url`, `stories.cover_url`, `events.image_url`,
+`event_files.file_url`, `news.image_url`, and `attachments.url` to the same
+target bucket keys and target public base. External URLs remain unchanged. A
+source-base reference missing from the manifest, incompatible schema, or
+target URL exceeding a finite database column limit fails closed. Unprocessed
+`stored_events` and unresolved `failed_outbox_events` containing source storage
+URLs also fail closed. Their nested JSON string values are decoded before the
+source-prefix check, so escaped Unicode and slash forms cannot hide a retryable
+source URL; the prefix is supplied as a bound SQL value. Signed event/audit
+records are never rewritten. The database reference update commits before
+object uploads begin. If that
+transaction fails, the command reports an incomplete restore and writes no
+target objects.
 
 The restore is isolated, not a distributed transaction. PostgreSQL and S3 do
 not share an atomic commit. If the command stops after the database restore or
@@ -150,14 +180,29 @@ overwrites a database or object.
 
 The original `backup` and `restore` commands remain schema-v1 database-only
 operations for compatibility. Use `snapshot` and `restore-snapshot` when a
-coordinated database/object recovery point is required. The v2 manifest's
-revision is the Alembic database revision, not the application source commit.
+coordinated database/object recovery point is required. The reader still
+parses v2 paired manifests, but v2 does not bind the source public storage URL.
+The source bucket name is not enough to derive that URL safely: deployments
+may use a custom endpoint, path, or public CDN base. The CLI therefore refuses
+v2 paired restore before creating the target database or writing target
+objects; it will not guess a source base or accept an unverified replacement.
+This compatibility limit does not delete or invalidate existing v2 artifacts.
+Retain them with their database and object payloads. To recover a v2 snapshot,
+first establish the exact source storage base and bucket from trustworthy
+configuration captured for that snapshot, then restore the original database
+and storage topology in an isolated environment using a separately validated
+procedure. This CLI has no v2 topology-migration workflow; do not use it to
+move v2 references to a different bucket or prefix. Create a fresh v3 snapshot
+for automated restore into a separate target bucket and prefix. The v3
+manifest's revision is the Alembic database revision, not the application
+source commit.
 Quiescence is attested by the operator and cannot be independently established
 by the CLI.
 
 The Helm CronJob still has its separate direct pg_dump/rclone implementation
-and is not yet wired to this manifest/restore CLI. Only mocked S3/database
-checks have been run for this code path. No restore has been run against a
-deployed Docker/kind stack, and this implementation does not certify RPO ≤24
+and is not yet wired to this manifest/restore CLI. Mocked S3 integration checks
+and a local ephemeral PostgreSQL schema/remap/rollback proof have run. No paired
+restore has been run against a deployed Docker/kind stack, and this
+implementation does not certify RPO ≤24
 hours or RTO ≤30 minutes. Those require an isolated end-to-end restore,
 freshness monitoring, concurrent-write controls, and measured recovery evidence.

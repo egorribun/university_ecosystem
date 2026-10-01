@@ -7,11 +7,15 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
+import shutil
 import socket
+import stat
 import subprocess
 import sys
 import threading
 from collections.abc import Sequence
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -41,6 +45,37 @@ def _port_map(start: int = 24000) -> dict[str, int]:
             live_stand.LIVE_PORT_SPECS
         )
     }
+
+
+def _windows_acl_summary(path: Path) -> dict[str, object]:
+    powershell = shutil.which("pwsh") or shutil.which("powershell.exe")
+    assert powershell is not None
+    env = os.environ.copy()
+    env["LIVE_STAND_ACL_TARGET"] = str(path)
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$acl = Get-Acl -LiteralPath $env:LIVE_STAND_ACL_TARGET
+$ownerSid = ([System.Security.Principal.NTAccount]::new($acl.Owner)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+$rules = @($acl.Access | ForEach-Object {
+    [pscustomobject]@{
+        Sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        Type = $_.AccessControlType.ToString()
+        Rights = $_.FileSystemRights.ToString()
+        Inheritance = $_.InheritanceFlags.ToString()
+    }
+})
+[pscustomobject]@{ OwnerSid = $ownerSid; Rules = $rules } | ConvertTo-Json -Depth 5 -Compress
+"""
+    result = subprocess.run(  # noqa: S603 - fixed PowerShell executable and constant script
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0
+    return json.loads(result.stdout)
 
 
 def _assert_compose_port_environment(
@@ -338,7 +373,7 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
     monkeypatch.setattr(live_stand.secrets, "token_urlsafe", generate_token)
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
-    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda **_kwargs: None)
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
     daemon_checks: list[live_stand.StandOwner] = []
     monkeypatch.setattr(
@@ -2036,7 +2071,7 @@ def test_destructive_lifecycle_refuses_a_different_docker_daemon(
         published_ports=owner.published_ports,
         daemon_fingerprint="a" * 64,
     )
-    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda **_kwargs: None)
     monkeypatch.setattr(
         live_stand, "load_stand_owner", lambda _worktree: owner_with_daemon
     )
@@ -2316,6 +2351,622 @@ def test_ensure_worktree_rejects_ref_without_live_overlay(
 
     assert not worktree.exists()
     assert not any(args[0] == "worktree" for args in worktree_calls)
+
+
+def test_in_place_up_uses_owned_temp_state_without_git_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "docker-compose.full.yml").write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    (repository / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    temporal_root = repository / "services" / "temporal"
+    temporal_root.mkdir(parents=True)
+    (temporal_root / "config.yaml").write_text("global: {}\n", encoding="utf-8")
+    (temporal_root / "entrypoint.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    temporary_root = tmp_path / "temp"
+    temporary_root.mkdir()
+    state_parent = temporary_root / "ue-live-acceptance"
+    state_root = state_parent / "run-36854541120"
+    resolved_sha = "a" * 40
+    git_calls: list[tuple[str, ...]] = []
+    commands: list[tuple[list[str], Path, dict[str, str] | None]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args == ("rev-parse", "--verify", "HEAD^{commit}"):
+            return resolved_sha
+        if args == ("cat-file", "-e", f"{resolved_sha}:{live_stand.OVERLAY}"):
+            return ""
+        if args == ("rev-parse", "HEAD"):
+            return resolved_sha
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return ""
+        if args[:4] == ("ls-files", "--others", "--ignored", "--exclude-standard"):
+            return ""
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", repository.parent / "ue-live")
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", None)
+    monkeypatch.setattr(live_stand.tempfile, "gettempdir", lambda: str(temporary_root))
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(
+        live_stand,
+        "ensure_worktree",
+        lambda _ref: pytest.fail("in-place mode must not create or switch a worktree"),
+    )
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "d" * 64)
+    monkeypatch.setattr(live_stand, "choose_published_ports", lambda: _port_map(30000))
+    monkeypatch.setattr(live_stand, "require_free_ports", lambda _ports: None)
+    monkeypatch.setattr(
+        live_stand,
+        "load_or_create_vapid",
+        lambda _root: {"public": "synthetic-public", "private": "synthetic-private"},
+    )
+    real_which = live_stand.shutil.which
+    monkeypatch.setattr(
+        live_stand.shutil,
+        "which",
+        lambda name: "pwsh" if name == "pwsh" else real_which(name),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_bind_stand_owner_compose_resources",
+        lambda _root, owner, **_kwargs: owner,
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_verify_stand_owner_compose_resources",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda _owner: None)
+
+    def capture(
+        command: list[str], *, cwd: Path, env: dict[str, str] | None = None
+    ) -> None:
+        commands.append((command, cwd, env))
+
+    monkeypatch.setattr(live_stand, "_run", capture)
+
+    result = live_stand.main(
+        ["up", "--in-place", "--state-dir", str(state_root), "--ref", "HEAD"]
+    )
+
+    assert result == 0
+    assert all("worktree" not in args and "checkout" not in args for args in git_calls)
+    owner_marker = json.loads(
+        (state_root / live_stand.STAND_FILE).read_text(encoding="utf-8")
+    )
+    assert owner_marker["version"] == 7
+    assert owner_marker["repository"] == str(repository.resolve())
+    assert owner_marker["worktree"] == str(state_root.resolve())
+    assert owner_marker["source_sha"] == resolved_sha
+    assert (state_root / ".secrets" / "live-stand-owner.key").is_file()
+    assert (state_root / "docker-compose.live-state.yml").is_file()
+    state_override = (state_root / live_stand.IN_PLACE_OVERLAY).read_text(
+        encoding="utf-8"
+    )
+    assert (state_root / ".env.docker").as_posix() in state_override
+    assert (state_root / ".env.docker.workers").as_posix() in state_override
+    assert "volumes: !override" in state_override
+    assert "static-data:/app/app/static" in state_override
+    assert (
+        f'source: "{(state_root / ".secrets" / "jwt_rs256.pem").as_posix()}"'
+        in state_override
+    )
+    assert (
+        f'source: "{(state_root / ".secrets" / "jwt_rs256.pub.pem").as_posix()}"'
+        in state_override
+    )
+    assert (
+        f'source: "{(state_root / ".secrets" / "temporal_api_key").as_posix()}"'
+        in state_override
+    )
+    assert (
+        f'source: "{(repository / "services" / "temporal" / "config.yaml").as_posix()}"'
+        in state_override
+    )
+    assert (
+        f'source: "{(repository / "services" / "temporal" / "entrypoint.sh").as_posix()}"'
+        in state_override
+    )
+    assert "volumes: !override []" not in state_override
+    assert "/app/.secrets:ro" not in state_override
+    assert "live-vapid.json" not in state_override
+    assert "live-admin-password.json" not in state_override
+    bind_sources = set(
+        re.findall(r'^\s+source: "([^"]+)"$', state_override, re.MULTILINE)
+    )
+    assert bind_sources == {
+        (state_root / ".secrets" / "jwt_rs256.pem").as_posix(),
+        (state_root / ".secrets" / "jwt_rs256.pub.pem").as_posix(),
+        (state_root / ".secrets" / "temporal_api_key").as_posix(),
+        (repository / "services" / "temporal" / "config.yaml").as_posix(),
+        (repository / "services" / "temporal" / "entrypoint.sh").as_posix(),
+    }
+    assert not (repository / ".env").exists()
+    assert not (repository / ".env.docker").exists()
+    assert not (repository / ".secrets").exists()
+    assert commands[0][1] == state_root
+    assert "-LiveStandStateRoot" in commands[0][0]
+    assert str(state_root) in commands[0][0]
+    assert commands[-1][1] == state_root
+    if os.name == "nt":
+        acl = _windows_acl_summary(state_root)
+        current_user_sid = live_stand._windows_user_sid()
+        assert acl["OwnerSid"] == current_user_sid
+        rules = acl["Rules"]
+        assert isinstance(rules, list)
+        allow_rules = [rule for rule in rules if rule["Type"] == "Allow"]
+        assert {rule["Sid"] for rule in allow_rules} == {
+            current_user_sid,
+            "S-1-5-18",
+        }
+        assert all("FullControl" in rule["Rights"] for rule in allow_rules)
+        assert all(
+            "ContainerInherit" in rule["Inheritance"]
+            and "ObjectInherit" in rule["Inheritance"]
+            for rule in allow_rules
+        )
+    else:
+        assert stat.S_IMODE(state_parent.stat().st_mode) == 0o700
+        assert stat.S_IMODE(state_root.stat().st_mode) == 0o700
+        assert stat.S_IMODE((state_root / ".secrets").stat().st_mode) == 0o700
+        assert (
+            stat.S_IMODE(
+                (state_root / ".secrets" / "live-stand-owner.key").stat().st_mode
+            )
+            == 0o600
+        )
+        assert (
+            stat.S_IMODE((state_root / live_stand.STAND_FILE).stat().st_mode) == 0o600
+        )
+        assert (
+            stat.S_IMODE((state_root / live_stand.IN_PLACE_OVERLAY).stat().st_mode)
+            == 0o600
+        )
+
+
+def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "docker-compose.full.yml").write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    (repository / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    temporary_root = tmp_path / "temp"
+    state_root = temporary_root / live_stand.IN_PLACE_STATE_PARENT / "run-safety-case"
+    state_root.mkdir(parents=True)
+    if os.name != "nt":
+        state_root.chmod(0o700)
+    (state_root / live_stand.IN_PLACE_OVERLAY).write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    source_sha = "a" * 40
+    commands: list[tuple[list[str], Path, dict[str, str] | None]] = []
+    resource_verifications: list[Path] = []
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args == ("rev-parse", "HEAD"):
+            return source_sha
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return " M app/main.py"
+        if args[:4] == ("ls-files", "--others", "--ignored", "--exclude-standard"):
+            return "frontend/reports/generated.json"
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", state_root)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", True)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", source_sha)
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "d" * 64)
+    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda _owner: None)
+    monkeypatch.setattr(
+        live_stand,
+        "_verify_stand_owner_compose_resources",
+        lambda root, *_args, **_kwargs: resource_verifications.append(root),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_run",
+        lambda command, *, cwd, env=None: commands.append((list(command), cwd, env)),
+    )
+
+    owner = live_stand.create_stand_owner(state_root, published_ports=_port_map(32000))
+    complete_owner = live_stand.StandOwner(
+        **{
+            **owner.__dict__,
+            "compose_resource_fingerprint": "e" * 64,
+        }
+    )
+    live_stand._write_stand_owner_update(state_root, complete_owner)
+
+    def snapshot(root: Path) -> dict[str, bytes]:
+        return {
+            str(path.relative_to(root)): path.read_bytes()
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+
+    before_state = snapshot(state_root)
+    before_source = snapshot(repository)
+
+    live_stand.status()
+    assert snapshot(state_root) == before_state
+    assert snapshot(repository) == before_source
+    assert "--project-directory" in commands[-1][0]
+    assert str(repository.resolve()) in commands[-1][0]
+    assert str((state_root / ".env.docker").resolve()) in commands[-1][0]
+    assert str((state_root / live_stand.IN_PLACE_OVERLAY).resolve()) in commands[-1][0]
+
+    live_stand.stop()
+    assert commands[-1][0][-1] == "stop"
+    assert snapshot(state_root) == before_state
+    assert snapshot(repository) == before_source
+
+    live_stand.teardown()
+    assert commands[-1][0][-2:] == ["down", "--volumes"]
+    assert snapshot(state_root) == before_state
+    assert snapshot(repository) == before_source
+    assert repository.is_dir() and state_root.is_dir()
+    assert git_calls == []
+    assert resource_verifications == [state_root, state_root]
+
+
+def test_in_place_mode_rejects_state_path_outside_owned_temp_parent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    temporary_root = tmp_path / "temp"
+    temporary_root.mkdir()
+    outside = tmp_path / "unowned" / "run-outside"
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand.tempfile, "gettempdir", lambda: str(temporary_root))
+    monkeypatch.setattr(live_stand, "WORKTREE", repository.parent / "ue-live")
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", None)
+    monkeypatch.setattr(
+        live_stand,
+        "_git",
+        lambda *_args: pytest.fail("invalid state path must fail before git access"),
+    )
+
+    result = live_stand.main(
+        ["up", "--in-place", "--state-dir", str(outside), "--ref", "HEAD"]
+    )
+
+    assert result == 2
+    assert not outside.exists()
+    assert not (repository / ".env").exists()
+    assert not (repository / ".secrets").exists()
+
+
+def test_in_place_up_rejects_dirty_source_before_creating_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    temporary_root = tmp_path / "temp"
+    temporary_root.mkdir()
+    state_root = temporary_root / live_stand.IN_PLACE_STATE_PARENT / "run-dirty-source"
+    source_sha = "a" * 40
+
+    def fake_git(*args: str) -> str:
+        if args == ("rev-parse", "--verify", "HEAD^{commit}"):
+            return source_sha
+        if args == ("cat-file", "-e", f"{source_sha}:{live_stand.OVERLAY}"):
+            return ""
+        if args == ("rev-parse", "HEAD"):
+            return source_sha
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return " M scripts/live_stand.py"
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", repository.parent / "ue-live")
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", None)
+    monkeypatch.setattr(live_stand.tempfile, "gettempdir", lambda: str(temporary_root))
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(
+        live_stand,
+        "choose_published_ports",
+        lambda: pytest.fail("dirty source must be rejected before allocating ports"),
+    )
+
+    result = live_stand.main(
+        ["up", "--in-place", "--state-dir", str(state_root), "--ref", "HEAD"]
+    )
+
+    assert result == 2
+    assert not state_root.exists()
+
+
+def test_in_place_up_rejects_untracked_app_source_before_creating_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    app_source = repository / "app" / "new_module.py"
+    app_source.parent.mkdir(parents=True)
+    app_source.write_text("SOURCE_SENTINEL = True\n", encoding="utf-8")
+    (repository / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    temporary_root = tmp_path / "temp"
+    temporary_root.mkdir()
+    state_root = (
+        temporary_root / live_stand.IN_PLACE_STATE_PARENT / "run-untracked-source"
+    )
+    source_sha = "a" * 40
+
+    def fake_git(*args: str) -> str:
+        if args == ("rev-parse", "--verify", "HEAD^{commit}"):
+            return source_sha
+        if args == ("cat-file", "-e", f"{source_sha}:{live_stand.OVERLAY}"):
+            return ""
+        if args == ("rev-parse", "HEAD"):
+            return source_sha
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return "?? app/new_module.py"
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", repository.parent / "ue-live")
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", None)
+    monkeypatch.setattr(live_stand.tempfile, "gettempdir", lambda: str(temporary_root))
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(
+        live_stand,
+        "choose_published_ports",
+        lambda: pytest.fail(
+            "untracked app source must be rejected before port allocation"
+        ),
+    )
+
+    result = live_stand.main(
+        ["up", "--in-place", "--state-dir", str(state_root), "--ref", "HEAD"]
+    )
+
+    assert result == 2
+    assert app_source.read_text(encoding="utf-8") == "SOURCE_SENTINEL = True\n"
+    assert not state_root.exists()
+
+
+def test_in_place_up_rejects_ignored_app_source_before_creating_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    app_source = repository / "app" / "local_settings.py"
+    app_source.parent.mkdir(parents=True)
+    app_source.write_text("PRIVATE_SENTINEL = True\n", encoding="utf-8")
+    (repository / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    temporary_root = tmp_path / "temp"
+    temporary_root.mkdir()
+    state_root = (
+        temporary_root / live_stand.IN_PLACE_STATE_PARENT / "run-ignored-source"
+    )
+    source_sha = "a" * 40
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args == ("rev-parse", "--verify", "HEAD^{commit}"):
+            return source_sha
+        if args == ("cat-file", "-e", f"{source_sha}:{live_stand.OVERLAY}"):
+            return ""
+        if args == ("rev-parse", "HEAD"):
+            return source_sha
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return ""
+        if args[:4] == ("ls-files", "--others", "--ignored", "--exclude-standard"):
+            return "app/local_settings.py"
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", repository.parent / "ue-live")
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", None)
+    monkeypatch.setattr(live_stand.tempfile, "gettempdir", lambda: str(temporary_root))
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(
+        live_stand,
+        "choose_published_ports",
+        lambda: pytest.fail(
+            "ignored app source must be rejected before allocating ports"
+        ),
+    )
+
+    result = live_stand.main(
+        ["up", "--in-place", "--state-dir", str(state_root), "--ref", "HEAD"]
+    )
+
+    assert result == 2
+    assert app_source.read_text(encoding="utf-8") == "PRIVATE_SENTINEL = True\n"
+    assert not state_root.exists()
+    assert ("status", "--porcelain", "--untracked-files=normal") in git_calls
+    assert any(
+        args[:4] == ("ls-files", "--others", "--ignored", "--exclude-standard")
+        for args in git_calls
+    )
+
+
+def test_in_place_source_current_rejects_untracked_app_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    app_source = repository / "app" / "untracked_module.py"
+    app_source.parent.mkdir(parents=True)
+    app_source.write_text("SOURCE_SENTINEL = True\n", encoding="utf-8")
+    source_sha = "a" * 40
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args == ("rev-parse", "HEAD"):
+            return source_sha
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return "?? app/untracked_module.py"
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+
+    with pytest.raises(live_stand.StandError, match="modified or untracked"):
+        live_stand._assert_in_place_source_current(
+            live_stand.StandOwner(
+                repository=str(repository),
+                worktree=str(tmp_path / "owned-run"),
+                project_name="ue-live-untracked",
+                published_ports=_port_map(34000),
+                schema_version=live_stand.IN_PLACE_OWNER_SCHEMA_VERSION,
+                source_sha=source_sha,
+            )
+        )
+
+    assert git_calls == [
+        ("rev-parse", "HEAD"),
+        ("status", "--porcelain", "--untracked-files=normal"),
+    ]
+
+
+def test_in_place_source_current_rejects_ignored_app_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    app_source = repository / "app" / "local_settings.py"
+    app_source.parent.mkdir(parents=True)
+    app_source.write_text("PRIVATE_SENTINEL = True\n", encoding="utf-8")
+    source_sha = "a" * 40
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args == ("rev-parse", "HEAD"):
+            return source_sha
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return ""
+        if args[:4] == ("ls-files", "--others", "--ignored", "--exclude-standard"):
+            return "app/local_settings.py"
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+
+    with pytest.raises(live_stand.StandError, match="ignored untracked files"):
+        live_stand._assert_in_place_source_current(
+            live_stand.StandOwner(
+                repository=str(repository),
+                worktree=str(tmp_path / "owned-run"),
+                project_name="ue-live-ignored-source",
+                published_ports=_port_map(34000),
+                schema_version=live_stand.IN_PLACE_OWNER_SCHEMA_VERSION,
+                source_sha=source_sha,
+            )
+        )
+
+    assert git_calls[:2] == [
+        ("rev-parse", "HEAD"),
+        ("status", "--porcelain", "--untracked-files=normal"),
+    ]
+    ignored_source_query = git_calls[2]
+    assert ignored_source_query[:7] == (
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "--no-empty-directory",
+        "--",
+    )
+    assert set(live_stand.IN_PLACE_BUILD_SOURCE_PATHS).issubset(ignored_source_query)
+    assert any("node_modules" in item for item in ignored_source_query)
+    assert any(".venv" in item for item in ignored_source_query)
+
+
+def test_in_place_dockerignore_artifact_rules_match_source_guard() -> None:
+    dockerignore = live_stand.REPO_ROOT / ".dockerignore"
+    rules = set(dockerignore.read_text(encoding="utf-8").splitlines())
+
+    assert set(live_stand.IN_PLACE_DOCKERIGNORE_ARTIFACT_RULES).issubset(rules)
+    assert all(
+        any(
+            rule.rstrip("/") in pathspec
+            for pathspec in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS
+        )
+        for rule in live_stand.IN_PLACE_DOCKERIGNORE_ARTIFACT_RULES
+    )
+
+
+def test_in_place_up_refuses_owned_runroot_from_another_source_sha(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    state_root = tmp_path / "temp" / live_stand.IN_PLACE_STATE_PARENT / "run-old-source"
+    state_root.mkdir(parents=True)
+    (state_root / live_stand.IN_PLACE_OVERLAY).write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    original_sha = "a" * 40
+    current_sha = "b" * 40
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", state_root)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", True)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", original_sha)
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "d" * 64)
+    owner = live_stand.create_stand_owner(state_root, published_ports=_port_map(33000))
+    marker_before = (state_root / live_stand.STAND_FILE).read_bytes()
+
+    def fake_git(*args: str) -> str:
+        if args in {
+            ("rev-parse", "--verify", "HEAD^{commit}"),
+            ("rev-parse", "HEAD"),
+        }:
+            return current_sha
+        if args == ("cat-file", "-e", f"{current_sha}:{live_stand.OVERLAY}"):
+            return ""
+        if args == ("status", "--porcelain", "--untracked-files=normal"):
+            return ""
+        if args[:4] == ("ls-files", "--others", "--ignored", "--exclude-standard"):
+            return ""
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+    monkeypatch.setattr(live_stand, "resolve_stand_ref", lambda _ref: current_sha)
+    monkeypatch.setattr(
+        live_stand,
+        "choose_published_ports",
+        lambda: pytest.fail("different source owner must fail before port allocation"),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "different source owner must not stop or start"
+        ),
+    )
+
+    with pytest.raises(live_stand.StandError, match="different source SHA"):
+        live_stand._up_locked("HEAD")
+
+    assert owner.source_sha == original_sha
+    assert (state_root / live_stand.STAND_FILE).read_bytes() == marker_before
 
 
 def test_up_validates_ref_before_stopping_existing_stand(

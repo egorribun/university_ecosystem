@@ -20,11 +20,12 @@ import sys
 import tempfile
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
-from contextlib import asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Never, cast
+from urllib.parse import urlsplit
 
 import aioboto3
 import psycopg
@@ -32,7 +33,8 @@ from sqlalchemy.engine import URL, make_url
 
 MANIFEST_SCHEMA_VERSION = 1
 MANIFEST_MAX_BYTES = 64 * 1024
-PAIRED_SNAPSHOT_SCHEMA_VERSION = 2
+LEGACY_PAIRED_SNAPSHOT_SCHEMA_VERSION = 2
+PAIRED_SNAPSHOT_SCHEMA_VERSION = 3
 PAIRED_SNAPSHOT_MANIFEST_MAX_BYTES = 64 * 1024 * 1024
 MAX_SNAPSHOT_OBJECTS = 100_000
 SNAPSHOT_PART_SIZE = 8 * 1024 * 1024
@@ -53,6 +55,82 @@ _LOCAL_DEV_S3_NETWORKS = tuple(
         "192.168.0.0/16",
         "fc00::/7",
     )
+)
+_APPLICATION_STORAGE_REFERENCE_COLUMNS = (
+    (
+        "user_profiles",
+        "avatar_url",
+        "SELECT DISTINCT avatar_url FROM user_profiles "
+        "WHERE left(avatar_url, char_length(%s)) = %s",
+        "UPDATE user_profiles AS restored SET avatar_url = mapping.target_url "
+        "FROM _restore_storage_url_map AS mapping "
+        "WHERE restored.avatar_url = mapping.source_url",
+    ),
+    (
+        "user_profiles",
+        "cover_url",
+        "SELECT DISTINCT cover_url FROM user_profiles "
+        "WHERE left(cover_url, char_length(%s)) = %s",
+        "UPDATE user_profiles AS restored SET cover_url = mapping.target_url "
+        "FROM _restore_storage_url_map AS mapping "
+        "WHERE restored.cover_url = mapping.source_url",
+    ),
+    (
+        "stories",
+        "cover_url",
+        "SELECT DISTINCT cover_url FROM stories "
+        "WHERE left(cover_url, char_length(%s)) = %s",
+        "UPDATE stories AS restored SET cover_url = mapping.target_url "
+        "FROM _restore_storage_url_map AS mapping "
+        "WHERE restored.cover_url = mapping.source_url",
+    ),
+    (
+        "events",
+        "image_url",
+        "SELECT DISTINCT image_url FROM events "
+        "WHERE left(image_url, char_length(%s)) = %s",
+        "UPDATE events AS restored SET image_url = mapping.target_url "
+        "FROM _restore_storage_url_map AS mapping "
+        "WHERE restored.image_url = mapping.source_url",
+    ),
+    (
+        "event_files",
+        "file_url",
+        "SELECT DISTINCT file_url FROM event_files "
+        "WHERE left(file_url, char_length(%s)) = %s",
+        "UPDATE event_files AS restored SET file_url = mapping.target_url "
+        "FROM _restore_storage_url_map AS mapping "
+        "WHERE restored.file_url = mapping.source_url",
+    ),
+    (
+        "news",
+        "image_url",
+        "SELECT DISTINCT image_url FROM news "
+        "WHERE left(image_url, char_length(%s)) = %s",
+        "UPDATE news AS restored SET image_url = mapping.target_url "
+        "FROM _restore_storage_url_map AS mapping "
+        "WHERE restored.image_url = mapping.source_url",
+    ),
+    (
+        "attachments",
+        "url",
+        "SELECT DISTINCT url FROM attachments WHERE left(url, char_length(%s)) = %s",
+        "UPDATE attachments AS restored SET url = mapping.target_url "
+        "FROM _restore_storage_url_map AS mapping "
+        "WHERE restored.url = mapping.source_url",
+    ),
+)
+_UNPROCESSED_STORED_EVENT_SOURCE_URL_QUERY = (
+    "SELECT 1 FROM stored_events WHERE processed_at IS NULL AND EXISTS ("
+    "SELECT 1 FROM jsonb_path_query(payload::jsonb, "
+    "'$.** ? (@.type() == \"string\")'::jsonpath) AS event_string(value) "
+    "WHERE position(%s in event_string.value #>> '{}') > 0) LIMIT 1"
+)
+_UNRESOLVED_FAILED_EVENT_SOURCE_URL_QUERY = (
+    "SELECT 1 FROM failed_outbox_events WHERE resolved_at IS NULL AND EXISTS ("
+    "SELECT 1 FROM jsonb_path_query(payload::jsonb, "
+    "'$.** ? (@.type() == \"string\")'::jsonpath) AS event_string(value) "
+    "WHERE position(%s in event_string.value #>> '{}') > 0) LIMIT 1"
 )
 _PG_URL_OPTIONS = {
     "application_name": "PGAPPNAME",
@@ -142,11 +220,13 @@ class SnapshotObjectManifest:
 
 @dataclass(frozen=True)
 class PairedSnapshotManifest:
+    schema_version: int
     snapshot_id: str
     consistency_mode: str
     quiescence_confirmed: bool
     quiescence_confirmed_at: str
     source_object_bucket: str
+    source_storage_public_base_url: str | None
     database: BackupManifest
     database_archive_version_id: str | None
     database_archive_etag: str
@@ -154,7 +234,9 @@ class PairedSnapshotManifest:
 
     def to_json_bytes(self) -> bytes:
         data = asdict(self)
-        data["schema_version"] = PAIRED_SNAPSHOT_SCHEMA_VERSION
+        if self.schema_version == LEGACY_PAIRED_SNAPSHOT_SCHEMA_VERSION:
+            data.pop("source_storage_public_base_url")
+        data["schema_version"] = self.schema_version
         return (
             json.dumps(
                 data,
@@ -364,6 +446,72 @@ def _validate_object_prefix(value: Any) -> str:
     return value
 
 
+def _validate_storage_public_base_url(value: Any, *, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.strip() != value
+        or len(value) > 2048
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+        or "\\" in value
+        or "%" in value
+        or "?" in value
+        or "#" in value
+        or ";" in value
+    ):
+        raise BackupArtifactError(f"{label} is invalid")
+    normalized = value.rstrip("/")
+    try:
+        parsed = urlsplit(normalized)
+        hostname = parsed.hostname
+        _ = parsed.port
+    except ValueError:
+        raise BackupArtifactError(f"{label} is invalid") from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or "//" in parsed.path
+        or any(part in {".", ".."} for part in parsed.path.split("/") if part)
+    ):
+        raise BackupArtifactError(f"{label} is invalid")
+    if parsed.scheme == "http" and (
+        os.environ.get("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", "").casefold() != "true"
+        or not _is_local_dev_s3_host(hostname)
+    ):
+        raise BackupArtifactError(f"{label} must use HTTPS outside local development")
+    return normalized
+
+
+def _s3_storage_public_base_url(settings: S3Settings) -> str:
+    if settings.public_base_url:
+        return _validate_storage_public_base_url(
+            settings.public_base_url, label="S3 storage public base URL"
+        )
+    if settings.endpoint_url:
+        value = f"{settings.endpoint_url.rstrip('/')}/{settings.bucket}"
+    else:
+        value = f"https://{settings.bucket}.s3.amazonaws.com"
+    return _validate_storage_public_base_url(value, label="S3 storage public base URL")
+
+
+def _validate_application_storage_key(key: str) -> None:
+    if (
+        not key
+        or key.strip() != key
+        or any(char in "\\%?#;" for char in key)
+        or any(ord(char) < 32 or ord(char) == 127 for char in key)
+        or any(part in {"", ".", ".."} for part in key.split("/"))
+    ):
+        raise BackupArtifactError(
+            "Snapshot contains an object key unsupported by application storage"
+        )
+
+
 def _restore_target_object_key(prefix: str, source_key: str) -> str:
     key = f"{prefix}/{source_key}" if prefix else source_key
     _validate_object_key(key)
@@ -441,6 +589,14 @@ def parse_paired_snapshot_manifest(
         data = json.loads(payload, object_pairs_hook=_reject_duplicate_keys)
     except (json.JSONDecodeError, UnicodeDecodeError):
         raise BackupArtifactError("Snapshot manifest is not valid JSON") from None
+    if not isinstance(data, dict):
+        raise BackupArtifactError("Snapshot manifest fields do not match the schema")
+    schema_version = data.get("schema_version")
+    if type(schema_version) is not int or schema_version not in {
+        PAIRED_SNAPSHOT_SCHEMA_VERSION,
+        LEGACY_PAIRED_SNAPSHOT_SCHEMA_VERSION,
+    }:
+        raise BackupArtifactError("Unsupported paired snapshot schema version")
     expected_fields = {
         "schema_version",
         "snapshot_id",
@@ -453,13 +609,10 @@ def parse_paired_snapshot_manifest(
         "database_archive_etag",
         "objects",
     }
-    if not isinstance(data, dict) or set(data) != expected_fields:
+    if schema_version == PAIRED_SNAPSHOT_SCHEMA_VERSION:
+        expected_fields.add("source_storage_public_base_url")
+    if set(data) != expected_fields:
         raise BackupArtifactError("Snapshot manifest fields do not match the schema")
-    if (
-        type(data["schema_version"]) is not int
-        or data["schema_version"] != PAIRED_SNAPSHOT_SCHEMA_VERSION
-    ):
-        raise BackupArtifactError("Unsupported paired snapshot schema version")
     snapshot_id = data["snapshot_id"]
     if not isinstance(snapshot_id, str) or not _SNAPSHOT_ID_RE.fullmatch(snapshot_id):
         raise BackupArtifactError("Snapshot id is invalid")
@@ -471,6 +624,14 @@ def parse_paired_snapshot_manifest(
         data["quiescence_confirmed_at"], label="quiescence timestamp"
     )
     source_bucket = _validate_bucket_name(data["source_object_bucket"])
+    source_storage_public_base_url = (
+        _validate_storage_public_base_url(
+            data["source_storage_public_base_url"],
+            label="Snapshot source storage public base URL",
+        )
+        if schema_version == PAIRED_SNAPSHOT_SCHEMA_VERSION
+        else None
+    )
     database_payload = json.dumps(
         data["database"], sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -566,11 +727,13 @@ def parse_paired_snapshot_manifest(
             )
         )
     return PairedSnapshotManifest(
+        schema_version=schema_version,
         snapshot_id=snapshot_id,
         consistency_mode="operator_quiesced",
         quiescence_confirmed=True,
         quiescence_confirmed_at=quiescence_confirmed_at,
         source_object_bucket=source_bucket,
+        source_storage_public_base_url=source_storage_public_base_url,
         database=database_manifest,
         database_archive_version_id=database_version_id,
         database_archive_etag=database_etag,
@@ -1118,6 +1281,7 @@ class S3Settings:
     region: str
     access_key_id: str | None = field(default=None, repr=False)
     secret_access_key: str | None = field(default=None, repr=False)
+    public_base_url: str | None = None
 
 
 def _is_local_dev_s3_host(host: str) -> bool:
@@ -1233,6 +1397,7 @@ def storage_s3_settings_from_environment() -> S3Settings:
         region=storage.storage_s3_region.strip() or "us-east-1",
         access_key_id=access_key_id,
         secret_access_key=secret_access_key,
+        public_base_url=storage.storage_s3_base_url.strip() or None,
     )
 
 
@@ -1694,6 +1859,9 @@ async def backup_paired_snapshot_to_s3(
         )
     if source_storage_settings.bucket == backup_settings.bucket:
         raise BackupArtifactError("Application and backup object buckets must differ")
+    source_storage_public_base_url = _s3_storage_public_base_url(
+        source_storage_settings
+    )
 
     source_identity = source_database_metadata(database_url)
     source_database, source_revision = source_identity
@@ -1709,131 +1877,136 @@ async def backup_paired_snapshot_to_s3(
         verify_source_metadata_unchanged(
             source_identity, source_database_metadata(database_url)
         )
-        async with s3_client(source_storage_settings) as source_client:
+        async with AsyncExitStack() as s3_clients:
+            source_client = await s3_clients.enter_async_context(
+                s3_client(source_storage_settings)
+            )
             source_objects = await _list_current_objects(
                 source_client, source_storage_settings.bucket
             )
-            async with s3_client(backup_settings) as backup_client:
-                snapshot_objects: list[SnapshotObjectManifest] = []
-                receipts_by_digest: dict[str, S3ObjectReceipt] = {}
-                sizes_by_digest: dict[str, int] = {}
-                for index, source_entry in enumerate(source_objects):
-                    source_key = cast(str, source_entry["Key"])
-                    expected_size = cast(int, source_entry["Size"])
-                    source_etag = cast(str, source_entry["ETag"])
-                    source_path = temp_path / f"object-{index:08d}.blob"
-                    size, checksum, source_response = await _download_object_to_file(
-                        source_client,
-                        source_storage_settings.bucket,
-                        source_key,
+            snapshot_objects: list[SnapshotObjectManifest] = []
+            receipts_by_digest: dict[str, S3ObjectReceipt] = {}
+            sizes_by_digest: dict[str, int] = {}
+            backup_client = await s3_clients.enter_async_context(
+                s3_client(backup_settings)
+            )
+            for index, source_entry in enumerate(source_objects):
+                source_key = cast(str, source_entry["Key"])
+                expected_size = cast(int, source_entry["Size"])
+                source_etag = cast(str, source_entry["ETag"])
+                source_path = temp_path / f"object-{index:08d}.blob"
+                size, checksum, source_response = await _download_object_to_file(
+                    source_client,
+                    source_storage_settings.bucket,
+                    source_key,
+                    source_path,
+                    expected_size=expected_size,
+                    etag=source_etag,
+                )
+                if (
+                    source_response.get("ETag") is not None
+                    and source_response.get("ETag") != source_etag
+                ):
+                    raise BackupArtifactError(
+                        "Application S3 object changed during the quiesced snapshot"
+                    )
+                source_version_id = _response_version_id(source_response)
+                archive_key = f"{snapshot_root}/objects/{checksum}.blob"
+                prior_size = sizes_by_digest.get(checksum)
+                if prior_size is not None and prior_size != size:
+                    raise BackupArtifactError(
+                        "Snapshot object digest has inconsistent lengths"
+                    )
+                receipt = receipts_by_digest.get(checksum)
+                if receipt is None:
+                    receipt = await _upload_file_create_only(
+                        backup_client,
+                        backup_settings.bucket,
+                        archive_key,
                         source_path,
-                        expected_size=expected_size,
-                        etag=source_etag,
                     )
-                    if (
-                        source_response.get("ETag") is not None
-                        and source_response.get("ETag") != source_etag
-                    ):
-                        raise BackupArtifactError(
-                            "Application S3 object changed during the quiesced snapshot"
-                        )
-                    source_version_id = _response_version_id(source_response)
-                    archive_key = f"{snapshot_root}/objects/{checksum}.blob"
-                    prior_size = sizes_by_digest.get(checksum)
-                    if prior_size is not None and prior_size != size:
-                        raise BackupArtifactError(
-                            "Snapshot object digest has inconsistent lengths"
-                        )
-                    receipt = receipts_by_digest.get(checksum)
-                    if receipt is None:
-                        receipt = await _upload_file_create_only(
-                            backup_client,
-                            backup_settings.bucket,
-                            archive_key,
-                            source_path,
-                        )
-                        await _verify_uploaded_file(
-                            backup_client,
-                            backup_settings.bucket,
-                            archive_key,
-                            source_path,
-                            receipt=receipt,
-                        )
-                        receipts_by_digest[checksum] = receipt
-                        sizes_by_digest[checksum] = size
-                    snapshot_objects.append(
-                        SnapshotObjectManifest(
-                            source_key=source_key,
-                            source_version_id=source_version_id,
-                            archive_key=archive_key,
-                            archive_version_id=receipt.version_id,
-                            archive_etag=receipt.etag,
-                            size_bytes=size,
-                            sha256=checksum,
-                            content_type=_manifest_header(
-                                source_response.get("ContentType"),
-                                label="source content type",
-                            ),
-                            content_encoding=_manifest_header(
-                                source_response.get("ContentEncoding"),
-                                label="source content encoding",
-                            ),
-                            cache_control=_manifest_header(
-                                source_response.get("CacheControl"),
-                                label="source cache control",
-                            ),
-                            content_disposition=_manifest_header(
-                                source_response.get("ContentDisposition"),
-                                label="source content disposition",
-                            ),
-                        )
+                    await _verify_uploaded_file(
+                        backup_client,
+                        backup_settings.bucket,
+                        archive_key,
+                        source_path,
+                        receipt=receipt,
                     )
-                    source_path.unlink(missing_ok=True)
+                    receipts_by_digest[checksum] = receipt
+                    sizes_by_digest[checksum] = size
+                snapshot_objects.append(
+                    SnapshotObjectManifest(
+                        source_key=source_key,
+                        source_version_id=source_version_id,
+                        archive_key=archive_key,
+                        archive_version_id=receipt.version_id,
+                        archive_etag=receipt.etag,
+                        size_bytes=size,
+                        sha256=checksum,
+                        content_type=_manifest_header(
+                            source_response.get("ContentType"),
+                            label="source content type",
+                        ),
+                        content_encoding=_manifest_header(
+                            source_response.get("ContentEncoding"),
+                            label="source content encoding",
+                        ),
+                        cache_control=_manifest_header(
+                            source_response.get("CacheControl"),
+                            label="source cache control",
+                        ),
+                        content_disposition=_manifest_header(
+                            source_response.get("ContentDisposition"),
+                            label="source content disposition",
+                        ),
+                    )
+                )
+                source_path.unlink(missing_ok=True)
 
-                database_manifest = create_manifest(
-                    database_path,
-                    source_database=source_database,
-                    source_revision=source_revision,
-                    artifact_key=database_key,
-                    created_at=confirmed_at,
-                )
-                database_receipt = await _upload_file_create_only(
-                    backup_client,
-                    backup_settings.bucket,
-                    database_key,
-                    database_path,
-                )
-                await _verify_uploaded_file(
-                    backup_client,
-                    backup_settings.bucket,
-                    database_key,
-                    database_path,
-                    receipt=database_receipt,
-                )
-                snapshot_manifest = PairedSnapshotManifest(
-                    snapshot_id=snapshot_id,
-                    consistency_mode="operator_quiesced",
-                    quiescence_confirmed=True,
-                    quiescence_confirmed_at=confirmed_at.isoformat().replace(
-                        "+00:00", "Z"
-                    ),
-                    source_object_bucket=source_storage_settings.bucket,
-                    database=database_manifest,
-                    database_archive_version_id=database_receipt.version_id,
-                    database_archive_etag=database_receipt.etag,
-                    objects=tuple(snapshot_objects),
-                )
-                manifest_payload = snapshot_manifest.to_json_bytes()
-                parse_paired_snapshot_manifest(
-                    manifest_payload,
-                    expected_manifest_key=database_manifest_key,
-                )
-                await _publish_paired_manifest(
-                    backup_client,
-                    backup_settings.bucket,
-                    database_manifest_key,
-                    manifest_payload,
-                )
+            database_manifest = create_manifest(
+                database_path,
+                source_database=source_database,
+                source_revision=source_revision,
+                artifact_key=database_key,
+                created_at=confirmed_at,
+            )
+            database_receipt = await _upload_file_create_only(
+                backup_client,
+                backup_settings.bucket,
+                database_key,
+                database_path,
+            )
+            await _verify_uploaded_file(
+                backup_client,
+                backup_settings.bucket,
+                database_key,
+                database_path,
+                receipt=database_receipt,
+            )
+            snapshot_manifest = PairedSnapshotManifest(
+                schema_version=PAIRED_SNAPSHOT_SCHEMA_VERSION,
+                snapshot_id=snapshot_id,
+                consistency_mode="operator_quiesced",
+                quiescence_confirmed=True,
+                quiescence_confirmed_at=confirmed_at.isoformat().replace("+00:00", "Z"),
+                source_object_bucket=source_storage_settings.bucket,
+                source_storage_public_base_url=source_storage_public_base_url,
+                database=database_manifest,
+                database_archive_version_id=database_receipt.version_id,
+                database_archive_etag=database_receipt.etag,
+                objects=tuple(snapshot_objects),
+            )
+            manifest_payload = snapshot_manifest.to_json_bytes()
+            parse_paired_snapshot_manifest(
+                manifest_payload,
+                expected_manifest_key=database_manifest_key,
+            )
+            await _publish_paired_manifest(
+                backup_client,
+                backup_settings.bucket,
+                database_manifest_key,
+                manifest_payload,
+            )
     return database_manifest_key
 
 
@@ -1852,6 +2025,222 @@ async def _download_paired_manifest(
     )
 
 
+def _build_storage_reference_url_map(
+    manifest: PairedSnapshotManifest,
+    target_object_prefix: str,
+    target_public_base_url: str,
+) -> dict[str, str]:
+    source_public_base_url = manifest.source_storage_public_base_url
+    if source_public_base_url is None:
+        raise BackupArtifactError(
+            "Paired snapshot schema does not bind the source storage URL base; create a new snapshot"
+        )
+    source_public_base_url = _validate_storage_public_base_url(
+        source_public_base_url, label="Snapshot source storage public base URL"
+    )
+    target_public_base_url = _validate_storage_public_base_url(
+        target_public_base_url, label="Restore target storage public base URL"
+    )
+    url_map: dict[str, str] = {}
+    for object_record in manifest.objects:
+        target_key = _restore_target_object_key(
+            target_object_prefix, object_record.source_key
+        )
+        try:
+            _validate_application_storage_key(object_record.source_key)
+            _validate_application_storage_key(target_key)
+        except BackupArtifactError:
+            # Objects outside the application's key contract can be copied, but
+            # any persisted application reference to them fails closed below.
+            continue
+        source_url = f"{source_public_base_url}/{object_record.source_key}"
+        target_url = f"{target_public_base_url}/{target_key}"
+        if source_url in url_map:
+            raise BackupArtifactError(
+                "Snapshot contains duplicate application storage references"
+            )
+        url_map[source_url] = target_url
+    return url_map
+
+
+def _validate_restored_storage_schema(
+    connection: Any, expected_revision: tuple[str, ...]
+) -> dict[tuple[str, str], int | None]:
+    revision_rows = connection.execute(
+        "SELECT version_num FROM alembic_version ORDER BY version_num"
+    ).fetchall()
+    actual_revision = tuple(str(row[0]) for row in revision_rows)
+    if actual_revision != expected_revision:
+        raise BackupArtifactError(
+            "Restore target Alembic revision does not match the paired snapshot"
+        )
+
+    catalog_rows = connection.execute(
+        "SELECT table_name, column_name, data_type, character_maximum_length "
+        "FROM information_schema.columns WHERE table_schema = current_schema()"
+    ).fetchall()
+    catalog = {
+        (str(row[0]), str(row[1])): (str(row[2]), row[3]) for row in catalog_rows
+    }
+    storage_column_max_lengths: dict[tuple[str, str], int | None] = {}
+    for (
+        table,
+        column,
+        _select_sql,
+        _update_sql,
+    ) in _APPLICATION_STORAGE_REFERENCE_COLUMNS:
+        field = catalog.get((table, column))
+        if field is None:
+            raise BackupArtifactError(
+                "Restore target schema is missing an application storage reference column"
+            )
+        data_type, maximum_length = field
+        if data_type not in {"character varying", "text"}:
+            raise BackupArtifactError(
+                "Restore target storage reference column has an incompatible type"
+            )
+        if data_type == "character varying":
+            if maximum_length is not None and (
+                type(maximum_length) is not int or maximum_length <= 0
+            ):
+                raise BackupArtifactError(
+                    "Restore target storage reference column has an incompatible length"
+                )
+        elif maximum_length is not None:
+            raise BackupArtifactError(
+                "Restore target text storage reference column has an incompatible length"
+            )
+        storage_column_max_lengths[(table, column)] = maximum_length
+
+    expected_outbox_types = {
+        ("stored_events", "payload"): {"json", "jsonb"},
+        ("stored_events", "processed_at"): {
+            "timestamp with time zone",
+            "timestamp without time zone",
+        },
+        ("failed_outbox_events", "payload"): {"json", "jsonb"},
+        ("failed_outbox_events", "resolved_at"): {
+            "timestamp with time zone",
+            "timestamp without time zone",
+        },
+    }
+    for key, supported_types in expected_outbox_types.items():
+        field = catalog.get(key)
+        if field is None or field[0] not in supported_types:
+            raise BackupArtifactError(
+                "Restore target schema is incompatible with outbox reference checks"
+            )
+    return storage_column_max_lengths
+
+
+def _rebase_restored_storage_references(
+    connection: Any,
+    manifest: PairedSnapshotManifest,
+    target_object_prefix: str,
+    target_public_base_url: str,
+    storage_column_max_lengths: dict[tuple[str, str], int | None],
+) -> None:
+    source_public_base_url = manifest.source_storage_public_base_url
+    if source_public_base_url is None:
+        raise BackupArtifactError(
+            "Paired snapshot schema does not bind the source storage URL base; create a new snapshot"
+        )
+    source_public_base_url = _validate_storage_public_base_url(
+        source_public_base_url, label="Snapshot source storage public base URL"
+    )
+    source_url_prefix = f"{source_public_base_url}/"
+    url_map = _build_storage_reference_url_map(
+        manifest, target_object_prefix, target_public_base_url
+    )
+
+    pending_stored_event = connection.execute(
+        _UNPROCESSED_STORED_EVENT_SOURCE_URL_QUERY,
+        (source_url_prefix,),
+    ).fetchone()
+    pending_failed_event = connection.execute(
+        _UNRESOLVED_FAILED_EVENT_SOURCE_URL_QUERY,
+        (source_url_prefix,),
+    ).fetchone()
+    if pending_stored_event or pending_failed_event:
+        raise BackupArtifactError(
+            "Restore snapshot has unresolved outbox events containing source storage URLs"
+        )
+
+    for (
+        table,
+        column,
+        select_sql,
+        _update_sql,
+    ) in _APPLICATION_STORAGE_REFERENCE_COLUMNS:
+        values = connection.execute(
+            select_sql,
+            (source_url_prefix, source_url_prefix),
+        ).fetchall()
+        for (source_url,) in values:
+            target_url = url_map.get(str(source_url))
+            if target_url is None:
+                raise BackupArtifactError(
+                    "Restore snapshot has an unresolved application storage reference"
+                )
+            column_max_length = storage_column_max_lengths[(table, column)]
+            if column_max_length is not None and len(target_url) > column_max_length:
+                raise BackupArtifactError(
+                    "Restore target storage reference exceeds its database column limit"
+                )
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE TEMP TABLE _restore_storage_url_map ("
+            "source_url text PRIMARY KEY, target_url text NOT NULL"
+            ") ON COMMIT DROP"
+        )
+        if url_map:
+            cursor.executemany(
+                "INSERT INTO _restore_storage_url_map (source_url, target_url) "
+                "VALUES (%s, %s)",
+                list(url_map.items()),
+            )
+        for (
+            _table,
+            _column,
+            _select_sql,
+            update_sql,
+        ) in _APPLICATION_STORAGE_REFERENCE_COLUMNS:
+            cursor.execute(update_sql)
+
+
+def _rebase_restored_storage_references_transaction(
+    admin_database_url: str,
+    target_database: str,
+    manifest: PairedSnapshotManifest,
+    target_object_prefix: str,
+    target_public_base_url: str,
+    *,
+    connect: Callable[..., Any] | None = None,
+) -> None:
+    admin_url = _validate_restore_admin_database(admin_database_url, target_database)
+    target_url = admin_url.set(database=target_database)
+    connector = connect or psycopg.connect
+    try:
+        with connector(_psycopg_dsn(target_url)) as connection:
+            storage_column_max_lengths = _validate_restored_storage_schema(
+                connection, manifest.database.source_revision
+            )
+            _rebase_restored_storage_references(
+                connection,
+                manifest,
+                target_object_prefix,
+                target_public_base_url,
+                storage_column_max_lengths,
+            )
+    except BackupArtifactError:
+        raise
+    except Exception:  # RZ-22-01-JUSTIFIED: convert PostgreSQL driver errors without exposing connection details
+        raise BackupArtifactError(
+            "Unable to rebase restored application storage references; inspect the isolated restore target"
+        ) from None
+
+
 async def restore_paired_snapshot_from_s3(
     manifest_object_key: str,
     target_database: str,
@@ -1861,7 +2250,9 @@ async def restore_paired_snapshot_from_s3(
     target_object_bucket: str,
     target_object_prefix: str,
     *,
+    target_public_base_url: str,
     database_connect: Callable[..., Any] | None = None,
+    database_reference_connect: Callable[..., Any] | None = None,
 ) -> PairedSnapshotManifest:
     _validate_object_key(manifest_object_key)
     if not manifest_object_key.endswith(MANIFEST_SUFFIX):
@@ -1870,6 +2261,17 @@ async def restore_paired_snapshot_from_s3(
     _validate_restore_admin_database(admin_database_url, target_database)
     target_object_bucket = _validate_bucket_name(target_object_bucket)
     target_object_prefix = _validate_object_prefix(target_object_prefix)
+    if target_object_bucket != target_storage_settings.bucket:
+        raise BackupArtifactError(
+            "Restore object bucket must match the configured target application bucket"
+        )
+    target_public_base_url = _validate_storage_public_base_url(
+        target_public_base_url, label="Restore target storage public base URL"
+    )
+    if target_public_base_url != _s3_storage_public_base_url(target_storage_settings):
+        raise BackupArtifactError(
+            "Restore target public base URL must match the configured application storage URL"
+        )
 
     with tempfile.TemporaryDirectory(prefix="university-paired-restore-") as temp_dir:
         temp_path = Path(temp_dir)
@@ -1877,6 +2279,13 @@ async def restore_paired_snapshot_from_s3(
         async with s3_client(backup_settings) as backup_client:
             manifest = await _download_paired_manifest(
                 backup_client, backup_settings.bucket, manifest_object_key
+            )
+            if manifest.schema_version != PAIRED_SNAPSHOT_SCHEMA_VERSION:
+                raise BackupArtifactError(
+                    "Paired snapshot lacks source storage URL ownership; create a schema-v3 snapshot before restore"
+                )
+            _build_storage_reference_url_map(
+                manifest, target_object_prefix, target_public_base_url
             )
             validate_restore_target(manifest.database.source_database, target_database)
             _object_bucket_is_distinct(
@@ -1942,6 +2351,20 @@ async def restore_paired_snapshot_from_s3(
                 admin_database_url,
                 target_database,
             )
+            try:
+                _rebase_restored_storage_references_transaction(
+                    admin_database_url,
+                    target_database,
+                    manifest,
+                    target_object_prefix,
+                    target_public_base_url,
+                    connect=database_reference_connect,
+                )
+            except BackupArtifactError as exc:
+                raise BackupArtifactError(
+                    "Snapshot restore is incomplete: "
+                    f"{exc}; inspect the isolated target database before retrying"
+                ) from None
             if manifest.objects:
                 try:
                     for object_record in manifest.objects:
@@ -2064,6 +2487,9 @@ def build_parser() -> argparse.ArgumentParser:
     restore_snapshot_parser.add_argument("--objects-target-bucket", required=True)
     restore_snapshot_parser.add_argument("--objects-target-prefix", required=True)
     restore_snapshot_parser.add_argument(
+        "--objects-target-public-base-url", required=True
+    )
+    restore_snapshot_parser.add_argument(
         "--admin-database-url-env",
         default="BACKUP_RESTORE_ADMIN_DATABASE_URL",
     )
@@ -2108,15 +2534,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.operation == "restore-snapshot":
             admin_database_url = _environment_value(args.admin_database_url_env)
+            target_storage_settings = storage_s3_settings_from_environment()
             asyncio.run(
                 restore_paired_snapshot_from_s3(
                     args.manifest_key,
                     args.target_database,
                     admin_database_url,
                     settings,
-                    storage_s3_settings_from_environment(),
+                    target_storage_settings,
                     args.objects_target_bucket,
                     args.objects_target_prefix,
+                    target_public_base_url=args.objects_target_public_base_url,
                 )
             )
             print(

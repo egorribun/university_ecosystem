@@ -1,14 +1,15 @@
-"""Owned live acceptance stand: a dedicated worktree running the full stack.
+"""Owned live acceptance stand running the full stack.
 
-The stand runs from ``../ue-live`` (a detached git worktree of this
-repository). Every run receives a unique Compose project recorded in an
-ownership marker, so its volumes and networks are isolated from other stacks.
-It adds Mailpit and locally generated VAPID keys through
-``docker-compose.live.yml``.
+By default the stand runs from ``../ue-live`` (a detached git worktree).
+Explicit ``--in-place --state-dir`` mode keeps generated configuration under
+an owned temporary run root while using the current checkout as its build
+context. Every run receives a unique Compose project recorded in an ownership
+marker, so its volumes and networks are isolated from other stacks.
 
 Usage::
 
     python scripts/live_stand.py up [--ref HEAD]   # create/refresh the worktree and start
+    python scripts/live_stand.py up --in-place --state-dir <owned-temp-run> --ref HEAD
     python scripts/live_stand.py seed --demo        # load demo users and content
     python scripts/live_stand.py e2e [--mode smoke|full]  # reseed and run live Playwright safely
     python scripts/live_stand.py status             # read-only status
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import csv
 import errno
 import hashlib
 import hmac
@@ -49,7 +51,62 @@ from cryptography.hazmat.primitives.asymmetric import ec
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKTREE_NAME = "ue-live"
 WORKTREE = REPO_ROOT.parent / WORKTREE_NAME
+IN_PLACE_MODE = False
+SOURCE_SHA: str | None = None
+IN_PLACE_OWNER_SCHEMA_VERSION = 7
+IN_PLACE_STATE_PARENT = "ue-live-acceptance"
+IN_PLACE_STATE_PATTERN = re.compile(r"^run-[A-Za-z0-9-]{1,80}$")
+IN_PLACE_BUILD_SOURCE_PATHS = (
+    "app",
+    "alembic",
+    "native",
+    "frontend",
+    "gen",
+    "services/pkg",
+    "services/gateway",
+    "services/ws-hub",
+    "services/file-processor",
+)
+IN_PLACE_DOCKERIGNORE_EXCLUSIONS = (
+    "**/node_modules/**",
+    "**/.venv/**",
+    "**/venv/**",
+    "**/ENV/**",
+    "**/env/**",
+    "**/__pycache__/**",
+    "**/.pytest_cache/**",
+    "**/.ruff_cache/**",
+    "**/.mypy_cache/**",
+    "**/.cache/**",
+    "**/.vite/**",
+    "**/.vitest/**",
+    "**/.npm/**",
+    "frontend/.vitest/**",
+    "**/target/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    "**/.secrets/**",
+    "**/artifacts/**",
+    "frontend/reports/**",
+    "frontend/bundle-report.json",
+    "frontend/rust-crypto/pkg/.gitignore",
+    "frontend/rust-crypto/pkg/uni_wasm_crypto_bg.wasm.d.ts",
+    "frontend/wasm-sanitizer/pkg/.gitignore",
+    "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts",
+)
+IN_PLACE_DOCKERIGNORE_ARTIFACT_RULES = (
+    "frontend/.vitest/",
+    "frontend/reports/",
+    "frontend/bundle-report.json",
+    "frontend/rust-crypto/pkg/.gitignore",
+    "frontend/rust-crypto/pkg/uni_wasm_crypto_bg.wasm.d.ts",
+    "frontend/wasm-sanitizer/pkg/.gitignore",
+    "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts",
+)
 OVERLAY = "docker-compose.live.yml"
+IN_PLACE_OVERLAY = "docker-compose.live-state.yml"
 COMPOSE_FILES = ("docker-compose.full.yml", OVERLAY)
 MAILPIT_PORT = 18025
 LIVE_PORT_SPECS = (
@@ -140,6 +197,7 @@ LIVE_E2E_OUTPUT_OWNER_MARKER = ".ue-live-e2e-output-owner"
 LIVE_E2E_OUTPUT_OWNER_MARKER_CONTENT = "ue-live-playwright-output-v1\n"
 STAND_PATHS_TO_PROTECT = (
     Path(OVERLAY),
+    Path(IN_PLACE_OVERLAY),
     Path(".env"),
     Path(".env.docker"),
     Path(".env.docker.workers"),
@@ -170,6 +228,7 @@ class StandOwner:
     daemon_fingerprint: str | None = None
     compose_resource_fingerprint: str | None = None
     resume_compose_resource_fingerprint: str | None = None
+    source_sha: str | None = None
 
 
 @dataclass(frozen=True)
@@ -233,6 +292,237 @@ def _assert_no_reparse_ancestors(path: Path) -> None:
             raise StandError(f"refusing to use a reparse point: {candidate}")
 
 
+def _validated_in_place_state_root(raw_path: str | Path, *, create: bool) -> Path:
+    """Accept only one direct run directory under the owned system temp root."""
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        raise StandError("in-place state directory must be an absolute owned temp path")
+    try:
+        temporary_root = Path(tempfile.gettempdir()).resolve(strict=True)
+        expected_parent = temporary_root / IN_PLACE_STATE_PARENT
+        normalized = Path(os.path.abspath(candidate))
+        parent = normalized.parent.resolve(strict=False)
+        resolved = normalized.resolve(strict=False)
+    except (OSError, RuntimeError) as error:
+        raise StandError("cannot validate the in-place state directory") from error
+    repository_root = REPO_ROOT.resolve(strict=False)
+    if (
+        parent != expected_parent.resolve(strict=False)
+        or resolved.parent != expected_parent.resolve(strict=False)
+        or not IN_PLACE_STATE_PATTERN.fullmatch(normalized.name)
+        or normalized == repository_root
+        or normalized in repository_root.parents
+        or repository_root in normalized.parents
+    ):
+        raise StandError(
+            "in-place state directory must be a direct run child of the owned temporary root"
+        )
+    _assert_no_reparse_ancestors(expected_parent)
+    _assert_no_reparse_ancestors(normalized)
+    if normalized.exists() and not normalized.is_dir():
+        raise StandError("in-place state path exists and is not a directory")
+    if create:
+        _ensure_private_state_directory(expected_parent)
+        _assert_no_reparse_ancestors(expected_parent)
+        if normalized.exists() and not (normalized / STAND_FILE).is_file():
+            raise StandError("in-place state directory exists without an owner marker")
+    elif not normalized.is_dir():
+        raise StandError("owned in-place state directory does not exist")
+    return normalized
+
+
+def _windows_user_sid() -> str:
+    """Return the current Windows user SID without exposing command output."""
+    whoami = shutil.which("whoami.exe") or shutil.which("whoami")
+    if whoami is None:
+        raise StandError("cannot verify the current Windows user for live state ACLs")
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed Windows identity query, no shell
+            [whoami, "/user", "/fo", "csv", "/nh"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        row = next(csv.reader(result.stdout.splitlines()))
+    except (OSError, subprocess.SubprocessError, StopIteration, csv.Error):
+        raise StandError(
+            "cannot verify the current Windows user for live state ACLs"
+        ) from None
+    sid = row[-1].strip() if row else ""
+    if not re.fullmatch(r"S-1-\d+(?:-\d+)+", sid):
+        raise StandError("cannot verify the current Windows user for live state ACLs")
+    return sid
+
+
+def _restrict_new_windows_state_directory(path: Path) -> None:
+    """Protect a newly created run root with only current-user and SYSTEM ACLs."""
+    icacls = shutil.which("icacls.exe") or shutil.which("icacls")
+    if icacls is None:
+        raise StandError("cannot enforce private Windows permissions for live state")
+    user_sid = _windows_user_sid()
+    try:
+        subprocess.run(  # noqa: S603 - fixed Windows ACL tool, path is owned run root
+            [icacls, str(path), "/reset"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        subprocess.run(  # noqa: S603 - fixed Windows ACL tool, SID is validated above
+            [icacls, str(path), "/setowner", f"*{user_sid}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        subprocess.run(  # noqa: S603 - fixed Windows ACL tool, SID/path are validated
+            [
+                icacls,
+                str(path),
+                "/inheritance:r",
+                "/grant:r",
+                f"*{user_sid}:(OI)(CI)F",
+                "*S-1-5-18:(OI)(CI)F",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise StandError(
+            "cannot enforce private Windows permissions for live state"
+        ) from None
+
+
+def _ensure_private_state_directory(
+    path: Path,
+    *,
+    owner_verified: bool = False,
+    protect_new_windows: bool = False,
+) -> None:
+    """Create an owned state directory with private POSIX permissions."""
+    try:
+        existed = path.exists()
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if os.name == "nt":
+            if protect_new_windows and not existed:
+                _restrict_new_windows_state_directory(path)
+            return
+        metadata = path.lstat()
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid():
+            raise StandError("live stand state directory is not owned by this user")
+        if stat.S_IMODE(metadata.st_mode) != 0o700:
+            if existed and not owner_verified:
+                raise StandError("existing live stand state directory is not private")
+            path.chmod(0o700)
+    except (OSError, RuntimeError) as error:
+        raise StandError("cannot secure live stand state directory") from error
+
+
+def _assert_private_state_directory(path: Path) -> None:
+    """Check POSIX ownership and privacy without changing existing permissions."""
+    if os.name == "nt":
+        return
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise StandError(
+            "cannot verify live stand state directory permissions"
+        ) from error
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise StandError("live stand state directory permissions are not private")
+
+
+def _active_owner_schema_version() -> int:
+    return IN_PLACE_OWNER_SCHEMA_VERSION if IN_PLACE_MODE else OWNER_SCHEMA_VERSION
+
+
+def _is_active_owner_schema(schema_version: int) -> bool:
+    return schema_version == _active_owner_schema_version()
+
+
+def _owner_schema_is_supported(schema_version: int) -> bool:
+    return schema_version in {
+        LEGACY_OWNER_SCHEMA_VERSION,
+        VOLUME_OWNER_SCHEMA_VERSION,
+        PREVIOUS_OWNER_SCHEMA_VERSION,
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
+    }
+
+
+def _write_in_place_compose_override(state_root: Path) -> Path:
+    """Redirect state and mount only the secrets each live service reads."""
+    resolved_root = state_root.resolve(strict=True)
+    repository = REPO_ROOT.resolve(strict=True)
+    env_file = json.dumps((resolved_root / ".env.docker").as_posix())
+    worker_env_file = json.dumps((resolved_root / ".env.docker.workers").as_posix())
+
+    def readonly_bind(source: Path, target: str) -> str:
+        return (
+            "      - type: bind\n"
+            f"        source: {json.dumps(source.as_posix())}\n"
+            f"        target: {target}\n"
+            "        read_only: true\n"
+            "        bind:\n"
+            "          create_host_path: false\n"
+        )
+
+    secrets_root = resolved_root / ".secrets"
+    private_key_mount = readonly_bind(
+        secrets_root / "jwt_rs256.pem", "/app/.secrets/jwt_rs256.pem"
+    )
+    public_key_mount = readonly_bind(
+        secrets_root / "jwt_rs256.pub.pem", "/app/.secrets/jwt_rs256.pub.pem"
+    )
+    temporal_token_mount = readonly_bind(
+        secrets_root / "temporal_api_key", "/app/.secrets/temporal_api_key"
+    )
+    temporal_config_mount = readonly_bind(
+        repository / "services" / "temporal" / "config.yaml",
+        "/etc/temporal/config/docker.yaml",
+    )
+    temporal_entrypoint_mount = readonly_bind(
+        repository / "services" / "temporal" / "entrypoint.sh",
+        "/etc/temporal/wave144-entrypoint.sh",
+    )
+    content = (
+        "services:\n"
+        "  backend:\n"
+        f"    env_file: !override [{env_file}]\n"
+        "    volumes: !override\n"
+        "      - static-data:/app/app/static\n"
+        f"{private_key_mount}"
+        "  migrations:\n"
+        f"    env_file: !override [{env_file}]\n"
+        "  notifications-worker:\n"
+        f"    env_file: !override [{worker_env_file}]\n"
+        "  outbox-worker:\n"
+        f"    env_file: !override [{worker_env_file}]\n"
+        "  file-processor:\n"
+        "    volumes: !override\n"
+        f"{public_key_mount}"
+        f"{temporal_token_mount}"
+        "  temporal:\n"
+        "    volumes: !override\n"
+        f"{temporal_config_mount}"
+        f"{temporal_entrypoint_mount}"
+    )
+    override = state_root / IN_PLACE_OVERLAY
+    _assert_worktree_paths_safe(state_root, (Path(IN_PLACE_OVERLAY),))
+    override.write_text(content, encoding="utf-8")
+    if os.name != "nt":
+        override.chmod(0o600)
+    return override
+
+
 def _assert_worktree_paths_safe(worktree: Path, relative_paths: Sequence[Path]) -> None:
     root = Path(os.path.abspath(worktree))
     _assert_no_reparse_ancestors(root)
@@ -257,7 +547,10 @@ def load_or_create_vapid(worktree: Path) -> dict[str, str]:
     if path.is_file():
         return load_vapid(worktree)
     keys = generate_vapid_keys()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if IN_PLACE_MODE:
+        _ensure_private_state_directory(path.parent)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with path.open("x", encoding="utf-8") as key_file:
             key_file.write(json.dumps(keys))
@@ -334,7 +627,10 @@ def load_or_create_stand_admin_password(worktree: Path, owner: StandOwner) -> st
     if path.exists():
         return _read_stand_admin_password(worktree, path, owner)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if IN_PLACE_MODE:
+        _ensure_private_state_directory(path.parent)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
     _assert_worktree_paths_safe(worktree, (ADMIN_PASSWORD_FILE,))
     password = _new_test_password()
     payload = {
@@ -406,8 +702,12 @@ def _git_common_directory() -> Path:
 
 
 def _owner_signing_key(*, create: bool) -> bytes:
-    """Read or create a local HMAC key under untracked Git metadata."""
-    key_path = _git_common_directory() / "live-stand-owner.key"
+    """Read or create the owner HMAC key in the mode-specific private root."""
+    key_path = (
+        WORKTREE / ".secrets" / "live-stand-owner.key"
+        if IN_PLACE_MODE
+        else _git_common_directory() / "live-stand-owner.key"
+    )
     _assert_no_reparse_ancestors(key_path)
     if key_path.is_file():
         key = key_path.read_bytes()
@@ -430,7 +730,7 @@ def _owner_signing_key(*, create: bool) -> bytes:
             if os.name != "nt":
                 key_path.chmod(0o600)
     else:
-        raise StandError("missing live stand owner key in Git metadata")
+        raise StandError("missing live stand owner key")
     if len(key) != 32:
         raise StandError("invalid live stand owner key in Git metadata")
     return key
@@ -508,7 +808,8 @@ def choose_published_ports() -> dict[str, int]:
 @contextmanager
 def stand_lifecycle_lock() -> Iterator[None]:
     """Serialize lifecycle and data operations for this stand worktree."""
-    lock_path = WORKTREE.parent / f".{WORKTREE_NAME}.lifecycle.lock"
+    lock_name = WORKTREE.name if IN_PLACE_MODE else WORKTREE_NAME
+    lock_path = WORKTREE.parent / f".{lock_name}.lifecycle.lock"
     _assert_no_reparse_ancestors(lock_path)
     flags = os.O_CREAT | os.O_RDWR
     if hasattr(os, "O_NOFOLLOW"):
@@ -596,18 +897,25 @@ def create_stand_owner(
     port_map = _validate_published_ports(
         published_ports if published_ports is not None else choose_published_ports()
     )
+    schema_version = _active_owner_schema_version()
+    source_sha = SOURCE_SHA if IN_PLACE_MODE else None
+    if IN_PLACE_MODE and (
+        source_sha is None or not re.fullmatch(r"[0-9a-f]{40}", source_sha)
+    ):
+        raise StandError("in-place owner requires the exact checked-out source SHA")
     owner = StandOwner(
         repository=repository,
         worktree=str(expected_worktree),
         project_name=project_name,
         published_ports=port_map,
-        schema_version=OWNER_SCHEMA_VERSION,
+        schema_version=schema_version,
         daemon_fingerprint=daemon_fingerprint,
         compose_resource_fingerprint=None,
         resume_compose_resource_fingerprint=None,
+        source_sha=source_sha,
     )
     payload = {
-        "version": OWNER_SCHEMA_VERSION,
+        "version": schema_version,
         "repository": owner.repository,
         "worktree": owner.worktree,
         "project_name": owner.project_name,
@@ -616,12 +924,17 @@ def create_stand_owner(
         "compose_resource_fingerprint": None,
         "resume_compose_resource_fingerprint": None,
     }
+    if source_sha is not None:
+        payload["source_sha"] = source_sha
+    if IN_PLACE_MODE:
+        _ensure_private_state_directory(worktree / ".secrets")
+    else:
+        (worktree / ".secrets").mkdir(parents=True, exist_ok=True)
     marker_data = {
         **payload,
         "signature": _owner_signature(payload, _owner_signing_key(create=True)),
     }
     try:
-        (worktree / ".secrets").mkdir(parents=True, exist_ok=True)
         with marker.open("x", encoding="utf-8") as marker_file:
             marker_file.write(json.dumps(marker_data, indent=2) + "\n")
         if os.name != "nt":
@@ -652,6 +965,7 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     daemon_keys = volume_keys | {"daemon_fingerprint"}
     resource_keys = daemon_keys | {"compose_resource_fingerprint"}
     resumable_resource_keys = resource_keys | {"resume_compose_resource_fingerprint"}
+    in_place_resource_keys = resumable_resource_keys | {"source_sha"}
     if (
         not isinstance(schema_version, int)
         or isinstance(schema_version, bool)
@@ -668,14 +982,16 @@ def load_stand_owner(worktree: Path) -> StandOwner:
             schema_version == OWNER_SCHEMA_VERSION
             and set(data) not in (resource_keys, resumable_resource_keys)
         )
-        or schema_version
-        not in {
-            LEGACY_OWNER_SCHEMA_VERSION,
-            VOLUME_OWNER_SCHEMA_VERSION,
-            PREVIOUS_OWNER_SCHEMA_VERSION,
-            RESOURCE_OWNER_SCHEMA_VERSION,
-            OWNER_SCHEMA_VERSION,
-        }
+        or (
+            schema_version == IN_PLACE_OWNER_SCHEMA_VERSION
+            and (
+                not IN_PLACE_MODE
+                or set(data) != in_place_resource_keys
+                or not isinstance(data.get("source_sha"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}", data["source_sha"])
+            )
+        )
+        or not _owner_schema_is_supported(schema_version)
         or not all(
             isinstance(data.get(key), str)
             for key in ("repository", "worktree", "project_name")
@@ -687,6 +1003,7 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
         raw_ports = data["published_ports"]
         if not isinstance(raw_ports, dict):
@@ -699,6 +1016,7 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
         raw_fingerprint = data["daemon_fingerprint"]
         if not isinstance(
@@ -710,7 +1028,11 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         daemon_fingerprint = raw_fingerprint
     compose_resource_fingerprint: str | None = None
     resume_compose_resource_fingerprint: str | None = None
-    if schema_version in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
+    if schema_version in {
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
         raw_resource_fingerprint = data["compose_resource_fingerprint"]
         if raw_resource_fingerprint is not None and (
             not isinstance(raw_resource_fingerprint, str)
@@ -737,6 +1059,11 @@ def load_stand_owner(worktree: Path) -> StandOwner:
                 raise StandError(
                     "ownership metadata cannot contain active and resumable Compose evidence"
                 )
+    source_sha = (
+        data.get("source_sha")
+        if schema_version == IN_PLACE_OWNER_SCHEMA_VERSION
+        else None
+    )
     try:
         marker_repository = Path(data["repository"]).resolve(strict=False)
         expected_repository = REPO_ROOT.resolve(strict=True)
@@ -760,20 +1087,28 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
         payload["published_ports"] = port_map
     if schema_version in {
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
         payload["daemon_fingerprint"] = daemon_fingerprint
-    if schema_version in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
+    if schema_version in {
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
         payload["compose_resource_fingerprint"] = compose_resource_fingerprint
         if "resume_compose_resource_fingerprint" in data:
             payload["resume_compose_resource_fingerprint"] = (
                 resume_compose_resource_fingerprint
             )
+    if schema_version == IN_PLACE_OWNER_SCHEMA_VERSION:
+        payload["source_sha"] = source_sha
     signature = data["signature"]
     if not isinstance(signature, str) or not hmac.compare_digest(
         signature, _owner_signature(payload, _owner_signing_key(create=False))
@@ -788,6 +1123,7 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         daemon_fingerprint=daemon_fingerprint,
         compose_resource_fingerprint=compose_resource_fingerprint,
         resume_compose_resource_fingerprint=resume_compose_resource_fingerprint,
+        source_sha=source_sha,
     )
 
 
@@ -799,7 +1135,11 @@ def verify_live_endpoints(base_url: str, mailpit_url: str) -> None:
             raise StandError("ownership metadata does not sign a current port map")
         if (
             owner.schema_version
-            in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}
+            in {
+                RESOURCE_OWNER_SCHEMA_VERSION,
+                OWNER_SCHEMA_VERSION,
+                IN_PLACE_OWNER_SCHEMA_VERSION,
+            }
             and owner.compose_resource_fingerprint is None
         ):
             raise StandError("live stand startup is incomplete")
@@ -808,6 +1148,8 @@ def verify_live_endpoints(base_url: str, mailpit_url: str) -> None:
         expected_mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"
         if base_url != expected_base_url or mailpit_url != expected_mailpit_url:
             raise StandError("endpoint URLs do not match the signed port map")
+        if IN_PLACE_MODE:
+            _assert_in_place_source_current(owner)
     except StandError:
         # Do not disclose marker paths, ports, project names, or signature
         # details through the Playwright launcher.
@@ -831,25 +1173,29 @@ def update_stand_owner_ports(
         worktree=current.worktree,
         project_name=current.project_name,
         published_ports=ports,
-        schema_version=OWNER_SCHEMA_VERSION,
+        schema_version=_active_owner_schema_version(),
         daemon_fingerprint=current.daemon_fingerprint,
         compose_resource_fingerprint=None,
         resume_compose_resource_fingerprint=(
             current.compose_resource_fingerprint
             or current.resume_compose_resource_fingerprint
         ),
+        source_sha=SOURCE_SHA if IN_PLACE_MODE else None,
     )
     return _write_stand_owner_update(worktree, updated)
 
 
 def _write_stand_owner_update(worktree: Path, updated: StandOwner) -> StandOwner:
     """Atomically sign a version-five owner update, including incomplete reservations."""
-    if updated.schema_version != OWNER_SCHEMA_VERSION:
+    if updated.schema_version not in {
+        OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
         raise StandError("cannot write an unsupported live stand owner version")
     if updated.daemon_fingerprint is None:
         raise StandError("cannot sign live stand ownership without a daemon identity")
     payload: dict[str, object] = {
-        "version": OWNER_SCHEMA_VERSION,
+        "version": updated.schema_version,
         "repository": updated.repository,
         "worktree": updated.worktree,
         "project_name": updated.project_name,
@@ -860,6 +1206,12 @@ def _write_stand_owner_update(worktree: Path, updated: StandOwner) -> StandOwner
             updated.resume_compose_resource_fingerprint
         ),
     }
+    if updated.schema_version == IN_PLACE_OWNER_SCHEMA_VERSION:
+        if updated.source_sha is None or not re.fullmatch(
+            r"[0-9a-f]{40}", updated.source_sha
+        ):
+            raise StandError("cannot sign in-place ownership without its source SHA")
+        payload["source_sha"] = updated.source_sha
     marker_data = {
         **payload,
         "signature": _owner_signature(payload, _owner_signing_key(create=False)),
@@ -906,7 +1258,7 @@ def _bind_stand_owner_compose_resources(
         raise StandError(
             "ownership metadata changed before Compose resource registration"
         )
-    if current.schema_version != OWNER_SCHEMA_VERSION:
+    if not _is_active_owner_schema(current.schema_version):
         raise StandError(
             "cannot register Compose resources for legacy ownership metadata"
         )
@@ -946,10 +1298,11 @@ def _bind_stand_owner_compose_resources(
         worktree=current.worktree,
         project_name=current.project_name,
         published_ports=current.published_ports,
-        schema_version=OWNER_SCHEMA_VERSION,
+        schema_version=current.schema_version,
         daemon_fingerprint=current.daemon_fingerprint,
         compose_resource_fingerprint=evidence.fingerprint,
         resume_compose_resource_fingerprint=None,
+        source_sha=current.source_sha,
     )
     return _write_stand_owner_update(worktree, updated)
 
@@ -964,7 +1317,7 @@ def _verify_stand_owner_compose_resources(
     current = load_stand_owner(worktree)
     if current != owner:
         raise StandError("live stand ownership metadata changed")
-    if current.schema_version != OWNER_SCHEMA_VERSION:
+    if not _is_active_owner_schema(current.schema_version):
         raise StandError(
             "live stand ownership lacks Compose resource evidence for the current schema; re-run up before lifecycle operations"
         )
@@ -1004,13 +1357,14 @@ def _invalidate_stand_owner_compose_resources(
         worktree=current.worktree,
         project_name=current.project_name,
         published_ports=current.published_ports,
-        schema_version=OWNER_SCHEMA_VERSION,
+        schema_version=current.schema_version,
         daemon_fingerprint=current.daemon_fingerprint,
         compose_resource_fingerprint=None,
         resume_compose_resource_fingerprint=(
             current.compose_resource_fingerprint
             or current.resume_compose_resource_fingerprint
         ),
+        source_sha=current.source_sha,
     )
     return _write_stand_owner_update(worktree, updated)
 
@@ -1027,6 +1381,10 @@ def stand_environment(
     env["LIVE_VAPID_PUBLIC_KEY"] = keys["public"]
     env["LIVE_VAPID_PRIVATE_KEY"] = keys["private"]
     env["LIVE_BASE_URL"] = _stand_base_url(ports)
+    if IN_PLACE_MODE:
+        env["LIVE_STAND_STATE_ROOT"] = str(WORKTREE.resolve(strict=True))
+        if SOURCE_SHA is not None:
+            env["LIVE_STAND_SOURCE_SHA"] = SOURCE_SHA
     for name, port in ports.items():
         if name == "MAILPIT":
             env["LIVE_MAILPIT_PORT"] = str(port)
@@ -1050,6 +1408,10 @@ def compose_control_environment(
     # recreate containers, so a fixed non-secret placeholder is sufficient.
     env["LIVE_VAPID_PUBLIC_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
     env["LIVE_VAPID_PRIVATE_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
+    if IN_PLACE_MODE:
+        env["LIVE_STAND_STATE_ROOT"] = str(WORKTREE.resolve(strict=True))
+        if SOURCE_SHA is not None:
+            env["LIVE_STAND_SOURCE_SHA"] = SOURCE_SHA
     for name, port in ports.items():
         if name == "MAILPIT":
             env["LIVE_MAILPIT_PORT"] = str(port)
@@ -1060,9 +1422,27 @@ def compose_control_environment(
 
 def compose_command(*args: str, project_name: str) -> list[str]:
     _validate_project_name(project_name)
-    command = ["docker", "compose", "-p", project_name, "--env-file", ".env.docker"]
-    for compose_file in COMPOSE_FILES:
-        command += ["-f", compose_file]
+    if IN_PLACE_MODE:
+        command = [
+            "docker",
+            "compose",
+            "--project-directory",
+            str(REPO_ROOT.resolve(strict=True)),
+            "-p",
+            project_name,
+            "--env-file",
+            str((WORKTREE / ".env.docker").resolve(strict=False)),
+        ]
+        compose_files = (
+            REPO_ROOT / COMPOSE_FILES[0],
+            REPO_ROOT / OVERLAY,
+            WORKTREE / IN_PLACE_OVERLAY,
+        )
+    else:
+        command = ["docker", "compose", "-p", project_name, "--env-file", ".env.docker"]
+        compose_files = tuple(Path(name) for name in COMPOSE_FILES)
+    for compose_file in compose_files:
+        command += ["-f", str(compose_file)]
     return [*command, *args]
 
 
@@ -1547,34 +1927,110 @@ def _assert_worktree_clean(worktree: Path) -> None:
         raise StandError(f"{worktree} has tracked changes; refusing to switch it")
 
 
-def _require_worktree() -> None:
+def _require_worktree(*, require_current_source: bool = True) -> None:
     _assert_stand_paths_safe(WORKTREE)
-    if not (WORKTREE / OVERLAY).is_file():
+    if IN_PLACE_MODE:
+        if (
+            not (REPO_ROOT / OVERLAY).is_file()
+            or not (WORKTREE / IN_PLACE_OVERLAY).is_file()
+        ):
+            raise StandError("in-place stand files are incomplete; run `up` first")
+    elif not (WORKTREE / OVERLAY).is_file():
         raise StandError(f"no stand at {WORKTREE}; run `live_stand.py up` first")
     owner = load_stand_owner(WORKTREE)
     if (
-        owner.schema_version in {RESOURCE_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}
+        owner.schema_version
+        in {
+            RESOURCE_OWNER_SCHEMA_VERSION,
+            OWNER_SCHEMA_VERSION,
+            IN_PLACE_OWNER_SCHEMA_VERSION,
+        }
         and owner.compose_resource_fingerprint is None
     ):
         raise StandError(
             "live stand startup is incomplete; refusing lifecycle operation"
+        )
+    if IN_PLACE_MODE:
+        if require_current_source:
+            _assert_in_place_source_current(owner)
+        _assert_private_state_directory(WORKTREE)
+        _assert_private_state_directory(WORKTREE / ".secrets")
+
+
+def _assert_in_place_source_current(owner: StandOwner | None = None) -> str:
+    """Reject source drift before operating on an in-place live stand."""
+    current_sha = _git("rev-parse", "HEAD")
+    expected_sha = owner.source_sha if owner is not None else SOURCE_SHA
+    if expected_sha is None or current_sha != expected_sha:
+        raise StandError(
+            "in-place source checkout changed since the stand was prepared"
+        )
+    if _git("status", "--porcelain", "--untracked-files=normal"):
+        raise StandError("in-place source checkout has modified or untracked files")
+    _assert_no_ignored_in_place_build_sources()
+    return current_sha
+
+
+def _assert_no_ignored_in_place_build_sources() -> None:
+    """Reject ignored local files that Docker would copy into live images.
+
+    The tracked commit SHA does not cover ignored worktree files. Query only
+    directories copied by the live Dockerfiles, and exclude cache/secret paths
+    already omitted by the root Docker build context rules. Git reports paths
+    internally; do not include potentially sensitive names in an error.
+    """
+    ignored_sources = _git(
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "--no-empty-directory",
+        "--",
+        *IN_PLACE_BUILD_SOURCE_PATHS,
+        *(f":(exclude,glob){path}" for path in IN_PLACE_DOCKERIGNORE_EXCLUSIONS),
+    )
+    if ignored_sources:
+        raise StandError(
+            "in-place source checkout contains ignored untracked files in Docker COPY paths"
         )
 
 
 def _up_locked(ref: str) -> None:
     _assert_stand_paths_safe(WORKTREE)
     resolved_sha = resolve_stand_ref(ref)
-    published_ports = choose_published_ports()
-    require_free_ports(published_ports)
+    if IN_PLACE_MODE:
+        current_sha = _git("rev-parse", "HEAD")
+        if resolved_sha != current_sha:
+            raise StandError(
+                "in-place mode requires --ref to match current checkout HEAD"
+            )
+        if _git("status", "--porcelain", "--untracked-files=normal"):
+            raise StandError(
+                "in-place mode requires a clean source checkout with no untracked files"
+            )
+        _assert_no_ignored_in_place_build_sources()
+        global SOURCE_SHA
+        SOURCE_SHA = current_sha
     existing_owner: StandOwner | None = None
     stop_after_resource_binding = False
     allow_existing_owned_volumes = False
-    if WORKTREE.exists():
-        if not (WORKTREE / OVERLAY).is_file():
-            raise StandError(
-                f"path exists but is not an owned live stand worktree: {WORKTREE}"
-            )
+    existing_marker = WORKTREE / STAND_FILE
+    existing_owned_path = (
+        existing_marker.is_file() if IN_PLACE_MODE else (WORKTREE / OVERLAY).is_file()
+    )
+    if WORKTREE.exists() and existing_owned_path:
         existing_owner = load_stand_owner(WORKTREE)
+        if IN_PLACE_MODE and existing_owner.source_sha != SOURCE_SHA:
+            raise StandError("owned in-place stand belongs to a different source SHA")
+        if IN_PLACE_MODE:
+            _ensure_private_state_directory(WORKTREE, owner_verified=True)
+            _ensure_private_state_directory(WORKTREE / ".secrets", owner_verified=True)
+    elif IN_PLACE_MODE and WORKTREE.exists():
+        raise StandError("in-place state directory exists without an owner marker")
+    published_ports = choose_published_ports()
+    require_free_ports(published_ports)
+    if existing_owner is not None:
         has_previous_resource_evidence = (
             existing_owner.compose_resource_fingerprint is not None
             or existing_owner.resume_compose_resource_fingerprint is not None
@@ -1583,7 +2039,8 @@ def _up_locked(ref: str) -> None:
             has_previous_resource_evidence
             or existing_owner.schema_version == PREVIOUS_OWNER_SCHEMA_VERSION
         )
-        _assert_worktree_clean(WORKTREE)
+        if not IN_PLACE_MODE:
+            _assert_worktree_clean(WORKTREE)
         _require_owned_docker_daemon(existing_owner)
         stop_after_resource_binding = (
             existing_owner.schema_version == PREVIOUS_OWNER_SCHEMA_VERSION
@@ -1593,7 +2050,7 @@ def _up_locked(ref: str) -> None:
             )
         )
         should_stop_before_binding = (
-            existing_owner.schema_version == OWNER_SCHEMA_VERSION
+            _is_active_owner_schema(existing_owner.schema_version)
             and existing_owner.compose_resource_fingerprint is not None
         )
         if should_stop_before_binding:
@@ -1610,7 +2067,11 @@ def _up_locked(ref: str) -> None:
                     dict(existing_owner.published_ports),
                 ),
             )
-    sha = ensure_worktree(resolved_sha)
+    if IN_PLACE_MODE:
+        _ensure_private_state_directory(WORKTREE, protect_new_windows=True)
+        sha = resolved_sha
+    else:
+        sha = ensure_worktree(resolved_sha)
     _assert_stand_paths_safe(WORKTREE)
     if not (WORKTREE / STAND_FILE).is_file():
         owner = create_stand_owner(WORKTREE, published_ports=published_ports)
@@ -1624,19 +2085,29 @@ def _up_locked(ref: str) -> None:
     env = stand_environment(
         load_or_create_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
+    if IN_PLACE_MODE:
+        _write_in_place_compose_override(WORKTREE)
     powershell = shutil.which("pwsh") or shutil.which("powershell")
     if powershell is None:
         raise StandError("PowerShell is required to run start-docker.ps1")
+    launcher_path = (
+        REPO_ROOT / "start-docker.ps1" if IN_PLACE_MODE else Path("start-docker.ps1")
+    )
+    prepare_command = [
+        powershell,
+        "-NoProfile",
+        "-File",
+        str(launcher_path),
+        "-PrepareOnly",
+        "-ExtraCompose",
+        OVERLAY,
+    ]
+    if IN_PLACE_MODE:
+        prepare_command.extend(
+            ("-LiveStandStateRoot", str(WORKTREE.resolve(strict=True)))
+        )
     _run(
-        [
-            powershell,
-            "-NoProfile",
-            "-File",
-            "start-docker.ps1",
-            "-PrepareOnly",
-            "-ExtraCompose",
-            OVERLAY,
-        ],
+        prepare_command,
         cwd=WORKTREE,
         env=env,
     )
@@ -1678,11 +2149,15 @@ def _up_locked(ref: str) -> None:
         powershell,
         "-NoProfile",
         "-File",
-        "start-docker.ps1",
+        str(launcher_path),
         "-Build",
         "-ExtraCompose",
         OVERLAY,
     ]
+    if IN_PLACE_MODE:
+        start_command.extend(
+            ("-LiveStandStateRoot", str(WORKTREE.resolve(strict=True)))
+        )
     if allow_existing_owned_volumes:
         start_command.append("-AllowExistingOwnedVolumes")
     _run(start_command, cwd=WORKTREE, env=env)
@@ -1715,7 +2190,8 @@ def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> Non
         load_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
     env.pop("TEST_PASSWORD", None)
-    scripts_mount = f"{WORKTREE / 'scripts'}:/app/scripts:ro"
+    source_root = REPO_ROOT if IN_PLACE_MODE else WORKTREE
+    scripts_mount = f"{source_root / 'scripts'}:/app/scripts:ro"
     for script in SEED_SCRIPTS:
         run_env = env
         run_options = [
@@ -2155,7 +2631,7 @@ def _e2e_locked(admin_password: str, *, mode: str = "full") -> None:
             output_directory=str(output_path),
             npm_config_directory=temporary_root,
         )
-        frontend = WORKTREE / "frontend"
+        frontend = (REPO_ROOT if IN_PLACE_MODE else WORKTREE) / "frontend"
         playwright_environment: dict[str, str] = {}
         try:
             _ensure_live_e2e_dependencies(frontend, environment)
@@ -2208,7 +2684,7 @@ def e2e(mode: str = "full") -> None:
 
 
 def status() -> None:
-    _require_worktree()
+    _require_worktree(require_current_source=False)
     owner = load_stand_owner(WORKTREE)
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _run(compose_command("ps", project_name=owner.project_name), cwd=WORKTREE, env=env)
@@ -2219,7 +2695,7 @@ def status() -> None:
 
 def _stop_locked() -> None:
     """Stop only this owned stand's containers, preserving all data."""
-    _require_worktree()
+    _require_worktree(require_current_source=False)
     owner = load_stand_owner(WORKTREE)
     _require_owned_docker_daemon(owner)
     _verify_stand_owner_compose_resources(WORKTREE, owner)
@@ -2237,7 +2713,7 @@ def stop() -> None:
 
 def _teardown_locked() -> None:
     """Remove the signed Compose resources and volumes; keep local files."""
-    _require_worktree()
+    _require_worktree(require_current_source=False)
     owner = load_stand_owner(WORKTREE)
     _require_owned_docker_daemon(owner)
     if owner.compose_resource_fingerprint is None:
@@ -2265,26 +2741,60 @@ def down() -> None:
     stop()
 
 
+def _configure_state_mode(args: argparse.Namespace) -> None:
+    """Select legacy worktree or strictly confined current-checkout mode."""
+    global IN_PLACE_MODE, SOURCE_SHA, WORKTREE
+    if bool(args.in_place) != bool(args.state_dir):
+        raise StandError("--in-place and --state-dir must be supplied together")
+    if not args.in_place:
+        if IN_PLACE_MODE:
+            WORKTREE = REPO_ROOT.parent / WORKTREE_NAME
+        IN_PLACE_MODE = False
+        SOURCE_SHA = None
+        return
+    IN_PLACE_MODE = True
+    SOURCE_SHA = None
+    WORKTREE = _validated_in_place_state_root(
+        args.state_dir, create=args.command == "up"
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     commands = parser.add_subparsers(dest="command", required=True)
+
+    def add_state_options(command_parser: argparse.ArgumentParser) -> None:
+        command_parser.add_argument(
+            "--in-place",
+            action="store_true",
+            help="use the current checkout with generated state under an owned temp root",
+        )
+        command_parser.add_argument(
+            "--state-dir",
+            help="direct run directory under the system temp ue-live-acceptance root",
+        )
+
     up_parser = commands.add_parser("up")
+    add_state_options(up_parser)
     up_parser.add_argument("--ref", default="HEAD")
     verify_parser = commands.add_parser(
         "verify-endpoints", help="verify live URLs against the signed owner marker"
     )
     verify_parser.add_argument("--base-url", required=True)
     verify_parser.add_argument("--mailpit-url", required=True)
+    add_state_options(verify_parser)
     seed_parser = commands.add_parser("seed")
+    add_state_options(seed_parser)
     seed_parser.add_argument("--demo", action="store_true", required=True)
     e2e_parser = commands.add_parser("e2e")
+    add_state_options(e2e_parser)
     e2e_parser.add_argument("--mode", choices=("smoke", "full"), default="full")
-    commands.add_parser("status")
-    commands.add_parser("stop")
-    commands.add_parser("down")
-    commands.add_parser("teardown")
+    for command_name in ("status", "stop", "down", "teardown"):
+        command_parser = commands.add_parser(command_name)
+        add_state_options(command_parser)
     args = parser.parse_args(argv)
     try:
+        _configure_state_mode(args)
         if args.command == "up":
             up(args.ref)
         elif args.command == "verify-endpoints":

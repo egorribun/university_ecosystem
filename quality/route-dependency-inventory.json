@@ -388,6 +388,7 @@
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_chat:GET:/{chat_id}",
@@ -399,6 +400,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_chats:GET:",
@@ -411,6 +413,7 @@
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_messages:GET:/{chat_id}/messages",
@@ -423,6 +426,7 @@
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_reactors:GET:/{chat_id}/messages/{message_id}/reactions",

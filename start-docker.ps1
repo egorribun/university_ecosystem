@@ -43,6 +43,7 @@ param(
     [switch]$Logs,
     [switch]$PrepareOnly,
     [switch]$AllowExistingOwnedVolumes,
+    [string]$LiveStandStateRoot = "",
     [Alias("Lean")]
     [switch]$Core,
     [string[]]$ExtraCompose = @(),
@@ -50,13 +51,263 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ProjectRoot
+$ProjectRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path))
+$LiveStateMode = -not [string]::IsNullOrWhiteSpace($LiveStandStateRoot)
+$StateRoot = $ProjectRoot
+
+function Assert-LiveStandPrivatePath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if (-not $LiveStateMode) { return }
+
+    if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )) {
+        try {
+            $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            $systemSid = "S-1-5-18"
+            $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
+            $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+        } catch {
+            throw "Live stand state permissions cannot be verified."
+        }
+        if ($ownerSid -cne $currentSid) {
+            throw "Live stand state path is not owned by the current Windows user."
+        }
+        $allowedSids = @($currentSid, $systemSid)
+        $seenSids = @{}
+        foreach ($rule in $acl.Access) {
+            if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+                continue
+            }
+            try {
+                $identitySid = $rule.IdentityReference.Translate(
+                    [System.Security.Principal.SecurityIdentifier]
+                ).Value
+            } catch {
+                throw "Live stand state ACL contains an unverifiable identity."
+            }
+            if ($identitySid -cnotin $allowedSids -or
+                (($rule.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl) -ne
+                    [System.Security.AccessControl.FileSystemRights]::FullControl)) {
+                throw "Live stand state ACL grants access beyond the current user and SYSTEM."
+            }
+            $seenSids[$identitySid] = $true
+        }
+        if (-not $seenSids.ContainsKey($currentSid) -or
+            -not $seenSids.ContainsKey($systemSid)) {
+            throw "Live stand state ACL must grant access to the current user and SYSTEM."
+        }
+        return
+    }
+
+    try {
+        $mode = [System.IO.File]::GetUnixFileMode($Path)
+    } catch {
+        throw "Live stand state permissions cannot be verified."
+    }
+    $groupAndOther = [System.IO.UnixFileMode]::GroupRead -bor
+        [System.IO.UnixFileMode]::GroupWrite -bor
+        [System.IO.UnixFileMode]::GroupExecute -bor
+        [System.IO.UnixFileMode]::OtherRead -bor
+        [System.IO.UnixFileMode]::OtherWrite -bor
+        [System.IO.UnixFileMode]::OtherExecute
+    if (($mode -band $groupAndOther) -ne [System.IO.UnixFileMode]::None) {
+        throw "Live stand state paths must have private permissions on POSIX."
+    }
+}
+
+function Set-LiveStandPrivateFileMode {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if (-not $LiveStateMode -or
+        [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+            [System.Runtime.InteropServices.OSPlatform]::Windows
+        )) { return }
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    $rootPrefix = $StateRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $absolutePath.StartsWith($rootPrefix, [StringComparison]::Ordinal)) {
+        throw "Generated live stand file escapes the owned state root."
+    }
+    $ownerReadWrite = [System.IO.UnixFileMode]::UserRead -bor
+        [System.IO.UnixFileMode]::UserWrite
+    [System.IO.File]::SetUnixFileMode($absolutePath, $ownerReadWrite)
+}
+
+function Set-LiveStandRuntimeSecretFileMode {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if (-not $LiveStateMode) { return }
+
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    $relativePath = [System.IO.Path]::GetRelativePath($StateRoot, $absolutePath).Replace('\', '/')
+    $allowedPaths = @(
+        ".secrets/jwt_rs256.pem",
+        ".secrets/jwt_rs256.pub.pem",
+        ".secrets/temporal_api_key"
+    )
+    if ($relativePath -cnotin $allowedPaths) {
+        throw "Runtime secret permissions can be relaxed only for explicitly mounted live files."
+    }
+    if (-not (Test-Path -LiteralPath $absolutePath -PathType Leaf)) {
+        throw "Required live runtime secret file is missing."
+    }
+    $item = Get-Item -LiteralPath $absolutePath -Force
+    if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        throw "Live runtime secret file refuses reparse points."
+    }
+    if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )) { return }
+
+    $runtimeReadableMode = [System.IO.UnixFileMode]::UserRead -bor
+        [System.IO.UnixFileMode]::UserWrite -bor
+        [System.IO.UnixFileMode]::GroupRead -bor
+        [System.IO.UnixFileMode]::OtherRead
+    [System.IO.File]::SetUnixFileMode($absolutePath, $runtimeReadableMode)
+}
+
+function ConvertTo-CanonicalLiveOwnerJson {
+    param([Parameter(Mandatory=$true)][AllowNull()]$Value)
+    if ($null -eq $Value) { return "null" }
+    if ($Value -is [System.Collections.IDictionary]) {
+        $members = foreach ($key in ($Value.Keys | Sort-Object -CaseSensitive)) {
+            $keyJson = ConvertTo-Json -InputObject ([string]$key) -Compress
+            $valueJson = ConvertTo-CanonicalLiveOwnerJson -Value $Value[$key]
+            "${keyJson}:$valueJson"
+        }
+        return "{$($members -join ',')}"
+    }
+    if ($Value -is [array]) {
+        $members = foreach ($item in $Value) {
+            ConvertTo-CanonicalLiveOwnerJson -Value $item
+        }
+        return "[$($members -join ',')]"
+    }
+    if ($Value -is [string]) {
+        return ConvertTo-Json -InputObject $Value -Compress
+    }
+    if ($Value -is [bool]) {
+        return $Value.ToString().ToLowerInvariant()
+    }
+    return ConvertTo-Json -InputObject $Value -Compress
+}
+
+function Resolve-OwnedLiveStandStateRoot {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    $candidate = [System.IO.Path]::GetFullPath($Path)
+    $temporaryParent = [System.IO.Path]::GetFullPath(
+        (Join-Path ([System.IO.Path]::GetTempPath()) "ue-live-acceptance")
+    )
+    $parent = [System.IO.Path]::GetDirectoryName($candidate)
+    $runName = [System.IO.Path]::GetFileName($candidate)
+    if ($parent.TrimEnd('\', '/') -ine $temporaryParent.TrimEnd('\', '/') -or
+        $runName -notmatch '^run-[A-Za-z0-9-]{1,80}$' -or
+        $candidate.TrimEnd('\', '/') -ieq $ProjectRoot.TrimEnd('\', '/') -or
+        $ProjectRoot.StartsWith($candidate.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
+        $candidate.StartsWith($ProjectRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Live stand state root must be a direct run child of the owned temporary root."
+    }
+    foreach ($pathToCheck in @($temporaryParent, $candidate)) {
+        $current = $pathToCheck
+        while ($current) {
+            if (Test-Path -LiteralPath $current) {
+                $item = Get-Item -LiteralPath $current -Force
+                if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                    throw "Live stand state root refuses reparse points."
+                }
+            }
+            if (-not [System.IO.Path]::GetDirectoryName($current) -or
+                [System.IO.Path]::GetDirectoryName($current) -ceq $current) { break }
+            $current = [System.IO.Path]::GetDirectoryName($current)
+        }
+    }
+    if (-not (Test-Path -LiteralPath $candidate -PathType Container)) {
+        throw "Live stand state root does not exist."
+    }
+    $ownerPath = Join-Path $candidate ".secrets/live-stand.json"
+    $keyPath = Join-Path $candidate ".secrets/live-stand-owner.key"
+    foreach ($ownedFile in @($ownerPath, $keyPath, (Join-Path $candidate "docker-compose.live-state.yml"))) {
+        if (-not (Test-Path -LiteralPath $ownedFile -PathType Leaf)) {
+            throw "Live stand state root is missing an owned marker, key, or Compose override."
+        }
+        $item = Get-Item -LiteralPath $ownedFile -Force
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "Live stand state root contains an unsafe owned file path."
+        }
+    }
+    $secretsDirectory = Get-Item -LiteralPath (Join-Path $candidate ".secrets") -Force
+    if (-not $secretsDirectory.PSIsContainer -or
+        ($secretsDirectory.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "Live stand state root has an unsafe secrets directory."
+    }
+    foreach ($privatePath in @(
+        $candidate,
+        $secretsDirectory.FullName,
+        $ownerPath,
+        $keyPath,
+        (Join-Path $candidate "docker-compose.live-state.yml")
+    )) {
+        Assert-LiveStandPrivatePath -Path $privatePath
+    }
+    try {
+        $owner = [System.IO.File]::ReadAllText($ownerPath) | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $key = [System.IO.File]::ReadAllBytes($keyPath)
+    } catch {
+        throw "Live stand ownership metadata cannot be validated."
+    }
+    if ($owner.version -ne 7 -or
+        [string]$owner.repository -ine $ProjectRoot -or
+        [string]$owner.worktree -ine $candidate -or
+        [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
+        [string]$owner.source_sha -cnotmatch '^[0-9a-f]{40}$' -or
+        [string]$env:LIVE_STAND_SOURCE_SHA -cne [string]$owner.source_sha -or
+        [string]$env:COMPOSE_PROJECT_NAME -cne [string]$owner.project_name -or
+        $key.Length -ne 32 -or
+        [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
+        throw "Live stand owner does not match this source checkout and run root."
+    }
+    $payload = [ordered]@{}
+    foreach ($name in ($owner.Keys | Where-Object { $_ -cne "signature" } | Sort-Object -CaseSensitive)) {
+        $payload[$name] = $owner[$name]
+    }
+    $canonical = ConvertTo-CanonicalLiveOwnerJson -Value $payload
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($key)
+    try {
+        $actualSignature = [Convert]::ToHexString(
+            $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($canonical))
+        ).ToLowerInvariant()
+    } finally {
+        $hmac.Dispose()
+        [Array]::Clear($key, 0, $key.Length)
+    }
+    if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals(
+        [Convert]::FromHexString([string]$owner.signature),
+        [Convert]::FromHexString($actualSignature)
+    )) {
+        throw "Live stand owner signature is invalid."
+    }
+    return $candidate
+}
+
+function Resolve-StatePath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $StateRoot $Path))
+}
+
+if ($LiveStateMode) {
+    $StateRoot = Resolve-OwnedLiveStandStateRoot -Path $LiveStandStateRoot
+}
+Set-Location $StateRoot
 
 $ComposeFile = "docker-compose.full.yml"
 $S3MigrationRunbook = "docs/runbooks/s3-seaweedfs-cutover.md"
-$S3MigrationAttestation = ".secrets/s3-cutover-attestation.txt"
-$ComposeArgs = @("-f", $ComposeFile)
+$S3MigrationAttestation = if ($LiveStateMode) {
+    Join-Path $StateRoot ".secrets/s3-cutover-attestation.txt"
+} else { ".secrets/s3-cutover-attestation.txt" }
+$ComposeArgs = if ($LiveStateMode) {
+    @("--project-directory", $ProjectRoot, "-f", (Join-Path $ProjectRoot $ComposeFile))
+} else { @("-f", $ComposeFile) }
 foreach ($extra in $ExtraCompose) {
     # Additional overlays stay inside the checkout, follow the repository's
     # Compose naming, and apply after the base file.
@@ -66,13 +317,17 @@ foreach ($extra in $ExtraCompose) {
     if ($extra -eq $ComposeFile) {
         throw "Extra Compose overlay refused: $extra is the base Compose file"
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $extra) -PathType Leaf)) {
+    $extraPath = Join-Path $ProjectRoot $extra
+    if (-not (Test-Path -LiteralPath $extraPath -PathType Leaf)) {
         throw "Extra Compose overlay refused: file not found: $extra"
     }
-    if ($ComposeArgs -contains $extra) {
+    if ($ComposeArgs -contains $extraPath -or $ComposeArgs -contains $extra) {
         throw "Extra Compose overlay refused: $extra is listed twice"
     }
-    $ComposeArgs += @("-f", $extra)
+    $ComposeArgs += @("-f", $(if ($LiveStateMode) { $extraPath } else { $extra }))
+}
+if ($LiveStateMode) {
+    $ComposeArgs += @("-f", (Join-Path $StateRoot "docker-compose.live-state.yml"))
 }
 $ComposeCommand = "docker compose $($ComposeArgs -join ' ') --env-file .env.docker"
 # Keep the full compose model as the single source of truth.  Core mode scopes
@@ -140,9 +395,9 @@ $CoreExcludedHealthServices = [string[]]@(
     "alloy",
     "pyroscope"
 )
-$EnvFile = ".env.docker"
-$WorkerEnvFile = ".env.docker.workers"
-$EnvCompose = ".env"
+$EnvFile = if ($LiveStateMode) { Join-Path $StateRoot ".env.docker" } else { ".env.docker" }
+$WorkerEnvFile = if ($LiveStateMode) { Join-Path $StateRoot ".env.docker.workers" } else { ".env.docker.workers" }
+$EnvCompose = if ($LiveStateMode) { Join-Path $StateRoot ".env" } else { ".env" }
 $OpenSslFallbackImage = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 
 # -- Helpers ------------------------------------------------------------------
@@ -184,7 +439,7 @@ function Assert-PrepareOnlyLiveInputs {
         throw "PrepareOnly requires a valid owned live-stand project name."
     }
 
-    $secretsDirectory = Join-Path $ProjectRoot ".secrets"
+    $secretsDirectory = Join-Path $StateRoot ".secrets"
     if (Test-Path -LiteralPath $secretsDirectory) {
         $secretsItem = Get-Item -LiteralPath $secretsDirectory -Force
         if (-not $secretsItem.PSIsContainer -or
@@ -193,7 +448,7 @@ function Assert-PrepareOnlyLiveInputs {
         }
     }
     foreach ($path in @($EnvFile, $EnvCompose, $WorkerEnvFile)) {
-        $absolutePath = Join-Path $ProjectRoot $path
+        $absolutePath = Resolve-StatePath -Path $path
         if (Test-Path -LiteralPath $absolutePath) {
             $environmentItem = Get-Item -LiteralPath $absolutePath -Force
             if ($environmentItem.PSIsContainer -or
@@ -242,7 +497,7 @@ function Assert-PrepareOnlyLiveInputs {
         throw "PrepareOnly requires a valid live-stand VAPID key pair."
     }
 
-    $vapidPath = Join-Path $ProjectRoot ".secrets/live-vapid.json"
+    $vapidPath = Join-Path $StateRoot ".secrets/live-vapid.json"
     $vapidItem = Get-Item -LiteralPath $vapidPath -Force -ErrorAction SilentlyContinue
     if ($null -eq $vapidItem -or $vapidItem.PSIsContainer -or
         ($vapidItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
@@ -309,11 +564,13 @@ function New-FernetKey {
 
 function Write-Utf8NoBom {
     param([string]$Path, [string]$Content)
+    $absolutePath = Resolve-StatePath -Path $Path
     [System.IO.File]::WriteAllText(
-        (Join-Path $ProjectRoot $Path),
+        $absolutePath,
         $Content,
         [System.Text.UTF8Encoding]::new($false)
     )
+    Set-LiveStandPrivateFileMode -Path $absolutePath
 }
 
 function Get-EnvEntry {
@@ -322,7 +579,7 @@ function Get-EnvEntry {
         [Parameter(Mandatory=$true)][string]$Key
     )
 
-    $absolutePath = Join-Path $ProjectRoot $Path
+    $absolutePath = Resolve-StatePath -Path $Path
     if (-not (Test-Path -LiteralPath $absolutePath)) { return $null }
 
     $prefix = "$Key="
@@ -340,7 +597,7 @@ function Set-EnvEntry {
         [Parameter(Mandatory=$true)][string]$Value
     )
 
-    $absolutePath = Join-Path $ProjectRoot $Path
+    $absolutePath = Resolve-StatePath -Path $Path
     $prefix = "$Key="
     $found = $false
     $updated = @(
@@ -473,7 +730,7 @@ function Write-WorkerEnvironmentFile {
     # authenticate sessions, so materialize a separate env_file instead of
     # handing them a broad credential-bearing environment and relying only on
     # network isolation. The redacted file remains ignored by Git.
-    $sourcePath = Join-Path $ProjectRoot $EnvFile
+    $sourcePath = Resolve-StatePath -Path $EnvFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
         throw "Cannot create ${WorkerEnvFile}: ${EnvFile} is missing."
     }
@@ -574,7 +831,7 @@ function New-JwtRs256Key {
         [switch]$NoDockerFallback
     )
 
-    $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
+    $absoluteOutputPath = Resolve-StatePath -Path $OutputPath
     if (Test-JwtRs256PrivateKey -Path $absoluteOutputPath) {
         Write-Ok "RSA-2048 keypair already exists at $OutputPath (idempotent skip)"
         return
@@ -633,6 +890,7 @@ function New-JwtRs256Key {
         $pem.Trim(),
         [System.Text.UTF8Encoding]::new($false)
     )
+    Set-LiveStandPrivateFileMode -Path $absoluteOutputPath
 
     Write-Ok "Generated RSA-2048 keypair at $OutputPath"
 }
@@ -648,8 +906,8 @@ function New-JwtRs256PublicKey {
         [switch]$NoDockerFallback
     )
 
-    $absolutePrivateKeyPath = Join-Path $ProjectRoot $PrivateKeyPath
-    $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
+    $absolutePrivateKeyPath = Resolve-StatePath -Path $PrivateKeyPath
+    $absoluteOutputPath = Resolve-StatePath -Path $OutputPath
 
     if (-not (Test-Path $absolutePrivateKeyPath)) {
         throw "Cannot derive public key: private key not found at $PrivateKeyPath. Run New-JwtRs256Key first."
@@ -708,6 +966,7 @@ function New-JwtRs256PublicKey {
         $publicPem,
         [System.Text.UTF8Encoding]::new($false)
     )
+    Set-LiveStandPrivateFileMode -Path $absoluteOutputPath
 
     Write-Ok "Derived RSA-2048 public key at $OutputPath"
 }
@@ -807,8 +1066,8 @@ function New-TemporalServiceToken {
         [switch]$NoDockerFallback
     )
 
-    $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
-    $absolutePrivateKeyPath = Join-Path $ProjectRoot $PrivateKeyPath
+    $absoluteOutputPath = Resolve-StatePath -Path $OutputPath
+    $absolutePrivateKeyPath = Resolve-StatePath -Path $PrivateKeyPath
     if (-not (Test-Path $absolutePrivateKeyPath)) {
         throw "Cannot mint Temporal service token: private key not found at $PrivateKeyPath. Run New-JwtRs256Key first."
     }
@@ -903,6 +1162,7 @@ function New-TemporalServiceToken {
         $token,
         [System.Text.UTF8Encoding]::new($false)
     )
+    Set-LiveStandPrivateFileMode -Path $absoluteOutputPath
 
     Write-Ok "Generated Temporal service token at $OutputPath ($days days valid)"
 }
@@ -911,7 +1171,7 @@ function Assert-PreparedLiveStandConfiguration {
     # The owner will render and sign the resolved Compose volume projection
     # after this phase. Validate local inputs without emitting their contents.
     foreach ($path in @($EnvFile, $EnvCompose, $WorkerEnvFile)) {
-        $absolutePath = Join-Path $ProjectRoot $path
+        $absolutePath = Resolve-StatePath -Path $path
         if (-not (Test-Path -LiteralPath $absolutePath -PathType Leaf)) {
             throw "Live-stand environment preparation did not create a required file."
         }
@@ -940,14 +1200,14 @@ function Assert-PreparedLiveStandConfiguration {
     }
 
     $workerEnvironment = [System.IO.File]::ReadAllText(
-        (Join-Path $ProjectRoot $WorkerEnvFile)
+        (Resolve-StatePath -Path $WorkerEnvFile)
     )
     if ($workerEnvironment -match '(?m)^\s*REVOCATION_REDIS_(?:URL|PASSWORD)=') {
         throw "Live-stand worker environment contains a forbidden revocation credential."
     }
-    if (-not (Test-JwtRs256PrivateKey -Path (Join-Path $ProjectRoot ".secrets/jwt_rs256.pem")) -or
-        -not (Test-Path -LiteralPath (Join-Path $ProjectRoot ".secrets/jwt_rs256.pub.pem") -PathType Leaf) -or
-        -not (Test-Path -LiteralPath (Join-Path $ProjectRoot ".secrets/temporal_api_key") -PathType Leaf)) {
+    if (-not (Test-JwtRs256PrivateKey -Path (Join-Path $StateRoot ".secrets/jwt_rs256.pem")) -or
+        -not (Test-Path -LiteralPath (Join-Path $StateRoot ".secrets/jwt_rs256.pub.pem") -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $StateRoot ".secrets/temporal_api_key") -PathType Leaf)) {
         throw "Live-stand signing configuration is incomplete or invalid."
     }
 }
@@ -1163,6 +1423,24 @@ function Assert-ComposeConfiguration {
     return $composeModel
 }
 
+function Assert-LiveComposeVersion {
+    if (-not $LiveStateMode) { return }
+    $versionOutput = @(docker compose version --short 2>$null)
+    $versionExitCode = $LASTEXITCODE
+    $versionText = ($versionOutput -join " ").Trim()
+    if ($versionExitCode -ne 0 -or
+        $versionText -notmatch '^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)') {
+        throw "Cannot determine Docker Compose version required by the live override."
+    }
+    $major = [int]$Matches.major
+    $minor = [int]$Matches.minor
+    $patch = [int]$Matches.patch
+    if ($major -lt 2 -or ($major -eq 2 -and
+        ($minor -lt 24 -or ($minor -eq 24 -and $patch -lt 4)))) {
+        throw "In-place live stands require Docker Compose 2.24.4 or newer for !override."
+    }
+}
+
 # -- Prerequisite: Docker running ---------------------------------------------
 
 if (-not $PrepareOnly) {
@@ -1178,6 +1456,8 @@ if (-not $PrepareOnly) {
         exit 1
     }
 }
+
+if (-not $PrepareOnly) { Assert-LiveComposeVersion }
 
 # -- Handle -Down -------------------------------------------------------------
 
@@ -1237,7 +1517,7 @@ function Assert-LegacyS3VolumeGuard {
     # Compose models: environment, .env.docker, then the declared default.
     $composeProject = $env:COMPOSE_PROJECT_NAME
     if ([string]::IsNullOrWhiteSpace($composeProject)) {
-        $projectEntry = Get-Content -LiteralPath (Join-Path $ProjectRoot $EnvFile) -ErrorAction SilentlyContinue |
+        $projectEntry = Get-Content -LiteralPath (Resolve-StatePath -Path $EnvFile) -ErrorAction SilentlyContinue |
             Where-Object { $_ -match '^\s*COMPOSE_PROJECT_NAME\s*=' } |
             Select-Object -Last 1
         if ($projectEntry) {
@@ -1269,7 +1549,7 @@ function Assert-LegacyS3VolumeGuard {
         "target_volume=$storageVolume",
         "verified=VERIFIED_S3_CUTOVER"
     )
-    $attestationPath = Join-Path $ProjectRoot $S3MigrationAttestation
+    $attestationPath = Resolve-StatePath -Path $S3MigrationAttestation
     $attestationMatches = $false
     if (Test-Path -LiteralPath $attestationPath -PathType Leaf) {
         $actualAttestation = @(Get-Content -LiteralPath $attestationPath)
@@ -1410,12 +1690,14 @@ SPOTIFY_OAUTH_STATE_SECRET=$spotifyOauthStateSecret
     # .env exists but .env.docker missing - copy .env as base for .env.docker
     Write-Warn ".env.docker missing - deriving from .env..."
     Copy-Item $EnvCompose $EnvFile
+    Set-LiveStandPrivateFileMode -Path (Resolve-StatePath -Path $EnvFile)
     Write-Ok "Created $EnvFile from $EnvCompose"
     $generated = $true
 } elseif (-not $needsEnvDocker -and $needsEnvCompose) {
     # .env.docker exists but .env missing - derive .env from .env.docker
     Write-Warn ".env missing - deriving from .env.docker..."
     Copy-Item $EnvFile $EnvCompose
+    Set-LiveStandPrivateFileMode -Path (Resolve-StatePath -Path $EnvCompose)
     Write-Ok "Created $EnvCompose from $EnvFile"
     $generated = $true
 }
@@ -1509,6 +1791,14 @@ New-JwtRs256PublicKey -PrivateKeyPath ".secrets/jwt_rs256.pem" -OutputPath ".sec
 # at /.well-known/jwks.json. Existing tokens are retained only after their
 # claims, expiry, algorithm, and RSA signature pass validation.
     New-TemporalServiceToken -NoDockerFallback:$PrepareOnly
+
+# These three files are bind-mounted individually into the non-root services
+# that consume them. The state root and .secrets directory stay private (0700);
+# host users cannot traverse to these 0644 files, while container UIDs can read
+# the individual read-only mounts. Ownership, VAPID, and admin files remain 0600.
+Set-LiveStandRuntimeSecretFileMode -Path (Resolve-StatePath ".secrets/jwt_rs256.pem")
+Set-LiveStandRuntimeSecretFileMode -Path (Resolve-StatePath ".secrets/jwt_rs256.pub.pem")
+Set-LiveStandRuntimeSecretFileMode -Path (Resolve-StatePath ".secrets/temporal_api_key")
 
 # -- Wave 137 SW2: SECRET_KEY drift detection .env <-> .env.docker ---------------
 # Closes W136 polish-v2 finding: gateway's JWT_SECRET env reads from .env via

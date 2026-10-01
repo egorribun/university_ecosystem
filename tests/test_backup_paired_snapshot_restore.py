@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -29,6 +30,12 @@ class FakeBody:
 
     async def close(self) -> None:
         self.closed = True
+
+    async def __aenter__(self) -> FakeBody:
+        return self
+
+    async def __aexit__(self, *_args: Any) -> None:
+        await self.close()
 
 
 class FakeS3:
@@ -252,13 +259,20 @@ class FakeS3:
         self.multipart.pop((Bucket, Key, UploadId), None)
 
 
-def _s3_settings(bucket: str) -> backup_db.S3Settings:
+def _s3_settings(
+    bucket: str, *, public_base_url: str | None = None
+) -> backup_db.S3Settings:
     return backup_db.S3Settings(
         endpoint_url="https://s3.example.test",
         bucket=bucket,
         prefix="database",
         region="test-region",
+        public_base_url=public_base_url,
     )
+
+
+def _target_public_base_url(bucket: str) -> str:
+    return f"https://s3.example.test/{bucket}"
 
 
 def _v1_database_manifest() -> dict[str, Any]:
@@ -280,12 +294,13 @@ def _paired_manifest_data() -> dict[str, Any]:
     snapshot_id = "0123456789abcdef0123456789abcdef"
     root = f"database/snapshots/{snapshot_id}"
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "snapshot_id": snapshot_id,
         "consistency_mode": "operator_quiesced",
         "quiescence_confirmed": True,
         "quiescence_confirmed_at": "2026-10-01T00:00:00Z",
         "source_object_bucket": "synthetic-uploads",
+        "source_storage_public_base_url": "https://s3.example.test/synthetic-uploads",
         "database": _v1_database_manifest(),
         "database_archive_version_id": None,
         "database_archive_etag": '"database-etag"',
@@ -324,6 +339,127 @@ def test_paired_snapshot_manifest_round_trips_source_version_and_quiescence() ->
     assert manifest.objects[0].source_key == "users/42/avatar.png"
     assert manifest.to_json_bytes() == payload + b"\n"
     assert b"password" not in manifest.to_json_bytes().lower()
+
+
+@pytest.mark.parametrize("payload", [b"[]", b"null", b'"manifest"'])
+def test_paired_snapshot_manifest_rejects_non_object_json(payload: bytes) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="fields do not match"):
+        backup_db.parse_paired_snapshot_manifest(
+            payload,
+            expected_manifest_key=(
+                "database/snapshots/0123456789abcdef0123456789abcdef/database.manifest.json"
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "",
+        " https://storage.example.test",
+        "https://storage.example.test/" + "x" * 2048,
+        "https://storage.example.test/a%2Fb",
+    ],
+)
+def test_storage_public_base_url_rejects_invalid_unparsed_values(value: Any) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="is invalid"):
+        backup_db._validate_storage_public_base_url(value, label="test URL")
+
+
+def test_storage_public_base_url_rejects_invalid_port_and_url_structure() -> None:
+    for value in ("https://storage.example.test:99999", "ftp://storage.example.test"):
+        with pytest.raises(backup_db.BackupArtifactError, match="is invalid"):
+            backup_db._validate_storage_public_base_url(value, label="test URL")
+
+
+def test_storage_public_base_url_allows_http_only_for_opted_in_local_storage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_url = "http://localhost:9000/uploads"
+    with pytest.raises(backup_db.BackupArtifactError, match="must use HTTPS"):
+        backup_db._validate_storage_public_base_url(local_url, label="test URL")
+
+    monkeypatch.setenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", "true")
+    assert (
+        backup_db._validate_storage_public_base_url(local_url, label="test URL")
+        == local_url
+    )
+    with pytest.raises(backup_db.BackupArtifactError, match="must use HTTPS"):
+        backup_db._validate_storage_public_base_url(
+            "http://storage.example.test/uploads", label="test URL"
+        )
+
+
+def test_storage_public_base_url_uses_application_override_endpoint_and_aws_default() -> (
+    None
+):
+    assert (
+        backup_db._s3_storage_public_base_url(
+            _s3_settings(
+                "synthetic-uploads", public_base_url="https://cdn.example.test/uploads/"
+            )
+        )
+        == "https://cdn.example.test/uploads"
+    )
+    assert (
+        backup_db._s3_storage_public_base_url(_s3_settings("synthetic-uploads"))
+        == "https://s3.example.test/synthetic-uploads"
+    )
+    assert (
+        backup_db._s3_storage_public_base_url(
+            replace(_s3_settings("synthetic-uploads"), endpoint_url=None)
+        )
+        == "https://synthetic-uploads.s3.amazonaws.com"
+    )
+
+
+@pytest.mark.parametrize("key", ["", " leading", "bad%escape", "a//b", "a/../b"])
+def test_application_storage_key_rejects_keys_outside_app_contract(key: str) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="unsupported"):
+        backup_db._validate_application_storage_key(key)
+
+
+def _parsed_paired_manifest() -> backup_db.PairedSnapshotManifest:
+    return backup_db.parse_paired_snapshot_manifest(
+        json.dumps(_paired_manifest_data()).encode(),
+        expected_manifest_key=(
+            "database/snapshots/0123456789abcdef0123456789abcdef/database.manifest.json"
+        ),
+    )
+
+
+def test_storage_reference_mapping_fails_closed_and_skips_non_app_keys() -> None:
+    manifest = _parsed_paired_manifest()
+    with pytest.raises(backup_db.BackupArtifactError, match="does not bind"):
+        backup_db._build_storage_reference_url_map(
+            replace(manifest, source_storage_public_base_url=None),
+            "restore-run",
+            "https://target.example.test/uploads",
+        )
+
+    unsupported_key_manifest = replace(
+        manifest,
+        objects=(replace(manifest.objects[0], source_key="unsupported%key"),),
+    )
+    assert (
+        backup_db._build_storage_reference_url_map(
+            unsupported_key_manifest,
+            "restore-run",
+            "https://target.example.test/uploads",
+        )
+        == {}
+    )
+
+
+def test_storage_reference_mapping_rejects_duplicate_application_urls() -> None:
+    manifest = _parsed_paired_manifest()
+    with pytest.raises(backup_db.BackupArtifactError, match="duplicate application"):
+        backup_db._build_storage_reference_url_map(
+            replace(manifest, objects=manifest.objects * 2),
+            "restore-run",
+            "https://target.example.test/uploads",
+        )
 
 
 @pytest.mark.parametrize(
@@ -479,6 +615,24 @@ def test_paired_snapshot_manifest_rejects_bad_key_json_size_and_fields(
         )
 
 
+def test_legacy_paired_manifest_parses_but_does_not_claim_source_url_ownership() -> (
+    None
+):
+    key = "database/snapshots/0123456789abcdef0123456789abcdef/database.manifest.json"
+    data = _paired_manifest_data()
+    data["schema_version"] = backup_db.LEGACY_PAIRED_SNAPSHOT_SCHEMA_VERSION
+    del data["source_storage_public_base_url"]
+
+    manifest = backup_db.parse_paired_snapshot_manifest(
+        json.dumps(data).encode(), expected_manifest_key=key
+    )
+
+    assert manifest.schema_version == backup_db.LEGACY_PAIRED_SNAPSHOT_SCHEMA_VERSION
+    assert manifest.source_storage_public_base_url is None
+    serialized = json.loads(manifest.to_json_bytes())
+    assert "source_storage_public_base_url" not in serialized
+
+
 def test_paired_snapshot_manifest_rejects_snapshot_root_mismatch() -> None:
     data = _paired_manifest_data()
     data["database"]["artifact_key"] = (
@@ -623,6 +777,7 @@ async def test_paired_snapshot_opens_backup_client_after_source_inventory(
     store = FakeS3()
     entered_buckets: list[str] = []
     exited_buckets: list[str] = []
+    backup_entry_inventory_events: list[list[tuple[str, str, str]]] = []
 
     class ClientContext:
         def __init__(self, settings: backup_db.S3Settings) -> None:
@@ -630,6 +785,8 @@ async def test_paired_snapshot_opens_backup_client_after_source_inventory(
 
         async def __aenter__(self) -> FakeS3:
             entered_buckets.append(self.settings.bucket)
+            if self.settings.bucket == "synthetic-backups":
+                backup_entry_inventory_events.append(list(store.events))
             return store
 
         async def __aexit__(self, *_args: Any) -> bool:
@@ -661,8 +818,169 @@ async def test_paired_snapshot_opens_backup_client_after_source_inventory(
     )
     assert entered_buckets == ["synthetic-uploads", "synthetic-backups"]
     assert exited_buckets == ["synthetic-backups", "synthetic-uploads"]
+    assert backup_entry_inventory_events == [[("list", "synthetic-uploads", "current")]]
     assert manifest.objects == ()
     assert store.objects[("synthetic-backups", manifest.database.artifact_key)]
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_closes_source_client_if_backup_client_entry_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    lifecycle: list[tuple[str, str]] = []
+
+    class ClientContext:
+        def __init__(self, settings: backup_db.S3Settings) -> None:
+            self.settings = settings
+
+        async def __aenter__(self) -> FakeS3:
+            lifecycle.append(("enter", self.settings.bucket))
+            if self.settings.bucket == "synthetic-backups":
+                raise OSError("synthetic backup client entry failure")
+            return store
+
+        async def __aexit__(
+            self, exc_type: type[BaseException] | None, *_args: Any
+        ) -> bool:
+            lifecycle.append(
+                ("exit-error" if exc_type else "exit", self.settings.bucket)
+            )
+            return False
+
+    monkeypatch.setattr(backup_db, "s3_client", ClientContext)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+    monkeypatch.setattr(
+        backup_db,
+        "dump_database",
+        lambda _url, path: path.write_bytes(b"synthetic database archive"),
+    )
+
+    with pytest.raises(OSError, match="backup client entry failure"):
+        await backup_db.backup_paired_snapshot_to_s3(
+            "postgresql://synthetic@localhost/source",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            confirm_source_quiesced=True,
+        )
+
+    assert lifecycle == [
+        ("enter", "synthetic-uploads"),
+        ("enter", "synthetic-backups"),
+        ("exit-error", "synthetic-uploads"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_does_not_enter_backup_client_if_inventory_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    store.fail_inventory.add("current")
+    lifecycle: list[tuple[str, str]] = []
+
+    class ClientContext:
+        def __init__(self, settings: backup_db.S3Settings) -> None:
+            self.settings = settings
+
+        async def __aenter__(self) -> FakeS3:
+            lifecycle.append(("enter", self.settings.bucket))
+            return store
+
+        async def __aexit__(
+            self, exc_type: type[BaseException] | None, *_args: Any
+        ) -> bool:
+            lifecycle.append(
+                ("exit-error" if exc_type else "exit", self.settings.bucket)
+            )
+            return False
+
+    monkeypatch.setattr(backup_db, "s3_client", ClientContext)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+    monkeypatch.setattr(
+        backup_db,
+        "dump_database",
+        lambda _url, path: path.write_bytes(b"synthetic database archive"),
+    )
+
+    with pytest.raises(
+        backup_db.BackupArtifactError,
+        match="Unable to inventory application S3 objects",
+    ):
+        await backup_db.backup_paired_snapshot_to_s3(
+            "postgresql://synthetic@localhost/source",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            confirm_source_quiesced=True,
+        )
+
+    assert lifecycle == [
+        ("enter", "synthetic-uploads"),
+        ("exit-error", "synthetic-uploads"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_closes_entered_clients_in_reverse_order_on_body_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    lifecycle: list[tuple[str, str]] = []
+
+    class ClientContext:
+        def __init__(self, settings: backup_db.S3Settings) -> None:
+            self.settings = settings
+
+        async def __aenter__(self) -> FakeS3:
+            lifecycle.append(("enter", self.settings.bucket))
+            return store
+
+        async def __aexit__(
+            self, exc_type: type[BaseException] | None, *_args: Any
+        ) -> bool:
+            lifecycle.append(
+                ("exit-error" if exc_type else "exit", self.settings.bucket)
+            )
+            return False
+
+    monkeypatch.setattr(backup_db, "s3_client", ClientContext)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+    monkeypatch.setattr(
+        backup_db,
+        "dump_database",
+        lambda _url, path: path.write_bytes(b"synthetic database archive"),
+    )
+
+    async def failed_publish(*_args: Any, **_kwargs: Any) -> None:
+        raise OSError("synthetic manifest publish failure")
+
+    monkeypatch.setattr(backup_db, "_publish_paired_manifest", failed_publish)
+    with pytest.raises(OSError, match="manifest publish failure"):
+        await backup_db.backup_paired_snapshot_to_s3(
+            "postgresql://synthetic@localhost/source",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            confirm_source_quiesced=True,
+        )
+
+    assert lifecycle == [
+        ("enter", "synthetic-uploads"),
+        ("enter", "synthetic-backups"),
+        ("exit-error", "synthetic-backups"),
+        ("exit-error", "synthetic-uploads"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -782,6 +1100,7 @@ def test_application_s3_settings_use_the_canonical_configured_fields(
             storage_s3_region="eu-test-1",
             storage_s3_access_key_id="synthetic-access",
             storage_s3_secret_access_key=marker,
+            storage_s3_base_url="https://cdn.example.test/uploads",
         ),
     )
 
@@ -792,6 +1111,7 @@ def test_application_s3_settings_use_the_canonical_configured_fields(
     assert settings.region == "eu-test-1"
     assert settings.access_key_id == "synthetic-access"
     assert settings.secret_access_key == marker
+    assert settings.public_base_url == "https://cdn.example.test/uploads"
     assert marker not in repr(settings)
 
 
@@ -838,7 +1158,7 @@ def test_snapshot_cli_uses_environment_and_reports_manifest_key(
     assert output.err == ""
 
 
-def test_restore_snapshot_cli_requires_an_explicit_target_prefix() -> None:
+def test_restore_snapshot_cli_requires_an_explicit_target_public_base_url() -> None:
     with pytest.raises(backup_db.BackupArtifactError, match="Invalid command-line"):
         backup_db.build_parser().parse_args(
             [
@@ -849,6 +1169,8 @@ def test_restore_snapshot_cli_requires_an_explicit_target_prefix() -> None:
                 "restore_target",
                 "--objects-target-bucket",
                 "restore-objects",
+                "--objects-target-prefix",
+                "restore-run",
             ]
         )
 
@@ -860,11 +1182,11 @@ def test_restore_snapshot_cli_reads_admin_url_from_environment_and_passes_prefix
         "synthetic-admin-secret"  # pragma: allowlist secret -- synthetic test fixture
     )
     backup_settings = _s3_settings("synthetic-backups")
-    storage_settings = _s3_settings("synthetic-source")
-    calls: list[tuple[Any, ...]] = []
+    storage_settings = _s3_settings("synthetic-restore")
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
-    async def fake_restore(*args: Any) -> None:
-        calls.append(args)
+    async def fake_restore(*args: Any, **kwargs: Any) -> None:
+        calls.append((args, kwargs))
 
     monkeypatch.setenv(
         "BACKUP_RESTORE_ADMIN_DATABASE_URL",
@@ -889,6 +1211,8 @@ def test_restore_snapshot_cli_reads_admin_url_from_environment_and_passes_prefix
             "synthetic-restore",
             "--objects-target-prefix",
             "",
+            "--objects-target-public-base-url",
+            TARGET_PUBLIC_BASE_URL,
         ]
     )
 
@@ -896,13 +1220,16 @@ def test_restore_snapshot_cli_reads_admin_url_from_environment_and_passes_prefix
     assert result == 0
     assert calls == [
         (
-            "database/snapshots/run/database.manifest.json",
-            "restore_target",
-            f"postgresql://restore_admin:{secret}@localhost/postgres",
-            backup_settings,
-            storage_settings,
-            "synthetic-restore",
-            "",
+            (
+                "database/snapshots/run/database.manifest.json",
+                "restore_target",
+                f"postgresql://restore_admin:{secret}@localhost/postgres",
+                backup_settings,
+                storage_settings,
+                "synthetic-restore",
+                "",
+            ),
+            {"target_public_base_url": TARGET_PUBLIC_BASE_URL},
         )
     ]
     assert secret not in output.out
@@ -971,6 +1298,8 @@ def _append_paired_archive_object(
 
 
 RESTORE_PREFIX = "restore-run"
+SOURCE_PUBLIC_BASE_URL = "https://s3.example.test/synthetic-uploads"
+TARGET_PUBLIC_BASE_URL = "https://s3.example.test/synthetic-restore"
 
 
 class FakeDatabaseConnection:
@@ -993,6 +1322,321 @@ class FakeDatabaseConnection:
         return type(
             "Result", (), {"fetchone": lambda _self: (1,) if self.exists else None}
         )()
+
+
+class FakeQueryResult:
+    def __init__(self, rows: list[tuple[Any, ...]], rowcount: int = 0) -> None:
+        self.rows = rows
+        self.rowcount = rowcount
+
+    def fetchone(self) -> tuple[Any, ...] | None:
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self) -> list[tuple[Any, ...]]:
+        return self.rows
+
+
+class FakeStorageReferenceCursor:
+    def __init__(self, database: FakeStorageReferenceDatabase) -> None:
+        self.database = database
+
+    def __enter__(self) -> FakeStorageReferenceCursor:
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        return None
+
+    def execute(self, query: Any, params: tuple[Any, ...] = ()) -> FakeQueryResult:
+        return self.database.execute(query, params)
+
+    def executemany(self, query: Any, params_seq: Any) -> None:
+        self.database.executemany(query, params_seq)
+
+
+class FakeStorageReferenceDatabase:
+    """Small PostgreSQL boundary fake for the restore reference transaction."""
+
+    def __init__(self, *, source_base_url: str) -> None:
+        self.source_prefix = f"{source_base_url.rstrip('/')}/"
+        self.revision = "synthetic_revision"
+        self.reference_columns = {
+            ("user_profiles", "avatar_url"),
+            ("user_profiles", "cover_url"),
+            ("stories", "cover_url"),
+            ("events", "image_url"),
+            ("event_files", "file_url"),
+            ("news", "image_url"),
+            ("attachments", "url"),
+        }
+        self.storage_reference_max_lengths: dict[tuple[str, str], int | None] = {
+            ("user_profiles", "avatar_url"): 2048,
+            ("user_profiles", "cover_url"): 2048,
+            ("stories", "cover_url"): None,
+            ("events", "image_url"): None,
+            ("event_files", "file_url"): None,
+            ("news", "image_url"): None,
+            ("attachments", "url"): None,
+        }
+        self.storage_reference_types: dict[tuple[str, str], str] = {
+            key: "character varying" for key in self.storage_reference_max_lengths
+        }
+        self.outbox_types: dict[tuple[str, str], str] = {
+            ("stored_events", "payload"): "json",
+            ("stored_events", "processed_at"): "timestamp with time zone",
+            ("failed_outbox_events", "payload"): "json",
+            ("failed_outbox_events", "resolved_at"): "timestamp with time zone",
+        }
+        self.missing_catalog_columns: set[tuple[str, str]] = set()
+        self.references: dict[tuple[str, str], list[str | None]] = {
+            ("user_profiles", "avatar_url"): [],
+            ("user_profiles", "cover_url"): [],
+            ("stories", "cover_url"): [],
+            ("events", "image_url"): [],
+            ("event_files", "file_url"): [],
+            ("news", "image_url"): [],
+            ("attachments", "url"): [],
+        }
+        self.pending_stored_event_payloads: list[str] = []
+        self.stored_event_status = "pending"
+        self.stored_event_processed_at: str | None = None
+        self.pending_failed_event_payloads: list[str] = []
+        self.pending_failed_event_resolved_at: str | None = None
+        self.url_map: dict[str, str] = {}
+        self.fail_on_update_table: str | None = None
+        self._references_before_transaction: (
+            dict[tuple[str, str], list[str | None]] | None
+        ) = None
+        self._url_map_before_transaction: dict[str, str] | None = None
+        self.committed = False
+        self.rolled_back = False
+        self.executed: list[tuple[str, tuple[Any, ...]]] = []
+
+    def __enter__(self) -> FakeStorageReferenceDatabase:
+        self._references_before_transaction = {
+            key: list(values) for key, values in self.references.items()
+        }
+        self._url_map_before_transaction = dict(self.url_map)
+        return self
+
+    def __exit__(self, exc_type: Any, *_args: Any) -> None:
+        self.rolled_back = exc_type is not None
+        self.committed = exc_type is None
+        if exc_type is not None and self._references_before_transaction is not None:
+            self.references = self._references_before_transaction
+        if exc_type is not None and self._url_map_before_transaction is not None:
+            self.url_map = self._url_map_before_transaction
+
+    def execute(self, query: Any, params: tuple[Any, ...] = ()) -> FakeQueryResult:
+        sql = str(query)
+        self.executed.append((sql, params))
+        if "FROM alembic_version" in sql:
+            return FakeQueryResult([(self.revision,)])
+        if "FROM information_schema.columns" in sql:
+            rows = [
+                (
+                    table,
+                    column,
+                    self.storage_reference_types[(table, column)],
+                    self.storage_reference_max_lengths[(table, column)],
+                )
+                for table, column in self.reference_columns
+            ]
+            rows.extend(
+                (table, column, data_type, None)
+                for (table, column), data_type in self.outbox_types.items()
+            )
+            rows.extend([("stored_events", "status", "character varying", 20)])
+            rows = [
+                row
+                for row in rows
+                if (row[0], row[1]) not in self.missing_catalog_columns
+            ]
+            return FakeQueryResult(rows)
+        if "FROM stored_events" in sql:
+            return FakeQueryResult(
+                [
+                    (payload,)
+                    for payload in self.pending_stored_event_payloads
+                    if self.stored_event_processed_at is None
+                    and self._payload_contains_source_url(sql, payload)
+                ]
+            )
+        if "FROM failed_outbox_events" in sql:
+            return FakeQueryResult(
+                [
+                    (payload,)
+                    for payload in self.pending_failed_event_payloads
+                    if self.pending_failed_event_resolved_at is None
+                    and self._payload_contains_source_url(sql, payload)
+                ]
+            )
+        if sql.startswith("CREATE TEMP TABLE"):
+            return FakeQueryResult([])
+        if sql.startswith("SELECT DISTINCT"):
+            fields = sql.split()
+            key = (fields[4], fields[2])
+            prefix = params[0]
+            return FakeQueryResult(
+                [
+                    (value,)
+                    for value in self.references.get(key, [])
+                    if value is not None and value.startswith(prefix)
+                ]
+            )
+        if sql.startswith("UPDATE"):
+            fields = sql.split()
+            table, column = fields[1], fields[5]
+            if table == self.fail_on_update_table:
+                raise OSError("synthetic SQL failure")
+            rows = self.references[(table, column)]
+            changed = 0
+            for index, value in enumerate(rows):
+                if value in self.url_map:
+                    rows[index] = self.url_map[value]
+                    changed += 1
+            return FakeQueryResult([], rowcount=changed)
+        raise AssertionError(f"Unexpected storage reference query: {sql}")
+
+    def _payload_contains_source_url(self, sql: str, payload: str) -> bool:
+        if "jsonb_path_query" not in sql:
+            return self.source_prefix in payload
+
+        def strings(value: Any) -> list[str]:
+            if isinstance(value, str):
+                return [value]
+            if isinstance(value, dict):
+                return [item for child in value.values() for item in strings(child)]
+            if isinstance(value, list):
+                return [item for child in value for item in strings(child)]
+            return []
+
+        return any(self.source_prefix in item for item in strings(json.loads(payload)))
+
+    def cursor(self) -> FakeStorageReferenceCursor:
+        return FakeStorageReferenceCursor(self)
+
+    def executemany(self, query: Any, params_seq: Any) -> None:
+        assert "INSERT INTO" in str(query)
+        self.url_map.update(dict(params_seq))
+
+
+def _empty_restore_reference_connect(_dsn: str) -> FakeStorageReferenceDatabase:
+    return FakeStorageReferenceDatabase(source_base_url=SOURCE_PUBLIC_BASE_URL)
+
+
+def test_restore_storage_schema_accepts_postgresql_unbounded_reference_columns() -> (
+    None
+):
+    database = _empty_restore_reference_connect("unused")
+    database.storage_reference_types[("stories", "cover_url")] = "text"
+
+    lengths = backup_db._validate_restored_storage_schema(
+        database, ("synthetic_revision",)
+    )
+
+    assert lengths[("user_profiles", "avatar_url")] == 2048
+    assert lengths[("stories", "cover_url")] is None
+
+
+@pytest.mark.parametrize(
+    ("column", "data_type", "maximum_length", "outbox_column", "outbox_type"),
+    [
+        (("stories", "cover_url"), "integer", None, None, None),
+        (("user_profiles", "avatar_url"), "character varying", 0, None, None),
+        (("stories", "cover_url"), "text", 1024, None, None),
+        (
+            None,
+            None,
+            None,
+            ("stored_events", "processed_at"),
+            "character varying",
+        ),
+    ],
+)
+def test_restore_storage_schema_rejects_incompatible_reference_catalog(
+    column: tuple[str, str] | None,
+    data_type: str | None,
+    maximum_length: int | None,
+    outbox_column: tuple[str, str] | None,
+    outbox_type: str | None,
+) -> None:
+    database = _empty_restore_reference_connect("unused")
+    if column is not None:
+        database.storage_reference_types[column] = data_type or ""
+        database.storage_reference_max_lengths[column] = maximum_length
+    if outbox_column is not None:
+        database.outbox_types[outbox_column] = outbox_type or ""
+
+    with pytest.raises(backup_db.BackupArtifactError, match="incompatible"):
+        backup_db._validate_restored_storage_schema(database, ("synthetic_revision",))
+
+
+def test_restore_storage_schema_rejects_missing_outbox_reference_column() -> None:
+    database = _empty_restore_reference_connect("unused")
+    database.missing_catalog_columns.add(("failed_outbox_events", "resolved_at"))
+
+    with pytest.raises(backup_db.BackupArtifactError, match="outbox reference checks"):
+        backup_db._validate_restored_storage_schema(database, ("synthetic_revision",))
+
+
+def test_restore_storage_reference_transaction_requires_manifest_source_base() -> None:
+    manifest = replace(_parsed_paired_manifest(), source_storage_public_base_url=None)
+
+    with pytest.raises(backup_db.BackupArtifactError, match="does not bind"):
+        backup_db._rebase_restored_storage_references(
+            _empty_restore_reference_connect("unused"),
+            manifest,
+            "restore-run",
+            "https://target.example.test/uploads",
+            {},
+        )
+
+
+@pytest.mark.parametrize(
+    ("table", "payloads_attribute"),
+    [
+        ("stored_events", "pending_stored_event_payloads"),
+        ("failed_outbox_events", "pending_failed_event_payloads"),
+    ],
+)
+def test_restore_outbox_guard_decodes_unicode_and_escaped_nested_urls(
+    table: str, payloads_attribute: str
+) -> None:
+    source_base_url = "https://source.example.test/upløads"
+    source_url = f"{source_base_url}/events/cover.png"
+    payload = json.dumps(
+        {"nested": {"attachments": [{"url": source_url}]}}, ensure_ascii=True
+    ).replace("/", "\\/")
+    assert "ø" not in payload
+    assert "\\/" in payload
+
+    manifest = replace(
+        _parsed_paired_manifest(), source_storage_public_base_url=source_base_url
+    )
+    database = FakeStorageReferenceDatabase(source_base_url=source_base_url)
+    getattr(database, payloads_attribute).append(payload)
+    column_lengths = backup_db._validate_restored_storage_schema(
+        database, ("synthetic_revision",)
+    )
+
+    with pytest.raises(backup_db.BackupArtifactError, match="unresolved outbox events"):
+        backup_db._rebase_restored_storage_references(
+            database,
+            manifest,
+            "restore-run",
+            "https://target.example.test/restored",
+            column_lengths,
+        )
+
+    guard_query = next(
+        sql for sql, _params in database.executed if f"FROM {table}" in sql
+    )
+    guard_params = next(
+        params for sql, params in database.executed if f"FROM {table}" in sql
+    )
+    assert "jsonb_path_query" in guard_query
+    assert "payload::text" not in guard_query
+    assert guard_params == (f"{source_base_url}/",)
 
 
 def test_restore_database_creation_uses_createdb_with_separate_identifier(
@@ -1093,9 +1737,55 @@ async def test_restore_paired_snapshot_rejects_non_manifest_key_before_clients(
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings("synthetic-restore"),
             "synthetic-restore",
             RESTORE_PREFIX,
+            target_public_base_url=_target_public_base_url("synthetic-restore"),
+            database_reference_connect=_empty_restore_reference_connect,
+        )
+
+
+@pytest.mark.parametrize(
+    ("configured_bucket", "target_public_base_url", "message"),
+    [
+        (
+            "synthetic-uploads",
+            TARGET_PUBLIC_BASE_URL,
+            "must match the configured target application bucket",
+        ),
+        (
+            "synthetic-restore",
+            "https://wrong.example.test/uploads",
+            "must match the configured application storage URL",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_restore_requires_target_storage_configuration_to_match_cli_target(
+    monkeypatch: pytest.MonkeyPatch,
+    configured_bucket: str,
+    target_public_base_url: str,
+    message: str,
+) -> None:
+    async def forbidden_client(_settings: backup_db.S3Settings):
+        pytest.fail("mismatched target storage settings reached object storage")
+
+    monkeypatch.setattr(backup_db, "s3_client", forbidden_client)
+
+    with pytest.raises(backup_db.BackupArtifactError, match=message):
+        await backup_db.restore_paired_snapshot_from_s3(
+            "database/snapshots/run/database.manifest.json",
+            "restore_acceptance",
+            "postgresql://synthetic@localhost/admin",
+            _s3_settings("synthetic-backups"),
+            _s3_settings(configured_bucket),
+            "synthetic-restore",
+            RESTORE_PREFIX,
+            target_public_base_url=target_public_base_url,
+            database_connect=lambda *_args, **_kwargs: pytest.fail(
+                "mismatched target settings reached database preflight"
+            ),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
 
@@ -1160,10 +1850,12 @@ async def test_restore_paired_snapshot_preflights_then_restores_into_empty_targe
         "restore_acceptance",
         "postgresql://synthetic@localhost/admin",
         _s3_settings("synthetic-backups"),
-        _s3_settings("synthetic-uploads"),
+        _s3_settings("synthetic-restore"),
         "synthetic-restore",
         RESTORE_PREFIX,
         database_connect=fake_connect,
+        target_public_base_url=_target_public_base_url("synthetic-restore"),
+        database_reference_connect=_empty_restore_reference_connect,
     )
 
     assert result.snapshot_id == "0123456789abcdef0123456789abcdef"
@@ -1219,6 +1911,219 @@ async def test_restore_paired_snapshot_preflights_then_restores_into_empty_targe
 
 
 @pytest.mark.asyncio
+async def test_restore_rebases_storage_references_that_app_can_read_from_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.storage import S3Storage
+
+    store = FakeS3()
+    manifest_key, database_bytes, object_bytes, source_key = _seed_paired_backup(store)
+    source_url = f"{SOURCE_PUBLIC_BASE_URL}/{source_key}"
+    target_key = f"{RESTORE_PREFIX}/{source_key}"
+    target_url = f"{TARGET_PUBLIC_BASE_URL}/{target_key}"
+    reference_database = FakeStorageReferenceDatabase(
+        source_base_url=SOURCE_PUBLIC_BASE_URL
+    )
+    for table, column in sorted(reference_database.reference_columns):
+        reference_database.references[(table, column)].append(source_url)
+    reference_database.references[("news", "image_url")].append(
+        "https://external.example.test/news/banner.png"
+    )
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+
+    def fake_restore(archive_path: Path, *_args: Any) -> None:
+        assert archive_path.read_bytes() == database_bytes
+
+    monkeypatch.setattr(backup_db, "restore_archive", fake_restore)
+    database_dsns: list[str] = []
+
+    def fake_reference_connect(_dsn: str) -> FakeStorageReferenceDatabase:
+        database_dsns.append(_dsn)
+        return reference_database
+
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://synthetic@source.invalid/source_database"
+    )
+
+    await backup_db.restore_paired_snapshot_from_s3(
+        manifest_key,
+        "restore_acceptance",
+        "postgresql://synthetic@localhost/admin",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-restore"),
+        "synthetic-restore",
+        RESTORE_PREFIX,
+        target_public_base_url=TARGET_PUBLIC_BASE_URL,
+        database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(),
+        database_reference_connect=fake_reference_connect,
+    )
+
+    for table, column in reference_database.reference_columns:
+        expected_urls = (
+            [target_url, "https://external.example.test/news/banner.png"]
+            if (table, column) == ("news", "image_url")
+            else [target_url]
+        )
+        assert reference_database.references[(table, column)] == expected_urls
+    assert reference_database.references[("news", "image_url")][1] == (
+        "https://external.example.test/news/banner.png"
+    )
+    assert database_dsns == ["postgresql://synthetic@localhost/restore_acceptance"]
+    app_storage = S3Storage(
+        bucket="synthetic-restore",
+        base_url=TARGET_PUBLIC_BASE_URL,
+        client=store,
+    )
+    assert await app_storage.read_file(target_url) == object_bytes
+    assert store.objects[("synthetic-backups", manifest_key)]
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        ("unknown-reference", "unresolved application storage reference"),
+        ("stored-outbox", "unresolved outbox events"),
+        ("failed-outbox", "unresolved outbox events"),
+        ("revision", "Alembic revision"),
+        ("missing-column", "missing an application storage reference column"),
+        ("sql-update", "Unable to rebase restored application storage references"),
+        ("column-overflow", "exceeds its database column limit"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_restore_reference_failures_roll_back_and_never_report_success(
+    monkeypatch: pytest.MonkeyPatch, failure: str, message: str
+) -> None:
+    store = FakeS3()
+    manifest_key, _database_bytes, _object_bytes, source_key = _seed_paired_backup(
+        store
+    )
+    target_base_url = TARGET_PUBLIC_BASE_URL
+    if failure == "column-overflow":
+        base_prefix = "https://s3.example.test/"
+        target_base_url = base_prefix + "x" * (2048 - len(base_prefix))
+
+    reference_database = FakeStorageReferenceDatabase(
+        source_base_url=SOURCE_PUBLIC_BASE_URL
+    )
+    source_url = f"{SOURCE_PUBLIC_BASE_URL}/{source_key}"
+    for table, column in reference_database.reference_columns:
+        reference_database.references[(table, column)].append(source_url)
+    if failure == "unknown-reference":
+        reference_database.references[("stories", "cover_url")].append(
+            f"{SOURCE_PUBLIC_BASE_URL}/unknown/not-in-manifest.png"
+        )
+    elif failure == "stored-outbox":
+        reference_database.stored_event_status = "processed"
+        reference_database.pending_stored_event_payloads.append(
+            json.dumps({"url": source_url})
+        )
+    elif failure == "failed-outbox":
+        reference_database.pending_failed_event_payloads.append(
+            json.dumps({"url": source_url})
+        )
+    elif failure == "revision":
+        reference_database.revision = "different_revision"
+    elif failure == "missing-column":
+        reference_database.reference_columns.remove(("stories", "cover_url"))
+    elif failure == "sql-update":
+        reference_database.fail_on_update_table = "events"
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(backup_db, "restore_archive", lambda *_args: None)
+
+    target_settings = _s3_settings("synthetic-restore", public_base_url=target_base_url)
+    with pytest.raises(backup_db.BackupArtifactError, match=message):
+        await backup_db.restore_paired_snapshot_from_s3(
+            manifest_key,
+            "restore_acceptance",
+            "postgresql://synthetic@localhost/admin",
+            _s3_settings("synthetic-backups"),
+            target_settings,
+            "synthetic-restore",
+            RESTORE_PREFIX,
+            target_public_base_url=target_base_url,
+            database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(),
+            database_reference_connect=lambda _dsn: reference_database,
+        )
+
+    assert reference_database.rolled_back is True
+    assert reference_database.committed is False
+    if failure == "stored-outbox":
+        stored_event_query = next(
+            sql
+            for sql, _params in reference_database.executed
+            if "FROM stored_events" in sql
+        )
+        assert reference_database.stored_event_status == "processed"
+        assert reference_database.stored_event_processed_at is None
+        assert "WHERE processed_at IS NULL" in stored_event_query
+        assert "status" not in stored_event_query
+    assert not any(
+        event[0] == "put" and event[1] == "synthetic-restore" for event in store.events
+    )
+    if failure == "sql-update":
+        assert all(
+            values == [source_url] for values in reference_database.references.values()
+        )
+
+
+@pytest.mark.asyncio
+async def test_legacy_paired_snapshot_is_rejected_before_target_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    manifest_key, _database_bytes, _object_bytes, _source_key = _seed_paired_backup(
+        store
+    )
+    manifest_identity = ("synthetic-backups", manifest_key)
+    data = json.loads(store.objects[manifest_identity])
+    data["schema_version"] = backup_db.LEGACY_PAIRED_SNAPSHOT_SCHEMA_VERSION
+    del data["source_storage_public_base_url"]
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    store.objects[manifest_identity] = payload
+    store.etags[manifest_identity] = store._etag(payload)
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(
+        backup_db,
+        "restore_archive",
+        lambda *_args: pytest.fail("legacy manifest reached database restore"),
+    )
+
+    with pytest.raises(backup_db.BackupArtifactError, match="schema-v3 snapshot"):
+        await backup_db.restore_paired_snapshot_from_s3(
+            manifest_key,
+            "restore_acceptance",
+            "postgresql://synthetic@localhost/admin",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-restore"),
+            "synthetic-restore",
+            RESTORE_PREFIX,
+            target_public_base_url=TARGET_PUBLIC_BASE_URL,
+            database_connect=lambda *_args, **_kwargs: pytest.fail(
+                "legacy manifest reached database preflight"
+            ),
+            database_reference_connect=_empty_restore_reference_connect,
+        )
+
+    assert store.events == [("get", "synthetic-backups", manifest_key)]
+
+
+@pytest.mark.asyncio
 async def test_restore_with_empty_prefix_targets_original_keys_at_bucket_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1248,12 +2153,14 @@ async def test_restore_with_empty_prefix_targets_original_keys_at_bucket_root(
         "restore_acceptance",
         "postgresql://synthetic@localhost/admin",
         _s3_settings("synthetic-backups"),
-        _s3_settings("synthetic-uploads"),
+        _s3_settings("synthetic-restore-root"),
         "synthetic-restore-root",
         "",
         database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
             events=events
         ),
+        target_public_base_url=_target_public_base_url("synthetic-restore-root"),
+        database_reference_connect=_empty_restore_reference_connect,
     )
 
     target_identity = ("synthetic-restore-root", source_key)
@@ -1348,12 +2255,14 @@ async def test_restore_rejects_nonempty_or_unverifiably_empty_bucket_before_writ
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings(target_bucket),
             target_bucket,
             target_prefix,
             database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
                 events=database_events
             ),
+            target_public_base_url=_target_public_base_url(target_bucket),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
     assert database_events == ["database-preflight"]
@@ -1428,12 +2337,14 @@ async def test_restore_preflights_all_checksums_before_database_or_object_writes
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings("synthetic-restore"),
             "synthetic-restore",
             RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: database_preflights.append(
                 "called"
             ),
+            target_public_base_url=_target_public_base_url("synthetic-restore"),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
     assert database_preflights == []
@@ -1477,10 +2388,12 @@ async def test_target_create_only_write_preserves_a_concurrent_foreign_object(
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings(target_bucket),
             target_bucket,
             RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(),
+            target_public_base_url=_target_public_base_url(target_bucket),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
     target_key = f"{RESTORE_PREFIX}/{source_key}"
@@ -1534,12 +2447,14 @@ async def test_partial_restore_keeps_completed_target_objects_and_hides_write_er
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings(target_bucket),
             target_bucket,
             RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
                 events=database_events
             ),
+            target_public_base_url=_target_public_base_url(target_bucket),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
     assert str(failure.value) == (
@@ -1645,12 +2560,14 @@ async def test_restore_rejects_existing_database_before_target_bucket_writes(
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings("synthetic-restore"),
             "synthetic-restore",
             RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
                 exists=True
             ),
+            target_public_base_url=_target_public_base_url("synthetic-restore"),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
     assert not any(
@@ -1690,12 +2607,14 @@ async def test_restore_rejects_database_target_matching_v2_manifest_source(
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings("synthetic-restore"),
             "synthetic-restore",
             RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: pytest.fail(
                 "source database target reached PostgreSQL preflight"
             ),
+            target_public_base_url=_target_public_base_url("synthetic-restore"),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
     assert store.events == [("get", "synthetic-backups", manifest_key)]
@@ -1723,12 +2642,14 @@ async def test_restore_rejects_source_or_backup_bucket_as_target_before_reads(
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings("synthetic-uploads"),
+            _s3_settings(target_bucket),
             target_bucket,
             RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: pytest.fail(
                 "bucket alias reached database preflight"
             ),
+            target_public_base_url=_target_public_base_url(target_bucket),
+            database_reference_connect=_empty_restore_reference_connect,
         )
 
     assert store.events == [("get", "synthetic-backups", manifest_key)]
@@ -2385,6 +3306,8 @@ async def test_restore_reuses_a_single_download_for_duplicate_archive_objects(
         _s3_settings("synthetic-restore"),
         "synthetic-restore",
         RESTORE_PREFIX,
+        target_public_base_url=_target_public_base_url("synthetic-restore"),
+        database_reference_connect=_empty_restore_reference_connect,
     )
 
     assert [
@@ -2440,6 +3363,8 @@ async def test_restore_without_objects_creates_only_the_isolated_database(
         _s3_settings("synthetic-restore"),
         "synthetic-restore",
         RESTORE_PREFIX,
+        target_public_base_url=_target_public_base_url("synthetic-restore"),
+        database_reference_connect=_empty_restore_reference_connect,
     )
 
     assert restored.objects == ()

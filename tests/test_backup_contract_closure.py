@@ -1045,6 +1045,7 @@ def _configured_storage_settings(**changes: Any) -> SimpleNamespace:
         "storage_s3_region": "eu-test-1",
         "storage_s3_access_key_id": "",
         "storage_s3_secret_access_key": "",
+        "storage_s3_base_url": "",
     }
     values.update(changes)
     return SimpleNamespace(**values)

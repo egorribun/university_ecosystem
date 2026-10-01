@@ -1,8 +1,8 @@
 # University Ecosystem — план приёмки и выпуска MVP v1.0.0
 
-Обновлён 2026-09-30. Это единый долговременный план, набор решений и критериев
-приёмки для выпуска MVP. Текущие проверенные факты и ближайшие действия находятся
-только в [STATUS.md](STATUS.md); продуктовые требования — в
+Обновлён 2026-10-01. Исполнение долгосрочного goal продолжается по этому плану.
+Текущие проверенные факты и ближайшие действия находятся только в [STATUS.md](STATUS.md);
+продуктовые требования — в
 [ТЗ MVP](University_Ecosystem_MVP.md); обязательные технические инварианты — в
 `AGENTS.md`, доменных `AGENTS.md`, ADR, quality contract и runbooks.
 
@@ -49,8 +49,9 @@ SHA-bound release evidence, а не после написания кода ил�
 - Визуальные комплекты экранов и обновление визуальных baseline требуют
   пользовательского review/утверждения. Показывать небольшие сравнимые комплекты.
 - Демо использует вымышленный университет, синтетические данные и роли
-  student/teacher/admin. Не добавлять обязательную MFA для новых групп или новые
-  предметные функции Activity. CDC остаётся вне MVP.
+  student/teacher/admin. Не добавлять обязательную MFA для новых групп. Activity
+  ограничен существующими heatmap, trends, grades и comparison; не добавлять новые
+  учебные цели, attendance или другие предметные функции. CDC остаётся вне MVP.
 
 ## Evidence и порядок работы
 
@@ -300,25 +301,36 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
 
 ### Блок 3. Безопасный и воспроизводимый live-стенд
 
-- Запускать тестируемый SHA в отдельном worktree и уникальном Compose project с
-  явно принадлежащими этому запуску конфигурациями, сетями, контейнерами и
-  синтетическими пользователями. Секреты/ключи VAPID и тестовые credentials
-  генерировать для прогона; не читать и не перезаписывать чужой `.env`.
+- Запускать тестируемый SHA в уникальном Compose project с явно принадлежащими
+  этому запуску конфигурациями, сетями, контейнерами и синтетическими
+  пользователями. По умолчанию использовать отдельный worktree. Если текущая
+  задача ограничена веткой `egorribun` без новой ветки/worktree, разрешён режим
+  `--in-place` с отдельным `--state-dir` вида
+  `<system-temp>/ue-live-acceptance/run-<id>`: запуск фиксирует точный `HEAD`,
+  требует чистую checkout и совпадение `--ref`, а также отвергает игнорируемые
+  файлы в путях Docker `COPY`. Env, ключи, owner marker и Compose overlay хранятся
+  только в принадлежащем запуску приватном state root; не читать и не
+  перезаписывать `.env*`, `.secrets`, volumes или backups в checkout.
 - Разделить CLI-операции: `status` только читает и ничего не генерирует; `stop`
   останавливает текущий стенд и сохраняет данные; `teardown` удаляет только
   проверенные ресурсы с run-owner labels/manifest. Перед запуском проверить порты;
   чужие процессы не останавливать. Compose и kind со взаимно конфликтующими
   портами запускать последовательно.
 - Compose project имеет случайный run-id `ue-live-<16 hex>`; `.secrets/live-stand.json`
-  связывает его с путями репозитория/worktree и HMAC-подписывается ключом в
-  untracked Git common directory. Отсутствующий, повреждённый или чужой marker
-  закрывает операции. Файл lifecycle lock сериализует `up`, `seed`, `stop` и
-  `teardown`; `status` не создаёт и не меняет файлы. Port preflight проверяет
+  связывает его с путями репозитория/run root, source SHA в in-place mode и
+  HMAC-подписывается ключом в приватном Git common directory (worktree mode) либо
+  приватном state root (in-place mode). Отсутствующий, повреждённый или чужой
+  marker закрывает операции. Файл lifecycle lock сериализует `up`, `seed`,
+  `stop` и `teardown`; `status` не создаёт и не меняет файлы. После source drift
+  `status`, `stop` и `teardown` остаются доступны: stop/teardown пропускают только
+  проверку текущего source SHA/cleanliness, но по-прежнему требуют HMAC owner,
+  идентичность Docker daemon и совпадение подписанной Compose resource projection;
+  изменённая resource projection закрывает удаление. Port preflight проверяет
   wildcard bind для Caddy 80/443 и loopback для Mailpit 18025. Ref сначала
   разрешается и проверяется на live overlay — до остановки текущего стенда и
-  переключения worktree. `down` — data-preserving alias для
-  `stop`; `teardown` удаляет только resources подписанного project и сохраняет
-  worktree, `.env*`, `.secrets` и evidence.
+  переключения worktree. `down` — data-preserving alias для `stop`; `teardown`
+  удаляет только resources подписанного project и сохраняет state root,
+  checkout, `.env*`, `.secrets` и evidence.
 - Проверить в Docker readiness и рабочий ответ backend, SSR/Caddy, gateway, gRPC,
   WebSocket hub, NATS, Redis, S3/SeaweedFS и Mailpit; не считать container
   `running` достаточным readiness.
@@ -546,6 +558,14 @@ exclusion или stale evidence.
   versions, manifest/checksums и восстановленного состояния; два независимых
   архива не считать автоматически одной точкой восстановления. Прогнать backup,
   restore, validation и rollback без перезаписи пользовательских данных.
+- Для app-compatible paired restore manifest должен связывать source storage URL
+  base с target public URL base и ключами объектов `<target-prefix>/<source-key>`;
+  allowlisted DB references необходимо транзакционно переназначить на эти target
+  URLs. Неизвестные ссылки, pending outbox-события со source URLs, несовместимая
+  схема или превышение предела колонки должны приводить к отказу с rollback.
+  Acceptance требует проверки на actual PostgreSQL/Alembic head и чтения объекта
+  через `S3Storage` по ссылке из восстановленной БД; синтетический тест, пустой
+  prefix или одна смена app config сами по себе deployed compatibility не доказывают.
 - Усовершенствовать BE-02 preflight согласно блоку 2 и ADR-036. На непустых
   deployed Docker/kind databases проверить DDL upgrade/rollback, catalog state,
   idempotency и lock budgets.
@@ -614,15 +634,15 @@ ledger и release report связаны и проверены. Только то
 Изменять публичные интерфейсы только при доказанной необходимости; передавать
 ownership вместе с проверками:
 
-| Интерфейс | Требуемое поведение |
-| --- | --- |
-| Live stand CLI | Read-only `status`; data-preserving `stop`; owner-checked destructive `teardown`. |
-| Demo seed | Явный opt-in, идемпотентные RU/EN synthetic users/content, verified run ownership. |
-| Backup/restore CLI | Manifest/checksum validation, явная restore target, безопасная изолированная среда по умолчанию. |
-| BE-02 | Read-only catalog preflight, DDL phase selection, единая логика загрузки миграций. |
-| Helm/Kubernetes | Gateway API resources, параметризованные values/schema, сохранение TLS, routing и security policy. |
-| CI | Catalog/contracts синхронны; PR live smoke и полный nightly/manual E2E. |
-| Release evidence | Source SHA, workflow run/attempt, inventory provenance, immutable digests, signatures, SBOM, результаты приёмки и ограничения. |
+| Интерфейс          | Требуемое поведение                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Live stand CLI     | Read-only `status`; data-preserving `stop`; owner-checked destructive `teardown`.                                              |
+| Demo seed          | Явный opt-in, идемпотентные RU/EN synthetic users/content, verified run ownership.                                             |
+| Backup/restore CLI | Manifest/checksum validation, явная restore target, безопасная изолированная среда по умолчанию.                               |
+| BE-02              | Read-only catalog preflight, DDL phase selection, единая логика загрузки миграций.                                             |
+| Helm/Kubernetes    | Gateway API resources, параметризованные values/schema, сохранение TLS, routing и security policy.                             |
+| CI                 | Catalog/contracts синхронны; PR live smoke и полный nightly/manual E2E.                                                        |
+| Release evidence   | Source SHA, workflow run/attempt, inventory provenance, immutable digests, signatures, SBOM, результаты приёмки и ограничения. |
 
 ## Финальный checklist
 
@@ -635,7 +655,8 @@ Goal закрывается только если все пункты подтв
   failures/skips/exclusions.
 - Открытый ledger закрыт актуальным evidence или точно согласованным ограничением.
 - Нагрузочный профиль WS, память/reconnect correctness, S3/backup/restore/RPO/RTO,
-  BE-02, Gateway API/kind и rollback проверены на реальной целевой конфигурации.
+  чтение восстановленных S3-объектов через DB references, BE-02, Gateway API/kind и
+  rollback проверены на реальной целевой конфигурации.
 - Три сопоставимых полных зелёных CI наблюдения и release evidence привязаны к
   точным SHA/run/attempt/population.
 - Шесть GHCR digests и их signatures/SBOM/provenance проверены и развернуты в
