@@ -1,12 +1,12 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-01 UTC. Goal активен. [Мастер-план](MVP_MASTER_PLAN.md) задаёт
+Срез на 2026-10-01 UTC. Goal приостановлен по просьбе пользователя. [Мастер-план](MVP_MASTER_PLAN.md) задаёт
 решения и очередь, [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовый scope.
 Полная приёмка MVP и выпуск `v1.0.0` ещё не подтверждены.
 
 ## Рабочее состояние
 
-- Работа идёт только на `egorribun`, в единственном PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306). Проверенный опубликованный checkpoint — `23b5f8e7b4ca6e864497bf9a153103d0d45e5209`; `origin/main` — `78b9499079442191920835eed9de93b726cf36a1`. Последующие исправления Compose и Events требуют отдельного checkpoint и нового CI.
+- Работа идёт только на `egorribun`, в единственном PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306). Кодовый checkpoint — `010e9ddd0efa45da5e5ded1e3432ecf92f7ed08b`; `origin/main` — `78b9499079442191920835eed9de93b726cf36a1`. Он содержит проверенные Compose, Events и launcher-fixture исправления. Обычный push также включает этот оперативный статус; новое CI evidence ещё требуется.
 - Root координирует три субагента GPT-6 Luna Max с раздельным владением файлами, проверяет результаты и выполняет Git-операции. Новые ветки/worktree не создаются. Три исторических detached checkout удалены после проверки ancestry, чистого tracked/nonignored состояния и сохранения ignored файлов. Остался основной checkout на `egorribun`.
 - Matrix run `36889762928`, attempt 1, на `23b5f8e7b`: E2E WASM Build, четыре frontend unit shards, frontend build/Lighthouse, Go/Rust, pre-commit, security и inventory завершились успешно. Backend unit shard 0 и Events E2E в Chromium/Firefox/WebKit/mobile-WebKit красные; backend shards 2/3 ещё выполнялись в последнем срезе. Глобальный coverage gate и canonical mutation inventory пока не подтверждены.
 - WASM: два pinned canonical output совпали побайтно; второй compile использовал пустые target caches и действительно исполнил RUN. Root сравнил шесть source records и восемь package records с image export, обоими output и checkout. Checkpoint обновил только два отличавшихся `.wasm` и provenance; строгие contracts сохранены. Node artifact/provenance/runtime/build tests **23 passed**, Python WASM workflow/Docker-parity + quality-configuration tests **46 passed**; новый hosted E2E WASM Build успешен. Локальный Playwright build повторно сгенерировал host-WASM: отличавшиеся outputs сохранены приватно, затем только три generated файла восстановлены из HEAD; verifier проходит. Последующие браузерные проверки должны сохранять canonical artifacts.
@@ -30,7 +30,7 @@
 
 ## Следующие проверяемые результаты
 
-1. Завершить preflight/hooks проверенного Compose, Events и launcher-fixture diff; checkpoint в том же PR и новый CI. Подтвердить Unix launcher suite и cross-browser Events на новом SHA.
+1. После возобновления проверить HEAD/remote и новый CI для опубликованного checkpoint: Unix launcher suite и cross-browser Events. Preflight, applicable hooks и commit hooks кодового checkpoint прошли; tracked дерево было чистым перед фиксацией паузы. Локальные producers и субагенты остановлены; новый Docker up не запускался. Private retry runner требует повторного ревью перед исполнением, включая hidden child window и post-run log ACL verification.
 2. На новом чистом SHA повторить owned in-place full startup в свежем приватном temp run root: свободная RAM не менее 16 ГиБ, `COMPOSE_PARALLEL_LIMIT=1`, один тяжёлый workload, 25 readiness probes, реальные Prometheus targets, demo seed и auth/roles/reset smoke. На время запуска заморозить source; проверить read-only status и обычный signed-owner stop с сохранением данных.
 3. После базовых gates получить свежий canonical coverage/mutation inventory; focused Stryker/mutmut запускать параллельно только при измеренном запасе ресурсов и неизменном source. Старые/неполные shard artifacts не подтверждают 100% viable score.
 4. Настроить isolated deployed S3 backup/restore acceptance: текущие `MINIO_*` Compose variables не включают `STORAGE_BACKEND=s3`, а Caddy public route привязан к bucket `uploads`. Требуются поддерживаемый CLI runner, явный storage config и проверка public/private HTTP reads по восстановленным DB URLs; backend FakeS3 proof не закрывает этот этап. Измерить RPO/RTO и rollback.
