@@ -112,7 +112,7 @@ def test_two_pytest_main_sessions_in_one_process_reuse_valid_owned_database() ->
     command = (
         "import pytest; "
         "args=['-q', 'tests/test_auth_repository.py::"
-        "test_get_auth_repository_factory_returns_instance', '--tb=short']; "
+        "test_auth_repository_binds_password_reset_token_model', '--tb=short']; "
         "first=pytest.main(args); second=pytest.main(args); "
         "raise SystemExit(first or second)"
     )
@@ -163,7 +163,7 @@ def test_explicit_sqlite_database_is_refused_without_reset_opt_in(
             "-m",
             "pytest",
             "-q",
-            "tests/test_auth_repository.py::test_get_auth_repository_factory_returns_instance",
+            "tests/test_auth_repository.py::test_auth_repository_binds_password_reset_token_model",
             "--tb=short",
         ],
         cwd=PROJECT_ROOT,
@@ -219,7 +219,7 @@ def test_environment_and_integration_selectors_do_not_authorize_database_reset(
             "-m",
             "pytest",
             "-q",
-            "tests/test_auth_repository.py::test_get_auth_repository_factory_returns_instance",
+            "tests/test_auth_repository.py::test_auth_repository_binds_password_reset_token_model",
             "--tb=short",
         ],
         cwd=PROJECT_ROOT,
@@ -503,7 +503,7 @@ def test_opted_in_test_named_explicit_sqlite_preserves_unmanaged_tables(
             "-m",
             "pytest",
             "-q",
-            "tests/test_auth_repository.py::test_get_auth_repository_factory_returns_instance",
+            "tests/test_auth_repository.py::test_auth_repository_binds_password_reset_token_model",
             "--tb=short",
         ],
         cwd=PROJECT_ROOT,
@@ -622,7 +622,7 @@ def test_test_named_explicit_postgres_still_requires_caller_opt_in() -> None:
             "-m",
             "pytest",
             "-q",
-            "tests/test_auth_repository.py::test_get_auth_repository_factory_returns_instance",
+            "tests/test_auth_repository.py::test_auth_repository_binds_password_reset_token_model",
             "--tb=short",
         ],
         cwd=PROJECT_ROOT,
@@ -669,7 +669,7 @@ def test_explicit_in_memory_sqlite_never_requires_destructive_reset_opt_in() -> 
             "-m",
             "pytest",
             "-q",
-            "tests/test_auth_repository.py::test_get_auth_repository_factory_returns_instance",
+            "tests/test_auth_repository.py::test_auth_repository_binds_password_reset_token_model",
             "--tb=short",
         ],
         cwd=PROJECT_ROOT,

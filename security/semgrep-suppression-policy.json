@@ -103,8 +103,8 @@
     {
       "rule_id": "go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check",
       "path": "services/ws-hub/pkg/hub/handlers.go",
-      "start_line": 206,
-      "end_line": 206,
+      "start_line": 197,
+      "end_line": 197,
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "The package-level gorilla Upgrader uses CheckOrigin=isUpgradeOriginAllowed; explicit WS_ALLOWED_ORIGINS allowlists reject unknown non-empty origins before ticket consumption/upgrade, while empty Origin is intentionally accepted only for native clients. handlers_edge_cases_test.go and handlers_unit_test.go cover allowed and rejected origins."

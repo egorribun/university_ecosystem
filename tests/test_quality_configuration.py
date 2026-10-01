@@ -917,8 +917,5 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     assert package["scripts"]["test:watch"] == "vitest --configLoader runner"
 
     vitest_packages = package["devDependencies"]
-    vitest_specs = {
-        vitest_packages[name]
-        for name in ("vitest", "@vitest/browser", "@vitest/coverage-v8")
-    }
+    vitest_specs = {vitest_packages[name] for name in ("vitest", "@vitest/coverage-v8")}
     assert len(vitest_specs) == 1

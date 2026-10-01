@@ -28,6 +28,12 @@ def _h(value: str) -> str:
     return f"hash-{value}"
 
 
+@pytest.mark.asyncio
+async def test_auth_repository_binds_password_reset_token_model(db_session):
+    built = AuthRepository(db_session)
+    assert built.model is models.PasswordResetToken
+
+
 # --- Password reset tokens ---------------------------------------------------
 
 
