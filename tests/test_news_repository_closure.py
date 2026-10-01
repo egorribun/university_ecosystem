@@ -58,28 +58,6 @@ async def test_properties_and_list_news_current_user_like():
 
 
 @pytest.mark.asyncio
-async def test_published_latest_search_and_count_paths():
-    repo, db = _repo()
-    item = _news_item(uuid.uuid4())
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = [item]
-    db.execute.return_value = result
-    repo._to_dto = MagicMock(return_value="dto")
-
-    with patch(
-        "app.repositories.news_repository.get_current_tenant", return_value=None
-    ):
-        assert await repo.get_published(skip=91, limit=2) == ["dto"]
-    assert await repo.get_latest(limit=3) == ["dto"]
-    assert await repo.search("  News_%  ", skip=1, limit=2) == ["dto"]
-
-    result.scalar.return_value = 4
-    assert await repo.count_total() == 4
-    result.scalar.return_value = 0
-    assert await repo.count_total() == 0
-
-
-@pytest.mark.asyncio
 async def test_list_news_cursor_text_vector_and_empty_paths(monkeypatch):
     repo, db = _repo()
     empty = MagicMock()

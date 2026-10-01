@@ -3,16 +3,11 @@ package hub
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/quic-go/webtransport-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,7 +92,7 @@ func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T
 		h.Run(runCtx)
 		close(runDone)
 	}()
-	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 	t.Cleanup(func() {
 		h.Stop()
 		cancelRun()
@@ -163,18 +158,6 @@ func TestNewConnectionID_IsUniqueAndNotUserDerived(t *testing.T) {
 	assert.NotEqual(t, "user-1", first)
 }
 
-func TestValidateRS256_JWKSFetchFailureIsReturned(t *testing.T) {
-	h := setupTestHub()
-	ctx := context.Background()
-	h.jwksCache = jwk.NewCache(ctx)
-	h.jwksURL = "http://127.0.0.1:1/jwks"
-	require.NoError(t, h.jwksCache.Register(h.jwksURL))
-
-	_, err := h.validateRS256(ctx, "eyJhbGciOiJSUzI1NiJ9.e30.signature")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to fetch")
-}
-
 func TestTryForceRefreshJWKS_RespectsCooldown(t *testing.T) {
 	previous := _lastJWKSForceRefreshUnix.Load()
 	t.Cleanup(func() { _lastJWKSForceRefreshUnix.Store(previous) })
@@ -182,27 +165,4 @@ func TestTryForceRefreshJWKS_RespectsCooldown(t *testing.T) {
 	h := setupTestHub()
 	h.jwksURL = "http://127.0.0.1:1/jwks"
 	assert.NotPanics(t, func() { h.tryForceRefreshJWKS(context.Background()) })
-}
-
-func TestValidateRS256_RawKeyExtractionFailureIsRejected(t *testing.T) {
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	server := startJWKSServer(t, &priv.PublicKey, "kid-raw-error")
-
-	h := setupTestHub()
-	ctx := context.Background()
-	require.NoError(t, h.SetupJWKS(ctx, server.URL))
-
-	oldRaw := rawJWKFunc
-	t.Cleanup(func() { rawJWKFunc = oldRaw })
-	rawJWKFunc = func(jwk.Key, interface{}) error {
-		return errors.New("raw key unavailable")
-	}
-
-	_, err = h.validateRS256(ctx, signRS256(t, priv, "kid-raw-error", jwt.MapClaims{
-		"sub": "user-rs",
-		"exp": time.Now().Add(time.Hour).Unix(),
-	}))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid RS256 token")
 }

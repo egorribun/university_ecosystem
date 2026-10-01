@@ -135,7 +135,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 	}
 	logger := initLogger()
 
-	h, err := setupHub(context.Background(), cfg, logger, nil, nil)
+	h, err := setupHubWithRevocation(context.Background(), cfg, logger, nil, nil, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, h)
 
@@ -198,7 +198,7 @@ func TestSetupHub_JWKS(t *testing.T) {
 		JWKSURL:        "http://127.0.0.1:1/jwks",
 	}
 	logger := initLogger()
-	h, err := setupHub(context.Background(), cfg, logger, nil, nil)
+	h, err := setupHubWithRevocation(context.Background(), cfg, logger, nil, nil, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, h)
 	assert.True(t, h.HasJWKSCache())
@@ -270,7 +270,7 @@ func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 	}
 	logger := initLogger()
 
-	h, err := setupHub(context.Background(), cfg, logger, nc, rdb)
+	h, err := setupHubWithRevocation(context.Background(), cfg, logger, nc, rdb, nil)
 	require.NoError(t, err)
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb)
@@ -294,7 +294,7 @@ func TestSetupHubAndHandlers_ReadinessRedisPingError(t *testing.T) {
 	}
 	logger := initLogger()
 
-	h, err := setupHub(context.Background(), cfg, logger, nil, rdb)
+	h, err := setupHubWithRevocation(context.Background(), cfg, logger, nil, rdb, nil)
 	require.NoError(t, err)
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nil, rdb)

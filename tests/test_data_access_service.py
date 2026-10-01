@@ -27,10 +27,8 @@ from app.services.data_access import (
     _normalize_time,
     batch_log_data_access,
     cleanup_access_logs,
-    export_access_logs,
     export_access_logs_stream,
     log_data_access,
-    serialize_access_logs_csv,
 )
 
 
@@ -78,23 +76,6 @@ def test_normalize_time_none_naive_and_aware():
 # --------------------------------------------------------------------------- #
 # serialize_access_logs_csv — pure                                            #
 # --------------------------------------------------------------------------- #
-
-
-def test_serialize_access_logs_csv_header_and_rows():
-    csv_str = serialize_access_logs_csv([_dto(action="read"), _dto(action="write")])
-    lines = csv_str.strip().splitlines()
-    assert lines[0].startswith("created_at,actor_user_id,subject_user_id,resource_type")
-    assert len(lines) == 3  # header + 2 rows
-    assert "read" in csv_str
-    assert "write" in csv_str
-
-
-def test_serialize_access_logs_csv_empty_is_header_only():
-    csv_str = serialize_access_logs_csv([])
-    assert csv_str.strip().splitlines() == [
-        "created_at,actor_user_id,subject_user_id,resource_type,resource_id,"
-        "action,ip_address,user_agent,context"
-    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -215,22 +196,6 @@ async def test_batch_log_data_access_builds_entries_and_honors_commit_flag():
     db.commit.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_batch_log_data_access_persists_real_rows(db_session, user_factory):
-    actor = await user_factory()
-    await batch_log_data_access(
-        db_session,
-        entries=[
-            {"actor_user_id": actor.id, "resource_type": "user", "action": "read"},
-            {"actor_user_id": actor.id, "resource_type": "news", "action": "list"},
-        ],
-        request=_request(),
-        commit=True,
-    )
-    logs = await export_access_logs(db_session, actor_user_id=actor.id)
-    assert len(logs) == 2
-
-
 # --------------------------------------------------------------------------- #
 # cleanup_access_logs — retention guard + prune-returns-zero                   #
 # --------------------------------------------------------------------------- #
@@ -262,45 +227,6 @@ async def test_cleanup_access_logs_keeps_recent_rows(db_session, user_factory):
 # --------------------------------------------------------------------------- #
 # export_access_logs / _stream — filters + DTO + CSV-injection sanitize        #
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_export_access_logs_applies_filters(db_session, user_factory):
-    actor = await user_factory()
-    other = await user_factory()
-    now = datetime.now(UTC)
-    db_session.add_all(
-        [
-            DataAccessLog(
-                actor_user_id=actor.id,
-                resource_type="user",
-                action="read",
-                created_at=now,
-            ),
-            DataAccessLog(
-                actor_user_id=other.id,
-                resource_type="news",
-                action="list",
-                created_at=now,
-            ),
-        ]
-    )
-    await db_session.flush()
-
-    scoped = await export_access_logs(
-        db_session,
-        actor_user_id=actor.id,
-        start_at=now - timedelta(hours=1),
-        end_at=now + timedelta(hours=1),
-    )
-    assert [row.actor_user_id for row in scoped] == [actor.id]
-
-    # subject_user_id filter branch — no row has this subject, so it scopes to []
-    by_subject = await export_access_logs(db_session, subject_user_id=actor.id)
-    assert by_subject == []
-
-    everything = await export_access_logs(db_session, limit=10)
-    assert len(everything) == 2
 
 
 @pytest.mark.asyncio

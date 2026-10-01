@@ -85,9 +85,12 @@ func TestNewHub_LoadsJetStreamContextWhenAvailable(t *testing.T) {
 	assert.NotNil(t, h.js)
 }
 
-func TestHubContext_NilReceiverIsSafe(t *testing.T) {
-	var h *Hub
-	assert.Nil(t, h.Context())
+// hubLifecycleContext returns the hub's lifecycle context under lifecycleMu so
+// tests can wait for Run to publish it without racing the writer.
+func hubLifecycleContext(h *Hub) context.Context {
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	return h.ctx
 }
 
 func TestHubRun_UsesSafeWorkerMinimumAndQueueTicker(t *testing.T) {
@@ -100,7 +103,7 @@ func TestHubRun_UsesSafeWorkerMinimumAndQueueTicker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { h.Run(ctx); close(done) }()
-	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 	select {
 	case <-time.After(20 * time.Millisecond):
 	case <-done:
@@ -133,7 +136,7 @@ func TestHubRun_DropsWhenWorkerQueueIsFull(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { h.Run(ctx); close(done) }()
-	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 	h.Broadcast <- &Message{Type: "first"}
 	select {
 	case <-started:
@@ -247,7 +250,7 @@ func TestHubStop_CancelsLifecycleAndJWKS(t *testing.T) {
 	ctx := context.Background()
 	done := make(chan struct{})
 	go func() { h.Run(ctx); close(done) }()
-	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 	cancelled := false
 	h.jwksCacheCancel = func() { cancelled = true }
 	h.StartLimiterCleanup(context.Background())

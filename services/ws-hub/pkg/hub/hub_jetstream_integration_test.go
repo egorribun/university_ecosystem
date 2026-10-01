@@ -289,7 +289,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 		ctx:    context.Background(),
 		Send:   make(chan []byte, 10),
 	}
-	client.replayOfflineMessages(room, 0, "msg-1")
+	client.replayOfflineMessagesContext(client.ctx, room, 0, "msg-1")
 
 	for _, wantIndex := range []float64{1, 2} {
 		select {
@@ -306,7 +306,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 
 	// A numeric stream sequence uses the other resume cursor and must replay
 	// messages after the requested sequence without relying on message IDs.
-	client.replayOfflineMessages(room, 1, "")
+	client.replayOfflineMessagesContext(client.ctx, room, 1, "")
 	select {
 	case raw := <-client.Send:
 		var replayed map[string]any

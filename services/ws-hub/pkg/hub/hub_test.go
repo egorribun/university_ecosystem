@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -240,19 +239,19 @@ func TestHub_LimiterCleanup(t *testing.T) {
 	}
 }
 
-func TestHub_AuthorizeRoomJoin(t *testing.T) {
+func TestHub_AuthorizeRoomJoinLocked(t *testing.T) {
 	h := setupTestHub()
 	ctx := context.Background()
 
 	// mockAuthClient always returns true
-	if !h.AuthorizeRoomJoin(ctx, "user1", "room1") {
-		t.Errorf("Expected AuthorizeRoomJoin to return true")
+	if !authorizeRoomJoinForTest(h, ctx, "user1", "room1") {
+		t.Errorf("Expected authorizeRoomJoinLocked to return true")
 	}
 
 	// test with nil auth client
 	h.authClient = nil
-	if h.AuthorizeRoomJoin(ctx, "user1", "room1") {
-		t.Errorf("Expected AuthorizeRoomJoin to return false when authClient is nil")
+	if authorizeRoomJoinForTest(h, ctx, "user1", "room1") {
+		t.Errorf("Expected authorizeRoomJoinLocked to return false when authClient is nil")
 	}
 }
 
@@ -292,50 +291,6 @@ func TestClient_HandleIncomingMessage_JoinLeave(t *testing.T) {
 		t.Errorf("Expected room1 to have 0 clients registered in Hub")
 	}
 	h.mu.RUnlock()
-}
-
-func TestClient_HandleMessage_RateLimiter(t *testing.T) {
-	h := setupTestHub()
-	ctx := context.Background()
-
-	// Configure low rate limit for testing
-	h.clientMsgRateLimit = 1.0
-	h.clientMsgRateBurst = 1
-
-	client := &Client{
-		ID:     "client1",
-		UserID: "user1",
-		Rooms:  map[string]bool{"room1": true},
-		Send:   make(chan []byte, 10),
-		Hub:    h,
-		ctx:    ctx,
-	}
-
-	// Helper to call handleMessage
-	callHandleMessage := func() {
-		msg := Message{Type: "message", Room: "room1"}
-		client.handleMessage(msg, []byte(`{"type":"message","room":"room1","payload":{"text":"hello"}}`))
-	}
-
-	// First message: should pass rate limit (and safely return due to nil NATS guard)
-	callHandleMessage()
-
-	// Second message immediately after: should trigger rate limiter (writes to Send channel)
-	callHandleMessage()
-
-	// Assert rate_limit_exceeded notification was written to Send channel
-	select {
-	case notice := <-client.Send:
-		var raw map[string]string
-		if err := json.Unmarshal(notice, &raw); err != nil {
-			t.Fatalf("Failed to parse notice: %v", err)
-		}
-		if raw["type"] != "rate_limit_exceeded" {
-			t.Errorf("Expected type rate_limit_exceeded, got %q", raw["type"])
-		}
-	default:
-		t.Errorf("Expected rate_limit_exceeded notice in Send channel")
-	}
 }
 
 func TestClient_HandleIncomingMessage_Invalid(t *testing.T) {
@@ -396,51 +351,6 @@ func TestHandleWebSocket_Errors(t *testing.T) {
 		h.redisClient = nil
 		h.HandleWebSocket(rec, req, cfg)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	})
-}
-
-func TestValidateToken(t *testing.T) {
-	h := setupTestHub()
-
-	t.Run("malformed token", func(t *testing.T) {
-		_, err := h.ValidateToken(context.Background(), "invalid-token", []string{"secret"})
-		assert.Error(t, err)
-	})
-
-	t.Run("unsupported algorithm", func(t *testing.T) {
-		// Create a token with alg = None
-		token := jwt.New(jwt.SigningMethodNone)
-		tokenStr, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
-		require.NoError(t, err)
-
-		_, err = h.ValidateToken(context.Background(), tokenStr, []string{"secret"})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported JWT algorithm")
-	})
-
-	t.Run("HS256 success", func(t *testing.T) {
-		secret := "my-secret-key" // pragma: allowlist secret
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"sub": "user-123",
-			"exp": time.Now().Add(time.Hour).Unix(),
-		})
-		tokenStr, err := token.SignedString([]byte(secret))
-		require.NoError(t, err)
-
-		sub, err := h.ValidateToken(context.Background(), tokenStr, []string{secret})
-		require.NoError(t, err)
-		assert.Equal(t, "user-123", sub)
-	})
-
-	t.Run("HS256 invalid signature", func(t *testing.T) {
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"sub": "user-123",
-		})
-		tokenStr, err := token.SignedString([]byte("correct-secret"))
-		require.NoError(t, err)
-
-		_, err = h.ValidateToken(context.Background(), tokenStr, []string{"wrong-secret"})
-		assert.Error(t, err)
 	})
 }
 

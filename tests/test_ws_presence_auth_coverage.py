@@ -15,12 +15,9 @@ import pytest
 
 from app.api.ws.auth import (
     _JWT_DECODE_ERRORS,
-    extract_bearer_token,
-    extract_token_from_subprotocol,
     get_user_from_cookie,
     get_user_from_ticket,
     get_user_from_token,
-    select_subprotocol,
     update_last_seen,
 )
 
@@ -664,34 +661,6 @@ async def test_get_user_from_cookie() -> None:
         mock_get.return_value = ("user", "jti")
         assert await get_user_from_cookie("cookie") == ("user", "jti")
         mock_get.assert_called_once_with("cookie")
-
-
-def test_extract_bearer_token() -> None:
-    assert extract_bearer_token(None) is None
-    assert extract_bearer_token("") is None
-    assert extract_bearer_token("Bearer token-value") == "token-value"
-    assert extract_bearer_token("bearer token-value") == "token-value"
-    assert extract_bearer_token("token-value") == "token-value"
-    assert extract_bearer_token("Bearer  ") == "Bearer"
-    assert extract_bearer_token("Bearer token extra") is None
-
-
-def test_extract_token_from_subprotocol() -> None:
-    assert extract_token_from_subprotocol(None) is None
-    assert extract_token_from_subprotocol("") is None
-    assert extract_token_from_subprotocol("access_token, jwt-token") == "jwt-token"
-    assert extract_token_from_subprotocol("bearer, jwt-token") == "jwt-token"
-    assert extract_token_from_subprotocol("authorization, jwt-token") == "jwt-token"
-    assert extract_token_from_subprotocol("access_token") is None
-    assert extract_token_from_subprotocol("other, protocol") is None
-
-
-def test_select_subprotocol() -> None:
-    assert select_subprotocol(None) is None
-    assert select_subprotocol("") is None
-    assert select_subprotocol("access_token, extra") == "access_token"
-    assert select_subprotocol("bearer") == "bearer"
-    assert select_subprotocol("other") is None
 
 
 @pytest.mark.asyncio

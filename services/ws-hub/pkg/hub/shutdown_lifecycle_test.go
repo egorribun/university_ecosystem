@@ -99,7 +99,7 @@ func TestHubStop_ClosesActiveClientAndStopsItsPumps(t *testing.T) {
 		h.Run(context.Background())
 		close(runDone)
 	}()
-	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 
 	clientCtx, clientCancel := context.WithCancel(context.Background())
 	session := newBlockingShutdownSession()
@@ -195,7 +195,7 @@ func TestClientDisconnectAfterRunExitSynchronouslyCleansMembership(t *testing.T)
 		h.Run(runCtx)
 		close(runDone)
 	}()
-	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 
 	client := &Client{
 		ID:     "disconnect-after-run-exit",
@@ -215,7 +215,7 @@ func TestClientDisconnectAfterRunExitSynchronouslyCleansMembership(t *testing.T)
 	case <-time.After(time.Second):
 		t.Fatal("hub run loop did not exit after its lifecycle context was cancelled")
 	}
-	require.Nil(t, h.Context(), "Run must clear its lifecycle context before later client cleanup")
+	require.Nil(t, hubLifecycleContext(h), "Run must clear its lifecycle context before later client cleanup")
 
 	client.Disconnect(1000, "peer closed")
 

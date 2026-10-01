@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -72,11 +73,6 @@ func resumeJoinPayload(t *testing.T, h *Hub, userID, room string, sequence uint6
 	return payload
 }
 
-type scriptedPublishJetStream struct {
-	nats.JetStreamContext
-	publishErr error
-}
-
 type readErrorSession struct {
 	recordingSession
 	err error
@@ -84,10 +80,6 @@ type readErrorSession struct {
 
 func (s *readErrorSession) ReadMessage() (int, []byte, error) {
 	return 0, nil, s.err
-}
-
-func (s *scriptedPublishJetStream) PublishMsgAsync(*nats.Msg, ...nats.PubOpt) (nats.PubAckFuture, error) {
-	return nil, s.publishErr
 }
 
 func TestClientChannelAndReplayGuards(t *testing.T) {
@@ -142,6 +134,18 @@ func TestClientChannelAndReplayGuards(t *testing.T) {
 	assert.Equal(t, "resume-7", merged.LastMsgID)
 }
 
+// deliverOfflineMessagesForTest drives the live batch-delivery path for a single
+// pre-fetched batch, deriving the room from the first message subject.
+func deliverOfflineMessagesForTest(c *Client, msgs []*nats.Msg, lastSeq uint64, lastMsgID string) {
+	foundLastMsgID := lastMsgID == "" || lastSeq > 0
+	maxSequence := lastSeq
+	room := ""
+	if len(msgs) > 0 && msgs[0] != nil {
+		room, _ = strings.CutPrefix(msgs[0].Subject, "chat.")
+	}
+	c.deliverOfflineMessageBatch(c.ctx, room, msgs, lastMsgID, &foundLastMsgID, &maxSequence)
+}
+
 func TestClientReplayOfflineMessages_UsesResumeOptionsAndHandlesFetchFailure(t *testing.T) {
 	h := setupTestHub()
 	h.streamChat = ""
@@ -151,9 +155,9 @@ func TestClientReplayOfflineMessages_UsesResumeOptionsAndHandlesFetchFailure(t *
 		assert.Empty(t, durable)
 		return nil, errors.New("pull subscription unavailable")
 	}}
-	client.replayOfflineMessages("room", 3, "")
-	client.replayOfflineMessages("room", 0, "42")
-	client.replayOfflineMessages("room", 0, "not-a-sequence")
+	client.replayOfflineMessagesContext(client.ctx, "room", 3, "")
+	client.replayOfflineMessagesContext(client.ctx, "room", 0, "42")
+	client.replayOfflineMessagesContext(client.ctx, "room", 0, "not-a-sequence")
 
 	server := newMockNatsServer(t)
 	nc, err := nats.Connect(server.Addr())
@@ -174,11 +178,11 @@ func TestClientReplayOfflineMessages_UsesResumeOptionsAndHandlesFetchFailure(t *
 	oldUnsubscribe := unsubscribePullFunc
 	t.Cleanup(func() { unsubscribePullFunc = oldUnsubscribe })
 	unsubscribePullFunc = func(*nats.Subscription) error { return errors.New("unsubscribe failed") }
-	client.replayOfflineMessages("room", 1, "")
+	client.replayOfflineMessagesContext(client.ctx, "room", 1, "")
 	fetchPullMessagesFunc = func(*nats.Subscription, int, ...nats.PullOpt) ([]*nats.Msg, error) {
 		return nil, errors.New("fetch unavailable")
 	}
-	client.replayOfflineMessages("room", 1, "")
+	client.replayOfflineMessagesContext(client.ctx, "room", 1, "")
 }
 
 func TestClientDeliverOfflineMessages_ResumesAndSerializesReplay(t *testing.T) {
@@ -213,7 +217,7 @@ func TestClientDeliverOfflineMessages_ResumesAndSerializesReplay(t *testing.T) {
 	cancelledCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 	client.ctx = cancelledCtx
-	client.deliverOfflineMessages([]*nats.Msg{{Data: []byte(`{"type":"message"}`)}}, 0, "")
+	deliverOfflineMessagesForTest(client, []*nats.Msg{{Data: []byte(`{"type":"message"}`)}}, 0, "")
 	assert.Empty(t, client.Send)
 }
 
@@ -240,7 +244,7 @@ func TestClientDeliverOfflineMessages_AcksOnlyAfterQueueing(t *testing.T) {
 		return nil
 	}
 
-	client.deliverOfflineMessages([]*nats.Msg{replayMessage(41)}, 40, "")
+	deliverOfflineMessagesForTest(client, []*nats.Msg{replayMessage(41)}, 40, "")
 
 	assert.Equal(t, 1, ackCount)
 	assert.Zero(t, nakCount)
@@ -270,7 +274,7 @@ func TestClientDeliverOfflineMessages_BackpressureDoesNotAck(t *testing.T) {
 		return nil
 	}
 
-	client.deliverOfflineMessages([]*nats.Msg{replayMessage(42)}, 41, "")
+	deliverOfflineMessagesForTest(client, []*nats.Msg{replayMessage(42)}, 41, "")
 
 	assert.Zero(t, ackCount, "a replay rejected by the client queue must remain available for redelivery")
 	assert.Equal(t, 1, nakCount)
@@ -305,7 +309,7 @@ func TestClientDeliverOfflineMessages_PermanentPoisonIsNotAckedOrForwarded(t *te
 		return nil
 	}
 
-	client.deliverOfflineMessages([]*nats.Msg{{Data: []byte("not-json")}}, 0, "")
+	deliverOfflineMessagesForTest(client, []*nats.Msg{{Data: []byte("not-json")}}, 0, "")
 
 	assert.Zero(t, ackCount, "permanently invalid replay data must not be acknowledged as delivered")
 	assert.Zero(t, nakCount)
@@ -428,7 +432,7 @@ func TestClientReplayOfflineMessages_PaginatesBeyondOneBatch(t *testing.T) {
 	}
 	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
 
-	client.replayOfflineMessages("room", 1, "")
+	client.replayOfflineMessagesContext(client.ctx, "room", 1, "")
 
 	assert.Equal(t, 3, fetchCalls, "replay must fetch until the consumer is drained")
 	assert.Equal(t, 125, ackCount)
@@ -480,7 +484,7 @@ func TestClientReplayOfflineMessages_StopsPageOnBackpressure(t *testing.T) {
 		return nil
 	}
 
-	client.replayOfflineMessages("room", 49, "")
+	client.replayOfflineMessagesContext(client.ctx, "room", 49, "")
 
 	assert.Equal(t, 1, fetchCalls, "backpressure must stop pagination immediately")
 	assert.Zero(t, ackCount, "neither the current nor unprocessed replay may be acknowledged")
@@ -566,7 +570,7 @@ func TestClientDeliverOfflineMessages_RetriesHealthyQueueBackpressure(t *testing
 	}
 	done := make(chan struct{})
 	go func() {
-		client.deliverOfflineMessages([]*nats.Msg{replayMessage(70)}, 69, "")
+		deliverOfflineMessagesForTest(client, []*nats.Msg{replayMessage(70)}, 69, "")
 		close(done)
 	}()
 
@@ -1068,32 +1072,4 @@ func TestClientDisconnect_DefaultHubContextClosesSend(t *testing.T) {
 	c.Disconnect(1000, "done")
 	_, open := <-c.Send
 	assert.False(t, open)
-}
-
-func TestClientHandleMessage_JetStreamPublishErrorIsContained(t *testing.T) {
-	h := setupTestHub()
-	h.enableJetStream = true
-	h.Nats = &nats.Conn{}
-	h.js = &scriptedPublishJetStream{publishErr: errors.New("publish failed")}
-	c := &Client{
-		ID: "publish-error", UserID: "publish-user", Hub: h,
-		Send: make(chan []byte, 1), Rooms: map[string]bool{"room": true}, ctx: context.Background(),
-	}
-	c.handleMessage(Message{Type: "message", Room: "room"}, []byte(`{"type":"message"}`))
-}
-
-func TestClientHandleMessage_InvalidRawPayloadIsContained(t *testing.T) {
-	h := setupTestHub()
-	h.Nats = &nats.Conn{}
-	c := &Client{
-		ID: "invalid-payload", UserID: "canonical-user", Hub: h,
-		Send: make(chan []byte, 1), Rooms: map[string]bool{"room": true}, ctx: context.Background(),
-	}
-
-	assert.NotPanics(t, func() {
-		c.handleMessage(
-			Message{Type: "message", Room: "room", Payload: json.RawMessage(`{`)},
-			[]byte(`{"type":"message"}`),
-		)
-	})
 }

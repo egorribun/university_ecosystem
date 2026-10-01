@@ -256,6 +256,10 @@ class EventService:
         async with self.uow:
             await self.uow.commit()
 
+        from app.services import search_indexer
+
+        await search_indexer.remove_document(search_indexer.EVENTS_INDEX, event_id)
+
         from app.utils.files import delete_static_file
 
         if image_url:

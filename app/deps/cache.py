@@ -7,7 +7,7 @@ import inspect
 import threading
 import time as time_module
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import timedelta
 from functools import wraps
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
 
@@ -53,44 +53,6 @@ class CacheEntry:
     payload: Any
     stored_at: float
     ttl_seconds: float = 0.0  # TTL for probabilistic refresh calculation
-
-    def should_refresh_probabilistic(
-        self,
-        beta: float = 1.0,
-    ) -> bool:
-        """
-        XFetch algorithm for probabilistic early expiration.
-
-        Prevents cache stampede by having some requests refresh
-        the cache slightly before expiration.
-
-        Args:
-            beta: Scaling factor (higher = earlier refresh probability)
-
-        Returns:
-            True if this request should trigger a cache refresh
-        """
-        import math
-        import random
-
-        if self.ttl_seconds <= 0:
-            return False
-
-        now = time_module.time()
-        age = now - self.stored_at
-        remaining = self.ttl_seconds - age
-
-        if remaining <= 0:
-            return True  # Already expired
-
-        # XFetch formula: refresh if now - (ttl * beta * log(random)) > expiry
-        # Simplified: remaining < -beta * ttl * log(random)
-        random_factor = random.random()  # noqa: S311  # nosec B311
-        if random_factor == 0:
-            random_factor = 1e-10
-
-        threshold = -beta * self.ttl_seconds * math.log(random_factor)
-        return remaining < threshold
 
 
 class BaseCache:
@@ -639,17 +601,6 @@ class NatsKVCache(BaseCache):
 _cache_key_version: int = 1
 
 
-def set_cache_key_version(version: int) -> None:
-    """Set global cache key version for safe invalidation."""
-    global _cache_key_version
-    _cache_key_version = version
-
-
-def get_cache_key_version() -> int:
-    """Get current cache key version."""
-    return _cache_key_version
-
-
 def versioned_key(key: str) -> str:
     """Create a versioned cache key for safe invalidation."""
     return f"v{_cache_key_version}:{key}"
@@ -772,86 +723,6 @@ def cached(
     return decorator
 
 
-def stale_while_revalidate(
-    prefix: str | None = None,
-    ttl: int | timedelta | None = None,
-    stale_ttl: int | timedelta | None = None,
-    key_builder: Callable[..., str] | None = None,
-) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-    """
-    Decorator implementing stale-while-revalidate pattern.
-
-    Returns stale data immediately while revalidating in background.
-    Useful for schedule data and other frequently accessed content.
-
-    Args:
-        prefix: Cache key prefix
-        ttl: Fresh TTL - how long data is considered fresh
-        stale_ttl: Total TTL including stale period (must be > ttl)
-        key_builder: Custom key builder function
-    """
-    fresh_seconds = (
-        int(ttl.total_seconds()) if isinstance(ttl, timedelta) else (ttl or 60)
-    )
-    total_seconds = (
-        int(stale_ttl.total_seconds())
-        if isinstance(stale_ttl, timedelta)
-        else (stale_ttl or fresh_seconds * 2)
-    )
-
-    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        _prefix = prefix or func.__name__
-        _revalidation_lock: dict[str, bool] = {}
-
-        @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            cache = get_cache()
-            if not cache.enabled:
-                return await func(*args, **kwargs)
-
-            if key_builder:
-                key = key_builder(*args, **kwargs)
-            else:
-                key_parts = [str(arg) for arg in args]
-                key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
-                key = ":".join(key_parts)
-
-            full_key = f"{_prefix}:{key}"
-            entry = await cache.get(full_key)
-
-            if entry is not None:
-                age = time_module.time() - entry.stored_at
-                is_stale = age > fresh_seconds
-
-                if is_stale and full_key not in _revalidation_lock:
-                    # Mark as revalidating and refresh in background
-                    _revalidation_lock[full_key] = True
-
-                    async def revalidate() -> None:
-                        try:
-                            result = await func(*args, **kwargs)
-                            await cache.set(full_key, result, ttl=total_seconds)
-                        finally:
-                            _revalidation_lock.pop(full_key, None)
-
-                    # Prevent garbage collection of fire-and-forget task
-                    task = asyncio.create_task(revalidate())
-                    _background_tasks.add(task)
-                    task.add_done_callback(_background_tasks.discard)
-
-                # Return stale data immediately
-                return cast(R, entry.payload)
-
-            # Cache miss - compute and store
-            result = await func(*args, **kwargs)
-            await cache.set(full_key, result, ttl=total_seconds)
-            return result
-
-        return wrapper
-
-    return decorator
-
-
 _cache_backend: BaseCache | None = None
 _cache_backend_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 _background_tasks: set[asyncio.Task[Any]] = set()
@@ -868,13 +739,6 @@ def _normalize_payload(payload: Any) -> tuple[Any, bytes]:
     )
     normalized = orjson.loads(serialized) if serialized else jsonable
     return normalized, serialized
-
-
-def _json_default(value: Any) -> Any:
-    """Fallback serializer for types not natively supported."""
-    if isinstance(value, datetime | date | time):
-        return value.isoformat()
-    return str(value)
 
 
 def create_cache_backend() -> BaseCache:

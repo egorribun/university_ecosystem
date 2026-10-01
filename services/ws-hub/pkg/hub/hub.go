@@ -93,16 +93,6 @@ func (l *roomMembershipLock) Lock() {
 	l.entry.mu.Lock()
 }
 
-// TryLock consumes the lock reference when the underlying lock is busy. A
-// failed TryLock must not be followed by Lock or Unlock on this handle.
-func (l *roomMembershipLock) TryLock() bool {
-	if !l.entry.mu.TryLock() {
-		l.release()
-		return false
-	}
-	return true
-}
-
 func (l *roomMembershipLock) Unlock() {
 	l.entry.mu.Unlock()
 	l.release()
@@ -566,16 +556,6 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 
 	h.Logger.InfoContext(ctx, "JWKS cache initialised", "url", jwksURL)
 	return nil
-}
-
-// Context returns the hub's lifecycle context in a thread-safe manner.
-func (h *Hub) Context() context.Context {
-	if h == nil {
-		return nil
-	}
-	h.lifecycleMu.Lock()
-	defer h.lifecycleMu.Unlock()
-	return h.ctx
 }
 
 // registerClient transfers a newly upgraded client to Run without allowing a
@@ -1661,13 +1641,6 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	}
 }
 
-// DisconnectSession closes only the active connection(s) associated with one
-// immutable session JTI. The Hub lock is released before RevokeSession takes
-// the client gate, preserving the Hub.mu -> Client.mu lock-order invariant.
-func (h *Hub) DisconnectSession(jti string, closeCode int, reason string) {
-	h.disconnectSessionContext(context.Background(), jti, closeCode, reason)
-}
-
 // disconnectSessionContext is the context-aware implementation used by
 // lifecycle consumers. The exported compatibility wrapper above keeps the
 // existing no-context API for callers that do not have a request context.
@@ -1829,14 +1802,6 @@ func (h *Hub) HasJWKSCache() bool {
 	h.jwksMu.Lock()
 	defer h.jwksMu.Unlock()
 	return h.jwksCache != nil
-}
-
-// AuthorizeRoomJoin verifies that userID is a participant of the given room.
-func (h *Hub) AuthorizeRoomJoin(ctx context.Context, userID, room string) bool {
-	lock := h.roomMembershipLock(userID, room)
-	lock.Lock()
-	defer lock.Unlock()
-	return h.authorizeRoomJoinLocked(ctx, userID, room)
 }
 
 // authorizeRoomJoinLocked expects the caller to hold the matching keyed

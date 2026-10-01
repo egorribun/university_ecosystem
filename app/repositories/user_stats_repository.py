@@ -9,7 +9,6 @@ from sqlalchemy import and_, case, func, literal, select, true
 from sqlalchemy.orm import aliased
 
 import app.models as models
-from app.core.protocols import AsyncDatabaseSession
 from app.repositories.base import ReadOnlyRepository
 from app.schemas.dtos import UserDTO
 from app.schemas.dtos.analytics import ParticipationStatsDTO
@@ -213,7 +212,3 @@ class UserStatsRepository(ReadOnlyRepository[models.User, UserDTO]):
             )
             for row in result.all()
         ]
-
-
-def get_user_stats_repository(db: AsyncDatabaseSession) -> UserStatsRepository:
-    return UserStatsRepository(db)

@@ -47,20 +47,6 @@ class StoryRepository(BaseRepository[Story, StoryDTO, dict[str, Any], dict[str, 
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
-    async def get_by_user(
-        self, user_id: uuid.UUID, *, skip: int = 0, limit: int = 20
-    ) -> list[StoryDTO]:
-        """Get stories created by a specific user."""
-        result = await self.db.execute(
-            select(Story)
-            .where(Story.created_by == user_id)
-            .order_by(Story.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        objs = result.scalars().all()
-        return [self._to_dto(obj) for obj in objs]
-
     async def count_active(self) -> int:
         """Count active, non-expired stories."""
         now = datetime.now(UTC)
@@ -71,18 +57,6 @@ class StoryRepository(BaseRepository[Story, StoryDTO, dict[str, Any], dict[str, 
             )
         )
         return result.scalar() or 0
-
-    async def get_expired(self, *, limit: int = 100) -> list[StoryDTO]:
-        """Get expired stories for cleanup."""
-        now = datetime.now(UTC)
-        result = await self.db.execute(
-            select(Story)
-            .where(Story.expires_at <= now)
-            .order_by(Story.expires_at.asc())
-            .limit(limit)
-        )
-        objs = result.scalars().all()
-        return [self._to_dto(obj) for obj in objs]
 
     async def deactivate(self, story_id: uuid.UUID) -> bool:
         """Deactivate a story by ID."""

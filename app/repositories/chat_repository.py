@@ -21,7 +21,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
 from app.core.events import MessageDeleted, MessageEdited
-from app.core.protocols import AsyncDatabaseSession
 from app.models import User, UserProfile
 from app.models.chat import (
     Chat,
@@ -1008,7 +1007,3 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             audience.discard(user_id)
             span.set_attribute("presence.audience_size", len(audience))
             return audience
-
-
-def get_chat_repository(db: AsyncDatabaseSession) -> ChatRepository:
-    return ChatRepository(db)

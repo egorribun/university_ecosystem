@@ -23,7 +23,6 @@ from app.services.schedule_optimizer import (
     ScheduleItemInternal,
     ScheduleOptimizerService,
 )
-from app.services.webpush import build_payload
 
 
 def _schedule_item(
@@ -276,21 +275,6 @@ async def test_outbox_shutdown_awaits_every_auxiliary_task() -> None:
         heartbeat_task,
         return_exceptions=True,
     )
-
-
-def test_build_payload_ignores_non_numeric_optional_timestamp() -> None:
-    payload = build_payload(
-        "system.message",
-        {"message": "hello", "timestamp": object()},
-    )
-
-    assert "timestamp" not in payload["options"]
-
-
-def test_build_payload_omits_explicitly_empty_optional_timestamp() -> None:
-    payload = build_payload("system.message", {"timestamp": None})
-
-    assert "timestamp" not in payload["options"]
 
 
 @pytest.mark.asyncio

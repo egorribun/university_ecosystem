@@ -11,7 +11,6 @@ from uuid import uuid4
 import pytest
 
 import app.services.audit_service as audit_module
-from app.models.logs import DataAccessLog
 from app.services.audit_service import SecureAuditService, auditable
 
 
@@ -149,65 +148,6 @@ def test_find_valid_key_falls_back_to_python_when_rust_is_unavailable():
         assert service._find_valid_key(log) == b"new"
 
 
-def test_resign_log_updates_mutable_orm_log():
-    service = SecureAuditService(signing_key=b"primary")
-    log = DataAccessLog(
-        id=uuid4(),
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        created_at=datetime.now(UTC),
-    )
-    log.signature = service._compute_signature(log)
-    rust = MagicMock()
-    rust.verify_audit_signature.return_value = True
-
-    with patch.dict(sys.modules, {"rust_ext": rust}):
-        assert service.resign_log(log) is True
-
-    assert log.signature == service._compute_signature(log)
-
-
-def test_resign_legacy_log_preserves_unauthenticated_metadata_during_key_rotation():
-    service = SecureAuditService(signing_keys=[b"new-primary", b"legacy-key"])
-    log = DataAccessLog(
-        id=uuid4(),
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        context={"detail": "synthetic-original"},
-        user_agent="synthetic-agent-original",
-        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
-    )
-    log.signature = service._compute_legacy_signature(log, key=b"legacy-key")
-    log.context = {"detail": "synthetic-tampered"}
-    log.user_agent = "synthetic-agent-tampered"
-    rust = MagicMock()
-    rust.verify_audit_signature.return_value = True
-
-    with patch.dict(sys.modules, {"rust_ext": rust}):
-        assert service.verify_integrity(log) is True
-        assert service.signature_covers_metadata(log) is False
-        assert service.resign_log(log) is True
-
-    assert log.signature == service._compute_legacy_signature(log, key=b"new-primary")
-    assert service.verify_integrity(log) is True
-    assert service.signature_covers_metadata(log) is False
-
-
-def test_resign_log_rejects_unsigned_log():
-    service = SecureAuditService(signing_key=b"primary")
-    log = DataAccessLog(
-        id=uuid4(),
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        created_at=datetime.now(UTC),
-    )
-
-    assert service.resign_log(log) is False
-
-
 @pytest.mark.asyncio
 async def test_record_domain_event_normalizes_naive_time_and_invalid_uuid():
     service = SecureAuditService(signing_key=b"key")
@@ -317,26 +257,6 @@ async def test_create_log_returns_signed_copy_when_update_has_no_row():
     assert result is fallback
     created.model_copy.assert_called_once()
     assert created.model_copy.call_args.kwargs["update"]["signature"]
-
-
-@pytest.mark.asyncio
-async def test_verify_batch_returns_invalid_ids_and_honors_limit():
-    service = SecureAuditService(signing_key=b"key")
-    db = MagicMock()
-    valid = SimpleNamespace(id=uuid4())
-    invalid = SimpleNamespace(id=uuid4())
-
-    with patch.object(audit_module, "AuditRepository") as repository_type:
-        repository = repository_type.return_value
-        repository.list_logs = AsyncMock(return_value=[valid, invalid])
-        with patch.object(
-            service, "verify_integrity", side_effect=[True, False]
-        ) as verify:
-            result = await service.verify_batch(db, limit=17)
-
-    assert result == (2, 1, [invalid.id])
-    repository.list_logs.assert_awaited_once_with(limit=17)
-    assert verify.call_count == 2
 
 
 @pytest.mark.asyncio

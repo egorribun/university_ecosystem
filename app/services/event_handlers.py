@@ -23,12 +23,14 @@ from app.core.events import (
     DurableEventDeferred,
     EventCreated,
     EventRegistration,
+    EventUpdated,
     MessageDeleted,
     MessageEdited,
     MessageSent,
     MfaEmailDeliveryRequested,
     MfaEnabled,
     NewsCreated,
+    NewsUpdated,
     NotificationSent,
     NotificationsRequested,
     ScheduleDeleted,
@@ -39,6 +41,7 @@ from app.core.events import (
 )
 from app.core.logging import get_logger
 from app.models.chat import chat_participants
+from app.services import search_indexer
 from app.services.vector_service import VectorService
 
 logger = get_logger(__name__)
@@ -192,6 +195,16 @@ async def generate_news_embedding(event: NewsCreated) -> None:
         embedding = await vector_service.get_embedding(text_to_embed)
         db_news.embedding = embedding
         await db.commit()
+
+
+async def index_news_for_search(event: NewsCreated | NewsUpdated) -> None:
+    """Make a created/updated news article findable through ``/api/v1/search``."""
+    await search_indexer.index_news(event.news_id)
+
+
+async def index_event_for_search(event: EventCreated | EventUpdated) -> None:
+    """Make a created/updated event findable (deactivated events are removed)."""
+    await search_indexer.index_event(event.event_id_entity)
 
 
 async def _set_message_rls_identity(db: AsyncSession, chat_id: UUID) -> UUID | None:
@@ -546,6 +559,10 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("event.updated", generate_event_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("news.created", generate_news_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("news.updated", generate_news_embedding)  # type: ignore[arg-type]
+    event_bus.subscribe("event.created", index_event_for_search)  # type: ignore[arg-type]
+    event_bus.subscribe("event.updated", index_event_for_search)  # type: ignore[arg-type]
+    event_bus.subscribe("news.created", index_news_for_search)  # type: ignore[arg-type]
+    event_bus.subscribe("news.updated", index_news_for_search)  # type: ignore[arg-type]
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]

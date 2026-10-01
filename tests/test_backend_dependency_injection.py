@@ -13,13 +13,6 @@ from app.core.di.infrastructure import InfrastructureProvider
 from app.core.di.search import SearchProvider
 from app.core.di.spicedb import SpiceDBProvider
 from app.core.di.users import UserProvider
-from app.core.exceptions import (
-    AppException,
-    InvalidOperationException,
-    PermissionDeniedException,
-    ResourceNotFoundException,
-    app_exception_handler,
-)
 from app.core.health import check_database_connectivity, check_spicedb_health
 from app.core.logging import (
     add_otel_context,
@@ -275,34 +268,6 @@ async def test_spicedb_provider():
 
 
 # 8. app/core/exceptions/__init__.py
-@pytest.mark.asyncio
-async def test_app_exception_handler():
-    req = MagicMock()
-
-    # 1. Custom AppException
-    exc = AppException(
-        "Bad request", status_code=400, code="bad_request", payload={"key": "val"}
-    )
-    res = await app_exception_handler(req, exc)
-    assert res.status_code == 400
-
-    # 2. Inherited Exception
-    exc2 = ResourceNotFoundException("Not found")
-    res2 = await app_exception_handler(req, exc2)
-    assert res2.status_code == 404
-
-    exc3 = PermissionDeniedException("Denied")
-    res3 = await app_exception_handler(req, exc3)
-    assert res3.status_code == 403
-
-    exc4 = InvalidOperationException("Invalid")
-    res4 = await app_exception_handler(req, exc4)
-    assert res4.status_code == 400
-
-    # 3. Non-AppException
-    exc_non = ValueError("Critical issue")
-    res_non = await app_exception_handler(req, exc_non)
-    assert res_non.status_code == 500
 
 
 # 9. app/core/health.py

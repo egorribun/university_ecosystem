@@ -492,7 +492,7 @@ async def requeue_outbox_failure(
         .where(StoredEvent.id == failure.original_event_id)
         .values(processed_at=None, error_count=0, last_error=None, status="pending")
     )
-    if not restored.rowcount:
+    if not getattr(restored, "rowcount", 0):
         raise_not_found(
             "dlq_job",
             locale,

@@ -13,14 +13,9 @@ _logger = get_logger(__name__)
 class SearchProvider(Provider):
     @provide(scope=Scope.APP)
     async def search_service(self) -> AsyncIterator[SearchService]:
-        from app.core.config import settings
+        from app.services.search_indexer import build_search_service
 
-        hosts: str = getattr(settings, "elasticsearch_url", "http://localhost:9200")
-        user: str = getattr(settings, "elasticsearch_user", "elastic")
-        password: str = getattr(settings, "elasticsearch_password", "")
-        http_auth: tuple[str, str] | None = (user, password) if password else None
-
-        svc = SearchService(hosts=hosts, http_auth=http_auth)
+        svc = build_search_service()
         _logger.info("Dishka: SearchService created (Scope.APP)")
         try:
             yield svc

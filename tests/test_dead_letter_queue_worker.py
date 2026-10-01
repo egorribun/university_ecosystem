@@ -7,7 +7,6 @@ cleanup_completed_jobs.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +14,6 @@ import pytest
 from app.models.dead_letter import JobStatus
 from app.workers.dead_letter_queue import (
     DeadLetterQueue,
-    check_duplicate_job,
     compute_job_hash,
 )
 
@@ -51,28 +49,6 @@ def test_compute_job_hash_returns_64_hex_chars():
 # ---------------------------------------------------------------------------
 # check_duplicate_job
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_check_duplicate_job_returns_true_when_exists():
-    mock_session = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = "some-id"
-    mock_session.execute.return_value = mock_result
-
-    result = await check_duplicate_job(mock_session, "MyJob", {"key": "val"})
-    assert result is True
-
-
-@pytest.mark.asyncio
-async def test_check_duplicate_job_returns_false_when_not_exists():
-    mock_session = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
-    mock_session.execute.return_value = mock_result
-
-    result = await check_duplicate_job(mock_session, "MyJob", {"key": "val"})
-    assert result is False
 
 
 # ---------------------------------------------------------------------------
@@ -202,67 +178,6 @@ async def test_mark_job_completed_sets_status_and_flushes():
 # ---------------------------------------------------------------------------
 # DeadLetterQueue.mark_job_failed
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_mark_job_failed_permanently_on_max_retries():
-    session = AsyncMock()
-    session.flush = AsyncMock()
-    dlq = make_dlq(session)
-
-    job = MagicMock()
-    job.job_type = "MyJob"
-    job.job_hash = "b" * 16
-    job.retry_count = 3
-    job.max_retries = 3
-
-    await dlq.mark_job_failed(job, "unrecoverable error")
-
-    assert job.status == JobStatus.FAILED.value
-    assert job.next_retry_at is None
-    session.flush.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_mark_job_failed_schedules_retry_below_max_retries():
-    session = AsyncMock()
-    session.flush = AsyncMock()
-    dlq = make_dlq(session)
-
-    job = MagicMock()
-    job.job_type = "MyJob"
-    job.job_hash = "c" * 16
-    job.retry_count = 1
-    job.max_retries = 5
-
-    await dlq.mark_job_failed(job, "transient error")
-
-    assert job.status == JobStatus.PENDING.value
-    assert job.next_retry_at is not None
-    session.flush.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_mark_job_failed_backoff_capped_at_max():
-    """With many retries, backoff should be capped at MAX_BACKOFF_SECONDS."""
-    session = AsyncMock()
-    session.flush = AsyncMock()
-    dlq = make_dlq(session)
-
-    job = MagicMock()
-    job.job_type = "MyJob"
-    job.job_hash = "d" * 16
-    job.retry_count = 10  # Large retry count — would overflow without cap
-    job.max_retries = 20
-
-    await dlq.mark_job_failed(job, "error")
-    after = datetime.now(UTC)
-
-    assert job.status == JobStatus.PENDING.value
-    assert job.next_retry_at is not None
-    # next retry must be at most 1 hour from now
-    max_next = after + timedelta(seconds=DeadLetterQueue.MAX_BACKOFF_SECONDS)
-    assert job.next_retry_at <= max_next
 
 
 # ---------------------------------------------------------------------------

@@ -172,17 +172,17 @@ func TestJoinLeaveRoom_Direct(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// handleMessage (direct — guard paths only, NATS-free)
+// rejectOversizedMessage (direct — ingress size guard, NATS-free)
 // ---------------------------------------------------------------------------
 
-func TestHandleMessage_Oversized(t *testing.T) {
+func TestRejectOversizedMessage(t *testing.T) {
 	h := setupTestHub()
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-big", "u-big")
 
 	before := testutil.ToFloat64(IncomingDropsTotal)
 	big := make([]byte, 61*1024) // > 60 KB ingress limit
-	c.handleMessage(Message{Type: "message", Room: "r"}, big)
+	assert.True(t, c.rejectOversizedMessage(big))
 	assert.Equal(t, before+1, testutil.ToFloat64(IncomingDropsTotal))
 
 	select {
@@ -193,7 +193,7 @@ func TestHandleMessage_Oversized(t *testing.T) {
 	}
 }
 
-func TestHandleMessage_OversizedDropsWhenSendFull(t *testing.T) {
+func TestRejectOversizedMessage_DropsWhenSendFull(t *testing.T) {
 	h := setupTestHub()
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-bigfull", "u-bigfull")
@@ -202,40 +202,9 @@ func TestHandleMessage_OversizedDropsWhenSendFull(t *testing.T) {
 		c.Send <- []byte("filler")
 	}
 	before := testutil.ToFloat64(IncomingDropsTotal)
-	c.handleMessage(Message{Type: "message"}, make([]byte, 61*1024))
+	assert.True(t, c.rejectOversizedMessage(make([]byte, 61*1024)))
 	assert.Equal(t, before+1, testutil.ToFloat64(IncomingDropsTotal),
 		"drop is still counted even when the client notice can't be enqueued")
-}
-
-func TestHandleMessage_RateLimited(t *testing.T) {
-	h := setupTestHub()
-	h.clientMsgRateLimit = 0 // deny everything
-	h.clientMsgRateBurst = 0
-	srv, _ := newConnPair(t)
-	c := newClientOn(h, srv, "c-rl", "u-rl")
-	c.JoinRoom("r")
-
-	c.handleMessage(Message{Type: "message", Room: "r"}, []byte(`{"type":"message"}`))
-	select {
-	case notice := <-c.Send:
-		assert.Contains(t, string(notice), "rate_limit_exceeded")
-	default:
-		t.Fatal("expected a rate_limit_exceeded notice on Send")
-	}
-}
-
-func TestHandleMessage_RateLimitedDropsWhenSendFull(t *testing.T) {
-	h := setupTestHub()
-	h.clientMsgRateLimit = 0
-	h.clientMsgRateBurst = 0
-	srv, _ := newConnPair(t)
-	c := newClientOn(h, srv, "c-rlfull", "u-rlfull")
-	c.JoinRoom("r")
-	for i := 0; i < cap(c.Send); i++ {
-		c.Send <- []byte("filler")
-	}
-	// Must not panic / block — the notice is silently dropped on a full buffer.
-	c.handleMessage(Message{Type: "message", Room: "r"}, []byte(`{"type":"message"}`))
 }
 
 // ---------------------------------------------------------------------------

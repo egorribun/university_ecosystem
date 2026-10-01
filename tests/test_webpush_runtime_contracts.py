@@ -15,13 +15,6 @@ from sqlalchemy.engine import make_url
 from app.services import webpush
 
 
-def test_build_payload_preserves_timestamp_without_silent_flag() -> None:
-    with patch.object(webpush, "render_notification_template", return_value={}):
-        payload = webpush.build_payload("news", {"timestamp": "1700000000000"})
-
-    assert payload["options"]["timestamp"] == 1_700_000_000_000
-
-
 def test_sync_url_preserves_already_synchronous_driver() -> None:
     with (
         patch.object(webpush, "_sync_url_cache", None),
@@ -174,17 +167,6 @@ def test_normalize_actions_without_urls_in_both_input_shapes() -> None:
     assert nested["options"]["actions"] == [action]
     assert "actionUrls" not in top_level["data"]
     assert "actionUrls" not in nested["data"]
-
-
-def test_build_payload_merges_input_data_when_template_has_none() -> None:
-    with patch.object(
-        webpush,
-        "render_notification_template",
-        return_value={"title": "Template"},
-    ):
-        payload = webpush.build_payload("news", {"data": {"article": "42"}})
-
-    assert payload["data"]["article"] == "42"
 
 
 def test_empty_webpush_error_message_is_not_misclassified_as_gone() -> None:

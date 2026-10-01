@@ -31,10 +31,6 @@ vi.mock("@/utils/scheduleUtils", () => ({
   nowParity: (time?: Date) => parityMock(time),
 }))
 
-vi.mock("@/components/motion/ScrollReveal", () => ({
-  ScrollReveal: ({ children }: { children?: ReactNode }) => <>{children}</>,
-}))
-
 vi.mock("@/components/ui/WeatherWidget", () => ({
   default: () => <div data-testid="weather-widget" />,
 }))

@@ -270,17 +270,6 @@ async def test_user_stats_repository_get_participation_stats_raw():
     assert rows == []
 
 
-def test_get_user_stats_repository_factory():
-    from app.repositories.user_stats_repository import (
-        UserStatsRepository,
-        get_user_stats_repository,
-    )
-
-    mock_db = MagicMock()
-    repo = get_user_stats_repository(mock_db)
-    assert isinstance(repo, UserStatsRepository)
-
-
 # ---------------------------------------------------------------------------
 # 4. services/data_access.py
 # ---------------------------------------------------------------------------
@@ -309,35 +298,6 @@ def test_normalize_time_aware():
     assert result.tzinfo is not None
 
 
-def test_serialize_access_logs_csv_empty():
-    from app.services.data_access import serialize_access_logs_csv
-
-    csv_out = serialize_access_logs_csv([])
-    assert "created_at" in csv_out
-
-
-def test_serialize_access_logs_csv_with_entries():
-    from app.schemas.dtos.audit import DataAccessLogDTO
-    from app.services.data_access import serialize_access_logs_csv
-
-    entry = DataAccessLogDTO(
-        id=uuid.uuid4(),
-        actor_user_id=uuid.uuid4(),
-        subject_user_id=uuid.uuid4(),
-        resource_type="user",
-        resource_id="123",
-        action="read",
-        ip_address="127.0.0.1",
-        user_agent="pytest",
-        context={"key": "value"},
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        signature="abc123",
-    )
-    csv_out = serialize_access_logs_csv([entry])
-    assert "user" in csv_out
-    assert "read" in csv_out
-
-
 @pytest.mark.asyncio
 async def test_cleanup_access_logs_zero_retention():
     from app.services.data_access import cleanup_access_logs
@@ -357,49 +317,6 @@ async def test_cleanup_access_logs_with_db():
     with patch("app.services.data_access.AuditRepository", return_value=mock_repo):
         result = await cleanup_access_logs(db=mock_db, retention_days=30)
     assert result == 5
-
-
-@pytest.mark.asyncio
-async def test_export_access_logs_no_filters():
-    from app.services.data_access import export_access_logs
-
-    mock_db = AsyncMock()
-    scalars_mock = MagicMock()
-    scalars_mock.all.return_value = []
-    result_mock = MagicMock()
-    result_mock.scalars.return_value = scalars_mock
-    mock_db.execute = AsyncMock(return_value=result_mock)
-
-    with patch("app.services.data_access.AuditRepository") as MockRepo:
-        mock_repo = MagicMock()
-        mock_repo._to_dto = MagicMock(return_value=MagicMock())
-        MockRepo.return_value = mock_repo
-        result = await export_access_logs(mock_db)
-    assert isinstance(result, list)
-
-
-@pytest.mark.asyncio
-async def test_export_access_logs_with_all_filters():
-    from app.services.data_access import export_access_logs
-
-    mock_db = AsyncMock()
-    scalars_mock = MagicMock()
-    scalars_mock.all.return_value = []
-    result_mock = MagicMock()
-    result_mock.scalars.return_value = scalars_mock
-    mock_db.execute = AsyncMock(return_value=result_mock)
-
-    with patch("app.services.data_access.AuditRepository") as MockRepo:
-        MockRepo.return_value = MagicMock(_to_dto=MagicMock())
-        now = datetime.now(UTC)
-        result = await export_access_logs(
-            mock_db,
-            start_at=now - timedelta(days=30),
-            end_at=now,
-            actor_user_id=1,
-            subject_user_id=2,
-        )
-    assert isinstance(result, list)
 
 
 # ---------------------------------------------------------------------------

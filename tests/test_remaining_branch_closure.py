@@ -340,31 +340,6 @@ def test_push_topics_treats_unloaded_preferences_as_unavailable(monkeypatch):
     )
 
 
-@pytest.mark.asyncio
-async def test_paginate_cursor_skips_filter_when_cursor_decodes_empty():
-    from app.utils.pagination import CursorParams, paginate_cursor
-
-    session = AsyncMock()
-    stmt = MagicMock()
-    stmt.order_by.return_value = stmt
-    stmt.limit.return_value = stmt
-    cursor_column = MagicMock()
-    cursor_column.desc.return_value = cursor_column
-    cursor_column.key = "id"
-    scalars = MagicMock()
-    scalars.all.return_value = []
-    session.scalars.return_value = scalars
-
-    await paginate_cursor(
-        session,
-        stmt,
-        cursor_column,
-        CursorParams(cursor="not-a-valid-cursor", limit=10),
-    )
-
-    stmt.where.assert_not_called()
-
-
 @pytest.fixture
 def standalone_ws_client(monkeypatch):
     import app.services.ws_hub_client as module

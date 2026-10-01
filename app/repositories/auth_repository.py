@@ -8,7 +8,6 @@ from sqlalchemy import select, update
 
 import app.models as models
 from app.core.config import settings
-from app.core.protocols import AsyncDatabaseSession
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import EmailChangeTokenDTO, PasswordResetTokenDTO
@@ -346,7 +345,3 @@ class AuthRepository(
             )
         )
         return int(getattr(result, "rowcount", 0) or 0)
-
-
-def get_auth_repository(db: AsyncDatabaseSession) -> AuthRepository:
-    return AuthRepository(db)

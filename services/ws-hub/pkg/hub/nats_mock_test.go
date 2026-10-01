@@ -3,7 +3,6 @@ package hub
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"io"
 	"net"
 	"strconv"
@@ -198,55 +197,6 @@ func TestTryForceRefreshJWKS_Error(t *testing.T) {
 	_lastJWKSForceRefreshUnix.Store(0) // reset cooldown
 	assert.NotPanics(t, func() {
 		h.tryForceRefreshJWKS(ctx)
-	})
-}
-
-func TestClient_HandleMessage_NatsPublish(t *testing.T) {
-	server := newMockNatsServer(t)
-	nc, err := nats.Connect(server.Addr())
-	require.NoError(t, err)
-	t.Cleanup(nc.Close)
-
-	h := setupTestHub()
-	h.Nats = nc
-
-	c := &Client{
-		ID:     "c-nats",
-		UserID: "u-nats",
-		Hub:    h,
-		ctx:    context.Background(),
-		Send:   make(chan []byte, 10),
-		Rooms:  map[string]bool{"room-1": true},
-	}
-
-	h.clientMsgRateLimit = 100
-	h.clientMsgRateBurst = 100
-
-	sub, err := nc.SubscribeSync("chat.room-1")
-	require.NoError(t, err)
-	require.NoError(t, nc.Flush())
-	msg := Message{Type: "message", Room: "room-1", From: "spoofed", Payload: json.RawMessage(`{"text":"hello"}`)}
-	data := []byte(`{"type":"message","room":"room-1","from":"spoofed","payload":{"text":"hello"}}`)
-	assert.NotPanics(t, func() {
-		c.handleMessage(msg, data)
-	})
-	published, err := sub.NextMsg(time.Second)
-	require.NoError(t, err)
-	var canonical Message
-	require.NoError(t, json.Unmarshal(published.Data, &canonical))
-	assert.Equal(t, "u-nats", canonical.From)
-	assert.Equal(t, "room-1", canonical.Room)
-
-	unauthorizedSub, err := nc.SubscribeSync("chat.room-2")
-	require.NoError(t, err)
-	require.NoError(t, nc.Flush())
-	c.handleMessage(Message{Type: "message", Room: "room-2"}, []byte(`{"type":"message","room":"room-2"}`))
-	_, err = unauthorizedSub.NextMsg(100 * time.Millisecond)
-	assert.ErrorIs(t, err, nats.ErrTimeout)
-
-	nc.Close()
-	assert.NotPanics(t, func() {
-		c.handleMessage(msg, data)
 	})
 }
 

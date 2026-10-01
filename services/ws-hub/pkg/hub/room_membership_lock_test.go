@@ -1,12 +1,33 @@
 package hub
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// tryLockForTest attempts to take the keyed membership lock without blocking.
+// On failure it drops the caller's lock reference, so a false result must not be
+// followed by Lock or Unlock on the same handle.
+func tryLockForTest(l *roomMembershipLock) bool {
+	if !l.entry.mu.TryLock() {
+		l.release()
+		return false
+	}
+	return true
+}
+
+// authorizeRoomJoinForTest evaluates a room join the way the join handler does:
+// under the keyed membership lock so a pending revoke cannot race the re-check.
+func authorizeRoomJoinForTest(h *Hub, ctx context.Context, userID, room string) bool {
+	lock := h.roomMembershipLock(userID, room)
+	lock.Lock()
+	defer lock.Unlock()
+	return h.authorizeRoomJoinLocked(ctx, userID, room)
+}
 
 func TestRoomMembershipLockDoesNotSerializeDistinctCollidingKeys(t *testing.T) {
 	const userID = "user-1"
@@ -20,7 +41,7 @@ func TestRoomMembershipLockDoesNotSerializeDistinctCollidingKeys(t *testing.T) {
 	first := h.roomMembershipLock(userID, firstRoomID)
 	second := h.roomMembershipLock(userID, secondRoomID)
 	first.Lock()
-	if !second.TryLock() {
+	if !tryLockForTest(second) {
 		first.Unlock()
 		t.Fatal("a different user/room key must not wait for a colliding membership lock")
 	}
@@ -61,7 +82,7 @@ func TestRoomMembershipLockSerializesSameKeyAndReclaimsIdleEntries(t *testing.T)
 			t.Error("same-key waiter did not exit during test cleanup")
 		}
 	})
-	require.False(t, h.roomMembershipLock(userID, roomID).TryLock(), "same-key operations must serialize")
+	require.False(t, tryLockForTest(h.roomMembershipLock(userID, roomID)), "same-key operations must serialize")
 	select {
 	case <-waiterRegistered:
 	case <-time.After(time.Second):

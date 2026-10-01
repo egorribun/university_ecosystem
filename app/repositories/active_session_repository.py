@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm.interfaces import LoaderOption
-from sqlalchemy.sql.elements import ClauseElement
 
-from app.core.protocols import AsyncDatabaseSession
 from app.models import ActiveSession, User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
@@ -47,38 +44,6 @@ class ActiveSessionRepository(
         )
         result = await self.db.execute(stmt)
         return result.scalar() or 0
-
-    async def get_oldest_active_sessions(
-        self,
-        user_id: uuid.UUID,
-        now: datetime,
-        limit: int,
-        exclude_jti: str | None = None,
-    ) -> Sequence[ActiveSessionDTO]:
-        stmt = (
-            select(ActiveSession)
-            .where(ActiveSession.user_id == user_id)
-            .where(ActiveSession.revoked_at.is_(None))
-            .where(ActiveSession.expires_at > now)
-        )
-        if exclude_jti:
-            stmt = stmt.where(ActiveSession.jti != exclude_jti)
-
-        stmt = stmt.order_by(ActiveSession.created_at.asc()).limit(limit)
-        result = await self.db.execute(stmt)
-        return [self.dto_class.model_validate(s) for s in result.scalars().all()]
-
-    async def revoke_by_id(self, session_id: uuid.UUID, now: datetime) -> bool:
-        session = await self.db.get(ActiveSession, session_id)
-        if session:
-            session.revoked_at = now
-            return True
-        return False
-
-    async def delete_matching(self, whereclause: ClauseElement) -> int:
-        stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
-        result = await self.db.execute(stmt)
-        return cast(int, getattr(result, "rowcount", 0) or 0)
 
     async def get_active_session_with_user(
         self,
@@ -143,7 +108,3 @@ class ActiveSessionRepository(
         )
         await self.db.flush()
         return int(getattr(result, "rowcount", 0) or 0)
-
-
-def get_active_session_repository(db: AsyncDatabaseSession) -> ActiveSessionRepository:
-    return ActiveSessionRepository(db)

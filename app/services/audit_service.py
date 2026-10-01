@@ -200,50 +200,9 @@ class AuditService:
 
     # Convenience methods for common security events
 
-    def login_success(self, request: Request, user_id: UUID) -> None:
-        """Log successful login."""
-        self.log(
-            SecurityEvent.AUTH_LOGIN_SUCCESS, request, user_id, reason="authenticated"
-        )
-
-    def login_failure(
-        self, request: Request, reason: str = "invalid_credentials"
-    ) -> None:
-        """Log failed login attempt."""
-        self.log(
-            SecurityEvent.AUTH_LOGIN_FAILURE,
-            request,
-            reason=reason,
-            level=logging.WARNING,
-        )
-
     def logout(self, request: Request, user_id: UUID) -> None:
         """Log user logout."""
         self.log(SecurityEvent.AUTH_LOGOUT, request, user_id)
-
-    def mfa_failure(
-        self, request: Request, user_id: UUID, reason: str = "invalid_code"
-    ) -> None:
-        """Log MFA verification failure."""
-        self.log(
-            SecurityEvent.MFA_VERIFY_FAILURE,
-            request,
-            user_id,
-            reason=reason,
-            level=logging.WARNING,
-        )
-
-    def access_denied(
-        self, request: Request, user_id: UUID | None, reason: str
-    ) -> None:
-        """Log access denial."""
-        self.log(
-            SecurityEvent.ACCESS_DENIED,
-            request,
-            user_id,
-            reason=reason,
-            level=logging.WARNING,
-        )
 
     def rate_limit_exceeded(
         self, request: Request, user_id: UUID | None = None
@@ -556,38 +515,6 @@ class SecureAuditService:
     def signature_covers_metadata(log: DataAccessLog | DataAccessLogDTO) -> bool:
         """Whether this signature version authenticates context and user agent."""
         return str(log.signature or "").startswith(_AUDIT_LOG_SIGNATURE_V2_PREFIX)
-
-    def resign_log(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
-        """
-        Re-sign an audit log entry with the primary key if needed.
-
-        Returns True when the signature was updated.
-        """
-        valid_key = self._find_valid_key(log)
-        if valid_key is None:
-            return False
-        # Keep legacy metadata unauthenticated across rotation; upgrading the
-        # scheme would falsely certify context and user_agent retroactively.
-        primary_signature = (
-            self._compute_signature(log, key=self._primary_key)
-            if self.signature_covers_metadata(log)
-            else self._compute_legacy_signature(log, key=self._primary_key)
-        )
-        if not isinstance(log, DataAccessLog):
-            # Cannot re-sign a frozen DTO in-place, caller should handle
-            return False
-
-        log.signature = primary_signature
-        return True
-
-    async def verify_batch(
-        self, db: AsyncDatabaseSession, *, limit: int = 1000
-    ) -> tuple[int, int, list[UUID]]:
-        """Verify integrity of a batch of audit logs."""
-        repo = AuditRepository(db)
-        logs = await repo.list_logs(limit=limit)
-        invalid_ids = [log.id for log in logs if not self.verify_integrity(log)]
-        return len(logs), len(logs) - len(invalid_ids), invalid_ids
 
     @staticmethod
     def canonicalize_event_payload(

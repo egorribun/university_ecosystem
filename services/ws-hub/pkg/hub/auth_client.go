@@ -94,15 +94,6 @@ var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string
 
 var newAuthLRUFunc = lru.New[string, cacheEntry]
 
-// NewInternalAPIAuthClient creates a client with L1/L2 caching.
-//
-// The token-aware constructor should be used by production startup.  This
-// compatibility constructor intentionally keeps the development/test client
-// usable without an internal callback token.
-func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
-	return newInternalAPIAuthClient(baseURL, "", redisClient)
-}
-
 // NewInternalAPIAuthClientWithToken creates a client that authenticates the
 // internal participant callback with X-Internal-Token.
 func NewInternalAPIAuthClientWithToken(baseURL, internalAuthToken string, redisClient *redis.Client) *InternalAPIAuthClient {

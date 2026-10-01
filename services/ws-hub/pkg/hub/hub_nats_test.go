@@ -463,7 +463,7 @@ func TestHandleCacheInvalidation_RefreshFailureNaksWithoutAck(t *testing.T) {
 	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
 	client := newClientOn(h, serverConn, "unconfirmed-revocation", user)
 	client.JoinRoom(room)
-	require.True(t, h.AuthorizeRoomJoin(context.Background(), user, room))
+	require.True(t, authorizeRoomJoinForTest(h, context.Background(), user, room))
 	payload := signedInvalidationPayload(t, "internal-secret", invalidationData{
 		EvictRoom: true,
 		RoomID:    room,
@@ -479,12 +479,12 @@ func TestHandleCacheInvalidation_RefreshFailureNaksWithoutAck(t *testing.T) {
 	assert.Equal(t, 0, ackCalls, "an unconfirmed revocation must remain unacked")
 	assert.Equal(t, 1, nakCalls, "an unconfirmed revocation must be retried")
 	assert.False(t, client.Rooms[room], "an unconfirmed revocation must close existing room access")
-	assert.False(t, h.AuthorizeRoomJoin(context.Background(), user, room), "pending revocation must block stale cached authorization")
+	assert.False(t, authorizeRoomJoinForTest(h, context.Background(), user, room), "pending revocation must block stale cached authorization")
 
 	auth.mu.Lock()
 	auth.refreshErr = nil
 	auth.mu.Unlock()
-	assert.True(t, h.AuthorizeRoomJoin(context.Background(), user, room), "a later join must re-check authority instead of remaining blocked if the NATS event expired")
+	assert.True(t, authorizeRoomJoinForTest(h, context.Background(), user, room), "a later join must re-check authority instead of remaining blocked if the NATS event expired")
 	assert.False(t, h.isRoomRevocationPending(user, room))
 	h.handleCacheInvalidation(context.Background())(&nats.Msg{
 		Subject: "cache.invalidate",
@@ -492,7 +492,7 @@ func TestHandleCacheInvalidation_RefreshFailureNaksWithoutAck(t *testing.T) {
 	})
 	assert.Equal(t, 1, ackCalls, "a confirmed refresh should acknowledge the durable event")
 	assert.Equal(t, 1, nakCalls, "the recovered retry should not NAK again")
-	assert.True(t, h.AuthorizeRoomJoin(context.Background(), user, room), "a confirmed re-add should clear the temporary join gate")
+	assert.True(t, authorizeRoomJoinForTest(h, context.Background(), user, room), "a confirmed re-add should clear the temporary join gate")
 }
 
 func TestBroadcastRecipientSnapshotDoesNotDeliverAfterRoomEviction(t *testing.T) {
@@ -722,7 +722,7 @@ func TestRoomRevocationSerializesInFlightPrivateWriteWithAuthorizationRefresh(t 
 	// The session is blocked inside WriteMessage. A failed TryLock proves that
 	// WritePump still owns the exact user/room lock needed by revocation.
 	membershipLock := h.roomMembershipLock(user, room)
-	if membershipLock.TryLock() {
+	if tryLockForTest(membershipLock) {
 		membershipLock.Unlock()
 		t.Fatal("write pump released the membership lock during a private socket write")
 	}
@@ -811,7 +811,7 @@ func TestEvictRoomMembershipWithoutRefresherFailsClosed(t *testing.T) {
 	require.Error(t, err, "eviction must remain unconfirmed without an authoritative refresher")
 	assert.False(t, client.isInRoom(roomID), "unconfirmed eviction must still close current local access")
 	assert.True(t, h.isRoomRevocationPending(userID, roomID))
-	assert.False(t, h.AuthorizeRoomJoin(context.Background(), userID, roomID),
+	assert.False(t, authorizeRoomJoinForTest(h, context.Background(), userID, roomID),
 		"a pending revoke must deny a stale positive result from the basic auth client")
 }
 

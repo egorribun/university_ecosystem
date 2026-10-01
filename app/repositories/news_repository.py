@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import selectinload
@@ -69,10 +69,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         dtos = [self._to_dto(obj) for obj in news_items]
         return dtos
 
-    async def get_latest(self, limit: int = 5) -> list[NewsDTO]:
-        """Get the latest news items."""
-        return cast(list[NewsDTO], await self.get_published(skip=0, limit=limit))
-
     async def search(
         self, query: str, *, skip: int = 0, limit: int = 20
     ) -> list[NewsDTO]:
@@ -90,11 +86,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         )
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
-
-    async def count_total(self) -> int:
-        """Count total news items."""
-        result = await self.db.execute(select(func.count(News.id)))
-        return result.scalar() or 0
 
     async def list_news(
         self,

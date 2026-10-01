@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
 from app.core.config import settings
-from app.repositories.auth_repository import AuthRepository, get_auth_repository
+from app.repositories.auth_repository import AuthRepository
 
 
 @pytest.fixture
@@ -26,13 +26,6 @@ def repo(db_session: AsyncSession) -> AuthRepository:
 def _h(value: str) -> str:
     """Deterministic, unique token-hash stand-in (the column is UNIQUE)."""
     return f"hash-{value}"
-
-
-@pytest.mark.asyncio
-async def test_get_auth_repository_factory_returns_instance(db_session):
-    built = get_auth_repository(db_session)
-    assert isinstance(built, AuthRepository)
-    assert built.model is models.PasswordResetToken
 
 
 # --- Password reset tokens ---------------------------------------------------

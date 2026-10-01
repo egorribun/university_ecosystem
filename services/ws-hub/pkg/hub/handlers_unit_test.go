@@ -1,21 +1,15 @@
 package hub
 
 // Coverage tests (testing session 9) for the WebSocket upgrade path:
-// validateUpgradeTicket (mock RESP server — idiom ported from
-// services/cmd/uni-cli/main_test.go), RS256 + JWKS validation via an
-// httptest JWKS server, and the full HandleWebSocket upgrade → join →
-// broadcast → deliver E2E flow with a real gorilla/websocket dial.
+// validateUpgradeTicketIdentity (mock RESP server — idiom ported from
+// services/cmd/uni-cli/main_test.go) and the full HandleWebSocket upgrade →
+// join → broadcast → deliver E2E flow with a real gorilla/websocket dial.
 //
-// CAUTION (documented in the session-9 plan): never send {"type":"message"}
-// frames through ReadPump in these tests — handleMessage publishes to a nil
-// *nats.Conn and the panic inside the ReadPump goroutine would kill the test
-// binary. The join/leave message types are NATS-free and safe.
+// Client-to-hub frames are limited to join/leave; chat mutations are never
+// relayed from the socket, so these tests need no NATS connection.
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -26,9 +20,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,17 +114,17 @@ const validTicket = "00112233445566778899aabbccddeeff00112233445566778899aabbccd
 const validSessionJTI = "11111111-1111-4111-8111-111111111111"
 
 // ---------------------------------------------------------------------------
-// validateUpgradeTicket
+// validateUpgradeTicketIdentity
 // ---------------------------------------------------------------------------
 
-func TestValidateUpgradeTicket_NoRedisConfigured(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_NoRedisConfigured(t *testing.T) {
 	h := setupTestHub() // redisClient nil
-	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "redis not available")
 }
 
-func TestValidateUpgradeTicket_RejectsBadFormat(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_RejectsBadFormat(t *testing.T) {
 	// Format checks run after the nil-redis guard, so a (never-reached)
 	// RESP server is required for these cases to hit the format branches.
 	h := hubWithTicketRedis(t, "unused:unused")
@@ -148,21 +140,21 @@ func TestValidateUpgradeTicket_RejectsBadFormat(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := h.validateUpgradeTicket(context.Background(), tc.ticket)
+			_, err := h.validateUpgradeTicketIdentity(context.Background(), tc.ticket)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.errSub)
 		})
 	}
 }
 
-func TestValidateUpgradeTicket_NotFound(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_NotFound(t *testing.T) {
 	h := hubWithTicketRedis(t, "") // GETDEL → nil
-	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found or already used")
 }
 
-func TestValidateUpgradeTicket_MalformedPayloads(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_MalformedPayloads(t *testing.T) {
 	cases := []struct {
 		name  string
 		reply string
@@ -175,18 +167,18 @@ func TestValidateUpgradeTicket_MalformedPayloads(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := hubWithTicketRedis(t, tc.reply)
-			_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+			_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "malformed ticket payload")
 		})
 	}
 }
 
-func TestValidateUpgradeTicket_HappyPath(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_HappyPath(t *testing.T) {
 	h := hubWithTicketRedis(t, "user-77:"+validSessionJTI)
-	userID, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	identity, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 	require.NoError(t, err)
-	assert.Equal(t, "user-77", userID)
+	assert.Equal(t, "user-77", identity.UserID)
 }
 
 func TestValidateUpgradeTicketIdentityRetainsSessionJTI(t *testing.T) {
@@ -219,7 +211,7 @@ func TestValidateUpgradeTicketIdentityRejectsNonCanonicalSessionJTI(t *testing.T
 	assert.Contains(t, err.Error(), "invalid session JTI")
 }
 
-func TestValidateUpgradeTicket_RejectsRevokedJTI(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_RejectsRevokedJTI(t *testing.T) {
 	mr := miniredis.RunT(t)
 	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
@@ -230,13 +222,13 @@ func TestValidateUpgradeTicket_RejectsRevokedJTI(t *testing.T) {
 	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:"+validSessionJTI))
 	require.NoError(t, mr.Set("revoked:jti:"+validSessionJTI, "1"))
 
-	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ticket session is revoked")
 	assert.False(t, mr.Exists(wsTicketKeyPrefix+validTicket), "revoked ticket must remain single-use")
 }
 
-func TestValidateUpgradeTicket_UsesDedicatedRevocationStore(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_UsesDedicatedRevocationStore(t *testing.T) {
 	ticketStore := miniredis.RunT(t)
 	revocationStore := miniredis.RunT(t)
 	ticketClient := goredis.NewClient(&goredis.Options{Addr: ticketStore.Addr()})
@@ -251,20 +243,20 @@ func TestValidateUpgradeTicket_UsesDedicatedRevocationStore(t *testing.T) {
 	require.NoError(t, ticketStore.Set(wsTicketKeyPrefix+validTicket, "user-77:"+validSessionJTI))
 	require.NoError(t, revocationStore.Set("revoked:jti:"+validSessionJTI, "1"))
 
-	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ticket session is revoked")
 }
 
-func TestValidateUpgradeTicket_FailsClosedWhenRevocationLookupFails(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_FailsClosedWhenRevocationLookupFails(t *testing.T) {
 	h := hubWithTicketRedisReplies(t, "user-77:"+validSessionJTI, "-ERR revocation lookup failed\r\n")
 
-	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "session revocation check failed")
 }
 
-func TestValidateUpgradeTicket_RequiresDedicatedRevocationStore(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_RequiresDedicatedRevocationStore(t *testing.T) {
 	mr := miniredis.RunT(t)
 	ticketClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { require.NoError(t, ticketClient.Close()) })
@@ -272,120 +264,19 @@ func TestValidateUpgradeTicket_RequiresDedicatedRevocationStore(t *testing.T) {
 	h := NewHub(nil, newTestLogger(), nil, &config.Config{}, ticketClient, nil)
 	t.Cleanup(h.Stop)
 
-	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "revocation redis not available")
 }
 
 // ---------------------------------------------------------------------------
-// RS256 / JWKS validation
+// JWKS setup
 // ---------------------------------------------------------------------------
-
-func startJWKSServer(t *testing.T, pub *rsa.PublicKey, kid string) *httptest.Server {
-	t.Helper()
-	key, err := jwk.FromRaw(pub)
-	require.NoError(t, err)
-	require.NoError(t, key.Set(jwk.KeyIDKey, kid))
-	require.NoError(t, key.Set(jwk.AlgorithmKey, "RS256"))
-	set := jwk.NewSet()
-	require.NoError(t, set.AddKey(key))
-	body, err := json.Marshal(set)
-	require.NoError(t, err)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body) //nolint:errcheck // test server best-effort
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-func signRS256(t *testing.T, priv *rsa.PrivateKey, kid string, claims jwt.MapClaims) string {
-	t.Helper()
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = kid
-	signed, err := token.SignedString(priv)
-	require.NoError(t, err)
-	return signed
-}
 
 func TestSetupJWKS_EmptyURLIsNoop(t *testing.T) {
 	h := setupTestHub()
 	require.NoError(t, h.SetupJWKS(context.Background(), ""))
 	assert.False(t, h.HasJWKSCache())
-}
-
-func TestValidateToken_RS256Paths(t *testing.T) {
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	srv := startJWKSServer(t, &priv.PublicKey, "kid-1")
-
-	h := setupTestHub()
-	ctx := context.Background()
-	require.NoError(t, h.SetupJWKS(ctx, srv.URL))
-	assert.True(t, h.HasJWKSCache())
-
-	t.Run("valid token returns sub", func(t *testing.T) {
-		token := signRS256(t, priv, "kid-1", jwt.MapClaims{
-			"sub": "user-rs",
-			"exp": time.Now().Add(time.Hour).Unix(),
-		})
-		sub, err := h.ValidateToken(ctx, token, nil)
-		require.NoError(t, err)
-		assert.Equal(t, "user-rs", sub)
-	})
-
-	t.Run("expired token rejected", func(t *testing.T) {
-		token := signRS256(t, priv, "kid-1", jwt.MapClaims{
-			"sub": "user-rs",
-			"exp": time.Now().Add(-time.Hour).Unix(),
-		})
-		_, err := h.ValidateToken(ctx, token, nil)
-		require.Error(t, err)
-	})
-
-	t.Run("missing sub rejected", func(t *testing.T) {
-		token := signRS256(t, priv, "kid-1", jwt.MapClaims{
-			"exp": time.Now().Add(time.Hour).Unix(),
-		})
-		_, err := h.ValidateToken(ctx, token, nil)
-		require.Error(t, err)
-	})
-
-	t.Run("unknown kid triggers force-refresh retry then rejects", func(t *testing.T) {
-		// Reset the package-level cooldown so tryForceRefreshJWKS actually fires.
-		_lastJWKSForceRefreshUnix.Store(0)
-		token := signRS256(t, priv, "kid-unknown", jwt.MapClaims{
-			"sub": "user-rs",
-			"exp": time.Now().Add(time.Hour).Unix(),
-		})
-		_, err := h.ValidateToken(ctx, token, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid RS256 token")
-	})
-
-	t.Run("unsupported algorithm rejected", func(t *testing.T) {
-		// HS384-signed token → neither RS256 nor HS256 path accepts it.
-		hsToken := jwt.NewWithClaims(jwt.SigningMethodHS384, jwt.MapClaims{"sub": "x"})
-		signed, err := hsToken.SignedString([]byte("secret")) // pragma: allowlist secret
-		require.NoError(t, err)
-		_, err = h.ValidateToken(ctx, signed, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported JWT algorithm")
-	})
-}
-
-func TestValidateRS256_WithoutJWKSConfigured(t *testing.T) {
-	h := setupTestHub()
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	token := signRS256(t, priv, "kid-x", jwt.MapClaims{
-		"sub": "u",
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	_, err = h.ValidateToken(context.Background(), token, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "JWKS not configured")
 }
 
 // ---------------------------------------------------------------------------
@@ -511,184 +402,6 @@ func TestHandleWebSocket_InvalidTicketRejected(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // test cleanup
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-}
-
-// ---------------------------------------------------------------------------
-// validateHMAC — direct branch coverage (testing session 11)
-//
-// ValidateToken routes by the token's alg header BEFORE calling validateHMAC,
-// so the wrong-alg branch inside validateHMAC's keyFunc is unreachable through
-// ValidateToken. These tests call (*Hub).validateHMAC directly (white-box, same
-// package) to cover every branch of handlers.go:352-380.
-// ---------------------------------------------------------------------------
-
-// signHS256 forges an HS256 token signed with secret (mirrors the inline forge
-// pattern already used in hub_test.go).
-func signHS256(t *testing.T, secret string, claims jwt.MapClaims) string {
-	t.Helper()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(secret))
-	require.NoError(t, err)
-	return signed
-}
-
-func TestValidateHMAC_EmptySecrets(t *testing.T) {
-	h := setupTestHub()
-	// len(secrets) == 0 → handlers.go:354 returns jwt.ErrTokenSignatureInvalid directly.
-	sub, err := h.validateHMAC("any.token.value", nil)
-	assert.Empty(t, sub)
-	assert.ErrorIs(t, err, jwt.ErrTokenSignatureInvalid)
-
-	// Also exercise the explicit empty-slice form.
-	_, err = h.validateHMAC("any.token.value", []string{})
-	assert.ErrorIs(t, err, jwt.ErrTokenSignatureInvalid)
-}
-
-func TestValidateHMAC_WrongAlg(t *testing.T) {
-	h := setupTestHub()
-	secret := "hmac-secret" // pragma: allowlist secret
-
-	t.Run("RS256-signed token hits unexpected-signing-method", func(t *testing.T) {
-		priv, err := rsa.GenerateKey(rand.Reader, 2048)
-		require.NoError(t, err)
-		rsToken := signRS256(t, priv, "kid-x", jwt.MapClaims{
-			"sub": "user-rs",
-			"exp": time.Now().Add(time.Hour).Unix(),
-		})
-		// Direct call — keyFunc rejects t.Method != HS256 → lastErr → returned at :377.
-		sub, err := h.validateHMAC(rsToken, []string{secret})
-		assert.Empty(t, sub)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected signing method")
-	})
-
-	t.Run("none-alg token hits unexpected-signing-method", func(t *testing.T) {
-		noneTok := jwt.New(jwt.SigningMethodNone)
-		noneTok.Claims = jwt.MapClaims{"sub": "user-none"}
-		signed, err := noneTok.SignedString(jwt.UnsafeAllowNoneSignatureType)
-		require.NoError(t, err)
-		sub, err := h.validateHMAC(signed, []string{secret})
-		assert.Empty(t, sub)
-		require.Error(t, err)
-	})
-}
-
-func TestValidateHMAC_MissingSubClaim(t *testing.T) {
-	h := setupTestHub()
-	secret := "hmac-secret" // pragma: allowlist secret
-	// Valid signature + valid claims, but no "sub" → handlers.go:373 returns
-	// jwt.ErrTokenInvalidClaims directly.
-	token := signHS256(t, secret, jwt.MapClaims{
-		"exp": time.Now().Add(time.Hour).Unix(),
-		// deliberately no "sub"
-	})
-	sub, err := h.validateHMAC(token, []string{secret})
-	assert.Empty(t, sub)
-	assert.ErrorIs(t, err, jwt.ErrTokenInvalidClaims)
-}
-
-func TestValidateHMAC_MultiSecretRotation(t *testing.T) {
-	h := setupTestHub()
-	oldSecret := "old-rotated-out-secret" // pragma: allowlist secret
-	newSecret := "new-rotated-out-secret" // pragma: allowlist secret
-	// Signed with the SECOND secret → first secret's Parse fails (lastErr set,
-	// continue), second secret succeeds → loop returns sub at :371.
-	token := signHS256(t, newSecret, jwt.MapClaims{
-		"sub": "user-rotated",
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	sub, err := h.validateHMAC(token, []string{oldSecret, newSecret})
-	require.NoError(t, err)
-	assert.Equal(t, "user-rotated", sub)
-}
-
-func TestValidateHMAC_AllSecretsFail(t *testing.T) {
-	h := setupTestHub()
-	token := signHS256(t, "the-real-secret", jwt.MapClaims{ // pragma: allowlist secret
-		"sub": "user-x",
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	// Neither candidate secret matches → both Parse calls fail, lastErr returned
-	// at handlers.go:377. jwt/v5 joins ErrTokenSignatureInvalid into the parse
-	// error, so errors.Is unwraps it (assert.Equal would FAIL — it's wrapped).
-	sub, err := h.validateHMAC(token, []string{"wrong-1", "wrong-2"}) // pragma: allowlist secret
-	assert.Empty(t, sub)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, jwt.ErrTokenSignatureInvalid)
-}
-
-func TestValidateHMAC_ValidHS256(t *testing.T) {
-	h := setupTestHub()
-	secret := "hmac-secret" // pragma: allowlist secret
-	token := signHS256(t, secret, jwt.MapClaims{
-		"sub": "user-ok",
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	sub, err := h.validateHMAC(token, []string{secret})
-	require.NoError(t, err)
-	assert.Equal(t, "user-ok", sub)
-}
-
-func signRS512(t *testing.T, key *rsa.PrivateKey, kid string, claims jwt.Claims) string {
-	t.Helper()
-	token := jwt.NewWithClaims(jwt.SigningMethodRS512, claims)
-	token.Header["kid"] = kid
-	str, err := token.SignedString(key)
-	require.NoError(t, err)
-	return str
-}
-
-func TestValidateRS256_EdgeCases(t *testing.T) {
-	ctx := context.Background()
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	pub := &priv.PublicKey
-
-	// Build a real JWK set from the test public key so JWKS validation succeeds.
-	key, err := jwk.FromRaw(pub)
-	require.NoError(t, err)
-	require.NoError(t, key.Set(jwk.KeyIDKey, "kid-1"))
-	buf, err := json.Marshal(key)
-	require.NoError(t, err)
-	var jwkKey map[string]interface{}
-	require.NoError(t, json.Unmarshal(buf, &jwkKey))
-	jwksMap := map[string]interface{}{
-		"keys": []map[string]interface{}{jwkKey},
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(jwksMap); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	}))
-	defer server.Close()
-
-	h := setupTestHub()
-	h.jwksCache = jwk.NewCache(ctx)
-	h.jwksURL = server.URL
-	err = h.jwksCache.Register(h.jwksURL)
-	require.NoError(t, err)
-
-	t.Run("unexpected signing method", func(t *testing.T) {
-		token := signRS512(t, priv, "kid-1", jwt.MapClaims{
-			"sub": "user-rs",
-			"exp": time.Now().Add(time.Hour).Unix(),
-		})
-		_, err := h.validateRS256(ctx, token)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid RS256 token")
-	})
-
-	t.Run("sub is not a string rejected", func(t *testing.T) {
-		token := signRS256(t, priv, "kid-1", jwt.MapClaims{
-			"sub": 12345, // integer instead of string
-			"exp": time.Now().Add(time.Hour).Unix(),
-		})
-		_, err := h.validateRS256(ctx, token)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid RS256 token")
-	})
 }
 
 func TestHandleWebSocket_EdgeCases(t *testing.T) {

@@ -1246,12 +1246,6 @@ func checkJWTAlgHeader(tokenStr string, rsaPub *rsa.PublicKey, log *slog.Logger,
 	return true
 }
 
-func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, next http.Handler) http.Handler {
-	return httpJWTMiddlewareWithOptions(secret, rsaPub, log, jwtAuthOptions{
-		RequireRS256: rsaPub != nil,
-	}, next)
-}
-
 func httpJWTMiddlewareWithOptions(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, options jwtAuthOptions, next http.Handler) http.Handler {
 	if log == nil {
 		log = slog.Default()
@@ -1306,12 +1300,6 @@ func httpJWTMiddlewareWithOptions(secret string, rsaPub *rsa.PublicKey, log *slo
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
-	})
-}
-
-func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.AuthFunc {
-	return authFuncWithOptions(secret, rsaPub, logger, jwtAuthOptions{
-		RequireRS256: rsaPub != nil,
 	})
 }
 

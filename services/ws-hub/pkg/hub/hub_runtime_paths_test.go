@@ -3,7 +3,6 @@ package hub
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -22,12 +20,12 @@ import (
 )
 
 // TestValidateUpgradeTicket_Errors verifies all validation failure paths in validateUpgradeTicket.
-func TestValidateUpgradeTicket_Errors(t *testing.T) {
+func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 	logger := newTestLogger()
 
 	t.Run("redis nil", func(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, nil))
-		_, _, err := h.validateUpgradeTicket(context.Background(), strings.Repeat("a", 64))
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), strings.Repeat("a", 64))
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "redis not available")
 	})
@@ -38,7 +36,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		defer func() { require.NoError(t, rClient.Close()) }()
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
-		_, _, err := h.validateUpgradeTicket(context.Background(), "short")
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), "short")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid ticket length")
 	})
@@ -50,7 +48,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		invalidTicket := strings.Repeat("a", 63) + "Z" // Z is not lowercase hex
-		_, _, err := h.validateUpgradeTicket(context.Background(), invalidTicket)
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), invalidTicket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid ticket charset")
 	})
@@ -62,7 +60,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
-		_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "ticket not found")
 	})
@@ -74,7 +72,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
-		_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "redis error")
 	})
@@ -88,7 +86,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "nocolon"))
 
-		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), ticket)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "malformed ticket payload")
 	})
@@ -102,7 +100,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, ":jti"))
 
-		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), ticket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "malformed ticket payload")
 	})
@@ -116,74 +114,9 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "user-id:"))
 
-		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
+		_, err := h.validateUpgradeTicketIdentity(context.Background(), ticket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "malformed ticket payload")
-	})
-}
-
-// TestExtractAlgFromHeader_Errors verifies all validation failure paths in extractAlgFromHeader.
-func TestExtractAlgFromHeader_Errors(t *testing.T) {
-	t.Run("invalid parts", func(t *testing.T) {
-		_, err := extractAlgFromHeader("one.two")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "expected 3 parts")
-	})
-
-	t.Run("invalid base64", func(t *testing.T) {
-		_, err := extractAlgFromHeader("not-base64.two.three")
-		assert.Error(t, err)
-	})
-
-	t.Run("invalid JSON", func(t *testing.T) {
-		// "not-json" base64 raw url encoded is "bm90LWpzb24"
-		_, err := extractAlgFromHeader("bm90LWpzb24.two.three")
-		assert.Error(t, err)
-	})
-
-	t.Run("missing alg claim", func(t *testing.T) {
-		// "{}" base64 raw url encoded is "e30"
-		_, err := extractAlgFromHeader("e30.two.three")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "missing alg claim")
-	})
-}
-
-// TestValidateToken_UnsupportedAlgorithm verifies ValidateToken returns error for unsupported algorithms.
-func TestValidateToken_UnsupportedAlgorithm(t *testing.T) {
-	h := trackTestHub(NewHub(nil, newTestLogger(), nil, &configHubPlaceholder, nil))
-	// {"alg":"none"} base64 raw url encoded is "eyJhbGciOiJub25lIn0"
-	_, err := h.ValidateToken(context.Background(), "eyJhbGciOiJub25lIn0.two.three", nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported JWT algorithm")
-}
-
-// TestValidateHMAC_Errors verifies validateHMAC error paths.
-func TestValidateHMAC_Errors(t *testing.T) {
-	h := trackTestHub(NewHub(nil, newTestLogger(), nil, &configHubPlaceholder, nil))
-
-	t.Run("empty secrets", func(t *testing.T) {
-		_, err := h.validateHMAC("one.two.three", nil)
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, jwt.ErrTokenSignatureInvalid))
-	})
-
-	t.Run("method mismatch", func(t *testing.T) {
-		// Sign with RS256 but pass to validateHMAC
-		// {"alg":"RS256"} base64 raw url encoded is "eyJhbGciOiJSUzI1NiJ9"
-		tokenStr := strings.Join([]string{"eyJhbGciOiJSUzI1NiJ9", "eyJzdWIiOiJ1c2VyLTEyMyJ9", "sig"}, ".") // pragma: allowlist secret // nosemgrep
-		_, err := h.validateHMAC(tokenStr, []string{"secret"})
-		assert.Error(t, err)
-	})
-
-	t.Run("missing sub", func(t *testing.T) {
-		// Valid HMAC token but without sub claim
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{})
-		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
-		require.NoError(t, err)
-
-		_, err = h.validateHMAC(tokenStr, []string{"secret"})
-		assert.Error(t, err)
 	})
 }
 
@@ -196,7 +129,7 @@ func TestInternalAPIAuthClient_DoRequest_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		auth := NewInternalAPIAuthClient(server.URL, nil)
+		auth := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
 		allowed := auth.CanJoinRoom(context.Background(), uuid.NewString(), uuid.NewString())
 		assert.False(t, allowed) // Should fail-closed on timeout error
 	})
@@ -207,13 +140,13 @@ func TestInternalAPIAuthClient_DoRequest_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		auth := NewInternalAPIAuthClient(server.URL, nil)
+		auth := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
 		allowed := auth.CanJoinRoom(context.Background(), uuid.NewString(), uuid.NewString())
 		assert.False(t, allowed)
 	})
 
 	t.Run("invalid UUID validation fast path", func(t *testing.T) {
-		auth := NewInternalAPIAuthClient("http://localhost", nil)
+		auth := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
 		allowed := auth.CanJoinRoom(context.Background(), "invalid-user-uuid", uuid.NewString())
 		assert.False(t, allowed)
 
@@ -228,7 +161,7 @@ func TestInternalAPIAuthClientInvalidateEdgeCases(t *testing.T) {
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer func() { require.NoError(t, rClient.Close()) }()
 
-	auth := NewInternalAPIAuthClient("http://localhost", rClient)
+	auth := NewInternalAPIAuthClientWithToken("http://localhost", "", rClient)
 
 	t.Run("invalid user UUID", func(t *testing.T) {
 		assert.NotPanics(t, func() {

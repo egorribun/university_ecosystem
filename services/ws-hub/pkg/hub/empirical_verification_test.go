@@ -66,9 +66,9 @@ func TestEmpirical_SingleUseTicket_ConcurrentRace(t *testing.T) {
 			defer wg.Done()
 			<-startBarrier
 
-			userID, tenantID, err := h.validateUpgradeTicket(context.Background(), empiricalTicket)
+			identity, err := h.validateUpgradeTicketIdentity(context.Background(), empiricalTicket)
 			if err == nil {
-				if userID == "user-race-77" && tenantID == "" {
+				if identity.UserID == "user-race-77" && identity.TenantID == "" {
 					successCount.Add(1)
 				}
 			} else {
@@ -100,27 +100,27 @@ func TestEmpirical_SingleUseTicket_ValidationRules(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("invalid length", func(t *testing.T) {
-		_, _, err := h.validateUpgradeTicket(ctx, "short_ticket")
+		_, err := h.validateUpgradeTicketIdentity(ctx, "short_ticket")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid ticket length")
 	})
 
 	t.Run("invalid charset (uppercase)", func(t *testing.T) {
 		upperTicket := "AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899" // pragma: allowlist secret
-		_, _, err := h.validateUpgradeTicket(ctx, upperTicket)
+		_, err := h.validateUpgradeTicketIdentity(ctx, upperTicket)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid ticket charset")
 	})
 
 	t.Run("invalid charset (special chars)", func(t *testing.T) {
 		specTicket := "aabbccddeeff00112233445566778899aabbccddeeff001122334455667788!!"
-		_, _, err := h.validateUpgradeTicket(ctx, specTicket)
+		_, err := h.validateUpgradeTicketIdentity(ctx, specTicket)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid ticket charset")
 	})
 
 	t.Run("missing in redis / expired", func(t *testing.T) {
-		_, _, err := h.validateUpgradeTicket(ctx, empiricalTicket)
+		_, err := h.validateUpgradeTicketIdentity(ctx, empiricalTicket)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "ticket not found or already used")
 	})
@@ -129,7 +129,7 @@ func TestEmpirical_SingleUseTicket_ValidationRules(t *testing.T) {
 		malformedTicket := "11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff" // pragma: allowlist secret
 		require.NoError(t, rdb.Set(ctx, wsTicketKeyPrefix+malformedTicket, "useronly_nocolon", 15*time.Second).Err())
 
-		_, _, err := h.validateUpgradeTicket(ctx, malformedTicket)
+		_, err := h.validateUpgradeTicketIdentity(ctx, malformedTicket)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "malformed ticket payload")
 	})

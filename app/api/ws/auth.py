@@ -102,41 +102,6 @@ async def get_user_from_cookie(cookie_value: str) -> tuple[User | None, str | No
     )
 
 
-def extract_bearer_token(header_value: str | None) -> str | None:
-    """Parse `Authorization: Bearer <token>` or bare token header."""
-    if not header_value:
-        return None
-    parts = header_value.strip().split()
-    if len(parts) == 2 and parts[0].lower() == "bearer":
-        return parts[1]
-    if len(parts) == 1:
-        return parts[0]
-    return None
-
-
-def extract_token_from_subprotocol(header_value: str | None) -> str | None:
-    """Extract token from `Sec-WebSocket-Protocol: access_token, <JWT>` header."""
-    if not header_value:
-        return None
-    protocols = [p.strip() for p in header_value.split(",") if p.strip()]
-    for index, protocol in enumerate(protocols):
-        if protocol.lower() in {"access_token", "bearer", "authorization"}:
-            if index + 1 < len(protocols):
-                return protocols[index + 1]
-    return None
-
-
-def select_subprotocol(header_value: str | None) -> str | None:
-    """Select the first known WebSocket sub-protocol from the header."""
-    if not header_value:
-        return None
-    protocols = [p.strip() for p in header_value.split(",") if p.strip()]
-    for candidate in protocols:
-        if candidate.lower() in {"access_token", "bearer"}:
-            return candidate
-    return None
-
-
 async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
     """Validate a one-time WS upgrade ticket and return (user, jti).
 

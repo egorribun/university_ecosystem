@@ -42,7 +42,7 @@ func createOptionalTestRouter(m *JWTMiddleware, capturedState *map[string]interf
 }
 
 func TestOptional_TenantPropagation_NoHeaderNoToken(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	capturedState := make(map[string]interface{})
 	router := createOptionalTestRouter(m, &capturedState)
 
@@ -57,7 +57,7 @@ func TestOptional_TenantPropagation_NoHeaderNoToken(t *testing.T) {
 }
 
 func TestOptional_TenantPropagation_HeaderOnlyNoToken(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	capturedState := make(map[string]interface{})
 	router := createOptionalTestRouter(m, &capturedState)
 
@@ -132,7 +132,7 @@ func TestOptional_TenantPropagation_HeaderAndTokenPrecedence(t *testing.T) {
 }
 
 func TestOptional_TenantPropagation_InvalidTokenWithHeader(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	capturedState := make(map[string]interface{})
 	router := createOptionalTestRouter(m, &capturedState)
 
@@ -149,7 +149,7 @@ func TestOptional_TenantPropagation_InvalidTokenWithHeader(t *testing.T) {
 }
 
 func TestOptional_TenantPropagation_ExpiredTokenWithHeader(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	capturedState := make(map[string]interface{})
 	router := createOptionalTestRouter(m, &capturedState)
 
@@ -177,7 +177,7 @@ func TestOptional_TenantPropagation_ExpiredTokenWithHeader(t *testing.T) {
 }
 
 func TestOptional_TenantPropagation_ExpiredTokenWithoutHeader(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	capturedState := make(map[string]interface{})
 	router := createOptionalTestRouter(m, &capturedState)
 

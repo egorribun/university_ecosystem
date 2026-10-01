@@ -25,15 +25,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.services.webpush as webpush_module
-from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
 from app.services.webpush import (
-    _check_rate_limit,
     _get_sync_url,
     _initialize_sync_resources,
     _mask_endpoint,
     _normalize_payload,
     _redact_urls_in_error,
-    build_payload,
     send_web_push,
 )
 
@@ -335,65 +332,6 @@ class TestNormalizePayloadEdges:
 # ---------------------------------------------------------------------------
 
 
-class TestCheckRateLimit:
-    async def test_zero_limit_short_circuits(self) -> None:
-        """limit <= 0 returns an allow-all info without touching Redis (L492-493)."""
-        info = await _check_rate_limit("user:1", namespace="webpush", limit=0)
-        assert info.allowed is True
-        assert info.remaining == 0
-        assert info.retry_after == 0
-
-    async def test_disabled_rate_limiting_short_circuits(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """settings.rate_limit_enabled=False short-circuits (L492-493)."""
-        monkeypatch.setattr(
-            webpush_module, "settings", SimpleNamespace(rate_limit_enabled=False)
-        )
-        info = await _check_rate_limit("user:1", namespace="webpush", limit=7)
-        assert info.allowed is True
-        assert info.remaining == 7
-
-    async def test_delegates_to_enforce_rate_limit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Enabled path delegates to enforce_rate_limit with the strategy (L494-500)."""
-        monkeypatch.setattr(
-            webpush_module, "settings", SimpleNamespace(rate_limit_enabled=True)
-        )
-        expected = RateLimitInfo(True, 4, 0)
-        fake_enforce = AsyncMock(return_value=expected)
-        strategy = object()
-        monkeypatch.setattr(webpush_module, "enforce_rate_limit", fake_enforce)
-        monkeypatch.setattr(
-            webpush_module, "get_default_strategy", MagicMock(return_value=strategy)
-        )
-        info = await _check_rate_limit("user:42", namespace="webpush", limit=5)
-        assert info is expected
-        fake_enforce.assert_awaited_once_with(
-            identifier="user:42",
-            limit=5,
-            window_seconds=60,
-            strategy=strategy,
-        )
-
-    async def test_rate_limit_exceeded_returns_exc_info(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """RateLimitExceeded is swallowed and its info returned (L501-502)."""
-        monkeypatch.setattr(
-            webpush_module, "settings", SimpleNamespace(rate_limit_enabled=True)
-        )
-        denied = RateLimitInfo(False, 0, 30)
-        fake_enforce = AsyncMock(side_effect=RateLimitExceeded(denied))
-        monkeypatch.setattr(webpush_module, "enforce_rate_limit", fake_enforce)
-        monkeypatch.setattr(
-            webpush_module, "get_default_strategy", MagicMock(return_value=object())
-        )
-        info = await _check_rate_limit("user:9", namespace="webpush", limit=3)
-        assert info is denied
-
-
 # ---------------------------------------------------------------------------
 # build_payload edge branches (L547, 574-601)
 # ---------------------------------------------------------------------------
@@ -406,59 +344,6 @@ class TestBuildPayloadEdges:
         monkeypatch.setattr(
             webpush_module, "render_notification_template", lambda *a, **k: {}
         )
-
-    def test_template_merge_skips_none_values(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """None input values do not override template defaults (L547)."""
-        monkeypatch.setattr(
-            webpush_module,
-            "render_notification_template",
-            lambda *a, **k: {"title": "Template Title", "body": "TB"},
-        )
-        result = build_payload("typed", {"title": None, "icon": "i.png"})
-        assert result["title"] == "Template Title"
-        assert result["options"]["body"] == "TB"
-        assert result["options"]["icon"] == "i.png"
-
-    def test_actions_and_action_urls(self, no_template: None) -> None:
-        """Actions populate options + actionUrls data (L574, 576)."""
-        result = build_payload(
-            "t",
-            {
-                "title": "T",
-                "actions": [{"action": "open", "title": "Open", "url": "/x"}],
-            },
-        )
-        assert result["options"]["actions"] == [{"action": "open", "title": "Open"}]
-        assert result["data"]["actionUrls"] == {"open": "/x"}
-
-    def test_vibrate_sanitized(self, no_template: None) -> None:
-        """Vibrate list survives into options (L579)."""
-        result = build_payload("t", {"title": "T", "vibrate": [10, 20.5]})
-        assert result["options"]["vibrate"] == [10, 20]
-
-    def test_silent_with_valid_timestamp(self, no_template: None) -> None:
-        """silent + castable timestamp produce both options (L586-591)."""
-        result = build_payload("t", {"title": "T", "silent": True, "timestamp": "1234"})
-        assert result["options"]["silent"] is True
-        assert result["options"]["timestamp"] == 1234
-
-    def test_silent_with_invalid_timestamp_suppressed(self, no_template: None) -> None:
-        """Un-castable timestamp is suppressed without crashing (L588-590)."""
-        result = build_payload("t", {"title": "T", "silent": 0, "timestamp": "nope"})
-        assert result["options"]["silent"] is False
-        assert "timestamp" not in result["options"]
-
-    def test_meta_ttl_string_coerced(self, no_template: None) -> None:
-        """String ttl is cast to int into _meta (L598-599)."""
-        result = build_payload("t", {"title": "T", "ttl": "300"})
-        assert result["_meta"]["ttl"] == 300
-
-    def test_meta_ttl_invalid_skipped(self, no_template: None) -> None:
-        """Un-castable ttl is skipped; other meta keys survive (L600-601)."""
-        result = build_payload("t", {"title": "T", "ttl": "soon", "urgency": "high"})
-        assert result["_meta"] == {"urgency": "high"}
 
 
 # ---------------------------------------------------------------------------

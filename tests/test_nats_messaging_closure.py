@@ -1,65 +1,7 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
-
 import app.services.nats_messaging as nats_module
 from app.services.nats_messaging import NatsService
-
-
-@pytest.mark.asyncio
-async def test_nats_not_connected_guards():
-    service = NatsService()
-    await service.close()
-    with pytest.raises(RuntimeError, match="Not connected"):
-        await service.ensure_stream("stream", [])
-    with pytest.raises(RuntimeError, match="Not connected"):
-        await service.publish("subject", b"data")
-    with pytest.raises(RuntimeError, match="Not connected"):
-        await service.publish_jetstream("subject", b"data")
-    with pytest.raises(RuntimeError, match="Not connected"):
-        await service.subscribe("subject", AsyncMock())
-    with pytest.raises(RuntimeError, match="Not connected"):
-        await service.subscribe_jetstream("stream", "subject", AsyncMock())
-
-
-@pytest.mark.asyncio
-async def test_nats_stream_setup_logs_connection_error():
-    service = NatsService()
-    service._js = AsyncMock()
-    service._js.add_stream.side_effect = ConnectionError("offline")
-    await service.ensure_stream("stream", ["subject"], max_age=1)
-
-
-@pytest.mark.asyncio
-async def test_nats_jetstream_publish_accepts_bytes():
-    service = NatsService()
-    service._js = AsyncMock()
-    ack = MagicMock(seq=7)
-    service._js.publish.return_value = ack
-    await service.publish_jetstream("subject", b"raw")
-    service._js.publish.assert_awaited_once()
-    args, kwargs = service._js.publish.call_args
-    assert args == ("subject", b"raw")
-    assert "Nats-Msg-Id" in kwargs["headers"]
-
-
-@pytest.mark.asyncio
-async def test_nats_publish_uses_payload_and_explicit_deduplication_ids():
-    service = NatsService()
-    service._client = AsyncMock()
-    service._js = AsyncMock()
-
-    await service.publish("subject", {"id": "event-id"})
-    assert service._client.publish.call_args.kwargs["headers"]["Nats-Msg-Id"] == (
-        "event-id"
-    )
-
-    await service.publish_jetstream("subject", {"event_id": "jetstream-id"})
-    assert service._js.publish.call_args.kwargs["headers"]["Nats-Msg-Id"] == (
-        "jetstream-id"
-    )
 
 
 def test_nats_singleton_double_check_handles_race_inside_lock():

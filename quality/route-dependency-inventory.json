@@ -590,6 +590,30 @@
     },
     {
       "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.dlq:list_outbox_failures:GET:/outbox",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.dlq:requeue_outbox_failure:POST:/outbox/{failure_id}/requeue",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
         "app.api.deps.auth.get_current_admin_user_from_dishka",
         "app.api.deps.localization.get_locale"
       ],
@@ -608,6 +632,7 @@
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[NatsTaskBroker]",
         "inject"
       ],
       "id": "app.api.dlq:trigger_dlq_replay:POST:/replay",
@@ -1774,7 +1799,7 @@
   ],
   "schema_version": 1,
   "summary": {
-    "canonical_dishka": 138,
+    "canonical_dishka": 140,
     "public_no_db": 11,
     "worker_internal": 4
   }

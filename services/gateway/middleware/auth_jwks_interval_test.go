@@ -22,7 +22,7 @@ func TestStartJWKSRefresher_ZeroIntervalDoesNotBusyLoop(t *testing.T) {
 	}))
 	defer server.Close()
 
-	middleware := NewJWTMiddleware("synthetic-test-secret", nil)
+	middleware := NewJWTMiddlewareWithConfig("synthetic-test-secret", "", nil, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

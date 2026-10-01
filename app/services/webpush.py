@@ -34,16 +34,8 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
-from app.core.ratelimit import (
-    RateLimitExceeded,
-    RateLimitInfo,
-    enforce_rate_limit,
-    get_default_strategy,
-)
 from app.core.ssrf import validate_and_resolve, validate_public_https_url
 from app.models import PushSubscription, User
-from app.services.notification_templates import render_notification_template
-from app.services.push_topics import normalize_topic
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -102,44 +94,6 @@ class _PinnedHTTPSAdapter(HTTPAdapter):
         """Keep the provider Host header while the socket targets the pinned IP."""
         super().add_headers(request, **kwargs)  # type: ignore[no-untyped-call]
         request.headers["Host"] = self._host_header
-
-    def get_connection_with_tls_context(
-        self,
-        request: Any,
-        verify: bool | str | None,
-        proxies: Mapping[str, str] | None = None,
-        cert: Any = None,
-    ) -> Any:
-        """Build an IP-addressed pool with the original TLS identity."""
-        if proxies and any(proxies.values()):
-            raise requests.exceptions.InvalidProxyURL(
-                "Pinned Web Push transport does not support proxies"
-            )
-
-        parsed = urlparse(request.url)
-        request_hostname = parsed.hostname
-        if (
-            not request_hostname
-            or request_hostname.removesuffix(".").lower()
-            != self._hostname.removesuffix(".").lower()
-        ):
-            raise requests.exceptions.InvalidURL(
-                "Pinned Web Push transport received a different hostname"
-            )
-
-        host_params, pool_kwargs = self.build_connection_pool_key_attributes(
-            request, True if verify is None else verify, cert
-        )
-        host_params["host"] = self._resolved_ip
-        host_params["port"] = self._resolved_port
-        # urllib3 uses these values for TLS SNI and certificate hostname
-        # verification while the pool host controls the TCP destination.
-        pool_options = dict(pool_kwargs)
-        pool_options["server_hostname"] = self._hostname
-        pool_options["assert_hostname"] = self._hostname
-        return self.poolmanager.connection_from_host(
-            **host_params, pool_kwargs=pool_options
-        )
 
 
 class _NoRedirectWebPushSession(requests.Session):
@@ -688,150 +642,6 @@ def _apply_quiet_mode(payload: dict[str, Any]) -> None:
     options["vibrate"] = []
     data_payload = payload.setdefault("data", {})
     data_payload["dnd_suppressed"] = True
-
-
-def _prepare_delivery_payload(
-    payload: Mapping[str, Any] | None,
-    *,
-    topic: str | None,
-    user: User | None,
-) -> dict[str, Any]:
-    resolved_locale = resolve_locale(user=user)
-    normalized, meta = _normalize_payload(payload, locale=resolved_locale)
-    normalized_topic = normalize_topic(topic) or normalize_topic(meta.get("topic"))
-    if normalized_topic:
-        meta["topic"] = normalized_topic
-        normalized.setdefault("data", {})
-        normalized["data"].setdefault("topic", normalized_topic)
-    if user and _is_user_in_quiet_hours(user):
-        _apply_quiet_mode(normalized)
-    return _compose_payload(normalized, meta, locale=resolved_locale)
-
-
-async def _check_rate_limit(
-    identifier: str,
-    *,
-    namespace: str,
-    limit: int,
-) -> RateLimitInfo:
-    if limit <= 0 or not settings.rate_limit_enabled:
-        return RateLimitInfo(True, max(limit, 0), 0)
-    try:
-        return await enforce_rate_limit(
-            identifier=identifier,
-            limit=limit,
-            window_seconds=_RATE_LIMIT_WINDOW_SECONDS,
-            strategy=get_default_strategy(namespace),
-        )
-    except RateLimitExceeded as exc:
-        return exc.info
-
-
-def build_payload(
-    notification_type: str,
-    data: Mapping[str, Any] | None,
-    *,
-    locale: str | None = None,
-) -> dict[str, Any]:
-    if isinstance(data, Mapping):
-        raw_source = {key: deepcopy(value) for key, value in data.items()}
-    else:
-        raw_source = {}
-
-    template_defaults = render_notification_template(
-        notification_type, raw_source, locale=locale
-    )
-    if template_defaults:
-        source: dict[str, Any] = {
-            key: deepcopy(value) for key, value in template_defaults.items()
-        }
-        template_data = (
-            template_defaults.get("data")
-            if isinstance(template_defaults.get("data"), Mapping)
-            else None
-        )
-        input_data = (
-            raw_source.get("data")
-            if isinstance(raw_source.get("data"), Mapping)
-            else None
-        )
-        if template_data or input_data:
-            merged_data: dict[str, Any] = {}
-            if template_data:
-                merged_data.update(
-                    {key: deepcopy(value) for key, value in template_data.items()}
-                )
-            if input_data:
-                for key, value in input_data.items():
-                    merged_data[key] = deepcopy(value)
-            source["data"] = merged_data
-        for key, value in raw_source.items():
-            if key == "data":
-                continue
-            if value is None:
-                continue
-            source[key] = value
-    else:
-        source = raw_source
-
-    title = str(
-        source.get("title") or translate("notifications.default_title", locale=locale)
-    )
-    payload_data: dict[str, Any] = {}
-    if isinstance(source.get("data"), Mapping):
-        payload_data.update(
-            {key: deepcopy(value) for key, value in source["data"].items()}
-        )
-    url = source.get("url")
-    if isinstance(url, str) and url.strip():
-        payload_data.setdefault("url", url.strip())
-    payload_data.setdefault("type", str(notification_type))
-    options: dict[str, Any] = {}
-    for key in ("badge", "icon", "image", "tag", "dir", "lang"):
-        value = source.get(key)
-        if value is not None:
-            options[key] = str(value)
-    if locale and "lang" not in options:
-        options["lang"] = locale
-    actions, action_urls = _prepare_actions(source.get("actions"))
-    if actions:
-        options["actions"] = actions
-    if action_urls:
-        payload_data.setdefault("actionUrls", action_urls)
-    vibrate = _sanitize_vibrate(source.get("vibrate"))
-    if vibrate:
-        options["vibrate"] = vibrate
-    options["body"] = str(source.get("body") or "")
-    if "renotify" in source:
-        options["renotify"] = bool(source.get("renotify"))
-    if "requireInteraction" in source:
-        options["requireInteraction"] = bool(source.get("requireInteraction"))
-    if "silent" in source:
-        options["silent"] = bool(source.get("silent"))
-    timestamp = source.get("timestamp")
-    if timestamp is not None:
-        try:
-            options["timestamp"] = int(timestamp)
-        except (TypeError, ValueError):
-            # Invalid provider metadata must not prevent the notification from
-            # being delivered; omit only the malformed optional timestamp.
-            pass
-    meta: dict[str, Any] = {}
-    for key in _META_KEYS:
-        value = source.get(key)
-        if value is None:
-            continue
-        if key == "ttl":
-            try:
-                meta[key] = int(value)
-            except (TypeError, ValueError):  # RZ-28-01
-                continue
-        else:
-            meta[key] = value
-    payload = {"title": title, "options": options, "data": payload_data}
-    if meta:
-        payload["_meta"] = meta
-    return payload
 
 
 def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:

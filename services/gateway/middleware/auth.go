@@ -16,7 +16,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -183,11 +182,6 @@ type Claims struct {
 	Role     string `json:"role,omitempty"`
 	IsActive bool   `json:"is_active,omitempty"`
 	TenantID string `json:"tenant_id,omitempty"`
-}
-
-// NewJWTMiddleware creates a new JWT middleware with default L1 cache settings.
-func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
-	return NewJWTMiddlewareWithConfig(secret, "", redisClient, DefaultL1CacheConfig())
 }
 
 // storeRSAKeys publishes a complete JWKS snapshot atomically.  The legacy
@@ -471,38 +465,6 @@ func parseJWKSKeys(rawKeys []json.RawMessage) (rsaKeySet, error) {
 		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
 	}
 	return keys, nil
-}
-
-// fetchJWKSPublicKey is retained for existing single-key callers and tests.
-// Authentication and refresh use fetchJWKSKeySet; this compatibility helper
-// returns the sole key or a deterministic representative when multiple keys
-// are present.
-func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint string) (*rsa.PublicKey, error) {
-	keys, err := fetchJWKSKeySet(ctx, client, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	return selectJWKSRepresentative(keys)
-}
-
-// selectJWKSRepresentative returns the compatibility key used by callers that
-// predate dual-key JWKS support.  A blank kid is the legacy single-key form;
-// otherwise choose the lexicographically first kid so the result is stable
-// across map iterations.  fetchJWKSKeySet normally guarantees a non-empty set,
-// but keeping the invariant check here makes this helper safe for all callers.
-func selectJWKSRepresentative(keys rsaKeySet) (*rsa.PublicKey, error) {
-	if key, ok := keys[""]; ok {
-		return key, nil
-	}
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
-	}
-	kids := make([]string, 0, len(keys))
-	for kid := range keys {
-		kids = append(kids, kid)
-	}
-	sort.Strings(kids)
-	return keys[kids[0]], nil
 }
 
 func jwkToRSAPublicKey(nB64, eB64 string) (*rsa.PublicKey, error) {
@@ -1134,37 +1096,6 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		c.Set("session_id", claims.ID)
 		c.Set("tenant_id", tenantID)
 		c.Set("claims", claims)
-
-		c.Next()
-	}
-}
-
-// RequireRole returns a middleware that requires a specific role.
-func RequireRole(roles ...string) gin.HandlerFunc {
-	roleSet := make(map[string]bool)
-	for _, role := range roles {
-		roleSet[role] = true
-	}
-
-	return func(c *gin.Context) {
-		userRole, exists := c.Get("user_role")
-		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "role not found in token",
-			})
-			return
-		}
-
-		// TD-10 (audit 2026-03-05): Use ok-guard form of type assertion.
-		// Without it, a non-string value in the Gin context (e.g., nil or int
-		// set by another middleware) causes a goroutine panic → HTTP 500.
-		role, ok := userRole.(string)
-		if !ok || !roleSet[role] {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "insufficient permissions",
-			})
-			return
-		}
 
 		c.Next()
 	}

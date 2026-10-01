@@ -295,7 +295,7 @@ func TestDisconnectUser_MultipleSessionsForUser(t *testing.T) {
 	// Disconnect falls back to a non-blocking Unregister send while the Hub
 	// lifecycle context is nil. Wait until Run has published it so this test
 	// exercises session eviction, not goroutine startup scheduling.
-	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 
 	srv1, cli1 := newConnPair(t)
 	srv2, cli2 := newConnPair(t)

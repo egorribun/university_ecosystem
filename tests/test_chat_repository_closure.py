@@ -549,9 +549,3 @@ async def test_participants_receipts_type_message_and_presence() -> None:
 
     db.execute.return_value = _result(rows=[(USER_ID,), (OTHER_ID,), (USER_ID,)])
     assert await repo.get_presence_audience(USER_ID) == {OTHER_ID}
-
-
-def test_repository_factory() -> None:
-    repo, db = _repo()
-    assert chat_module.get_chat_repository(db).db is db
-    assert repo.db is db

@@ -109,8 +109,8 @@ func TestAdversarial_ValidateUpgradeTicket_ConcurrentRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-startGate
-			userID, _, err := h.validateUpgradeTicket(context.Background(), ticket)
-			if err == nil && userID == "racing-user" {
+			identity, err := h.validateUpgradeTicketIdentity(context.Background(), ticket)
+			if err == nil && identity.UserID == "racing-user" {
 				successCount.Add(1)
 			} else if err != nil && strings.Contains(err.Error(), "not found or already used") {
 				notFoundCount.Add(1)
@@ -148,15 +148,15 @@ func TestAdversarial_ValidateUpgradeTicket_RevocationScenarios(t *testing.T) {
 	// 1. Unrevoked ticket
 	ticket1 := strings.Repeat("c3", 32)
 	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket1, "alice:"+validSessionJTI))
-	userID, _, err := h.validateUpgradeTicket(context.Background(), ticket1)
+	identity, err := h.validateUpgradeTicketIdentity(context.Background(), ticket1)
 	require.NoError(t, err)
-	assert.Equal(t, "alice", userID)
+	assert.Equal(t, "alice", identity.UserID)
 
 	// 2. Revoked ticket (key exists in revocation Redis)
 	ticket2 := strings.Repeat("d4", 32)
 	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket2, "bob:"+validSessionJTI))
 	require.NoError(t, revMr.Set(revokedJTIKeyPrefix+validSessionJTI, "1"))
-	_, _, err = h.validateUpgradeTicket(context.Background(), ticket2)
+	_, err = h.validateUpgradeTicketIdentity(context.Background(), ticket2)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ticket session is revoked")
 
@@ -164,7 +164,7 @@ func TestAdversarial_ValidateUpgradeTicket_RevocationScenarios(t *testing.T) {
 	ticket3 := strings.Repeat("e5", 32)
 	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket3, "carol:"+validSessionJTI))
 	revMr.Close() // simulate crash / network partition
-	_, _, err = h.validateUpgradeTicket(context.Background(), ticket3)
+	_, err = h.validateUpgradeTicketIdentity(context.Background(), ticket3)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "session revocation check failed")
 }

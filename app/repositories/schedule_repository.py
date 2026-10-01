@@ -14,7 +14,7 @@ from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO
 
 if TYPE_CHECKING:
-    from app.core.protocols import AsyncDatabaseSession
+    pass
 
 
 def _restore_cached[DTOModel: BaseModel](
@@ -137,11 +137,3 @@ class ScheduleRepository(
         await schedule_cache.delete("schedule:groups")
 
         return result
-
-
-def get_group_repository(db: AsyncDatabaseSession) -> GroupRepository:
-    return GroupRepository(db)
-
-
-def get_schedule_repository(db: AsyncDatabaseSession) -> ScheduleRepository:
-    return ScheduleRepository(db)

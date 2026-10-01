@@ -122,7 +122,7 @@ func TestJWKSRotationWindowAcceptsBothKeysAndRetiresRemovedKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	middleware := NewJWTMiddleware("unused-hmac-key", nil)
+	middleware := NewJWTMiddlewareWithConfig("unused-hmac-key", "", nil, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	middleware.StartJWKSRefresher(ctx, server.URL, 10*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() {

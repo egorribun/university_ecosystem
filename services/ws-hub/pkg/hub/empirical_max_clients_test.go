@@ -59,7 +59,7 @@ func TestEmpirical_MaxClientsPreCheck(t *testing.T) {
 
 	t.Run("Allows upgrade when hub capacity is not reached", func(t *testing.T) {
 		go h.Run(ctx)
-		require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
+		require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
 		t.Cleanup(h.Stop)
 
 		// Seed fresh ticket

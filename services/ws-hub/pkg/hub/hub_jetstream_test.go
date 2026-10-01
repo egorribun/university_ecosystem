@@ -388,34 +388,6 @@ func TestHandleNotifications_BroadcastFull_NotCachedAndNaked(t *testing.T) {
 	assert.True(t, foundAfter, "notification msgID SHOULD be cached after successful enqueue")
 }
 
-func TestClient_HandleMessage_JetStreamDisabledFallback(t *testing.T) {
-	server := newMockNatsServer(t)
-	nc, err := nats.Connect(server.Addr())
-	assert.NoError(t, err)
-	t.Cleanup(nc.Close)
-
-	h := setupTestHub()
-	h.Nats = nc
-	h.enableJetStream = false // JetStream disabled
-
-	c := &Client{
-		ID:     "c-no-js",
-		UserID: "u-no-js",
-		Hub:    h,
-		ctx:    context.Background(),
-		Send:   make(chan []byte, 10),
-		Rooms:  make(map[string]bool),
-	}
-
-	msg := Message{Type: "message", Room: "room-fallback"}
-	c.Rooms["room-fallback"] = true
-	data := []byte(`{"text":"hello"}`)
-
-	assert.NotPanics(t, func() {
-		c.handleMessage(msg, data)
-	})
-}
-
 func TestClient_ReplayOfflineMessages_ContextCancelled(t *testing.T) {
 	h := setupTestHub()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -430,6 +402,6 @@ func TestClient_ReplayOfflineMessages_ContextCancelled(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		c.replayOfflineMessages("room-cancel", 0, "msg-1")
+		c.replayOfflineMessagesContext(c.ctx, "room-cancel", 0, "msg-1")
 	})
 }

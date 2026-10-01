@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/nats-io/nats.go"
 	"github.com/quic-go/webtransport-go"
@@ -510,10 +509,6 @@ func (c *Client) startRoomReplay(ctx context.Context, room string, lastSeq uint6
 	})
 }
 
-func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID string) {
-	_, _ = c.replayOfflineMessagesContext(c.ctx, room, lastSeq, lastMsgID)
-}
-
 func (c *Client) replayOfflineMessagesContext(
 	replayCtx context.Context,
 	room string,
@@ -603,16 +598,6 @@ func isExpectedOfflineReplayFetchError(err error) bool {
 
 func offlineReplayFetchCompleted(err error) bool {
 	return errors.Is(err, nats.ErrTimeout) || errors.Is(err, context.DeadlineExceeded)
-}
-
-func (c *Client) deliverOfflineMessages(msgs []*nats.Msg, lastSeq uint64, lastMsgID string) {
-	foundLastMsgID := (lastMsgID == "" || lastSeq > 0)
-	maxSequence := lastSeq
-	room := ""
-	if len(msgs) > 0 && msgs[0] != nil {
-		room, _ = strings.CutPrefix(msgs[0].Subject, "chat.")
-	}
-	c.deliverOfflineMessageBatch(c.ctx, room, msgs, lastMsgID, &foundLastMsgID, &maxSequence)
 }
 
 func (c *Client) deliverOfflineMessageBatch(
@@ -1058,75 +1043,6 @@ func (c *Client) rejectOversizedMessage(data []byte) bool {
 		}
 	}
 	return true
-}
-
-//nolint:cyclop
-func (c *Client) handleMessage(msg Message, data []byte) {
-	if c.rejectOversizedMessage(data) {
-		return
-	}
-
-	if msg.Room == "" || !c.isInRoom(msg.Room) {
-		AuthFailuresTotal.WithLabelValues("room_message_denied").Inc()
-		c.Hub.Logger.WarnContext(c.ctx, "Unauthorized room message rejected",
-			"client_id", c.ID, "user_id", c.UserID, "room", msg.Room)
-		return
-	}
-
-	// TD-W16-03 / RZ-W18-01: Use configurable rate limit fields copied to Hub struct.
-	raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
-		rate.NewLimiter(rate.Limit(c.Hub.clientMsgRateLimit), c.Hub.clientMsgRateBurst))
-	if !raw.(*rate.Limiter).Allow() {
-		c.Hub.Logger.WarnContext(c.ctx, "Client message rate limit exceeded — notifying client",
-			"client_id", c.ID,
-			"room", msg.Room)
-		if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
-			select {
-			case c.Send <- notice:
-			default:
-				// Send buffer full — client is already overwhelmed; drop silently.
-			}
-		}
-		return
-	}
-
-	if c.Hub == nil || c.Hub.Nats == nil {
-		return
-	}
-
-	// Sender identity is always derived from the authenticated connection.
-	// Publish the canonical structure rather than the original attacker bytes.
-	msg.From = c.UserID
-	canonicalData, err := json.Marshal(msg)
-	if err != nil {
-		c.Hub.Logger.ErrorContext(c.ctx, "Failed to encode canonical client message", "err", err)
-		return
-	}
-
-	msgID := uuid.New().String()
-	natsMsg := &nats.Msg{
-		Subject: "chat." + msg.Room,
-		Data:    canonicalData,
-		Header:  make(nats.Header),
-	}
-	natsMsg.Header.Set("Nats-Msg-Id", msgID)
-
-	if c.Hub.enableJetStream && c.Hub.js != nil {
-		if _, err := c.Hub.js.PublishMsgAsync(natsMsg); err != nil {
-			if c.Hub.Logger != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish async to JetStream", "err", err)
-			}
-		}
-	} else {
-		// Core NATS does not provide JetStream de-duplication and older servers
-		// may not negotiate headers. Publish the canonical payload without the
-		// JetStream-only Nats-Msg-Id header on the fallback transport.
-		if err := c.Hub.Nats.Publish(natsMsg.Subject, natsMsg.Data); err != nil {
-			if c.Hub.Logger != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish to NATS", "err", err)
-			}
-		}
-	}
 }
 
 func (c *Client) isInRoom(room string) bool {

@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import app.workers.dead_letter_queue as dlq_module
 from app.models.dead_letter import JobStatus
 from app.workers.dead_letter_queue import (
     DeadLetterQueue,
-    register_circuit_breaker_db_dlq_listener,
 )
 
 
@@ -160,45 +157,3 @@ async def test_replay_flushes_after_each_completed_batch() -> None:
 
     assert result == (2, 0)
     assert session.flush.await_count == 2
-
-
-def test_circuit_listener_ignores_non_recovery_and_no_running_loop() -> None:
-    circuit_breaker = MagicMock()
-    register_circuit_breaker_db_dlq_listener(circuit_breaker, MagicMock())
-    listener = circuit_breaker.add_state_listener.call_args.args[0]
-
-    listener(None, SimpleNamespace(name="OPEN"))
-    with patch.object(
-        dlq_module.asyncio, "get_running_loop", side_effect=RuntimeError("no loop")
-    ):
-        listener(None, "CLOSED")
-
-
-@pytest.mark.asyncio
-async def test_circuit_listener_contains_background_replay_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    circuit_breaker = MagicMock()
-    session_factory = MagicMock()
-    session_factory.return_value.__aenter__ = AsyncMock(
-        side_effect=OSError("database unavailable")
-    )
-    session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
-    register_circuit_breaker_db_dlq_listener(circuit_breaker, session_factory)
-    listener = circuit_breaker.add_state_listener.call_args.args[0]
-
-    tasks: list[asyncio.Task[None]] = []
-    running_loop = asyncio.get_running_loop()
-
-    class CapturingLoop:
-        def create_task(self, coroutine: object) -> asyncio.Task[None]:
-            task = running_loop.create_task(coroutine)  # type: ignore[arg-type]
-            tasks.append(task)
-            return task
-
-    monkeypatch.setattr(dlq_module.asyncio, "get_running_loop", lambda: CapturingLoop())
-    listener(None, SimpleNamespace(name="HALF_OPEN"))
-    await tasks[0]
-
-    assert tasks[0].exception() is None
-    assert not dlq_module._worker_dlq_tasks
