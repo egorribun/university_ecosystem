@@ -88,11 +88,6 @@ export const StoryViewer = ({
     return () => setOverlayState(STORY_VIEWER_OVERLAY_ID, null)
   }, [isOpen, setOverlayState])
 
-  const activeIndex = activeStoryIndex ?? -1
-  const viewerStory = isOpen ? (stories[activeIndex] ?? null) : null
-  const nextStory = stories[activeIndex + 1] ?? null
-  const nextStoryImage = nextStory?.cover_url_optimized ?? nextStory?.cover_url ?? null
-
   const progressForIndex = useCallback(
     (index: number) => {
       const currentIndex = activeStoryIndex!
@@ -102,16 +97,6 @@ export const StoryViewer = ({
     },
     [activeStoryIndex, progress]
   )
-
-  const viewerStoryLink = viewerStory?.cta_url ? linkPropsFor(viewerStory.cta_url) : null
-
-  const storyDialogLabel = viewerStory
-    ? t("stories.viewer.aria.dialog", {
-        title: viewerStory.title,
-        index: activeIndex + 1,
-        total: stories.length,
-      })
-    : undefined
 
   const swipeHandlers = useSwipe({
     onSwipeLeft: onNext,
@@ -152,7 +137,19 @@ export const StoryViewer = ({
     [swipeHandlers, onResume]
   )
 
-  if (!isClient || !viewerStory) return null
+  if (!isClient || activeStoryIndex === null) return null
+
+  const viewerStory = stories[activeStoryIndex]
+  if (!viewerStory) return null
+
+  const nextStory = stories[activeStoryIndex + 1] ?? null
+  const nextStoryImage = nextStory?.cover_url_optimized ?? nextStory?.cover_url ?? null
+  const viewerStoryLink = viewerStory.cta_url ? linkPropsFor(viewerStory.cta_url) : null
+  const storyDialogLabel = t("stories.viewer.aria.dialog", {
+    title: viewerStory.title,
+    index: activeStoryIndex + 1,
+    total: stories.length,
+  })
 
   const overlayBackdropFilter = viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined
 
