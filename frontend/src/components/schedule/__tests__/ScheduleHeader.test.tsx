@@ -196,7 +196,7 @@ describe("ScheduleHeader", () => {
     expect(screen.getByText("schedule:summary.noMoreToday")).toBeInTheDocument()
   })
 
-  it("uses the standard duration for lessons with invalid times", () => {
+  it("still reports a completed day when lesson times are invalid", () => {
     render(
       <ScheduleHeader
         {...baseProps}
