@@ -1294,6 +1294,7 @@ def test_python_source_identity_maps_coverage_source_app_aliases() -> None:
 
 def test_python_coverage_json_accepts_omitted_excluded_branch_arcs(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     normalizer = _normalizer_module()
     # The omission is only valid when the checked-out source carries a coverage
@@ -1302,7 +1303,7 @@ def test_python_coverage_json_accepts_omitted_excluded_branch_arcs(
     source = tmp_path / "app" / "api" / "validation.py"
     source.parent.mkdir(parents=True)
     source.write_text("if True:  # pragma: no branch\n    pass\n", encoding="utf-8")
-    normalizer._configure_repository_root(str(tmp_path))
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
     report = json.dumps(
         {
             "meta": {"version": "7.0.0"},
