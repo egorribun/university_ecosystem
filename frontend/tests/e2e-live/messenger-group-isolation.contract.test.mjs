@@ -71,7 +71,7 @@ test("group isolation uses stable demo accounts and the owner-checked live seed"
   assert.match(adminSeed, /"sergey\.lebedev@university\.dev"[\s\S]{0,220}UserRole\.TEACHER/u)
   assert.match(
     stand,
-    /SEED_SCRIPTS = \("scripts\/seed_demo_data\.py", "scripts\/seed_admin_data\.py"\)/u
+    /SEED_SCRIPTS = \(\s*"scripts\/seed_demo_data\.py",\s*"scripts\/seed_admin_data\.py",\s*"scripts\/seed_live_authorization\.py",?\s*\)/u
   )
   assert.match(stand, /seed_parser\.add_argument\("--demo", action="store_true", required=True\)/u)
   assert.match(spec, /await loginAs\(page, "student"\)/u)
