@@ -152,6 +152,8 @@ def _live_environment(state_root: Path, public: str, private: str) -> dict[str, 
     env["TMP"] = str(temp_root)
     if os.name != "nt":
         env["TMPDIR"] = str(temp_root)
+    # -NoProfile still uses the .NET startup cache on Unix.
+    env["XDG_CACHE_HOME"] = str(temp_root / ".powershell-cache")
     env["COMPOSE_PROJECT_NAME"] = "ue-live-36854541120abcd1"
     ports = {name: 32000 + index for index, name in enumerate(PORT_NAMES)}
     env["LIVE_BASE_URL"] = f"http://localhost:{ports['CADDY_HTTP']}"
@@ -172,6 +174,9 @@ def _run_prepare(
     env: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     assert POWERSHELL is not None
+    # Some callers supply stand_environment() instead of _live_environment().
+    environment = env.copy()
+    environment["XDG_CACHE_HOME"] = str(project / ".powershell-cache")
     return subprocess.run(  # noqa: S603 - fixed PowerShell file and constrained test arguments
         [
             POWERSHELL,
@@ -186,7 +191,7 @@ def _run_prepare(
             str(state_root),
         ],
         cwd=project,
-        env=env,
+        env=environment,
         capture_output=True,
         text=True,
         check=False,
@@ -277,8 +282,15 @@ def test_launcher_refuses_state_root_outside_owned_temp_parent_without_writes(
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
 def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    profile = shared_cache / "powershell" / "StartupProfileData-NonInteractive"
+    profile.parent.mkdir(parents=True)
+    sentinel = b"parent-process-startup-cache"
+    profile.write_bytes(sentinel)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
+    parent_environment = os.environ.copy()
     project, state_root = _fixture_project(tmp_path)
     state_root.mkdir(parents=True)
     secrets_root = state_root / ".secrets"
@@ -301,6 +313,8 @@ def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
     result = _run_prepare(project, state_root, env)
 
     assert result.returncode == 0, result.stderr[-2000:]
+    assert profile.read_bytes() == sentinel
+    assert os.environ == parent_environment
     assert (state_root / ".env").is_file()
     assert (state_root / ".env.docker").is_file()
     assert (state_root / ".env.docker.workers").is_file()
@@ -347,8 +361,15 @@ def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
 def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    profile = shared_cache / "powershell" / "StartupProfileData-NonInteractive"
+    profile.parent.mkdir(parents=True)
+    sentinel = b"parent-process-startup-cache"
+    profile.write_bytes(sentinel)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
+    parent_environment = os.environ.copy()
     project, _ = _fixture_project(tmp_path)
     state_root = (
         tmp_path
@@ -387,6 +408,8 @@ def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
     result = _run_prepare(project, state_root, environment)
 
     assert result.returncode == 0, f"PrepareOnly exited with status {result.returncode}"
+    assert profile.read_bytes() == sentinel
+    assert os.environ == parent_environment
     assert (state_root / ".env").is_file()
     assert (state_root / ".env.docker").is_file()
     assert (state_root / ".env.docker.workers").is_file()
@@ -449,8 +472,15 @@ def test_launcher_rejects_permissive_owned_state_root_before_secret_reads(
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
 def test_launcher_rejects_compose_without_override_support_before_env_writes(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    profile = shared_cache / "powershell" / "StartupProfileData-NonInteractive"
+    profile.parent.mkdir(parents=True)
+    sentinel = b"parent-process-startup-cache"
+    profile.write_bytes(sentinel)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
+    parent_environment = os.environ.copy()
     project, state_root = _fixture_project(tmp_path)
     state_root.mkdir(parents=True)
     secrets_root = state_root / ".secrets"
@@ -529,3 +559,5 @@ def test_launcher_rejects_compose_without_override_support_before_env_writes(
     assert not (state_root / ".env.docker").exists()
     assert not (project / ".env").exists()
     assert not (project / ".secrets").exists()
+    assert profile.read_bytes() == sentinel
+    assert os.environ == parent_environment

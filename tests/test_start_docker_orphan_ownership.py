@@ -80,6 +80,8 @@ def _run_isolated_powershell(
         "PowerShell-dependent tests must be marked at collection"
     )
     environment = os.environ.copy()
+    # -NoProfile still uses the .NET startup cache on Unix.
+    environment["XDG_CACHE_HOME"] = str(project / ".powershell-cache")
     environment["PATH"] = os.pathsep.join(
         (str(bin_directory), environment.get("PATH", ""))
     )
@@ -105,8 +107,15 @@ def _run_isolated_powershell(
 
 @pytest.mark.skipif(_POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
 def test_down_pins_project_and_preserves_local_data_without_docker_side_effects(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    profile = shared_cache / "powershell" / "StartupProfileData-NonInteractive"
+    profile.parent.mkdir(parents=True)
+    sentinel = b"parent-process-startup-cache"
+    profile.write_bytes(sentinel)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
+    parent_environment = os.environ.copy()
     project = _prepare_isolated_project(tmp_path)
     bin_directory, command_log = _install_fake_docker(tmp_path)
     protected_files = {
@@ -133,6 +142,8 @@ def test_down_pins_project_and_preserves_local_data_without_docker_side_effects(
         relative_path: (project / relative_path).read_bytes()
         for relative_path in protected_files
     } == protected_files
+    assert profile.read_bytes() == sentinel
+    assert os.environ == parent_environment
 
 
 @pytest.mark.skipif(_POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
