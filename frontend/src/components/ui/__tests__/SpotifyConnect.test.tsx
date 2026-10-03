@@ -1,11 +1,14 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createInstance } from "i18next"
+import { http, HttpResponse } from "msw"
+import { renderToStaticMarkup } from "react-dom/server"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import enCommon from "@/i18n/locales/en/common.json"
 import enSettings from "@/i18n/locales/en/settings.json"
 import ruCommon from "@/i18n/locales/ru/common.json"
 import ruSettings from "@/i18n/locales/ru/settings.json"
+import { server } from "@/tests/mocks/server"
 
 const mockState = vi.hoisted(() => ({
   user: null as Record<string, unknown> | null,
@@ -19,7 +22,7 @@ const mockState = vi.hoisted(() => ({
       options?: { throwOnError?: boolean }
     ) => Promise<void>
   >(() => Promise.resolve()),
-  apiGet: vi.fn<(..._args: unknown[]) => Promise<{ data?: { url: string } }>>(() =>
+  apiGet: vi.fn<(..._args: unknown[]) => Promise<{ data?: { url: string } | null }>>(() =>
     Promise.resolve({ data: { url: "https://accounts.spotify.com/authorize?x=1" } })
   ),
   apiPost: vi.fn((..._args: unknown[]) => Promise.resolve({ data: {} })),
@@ -162,6 +165,22 @@ describe("SpotifyConnect", () => {
     ).toBeEnabled()
   })
 
+  it.each([false, true])(
+    "renders idle controls in server markup when Spotify is connected: %s",
+    (connected) => {
+      mockState.user = { id: "user-1", spotify_connected: connected }
+      const serverMarkup = document.createElement("div")
+      serverMarkup.innerHTML = renderToStaticMarkup(<SpotifyConnect />)
+
+      const controls = within(serverMarkup).getAllByRole("button")
+      expect(controls).toHaveLength(connected ? 2 : 1)
+      for (const control of controls) expect(control).toBeEnabled()
+      expect(mockState.apiGet).not.toHaveBeenCalled()
+      expect(mockState.apiPost).not.toHaveBeenCalled()
+      expect(mockState.refetch).not.toHaveBeenCalled()
+    }
+  )
+
   it("reports an authorization request failure accessibly and restores the connect button", async () => {
     const user = userEvent.setup()
     const failure = new Error("authorization unavailable")
@@ -174,11 +193,13 @@ describe("SpotifyConnect", () => {
 
     expect(mockState.apiGet).toHaveBeenCalledWith("/spotify/auth-url")
     expect(mockState.clickOutcomes).toHaveLength(1)
-    await expect(mockState.clickOutcomes.shift()).resolves.toBeUndefined()
+    await act(async () => {
+      await expect(mockState.clickOutcomes.shift()).resolves.toBeUndefined()
+    })
     expect(screen.getByRole("alert")).toHaveTextContent(
       "settings:integrations.spotify.snackbar.connectFailed"
     )
-    await waitFor(() => expect(button).toBeEnabled())
+    expect(button).toBeEnabled()
     mockState.apiGet.mockResolvedValueOnce({ data: { url: "#spotify" } })
     await user.click(button)
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
@@ -394,6 +415,35 @@ describe("SpotifyConnect", () => {
     await waitFor(() => expect(button).toBeEnabled())
   })
 
+  it("clears a failed disconnect's feedback while its retry is pending", async () => {
+    const retry = deferred<{ data: Record<string, never> }>()
+    mockState.apiPost
+      .mockRejectedValueOnce(new Error("disconnect unavailable"))
+      .mockReturnValueOnce(retry.promise)
+    mockState.user = { id: "user-1", spotify_connected: true }
+    render(<SpotifyConnect />)
+    const user = userEvent.setup()
+    const button = screen.getByRole("button", {
+      name: "settings:integrations.spotify.disconnect",
+    })
+    await user.click(button)
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "settings:integrations.spotify.snackbar.disconnectFailed"
+    )
+
+    await user.click(button)
+    const feedbackDuringRetry = screen.queryByRole("alert")
+    const busyDuringRetry = button.hasAttribute("disabled")
+    await act(async () => retry.resolve({ data: {} }))
+
+    expect(feedbackDuringRetry).toBeNull()
+    expect(busyDuringRetry).toBe(true)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(button).toBeEnabled()
+    expect(mockState.apiPost).toHaveBeenCalledTimes(2)
+    expect(mockState.setUser).toHaveBeenCalledOnce()
+  })
+
   it("refreshes now-playing via the refresh button", async () => {
     const user = userEvent.setup()
     mockState.user = {
@@ -563,10 +613,12 @@ describe("SpotifyConnect", () => {
     window.history.replaceState({}, "", "/")
   })
 
-  it("handles an authorization response without a data object", async () => {
+  it("reports a missing authorization URL when the API returns a JSON null body", async () => {
+    const { default: client } = await vi.importActual<typeof import("@/api/client")>("@/api/client")
+    server.use(http.get("*/spotify/auth-url", () => HttpResponse.json(null)))
     const user = userEvent.setup()
     mockState.user = { id: "user-1", spotify_connected: false }
-    mockState.apiGet.mockResolvedValueOnce({ data: undefined })
+    mockState.apiGet.mockImplementationOnce((url) => client.get(String(url)))
     window.history.replaceState({}, "", "/settings")
     render(<SpotifyConnect />)
     const connectButton = screen.getByRole("button", {
@@ -582,6 +634,9 @@ describe("SpotifyConnect", () => {
       navigation.stop()
     }
     expect(navigation.attempts).toEqual([])
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "settings:integrations.spotify.snackbar.openFailed"
+    )
     expect(window.location.pathname).toBe("/settings")
     window.history.replaceState({}, "", "/")
   })
@@ -614,6 +669,28 @@ describe("SpotifyConnect", () => {
     expect(mockState.refetch).toHaveBeenCalledWith({ throwOnError: true })
     expect(screen.getByRole("alert")).toHaveTextContent("common:errors.generic")
     window.history.replaceState({}, "", "/")
+  })
+
+  it("clears callback feedback for a new account and reports that account's refetch failure", async () => {
+    const nextAccountRefetch = deferred<{ data: null }>()
+    void nextAccountRefetch.promise.catch(() => undefined)
+    mockState.refetch
+      .mockRejectedValueOnce(new Error("first account callback unavailable"))
+      .mockReturnValueOnce(nextAccountRefetch.promise)
+    mockState.user = { id: "user-1", spotify_connected: true }
+    window.history.replaceState({}, "", "/settings?spotify=connected")
+    const { rerender } = render(<SpotifyConnect />)
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+
+    rotateBrowserSession()
+    mockState.user = { id: "user-2", spotify_connected: true }
+    rerender(<SpotifyConnect />)
+    const feedbackForNewAccount = screen.queryByRole("alert")
+    await act(async () => nextAccountRefetch.reject(new Error("new account callback unavailable")))
+
+    expect(feedbackForNewAccount).toBeNull()
+    expect(mockState.refetch).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("alert")).toHaveTextContent("common:errors.generic")
   })
 
   it("ignores a stale callback failure after the refetch dependency changes", async () => {
@@ -747,6 +824,42 @@ describe("SpotifyConnect", () => {
       expect(mockState.invalidateQueries).not.toHaveBeenCalled()
       expect(screen.queryByRole("alert")).not.toBeInTheDocument()
       expect(readyForNextAccount).toBe(true)
+    }
+  )
+
+  it.each(["success", "error"])(
+    "keeps the next account's authorization pending when an old request ends with %s",
+    async (outcome) => {
+      const first = deferred<{ data: { url: string } }>()
+      const second = deferred<{ data: { url: string } }>()
+      mockState.apiGet.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+      mockState.user = { id: "user-1", spotify_connected: false }
+      const { rerender } = render(<SpotifyConnect />)
+      const user = userEvent.setup()
+      const button = screen.getByRole("button", {
+        name: "settings:integrations.spotify.connect",
+      })
+      await user.click(button)
+      rotateBrowserSession()
+      mockState.user = { id: "user-2", spotify_connected: false }
+      rerender(<SpotifyConnect />)
+      await user.click(button)
+
+      await act(async () => {
+        if (outcome === "success") first.resolve({ data: { url: "#old-authorization" } })
+        else first.reject(new Error("old authorization unavailable"))
+      })
+      const busyAfterOldRequest = button.hasAttribute("disabled")
+      const feedbackAfterOldRequest = screen.queryByRole("alert")
+      const hashAfterOldRequest = window.location.hash
+      await act(async () => second.resolve({ data: { url: "#current-authorization" } }))
+
+      expect(mockState.apiGet).toHaveBeenCalledTimes(2)
+      expect(busyAfterOldRequest).toBe(true)
+      expect(feedbackAfterOldRequest).toBeNull()
+      expect(hashAfterOldRequest).toBe("")
+      expect(button).toBeEnabled()
+      expect(window.location.hash).toBe("#current-authorization")
     }
   )
 

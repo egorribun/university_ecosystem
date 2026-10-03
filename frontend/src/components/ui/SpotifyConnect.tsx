@@ -111,7 +111,6 @@ export default function SpotifyConnect() {
     const isCurrent = captureOperation()
     if (!isCurrent()) return
     let active = true
-    setFeedback(null)
     const refreshAfterCallback = async () => {
       try {
         await refetch({ throwOnError: true })
