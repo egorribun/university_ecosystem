@@ -25,6 +25,18 @@ describe("ScheduleCardSkeleton", () => {
     expect(screen.getAllByLabelText("Loading subject")).toHaveLength(5)
   })
 
+  it("forwards consumer CSS classes to the loading schedule container", async () => {
+    await renderWithRouter({
+      ui: () => <ScheduleCardSkeleton className="schedule-loading-hook compact-loading-hook" />,
+      authProvider: false,
+    })
+
+    expect(screen.getByLabelText("Loading schedule")).toHaveClass(
+      "schedule-loading-hook",
+      "compact-loading-hook"
+    )
+  })
+
   it("labels the busy schedule card and its date placeholder", async () => {
     await renderWithRouter({
       ui: () => <ScheduleCardSkeleton />,
