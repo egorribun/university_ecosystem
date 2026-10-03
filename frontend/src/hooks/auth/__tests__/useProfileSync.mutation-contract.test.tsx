@@ -8,7 +8,7 @@ import { sha256 } from "@noble/hashes/sha2.js"
 import { utf8ToBytes } from "@noble/hashes/utils.js"
 import { AxiosError } from "axios"
 
-import { rotateBrowserSession } from "@/stores/sessionEpoch"
+import { acceptBrowserSessionGeneration, rotateBrowserSession } from "@/stores/sessionEpoch"
 import api from "@/api/client"
 import * as apiClient from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
@@ -189,6 +189,13 @@ describe("useProfileSync mutation contracts", () => {
 
   it("refreshes the user ref after an asynchronous cache restore", async () => {
     await writeEncryptedEnvelope(snapshot("ref-restored-user"))
+    const subtle = window.crypto.subtle
+    const decrypt = subtle.decrypt.bind(subtle)
+    let decryption!: Promise<ArrayBuffer>
+    vi.spyOn(subtle, "decrypt").mockImplementationOnce((...args) => {
+      decryption = decrypt(...args)
+      return decryption
+    })
 
     let resolveFetch!: (value: unknown) => void
     const pendingFetch = new Promise<unknown>((resolve) => {
@@ -196,7 +203,11 @@ describe("useProfileSync mutation contracts", () => {
     })
     const queryClient = createQueryClient()
     const view = renderProfile(signingKey, { promise: pendingFetch }, queryClient)
-    await waitFor(() => expect(view.result.current.user?.id).toBe("ref-restored-user"))
+    await waitFor(() => expect(decryption).toBeDefined())
+    await act(async () => {
+      await decryption
+    })
+    expect(view.result.current.user?.id).toBe("ref-restored-user")
     const restoredUser = view.result.current.user
     expect(restoredUser).not.toBeNull()
 
@@ -204,10 +215,9 @@ describe("useProfileSync mutation contracts", () => {
     setQueryData.mockClear()
     await act(async () => {
       resolveFetch(restoredUser)
-      await Promise.resolve()
-      await Promise.resolve()
+      await pendingFetch
     })
-    await waitFor(() => expect(view.result.current.loading).toBe(false))
+    expect(view.result.current.loading).toBe(false)
 
     // A stale userStateRef would call setUser again for this equal result and
     // therefore write the query cache. The ref-sync effect must prevent that
@@ -2469,6 +2479,19 @@ describe("useProfileSync mutation contracts", () => {
 })
 
 describe("asynchronous profile envelope ownership", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    localStorage.clear()
+    sessionStorage.clear()
+    acceptBrowserSessionGeneration()
+  })
+
   it("reads a valid signed snapshot through the standalone cache API", async () => {
     writeSignedEnvelope({
       version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -2480,7 +2503,7 @@ describe("asynchronous profile envelope ownership", () => {
   })
 
   it.each(["origin rotation", "replacement envelope", "removed envelope"] as const)(
-    "does not erase successor storage after %s during signature verification",
+    "does not erase current storage after %s during signature verification",
     async (transition) => {
       writeSignedEnvelope({
         version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -2497,17 +2520,103 @@ describe("asynchronous profile envelope ownership", () => {
       const pending = readCachedUserAsync(signingKey)
       await waitFor(() => expect(finish).toBeDefined())
       if (transition === "origin rotation") rotateBrowserSession()
-      if (transition !== "removed envelope") {
+      if (transition === "replacement envelope") {
         writeSignedEnvelope({
           version: PROFILE_CACHE_SCHEMA_VERSION,
           expiresAt: Date.now() + 60_000,
           data: snapshot("successor"),
         })
-      } else localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      } else if (transition === "removed envelope") {
+        localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      }
       const successor = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
       finish(false)
       await expect(pending).resolves.toBeUndefined()
       expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(successor)
+    }
+  )
+
+  it.each(["verification", "decryption"] as const)(
+    "does not return a cached user when the read is cancelled during %s",
+    async (phase) => {
+      await writeEncryptedEnvelope(snapshot("cancelled-cache-read"))
+      const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const controller = new AbortController()
+      let finish!: () => void
+      const pauseCompletion = () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+      const subtle = window.crypto.subtle
+      if (phase === "verification") {
+        const verify = subtle.verify.bind(subtle)
+        vi.spyOn(subtle, "verify").mockImplementationOnce(async (...args) => {
+          const valid = await verify(...args)
+          await pauseCompletion()
+          return valid
+        })
+      } else {
+        const decrypt = subtle.decrypt.bind(subtle)
+        vi.spyOn(subtle, "decrypt").mockImplementationOnce(async (...args) => {
+          const decrypted = await decrypt(...args)
+          await pauseCompletion()
+          return decrypted
+        })
+      }
+
+      const pending = readCachedUserAsync(signingKey, () => !controller.signal.aborted)
+      await waitFor(() => expect(finish).toBeDefined())
+      controller.abort()
+      finish()
+
+      await expect(pending).resolves.toBeUndefined()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+      await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+        id: "cancelled-cache-read",
+      })
+    }
+  )
+
+  it.each(["missing", "throwing accessor"] as const)(
+    "settles an invalid cache read when storage becomes %s during verification",
+    async (unavailable) => {
+      const payload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data: snapshot("unavailable-storage"),
+      }
+      writeSignedEnvelope(payload, signEnvelopeForKey(payload, "different-session-key"))
+      const storage = localStorage
+      const serialized = storage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const version = storage.getItem(PROFILE_CACHE_VERSION_KEY)
+      const warning = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+      const subtle = window.crypto.subtle
+      const verify = subtle.verify.bind(subtle)
+      let finish!: () => void
+      vi.spyOn(subtle, "verify").mockImplementationOnce(async (...args) => {
+        const valid = await verify(...args)
+        await new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        return valid
+      })
+      const pending = readCachedUserAsync(signingKey)
+      await waitFor(() => expect(finish).toBeDefined())
+      vi.stubGlobal("localStorage", undefined)
+      if (unavailable === "throwing accessor") {
+        Object.defineProperty(globalThis, "localStorage", {
+          configurable: true,
+          get() {
+            throw new DOMException("Storage is unavailable", "SecurityError")
+          },
+        })
+      }
+      finish()
+
+      await expect(pending).resolves.toBeUndefined()
+      expect(storage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+      expect(storage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(version)
+      expect(warning).not.toHaveBeenCalledWith("profile_cache.cleared", expect.anything())
     }
   )
 })

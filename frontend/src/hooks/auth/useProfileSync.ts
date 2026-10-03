@@ -598,7 +598,7 @@ export const readCachedUserAsync = async (
     // the exact invalid envelope inspected by this read, never its successor.
     if (generation !== getBrowserSessionGeneration()) return
     try {
-      const raw = getLocalStorage()?.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const raw = getCachedEnvelopeHeader()
       if (raw && JSON.stringify(JSON.parse(raw)) === JSON.stringify(candidate))
         clearProfileCacheStorage(reason)
     } catch {
