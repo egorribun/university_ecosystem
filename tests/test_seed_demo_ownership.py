@@ -361,7 +361,7 @@ async def test_second_peer_uses_reserved_test_identity_and_is_reused_without_mut
     profile = next(item for item in database.added if isinstance(item, UserProfile))
     education = next(item for item in database.added if isinstance(item, EducationPath))
     assert peer.email == seed_demo_data.DEMO_SECOND_PEER_EMAIL
-    assert peer.email.endswith(".test")
+    assert peer.email.endswith("@example.com")
     assert peer.role is UserRole.STUDENT
     assert peer.group_id == group.id
     assert peer.demo_seed_key == seed_demo_data.DEMO_SECOND_PEER_USER_SEED_KEY

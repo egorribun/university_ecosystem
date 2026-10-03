@@ -202,7 +202,7 @@ async def test_demo_peer_and_dm_are_owned_idempotent_and_preserve_custom_fields(
 
     assert peer.role is UserRole.STUDENT
     assert peer.group_id == group.id
-    assert peer.email.endswith("@example.test")
+    assert peer.email.endswith("@example.com")
     peer_profile = next(
         item for item in database.added if isinstance(item, UserProfile)
     )
@@ -259,7 +259,7 @@ async def test_reserved_peer_identity_conflict_fails_without_mutation(
 ) -> None:
     peer = SimpleNamespace(
         id=uuid4(),
-        email="demo.peer@example.test",
+        email=seed_demo_data.DEMO_PEER_EMAIL,
         role=UserRole.STUDENT,
         group_id=uuid4(),
         hashed_password="synthetic-preserved-hash",  # pragma: allowlist secret -- synthetic messenger test password
@@ -311,7 +311,7 @@ async def test_reserved_peer_with_another_role_is_not_promoted_or_reset(
 ) -> None:
     account = SimpleNamespace(
         id=uuid4(),
-        email="demo.peer@example.test",
+        email=seed_demo_data.DEMO_PEER_EMAIL,
         role=UserRole.TEACHER,
         hashed_password="synthetic-preserved-hash",  # pragma: allowlist secret
     )

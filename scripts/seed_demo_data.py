@@ -46,9 +46,10 @@ from app.models.stories import Story
 from app.models.users import EducationPath, User, UserProfile
 from scripts.seed_target import require_owned_live_stand_target
 
-DEMO_PEER_EMAIL = "demo.peer@example.test"
+# RFC 2606 example.com identities remain synthetic and satisfy the API EmailStr contract.
+DEMO_PEER_EMAIL = "demo.peer@example.com"
 DEMO_PEER_USER_SEED_KEY = "ue-demo-v1:user:primary-peer"
-DEMO_SECOND_PEER_EMAIL = "demo.peer.two@example.test"
+DEMO_SECOND_PEER_EMAIL = "demo.peer.two@example.com"
 DEMO_SECOND_PEER_USER_SEED_KEY = "ue-demo-v1:user:secondary-peer"
 DEMO_PRIMARY_USER_EMAIL = "test@university.dev"
 DEMO_PRIMARY_USER_SEED_KEY = "ue-demo-v1:user:primary-owner"
@@ -837,10 +838,13 @@ async def _seed_demo_peer_user(
     *,
     email: str,
     seed_key: str,
+    legacy_email: str,
     full_name: str,
 ) -> User:
-    if not email.casefold().endswith(".test"):
-        raise RuntimeError("synthetic demo peer identity must use the .test domain")
+    if not email.casefold().endswith("@example.com"):
+        raise RuntimeError(
+            "synthetic demo peer identity must use the example.com domain"
+        )
 
     existing = cast(
         User | None, await db.scalar(select(User).where(User.email == email))
@@ -859,7 +863,15 @@ async def _seed_demo_peer_user(
         return existing
 
     if key_owner is not None:
-        raise RuntimeError("reserved demo peer ownership key is occupied")
+        # Repair only the exact legacy identity with its original private owner
+        # key and student role. Preserve the account ID, password and all edits.
+        # The canonical address was checked above, so an occupied address never
+        # gets claimed and a drifted ownership key never becomes an adoption.
+        if key_owner.email != legacy_email or key_owner.role is not UserRole.STUDENT:
+            raise RuntimeError("reserved demo peer ownership key is occupied")
+        key_owner.email = email
+        await db.flush()
+        return key_owner
 
     # The raw value is deliberately ephemeral: only its Argon2id hash is stored,
     # so this synthetic participant cannot be logged into with a seeded password.
@@ -905,6 +917,7 @@ async def seed_demo_peer_user(db: AsyncSession, group: Group) -> User:
         group,
         email=DEMO_PEER_EMAIL,
         seed_key=DEMO_PEER_USER_SEED_KEY,
+        legacy_email="demo.peer@example.test",
         full_name="Synthetic Demo Student",
     )
 
@@ -916,6 +929,7 @@ async def seed_demo_second_peer_user(db: AsyncSession, group: Group) -> User:
         group,
         email=DEMO_SECOND_PEER_EMAIL,
         seed_key=DEMO_SECOND_PEER_USER_SEED_KEY,
+        legacy_email="demo.peer.two@example.test",
         full_name="Synthetic Demo Student Two",
     )
 
