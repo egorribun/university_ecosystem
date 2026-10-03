@@ -66,7 +66,7 @@ jobs:
           pr_metadata_after="$(mktemp)"
           changed_pages="$(mktemp)"
           trap 'rm -f -- "$pr_metadata" "$pr_metadata_after" "$changed_pages"' EXIT
-          gh api --fail-with-body \
+          gh api \
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
@@ -109,7 +109,7 @@ jobs:
           # an atomic snapshot across the metadata and files endpoints, so a
           # PR update during enumeration must fail closed instead of allowing a
           # stale policy decision to be trusted.
-          gh api --fail-with-body \
+          gh api \
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
