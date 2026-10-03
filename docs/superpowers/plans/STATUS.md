@@ -1,50 +1,99 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-01 UTC. Goal приостановлен по просьбе пользователя. [Мастер-план](MVP_MASTER_PLAN.md) задаёт
-решения и очередь, [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовый scope.
-Полная приёмка MVP и выпуск `v1.0.0` ещё не подтверждены.
+Срез на 2026-10-03 UTC. Работа возобновлена. [Мастер-план](MVP_MASTER_PLAN.md)
+задаёт порядок приёмки, [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
+Текущий этап исправляет и полирует существующую реализацию; новые предметные
+функции не добавляются. Полная приёмка MVP и выпуск `v1.0.0` ещё не подтверждены.
 
-## Рабочее состояние
+## Проверяемый контекст
 
-- Работа идёт только на `egorribun`, в единственном PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306). Кодовый checkpoint — `010e9ddd0efa45da5e5ded1e3432ecf92f7ed08b`; `origin/main` — `78b9499079442191920835eed9de93b726cf36a1`. Он содержит проверенные Compose, Events и launcher-fixture исправления. Обычный push также включает этот оперативный статус; новое CI evidence ещё требуется.
-- Root координирует три субагента GPT-6 Luna Max с раздельным владением файлами, проверяет результаты и выполняет Git-операции. Новые ветки/worktree не создаются. Три исторических detached checkout удалены после проверки ancestry, чистого tracked/nonignored состояния и сохранения ignored файлов. Остался основной checkout на `egorribun`.
-- Matrix run `36889762928`, attempt 1, на `23b5f8e7b`: E2E WASM Build, четыре frontend unit shards, frontend build/Lighthouse, Go/Rust, pre-commit, security и inventory завершились успешно. Backend unit shard 0 и Events E2E в Chromium/Firefox/WebKit/mobile-WebKit красные; backend shards 2/3 ещё выполнялись в последнем срезе. Глобальный coverage gate и canonical mutation inventory пока не подтверждены.
-- WASM: два pinned canonical output совпали побайтно; второй compile использовал пустые target caches и действительно исполнил RUN. Root сравнил шесть source records и восемь package records с image export, обоими output и checkout. Checkpoint обновил только два отличавшихся `.wasm` и provenance; строгие contracts сохранены. Node artifact/provenance/runtime/build tests **23 passed**, Python WASM workflow/Docker-parity + quality-configuration tests **46 passed**; новый hosted E2E WASM Build успешен. Локальный Playwright build повторно сгенерировал host-WASM: отличавшиеся outputs сохранены приватно, затем только три generated файла восстановлены из HEAD; verifier проходит. Последующие браузерные проверки должны сохранять canonical artifacts.
-- CodeQL run `36889762481` на `23b5f8e7b` завершился успешно. Для alert #3368 source был конструированием directory Path, а не чтением credentials; исправлено имя переменной без suppression. Sentinel tests проверяют отсутствие env/JWT/Temporal credentials в overlay. Последний доступный alert instance относится к прежнему анализу, поэтому успешный run не объявляется подтверждением обновлённого статуса alert.
-- Security Policy Integrity красный из-за неподдерживаемого `gh api --fail-with-body` в trusted `pull_request_target` workflow из base `main`. Исправление уже есть в рабочей ветке, но этот event использует base workflow до обычного merge. Ruleset и bypass не менялись. Ранее исправленные required contexts Rust FFI и Spectral проверены read-only: повреждённых символов в них нет.
-- Пользовательские `.env`, остановленные контейнеры, volumes и backups сохранены. Из Docker удалены только два принадлежащих canonical WASM proof контейнера без mounts и один неиспользуемый дублирующий builder tag; обе независимые canonical exports сохранены и сверены. Сырые credential-shaped логи/evidence и rescue bundle остаются приватными; Git history не переписывается.
+- Активная ветка — `egorribun`, основной PR — [#1306](https://github.com/egorribun/university_ecosystem/pull/1306).
+  Кодовый checkpoint этого обновления — `2d41e90b2ed526ddd019fac5fb09f727b732a71f`;
+  его проверенное локально дерево — `889686da8b6b834c731775fbace1c2a0277511eb`.
+- В `main` интегрированы отдельные исправления trusted workflow и изоляции
+  benchmark-процессов; проверенный base — `6fa133b57f62c554162876d4e6d8349f8060fce9`.
+  Пороги и число performance-измерений сохранены.
+- Для предшествующего hosted checkpoint `6bc0680` проверены [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37138408049),
+  [owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37138407594)
+  и [performance](https://github.com/egorribun/university_ecosystem/actions/runs/37138407678).
+  Четыре backend shard, frontend unit/browser checks, coverage policy, owned live
+  и performance прошли. Полный mutation verdict ещё отсутствует; новый exact-head
+  CI после текущего batch остаётся отдельным допуском. [Security Policy Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/37138406322)
+  для этого SHA прошёл. Старые результаты не выдаются за текущие.
+- Исходники, локальные инструменты и evidence разделены. Секреты, пользовательские
+  данные, volumes, backups, история Git и Alembic сохраняются. Source freeze и
+  hashes фиксируются перед aggregate-проверками; тяжёлые локальные mutation jobs
+  запускаются последовательно.
 
-## Выполнено и независимо проверено root
+## Подтверждённый прогресс
 
-- Опубликованный checkpoint `02e00d9ca` включает безопасный in-place CLI, изолированный state root/Compose override и paired restore с семью allowlisted DB URL fields, literal prefix mapping, rollback и outbox guards. Предшествующий локальный PostgreSQL proof не заменяет deployed acceptance или evidence resulting `main` SHA.
-- Checkpoint `23b5f8e7b` исправляет отказ backup для поддерживаемых origin-relative S3 bases, например `/api/v1/img`, сохраняя строгие path guards и точное совпадение target settings. Регрессия выполняет paired snapshot/restore в FakeS3/Fake DB, переписывает URL с target prefix, сохраняет внешний URL и читает восстановленный DB URL через `S3Storage.read_file`. Все девять `tests/test_backup*.py`: **297 passed**, **1214/1214 statements**, **430/430 branches**, **0 partial**, **100%**. Root report: `%TEMP%\ue-root-backup-35656bd5448c4f05811f29e23af4c878.json`. Это scoped local evidence checkpoint, не глобальный coverage gate или live HTTP proof.
-- Живой `up` на `02e00d9ca` завершился до build/Compose startup: Windows присвоил новой `.secrets` и файлам владельца `BUILTIN\Administrators`, поэтому strict owner check отказал. Ресурсы не запускались. Исправление сохраняет current-user/SYSTEM ACL и current-user owner при создании и атомарном обновлении marker; отказ для чужого state не ослаблен.
-- RED воспроизвёл owner mismatch; GREEN прошёл реальный PowerShell `PrepareOnly` с новым Python-generated signed marker и проверкой ACL/owner env/key/token files. Source guard сужен до точных Dockerignore scopes: шесть real-Git регрессий запрещают ignored вложенные исходники, два controls допускают действительно исключённые artifacts/cache. Все guard exclusions проверяются на наличие точного Dockerignore rule. В оба build contexts добавлено только рекурсивное исключение Python bytecode cache; фактический checkout guard проходит. Root повторил полный focused live/control/startup/routing набор: **265 passed, 1 POSIX-only skip**. Это подготовка конфигурации; readiness полного стека, seed и live browser smoke ещё не подтверждены.
-- Найден и исправлен пропуск существующего push-permission-denied contract в npm-команде live contracts. Root: workflow contracts **3 passed**, `npm run test:e2e:live:contract` **116 passed**, без skips. Статические contracts не заменяют исполнение браузерных сценариев.
-- Для checkpoint `23b5f8e7b` consolidated local preflight прошёл **9/9**, harness **27/27**; report: `artifacts/fast-preflight/root-acl-wasm-final.json`. Docker ignore parity исправлена без изменения test allowlist; quality/policy contracts **43 passed**. Окончательные applicable hooks и commit hooks прошли, обычный push подтверждён remote HEAD.
-- Финальный локальный diff: root preflight **9/9** (`artifacts/fast-preflight/root-events-owned-mounts.json`), applicable hooks для девяти файлов PASS. Root самостоятельно повторил Chromium Events E2E **1/1 PASS**, сверил built EventDetail source с checkout и хеши трёх source/test и трёх WASM/provenance файлов до/после; изменений нет. Private receipt: `C:\Temp\ue-hooks-3acaf19f2c3444d78a2777ddc981b2ac\root-events-proof-receipt.json`. Эти результаты не подменяют новое CI evidence после commit.
-- Backend shard 0 содержит четыре failures в launcher state-root fixtures. На Unix `.NET Path.GetTempPath()` использует `TMPDIR`, а fixtures задавали только `TEMP/TMP`; локальный test-only diff согласует оба setup, не меняя production confinement/ACL guards. Root: Windows focused suite **4 passed, 1 existing POSIX-only skip**; Unix GREEN ожидается от нового CI, доступного локального Linux/pwsh runtime нет.
-- Owned full `up` на `23b5f8e7b` завершился с exit 0 и запустил 29 контейнеров. Во время uncached build свободная RAM снизилась примерно с 13,3 до 1 ГиБ; полные readiness, seed и live E2E не выполнялись. Обычный signed-owner stop отказал из-за implicit image VOLUME у двух init services и Pyroscope. Root остановил только 29 проверенных по project label/имени контейнеров; данные и volumes сохранены. Hosted Owned Live run `36889762480` на том же SHA отказал по той же причине. Локальный Compose diff задаёт disposable tmpfs для init и named volumes для Pyroscope, сохраняя строгий owner guard; focused contracts **117 passed**, независимое ревью без findings. Runtime proof исправления ещё требуется.
-- Events scroll E2E воспроизведён локально: expected 926, actual 0. Handler читал устаревший `idx`, тогда как TanStack использует `__TSR_index`; diff использует поддерживаемый router history API и сохраняет direct-link fallback. Root повторил **12 unit tests**, независимое ревью без findings. Build с `SKIP_WASM_BUILD=1` сохранил canonical artifacts. Второй RED выявил transient `translateY(16px)` при снятии исходной позиции; timeline подтвердил переход к identity. E2E ожидает settled target row перед обоими замерами без изменения default timeout, точного scrollY или допуска **3 px**. Chromium **1/1 GREEN**; локально установлен только Chromium, Firefox/WebKit/mobile-WebKit требуют нового CI. Диагностика удалена, принадлежащий прогону preview остановлен.
-- Перед удалением worktree root проверил полный инвентарь **124 912** ignored путей: **24** приватных файла и **2 175** неоднозначных evidence-подобных файлов сохранены с source/destination SHA-256; остальные **122 713** принадлежат точным dependency/cache roots. Ошибка связывания одинаковых relative paths между checkout исправлена до удаления. Приватные manifests, root verification/cleanup receipts и копии находятся в `%TEMP%\ue-worktree-private-preserve-3b93d66ec2e2422c90b8bbf1014e8fea`; доступ — current user/SYSTEM. Ни уникальные коммиты, ни текущие приватные/evidence файлы не удалялись без сохранённой копии.
+- На frontend snapshot `2d41e90` полный локальный
+  `npm run test:unit-ci` прошёл: **698 файлов, 8 382 теста**, **100%** statements
+  (19 119/19 119), branches (13 672/13 672), functions (4 556/4 556) и lines
+  (17 106/17 106). Это Linux/Node 24.19.0 evidence, а не вердикт нового hosted CI.
+  Последующее изменение STATUS проверено отдельно как документация;
+  runtime source/test bytes после полного прогона не менялись.
+- Проверенные исправления сохраняют регистрацию/QR при восстановлении и
+  согласовании кэша, блокируют действия над ещё не сохранёнными комментариями,
+  предотвращают двойную offline-навигацию из push, исправляют существующие
+  локализованные admin labels. Дополнены реальные pending/retry/cancellation
+  сценарии профиля, stories, Spotify и уведомлений. Действующие quality-пороги,
+  исключения и timeout не ослаблены.
+- Восстановлены необходимые inputs Python mutation workspace и изоляция
+  logging-тестов. Локальная генерация на дереве `f5fde98c` сохранила **54 410** идентичностей мутантов;
+  ограниченный настоящий stats-прогон прошёл **200 активных тестов** и отобразил
+  **134 функции**. Два ранее проблемных outbox-сценария завершились за 15,59 и
+  32,58 секунды при прежнем лимите 120 секунд. Это scoped evidence прежнего snapshot, не полный
+  backend mutation pass нового checkpoint.
+- CI на `367e97a` обнаружил orphan-классификацию новой subprocess-регрессии.
+  Checkpoint `6bc0680` делает её реальные logging imports видимыми статическому
+  inventory: выполняемый probe вынесен из строки в обычную приватную функцию.
+  Его тело совпадает по AST, проверки/набор случаев/изоляция сохранены. Focused
+  subprocess test, inventory, Ruff и secret checks проходят; allowlist не менялся.
+  Hosted Source/Test Inventory job `111247692803` на `6bc0680` также прошёл.
+- Последний [owned live run на `6bc0680`](https://github.com/egorribun/university_ecosystem/actions/runs/37138407594)
+  прошёл 18 сценариев с двумя предусмотренными role skips. Это ограниченный PR
+  smoke на прежнем SHA; он не закрывает полный live E2E, повторный запуск/restore
+  или resulting-main acceptance.
+- Частичный canonical frontend inventory на `46b08e9` проверен по provenance:
+  41/64 отчёта, 18 702/42 919 назначенных мутантов. В этом срезе остаются 1 069
+  Survived, 2 NoCoverage, 16 Timeout и 15 RuntimeError; 908 Ignored имеют действующее
+  основание. Срез неполный и не является score нового checkpoint. Producer success
+  не означает прохождение 100% viable gate.
 
-## Следующие проверяемые результаты
+## Ближайшие проверяемые результаты
 
-1. После возобновления проверить HEAD/remote и новый CI для опубликованного checkpoint: Unix launcher suite и cross-browser Events. Preflight, applicable hooks и commit hooks кодового checkpoint прошли; tracked дерево было чистым перед фиксацией паузы. Локальные producers и субагенты остановлены; новый Docker up не запускался. Private retry runner требует повторного ревью перед исполнением, включая hidden child window и post-run log ACL verification.
-2. На новом чистом SHA повторить owned in-place full startup в свежем приватном temp run root: свободная RAM не менее 16 ГиБ, `COMPOSE_PARALLEL_LIMIT=1`, один тяжёлый workload, 25 readiness probes, реальные Prometheus targets, demo seed и auth/roles/reset smoke. На время запуска заморозить source; проверить read-only status и обычный signed-owner stop с сохранением данных.
-3. После базовых gates получить свежий canonical coverage/mutation inventory; focused Stryker/mutmut запускать параллельно только при измеренном запасе ресурсов и неизменном source. Старые/неполные shard artifacts не подтверждают 100% viable score.
-4. Настроить isolated deployed S3 backup/restore acceptance: текущие `MINIO_*` Compose variables не включают `STORAGE_BACKEND=s3`, а Caddy public route привязан к bucket `uploads`. Требуются поддерживаемый CLI runner, явный storage config и проверка public/private HTTP reads по восстановленным DB URLs; backend FakeS3 proof не закрывает этот этап. Измерить RPO/RTO и rollback.
-5. Продолжить BE-02 для ADR-036 DDL phases на непустых Docker/kind DB, продуктовую/визуальную/performance приёмку и Gateway API/kind проверки по мастер-плану.
+1. Довести exact-head CI нового опубликованного batch до конечного вердикта, особенно
+   Python mutation stats и последующее execution. Исправлять конкретные причины,
+   не переносить чужие или старые verdicts между SHA.
+2. Продолжить scoped mutation closure существующих auth/profile, уведомлений и
+   расписания. Сначала supported user-visible состояния и воспроизводимые баги;
+   для dead code — доказательство отсутствия потребителей. Неподтверждённые
+   defensive/equivalent случаи остаются открытыми, без waivers и ручных статусов.
+3. Связать каждый применимый пункт ТЗ и все 63 audit IDs с актуальным evidence
+   или точным открытым ограничением. Product, visual и infrastructure acceptance
+   не считать выполненными по unit coverage или mocked E2E.
+4. Продолжить приёмку RU/EN на 360/390/768/1024/1440 px и предоставить небольшие
+   визуальные комплекты для пользовательского review. Измерить предусмотренные
+   master plan performance и memory критерии на указанной конфигурации.
+5. Получить независимые deployed evidence для непустых PostgreSQL/Alembic
+   upgrade/rollback, S3 paired backup/restore и DB URL reads, RPO/RTO, WS load,
+   Gateway API/kind TLS/WS/gRPC и failure recovery. В текущей облачной среде
+   отсутствует локальный Docker/live-стек. Браузерные инструменты доступны;
+   hosted PR smoke закрывает только свой явно перечисленный набор.
 
-## Release gates и ограничения
+## Открытые release gates
 
-Открыты: полный live E2E; 100% всех применимых coverage/viable mutation метрик;
-три сопоставимых полных зелёных CI-прогона; визуальное утверждение; WS load;
-deployed backup/restore, RPO/RTO и rollback; BE-02; Gateway API/kind live routes,
-TLS/WS/gRPC и per-client policy parity; финальный security review; canonical
-resulting-main evidence; публикация и проверка шести GHCR digests.
+Полный canonical mutation pass и exact-head CI; три сопоставимых полностью
+зелёных наблюдения; полный live/visual/performance acceptance; пользовательское
+утверждение визуальных baseline; WS load; deployed paired backup/restore и
+RPO/RTO; BE-02 на Docker/kind; финальный независимый security review и audit
+ledger; resulting-main evidence; шесть сертифицированных GHCR digests и их kind
+приёмка. Существующие ограничения и rollout-требования должны войти в release
+notes. До этих доказательств MVP не считается сертифицированным.
 
-Не выполнять admin bypass, force-push, изменение branch protection, удаление
-пользовательских данных/volumes/backups, rewrite миграций или создание второго PR.
-Внешнее production, реальные SMTP/push-провайдеры, физические устройства, CDC и
-field CWV остаются вне MVP. Goal закрывается после проверки выпущенного комплекта.
+Административный bypass, force-push, изменение защиты ветки, удаление
+пользовательских данных и переписывание истории остаются запрещены. Внешнее
+production, реальные SMTP/push-провайдеры, физические устройства, CDC и field CWV
+не входят в MVP. Исторические checkpoint-результаты сохраняются в Git/evidence;
+машинные пути прежних сессий не являются предпосылкой продолжения.
