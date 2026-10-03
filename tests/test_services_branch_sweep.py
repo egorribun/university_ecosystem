@@ -495,7 +495,7 @@ async def test_user_compliance_delete_self_raises_business_rule_violation():
     db_user.id = admin_id  # Same as admin!
 
     uow, repo = _make_mock_uow()
-    repo._get_orm = AsyncMock(return_value=db_user)
+    repo.get_orm_for_anonymization = AsyncMock(return_value=db_user)
     audit = MagicMock(spec=AuditService)
     audit.log = MagicMock()
 
@@ -526,7 +526,7 @@ async def test_user_compliance_delete_nonexistent_user_raises_entity_not_found()
     admin.id = uuid.uuid4()
 
     uow, repo = _make_mock_uow()
-    repo._get_orm = AsyncMock(return_value=None)  # Not found
+    repo.get_orm_for_anonymization = AsyncMock(return_value=None)  # Not found
     audit = MagicMock(spec=AuditService)
     audit.log = MagicMock()
 

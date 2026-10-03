@@ -23,7 +23,7 @@ def mock_uow():
     uow = AsyncMock()
     users = MagicMock()
     users.get_orm_for_update_with_relations = AsyncMock()
-    users._get_orm = AsyncMock()
+    users.get_orm_for_anonymization = AsyncMock()
     users.delete_sensitive_data = AsyncMock()
     users._to_dto = MagicMock()
     users.add = MagicMock()
@@ -121,7 +121,7 @@ async def test_admin_delete_user(mock_uow, monkeypatch):
 
     target_user_id = uuid.uuid4()
     mock_db_user = User(id=target_user_id)
-    mock_uow.users._get_orm.return_value = mock_db_user
+    mock_uow.users.get_orm_for_anonymization.return_value = mock_db_user
 
     mock_anonymize = AsyncMock()
     monkeypatch.setattr(

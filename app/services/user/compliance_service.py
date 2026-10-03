@@ -106,14 +106,10 @@ class UserComplianceService:
         # separately and their bindings/digests are never serialized.
         profile = db_user.model_dump(exclude={"mfa_challenges"})
 
-        import asyncio
-
-        # PERF-010 (audit 2026-03-04): Gather independent I/O fetches concurrently
-        sessions_list, notifications_list, access_logs = await asyncio.gather(
-            self.repo.get_user_sessions(user_identity),
-            self.repo.get_user_notifications(user_identity),
-            self.repo.get_user_access_logs(user_identity, limit=2000),
-        )
+        # These reads share one AsyncSession, which cannot be used concurrently.
+        sessions_list = await self.repo.get_user_sessions(user_identity)
+        notifications_list = await self.repo.get_user_notifications(user_identity)
+        access_logs = await self.repo.get_user_access_logs(user_identity, limit=2000)
 
         sessions = [
             {
