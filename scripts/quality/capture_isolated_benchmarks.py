@@ -786,17 +786,29 @@ def _rust_environment(*, offline: bool) -> dict[str, str]:
 
 
 def _go_program() -> tuple[str, ...]:
+    # A previous benchmark can retain a large fixture and change the GC goal
+    # for every later benchmark in the same test process. Discover each package's
+    # complete top-level benchmark set, then measure each in a fresh process.
+    # Keep subbenchmarks together so their parent setup and naming stay intact.
     return (
-        "go",
-        "test",
-        "-mod=readonly",
-        "-buildvcs=false",
-        "-bench=.",
-        "-run=^$",
-        "-benchmem",
-        "-count=1",
-        "-benchtime=1s",
-        "./...",
+        "sh",
+        "-ec",
+        r'''benchmark_tmp=$(mktemp -d)
+trap 'rm -rf "$benchmark_tmp"' EXIT
+go list ./... > "$benchmark_tmp/packages"
+while IFS= read -r package; do
+    if ! go test -mod=readonly -buildvcs=false -run='^$' -list='^Benchmark' "$package" > "$benchmark_tmp/benchmarks"; then
+        cat "$benchmark_tmp/benchmarks"
+        exit 1
+    fi
+    while IFS= read -r benchmark; do
+        case "$benchmark" in
+            Benchmark*)
+                go test -mod=readonly -buildvcs=false "-bench=^${benchmark}$" -run='^$' -benchmem -count=1 -benchtime=1s "$package"
+                ;;
+        esac
+    done < "$benchmark_tmp/benchmarks"
+done < "$benchmark_tmp/packages"''',
     )
 
 
