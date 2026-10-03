@@ -1,4 +1,5 @@
 import { expect, test as base, type Page } from "@playwright/test"
+import { createLivePageErrorDiagnostics } from "./page-error-diagnostic"
 import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
 
 /**
@@ -135,10 +136,27 @@ export async function stubBreachedPasswordLookup(page: Page): Promise<void> {
 /** Fails the test on any uncaught page exception, the live lane's crash signal. */
 export const test = base.extend<{ pageErrors: Error[] }>({
   pageErrors: [
-    async ({ page }, use) => {
+    async ({ page }, use, testInfo) => {
       const errors: Error[] = []
-      page.on("pageerror", (error) => errors.push(error))
+      const isResetScenario =
+        (testInfo.project.name === "desktop" || testInfo.project.name === "mobile") &&
+        testInfo.file.replace(/\\/g, "/").endsWith("/tests/e2e-live/password-reset.live.spec.ts") &&
+        testInfo.title ===
+          "a student resets with the Mailpit link without retaining tokens or following hostile redirects"
+      const pageErrorDiagnostics = createLivePageErrorDiagnostics()
+      page.on("pageerror", (error) => {
+        errors.push(error)
+        if (!isResetScenario) return
+        let pathname = ""
+        try {
+          pathname = new URL(page.url()).pathname
+        } catch {
+          // An unavailable current URL is classified as other, never a new failure.
+        }
+        pageErrorDiagnostics.record(error, pathname)
+      })
       await use(errors)
+      if (isResetScenario) pageErrorDiagnostics.report(testInfo.project.name, "password-reset")
       expect(errors, errors.map((error) => error.message).join("\n")).toEqual([])
     },
     { auto: true },

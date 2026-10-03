@@ -29,7 +29,12 @@ test("HTTP diagnostics emit only fixed project/check labels and integer status b
     const calls = []
     const expected = []
     for (const project of ["desktop", "mobile"]) {
-      for (const check of ["admin-users", "admin-feature-flags", "admin-feature-flags-ui"]) {
+      for (const check of [
+        "admin-users",
+        "admin-feature-flags",
+        "admin-feature-flags-ui",
+        "password-reset-replay",
+      ]) {
         calls.push(
           `reportLiveHttpStatus(${JSON.stringify(project)}, ${JSON.stringify(check)}, ${status})`
         )
@@ -138,4 +143,14 @@ test("the real Playwright list reporter preserves stdout protocol without browse
   assert.match(result.stderr, /private-credential/u)
   assert.doesNotMatch(result.stderr, /UE_LIVE_HTTP_STATUS_V1/u)
   assert.deepEqual(await readdir(outputPath), [".last-run.json"])
+})
+
+test("HTTP diagnostics cannot replace an assertion when stdout writing fails", () => {
+  assert.equal(
+    reportInChild(`
+    process.stdout.write = () => { throw new Error("synthetic-write-failure") };
+    reportLiveHttpStatus("desktop", "password-reset-replay", 429);
+  `),
+    ""
+  )
 })

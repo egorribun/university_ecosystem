@@ -2654,12 +2654,17 @@ _PLAYWRIGHT_FRAME_LOCATION = re.compile(
 )
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui) "
+    r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay) "
     r"status=(?P<status>[1-5][0-9]{2})"
 )
 _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
     check: check
-    for check in ("admin-users", "admin-feature-flags", "admin-feature-flags-ui")
+    for check in (
+        "admin-users",
+        "admin-feature-flags",
+        "admin-feature-flags-ui",
+        "password-reset-replay",
+    )
 }
 _PLAYWRIGHT_HTTP_STATUS_LIMIT = 8
 
@@ -2685,6 +2690,41 @@ def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
             if len(statuses) == _PLAYWRIGHT_HTTP_STATUS_LIMIT:
                 break
     return statuses
+
+
+_PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
+    r"UE_LIVE_PAGE_ERROR_V1 project=(?P<project>desktop|mobile) "
+    r"check=password-reset "
+    r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|other) "
+    r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
+    r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|other) "
+    r"count=(?P<count>[1-9][0-9]{0,2})"
+)
+_PLAYWRIGHT_PAGE_ERROR_LIMIT = 144
+
+
+def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, int]]:
+    """Accept fixed current-page/type counts only, without retaining private text."""
+    records: list[tuple[str, str, str, str, int]] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 128 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_PAGE_ERROR_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            "password-reset",
+            match["page"],
+            match["type"],
+            int(match["count"]),
+        )
+        if record not in records:
+            records.append(record)
+            if len(records) == _PLAYWRIGHT_PAGE_ERROR_LIMIT:
+                break
+    return records
 
 
 def _live_playwright_counts(output: str) -> dict[str, int]:
@@ -2788,8 +2828,9 @@ def _run_live_playwright(
     stderr = (completed.stderr or b"").decode("utf-8", errors="replace")
     output = "\n".join((stdout, stderr))
     counts = _live_playwright_counts(output)
-    # Only the reviewed helper's stdout protocol can emit HTTP diagnostics.
+    # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
+    page_errors = _live_playwright_page_errors(stdout)
     # A header from one stream must never authorize frames from the other.
     failure_locations = list(
         dict.fromkeys(
@@ -2826,6 +2867,12 @@ def _run_live_playwright(
     for project, check, status in http_statuses:
         print(
             f"live E2E HTTP project={project} check={check} status={status}",
+            flush=True,
+        )
+    for project, check, current_page, error_type, count in page_errors:
+        print(
+            f"live E2E page error project={project} check={check} "
+            f"page={current_page} type={error_type} count={count}",
             flush=True,
         )
     outcome = "passed" if return_code == 0 else "failed"

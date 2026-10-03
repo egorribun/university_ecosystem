@@ -1296,7 +1296,13 @@ def test_live_playwright_counts_reject_malformed_summary_records(line: str) -> N
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize(
-    "check", ["admin-users", "admin-feature-flags", "admin-feature-flags-ui"]
+    "check",
+    [
+        "admin-users",
+        "admin-feature-flags",
+        "admin-feature-flags-ui",
+        "password-reset-replay",
+    ],
 )
 @pytest.mark.parametrize("status", [100, 200, 403, 500, 599])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
@@ -1396,7 +1402,135 @@ def test_live_playwright_emits_only_bounded_http_statuses(
     assert completed.stdout == completed.stderr == b""
 
 
-def test_live_playwright_preserves_control_characters_before_http_validation(
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize(
+    "page",
+    ["register", "login", "forgot-password", "reset-password", "dashboard", "other"],
+)
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "error",
+        "type-error",
+        "reference-error",
+        "syntax-error",
+        "range-error",
+        "uri-error",
+        "eval-error",
+        "aggregate-error",
+        "abort-error",
+        "security-error",
+        "invalid-state-error",
+        "other",
+    ],
+)
+@pytest.mark.parametrize("count", [1, 999])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_page_errors_accept_only_fixed_domains(
+    project: str, page: str, kind: str, count: int, newline: str
+) -> None:
+    sentinel = (
+        f"UE_LIVE_PAGE_ERROR_V1 project={project} check=password-reset page={page} "
+        f"type={kind} count={count}{newline}"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == [
+        (project, "password-reset", page, kind, count)
+    ]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("project=desktop", "project=private-project"),
+        ("check=password-reset", "check=private-check"),
+        ("page=reset-password", "page=private-token"),
+        ("page=reset-password", "page=/reset-password"),
+        ("type=error", "type=Error"),
+        ("type=error", "type=private-token"),
+        ("count=1", "count=0"),
+        ("count=1", "count=1000"),
+        ("count=1", "count=-1"),
+        ("count=1", "count=01"),
+        ("count=1", "count=1.0"),
+        ("count=1", "count=１"),
+        ("count=1", "count=" + "9" * 5000),
+        ("count=1", "count=1 private-token"),
+        ("count=1", "count=1 "),
+        ("V1", "V2"),
+        ("\n", ""),
+        ("\n", "\r\r\n"),
+        ("\n", "\x00\n"),
+        ("\n", "\x1b[0m\n"),
+        ("\n", "\u202e\n"),
+        ("UE_LIVE", " UE_LIVE"),
+        ("UE_LIVE", "title UE_LIVE"),
+        ("UE_LIVE", "private\rUE_LIVE"),
+        ("UE_LIVE", "private\vUE_LIVE"),
+        ("UE_LIVE", "private\u0085UE_LIVE"),
+        ("UE_LIVE", "private\u2028UE_LIVE"),
+    ],
+)
+def test_live_playwright_page_errors_reject_malformed_records(
+    replacement: tuple[str, str],
+) -> None:
+    sentinel = "UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=1\n"
+    assert live_stand._live_playwright_page_errors(sentinel.replace(*replacement)) == []
+
+
+def test_live_playwright_page_errors_deduplicate_and_bound_records() -> None:
+    output = "".join(
+        f"UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=other count={count}\n"
+        * 10
+        for count in range(1, 1000)
+    )
+    assert live_stand._live_playwright_page_errors(output) == [
+        ("desktop", "password-reset", "reset-password", "other", count)
+        for count in range(1, 145)
+    ]
+
+
+@pytest.mark.parametrize("return_code", [0, 1, 23])
+def test_live_playwright_emits_only_bounded_page_error_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    return_code: int,
+) -> None:
+    sentinel = "UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=type-error count=2\n"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        return_code,
+        stdout=(
+            "private-title https://private.invalid/?token=private-token\n"
+            + sentinel * 30
+            + "UE_LIVE_PAGE_ERROR_V1 project=mobile check=password-reset page=reset-password type=other count=999\r\n"
+            + "UE_LIVE_PAGE_ERROR_V1 project=mobile check=password-reset page=reset-password type=error count="
+        ).encode(),
+        stderr=(
+            b"1\n"
+            b"UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=1\n"
+            b"private-name private-message private-stack private-code private-browser-state\n"
+        ),
+    )
+    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    if return_code:
+        with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    outcome = "failed" if return_code else "passed"
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E page error project=desktop check=password-reset page=reset-password type=type-error count=2",
+        "live E2E page error project=mobile check=password-reset page=reset-password type=other count=999",
+        f"live E2E outcome={outcome} exit_code={return_code}",
+    ]
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_preserves_control_characters_before_diagnostic_validation(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -1408,7 +1542,9 @@ def test_live_playwright_preserves_control_characters_before_http_validation(
         "b'private\\rUE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=401\\n'"
         "+ b'UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=403\\r'"
         "+ b'UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=500\\n'"
-        "+ b'UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=503\\r\\n')"
+        "+ b'UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=503\\r\\n'"
+        "+ b'private\\rUE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=login type=error count=2\\n'"
+        "+ b'UE_LIVE_PAGE_ERROR_V1 project=mobile check=password-reset page=reset-password type=type-error count=1\\r\\n')"
     )
 
     def run_actual_child(
@@ -1422,6 +1558,7 @@ def test_live_playwright_preserves_control_characters_before_http_validation(
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command()),
         "live E2E HTTP project=mobile check=admin-feature-flags status=503",
+        "live E2E page error project=mobile check=password-reset page=reset-password type=type-error count=1",
         "live E2E outcome=passed exit_code=0",
     ]
     assert printed.err == ""

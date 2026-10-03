@@ -4,14 +4,15 @@ const MAX_RECORDS = 8
 
 export function reportLiveHttpStatus(
   project: string,
-  check: "admin-users" | "admin-feature-flags" | "admin-feature-flags-ui",
+  check: "admin-users" | "admin-feature-flags" | "admin-feature-flags-ui" | "password-reset-replay",
   status: number
 ): void {
   if (
     (project !== "desktop" && project !== "mobile") ||
     (check !== "admin-users" &&
       check !== "admin-feature-flags" &&
-      check !== "admin-feature-flags-ui") ||
+      check !== "admin-feature-flags-ui" &&
+      check !== "password-reset-replay") ||
     !Number.isInteger(status) ||
     status < 100 ||
     status > 599 ||
@@ -23,5 +24,9 @@ export function reportLiveHttpStatus(
   const record = `UE_LIVE_HTTP_STATUS_V1 project=${project} check=${check} status=${status}\n`
   if (emittedRecords.has(record)) return
   emittedRecords.add(record)
-  process.stdout.write(record)
+  try {
+    process.stdout.write(record)
+  } catch {
+    // Diagnostics must not replace the scenario's hard assertion.
+  }
 }

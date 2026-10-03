@@ -11,6 +11,8 @@ import {
   test,
 } from "./fixtures"
 
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
+
 const RESET_LINK = /\/reset-password\?token=([\w.~-]+)/
 const UNTRUSTED_REDIRECT = "https://redirect-target.invalid/landing"
 
@@ -131,6 +133,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     )
     await page.getByRole("button", { name: "Сохранить пароль" }).click()
     const replayResult = await replayResponse
+    reportLiveHttpStatus(testInfo.project.name, "password-reset-replay", replayResult.status())
     expect(replayResult.status(), "a consumed reset token must be rejected by the API").toBe(400)
     // Scope to the reset form so the app's empty global live region cannot
     // satisfy this assertion before the consumed-token error is rendered.
