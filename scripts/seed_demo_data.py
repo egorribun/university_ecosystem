@@ -863,7 +863,8 @@ async def _seed_demo_peer_user(
 
     # The raw value is deliberately ephemeral: only its Argon2id hash is stored,
     # so this synthetic participant cannot be logged into with a seeded password.
-    hashed_password = get_password_hash_sync(secrets.token_urlsafe(32))
+    # Guarantee every required character class without reducing random entropy.
+    hashed_password = get_password_hash_sync(secrets.token_urlsafe(32) + "!Aa0")
     peer = User.create(
         email=email,
         hashed_password=hashed_password,

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import string
+from hashlib import sha512
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.api.ws import presence
+from app.auth.security import verify_password_sync
 from app.models.chat import Chat
 from app.models.enums import UserRole
 from app.models.users import EducationPath, User, UserProfile
@@ -87,6 +90,64 @@ class DemoMessengerSession:
 
     async def flush(self) -> None:
         self.flush_count += 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "seed_function", ["seed_demo_peer_user", "seed_demo_second_peer_user"]
+)
+@pytest.mark.parametrize(
+    "alphabet",
+    [
+        string.ascii_letters + string.digits,
+        string.ascii_lowercase,
+        string.ascii_uppercase,
+        string.ascii_letters,
+        string.digits,
+    ],
+    ids=["alphanumeric", "lowercase", "uppercase", "letters", "digits"],
+)
+async def test_demo_peer_random_password_satisfies_real_policy_and_is_discarded(
+    seed_function: str,
+    alphabet: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Deterministic URL-safe draws deliberately omit required character classes.
+    fixture_bytes = sha512(b"demo-peer-policy-fixture").digest()[:43]
+    raw_token = "".join(alphabet[value % len(alphabet)] for value in fixture_bytes)
+    random_requests: list[int] = []
+
+    def token_urlsafe(nbytes: int) -> str:
+        random_requests.append(nbytes)
+        return raw_token
+
+    monkeypatch.setattr(seed_demo_data.secrets, "token_urlsafe", token_urlsafe)
+    database = DemoMessengerSession([None], user_owner_responses=[None])
+    group = SimpleNamespace(id=uuid4())
+    seed_peer = getattr(seed_demo_data, seed_function)
+
+    peer = await seed_peer(database, group)
+
+    assert random_requests == [32]
+    assert peer.hashed_password.startswith("$argon2id$")
+    assert verify_password_sync(raw_token + "!Aa0", peer.hashed_password)
+    assert not verify_password_sync(raw_token, peer.hashed_password)
+    original_hash = peer.hashed_password
+
+    database.scalar_responses.append(peer)
+    database.user_owner_responses.append(peer)
+    assert await seed_peer(database, group) is peer
+    assert random_requests == [32]
+    assert peer.hashed_password == original_hash
+    assert len(database.added) == 3
+    assert database.flush_count == 2
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err + caplog.text
+    assert raw_token not in output
+    assert original_hash not in output
 
 
 @pytest.mark.asyncio
