@@ -19,7 +19,12 @@ describe("events history scroll-restoration acceptance contract", () => {
       /const selectedEventUrl = new URL\(selectedEventHref, page\.url\(\)\)\.href/u
     )
     expect(source).toMatch(/await expect\(page\)\.toHaveURL\(selectedEventUrl\)/u)
-    expect(source).toMatch(/\.nth\(8\)\)\.toHaveAttribute\(\s*"href",\s*selectedEventHref\s*\)/su)
+    expect(source).toMatch(
+      /const restoredEvent = page\.locator\("\.events-card-title a"\)\.nth\(8\)/u
+    )
+    expect(source).toMatch(
+      /await expect\(restoredEvent\)\.toHaveAttribute\(\s*"href",\s*selectedEventHref\s*\)/u
+    )
     expect(source).toMatch(/toBe\(originalPosition\.scrollY\)/u)
     expect(source).toMatch(/Math\.abs\(restoredPosition - originalPosition\.top\)/u)
   })

@@ -2,6 +2,7 @@ import { onlineManager, QueryClientProvider, type QueryClient } from "@tanstack/
 import { act, cleanup, renderHook } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
+import type { UserState } from "@/types/Auth"
 
 /**
  * Polling is disabled in the test build, so these checks load the hook as the
@@ -35,6 +36,10 @@ async function pollingSession(track: Record<string, unknown> | null) {
   const { default: api } = await import("@/api/client")
   const { createQueryClient } = await import("@/app/queryClient")
   const { useNowPlaying } = await import("@/hooks/useNowPlaying")
+  const { useAuthStore } = await import("@/stores/useAuthStore")
+  const { acceptBrowserSessionGeneration } = await import("@/stores/sessionEpoch")
+  acceptBrowserSessionGeneration()
+  useAuthStore.setState({ user: { id: "spotify-polling-user" } as UserState, loading: false })
   const get = vi
     .spyOn(api, "get")
     .mockResolvedValue(

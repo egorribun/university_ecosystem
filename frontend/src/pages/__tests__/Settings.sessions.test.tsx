@@ -9,7 +9,8 @@ import i18n from "../../i18n/config"
 import { resetTestSessions, testSessions } from "@/tests/mocks/handlers"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
-vi.mock("@/stores/useAuthStore", () => {
+vi.mock("@/stores/useAuthStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/useAuthStore")>()
   const user = {
     id: "uuid-1",
     email: "test@example.com",
@@ -31,14 +32,12 @@ vi.mock("@/stores/useAuthStore", () => {
     recovery_codes_left: 0,
     totp_enrollments: [],
   }
+  actual.useAuthStore.setState({
+    user: user as NonNullable<ReturnType<typeof actual.useAuthStore.getState>["user"]>,
+    loading: false,
+  })
   return {
-    useAuthStore: () => ({
-      user,
-      loading: false,
-      pendingMfa: null,
-      authOperation: false,
-      setUser: vi.fn(),
-    }),
+    ...actual,
     useAuthUser: () => user,
     useAuthLoading: () => false,
     useAuthPendingMfa: () => null,

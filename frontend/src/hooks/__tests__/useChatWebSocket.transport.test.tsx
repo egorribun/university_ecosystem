@@ -62,6 +62,7 @@ import {
 } from "@/api/chat"
 import {
   applyReactionChangedFrame,
+  applyMessageEditedFrame,
   useChatWebSocket,
   WebSocketProvider,
   WebSocketStoreContext,
@@ -236,6 +237,20 @@ describe("ticket exchange", () => {
     expect(mocks.logError).not.toHaveBeenCalled()
     expect(mocks.apiPost).toHaveBeenCalledTimes(1)
     expect(sockets()).toHaveLength(0)
+  })
+
+  it("retries a ticket deadline when axios rejects its aborted request", async () => {
+    mocks.apiPost.mockImplementationOnce(
+      (_url, _body, { signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")))
+        })
+    )
+    setup({ currentUserId: "user-a" })
+    await act(() => vi.advanceTimersByTimeAsync(5_000))
+    await act(() => vi.advanceTimersByTimeAsync(1_000))
+    expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+    expectTicketSocket("ticket-1")
   })
 
   it("does not connect when the ticket request timed out before it resolved", async () => {
@@ -1183,5 +1198,48 @@ describe("applyReactionChangedFrame", () => {
       { emoji: "❤️", count: 2, reacted_by_me: false },
       { emoji: "🔥", count: 1, reacted_by_me: false },
     ])
+  })
+})
+
+describe("legacy message edit and deletion reconciliation", () => {
+  it.each([
+    ["valid", "invalid", "previous"],
+    ["invalid", "2026-08-25T12:00:00Z", "updated"],
+  ])(
+    "reconciles %s cached edit timestamps without allowing unreadable incoming edits",
+    (existing, incoming, content) => {
+      const current = message({
+        content: "previous",
+        edited_at: existing === "valid" ? "2026-08-24T12:00:00Z" : "invalid",
+      })
+      const cached = { items: [current], has_more: false, next_cursor: null }
+      expect(
+        applyMessageEditedFrame(cached, {
+          message_id: current.id,
+          content: "updated",
+          edited_at: incoming,
+        })?.items[0]?.content
+      ).toBe(content)
+    }
+  )
+
+  it("keeps a chat with no preview when a different message is deleted", async () => {
+    const { socket, queryClient } = await connected()
+    queryClient.setQueryData(["chats"], {
+      items: [{ id: CHAT, last_message: undefined, unread_count: 0 }],
+      has_more: false,
+      next_cursor: null,
+    })
+    act(() =>
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT,
+        message_id: "older-message",
+        deleted_at: "2026-08-25T12:00:00Z",
+      })
+    )
+    expect(
+      queryClient.getQueryData<ChatsListResponse>(["chats"])!.items[0]?.last_message
+    ).toBeUndefined()
   })
 })

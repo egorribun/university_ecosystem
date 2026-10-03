@@ -6,22 +6,37 @@ import test from "node:test"
 const specUrl = new URL("./activity-dashboard.live.spec.ts", import.meta.url)
 const seedUrl = new URL("../../../scripts/seed_demo_data.py", import.meta.url)
 const analyticsUrl = new URL("../../../app/services/user/analytics_service.py", import.meta.url)
+const repositoryUrl = new URL("../../../app/repositories/user_stats_repository.py", import.meta.url)
 const featureUrl = new URL("../../src/features/activity/ActivityFeature.tsx", import.meta.url)
 const hookUrl = new URL("../../src/hooks/useActivityData.ts", import.meta.url)
 
 test("Activity empty-baseline acceptance uses only seeded records and the real read-only API", async () => {
-  const [spec, seed, analytics, feature, hook] = await Promise.all([
+  const [spec, seed, analytics, repository, feature, hook] = await Promise.all([
     readFile(specUrl, "utf8"),
     readFile(seedUrl, "utf8"),
     readFile(analyticsUrl, "utf8"),
+    readFile(repositoryUrl, "utf8"),
     readFile(featureUrl, "utf8"),
     readFile(hookUrl, "utf8"),
   ])
 
   assert.match(seed, /async def seed_events\(db, user: User\)/u)
-  assert.doesNotMatch(seed, /EventAttendance\s*\(|Notification\s*\(/u)
-  assert.match(analytics, /models\.EventAttendance\.user_id\s*==\s*user_id/u)
-  assert.match(analytics, /models\.Notification\.type\s*==\s*["']grade["']/u)
+  assert.doesNotMatch(seed, /(?:EventAttendance|Grade|Notification)\s*\(/u)
+  assert.match(analytics, /self\.stats_repo = UserStatsRepository\(db\)/u)
+  assert.match(analytics, /self\.stats_repo\.get_attendance_stats_raw\(\s*user_id,/u)
+  assert.match(analytics, /self\.stats_repo\.get_grades\(user_id, window_start, now\)/u)
+  const attendance = repository.match(
+    /^ {4}async def get_attendance_stats_raw\([\s\S]*?(?=^ {4}async def )/mu
+  )?.[0]
+  const grades = repository.match(/^ {4}async def get_grades\([\s\S]*?(?=^ {4}async def )/mu)?.[0]
+  assert.ok(attendance, "attendance queries must live in the statistics repository")
+  assert.ok(grades, "grade queries must live in the statistics repository")
+  assert.match(attendance, /attendance_alias\.user_id\s*==\s*user_id/u)
+  assert.match(attendance, /models\.EventAttendance\.user_id\s*==\s*user_id/u)
+  assert.match(grades, /select\(models\.Grade\)/u)
+  assert.match(grades, /models\.Grade\.student_id\s*==\s*user_id/u)
+  assert.match(grades, /models\.Grade\.created_at\s*>=\s*start_date/u)
+  assert.match(grades, /models\.Grade\.created_at\s*<\s*end_date/u)
   assert.match(hook, /attendance\.recent\.length\s*>\s*0/u)
   assert.match(hook, /grades\.recent\.length\s*>\s*0/u)
   assert.match(hook, /participation\.events\s*>\s*0/u)

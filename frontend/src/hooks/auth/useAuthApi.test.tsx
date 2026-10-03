@@ -6,7 +6,8 @@ import { AxiosError, AxiosHeaders } from "axios"
 
 import { extractSigningKey, useAuthApi } from "./useAuthApi"
 import type { User } from "@/types/User"
-import { ChallengeLockedError } from "@/types/Auth"
+import { ChallengeLockedError, type PendingMfaState } from "@/types/Auth"
+import { captureSessionEpoch } from "@/stores/sessionEpoch"
 import { API_UNAUTHORIZED_EVENT } from "@/api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 
@@ -119,6 +120,7 @@ type Wires = {
   authOperation: boolean
   setAuthOperation: UseAuthApiArgs[6]
   resetEtagCache: UseAuthApiArgs[7]
+  pendingMfa?: PendingMfaState | null
 }
 
 const makeWires = (overrides: Partial<Wires> = {}): Wires => ({
@@ -144,7 +146,8 @@ const renderApi = (w: Wires) =>
         w.updateSessionSigningKey,
         w.authOperation,
         w.setAuthOperation,
-        w.resetEtagCache
+        w.resetEtagCache,
+        w.pendingMfa
       ),
     { wrapper }
   )
@@ -809,6 +812,29 @@ describe("requireMfa", () => {
 // ---------------------------------------------------------------------------
 
 describe("refresh", () => {
+  it("does not restore a profile after logout overtakes refresh", async () => {
+    let finish!: (value: User) => void
+    mocks.fetchCurrentUser.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const w = makeWires({ user: fullUser() })
+    const { result } = renderApi(w)
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.refresh()
+    })
+    await act(() => result.current.logout())
+    await act(async () => {
+      finish(fullUser())
+      await pending
+    })
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
+  })
+
   it("resets etag cache, fetches profile + sets user (lines 332-346)", async () => {
     const w = makeWires()
     mocks.fetchCurrentUser.mockResolvedValue(fullUser())
@@ -972,5 +998,166 @@ describe("useAuthApi — residual defensive branches", () => {
       )
     )
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+  })
+})
+
+describe("late authentication responses", () => {
+  it.each(["login", "mfa"])("ignores a late %s response after logout", async (operation) => {
+    let finish!: (value: {
+      status: number
+      data: { user: User; session: { signing_key: string } }
+    }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const w = makeWires()
+    const { result } = renderApi(w)
+    let pending!: Promise<unknown>
+    act(() => {
+      pending =
+        operation === "login"
+          ? result.current.login("a@b.dev", "pw")
+          : result.current.submitMfaChallenge({
+              method: "totp",
+              code: "123456",
+              challengeToken: "challenge",
+            })
+    })
+    await act(() => result.current.logout())
+    await act(async () => {
+      finish({ status: 200, data: { user: fullUser(), session: { signing_key: "old-key" } } })
+      await pending
+    })
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(w.updateSessionSigningKey).not.toHaveBeenCalled()
+  })
+})
+
+describe("authenticated MFA step-up", () => {
+  it("preserves the same account's captured retry lifetime and signing key", async () => {
+    const currentUser = fullUser()
+    const w = makeWires({ user: currentUser, pendingMfa: { reason: "step-up" } as PendingMfaState })
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: currentUser, session: { signing_key: "same-session-key" } },
+    } as never)
+    const { result } = renderApi(w)
+    const retryOwnsSession = captureSessionEpoch()
+    await act(() =>
+      result.current.submitMfaChallenge({
+        method: "totp",
+        code: "123456",
+        challengeToken: "step-up",
+      })
+    )
+    expect(retryOwnsSession()).toBe(true)
+    expect(w.setUser).toHaveBeenCalledWith(currentUser)
+    expect(w.updateSessionSigningKey).not.toHaveBeenCalled()
+    expect(mocks.incrementSessionEpoch).not.toHaveBeenCalled()
+    expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
+  })
+
+  it("rejects another account's profile returned to an authenticated step-up", async () => {
+    const w = makeWires({ user: fullUser(), pendingMfa: { reason: "step-up" } as PendingMfaState })
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: fullUser({ id: "other-account" }) },
+    } as never)
+    const { result } = renderApi(w)
+    await expect(
+      act(() =>
+        result.current.submitMfaChallenge({
+          method: "totp",
+          code: "123456",
+          challengeToken: "step-up",
+        })
+      )
+    ).rejects.toThrow("MFA response does not match")
+    expect(w.setUser).not.toHaveBeenCalled()
+  })
+})
+
+describe("authentication cancellation boundaries", () => {
+  it.each(["login", "mfa", "refresh", "requireMfa"] as const)(
+    "does not apply a late %s failure after unmount",
+    async (operation) => {
+      let reject!: (reason: Error) => void
+      const response = new Promise<never>((_resolve, fail) => {
+        reject = fail
+      })
+      if (operation === "refresh") mocks.fetchCurrentUser.mockReturnValueOnce(response)
+      else mocks.apiPost.mockReturnValueOnce(response)
+      const w = makeWires()
+      const { result, unmount } = renderApi(w)
+      let pending!: Promise<unknown>
+      act(() => {
+        pending =
+          operation === "login"
+            ? result.current.login("a@b.dev", crypto.randomUUID())
+            : operation === "mfa"
+              ? result.current.submitMfaChallenge({ code: "123456" })
+              : result.current[operation]()
+      })
+      unmount()
+      reject(lockedError())
+      await expect(pending).resolves.toBe(
+        operation === "login" || operation === "requireMfa" ? null : undefined
+      )
+      expect(w.setUser).not.toHaveBeenCalled()
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+      expect(w.updatePendingMfa).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).not.toHaveBeenCalledWith(false)
+    }
+  )
+
+  it.each(["refresh", "requireMfa", "submitMfaChallenge"] as const)(
+    "does not dispatch retained %s actions after unmount",
+    async (operation) => {
+      const { result, unmount } = renderApi(makeWires({ user: fullUser() }))
+      const actions = result.current
+      unmount()
+      if (operation === "submitMfaChallenge") await actions.submitMfaChallenge({ code: "123456" })
+      else await actions[operation]()
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(mocks.fetchCurrentUser).not.toHaveBeenCalled()
+    }
+  )
+
+  it("drops a successful step-up challenge after its caller unmounts", async () => {
+    let resolve!: (value: { status: number; data: object }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done
+        })
+    )
+    const w = makeWires()
+    const { result, unmount } = renderApi(w)
+    const pending = result.current.requireMfa()
+    unmount()
+    resolve({ status: 202, data: { methods: [] } })
+    await expect(pending).resolves.toBeNull()
+    expect(w.updatePendingMfa).not.toHaveBeenCalled()
+  })
+
+  it("does not clear a newer session when logout settles after unmount", async () => {
+    let resolve!: (value: { status: number; data: object }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done
+        })
+    )
+    const w = makeWires({ user: fullUser() })
+    const { result, unmount } = renderApi(w)
+    const pending = result.current.logout()
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout"))
+    unmount()
+    resolve({ status: 200, data: {} })
+    await pending
+    expect(w.handleUnauthorized).not.toHaveBeenCalled()
   })
 })

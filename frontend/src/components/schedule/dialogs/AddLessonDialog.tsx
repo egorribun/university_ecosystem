@@ -21,6 +21,19 @@ interface AddLessonDialogProps {
   refresh: () => void
 }
 
+/** Recurring lessons use the reference week 1970-01-05..11 in campus wall time.
+ * Example accepted by ScheduleCreate: monday -> 1970-01-05T09:00:00.
+ * No UTC conversion: weekday/time, not a dated occurrence, define the lesson.
+ */
+export function recurringLessonDateTime(weekday: string, time: string): string {
+  const weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+  const index = weekdays.indexOf(weekday)
+  if (index < 0 || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new Error("Invalid recurring lesson time")
+  }
+  return `1970-01-${String(5 + index).padStart(2, "0")}T${time}:00`
+}
+
 export function isAddLessonFormValid(
   fields: Pick<AddLessonFields, "subject" | "startTime" | "endTime">
 ): boolean {
@@ -122,8 +135,8 @@ export function AddLessonDialog({
       teacher: addFields.teacher,
       room: addFields.room,
       lesson_type: backendType,
-      start_time: `${addDay}T${addFields.startTime}:00`,
-      end_time: `${addDay}T${addFields.endTime}:00`,
+      start_time: recurringLessonDateTime(addDay, addFields.startTime),
+      end_time: recurringLessonDateTime(addDay, addFields.endTime),
       weekday: addDay,
       parity: addFields.parity,
       group_id: selectedGroupId,

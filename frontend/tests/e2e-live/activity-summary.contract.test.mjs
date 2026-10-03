@@ -35,8 +35,9 @@ test("Activity live acceptance uses the seeded student and real read-only summar
   assert.match(feature, /ParticipationCard/u)
   assert.match(query, /api\.get<ActivitySummaryEnvelope>\(["']\/stats\/summary["']/u)
   assert.match(analytics, /"percent":\s*round\(percent, 2\)/u)
-  assert.match(analytics, /"average":\s*average/u)
-  assert.match(analytics, /"events":\s*events/u)
+  assert.match(analytics, /"average":\s*round\(current_average, 2\)/u)
+  assert.match(analytics, /"total_grades":\s*len\(current\)/u)
+  assert.match(analytics, /"events":\s*len\(rows\)/u)
 
   assert.match(
     spec,

@@ -239,6 +239,23 @@ describe("registerServiceWorker", () => {
     await expect(registerServiceWorker()).resolves.toBe(mockRegistration)
   })
 
+  it.each([null, {}])(
+    "waits safely when no controller or message-capable active worker exists (%s)",
+    async (active) => {
+      const registration = { active, addEventListener: vi.fn() }
+      vi.stubGlobal("navigator", {
+        serviceWorker: {
+          controller: null,
+          ready: Promise.resolve(registration),
+          register: vi.fn().mockResolvedValue(registration),
+          addEventListener: vi.fn(),
+        },
+        onLine: true,
+      })
+      await expect(registerServiceWorker()).resolves.toBe(registration)
+    }
+  )
+
   it("does not request queue processing when offline", async () => {
     const mockActive = {
       postMessage: vi.fn(),

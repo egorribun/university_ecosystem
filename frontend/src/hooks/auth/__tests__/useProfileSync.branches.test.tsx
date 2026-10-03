@@ -1970,6 +1970,43 @@ describe("useProfileSync — cross-tab sync effect", () => {
     expect(close).toHaveBeenCalled()
   })
 
+  it("ignores storage decryption finishing after local session expiry", async () => {
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await act(async () => {
+      view.result.current.setUser(testUser)
+    })
+    const snapshot = { id: testUser.id, full_name: "Late A", is_active: true }
+    const data = await encryptData(snapshot, mockSigningKey)
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 300000,
+      data: data!,
+    }
+    const signature = await signPayload(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    let release!: (value: ArrayBuffer) => void
+    const originalDecrypt = window.crypto.subtle.decrypt.bind(window.crypto.subtle)
+    const decrypt = vi
+      .spyOn(window.crypto.subtle, "decrypt")
+      .mockImplementationOnce(async (...args) => {
+        const plaintext = await originalDecrypt(...args)
+        return new Promise<ArrayBuffer>((resolve) => {
+          release = () => resolve(plaintext)
+        })
+      })
+    act(() => window.dispatchEvent(new StorageEvent("storage", { key: PROFILE_CACHE_STORAGE_KEY })))
+    await waitFor(() => expect(decrypt).toHaveBeenCalledOnce())
+    await waitFor(() => expect(release).toBeTypeOf("function"))
+    act(() => view.result.current.handleUnauthorized({ broadcast: false }))
+    await act(async () => {
+      release(new ArrayBuffer(0))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(view.result.current.user).toBeNull()
+  })
+
   it("applies a valid versioned cache snapshot from a storage event", async () => {
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)

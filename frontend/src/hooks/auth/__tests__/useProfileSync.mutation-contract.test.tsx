@@ -8,6 +8,7 @@ import { sha256 } from "@noble/hashes/sha2.js"
 import { utf8ToBytes } from "@noble/hashes/utils.js"
 import { AxiosError } from "axios"
 
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
 import api from "@/api/client"
 import * as apiClient from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
@@ -2465,4 +2466,48 @@ describe("useProfileSync mutation contracts", () => {
     expect(warningSpy).toHaveBeenCalledWith("profile_cache.signature_verification_failed")
     unmount()
   })
+})
+
+describe("asynchronous profile envelope ownership", () => {
+  it("reads a valid signed snapshot through the standalone cache API", async () => {
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("verified"),
+    })
+    vi.spyOn(window.crypto.subtle, "verify").mockResolvedValue(true)
+    await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({ id: "verified" })
+  })
+
+  it.each(["origin rotation", "replacement envelope", "removed envelope"] as const)(
+    "does not erase successor storage after %s during signature verification",
+    async (transition) => {
+      writeSignedEnvelope({
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data: snapshot("old"),
+      })
+      let finish!: (valid: boolean) => void
+      vi.spyOn(window.crypto.subtle, "verify").mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          })
+      )
+      const pending = readCachedUserAsync(signingKey)
+      await waitFor(() => expect(finish).toBeDefined())
+      if (transition === "origin rotation") rotateBrowserSession()
+      if (transition !== "removed envelope") {
+        writeSignedEnvelope({
+          version: PROFILE_CACHE_SCHEMA_VERSION,
+          expiresAt: Date.now() + 60_000,
+          data: snapshot("successor"),
+        })
+      } else localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      const successor = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      finish(false)
+      await expect(pending).resolves.toBeUndefined()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(successor)
+    }
+  )
 })

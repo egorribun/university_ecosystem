@@ -238,19 +238,29 @@ test("live notification preferences cover every topic, owner scope, and post-rel
     /@router\.get\(["']\/topics["'][\s\S]*?UserPushTopic\.user_id == user\.id/u,
     "the canonical preference read must be scoped to the authenticated user"
   )
+  const adminRead = notificationRouter
+    .split(/(?=^@router\.)/mu)
+    .find((route) => /^@router\.get\(["']\/admin\/topics\/\{user_id\}["']/u.test(route))
+  assert.ok(adminRead, "the admin topic read endpoint must exist")
+  const adminReadSignature = adminRead.match(
+    /^async def admin_get_user_topics\(([\s\S]*?)^\)/mu
+  )?.[1]
+  assert.ok(adminReadSignature, "the admin topic read must have an explicit dependency signature")
   assert.match(
-    notificationRouter,
-    /@router\.get\(["']\/admin\/topics\/\{user_id\}["'][\s\S]*?user\.role != UserRole\.ADMIN/u,
+    adminReadSignature,
+    /user:\s*Annotated\[User, Depends\(get_current_admin_user_from_dishka\)\]/u,
     "only an administrator may inspect a selected user's canonical topics"
   )
-  const adminReadStart = notificationRouter.indexOf('@router.get("/admin/topics/{user_id}"')
-  const adminRoleCheck = notificationRouter.indexOf(
-    "if user.role != UserRole.ADMIN",
-    adminReadStart
+  assert.match(
+    adminRead,
+    /target = \([\s\S]*?select\(User\)[\s\S]*?\.where\(User\.id == user_id\)/u,
+    "the authorized admin read must target the requested user"
   )
-  const adminTargetRead = notificationRouter.indexOf("target =", adminReadStart)
-  assert.ok(adminReadStart >= 0 && adminRoleCheck > adminReadStart)
-  assert.ok(adminTargetRead > adminRoleCheck, "admin authorization precedes target lookup")
+  assert.ok(
+    adminRead.indexOf("target =") >
+      adminRead.indexOf(adminReadSignature) + adminReadSignature.length,
+    "admin authorization resolves before target lookup in the endpoint body"
+  )
   assert.match(spec, /subscriptionMayExist/u)
   assert.match(spec, /subscription\.unsubscribe\(\)/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)

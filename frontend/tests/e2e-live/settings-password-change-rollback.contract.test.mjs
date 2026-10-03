@@ -35,10 +35,24 @@ test("live password-settings acceptance proves invalid-change rollback and persi
     service,
     /if not await verify_password\([\s\S]*?payload\.current_password[\s\S]*?raise_validation_error\(["']errors\.users\.invalid_password/u
   )
+  const changePassword = service.slice(
+    service.indexOf("async def change_password("),
+    service.indexOf("async def refresh_pending_email(")
+  )
+  const invalidPassword = changePassword.indexOf(
+    'raise_validation_error("errors.users.invalid_password"'
+  )
+  const credentialUpdate = changePassword.indexOf(
+    "await self.user_repo.change_password_if_current("
+  )
   assert.ok(
-    service.indexOf('raise_validation_error("errors.users.invalid_password"') <
-      service.indexOf('await self.user_repo.update(user.id, {"hashed_password": hashed_password})'),
-    "the current password is verified before the credential update"
+    invalidPassword >= 0 && credentialUpdate > invalidPassword,
+    "the current password is verified before the atomic credential update"
+  )
+  assert.match(
+    changePassword,
+    /change_password_if_current\([\s\S]*?expected_hash=verified_hash, new_hash=hashed_password[\s\S]*?if next_epoch is None:[\s\S]*?raise_unauthorized/u,
+    "a concurrently replaced credential fails closed rather than being overwritten"
   )
   assert.match(
     schema,

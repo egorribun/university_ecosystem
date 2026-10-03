@@ -495,7 +495,11 @@ export function useChatWebSocket({
       // does NOT accept cookie-only upgrades since Wave 14.
       let ticket: string
       // TD-26-02: AbortController for cleanup on unmount; TD-26-03: 5s timeout
-      const ticketTimeout = setTimeout(() => ticketController.abort(), 5000)
+      let ticketDeadlineExpired = false
+      const ticketTimeout = setTimeout(() => {
+        ticketDeadlineExpired = true
+        ticketController.abort()
+      }, 5000)
       try {
         // FIX-44-02: Use axios instead of fetch so CSRF header (X-CSRF-Token)
         // is automatically attached from the csrf_token cookie.
@@ -509,7 +513,12 @@ export function useChatWebSocket({
         ticket = resp.data.ticket
       } catch (e: unknown) {
         // A disconnect (including unmount) aborts the request it supersedes.
-        if (ticketController.signal.aborted || !ownsSession()) return
+        if (
+          !ownsSession() ||
+          ticketRequestRef.current !== ticketController ||
+          (ticketController.signal.aborted && !ticketDeadlineExpired)
+        )
+          return
         const axiosErr = e as { response?: { status: number } }
         const status = axiosErr?.response?.status
         if (status === 401 || status === 403) {

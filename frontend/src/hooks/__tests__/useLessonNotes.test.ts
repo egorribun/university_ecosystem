@@ -10,6 +10,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { useAuthStore } from "@/stores/useAuthStore"
 import { logError } from "@/app/logger"
 import { useLessonNotes, useLessonNotesMap, type LessonNote } from "../useLessonNotes"
 
@@ -43,7 +44,7 @@ vi.mock("@/db/lazy", () => ({
   resetDatabaseForTesting: vi.fn(async () => {}),
 }))
 
-const KEY = (id: string) => `schedule:notes:${id}`
+const KEY = (id: string, owner = "user-a") => `schedule:notes:v2:${JSON.stringify([owner, id])}`
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -57,6 +58,10 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.useRealTimers()
+  useAuthStore.setState({
+    user: { id: "user-a" } as NonNullable<ReturnType<typeof useAuthStore.getState>["user"]>,
+    loading: false,
+  })
   idb.store.clear()
   idb.get.mockClear()
   idb.set.mockClear()
@@ -73,6 +78,98 @@ afterEach(() => {
 })
 
 describe("useLessonNotes", () => {
+  it.each(["-1", "ssr-stub", "lhci-mock-user"])(
+    "does not persist under placeholder identity %s",
+    async (id) => {
+      useAuthStore.setState({
+        user: { id } as NonNullable<ReturnType<typeof useAuthStore.getState>["user"]>,
+      })
+      const { result } = renderHook(() => useLessonNotes("shared"))
+      act(() => result.current.setNote("private"))
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(result.current.note).toBeNull()
+      expect(idb.get).not.toHaveBeenCalled()
+      expect(idb.set).not.toHaveBeenCalled()
+    }
+  )
+
+  it("loads only the new owner's note and indicator for the same lesson", async () => {
+    idb.store.set(KEY("shared"), { text: "private A", updatedAt: 1 })
+    idb.store.set(KEY("shared", "user-b"), { text: "private B", updatedAt: 2 })
+    const { result } = renderHook(() => ({
+      note: useLessonNotes("shared"),
+      map: useLessonNotesMap(["shared"]),
+    }))
+    await waitFor(() => expect(result.current.note.note?.text).toBe("private A"))
+    act(() =>
+      useAuthStore.setState({
+        user: { id: "user-b" } as NonNullable<ReturnType<typeof useAuthStore.getState>["user"]>,
+      })
+    )
+    expect(result.current.note.note).toBeNull()
+    expect(result.current.map.size).toBe(0)
+    await waitFor(() => expect(result.current.note.note?.text).toBe("private B"))
+    await waitFor(() => expect(result.current.map.get("shared")).toBe(true))
+  })
+
+  it("rolls back an IndexedDB write that finishes after account expiry", async () => {
+    vi.useFakeTimers()
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    idb.set.mockImplementationOnce(async (key, value) => {
+      entered.resolve()
+      await release.promise
+      idb.store.set(key, value)
+    })
+    const { result } = renderHook(() => useLessonNotes("delayed"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("late private A"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    await entered.promise
+    act(() => useAuthStore.setState({ user: null }))
+    await act(async () => {
+      release.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(idb.store.get(KEY("delayed"))).toBeUndefined()
+    expect(result.current.note).toBeNull()
+  })
+
+  it("never reads legacy notes or writes without a confirmed account", async () => {
+    useAuthStore.setState({ user: null })
+    idb.store.set("schedule:notes:shared", { text: "private A", updatedAt: 1 })
+    const { result } = renderHook(() => useLessonNotes("shared"))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => result.current.setNote("anonymous"))
+    expect(result.current.note).toBeNull()
+    expect(idb.get).not.toHaveBeenCalled()
+    expect(idb.set).not.toHaveBeenCalled()
+  })
+
+  it("does not carry a debounced note into another account or lesson", async () => {
+    vi.useFakeTimers()
+    const { result, rerender } = renderHook(({ lesson }) => useLessonNotes(lesson), {
+      initialProps: { lesson: "same" },
+    })
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("private A"))
+    act(() =>
+      useAuthStore.setState({
+        user: { id: "user-b" } as NonNullable<ReturnType<typeof useAuthStore.getState>["user"]>,
+      })
+    )
+    expect(result.current.note).toBeNull()
+    rerender({ lesson: "another" })
+    await act(() => vi.advanceTimersByTimeAsync(400))
+    expect(idb.store.get(KEY("same", "user-b"))).toBeUndefined()
+    expect(idb.store.get(KEY("another", "user-b"))).toBeUndefined()
+  })
+
   it("initial load — no stored note -> null", async () => {
     const { result } = renderHook(() => useLessonNotes("lessonA"))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -224,7 +321,7 @@ describe("useLessonNotes", () => {
     })
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "lessonRx",
+        id: JSON.stringify(["user-a", "lessonRx"]),
         text: "updated in RxDB",
         updated_at: expect.any(Number),
       })
@@ -318,7 +415,13 @@ describe("useLessonNotes", () => {
   })
 
   it("removes RxDB records when clearing a note and marks mapped notes", async () => {
-    const rxNote = { id: "lessonMap", text: "mapped", updated_at: 9, remove: vi.fn() }
+    const rxNote = {
+      id: JSON.stringify(["user-a", "lessonMap"]),
+      lesson_id: "lessonMap",
+      text: "mapped",
+      updated_at: 9,
+      remove: vi.fn(),
+    }
     const findOne = vi.fn(() => ({ exec: vi.fn(async () => rxNote) }))
     const find = vi.fn(() => ({ exec: vi.fn(async () => [rxNote]) }))
     dbState.getDatabase.mockResolvedValue({ notes: { findOne, find, upsert: vi.fn() } } as never)
@@ -402,4 +505,94 @@ describe("useLessonNotesMap", () => {
 
     expect(find).toHaveBeenCalled()
   })
+})
+
+describe("deferred note storage ownership", () => {
+  it("rolls back an RxDB save and discards queued work after account expiry", async () => {
+    vi.useFakeTimers()
+    const saved = deferred<{ remove: ReturnType<typeof vi.fn> }>()
+    const remove = vi.fn(async () => undefined)
+    const upsert = vi.fn(() => saved.promise)
+    dbState.getDatabase.mockResolvedValue({
+      notes: {
+        findOne: () => ({ exec: async () => null }),
+        upsert,
+      },
+    } as never)
+    const { result } = renderHook(() => useLessonNotes("queued-rx"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("old note"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    expect(upsert).toHaveBeenCalledTimes(1)
+    act(() => result.current.clearNote())
+    act(() => useAuthStore.setState({ user: null }))
+    await act(async () => {
+      saved.resolve({ remove })
+      await saved.promise
+    })
+    expect(remove).toHaveBeenCalledOnce()
+    expect(idb.set).not.toHaveBeenCalled()
+    expect(idb.del).not.toHaveBeenCalled()
+  })
+
+  it("does not write after a database opens for an expired session", async () => {
+    vi.useFakeTimers()
+    const opened = deferred<unknown>()
+    const { result } = renderHook(() => useLessonNotes("delayed-open"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    const upsert = vi.fn()
+    dbState.getDatabase.mockImplementation(() => opened.promise as never)
+    act(() => result.current.setNote("old note"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    act(() => useAuthStore.setState({ user: null }))
+    await act(async () => {
+      opened.resolve({ notes: { upsert } })
+      await opened.promise
+    })
+    expect(upsert).not.toHaveBeenCalled()
+    expect(idb.set).not.toHaveBeenCalled()
+  })
+
+  it("does not publish a note when IndexedDB finishes after unmount", async () => {
+    const stored = deferred<LessonNote | undefined>()
+    idb.get.mockImplementationOnce(() => stored.promise)
+    const { result, unmount } = renderHook(() => useLessonNotes("inflight-idb"))
+    await waitFor(() => expect(idb.get).toHaveBeenCalledWith(KEY("inflight-idb")))
+    unmount()
+    await act(async () => {
+      stored.resolve({ text: "private", updatedAt: 1 })
+      await stored.promise
+    })
+    expect(result.current.note).toBeNull()
+    expect(idb.set).not.toHaveBeenCalled()
+  })
+
+  it.each(["opening", "querying"] as const)(
+    "does not publish note indicators after unmount while %s RxDB",
+    async (phase) => {
+      const pending = deferred<unknown>()
+      const find = vi.fn(() => ({ exec: () => pending.promise }))
+      dbState.getDatabase.mockImplementation(() =>
+        phase === "opening"
+          ? (pending.promise as never)
+          : (Promise.resolve({ notes: { find } }) as never)
+      )
+      const { result, unmount } = renderHook(() => useLessonNotesMap(["private-map"]))
+      await act(async () => {
+        await Promise.resolve()
+      })
+      unmount()
+      await act(async () => {
+        pending.resolve(
+          phase === "opening"
+            ? { notes: { find } }
+            : [{ lesson_id: "private-map", text: "private" }]
+        )
+        await pending.promise
+      })
+      expect(result.current.size).toBe(0)
+      expect(idb.get).not.toHaveBeenCalled()
+      if (phase === "opening") expect(find).not.toHaveBeenCalled()
+    }
+  )
 })

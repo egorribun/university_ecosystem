@@ -167,6 +167,14 @@ describe("NewsHeader", () => {
         "page"
       )
       expect(pageScrollTo).not.toHaveBeenCalled()
+
+      const allButton = screen.getByRole("button", { name: /^all$/i })
+      allButton.getBoundingClientRect = () => makeRect(110, 80)
+      toolbarScrollTo.mockClear()
+      await userEvent.click(allButton)
+      expect(allButton).toHaveAttribute("aria-current", "page")
+      expect(toolbarScrollTo).not.toHaveBeenCalled()
+      expect(pageScrollTo).not.toHaveBeenCalled()
     } finally {
       view?.unmount()
       if (originalElementScrollTo) {

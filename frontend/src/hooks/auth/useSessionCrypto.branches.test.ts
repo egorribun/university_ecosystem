@@ -42,6 +42,94 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("ensureSessionSigningKey", () => {
+  it("answers a restarted worker without a controllerchange and keeps its session scope", async () => {
+    const listeners = new Map<string, (event: MessageEvent) => void>()
+    const controller = { postMessage: vi.fn() }
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        controller,
+        addEventListener: (type: string, callback: (event: MessageEvent) => void) =>
+          listeners.set(type, callback),
+        removeEventListener: (type: string) => listeners.delete(type),
+      },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+    await act(() => result.current.updateSessionSigningKey("live-key"))
+    const update = controller.postMessage.mock.calls
+      .map(([value]) => value)
+      .find((value) => value.sessionHash === "mock_pbkdf2")
+    expect(result.current.isCurrentSigningSession()).toBe(true)
+    const reply = vi.fn()
+    listeners.get("message")!({
+      source: controller,
+      data: { type: SERVICE_WORKER_MESSAGE_TYPES.REQUEST_API_SESSION_CACHE_KEY },
+      ports: [{ postMessage: reply }],
+    } as unknown as MessageEvent)
+    expect(reply).toHaveBeenCalledWith({
+      sessionHash: "mock_pbkdf2",
+      sessionScope: update.sessionScope,
+    })
+    await act(() => result.current.updateSessionSigningKey(null))
+    listeners.get("message")!({
+      source: controller,
+      data: { type: SERVICE_WORKER_MESSAGE_TYPES.REQUEST_API_SESSION_CACHE_KEY },
+      ports: [{ postMessage: reply }],
+    } as unknown as MessageEvent)
+    expect(reply).toHaveBeenLastCalledWith({ sessionHash: null, sessionScope: null })
+    expect(result.current.isCurrentSigningSession()).toBe(false)
+  })
+
+  it("discards a signing-key fetch that settles after local session expiry", async () => {
+    let resolveFetch!: (value: { data: { signing_key: string } }) => void
+    mocks.apiGet.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+        })
+    )
+    const { result } = renderHook(() => useSessionCrypto())
+    const pending = result.current.ensureSessionSigningKey()
+    await act(() => result.current.updateSessionSigningKey(null))
+    await act(async () => {
+      resolveFetch({ data: { signing_key: "old-account-secret" } })
+      await pending
+    })
+    await expect(pending).resolves.toBeNull()
+    expect(result.current.sessionSigningKeyRef.current).toBeNull()
+  })
+
+  it("does not send an old namespace after logout overtakes hashing", async () => {
+    const postMessage = vi.fn()
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { controller: { postMessage } },
+    })
+    let finishHash!: (value: string) => void
+    vi.mocked(cryptoWorker.pbkdf2).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishHash = resolve
+        })
+    )
+    const { result } = renderHook(() => useSessionCrypto())
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.updateSessionSigningKey("old-key")
+    })
+    await act(() => result.current.updateSessionSigningKey(null))
+    await act(async () => {
+      finishHash("old-hash")
+      await pending
+    })
+    expect(postMessage).not.toHaveBeenCalledWith({
+      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+      sessionHash: "old-hash",
+      sessionScope: expect.any(String),
+    })
+    expect(postMessage).toHaveBeenCalledWith({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
+  })
+
   it("fetches the key, stores it, and resets the retry counter (lines 301-309)", async () => {
     const { result } = renderHook(() => useSessionCrypto())
     let key: string | null = null
@@ -503,5 +591,87 @@ describe("unmount cleanup", () => {
 
     clearSpy.mockRestore()
     vi.useRealTimers()
+  })
+})
+
+describe("signing key handoff ownership", () => {
+  it("does not accept a rejected key lookup after the session was cleared", async () => {
+    let reject!: (error: Error) => void
+    mocks.apiGet.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail
+        })
+    )
+    const { result } = renderHook(() => useSessionCrypto())
+    const pending = result.current.ensureSessionSigningKey()
+    await act(() => result.current.updateSessionSigningKey(null))
+    reject(new Error("old session rejected"))
+    await expect(pending).resolves.toBeNull()
+    expect(result.current.sessionSigningKeyRef.current).toBeNull()
+  })
+
+  it("does not return an old fetched key after an explicit replacement during hashing", async () => {
+    const replacementKey = crypto.randomUUID()
+    let release!: (hash: string) => void
+    vi.mocked(cryptoWorker.pbkdf2).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        })
+    )
+    const { result } = renderHook(() => useSessionCrypto())
+    const pending = result.current.ensureSessionSigningKey()
+    await waitFor(() => expect(release).toBeDefined())
+    await act(() => result.current.updateSessionSigningKey(replacementKey))
+    await act(async () => {
+      release("old-hash")
+      await pending
+    })
+    await expect(pending).resolves.toBeNull()
+    expect(result.current.sessionSigningKeyRef.current).toBe(replacementKey)
+  })
+
+  it("does not announce a private namespace when origin storage cannot establish it", async () => {
+    const controller = { postMessage: vi.fn() }
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { controller } })
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage denied")
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+    await act(() => result.current.updateSessionSigningKey(crypto.randomUUID()))
+    expect(result.current.isCurrentSigningSession()).toBe(false)
+    expect(
+      controller.postMessage.mock.calls
+        .map(([message]) => message)
+        .some((message) => message.sessionHash)
+    ).toBe(false)
+  })
+
+  it("ignores foreign workers and unrelated messages before answering its controller", async () => {
+    const listeners = new Map<string, (event: MessageEvent) => void>()
+    const controller = { postMessage: vi.fn() }
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        controller,
+        addEventListener: (type: string, callback: (event: MessageEvent) => void) =>
+          listeners.set(type, callback),
+        removeEventListener: (type: string) => listeners.delete(type),
+      },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+    await act(() => result.current.updateSessionSigningKey(crypto.randomUUID()))
+    const reply = vi.fn()
+    const event = {
+      source: controller,
+      data: { type: SERVICE_WORKER_MESSAGE_TYPES.REQUEST_API_SESSION_CACHE_KEY },
+      ports: [{ postMessage: reply }],
+    }
+    listeners.get("message")!({ ...event, source: {} } as unknown as MessageEvent)
+    listeners.get("message")!({ ...event, data: { type: "unrelated" } } as unknown as MessageEvent)
+    expect(reply).not.toHaveBeenCalled()
+    listeners.get("message")!(event as unknown as MessageEvent)
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ sessionHash: "mock_pbkdf2" }))
   })
 })

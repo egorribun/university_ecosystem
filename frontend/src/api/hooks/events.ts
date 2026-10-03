@@ -17,8 +17,18 @@ import { allEventsApiV1EventsGet, myEventsApiV1EventsMyGet } from "@/api/generat
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import {
+  captureSessionEpoch,
+  getSessionEpoch,
+  isCurrentBrowserSession,
+} from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { pickPrivateListControls, type PrivateListControls } from "./privateListControls"
 
 export const EVENTS_PAGE_SIZE = 12
+
+const getCurrentConfirmedUserId = () => getConfirmedUserId(useAuthStore.getState())
 
 export type EventsListFilters = {
   language: string
@@ -134,9 +144,15 @@ const createEventsListQueryFn =
   (
     queryClient: QueryClient,
     normalized: NormalizedEventsListFilters,
-    queryKey: EventsListQueryKey
+    queryKey: EventsListQueryKey,
+    owner: string | null
   ) =>
   async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
+    const currentEpoch = captureSessionEpoch()
+    const ownsSession = () =>
+      typeof window === "undefined" ||
+      (owner !== null && currentEpoch() && getCurrentConfirmedUserId() === owner)
+    if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
     const etagKey = pageParam == null ? createEventsListEtagKey(normalized) : undefined
     const params: Record<string, unknown> = {
       limit: normalized.limit,
@@ -161,6 +177,8 @@ const createEventsListQueryFn =
       requestConfig as Parameters<typeof allEventsApiV1EventsGet>[0]
     )
 
+    if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
+
     if (response.status === 304) {
       const cached =
         queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>, string | null>>(queryKey)
@@ -170,15 +188,14 @@ const createEventsListQueryFn =
     return ensurePaginatedResponse(response.data, normalized.limit)
   }
 
-type UseEventsListQueryOptions = Omit<
+type UseEventsListQueryOptions = PrivateListControls<
   UseInfiniteQueryOptions<
     PaginatedResponse<Event>,
     Error,
     InfiniteData<PaginatedResponse<Event>, string | null>,
     EventsListQueryKey,
     string | null
-  >,
-  "queryKey" | "queryFn" | "initialPageParam" | "getNextPageParam"
+  >
 >
 
 export type UseEventsListQueryResult = UseInfiniteQueryResult<
@@ -196,24 +213,39 @@ export const useEventsListQuery = (
 ): UseEventsListQueryResult => {
   const queryClient = useQueryClient()
   const normalized = normalizeEventsListFilters(filters)
-  const queryKey: EventsListQueryKey = useMemo(() => ["events", "list", normalized], [normalized])
-  const { enabled = true, ...rest } = options ?? {}
+  const owner = useAuthStore(getConfirmedUserId)
+  const epoch = getSessionEpoch()
+  const isCurrentSession = useMemo(() => {
+    const ownsEpoch = captureSessionEpoch()
+    return () => epoch === getSessionEpoch() && ownsEpoch()
+  }, [epoch])
+  const queryKey = eventsListQueryKey(filters)
+  const { enabled = true, ...rest } = pickPrivateListControls(options)
 
   const queryFn = useMemo(
-    () => createEventsListQueryFn(queryClient, normalized, queryKey),
-    [queryClient, normalized, queryKey]
+    () => createEventsListQueryFn(queryClient, normalized, queryKey, owner),
+    [queryClient, normalized, queryKey, owner]
   )
 
   // Read from localStorage as fallback for offline mode
   const placeholderData = useMemo(() => {
-    if (typeof window === "undefined") return undefined
+    if (
+      typeof window === "undefined" ||
+      !owner ||
+      !isCurrentSession() ||
+      getCurrentConfirmedUserId() !== owner
+    )
+      return undefined
     const activity =
       normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
     // StorageItem#get is itself fail-closed (including blocked browser storage
     // getters). Keeping this read path free of a second catch makes the
     // persistence contract single-owner and prevents an unexpected adapter
     // implementation from silently bypassing the typed fallback below.
-    const storage = new StorageItem<Event[]>(`events:list:${normalized.language}:${activity}`)
+    // Reject ownerless legacy snapshots; they cannot establish who may read them.
+    const storage = new StorageItem<Event[]>(
+      `events:list:account:${encodeURIComponent(owner)}:${normalized.language}:${activity}`
+    )
     const items = storage.get()
     if (!Array.isArray(items) || items.length === 0) return undefined
     return {
@@ -229,7 +261,7 @@ export const useEventsListQuery = (
       ],
       pageParams: [null],
     }
-  }, [normalized.language, normalized.is_active, normalized.limit])
+  }, [normalized.language, normalized.is_active, normalized.limit, owner, isCurrentSession])
 
   const query = useInfiniteQuery<
     PaginatedResponse<Event>,
@@ -238,13 +270,19 @@ export const useEventsListQuery = (
     EventsListQueryKey,
     string | null
   >({
+    ...rest,
     queryKey,
-    enabled,
+    enabled: (typeof window === "undefined" || owner !== null) && enabled,
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: PaginatedResponse<Event>) => lastPage?.next_cursor ?? null,
     queryFn,
     placeholderData,
-    ...rest,
+    // A tab can observe a changed origin-wide session before the auth broadcast
+    // arrives. Do not expose its previously warm list through this observer.
+    select: (data) => {
+      if (!isCurrentSession()) return { pages: [], pageParams: [] }
+      return data
+    },
   })
 
   const events = useMemo(() => mergeEventPages(query.data?.pages), [query.data])
@@ -264,8 +302,13 @@ export const lastEventPage = (
 
 export const prefetchEventsListQuery = (queryClient: QueryClient, filters: EventsListFilters) => {
   const normalized = normalizeEventsListFilters(filters)
-  const queryKey: EventsListQueryKey = ["events", "list", normalized]
-  const queryFn = createEventsListQueryFn(queryClient, normalized, queryKey)
+  const queryKey = eventsListQueryKey(filters)
+  const queryFn = createEventsListQueryFn(
+    queryClient,
+    normalized,
+    queryKey,
+    getCurrentConfirmedUserId()
+  )
 
   return queryClient.prefetchInfiniteQuery({
     queryKey,
@@ -483,9 +526,11 @@ interface EventNav {
 
 export function useEventNavigation(currentId: string): EventNav {
   const queryClient = useQueryClient()
+  const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
 
   return useMemo(() => {
     const fallback: EventNav = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
+    if (!sessionIsCurrent) return fallback
 
     const queries = queryClient.getQueriesData<{
       pages?: Array<{ items?: Event[] }>
@@ -524,5 +569,5 @@ export function useEventNavigation(currentId: string): EventNav {
       prevTitle: prev?.title ?? null,
       nextTitle: next?.title ?? null,
     }
-  }, [queryClient, currentId])
+  }, [queryClient, currentId, sessionIsCurrent])
 }

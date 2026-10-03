@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent, type FocusEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
 import type { User } from "@/types/User"
@@ -58,11 +59,14 @@ export interface UseDndSettingsReturn {
 export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
   const { t } = useTranslation(["settings"])
   const { user, setUser } = useAuth()
+  const captureOperation = useProfileSessionGuard()
 
   const [draft, setDraft] = useState(() => draftFromUser(null))
   const [dndSaving, setDndSaving] = useState(false)
 
   const persistDnd = async (nextEnabled: boolean, nextStart: string, nextEnd: string) => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
     const normalizedStart = nextStart.trim()
     const normalizedEnd = nextEnd.trim()
     const previous = user?.preferences
@@ -96,6 +100,7 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
             }
           : { dnd_enabled: false, dnd_start: null, dnd_end: null },
       })
+      if (!isCurrent() || response.data.id !== user?.id) return
       setUser(response.data)
       setDraft(draftFromUser(response.data))
 
@@ -106,6 +111,7 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
 
       setSnackbar({ text: message, severity: "success" })
     } catch (error: unknown) {
+      if (!isCurrent()) return
       let message = t("settings:dnd.snackbar.updateFailed")
 
       if (isAxiosError(error)) {
@@ -128,12 +134,12 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
       setSnackbar({ text: message, severity: "error" })
       setDraft(draftFromUser(user))
     } finally {
-      setDndSaving(false)
+      if (isCurrent()) setDndSaving(false)
     }
   }
 
   const handleDndToggle = (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-    if (dndSaving) return
+    if (dndSaving || !captureOperation()()) return
 
     if (checked) {
       const start = draft.start || DEFAULT_DND_START
@@ -151,7 +157,7 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
   }
 
   const handleDndStartBlur = (event: FocusEvent<HTMLInputElement>) => {
-    if (!draft.enabled || dndSaving) return
+    if (!draft.enabled || dndSaving || !captureOperation()()) return
     const value = event.currentTarget.value.trim()
     setDraft((current) => ({ ...current, start: value }))
     void persistDnd(true, value, draft.end)
@@ -162,11 +168,15 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
   }
 
   const handleDndEndBlur = (event: FocusEvent<HTMLInputElement>) => {
-    if (!draft.enabled || dndSaving) return
+    if (!draft.enabled || dndSaving || !captureOperation()()) return
     const value = event.currentTarget.value.trim()
     setDraft((current) => ({ ...current, end: value }))
     void persistDnd(true, draft.start, value)
   }
+
+  useEffect(() => {
+    setDndSaving(false)
+  }, [captureOperation])
 
   // Sync local state with user on mount and when user changes
   useEffect(() => {

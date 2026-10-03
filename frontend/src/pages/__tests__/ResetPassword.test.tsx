@@ -1131,6 +1131,30 @@ describe("ResetPassword behaviour details", () => {
     ])
   })
 
+  it("keeps the captured reset token during a same-route history-state replacement", async () => {
+    const resetMarker = `synthetic-${randomUUID()}`
+    const payloads: Array<{ token: string }> = []
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push((await request.json()) as { token: string })
+        return HttpResponse.json({ ok: true })
+      })
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    const router = await renderQueryResetRoute(`/reset?token=${resetMarker}`)
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty("token"))
+
+    await act(() => router.history.replace("/reset", {}))
+    expect(router.state.location.state).not.toHaveProperty("resetPasswordToken")
+    expect(screen.queryByText(tAuth("reset.invalidLink"))).not.toBeInTheDocument()
+    await fillMatchingPasswords(user)
+
+    expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]?.token).toBe(resetMarker)
+  })
+
   it("analyses strength in the resolved interface language", async () => {
     const selectedLanguage = window.__UE_SELECTED_LANG__
     passwordAnalysis.reportLocale = true

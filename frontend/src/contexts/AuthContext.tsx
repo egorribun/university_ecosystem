@@ -91,6 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     updateSessionSigningKey,
     sessionSigningKeyPromiseRef,
     ensureSessionSigningKey,
+    isCurrentSigningSession,
   } = useSessionCrypto()
 
   // Register the signing key accessor so the ETag cache can sign/verify responses.
@@ -122,7 +123,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     sessionSigningKeyRef,
     sessionSigningKeyPromiseRef,
     ensureSessionSigningKey,
-    ssrAuthHint
+    ssrAuthHint,
+    isCurrentSigningSession
   )
 
   const { login, logout, submitMfaChallenge, requireMfa, refresh } = useAuthApi(
@@ -133,7 +135,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     updateSessionSigningKey,
     authOperation,
     setAuthOperation,
-    resetEtagCache
+    resetEtagCache,
+    pendingMfa
   )
 
   const actionsValue = useMemo(

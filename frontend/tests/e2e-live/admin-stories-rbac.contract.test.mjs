@@ -9,6 +9,7 @@ const adminRouteUrl = new URL("../../src/routes/_admin/admin.stories.tsx", impor
 const adminLayoutUrl = new URL("../../src/routes/_admin.tsx", import.meta.url)
 const storyApiUrl = new URL("../../../app/api/stories.py", import.meta.url)
 const storySchemaUrl = new URL("../../../app/schemas/stories.py", import.meta.url)
+const authDependenciesUrl = new URL("../../../app/api/deps/auth.py", import.meta.url)
 
 test("admin story management is denied to both non-admin live roles", async () => {
   let spec
@@ -18,13 +19,15 @@ test("admin story management is denied to both non-admin live roles", async () =
     assert.fail("the dedicated admin stories RBAC live spec must exist")
   }
 
-  const [config, adminRoute, adminLayout, storyApi, storySchema] = await Promise.all([
-    readFile(configUrl, "utf8"),
-    readFile(adminRouteUrl, "utf8"),
-    readFile(adminLayoutUrl, "utf8"),
-    readFile(storyApiUrl, "utf8"),
-    readFile(storySchemaUrl, "utf8"),
-  ])
+  const [config, adminRoute, adminLayout, storyApi, storySchema, authDependencies] =
+    await Promise.all([
+      readFile(configUrl, "utf8"),
+      readFile(adminRouteUrl, "utf8"),
+      readFile(adminLayoutUrl, "utf8"),
+      readFile(storyApiUrl, "utf8"),
+      readFile(storySchemaUrl, "utf8"),
+      readFile(authDependenciesUrl, "utf8"),
+    ])
 
   assert.match(spec, /for \(const role of \["student", "teacher"\] as const\)/u)
   assert.match(spec, /await loginAs\(page, role\)/u)
@@ -71,15 +74,38 @@ test("admin story management is denied to both non-admin live roles", async () =
     adminLayout,
     /beforeLoad:\s*\(\)\s*=>\s*evaluateAdminGuard\(useAuthStore\.getState\(\)\)/u
   )
-  assert.match(storyApi, /@router\.post\(\s*""[\s\S]*?require_admin\(user, locale\)/u)
+  const routes = storyApi.split(/(?=^@router\.)/mu)
+  for (const [routePattern, handler] of [
+    [/^@router\.post\(\s*""/u, "create_story"],
+    [/^@router\.patch\(\s*"\/\{story_id\}"/u, "update_story"],
+    [/^@router\.delete\(\s*"\/\{story_id\}"/u, "delete_story"],
+  ]) {
+    const route = routes.find((section) => routePattern.test(section))
+    assert.ok(route, `${handler} must remain bound to its story mutation endpoint`)
+    const signature = route.match(new RegExp(`^async def ${handler}\\(([\\s\\S]*?)^\\)`, "mu"))?.[1]
+    assert.ok(signature, `${handler} must have an explicit dependency signature`)
+    assert.match(
+      signature,
+      /user:\s*models\.User\s*=\s*Depends\(get_current_admin_user_from_dishka\)/u,
+      `${handler} must authorize through the admin dependency before its body runs`
+    )
+  }
+  const adminDependency = authDependencies.match(
+    /^async def get_current_admin_user_from_dishka\([\s\S]*?(?=^(?:async )?def )/mu
+  )?.[0]
+  assert.ok(adminDependency, "the route admin dependency must be defined")
+  assert.match(adminDependency, /await ensure_admin\(checker, user, request\)\s+return user/u)
+  const adminGuard = authDependencies.match(
+    /^async def ensure_admin\([\s\S]*?(?=^async def )/mu
+  )?.[0]
+  assert.ok(adminGuard, "the shared admin guard must be defined")
+  assert.match(adminGuard, /await checker\.check_admin\(str\(user\.id\), user=user\)/u)
   assert.match(
-    storyApi,
-    /@router\.patch\(\s*"\/\{story_id\}"[\s\S]*?async def update_story[\s\S]*?require_admin\(user, locale\)/u
+    adminGuard,
+    /except SpiceDBUnavailableError:\s*raise HTTPException\(\s*status_code=status\.HTTP_503_SERVICE_UNAVAILABLE/u
   )
-  assert.match(
-    storyApi,
-    /@router\.delete\(\s*"\/\{story_id\}"[\s\S]*?async def delete_story[\s\S]*?require_admin\(user, locale\)/u
-  )
+  assert.match(adminGuard, /if not is_admin_user:\s*raise_forbidden\(/u)
+  assert.doesNotMatch(adminGuard, /if\s+user\.role\s*(?:==|!=)/u)
   assert.match(
     storySchema,
     /class StoryCreate\(BaseModel\)[\s\S]*?title: str[\s\S]*?short_text: str/u

@@ -301,13 +301,44 @@ describe("useChatWebSocket", () => {
     unmount()
   })
 
-  it("calls onOnlineStatus for an online frame (true + false)", async () => {
+  it("calls presence and online-status callbacks for active and inactive presence frames", async () => {
     const onOnlineStatus = vi.fn()
-    const { socket, unmount } = await mountAndOpen({ enabled: true, onOnlineStatus })
-    act(() => socket.receive({ type: "online", user_id: USER_B, status: true }))
-    act(() => socket.receive({ type: "online", user_id: USER_B, status: false }))
+    const onPresenceUpdate = vi.fn()
+    const { socket, unmount } = await mountAndOpen({
+      enabled: true,
+      onOnlineStatus,
+      onPresenceUpdate,
+    })
+    act(() => socket.receive({ type: "presence", user_id: USER_B, active: true, last_seen: null }))
+    act(() => socket.receive({ type: "presence", user_id: USER_B, active: false, last_seen: null }))
+    expect(onOnlineStatus).toHaveBeenCalledTimes(2)
     expect(onOnlineStatus).toHaveBeenNthCalledWith(1, USER_B, true)
     expect(onOnlineStatus).toHaveBeenNthCalledWith(2, USER_B, false)
+    expect(onPresenceUpdate).toHaveBeenCalledTimes(2)
+    expect(onPresenceUpdate).toHaveBeenNthCalledWith(1, USER_B, true, null)
+    expect(onPresenceUpdate).toHaveBeenNthCalledWith(2, USER_B, false, null)
+    unmount()
+  })
+
+  it("rejects retired online frames without notifying presence callbacks", async () => {
+    const onOnlineStatus = vi.fn()
+    const onPresenceUpdate = vi.fn()
+    const { socket, unmount } = await mountAndOpen({
+      enabled: true,
+      onOnlineStatus,
+      onPresenceUpdate,
+    })
+    await withExpectedConsole(
+      "error",
+      "[ws] Invalid frame dropped",
+      () => {
+        act(() => socket.receive({ type: "online", user_id: USER_B, status: true }))
+        act(() => socket.receive({ type: "online", user_id: USER_B, status: false }))
+      },
+      2
+    )
+    expect(onOnlineStatus).not.toHaveBeenCalled()
+    expect(onPresenceUpdate).not.toHaveBeenCalled()
     unmount()
   })
 

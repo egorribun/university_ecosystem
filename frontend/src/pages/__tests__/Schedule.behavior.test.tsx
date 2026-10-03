@@ -438,6 +438,16 @@ describe("Schedule page behavior", () => {
     expect(uiState.resetPreferences).toHaveBeenCalledOnce()
   })
 
+  it("ignores stale keyboard cells and an unavailable current weekday index", async () => {
+    scheduleState.hasToday = true
+    scheduleState.todayIdx = 99
+    await renderSchedule()
+    expect(keyboardState.options.todayColIdx).toBe(-1)
+    act(() => keyboardState.options.onOpen(99, 99))
+    expect(pageState.openDialog).not.toHaveBeenCalled()
+    expect(screen.getByTestId("desktop-view")).toBeInTheDocument()
+  })
+
   it("shows a load error and retries the schedule request", async () => {
     scheduleState.error = new Error("network")
     await renderSchedule()

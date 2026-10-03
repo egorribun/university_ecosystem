@@ -8,27 +8,38 @@ const fixtureUrl = new URL("./fixtures.ts", import.meta.url)
 const read = (path) => readFile(new URL(path, rootUrl), "utf8")
 
 test("avatar UI validation matches the image API and live acceptance stays owner-bounded", async () => {
-  const [backend, avatarHook, coverHook, profileSection, english, russian, spec, fixtures] =
-    await Promise.all([
-      read("app/utils/files.py"),
-      read("frontend/src/pages/settings/hooks/useAvatarUpload.ts"),
-      read("frontend/src/pages/settings/hooks/useCoverUpload.ts"),
-      read("frontend/src/pages/settings/sections/ProfileSection.tsx"),
-      read("frontend/src/i18n/locales/en/settings.json"),
-      read("frontend/src/i18n/locales/ru/settings.json"),
-      read("frontend/tests/e2e-live/avatar-persistence.live.spec.ts"),
-      readFile(fixtureUrl, "utf8"),
-    ])
+  const [
+    backend,
+    uploads,
+    avatarHook,
+    coverHook,
+    profileSection,
+    english,
+    russian,
+    spec,
+    fixtures,
+  ] = await Promise.all([
+    read("app/utils/files.py"),
+    read("frontend/src/constants/uploads.ts"),
+    read("frontend/src/pages/settings/hooks/useAvatarUpload.ts"),
+    read("frontend/src/pages/settings/hooks/useCoverUpload.ts"),
+    read("frontend/src/pages/settings/sections/ProfileSection.tsx"),
+    read("frontend/src/i18n/locales/en/settings.json"),
+    read("frontend/src/i18n/locales/ru/settings.json"),
+    read("frontend/tests/e2e-live/avatar-persistence.live.spec.ts"),
+    readFile(fixtureUrl, "utf8"),
+  ])
 
   assert.match(
     backend,
     /ALLOWED_IMAGE_TYPES:[\s\S]*?"image\/jpeg"[\s\S]*?"image\/png"[\s\S]*?"image\/webp"/u
   )
   assert.match(backend, /MAX_IMAGE_SIZE:[\s\S]*?5 \* 1024 \* 1024/u)
+  assert.match(uploads, /export const MAX_IMAGE_UPLOAD_BYTES\s*=\s*5 \* 1024 \* 1024/u)
   for (const hook of [avatarHook, coverHook]) {
-    assert.match(hook, /MAX_FILE_SIZE_BYTES\s*=\s*5 \* 1024 \* 1024/u)
+    assert.match(hook, /import \{ MAX_IMAGE_UPLOAD_BYTES \} from "@\/constants\/uploads"/u)
     assert.match(hook, /new Set\(\["image\/png", "image\/jpeg", "image\/webp"\]\)/u)
-    assert.match(hook, /file\.size <= MAX_FILE_SIZE_BYTES/u)
+    assert.match(hook, /file\.size <= MAX_IMAGE_UPLOAD_BYTES/u)
   }
 
   assert.equal(

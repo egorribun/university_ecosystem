@@ -1,6 +1,14 @@
-import { QueryClient } from "@tanstack/react-query"
+import { CancelledError, QueryClient } from "@tanstack/react-query"
 import { get, set, del } from "idb-keyval"
 import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client"
+import { createSessionMutationCache } from "./sessionMutationCache"
+import {
+  captureSessionEpoch,
+  invalidateSessionEpoch,
+  getBrowserSessionGeneration,
+} from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { getConfirmedUserId, waitForConfirmedUserId } from "@/stores/authIdentity"
 
 const DEFAULT_STALE_MS = 5 * 60_000 // 5 minutes - standard freshness
 const DEFAULT_CACHE_MS = 30 * 60_000 // 30 minutes - persistent window
@@ -35,10 +43,22 @@ const defaultOptions = {
   },
 } as const
 
-export const createQueryClient = () =>
-  new QueryClient({
-    defaultOptions,
-  })
+const browserClients = new Set<WeakRef<QueryClient>>()
+
+export const createQueryClient = () => {
+  const client = new QueryClient({ defaultOptions, mutationCache: createSessionMutationCache() })
+  const cancel = client.cancelQueries.bind(client)
+  client.cancelQueries = (...args) => {
+    const owns = captureSessionEpoch()
+    return cancel(...args).then(() => {
+      // Every asynchronous optimistic callback in this app suspends here before
+      // reading/writing its snapshot. Reject it if the account changed meanwhile.
+      if (!owns()) throw new CancelledError({ silent: true })
+    })
+  }
+  if (typeof window !== "undefined") browserClients.add(new WeakRef(client))
+  return client
+}
 
 export const queryClient = createQueryClient()
 
@@ -130,7 +150,88 @@ export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
   } satisfies Persister
 }
 
-export const idbPersister = createIDBPersister()
+let cacheIdentity: string | null = null
+let cacheEpoch = 0
+let restoredClient: PersistedClient | undefined
+let persistenceQueue: Promise<void> = Promise.resolve()
+
+/** Publish the identity before rendering a new profile or clearing its caches. */
+export function setQueryCacheIdentity(owner: string | null) {
+  if (owner === cacheIdentity) return
+  cacheIdentity = owner
+  cacheEpoch += 1
+  invalidateSessionEpoch()
+  // PersistQueryClientProvider hydrates after awaiting restoreClient. Invalidate
+  // the returned object too, closing the final restore-to-hydrate microtask gap.
+  if (restoredClient) restoredClient.clientState = { queries: [], mutations: [] }
+  restoredClient = undefined
+  for (const reference of browserClients) {
+    const client = reference.deref()
+    if (client) client.clear()
+    else browserClients.delete(reference)
+  }
+}
+
+useAuthStore.subscribe((state) => {
+  // A refresh may mark an already-confirmed account loading temporarily.
+  if (state.loading && state.user?.id === cacheIdentity) return
+  setQueryCacheIdentity(getConfirmedUserId(state))
+})
+
+const scopedKey = (owner: string) => `reactQuery:v2:${encodeURIComponent(owner)}`
+const belongsToOwner = (client: PersistedClient, owner: string) =>
+  client.clientState.queries.some((query) => {
+    const data = query.state.data as { id?: unknown } | undefined
+    return query.queryKey[0] === "users" && query.queryKey[1] === "me" && data?.id === owner
+  })
+
+/** The production persister never reads the legacy shared reactQuery key. */
+export const idbPersister: Persister = {
+  async persistClient(client) {
+    const owner = cacheIdentity
+    const epoch = cacheEpoch
+    const session = captureSessionEpoch()
+    if (!owner || !getBrowserSessionGeneration() || !belongsToOwner(client, owner)) return
+    const key = scopedKey(owner)
+    const owns = () => session() && cacheIdentity === owner && cacheEpoch === epoch
+    const write = persistenceQueue.then(async () => {
+      if (!owns()) return
+      await createIDBPersister(key).persistClient(client)
+      if (!owns()) await del(key)
+    })
+    persistenceQueue = write.catch(() => undefined)
+    await write
+  },
+  async restoreClient() {
+    await del("reactQuery")
+    // Auth bootstrap fetchQuery is imperative and can resolve while the query
+    // provider waits. Anonymous/cold workers must not hydrate account data.
+    const owner = await waitForConfirmedUserId()
+    if (!owner || !getBrowserSessionGeneration() || cacheIdentity !== owner) return undefined
+    const epoch = cacheEpoch
+    const session = captureSessionEpoch()
+    const saved = await get<PersistedClient>(scopedKey(owner))
+    if (
+      !session() ||
+      cacheIdentity !== owner ||
+      cacheEpoch !== epoch ||
+      !saved ||
+      !belongsToOwner(saved, owner)
+    )
+      return undefined
+    restoredClient = saved
+    return saved
+  },
+  async removeClient() {
+    const owner = cacheIdentity
+    await del("reactQuery")
+    if (owner) {
+      const removal = persistenceQueue.then(() => del(scopedKey(owner)))
+      persistenceQueue = removal.catch(() => undefined)
+      await removal
+    }
+  },
+}
 
 const PERSIST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const APP_VERSION_BUSTER = (import.meta.env.VITE_APP_VERSION as string) || "1.0.0"

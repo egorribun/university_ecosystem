@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
+import { useSessionProfileRefresh } from "./useSessionProfileRefresh"
+import { useCallback, useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -10,9 +11,7 @@ import {
   verifyMfaChallenge,
 } from "@/api/mfa"
 import { useAuth } from "@/contexts/AuthContext"
-import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
 import type { MfaMethodChallenge } from "@/types/Mfa"
-import type { User } from "@/types/User"
 import { extractApiError } from "@/utils/error"
 import type { SetSnackbar } from "@/pages/settings/types"
 
@@ -25,22 +24,20 @@ type EmailMfaMode = "verification" | "enablement"
 
 export function useEmailMfa({ setSnackbar, openStepUpFor }: UseEmailMfaOptions) {
   const { t } = useTranslation(["settings", "common"])
-  const { user, setUser } = useAuth()
-  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const captureOperation = useProfileSessionGuard()
+  const refreshUser = useSessionProfileRefresh()
   const [emailChallenge, setEmailChallenge] = useState<MfaMethodChallenge | null>(null)
   const [emailMode, setEmailMode] = useState<EmailMfaMode | null>(null)
   const [emailMfaBusy, setEmailMfaBusy] = useState(false)
   const [emailMfaError, setEmailMfaError] = useState<string | null>(null)
 
-  const refreshUser = useCallback(async () => {
-    const fresh = await queryClient.fetchQuery<User>({
-      queryKey: currentUserQueryKey,
-      queryFn: fetchCurrentUser,
-      staleTime: 0,
-    })
-    setUser(fresh)
-    return fresh
-  }, [queryClient, setUser])
+  useEffect(() => {
+    setEmailChallenge(null)
+    setEmailMode(null)
+    setEmailMfaBusy(false)
+    setEmailMfaError(null)
+  }, [captureOperation])
 
   const resolveMessage = useCallback(
     (error: unknown, fallbackKey: string) => {
@@ -52,34 +49,47 @@ export function useEmailMfa({ setSnackbar, openStepUpFor }: UseEmailMfaOptions) 
 
   const handleStartEmailMfa = useCallback(
     async (options?: { skipStepUp?: boolean }) => {
-      if (emailMfaBusy) return
+      const isCurrent = captureOperation()
+      if (emailMfaBusy || !isCurrent()) return
       setEmailMfaBusy(true)
       setEmailMfaError(null)
       try {
         const mode: EmailMfaMode = user?.email_verified_at ? "enablement" : "verification"
         const challenge =
           mode === "enablement" ? await startEmailMfaEnablement() : await startEmailVerification()
+        if (!isCurrent()) return
         setEmailMode(mode)
         setEmailChallenge(challenge)
       } catch (error) {
+        if (!isCurrent()) return
         const apiError = extractApiError(error)
         if (!options?.skipStepUp && apiError.status === 428) {
-          openStepUpFor(() => handleStartEmailMfa({ skipStepUp: true }))
+          openStepUpFor(async () => {
+            if (isCurrent()) await handleStartEmailMfa({ skipStepUp: true })
+          })
           return
         }
         const message = resolveMessage(error, "settings:security.snackbar.emailMfaStartFailed")
         setEmailMfaError(message)
         setSnackbar({ text: message, severity: "error" })
       } finally {
-        setEmailMfaBusy(false)
+        if (isCurrent()) setEmailMfaBusy(false)
       }
     },
-    [emailMfaBusy, openStepUpFor, resolveMessage, setSnackbar, user?.email_verified_at]
+    [
+      captureOperation,
+      emailMfaBusy,
+      openStepUpFor,
+      resolveMessage,
+      setSnackbar,
+      user?.email_verified_at,
+    ]
   )
 
   const handleConfirmEmailMfa = useCallback(
     async (code: string) => {
-      if (!emailChallenge || emailMfaBusy) return
+      const isCurrent = captureOperation()
+      if (!emailChallenge || emailMfaBusy || !isCurrent()) return
       setEmailMfaBusy(true)
       setEmailMfaError(null)
       try {
@@ -88,7 +98,7 @@ export function useEmailMfa({ setSnackbar, openStepUpFor }: UseEmailMfaOptions) 
           code,
           challenge_token: emailChallenge.challenge_token,
         })
-        await refreshUser()
+        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
         setEmailChallenge(null)
         setSnackbar({
           text: t(
@@ -99,30 +109,43 @@ export function useEmailMfa({ setSnackbar, openStepUpFor }: UseEmailMfaOptions) 
           severity: "success",
         })
       } catch (error) {
+        if (!isCurrent()) return
         setEmailMfaError(resolveMessage(error, "settings:security.snackbar.emailMfaConfirmFailed"))
       } finally {
-        setEmailMfaBusy(false)
+        if (isCurrent()) setEmailMfaBusy(false)
       }
     },
-    [emailChallenge, emailMfaBusy, emailMode, refreshUser, resolveMessage, setSnackbar, t]
+    [
+      captureOperation,
+      emailChallenge,
+      emailMfaBusy,
+      emailMode,
+      refreshUser,
+      resolveMessage,
+      setSnackbar,
+      t,
+    ]
   )
 
   const handleResendEmailMfa = useCallback(async () => {
-    if (!emailChallenge || emailMfaBusy) return
+    const isCurrent = captureOperation()
+    if (!emailChallenge || emailMfaBusy || !isCurrent()) return
     setEmailMfaBusy(true)
     setEmailMfaError(null)
     try {
       const rotated = await resendEmailMfaChallenge(emailChallenge.challenge_token)
+      if (!isCurrent()) return
       setEmailChallenge(rotated)
       setSnackbar({ text: t("settings:security.snackbar.emailMfaResent"), severity: "success" })
     } catch (error) {
+      if (!isCurrent()) return
       const message = resolveMessage(error, "settings:security.snackbar.emailMfaResendFailed")
       setEmailMfaError(message)
       setSnackbar({ text: message, severity: "error" })
     } finally {
-      setEmailMfaBusy(false)
+      if (isCurrent()) setEmailMfaBusy(false)
     }
-  }, [emailChallenge, emailMfaBusy, resolveMessage, setSnackbar, t])
+  }, [captureOperation, emailChallenge, emailMfaBusy, resolveMessage, setSnackbar, t])
 
   const handleCancelEmailMfa = useCallback(() => {
     setEmailChallenge(null)
@@ -131,22 +154,26 @@ export function useEmailMfa({ setSnackbar, openStepUpFor }: UseEmailMfaOptions) 
   }, [])
 
   const handleDisableEmailMfa = useCallback(() => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
     openStepUpFor(async () => {
+      if (!isCurrent()) return
       try {
         await disableEmailMfa()
-        await refreshUser()
+        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
         setSnackbar({
           text: t("settings:security.snackbar.emailMfaDisabled"),
           severity: "success",
         })
       } catch (error) {
+        if (!isCurrent()) return
         setSnackbar({
           text: resolveMessage(error, "settings:security.snackbar.emailMfaDisableFailed"),
           severity: "error",
         })
       }
     })
-  }, [openStepUpFor, refreshUser, resolveMessage, setSnackbar, t])
+  }, [captureOperation, openStepUpFor, refreshUser, resolveMessage, setSnackbar, t])
 
   return {
     emailChallenge,

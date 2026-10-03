@@ -450,6 +450,26 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(document.activeElement).toBe(searchInput)
   })
 
+  it("ignores a queued arrow key after group creation disables every search row", async () => {
+    state.get.mockResolvedValue({ data: [user("one"), user("two")] })
+    const onSelect = vi.fn()
+    const onCreateGroup = vi.fn()
+    const props = { open: true, onClose: vi.fn(), onSelect, onCreateGroup }
+    const { rerender } = render(<NewChatModal {...props} />, { wrapper })
+    fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "users" },
+    })
+    const rows = await screen.findAllByRole("option")
+    rows[0]!.focus()
+    rerender(<NewChatModal {...props} isCreatingGroup />)
+    expect(rows[0]).toBeDisabled()
+    expect(rows[1]).toBeDisabled()
+    expect(fireEvent.keyDown(rows[0]!, { key: "ArrowDown" })).toBe(true)
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onCreateGroup).not.toHaveBeenCalled()
+  })
+
   it("keeps scroll locks independent across mounted NewChatModal instances", async () => {
     const { rerender } = render(
       <>
