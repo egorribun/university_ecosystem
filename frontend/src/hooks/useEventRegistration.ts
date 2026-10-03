@@ -207,7 +207,7 @@ export function useEventRegistration({
       }
 
       if (nextRegistered) {
-        const code = event?.my_qr_token
+        const code = event.my_qr_token
         if (code) {
           setQrToken(code)
           try {
