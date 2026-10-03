@@ -2639,6 +2639,13 @@ _PLAYWRIGHT_FAILURE_SOURCES = {
     r"tests\e2e-live\password-reset.live.spec.ts": "tests/e2e-live/password-reset.live.spec.ts",
 }
 _PLAYWRIGHT_FAILURE_PROJECTS = {project: project for project in ("desktop", "mobile")}
+_PLAYWRIGHT_FAILURE_FRAME = re.compile(
+    r"        at (?:[^()]{1,256} \((?P<named>.+)\)|(?P<anonymous>.+))"
+)
+_PLAYWRIGHT_FRAME_LOCATION = re.compile(
+    r"(?P<source>.{1,1024}):(?P<line>[1-9][0-9]{0,4}):"
+    r"(?P<column>[1-9][0-9]{0,4})"
+)
 
 
 def _live_playwright_counts(output: str) -> dict[str, int]:
@@ -2654,18 +2661,44 @@ def _live_playwright_counts(output: str) -> dict[str, int]:
 
 def _live_playwright_failure_locations(
     output: str, *, cwd: Path
-) -> list[tuple[str, str, int]]:
-    """Return only allowlisted source locations, never titles or error text."""
-    locations: list[tuple[str, str, int]] = []
+) -> list[tuple[str, str, int, str]]:
+    """Return public declarations/frames, never titles, function names or errors."""
+    locations: list[tuple[str, str, int, str]] = []
     source_lines: dict[str, list[str]] = {}
+    frame_sources = {
+        **_PLAYWRIGHT_FAILURE_SOURCES,
+        **{str(cwd.absolute() / source): source for source in LIVE_E2E_SMOKE_FILES},
+    }
+    project = ""
     # Split only actual reporter newlines, not control characters in a title.
-    for header in output.split("\n"):
-        if len(header) > 4096 or not header.isprintable():
+    for reporter_line in output.split("\n"):
+        # A new top-level reporter line ends the previous failure, even if its
+        # project, path or location cannot be validated. Blank lines are normal
+        # between a failure header, error message and its indented stack.
+        if reporter_line and not reporter_line.startswith("    "):
+            project = ""
+        if len(reporter_line) > 4096 or (
+            reporter_line and not reporter_line.isprintable()
+        ):
+            project = ""
             continue
-        match = _PLAYWRIGHT_FAILURE_HEADER.match(header)
-        if match is None:
+        match = _PLAYWRIGHT_FAILURE_HEADER.match(reporter_line)
+        kind = "declaration"
+        if match is not None:
+            source = _PLAYWRIGHT_FAILURE_SOURCES.get(match["source"])
+        elif project:
+            frame = _PLAYWRIGHT_FAILURE_FRAME.fullmatch(reporter_line)
+            if frame is None:
+                continue
+            match = _PLAYWRIGHT_FRAME_LOCATION.fullmatch(
+                frame["named"] or frame["anonymous"]
+            )
+            if match is None:
+                continue
+            source = frame_sources.get(match["source"])
+            kind = "frame"
+        else:
             continue
-        source = _PLAYWRIGHT_FAILURE_SOURCES.get(match["source"])
         if source is None:
             continue
         if source not in source_lines:
@@ -2681,11 +2714,9 @@ def _live_playwright_failure_locations(
         column = int(match["column"])
         if line_number > len(lines) or column > len(lines[line_number - 1]) + 1:
             continue
-        location = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            source,
-            line_number,
-        )
+        if kind == "declaration":
+            project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
+        location = (project, source, line_number, kind)
         if location not in locations:
             locations.append(location)
     return locations
@@ -2714,7 +2745,14 @@ def _run_live_playwright(
     return_code = completed.returncode
     output = "\n".join((completed.stdout or "", completed.stderr or ""))
     counts = _live_playwright_counts(output)
-    failure_locations = _live_playwright_failure_locations(output, cwd=cwd)
+    # A header from one stream must never authorize frames from the other.
+    failure_locations = list(
+        dict.fromkeys(
+            location
+            for stream in (completed.stdout or "", completed.stderr or "")
+            for location in _live_playwright_failure_locations(stream, cwd=cwd)
+        )
+    )
     del output
     completed.stdout = ""
     completed.stderr = ""
@@ -2726,9 +2764,9 @@ def _run_live_playwright(
             if name in counts
         )
         print(f"live E2E counts {count_summary}", flush=True)
-    for project, source, line_number in failure_locations:
+    for project, source, line_number, kind in failure_locations:
         print(
-            f"live E2E failure project={project} source={source} line={line_number}",
+            f"live E2E failure project={project} source={source} line={line_number} kind={kind}",
             flush=True,
         )
     outcome = "passed" if return_code == 0 else "failed"

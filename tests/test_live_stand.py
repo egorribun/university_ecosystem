@@ -1233,7 +1233,7 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
 
 
 @pytest.mark.parametrize("return_code", [0, 1, 23])
-@pytest.mark.parametrize("path_style", ["posix", "windows"])
+@pytest.mark.parametrize("path_style", ["posix", "windows", "absolute"])
 def test_live_playwright_emits_only_validated_failure_locations(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1246,20 +1246,30 @@ def test_live_playwright_emits_only_validated_failure_locations(
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("// public source\n" * 3, encoding="utf-8")
     private_title = "password=fixture-private-password token=fixture-private-token"
+    frame_sources = [
+        str(tmp_path / source) if path_style == "absolute" else source
+        for source in live_stand.LIVE_E2E_SMOKE_FILES
+    ]
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
         return_code,
         stdout=(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title} ─────\n"
+            "\n    Error: fixture-private-assertion\n\n"
+            f"        at fixturePrivateFunction ({frame_sources[0]}:3:1)\n"
+            f"        at {frame_sources[0]}:2:1\n"
             "  2) [mobile] › tests/e2e-live/password-reset.live.spec.ts:3:17 › "
             "https://private.invalid/reset?token=fixture-private-token ─────\n"
+            "\n    Error: fixture-private-error\n\n"
+            f"        at {frame_sources[1]}:1:17\n"
             "6 passed\n12 failed\n2 skipped\n"
         ),
         stderr=(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title}\n"
             "Error: locator.fill('fixture-private-password')\n"
+            f"        at {frame_sources[0]}:1:1\n"
         ),
     )
     if path_style == "windows":
@@ -1282,12 +1292,223 @@ def test_live_playwright_emits_only_validated_failure_locations(
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         "live E2E counts passed=6 failed=12 skipped=2",
-        "live E2E failure project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2",
-        "live E2E failure project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=3",
+        "live E2E failure project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 kind=declaration",
+        "live E2E failure project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=3 kind=frame",
+        "live E2E failure project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 kind=frame",
+        "live E2E failure project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=3 kind=declaration",
+        "live E2E failure project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=1 kind=frame",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
     assert completed.stdout == completed.stderr == ""
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        "        at tests/e2e-live/unknown.live.spec.ts:2:1",
+        "        at /private/tests/e2e-live/auth-roles.live.spec.ts:2:1",
+        r"        at C:\private\tests\e2e-live\auth-roles.live.spec.ts:2:1",
+        "        at ../tests/e2e-live/auth-roles.live.spec.ts:2:1",
+        "        at {cwd}/../tests/e2e-live/auth-roles.live.spec.ts:2:1",
+        "        at {cwd}/tests/e2e-live/../e2e-live/auth-roles.live.spec.ts:2:1",
+        "        at file://{cwd}/tests/e2e-live/auth-roles.live.spec.ts:2:1",
+        "        at https://private.invalid/tests/e2e-live/auth-roles.live.spec.ts:2:1",
+        r"        at tests/e2e-live\auth-roles.live.spec.ts:2:1",
+        "        at auth-roles.live.spec.ts:2:1",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:0:1",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:4:1",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:02:1",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:0",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:18",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:01",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1secret",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1?private-token",
+        "        at (tests/e2e-live/auth-roles.live.spec.ts:2:1)",
+        "        at function (tests/e2e-live/auth-roles.live.spec.ts:2:1",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1)",
+        "        at function ((tests/e2e-live/auth-roles.live.spec.ts:2:1))",
+        "        at function (tests/e2e-live/auth-roles.live.spec.ts:2:1) private",
+        "        at " + "x" * 257 + " (tests/e2e-live/auth-roles.live.spec.ts:2:1)",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1\x1b[31m",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1\rprivate",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1\x00private",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1\u202eprivate",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:1\v"
+        "        at tests/e2e-live/auth-roles.live.spec.ts:3:1",
+        "        at " + "x" * 4096 + "/tests/e2e-live/auth-roles.live.spec.ts:2:1",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:" + "9" * 5000 + ":1",
+        "        at tests/e2e-live/auth-roles.live.spec.ts:2:" + "9" * 5000,
+        "       at tests/e2e-live/auth-roles.live.spec.ts:2:1",
+    ],
+    ids=[
+        "unknown-source",
+        "foreign-absolute",
+        "foreign-windows-absolute",
+        "relative-parent",
+        "absolute-parent",
+        "absolute-normalization",
+        "file-url",
+        "https-url",
+        "mixed-separators",
+        "basename",
+        "zero-line",
+        "line-past-end",
+        "leading-zero-line",
+        "zero-column",
+        "column-past-end",
+        "leading-zero-column",
+        "malformed-column",
+        "query",
+        "missing-function",
+        "unclosed-wrapper",
+        "unopened-wrapper",
+        "nested-wrapper",
+        "trailing-text",
+        "oversized-function",
+        "ansi",
+        "carriage-return",
+        "nul",
+        "bidi",
+        "control-forged-frame",
+        "oversized-path",
+        "oversized-line",
+        "oversized-column",
+        "wrong-indentation",
+    ],
+)
+def test_live_playwright_rejects_untrusted_failure_frames(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], frame: str
+) -> None:
+    source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
+    source = tmp_path / source_name
+    source.parent.mkdir(parents=True)
+    source.write_text("// public source\n" * 3, encoding="utf-8")
+    output = f"  1) [desktop] › {source_name}:1:1 › private-title\n\n"
+    output += frame.replace("{cwd}", str(tmp_path))
+    assert live_stand._live_playwright_failure_locations(output, cwd=tmp_path) == [
+        ("desktop", source_name, 1, "declaration")
+    ]
+    printed = capsys.readouterr()
+    assert printed.out == printed.err == ""
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "  2) [unknown] › tests/e2e-live/auth-roles.live.spec.ts:1:1 › private",
+        "  2) [mobile] › tests/e2e-live/unknown.live.spec.ts:1:1 › private",
+        "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:4:1 › private",
+        "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:1:18 › private",
+        "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:1:1",
+        "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:1:1 › private\x1b[31m",
+        "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:1:1 › " + "x" * 4096,
+        "  2 failed",
+        "Error: unscoped private error",
+    ],
+    ids=[
+        "unknown-project",
+        "unknown-source",
+        "invalid-line",
+        "invalid-column",
+        "malformed-header",
+        "control-header",
+        "oversized-header",
+        "summary",
+        "unscoped-error",
+    ],
+)
+def test_live_playwright_frames_do_not_reuse_an_earlier_failure_project(
+    tmp_path: Path, boundary: str
+) -> None:
+    source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
+    source = tmp_path / source_name
+    source.parent.mkdir(parents=True)
+    source.write_text("// public source\n" * 3, encoding="utf-8")
+    output = (
+        f"  1) [desktop] › {source_name}:1:1 › private-title\n"
+        f"{boundary}\n        at {source}:2:1\n"
+    )
+    assert live_stand._live_playwright_failure_locations(output, cwd=tmp_path) == [
+        ("desktop", source_name, 1, "declaration")
+    ]
+    assert (
+        live_stand._live_playwright_failure_locations(
+            f"        at {source}:2:1", cwd=tmp_path
+        )
+        == []
+    )
+
+
+def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
+    source = tmp_path / source_name
+    source.parent.mkdir(parents=True)
+    source.write_text("// public source\n" * 3, encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(),
+        23,
+        stdout=f"  1) [desktop] › {source_name}:1:1 › private-title\n",
+        stderr=f"        at {source}:2:1\n1 failed\n",
+    )
+    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    with pytest.raises(live_stand.StandError, match="exit code 23"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={})
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command()),
+        "live E2E counts failed=1",
+        f"live E2E failure project=desktop source={source_name} line=1 kind=declaration",
+        "live E2E outcome=failed exit_code=23",
+    ]
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == ""
+
+
+@pytest.mark.parametrize("source_state", ["missing", "invalid-utf8", "directory"])
+def test_live_playwright_failure_frames_fail_closed_without_source_bounds(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], source_state: str
+) -> None:
+    declaration, frame = (tmp_path / path for path in live_stand.LIVE_E2E_SMOKE_FILES)
+    declaration.parent.mkdir(parents=True)
+    declaration.write_text("// public source\n", encoding="utf-8")
+    if source_state == "invalid-utf8":
+        frame.write_bytes(b"\xffprivate-source-sentinel")
+    elif source_state == "directory":
+        frame.mkdir()
+    source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
+    output = (
+        f"  1) [mobile] › {source_name}:1:1 › private-title\n        at {frame}:1:1\n"
+    )
+    assert live_stand._live_playwright_failure_locations(output, cwd=tmp_path) == [
+        ("mobile", source_name, 1, "declaration")
+    ]
+    printed = capsys.readouterr()
+    assert printed.out == printed.err == ""
+
+
+def test_live_playwright_frames_support_parentheses_in_the_exact_working_directory(
+    tmp_path: Path,
+) -> None:
+    cwd = tmp_path / "public checkout (copy)"
+    source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
+    source = cwd / source_name
+    source.parent.mkdir(parents=True)
+    source.write_text("// public source\n" * 3, encoding="utf-8")
+    output = (
+        f"  1) [mobile] › {source_name}:1:1 › private-title\n"
+        f"        at privateFunction ({source}:2:1)\n"
+        f"        at {source}:3:1\n"
+    )
+    assert live_stand._live_playwright_failure_locations(output, cwd=cwd) == [
+        ("mobile", source_name, 1, "declaration"),
+        ("mobile", source_name, 2, "frame"),
+        ("mobile", source_name, 3, "frame"),
+    ]
 
 
 @pytest.mark.parametrize(
