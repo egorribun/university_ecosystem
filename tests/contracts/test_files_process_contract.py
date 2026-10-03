@@ -61,12 +61,9 @@ def _files_process_handler(
     assert "type" in payload, "Missing required field: 'type'"
     assert "source_key" in payload, "Missing required field: 'source_key'"
     assert "dest_key" in payload, "Missing required field: 'dest_key'"
-    assert payload["type"] in {
-        "image_resize",
-        "image_compress",
-        "pdf_preview",
-        "video_transcode",
-    }, "Unsupported canonical file-processing type"
+    assert payload["type"] == "image_resize", (
+        "Unsupported canonical file-processing type"
+    )
     assert (
         "name" not in payload and "args" not in payload and "kwargs" not in payload
     ), "The stale generic task envelope is not valid on files.process"
@@ -92,3 +89,19 @@ def test_files_process_event_contract(pact: Pact) -> None:
         .with_metadata({"nats_subject": "files.process"})
     )
     pact.verify(_files_process_handler, "Async")
+
+
+@pytest.mark.parametrize(
+    "job_type", ["image_compress", "pdf_preview", "video_transcode"]
+)
+def test_files_process_rejects_unimplemented_job_types(job_type: str) -> None:
+    payload = {
+        "id": "uuid",
+        "type": job_type,
+        "source_key": "uploads/raw/img.jpg",
+        "dest_key": "uploads/processed/img.jpg",
+    }
+    with pytest.raises(
+        AssertionError, match="Unsupported canonical file-processing type"
+    ):
+        _files_process_handler(json.dumps(payload), {})

@@ -341,7 +341,7 @@ def test_websocket_origin_suppression_matches_current_source_anchor(
     entry = policy["entries"][0]
     source_path = root / entry["path"]
     source_lines = source_path.read_text(encoding="utf-8").splitlines()
-    assert entry["start_line"] == entry["end_line"] == 197
+    assert entry["start_line"] == entry["end_line"] == 199
     assert "upgrader.Upgrade(w, r, nil)" in source_lines[entry["start_line"] - 1]
 
     report_path, policy_path = _write_inputs(

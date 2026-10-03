@@ -6,8 +6,8 @@ Provider: university-backend  (Python backend — publishes to NATS)
 
 Flow
 ----
-1. This test (consumer side) defines the expected message schema and writes
-   ``tests/contracts/pacts/ws-hub-university-backend.json``.
+1. This test (consumer side) defines the expected message schema and merges it
+   into ``ws-hub-university-backend.json`` in the run's fresh output directory.
 2. The Go provider test in ``services/ws-hub/internal/contract/`` reads that
    pact file and verifies that the ws-hub message handler can process any
    message matching the schema.
@@ -60,8 +60,6 @@ else:
 # Constants
 # ---------------------------------------------------------------------------
 
-PACT_DIR = Path(__file__).parent / "pacts"
-
 CONSUMER_NAME = "ws-hub"
 PROVIDER_NAME = "university-backend"
 
@@ -82,16 +80,16 @@ _SAMPLE_SIGNATURE = "a" * 64  # 64-char hex string placeholder
 
 
 @pytest.fixture(scope="module")
-def pact() -> Pact:
-    """Session-scoped Pact instance.
+def pact(pact_output_dir: Path) -> Pact:
+    """Module-scoped Pact instance with its own consumer message handlers.
 
     On teardown (after all tests in the module), writes the pact contract file
-    to *PACT_DIR*.  The file is consumed by the Go provider test.
+    to the fresh output directory, merging the other ws-hub module's messages.
+    The combined file is consumed by the Go provider test.
     """
-    PACT_DIR.mkdir(parents=True, exist_ok=True)
     p = Pact(CONSUMER_NAME, PROVIDER_NAME)
     yield p.with_specification("V4")
-    p.write_file(PACT_DIR, overwrite=True)
+    p.write_file(pact_output_dir, overwrite=False)
 
 
 # ---------------------------------------------------------------------------

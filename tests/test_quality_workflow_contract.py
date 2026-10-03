@@ -856,12 +856,13 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "uvicorn app.main:app" in http_provider_text
 
 
-def test_unreplayed_file_processor_pacts_remain_consumer_only() -> None:
+def test_unreplayed_pacts_remain_consumer_only() -> None:
     """Unreplayed schemas must not create artifacts consumed as provider pacts."""
 
     for filename in (
         "test_file_processor_contract.py",
         "test_files_process_contract.py",
+        "test_optimizer_grpc_contract.py",
     ):
         source = (REPOSITORY_ROOT / "tests" / "contracts" / filename).read_text(
             encoding="utf-8"
@@ -872,7 +873,12 @@ def test_unreplayed_file_processor_pacts_remain_consumer_only() -> None:
     consumer = workflow["jobs"]["consumer"]
     artifact_path = str(consumer["steps"][-1]["with"]["path"])
     assert "file-processor-university-backend.json" not in artifact_path
+    assert "university-backend-optimizer-service.json" not in artifact_path
     assert "university-backend-file-processor.json" in artifact_path
+    assert not (
+        REPOSITORY_ROOT
+        / "tests/contracts/pacts/university-backend-optimizer-service.json"
+    ).exists()
 
 
 def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
@@ -7030,36 +7036,65 @@ def test_required_go_benchmark_job_is_not_mislabeled_as_advisory() -> None:
         MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
     ],
 )
-def test_gateway_hash_ring_budget_uses_uninstrumented_benchmark_evidence(
+def test_performance_workflows_do_not_enforce_retired_gateway_hash_ring_budget(
     workflow_path: Path,
 ) -> None:
-    """The 250k lookup budget belongs to a repeated benchmark, not test coverage."""
+    """ADR-046 retired vector sharding and the root-package HashRing benchmark."""
 
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["benchmark"]["steps"]
-    budget_step = next(
-        step
-        for step in steps
-        if step.get("name") == "Enforce gateway HashRing lookup budget"
+    assert all(
+        step.get("name") != "Enforce gateway HashRing lookup budget" for step in steps
     )
-    assert budget_step == {
-        "name": "Enforce gateway HashRing lookup budget",
+    commands = "\n".join(str(step.get("run", "")) for step in steps)
+    assert "BenchmarkHashRingLookup" not in commands
+    assert "gateway-hashring-budget.txt" not in commands
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "capture_step_name"),
+    [
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "Capture Go benchmark evidence",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "Capture advisory Go benchmark evidence",
+        ),
+    ],
+)
+def test_performance_workflows_keep_active_go_benchmark_capture(
+    workflow_path: Path,
+    capture_step_name: str,
+) -> None:
+    """Retiring HashRing must preserve uninstrumented gateway and WS-Hub evidence."""
+
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["benchmark"]
+    assert job.get("continue-on-error", False) is False
+    capture_step = _step_named(job, capture_step_name)
+    assert capture_step == {
+        "name": capture_step_name,
         "shell": "bash",
         "run": """\
 set -euo pipefail
+mkdir -p artifacts/performance/advisory/go
 (
   cd services/gateway
-  go test -run=^$ -bench=^BenchmarkHashRingLookup$ -benchtime=1s -count=5 .
-) 2>&1 | tee artifacts/performance/advisory/go/gateway-hashring-budget.txt
-python3 scripts/quality/check_go_benchmark_budget.py \\
-  artifacts/performance/advisory/go/gateway-hashring-budget.txt \\
-  --benchmark BenchmarkHashRingLookup \\
-  --metric ns/op \\
-  --exclusive-maximum 4000 \\
-  --expected-samples 5
+  go test -bench=. -run=^$ ./...
+) 2>&1 | tee artifacts/performance/advisory/go/gateway-bench.txt
+(
+  cd services/ws-hub
+  go test -bench=. -run=^$ ./...
+) 2>&1 | tee artifacts/performance/advisory/go/wshub-bench.txt
+cat \\
+  artifacts/performance/advisory/go/gateway-bench.txt \\
+  artifacts/performance/advisory/go/wshub-bench.txt \\
+  > artifacts/performance/advisory/go/benchmarks.txt
 """,
     }
-    command = budget_step["run"]
+    command = capture_step["run"]
     _assert_fail_closed_shell_mode(command)
     _assert_no_shell_indirection_or_option_control(command)
     assert "-race" not in command

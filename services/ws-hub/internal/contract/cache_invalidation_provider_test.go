@@ -261,6 +261,20 @@ func TestCacheInvalidationMessageProvider(t *testing.T) {
 				"nats_subject": "cache.invalidate",
 			}, nil
 		},
+		"a user-wide cache invalidation event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			payload, err := buildInvalidationPayload(
+				"550e8400-e29b-41d4-a716-446655440000",
+				"",
+				secret,
+			)
+			if err != nil {
+				return nil, nil, err
+			}
+			return payload, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "cache.invalidate",
+			}, nil
+		},
 		"a direct chat message event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return directChatMessage{
 					ChatID:    "chat-uuid-123",

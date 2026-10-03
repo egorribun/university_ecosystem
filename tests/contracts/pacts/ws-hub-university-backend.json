@@ -125,6 +125,98 @@
     {
       "contents": {
         "content": {
+          "chat_id": "chat-uuid-del",
+          "participant_id": "user-uuid-del"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a chat deleted event",
+      "matchingRules": {
+        "body": {
+          "$.chat_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.participant_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json",
+        "nats_subject": "chat.deleted"
+      },
+      "pending": false,
+      "type": "Asynchronous/Messages"
+    },
+    {
+      "contents": {
+        "content": {
+          "chat_id": "chat-uuid-001",
+          "content_preview": "Hello world",
+          "message_id": "msg-uuid-001",
+          "sender_id": "user-uuid-001"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a chat message_sent domain event",
+      "matchingRules": {
+        "body": {
+          "$.chat_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.content_preview": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.message_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.sender_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json",
+        "nats_subject": "chat.message_sent"
+      },
+      "pending": false,
+      "type": "Asynchronous/Messages"
+    },
+    {
+      "contents": {
+        "content": {
           "data": {
             "reason": "ping timeout after 30 seconds",
             "timestamp": 1710000000000,
@@ -184,6 +276,173 @@
     {
       "contents": {
         "content": {
+          "chat_id": "chat-uuid-123",
+          "content": "Hello there!",
+          "message_id": "msg-uuid-456",
+          "sender_id": "user-uuid-789"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a direct chat message event",
+      "matchingRules": {
+        "body": {
+          "$.chat_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.content": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.message_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.sender_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json",
+        "nats_subject": "chat.direct"
+      },
+      "pending": false,
+      "type": "Asynchronous/Messages"
+    },
+    {
+      "contents": {
+        "content": {
+          "args": [
+            "user@university.test"
+          ],
+          "id": "task-uuid-999",
+          "kwargs": {},
+          "name": "email.send_welcome",
+          "trace_context": {}
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a generic NATS task envelope",
+      "matchingRules": {
+        "body": {
+          "$.args": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.kwargs": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.name": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.trace_context": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json",
+        "nats_subject": "tasks.email.send_welcome"
+      },
+      "pending": false,
+      "type": "Asynchronous/Messages"
+    },
+    {
+      "contents": {
+        "content": {
+          "notification_id": "notif-uuid-001",
+          "notification_type": "push",
+          "user_id": "user-uuid-001"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a notification.sent event",
+      "matchingRules": {
+        "body": {
+          "$.notification_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.notification_type": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.user_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json",
+        "nats_subject": "notification.sent"
+      },
+      "pending": false,
+      "type": "Asynchronous/Messages"
+    },
+    {
+      "contents": {
+        "content": {
           "data": {
             "room_id": "",
             "timestamp": 1710000000000,
@@ -228,6 +487,43 @@
       "metadata": {
         "contentType": "application/json",
         "nats_subject": "cache.invalidate"
+      },
+      "pending": false,
+      "type": "Asynchronous/Messages"
+    },
+    {
+      "contents": {
+        "content": {
+          "email": "newuser@university.test",
+          "user_id": "user-uuid-new"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a user.created domain event",
+      "matchingRules": {
+        "body": {
+          "$.email": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.user_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json",
+        "nats_subject": "user.created"
       },
       "pending": false,
       "type": "Asynchronous/Messages"

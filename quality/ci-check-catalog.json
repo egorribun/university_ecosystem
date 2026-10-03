@@ -2098,11 +2098,11 @@
       "events": [
         {
           "event": "push",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "pull_request",
-          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "workflow_dispatch",
@@ -2120,7 +2120,7 @@
           "artifacts": [
             {
               "name_pattern": "pact-contracts-${{ github.sha }}",
-              "path_pattern": "tests/contracts/pacts/ws-hub-university-backend.json\ntests/contracts/pacts/gateway-university-backend.json\ntests/contracts/pacts/university-backend-file-processor.json\n",
+              "path_pattern": "${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}/ws-hub-university-backend.json\n${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}/gateway-university-backend.json\n${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}/university-backend-file-processor.json\n",
               "required": false,
               "provenance": "sha"
             }
