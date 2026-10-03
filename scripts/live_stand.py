@@ -2625,8 +2625,9 @@ def _ensure_live_e2e_dependencies(
 
 
 _PLAYWRIGHT_COUNT_LINE = re.compile(
-    r"\s*(?P<count>\d+)\s+(?P<kind>passed|failed|skipped)(?:\s+\([^()\r\n]*\))?\s*",
-    re.IGNORECASE,
+    r" *(?P<count>0|[1-9][0-9]{0,4}) "
+    r"(?P<kind>passed|failed|skipped|flaky|interrupted|did not run)"
+    r"(?: \([0-9]{1,8}(?:\.[0-9])?(?:ms|s|m|h|d)\))? *"
 )
 _PLAYWRIGHT_FAILURE_HEADER = re.compile(
     r"  [1-9][0-9]{0,3}\) \[(?P<project>desktop|mobile)\] › "
@@ -2637,6 +2638,11 @@ _PLAYWRIGHT_FAILURE_SOURCES = {
     **{source: source for source in LIVE_E2E_SMOKE_FILES},
     r"tests\e2e-live\auth-roles.live.spec.ts": "tests/e2e-live/auth-roles.live.spec.ts",
     r"tests\e2e-live\password-reset.live.spec.ts": "tests/e2e-live/password-reset.live.spec.ts",
+}
+_PLAYWRIGHT_FAILURE_FRAME_SOURCES = {
+    **_PLAYWRIGHT_FAILURE_SOURCES,
+    "tests/e2e-live/fixtures.ts": "tests/e2e-live/fixtures.ts",
+    r"tests\e2e-live\fixtures.ts": "tests/e2e-live/fixtures.ts",
 }
 _PLAYWRIGHT_FAILURE_PROJECTS = {project: project for project in ("desktop", "mobile")}
 _PLAYWRIGHT_FAILURE_FRAME = re.compile(
@@ -2684,10 +2690,10 @@ def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
 def _live_playwright_counts(output: str) -> dict[str, int]:
     """Extract only numeric aggregate counts from exact Playwright summary lines."""
     counts: dict[str, int] = {}
-    for line in output.splitlines():
-        match = _PLAYWRIGHT_COUNT_LINE.fullmatch(line)
+    for line in output.split("\n"):
+        match = _PLAYWRIGHT_COUNT_LINE.fullmatch(line.removesuffix("\r"))
         if match is not None:
-            kind = match.group("kind").lower()
+            kind = match.group("kind").replace(" ", "_")
             counts[kind] = counts.get(kind, 0) + int(match.group("count"))
     return counts
 
@@ -2699,8 +2705,11 @@ def _live_playwright_failure_locations(
     locations: list[tuple[str, str, int, str]] = []
     source_lines: dict[str, list[str]] = {}
     frame_sources = {
-        **_PLAYWRIGHT_FAILURE_SOURCES,
-        **{str(cwd.absolute() / source): source for source in LIVE_E2E_SMOKE_FILES},
+        **_PLAYWRIGHT_FAILURE_FRAME_SOURCES,
+        **{
+            str(cwd.absolute() / source): source
+            for source in _PLAYWRIGHT_FAILURE_FRAME_SOURCES.values()
+        },
     }
     project = ""
     # Split only actual reporter newlines, not control characters in a title.
@@ -2798,7 +2807,14 @@ def _run_live_playwright(
     if counts:
         count_summary = " ".join(
             f"{name}={counts[name]}"
-            for name in ("passed", "failed", "skipped")
+            for name in (
+                "passed",
+                "failed",
+                "skipped",
+                "flaky",
+                "interrupted",
+                "did_not_run",
+            )
             if name in counts
         )
         print(f"live E2E counts {count_summary}", flush=True)

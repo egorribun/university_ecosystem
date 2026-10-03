@@ -1235,6 +1235,65 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
     assert "encoding" not in call and "errors" not in call
 
 
+@pytest.mark.parametrize(
+    ("label", "key"),
+    [
+        ("passed", "passed"),
+        ("failed", "failed"),
+        ("skipped", "skipped"),
+        ("flaky", "flaky"),
+        ("interrupted", "interrupted"),
+        ("did not run", "did_not_run"),
+    ],
+)
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_counts_accept_all_bounded_summary_categories(
+    label: str, key: str, newline: str
+) -> None:
+    assert live_stand._live_playwright_counts(f"  1 {label}{newline}") == {key: 1}
+    assert live_stand._live_playwright_counts(f"  99999 {label}{newline}") == {
+        key: 99999
+    }
+
+
+@pytest.mark.parametrize("duration", ["12ms", "3.2s", "1.5m", "2.1h", "1.2d"])
+def test_live_playwright_counts_accept_numeric_durations(duration: str) -> None:
+    assert live_stand._live_playwright_counts(f"  2 passed ({duration})\n") == {
+        "passed": 2
+    }
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "  1 unknown\n",
+        "  1 did_not_run\n",
+        "  -1 flaky\n",
+        "  1.2 flaky\n",
+        "  01 flaky\n",
+        "  100000 passed\n",
+        "  " + "9" * 5000 + " passed\n",
+        "  ١ passed\n",
+        "  1 PASSED\n",
+        "  1 did  not run\n",
+        "  1 passed secret\n",
+        "secret 1 passed\n",
+        "  1 passed (private-token)\n",
+        "  1 passed (https://private.invalid/reset?token=private)\n",
+        "  1 passed (" + "9" * 5000 + "s)\n",
+        "  1 passed (2.1s) private\n",
+        "  1 passed\x1b[31m\n",
+        "private\r  1 passed\n",
+        "private\v  1 passed\n",
+        "private\x85  1 passed\n",
+        "  1 passed\x00\n",
+        "  1 passed\u202e\n",
+    ],
+)
+def test_live_playwright_counts_reject_malformed_summary_records(line: str) -> None:
+    assert live_stand._live_playwright_counts(line) == {}
+
+
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize(
     "check", ["admin-users", "admin-feature-flags", "admin-feature-flags-ui"]
@@ -1379,14 +1438,15 @@ def test_live_playwright_emits_only_validated_failure_locations(
     path_style: str,
     newline: str,
 ) -> None:
-    for filename in live_stand.LIVE_E2E_SMOKE_FILES:
+    sources = (*live_stand.LIVE_E2E_SMOKE_FILES, "tests/e2e-live/fixtures.ts")
+    for filename in sources:
         source = tmp_path / filename
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("// public source\n" * 3, encoding="utf-8")
     private_title = "password=fixture-private-password token=fixture-private-token"
     frame_sources = [
         str(tmp_path / source) if path_style == "absolute" else source
-        for source in live_stand.LIVE_E2E_SMOKE_FILES
+        for source in sources
     ]
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
@@ -1401,7 +1461,9 @@ def test_live_playwright_emits_only_validated_failure_locations(
             "https://private.invalid/reset?token=fixture-private-token ─────\n"
             "\n    Error: fixture-private-error\n\n"
             f"        at {frame_sources[1]}:1:17\n"
-            "6 passed\n12 failed\n2 skipped\n"
+            f"        at privateHelper ({frame_sources[2]}:2:17)\n"
+            f"        at {frame_sources[2]}:3:1\n"
+            "6 passed\n12 failed\n2 skipped\n1 flaky\n3 interrupted\n4 did not run\n"
         ),
         stderr=(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
@@ -1411,7 +1473,7 @@ def test_live_playwright_emits_only_validated_failure_locations(
         ),
     )
     if path_style == "windows":
-        for source in live_stand.LIVE_E2E_SMOKE_FILES:
+        for source in sources:
             completed.stdout = completed.stdout.replace(
                 source, source.replace("/", "\\")
             )
@@ -1431,12 +1493,14 @@ def test_live_playwright_emits_only_validated_failure_locations(
     outcome = "failed" if return_code else "passed"
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
-        "live E2E counts passed=6 failed=12 skipped=2",
+        "live E2E counts passed=6 failed=12 skipped=2 flaky=1 interrupted=3 did_not_run=4",
         "live E2E failure project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 kind=declaration",
         "live E2E failure project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=3 kind=frame",
         "live E2E failure project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 kind=frame",
         "live E2E failure project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=3 kind=declaration",
         "live E2E failure project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=1 kind=frame",
+        "live E2E failure project=mobile source=tests/e2e-live/fixtures.ts line=2 kind=frame",
+        "live E2E failure project=mobile source=tests/e2e-live/fixtures.ts line=3 kind=frame",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
@@ -1517,15 +1581,25 @@ def test_live_playwright_emits_only_validated_failure_locations(
         "wrong-indentation",
     ],
 )
+@pytest.mark.parametrize(
+    "frame_source",
+    ["tests/e2e-live/auth-roles.live.spec.ts", "tests/e2e-live/fixtures.ts"],
+)
 def test_live_playwright_rejects_untrusted_failure_frames(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], frame: str
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    frame: str,
+    frame_source: str,
 ) -> None:
     source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
     source = tmp_path / source_name
     source.parent.mkdir(parents=True)
     source.write_text("// public source\n" * 3, encoding="utf-8")
+    (tmp_path / frame_source).write_text("// public source\n" * 3, encoding="utf-8")
     output = f"  1) [desktop] › {source_name}:1:1 › private-title\n\n"
-    output += frame.replace("{cwd}", str(tmp_path))
+    output += frame.replace("{cwd}", str(tmp_path)).replace(
+        "auth-roles.live.spec.ts", Path(frame_source).name
+    )
     assert live_stand._live_playwright_failure_locations(output, cwd=tmp_path) == [
         ("desktop", source_name, 1, "declaration")
     ]
@@ -1538,6 +1612,7 @@ def test_live_playwright_rejects_untrusted_failure_frames(
     [
         "  2) [unknown] › tests/e2e-live/auth-roles.live.spec.ts:1:1 › private",
         "  2) [mobile] › tests/e2e-live/unknown.live.spec.ts:1:1 › private",
+        "  2) [mobile] › tests/e2e-live/fixtures.ts:1:1 › private",
         "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:4:1 › private",
         "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:1:18 › private",
         "  2) [mobile] › tests/e2e-live/auth-roles.live.spec.ts:1:1",
@@ -1549,6 +1624,7 @@ def test_live_playwright_rejects_untrusted_failure_frames(
     ids=[
         "unknown-project",
         "unknown-source",
+        "fixture-declaration",
         "invalid-line",
         "invalid-column",
         "malformed-header",
@@ -1558,42 +1634,55 @@ def test_live_playwright_rejects_untrusted_failure_frames(
         "unscoped-error",
     ],
 )
+@pytest.mark.parametrize(
+    "frame_source",
+    ["tests/e2e-live/auth-roles.live.spec.ts", "tests/e2e-live/fixtures.ts"],
+)
 def test_live_playwright_frames_do_not_reuse_an_earlier_failure_project(
-    tmp_path: Path, boundary: str
+    tmp_path: Path, boundary: str, frame_source: str
 ) -> None:
     source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
     source = tmp_path / source_name
     source.parent.mkdir(parents=True)
     source.write_text("// public source\n" * 3, encoding="utf-8")
+    frame_path = tmp_path / frame_source
+    frame_path.write_text("// public source\n" * 3, encoding="utf-8")
     output = (
         f"  1) [desktop] › {source_name}:1:1 › private-title\n"
-        f"{boundary}\n        at {source}:2:1\n"
+        f"{boundary}\n        at {frame_path}:2:1\n"
     )
     assert live_stand._live_playwright_failure_locations(output, cwd=tmp_path) == [
         ("desktop", source_name, 1, "declaration")
     ]
     assert (
         live_stand._live_playwright_failure_locations(
-            f"        at {source}:2:1", cwd=tmp_path
+            f"        at {frame_path}:2:1", cwd=tmp_path
         )
         == []
     )
 
 
+@pytest.mark.parametrize(
+    "frame_source",
+    ["tests/e2e-live/auth-roles.live.spec.ts", "tests/e2e-live/fixtures.ts"],
+)
 def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
+    frame_source: str,
 ) -> None:
     source_name = live_stand.LIVE_E2E_SMOKE_FILES[0]
     source = tmp_path / source_name
     source.parent.mkdir(parents=True)
     source.write_text("// public source\n" * 3, encoding="utf-8")
+    frame_path = tmp_path / frame_source
+    frame_path.write_text("// public source\n" * 3, encoding="utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(),
         23,
         stdout=f"  1) [desktop] › {source_name}:1:1 › private-title\n".encode(),
-        stderr=f"        at {source}:2:1\n1 failed\n".encode(),
+        stderr=f"        at {frame_path}:2:1\n1 failed\n".encode(),
     )
     monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
     with pytest.raises(live_stand.StandError, match="exit code 23"):
@@ -1610,10 +1699,18 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
 
 
 @pytest.mark.parametrize("source_state", ["missing", "invalid-utf8", "directory"])
+@pytest.mark.parametrize(
+    "frame_source",
+    ["tests/e2e-live/password-reset.live.spec.ts", "tests/e2e-live/fixtures.ts"],
+)
 def test_live_playwright_failure_frames_fail_closed_without_source_bounds(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], source_state: str
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    source_state: str,
+    frame_source: str,
 ) -> None:
-    declaration, frame = (tmp_path / path for path in live_stand.LIVE_E2E_SMOKE_FILES)
+    declaration = tmp_path / live_stand.LIVE_E2E_SMOKE_FILES[0]
+    frame = tmp_path / frame_source
     declaration.parent.mkdir(parents=True)
     declaration.write_text("// public source\n", encoding="utf-8")
     if source_state == "invalid-utf8":
@@ -1656,6 +1753,8 @@ def test_live_playwright_frames_support_parentheses_in_the_exact_working_directo
     [
         "  1) [secret-project] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › title",
         "  1) [desktop] › tests/e2e-live/credential-shaped-token.live.spec.ts:2:1 › title",
+        "  1) [desktop] › tests/e2e-live/fixtures.ts:2:1 › title",
+        r"  1) [desktop] › tests\e2e-live\fixtures.ts:2:1 › title",
         "  1) [desktop] › ../tests/e2e-live/auth-roles.live.spec.ts:2:1 › title",
         "  1) [desktop] › /private/tests/e2e-live/auth-roles.live.spec.ts:2:1 › title",
         r"  1) [desktop] › ..\tests\e2e-live\auth-roles.live.spec.ts:2:1 › title",
@@ -1693,6 +1792,8 @@ def test_live_playwright_frames_support_parentheses_in_the_exact_working_directo
     ids=[
         "unknown-project",
         "unknown-source",
+        "fixture-declaration",
+        "windows-fixture-declaration",
         "parent-path",
         "absolute-path",
         "windows-parent-path",
@@ -1729,6 +1830,9 @@ def test_live_playwright_failure_locations_reject_untrusted_headers(
     source = tmp_path / live_stand.LIVE_E2E_SMOKE_FILES[0]
     source.parent.mkdir(parents=True)
     source.write_text("// public source\n" * 3, encoding="utf-8")
+    (source.parent / "fixtures.ts").write_text(
+        "// public source\n" * 3, encoding="utf-8"
+    )
     assert live_stand._live_playwright_failure_locations(header, cwd=tmp_path) == []
     printed = capsys.readouterr()
     assert printed.out == printed.err == ""
