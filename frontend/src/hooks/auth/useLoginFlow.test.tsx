@@ -278,6 +278,33 @@ describe("useLoginForm.onSubmit", () => {
     await waitFor(() => expect(result.current.submitError).toBe("Invalid credentials"))
   })
 
+  it.each(["Could not validate credentials", "Не удалось подтвердить учётные данные"])(
+    "uses the UI's generic login message for a backend 401 (%s)",
+    async (detail) => {
+      const error = new AxiosError("Request failed with status code 401")
+      error.response = {
+        status: 401,
+        headers: {},
+        data: { detail },
+        statusText: "Unauthorized",
+        config: {} as never,
+      }
+      mocks.login.mockRejectedValue(error)
+      const { result } = renderHook(() => useLoginForm())
+      act(() => {
+        result.current.form.setValue("email", "a@b.dev")
+        result.current.form.setValue("password", "Password123!")
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      await waitFor(() => expect(result.current.submitError).toBe("auth:login.error"))
+      expect(mocks.navigate).not.toHaveBeenCalled()
+    }
+  )
+
   it("keeps the translated fallback when login rejects with a non-Error value", async () => {
     mocks.login.mockRejectedValue("authentication unavailable")
     const { result } = renderHook(() => useLoginForm())
