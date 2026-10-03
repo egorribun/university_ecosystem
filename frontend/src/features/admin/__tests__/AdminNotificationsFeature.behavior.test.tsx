@@ -1,13 +1,22 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { notifyManager, QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { AxiosHeaders } from "axios"
+import {
+  notifyManager,
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+} from "@tanstack/react-query"
+import { AxiosError, AxiosHeaders } from "axios"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import i18n from "@/i18n/config"
 import { CANONICAL_NOTIFICATION_TOPICS } from "@/notifications/contract"
 import { adminDeadLetterQueueQueryKey } from "@/api/hooks/adminNotifications"
+import { currentUserQueryKey, currentUserQueryOptions } from "@/api/hooks/users"
+import { createQueryClient } from "@/app/queryClient"
+import { testUser } from "@/tests/mocks/handlers"
 import {
   fetchAdminUserTopics,
   fetchDeadLetterQueue,
@@ -75,10 +84,12 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function renderFeature(language: "en" | "ru" = "en") {
-  const queryClient = new QueryClient({
+function renderFeature(
+  language: "en" | "ru" = "en",
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+) {
   clients.push(queryClient)
   window.localStorage.setItem("ue:language", language)
   render(
@@ -326,6 +337,43 @@ describe("Admin notification topic changes", () => {
 })
 
 describe("Admin dead-letter queue actions", () => {
+  it.each([
+    { label: "Retry selected", action: retryDeadLetterJobs },
+    { label: "Delete selected", action: purgeDeadLetterJobs },
+  ])("refreshes only the queue after $label succeeds", async ({ label, action }) => {
+    vi.mocked(action).mockResolvedValueOnce(queueActionResult([queue.items[0]!.id]))
+    const { user, queryClient } = renderFeature()
+    await settleQueue(queryClient)
+
+    const cachedUser = {
+      ...testUser,
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      role: "admin" as const,
+    }
+    queryClient.setQueryData(currentUserQueryKey, cachedUser)
+    const fetchUser = vi.fn().mockResolvedValue(cachedUser)
+    const observer = new QueryObserver(queryClient, {
+      ...currentUserQueryOptions(),
+      queryFn: fetchUser,
+    })
+    const unsubscribe = observer.subscribe(() => {})
+    try {
+      expect(fetchUser).not.toHaveBeenCalled()
+      await user.click(screen.getByRole("checkbox", { name: `Select job ${queue.items[0]!.id}` }))
+      vi.mocked(fetchDeadLetterQueue).mockResolvedValue({ items: [queue.items[1]!], total: 1 })
+      await user.click(screen.getByRole("button", { name: label }))
+      await settleQueue(queryClient)
+
+      expect(action).toHaveBeenCalledExactlyOnceWith([queue.items[0]!.id])
+      expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(2)
+      expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
+      expect(fetchUser).not.toHaveBeenCalled()
+      expect(queryClient.getQueryData(currentUserQueryKey)).toEqual(cachedUser)
+    } finally {
+      unsubscribe()
+    }
+  })
+
   it("keeps bulk actions disabled without selection and tracks partial versus complete selection", async () => {
     const { user, queryClient } = renderFeature()
     await settleQueue(queryClient)
@@ -458,5 +506,148 @@ describe("Admin dead-letter queue actions", () => {
     await user.click(first)
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(first).not.toBeChecked()
+  })
+})
+
+describe("Admin dead-letter queue inspection", () => {
+  it.each([
+    {
+      language: "en" as const,
+      locale: "en-US",
+      tableName: "Dead-letter queue",
+      kinds: ["Event", "News"],
+      columns: ["Type", "Record ID", "Locale", "Enqueued at", "Attempts", "Last error", "Actions"],
+      retryLabel: "Retry",
+      deleteLabel: "Delete",
+      noError: "No error recorded",
+      subtitle: "Retry or purge notifications that landed in the dead-letter queue.",
+      topicsTitle: "User topics",
+      topicsDescription: "Load a user and adjust their push notification topics.",
+    },
+    {
+      language: "ru" as const,
+      locale: "ru-RU",
+      tableName: "Отложенные уведомления",
+      kinds: ["Событие", "Новость"],
+      columns: [
+        "Тип",
+        "ID записи",
+        "Язык",
+        "Поставлено",
+        "Попытки",
+        "Последняя ошибка",
+        "Действия",
+      ],
+      retryLabel: "Повторить",
+      deleteLabel: "Удалить",
+      noError: "Ошибок нет",
+      subtitle: "Повторите или удалите уведомления, попавшие в отложенную очередь.",
+      topicsTitle: "Темы уведомлений",
+      topicsDescription: "Загрузите пользователя и настройте темы push-уведомлений.",
+    },
+  ])("explains the queue and exposes localized job details in $language", async (labels) => {
+    const displayedQueue: Queue = {
+      items: [
+        { ...queue.items[0]!, enqueued_at: "2026-10-02T13:30:00Z" },
+        { ...queue.items[1]!, enqueued_at: "2026-10-02T12:00:00Z", last_error: null },
+      ],
+      total: 2,
+    }
+    vi.mocked(fetchDeadLetterQueue).mockResolvedValue(displayedQueue)
+    await i18n.changeLanguage(labels.language)
+    const { queryClient } = renderFeature(labels.language)
+    await settleQueue(queryClient)
+
+    expect(screen.getByText(labels.subtitle)).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: labels.topicsTitle })).toBeInTheDocument()
+    expect(screen.getByText(labels.topicsDescription)).toBeInTheDocument()
+    const table = within(screen.getByRole("table", { name: labels.tableName }))
+    for (const column of labels.columns) {
+      expect(table.getByRole("columnheader", { name: column })).toBeInTheDocument()
+    }
+
+    const expectedDates = displayedQueue.items.map((job) =>
+      new Intl.DateTimeFormat(labels.locale, { dateStyle: "medium", timeStyle: "short" }).format(
+        new Date(job.enqueued_at)
+      )
+    )
+    expect(expectedDates[0]).not.toBe(expectedDates[1])
+    for (const [index, job] of displayedQueue.items.entries()) {
+      const row = within(table.getByRole("row", { name: (name) => name.includes(job.record_id) }))
+      expect(row.getByRole("cell", { name: labels.kinds[index]! })).toBeInTheDocument()
+      expect(row.getByRole("cell", { name: expectedDates[index]! })).toBeInTheDocument()
+      const error = row.getByText(job.last_error ?? labels.noError)
+      expect(error).toHaveAttribute("title", job.last_error ?? "")
+      expect(row.getByRole("button", { name: labels.retryLabel })).toHaveAttribute(
+        "title",
+        labels.retryLabel
+      )
+      expect(row.getByRole("button", { name: labels.deleteLabel })).toHaveAttribute(
+        "title",
+        labels.deleteLabel
+      )
+    }
+  })
+
+  it("does not announce an empty queue before the first request completes", async () => {
+    const pending = deferred<Queue>()
+    vi.mocked(fetchDeadLetterQueue).mockReturnValueOnce(pending.promise)
+    const { queryClient } = renderFeature()
+
+    expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(1)
+    expect(queryClient.isFetching({ queryKey: adminDeadLetterQueueQueryKey })).toBe(1)
+    expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText("No dead-lettered jobs at the moment.")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Retry selected" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Delete selected" })).toBeDisabled()
+
+    await act(async () => pending.resolve(queue))
+    await settleQueue(queryClient)
+    expect(screen.getByRole("table", { name: "Dead-letter queue" })).toBeInTheDocument()
+    expect(screen.getByText("Total jobs: 2")).toBeInTheDocument()
+  })
+
+  it("keeps the form usable while an offline queue retry pauses and recovers on reconnect", async () => {
+    const reconnected = deferred<Queue>()
+    vi.mocked(fetchDeadLetterQueue)
+      .mockRejectedValueOnce(new AxiosError("Network Error", "ERR_NETWORK"))
+      .mockReturnValueOnce(reconnected.promise)
+    const wasOnline = onlineManager.isOnline()
+    onlineManager.setOnline(false)
+    const queryClient = createQueryClient()
+    const paused = deferred<void>()
+    const stopObserving = queryClient.getQueryCache().subscribe(() => {
+      if (queryClient.getQueryState(adminDeadLetterQueueQueryKey)?.fetchStatus === "paused") {
+        paused.resolve(undefined)
+      }
+    })
+    try {
+      renderFeature("en", queryClient)
+      expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await paused.promise
+        await new Promise<void>((resolve) => notifyManager.schedule(resolve))
+      })
+
+      expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole("textbox", { name: "User ID" })).toBeEnabled()
+      expect(screen.getByRole("button", { name: "Load topics" })).toBeEnabled()
+      expect(screen.getByRole("button", { name: "Retry selected" })).toBeDisabled()
+      expect(screen.getByRole("button", { name: "Delete selected" })).toBeDisabled()
+      expect(screen.queryByRole("table")).not.toBeInTheDocument()
+
+      await act(async () => onlineManager.setOnline(true))
+      expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(2)
+      await act(async () => reconnected.resolve(queue))
+      await settleQueue(queryClient)
+      expect(screen.getByRole("table", { name: "Dead-letter queue" })).toBeInTheDocument()
+      expect(screen.getByText("Total jobs: 2")).toBeInTheDocument()
+      expect(screen.queryByText("No dead-lettered jobs at the moment.")).not.toBeInTheDocument()
+    } finally {
+      stopObserving()
+      queryClient.clear()
+      onlineManager.setOnline(wasOnline)
+    }
   })
 })
