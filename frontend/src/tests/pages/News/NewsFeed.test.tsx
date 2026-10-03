@@ -1,4 +1,4 @@
-import { cleanup, screen } from "@testing-library/react"
+import { act, cleanup, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient } from "@tanstack/react-query"
 import { HttpResponse, http } from "msw"
@@ -104,9 +104,17 @@ describe("News page interaction", () => {
     )
   })
 
-  afterEach(() => {
-    cleanup()
-    useAuthStore.setState({ user: null, loading: true })
+  afterEach(async () => {
+    try {
+      // Cards start lazy dialog imports even when closed. Finish them before
+      // teardown so module evaluation cannot outlive this suite's coverage.
+      await act(async () => {
+        await vi.dynamicImportSettled()
+      })
+    } finally {
+      cleanup()
+      useAuthStore.setState({ user: null, loading: true })
+    }
   })
 
   it("fetches and displays news list", async () => {
