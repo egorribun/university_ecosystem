@@ -358,7 +358,7 @@ def test_logging_otel_context():
         assert "span_id" in res
 
 
-def test_configure_logging_non_json():
+def test_configure_logging_non_json(preserve_logging_configuration):
     import app.core.logging as logging_module
 
     # Force re-configure

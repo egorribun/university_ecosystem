@@ -634,6 +634,8 @@ also_copy = [
     "infrastructure",
     "alembic",
     "alembic.ini",
+    # The owned-live authorization contracts load the canonical SpiceDB schema.
+    "schema.zed",
     "scripts",
     "Dockerfile.test",
     "Dockerfile.test.dockerignore",
@@ -670,6 +672,9 @@ also_copy = [
     # raw Kubernetes tree; keep that documentation in the isolated baseline
     # so stats collection cannot fail before mutation execution.
     "k8s/README.md",
+    # Raw Gateway API contracts read the GatewayClass bootstrap manifest.
+    # Its narrow directory also creates the destination parent for mutmut.
+    "k8s/gateway-api",
     "k8s/backend",
     "k8s/frontend",
     # test_feature_flag_architecture_contract reads the flagd deployment,
@@ -700,18 +705,37 @@ also_copy = [
     # so the test cannot silently disappear from mutation inventory.
     "frontend/src/api",
     "frontend/src/api/generated",
+    # Repository-reference contracts inspect the authored TypeScript test.
+    # Copy its narrow parent because mutmut's file copier cannot create it.
+    "frontend/src/__tests__",
     # The WebSocket contract reads the frontend transport hook from the
     # isolated mutmut checkout; copy its parent before the exact module so
     # mutmut's file copier has a destination for the nested path.
     "frontend/src/hooks",
     "frontend/src/hooks/useChatWebSocket.ts",
+    # Knip asset contracts inspect setup, generated theme tokens, sanitizer
+    # imports, and Tailwind CSS. These source-only parents create the exact
+    # nested destinations without copying frontend build/dependency trees.
+    "frontend/src/setupTests.ts",
+    "frontend/src/theme",
+    "frontend/src/utils",
+    "frontend/src/styles",
     "frontend/src/tests/mocks",
     "frontend/src/tests/mocks/generated",
     "frontend/tests/e2e/utils",
     # test_frontend_knip_asset_contract reads the direct axe-core users.
     "frontend/tests/e2e/accessibility.spec.ts",
+    "frontend/tests/e2e/a11y-cdn-axe.spec.ts",
+    "frontend/tests/e2e/a11y-enhanced.spec.ts",
+    "frontend/tests/e2e/a11y-messenger.spec.ts",
     "frontend/tests/e2e/a11y-public.spec.ts",
+    "frontend/tests/e2e/schedule-view.spec.ts",
+    "frontend/tests/e2e/visual-regression.spec.ts",
+    "frontend/tests/e2e/events-history-scroll-restoration.spec.ts",
     "frontend/package.json",
+    # Peer-dependency and tool-invocation contracts read these exact inputs.
+    "frontend/package-lock.json",
+    "frontend/playwright.config.ts",
     "frontend/stryker.config.mjs",
     "frontend/vitest.config.ts",
     "sonar-project.properties",
