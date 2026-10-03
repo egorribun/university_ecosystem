@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 import { act, renderHook, waitFor } from "@testing-library/react"
-import type { MutableRefObject, PropsWithChildren } from "react"
+import { startTransition, Suspense, type MutableRefObject, type PropsWithChildren } from "react"
 import { renderToString } from "react-dom/server"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { hmac } from "@noble/hashes/hmac.js"
@@ -9,6 +9,7 @@ import { utf8ToBytes } from "@noble/hashes/utils.js"
 import { AxiosError } from "axios"
 
 import { acceptBrowserSessionGeneration, rotateBrowserSession } from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
 import api from "@/api/client"
 import * as apiClient from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
@@ -136,6 +137,91 @@ const renderProfile = (
     { wrapper }
   )
   return { ...view, queryClient, fetchQuery, updateSessionSigningKey }
+}
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
+// Let the browser primitive finish, then hold its result at the async boundary.
+// This preserves real encryption/decryption while controlling completion order.
+const pauseNextCryptoResult = (method: "encrypt" | "decrypt") => {
+  const subtle = window.crypto.subtle
+  const operation = subtle[method].bind(subtle)
+  const started = deferred<void>()
+  const release = deferred<void>()
+  let completion!: Promise<ArrayBuffer>
+  vi.spyOn(subtle, method).mockImplementationOnce((...args) => {
+    completion = (async () => {
+      const value = await operation(...args)
+      started.resolve()
+      await release.promise
+      return value
+    })()
+    return completion
+  })
+  onTestFinished(async () => {
+    await act(async () => {
+      release.resolve()
+      await completion
+    })
+  })
+  return {
+    started: started.promise,
+    finish: async () => {
+      release.resolve()
+      await completion
+    },
+  }
+}
+
+const renderProfileLifecycle = () => {
+  const queryClient = createQueryClient()
+  const response = deferred<{ data: typeof testUser }>()
+  vi.spyOn(api, "get").mockReturnValue(response.promise as never)
+  const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+  const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
+  const signingKeyPromiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+  const updateSessionSigningKey = (key: string | null) => {
+    signingKeyRef.current = key
+  }
+  const ensureSessionSigningKey = async () => signingKeyRef.current
+  const props = { signingKeyRef, updateSessionSigningKey }
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  const view = renderHook(
+    (current: typeof props) =>
+      useProfileSync(
+        current.updateSessionSigningKey,
+        current.signingKeyRef,
+        signingKeyPromiseRef,
+        ensureSessionSigningKey
+      ),
+    { initialProps: props, wrapper }
+  )
+  let disposed = false
+  const dispose = async () => {
+    if (disposed) return
+    disposed = true
+    view.unmount()
+    await act(async () => {
+      response.resolve({ data: testUser })
+      await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+    })
+    queryClient.clear()
+  }
+  onTestFinished(dispose)
+  return {
+    ...view,
+    props,
+    queryClient,
+    dispose,
+  }
 }
 
 describe("useProfileSync mutation contracts", () => {
@@ -1182,14 +1268,17 @@ describe("useProfileSync mutation contracts", () => {
       warningSpy.mockClear()
       vi.stubGlobal("localStorage", undefined)
 
-      act(() => {
+      await act(async () => {
         window.dispatchEvent(
           new StorageEvent("storage", {
             key: PROFILE_CACHE_STORAGE_KEY,
           })
         )
       })
-      await waitFor(() => expect(result.current.user).toBeNull())
+      // With no key or storage, the cache read resolves immediately. Awaiting
+      // act settles that result and its state update; polling cannot recover
+      // from a listener that discarded the completed read.
+      expect(result.current.user).toBeNull()
 
       expect(warningSpy).not.toHaveBeenCalledWith(
         "profile_cache.cleared",
@@ -2475,6 +2564,332 @@ describe("useProfileSync mutation contracts", () => {
     await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
     expect(warningSpy).toHaveBeenCalledWith("profile_cache.signature_verification_failed")
     unmount()
+  })
+})
+
+describe("profile effect lifecycle ownership", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    acceptBrowserSessionGeneration()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    localStorage.clear()
+    sessionStorage.clear()
+    acceptBrowserSessionGeneration()
+  })
+
+  it("keeps the replacement initializer's profile when the previous effect finishes later", async () => {
+    await writeEncryptedEnvelope({ ...snapshot(), full_name: "Previous initializer" })
+    const previous = pauseNextCryptoResult("decrypt")
+    const view = renderProfileLifecycle()
+    await act(async () => {
+      await previous.started
+    })
+
+    await writeEncryptedEnvelope({ ...snapshot(), full_name: "Current initializer" })
+    const current = pauseNextCryptoResult("decrypt")
+    view.rerender({ ...view.props, signingKeyRef: { current: signingKey } })
+    await act(async () => {
+      await current.started
+    })
+    await act(current.finish)
+    expect(view.result.current.user?.full_name).toBe("Current initializer")
+
+    await act(previous.finish)
+    expect(view.result.current.user?.full_name).toBe("Current initializer")
+    expect(useAuthStore.getState().user?.full_name).toBe("Current initializer")
+    await view.dispose()
+  })
+
+  it("keeps the committed account when a suspended update resumes during cache restoration", async () => {
+    const firstProfile = snapshot("account-a")
+    const nextProfile = { ...testUser, id: "account-b", full_name: "Account B" }
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: firstProfile,
+    })
+    const queryClient = createQueryClient()
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const verification = vi.spyOn(window.crypto.subtle, "verify")
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const initialKeyRef = { current: signingKey } as MutableRefObject<string | null>
+    const updateKey = (key: string | null) => {
+      initialKeyRef.current = key
+    }
+    const ensureKey = async () => initialKeyRef.current
+    const suspend = deferred<void>()
+    let blocked = true
+    onTestFinished(() => {
+      blocked = false
+      suspend.resolve()
+    })
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Waiting for account</div>}>{children}</Suspense>
+      </QueryClientProvider>
+    )
+    const view = renderHook(
+      ({ keyRef }) => {
+        const profile = useProfileSync(updateKey, keyRef, promiseRef, ensureKey)
+        if (blocked && profile.user?.id === nextProfile.id) throw suspend.promise
+        return profile
+      },
+      { initialProps: { keyRef: initialKeyRef }, wrapper }
+    )
+    onTestFinished(() => {
+      view.unmount()
+      queryClient.clear()
+    })
+    await act(async () => {
+      await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      await Promise.allSettled(verification.mock.results.map((result) => result.value))
+    })
+    expect(view.result.current.user?.id).toBe(firstProfile.id)
+
+    const firstWrite = pauseNextCryptoResult("encrypt")
+    act(() => {
+      startTransition(() => view.result.current.setUser(nextProfile))
+    })
+    expect(view.result.current.user?.id).toBe(firstProfile.id)
+    await act(async () => {
+      await firstWrite.started
+    })
+    await act(firstWrite.finish)
+
+    // A dependency update commits while the account transition is suspended.
+    // Its initializer starts reading the previous account's browser snapshot.
+    await writeEncryptedEnvelope(firstProfile)
+    const cachedRead = pauseNextCryptoResult("decrypt")
+    const rebasedWrite = pauseNextCryptoResult("encrypt")
+    view.rerender({ keyRef: { current: signingKey } })
+    await act(async () => {
+      await cachedRead.started
+    })
+    expect(view.result.current.user?.id).toBe(firstProfile.id)
+
+    await act(async () => {
+      blocked = false
+      suspend.resolve()
+      await suspend.promise
+    })
+    expect(view.result.current.user?.id).toBe(nextProfile.id)
+    await act(async () => {
+      await rebasedWrite.started
+    })
+    await act(rebasedWrite.finish)
+    await act(cachedRead.finish)
+
+    expect(view.result.current.user?.id).toBe(nextProfile.id)
+    expect(useAuthStore.getState().user?.id).toBe(nextProfile.id)
+    view.unmount()
+    queryClient.clear()
+  })
+
+  it.each(["signing key", "browser generation"] as const)(
+    "does not restore an initial cache after its %s changes during decryption",
+    async (transition) => {
+      await writeEncryptedEnvelope(snapshot("outgoing-profile"))
+      const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const paused = pauseNextCryptoResult("decrypt")
+      const view = renderProfileLifecycle()
+      await act(async () => {
+        await paused.started
+      })
+      const initialUser = view.result.current.user
+
+      if (transition === "signing key") view.props.signingKeyRef.current = "replacement-key"
+      else rotateBrowserSession()
+      await act(paused.finish)
+
+      expect(view.result.current.user).toBe(initialUser)
+      expect(useAuthStore.getState().user).toBe(initialUser)
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+      await view.dispose()
+    }
+  )
+
+  it("keeps a local same-account edit when initial cache verification completes later", async () => {
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { ...snapshot(testUser.id), full_name: "Cached name" },
+    })
+    const started = deferred<void>()
+    const release = deferred<void>()
+    const subtle = window.crypto.subtle
+    const verify = subtle.verify.bind(subtle)
+    let completion!: Promise<boolean>
+    vi.spyOn(subtle, "verify").mockImplementationOnce((...args) => {
+      completion = (async () => {
+        const valid = await verify(...args)
+        started.resolve()
+        await release.promise
+        return valid
+      })()
+      return completion
+    })
+    onTestFinished(async () => {
+      await act(async () => {
+        release.resolve()
+        await completion
+      })
+    })
+    const view = renderProfileLifecycle()
+    await act(async () => {
+      await started.promise
+    })
+    const persistence = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser({ ...testUser, full_name: "Edited name" }))
+    await act(async () => {
+      await persistence.started
+    })
+    await act(persistence.finish)
+    const editedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+
+    await act(async () => {
+      release.resolve()
+      await completion
+    })
+    expect(view.result.current.user?.full_name).toBe("Edited name")
+    expect(useAuthStore.getState().user?.full_name).toBe("Edited name")
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(editedEnvelope)
+    await view.dispose()
+  })
+
+  it.each(["subscription replacement", "signing key", "local edit", "unmount"] as const)(
+    "does not dispatch a stale storage read after %s",
+    async (transition) => {
+      const view = renderProfileLifecycle()
+      const initialPersistence = pauseNextCryptoResult("encrypt")
+      act(() => view.result.current.setUser({ ...testUser, full_name: "Current profile" }))
+      await act(async () => {
+        await initialPersistence.started
+      })
+      await act(initialPersistence.finish)
+      await writeEncryptedEnvelope({ ...snapshot(testUser.id), full_name: "Stale tab profile" })
+      const paused = pauseNextCryptoResult("decrypt")
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", { key: PROFILE_CACHE_STORAGE_KEY, storageArea: localStorage })
+        )
+      })
+      await act(async () => {
+        await paused.started
+      })
+
+      if (transition === "subscription replacement") {
+        view.rerender({
+          ...view.props,
+          updateSessionSigningKey: (key) => {
+            view.props.signingKeyRef.current = key
+          },
+        })
+      } else if (transition === "signing key") {
+        view.props.signingKeyRef.current = "replacement-key"
+      } else if (transition === "local edit") {
+        const persistence = pauseNextCryptoResult("encrypt")
+        act(() => view.result.current.setUser({ ...testUser, full_name: "New local edit" }))
+        await act(async () => {
+          await persistence.started
+        })
+        await act(persistence.finish)
+      } else {
+        view.unmount()
+      }
+      const expectedUser = view.result.current.user
+      const expectedQuery = view.queryClient.getQueryData(currentUserQueryKey)
+      const expectedStorage = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const updates: UserState[] = []
+      const unsubscribe = useAuthStore.subscribe((state) => updates.push(state.user))
+      onTestFinished(unsubscribe)
+      await act(paused.finish)
+
+      expect(view.result.current.user).toBe(expectedUser)
+      expect(view.queryClient.getQueryData(currentUserQueryKey)).toBe(expectedQuery)
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(expectedStorage)
+      expect(updates).toEqual([])
+      unsubscribe()
+      await view.dispose()
+    }
+  )
+
+  it("applies a completed storage read while its subscription still owns the profile", async () => {
+    const view = renderProfileLifecycle()
+    const persistence = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser({ ...testUser, full_name: "Current profile" }))
+    await act(async () => {
+      await persistence.started
+    })
+    await act(persistence.finish)
+    await writeEncryptedEnvelope({ ...snapshot(testUser.id), full_name: "Updated in another tab" })
+    const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    const paused = pauseNextCryptoResult("decrypt")
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: PROFILE_CACHE_STORAGE_KEY, storageArea: localStorage })
+      )
+    })
+    await act(async () => {
+      await paused.started
+    })
+    await act(paused.finish)
+
+    expect(view.result.current.user).toMatchObject({
+      id: testUser.id,
+      full_name: "Updated in another tab",
+      email: testUser.email,
+      role: testUser.role,
+    })
+    expect(useAuthStore.getState().user).toEqual(view.result.current.user)
+    expect(view.queryClient.getQueryData(currentUserQueryKey)).toEqual(view.result.current.user)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+    await view.dispose()
+  })
+
+  it("keeps the newest persisted same-account edit when encryption finishes out of order", async () => {
+    const view = renderProfileLifecycle()
+    const previous = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser({ ...testUser, full_name: "Previous edit" }))
+    await act(async () => {
+      await previous.started
+    })
+    const current = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser({ ...testUser, full_name: "Latest edit" }))
+    await act(async () => {
+      await current.started
+    })
+    await act(current.finish)
+    const latestEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    expect(latestEnvelope).not.toBeNull()
+
+    await act(previous.finish)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(latestEnvelope)
+    await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+      full_name: "Latest edit",
+    })
+    expect(view.result.current.user?.full_name).toBe("Latest edit")
+    await view.dispose()
+  })
+
+  it("does not persist a profile after its signing key changes during encryption", async () => {
+    const view = renderProfileLifecycle()
+    const paused = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser(testUser))
+    await act(async () => {
+      await paused.started
+    })
+    view.props.signingKeyRef.current = "replacement-key"
+    await act(paused.finish)
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    expect(view.result.current.user).toEqual(testUser)
+    expect(view.queryClient.getQueryData(currentUserQueryKey)).toEqual(testUser)
+    await view.dispose()
   })
 })
 
