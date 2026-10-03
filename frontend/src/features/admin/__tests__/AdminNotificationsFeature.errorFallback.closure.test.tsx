@@ -1,7 +1,7 @@
-import { screen } from "@testing-library/react"
+import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { HttpResponse, http } from "msw"
-import { QueryClient } from "@tanstack/react-query"
+import { notifyManager, QueryClient } from "@tanstack/react-query"
 import { AxiosError, AxiosHeaders } from "axios"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -37,6 +37,7 @@ import type { User } from "@/types/User"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import { resetAdminDeadLetterJobs } from "@/tests/mocks/handlers"
 import { server } from "@/tests/mocks/server"
+import { adminDeadLetterQueueQueryKey } from "@/api/hooks/adminNotifications"
 
 vi.mock("@/api/notifications", async () => {
   const actual = await vi.importActual<typeof import("@/api/notifications")>("@/api/notifications")
@@ -87,6 +88,24 @@ const authValue = {
   authOperation: false,
 }
 
+async function settleQueue(queryClient: QueryClient) {
+  // Wait for the request lifecycle, then flush Query's scheduled observer notifications.
+  await waitFor(() => {
+    expect(queryClient.isMutating()).toBe(0)
+    expect(queryClient.isFetching({ queryKey: adminDeadLetterQueueQueryKey })).toBe(0)
+  })
+  await act(async () => {
+    await new Promise<void>((resolve) => notifyManager.schedule(resolve))
+  })
+}
+
+async function settleTopicRequest(expectedCallCount: number) {
+  expect(fetchAdminUserTopics).toHaveBeenCalledTimes(expectedCallCount)
+  await act(async () => {
+    await vi.mocked(fetchAdminUserTopics).mock.results[expectedCallCount - 1]!.value
+  })
+}
+
 describe("AdminNotificationsFeature defensive error handling", () => {
   beforeEach(() => {
     translationOverrides.values.clear()
@@ -128,12 +147,14 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       queryClient,
       authProvider: false,
     })
+    await settleQueue(queryClient)
 
-    const checkbox = await screen.findByRole("checkbox", { name: /Select job non-error-job/i })
+    const checkbox = screen.getByRole("checkbox", { name: /Select job non-error-job/i })
     await userEvent.click(checkbox)
     await userEvent.click(screen.getByRole("button", { name: /Retry selected/i }))
+    await settleQueue(queryClient)
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to update the queue.")
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to update the queue.")
     queryClient.clear()
   })
 
@@ -162,13 +183,13 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       queryClient,
       authProvider: false,
     })
+    await settleQueue(queryClient)
 
-    await userEvent.click(
-      await screen.findByRole("checkbox", { name: /Select job non-error-job/i })
-    )
+    await userEvent.click(screen.getByRole("checkbox", { name: /Select job non-error-job/i }))
     await userEvent.click(screen.getByRole("button", { name: /Retry selected/i }))
+    await settleQueue(queryClient)
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("queue detail from backend")
+    expect(screen.getByRole("alert")).toHaveTextContent("queue detail from backend")
     queryClient.clear()
   })
 
@@ -197,13 +218,13 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       queryClient,
       authProvider: false,
     })
+    await settleQueue(queryClient)
 
-    await userEvent.click(
-      await screen.findByRole("checkbox", { name: /Select job non-error-job/i })
-    )
+    await userEvent.click(screen.getByRole("checkbox", { name: /Select job non-error-job/i }))
     await userEvent.click(screen.getByRole("button", { name: /Retry selected/i }))
+    await settleQueue(queryClient)
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("request failed")
+    expect(screen.getByRole("alert")).toHaveTextContent("request failed")
     queryClient.clear()
   })
 
@@ -253,22 +274,25 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       queryClient,
       authProvider: false,
     })
+    await settleQueue(queryClient)
 
-    expect(await screen.findByRole("table", { name: "Dead-letter queue" })).toBeInTheDocument()
+    expect(screen.getByRole("table", { name: "Dead-letter queue" })).toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Select all" })).toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Select" })).toBeInTheDocument()
 
     // The user-topics ID field is the first textbox; the release form follows it.
-    const userIdInput = (await screen.findAllByRole("textbox"))[0]!
+    const userIdInput = screen.getAllByRole("textbox")[0]!
     await userEvent.type(userIdInput, "44444444-4444-4444-4444-444444444444")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
-    expect(await screen.findByText("Experimental topic")).toBeInTheDocument()
+    await settleTopicRequest(1)
+    expect(screen.getByText("Experimental topic")).toBeInTheDocument()
 
     await userEvent.clear(userIdInput)
     await userEvent.type(userIdInput, "55555555-5555-5555-5555-555555555555")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
+    await settleTopicRequest(2)
     expect(
-      await screen.findByText(
+      screen.getByText(
         "Topics loaded for non-string@example.com (ID 55555555-5555-5555-5555-555555555555)."
       )
     ).toBeInTheDocument()
