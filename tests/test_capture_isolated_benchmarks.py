@@ -1,4 +1,7 @@
 import json
+import os
+import re
+import shutil
 import subprocess
 import threading
 from io import BytesIO
@@ -24,6 +27,7 @@ from scripts.quality.capture_isolated_benchmarks import (
     _force_remove_container,
     _go_environment,
     _go_prefetch_environment,
+    _go_program,
     _remove_image,
     _remove_volume,
     _rust_environment,
@@ -1378,3 +1382,133 @@ def test_rust_benchmark_image_cannot_copy_candidate_build_context() -> None:
         f"COPY --from={rust_image} /usr/local/cargo /usr/local/cargo",
     ]
     assert "USER benchmark" in lines
+
+
+def test_go_measurement_isolates_benchmarks_without_losing_coverage(
+    tmp_path: Path,
+) -> None:
+    """A retained fixture cannot affect later benchmarks in either package."""
+
+    if shutil.which("go") is None:
+        pytest.skip("Go is required for the real benchmark-process contract")
+    (tmp_path / "go.mod").write_text("module example.test/isolation\n\ngo 1.20\n")
+    fixture = """package isolation
+
+import "testing"
+
+var retained bool
+var counter uint64
+
+func BenchmarkRetainsFixture(b *testing.B) {
+    retained = true
+    for i := 0; i < b.N; i++ { counter++ }
+}
+
+func BenchmarkChecksFreshProcess(b *testing.B) {
+    if retained { b.Fatal("previous benchmark fixture leaked into this process") }
+    b.Run("nested", func(b *testing.B) {
+        for i := 0; i < b.N; i++ { counter++ }
+    })
+}
+"""
+    (tmp_path / "isolation_test.go").write_text(fixture)
+    other_package = tmp_path / "other"
+    other_package.mkdir()
+    (other_package / "isolation_test.go").write_text(fixture)
+    environment = {
+        **os.environ,
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOPROXY": "off",
+        "GOSUMDB": "off",
+        "GOCACHE": os.environ.get("GOCACHE", str(tmp_path / "go-build")),
+        "GOPATH": os.environ.get("GOPATH", str(tmp_path / "go-path")),
+    }
+
+    result = subprocess.run(  # noqa: S603 - fixed runner command and local test fixtures
+        _go_program(),
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    records = re.findall(
+        r"^(Benchmark\S+)\s+\d+\s+.*ns/op.*B/op.*allocs/op$",
+        result.stdout,
+        re.MULTILINE,
+    )
+    assert len(records) == 4, result.stdout
+    assert sum(name.startswith("BenchmarkRetainsFixture-") for name in records) == 2
+    assert (
+        sum(name.startswith("BenchmarkChecksFreshProcess/nested-") for name in records)
+        == 2
+    )
+    assert "pkg: example.test/isolation\n" in result.stdout
+    assert "pkg: example.test/isolation/other\n" in result.stdout
+
+
+@pytest.mark.parametrize("phase", ["discovery", "measurement"])
+def test_go_measurement_stops_on_discovery_or_benchmark_failure(
+    tmp_path: Path, phase: str
+) -> None:
+    """A failed package discovery or benchmark cannot become partial evidence."""
+
+    if shutil.which("go") is None:
+        pytest.skip("Go is required for the real benchmark-process contract")
+    (tmp_path / "go.mod").write_text("module example.test/failure\n\ngo 1.20\n")
+    (tmp_path / "failure_test.go").write_text(
+        """package failure
+
+import (
+    "flag"
+    "fmt"
+    "os"
+    "testing"
+)
+
+func TestMain(m *testing.M) {
+    flag.Parse()
+    if os.Getenv("FAILURE_PHASE") == "discovery" && flag.Lookup("test.list").Value.String() != "" {
+        fmt.Println("intentional discovery failure")
+        os.Exit(23)
+    }
+    os.Exit(m.Run())
+}
+
+func BenchmarkFails(b *testing.B) {
+    if os.Getenv("FAILURE_PHASE") == "measurement" {
+        b.Fatal("intentional measurement failure")
+    }
+}
+
+func BenchmarkMustNotRun(b *testing.B) {
+    fmt.Println("later benchmark executed after failure")
+}
+"""
+    )
+    result = subprocess.run(  # noqa: S603 - fixed runner command and local test fixtures
+        _go_program(),
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "GOWORK": "off",
+            "GOTOOLCHAIN": "local",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "FAILURE_PHASE": phase,
+            "GOCACHE": os.environ.get("GOCACHE", str(tmp_path / "go-build")),
+            "GOPATH": os.environ.get("GOPATH", str(tmp_path / "go-path")),
+        },
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert f"intentional {phase} failure" in result.stdout + result.stderr
+    assert "later benchmark executed after failure" not in result.stdout
