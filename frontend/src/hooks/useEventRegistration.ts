@@ -34,6 +34,7 @@ interface UseEventRegistrationOptions {
 interface RegistrationScope {
   eventId: string
   userId: number | string | undefined
+  initialRegistered: boolean
 }
 
 export function useEventRegistration({
@@ -49,8 +50,13 @@ export function useEventRegistration({
   const [isRegistered, setIsRegistered] = useState(initialRegistered)
   const [participantCount, setParticipantCount] = useState(initialParticipantCount)
   const [qrToken, setQrToken] = useState<string | undefined>(initialQrToken)
-  const [stateScope, setStateScope] = useState<RegistrationScope>(() => ({ eventId, userId }))
+  const [stateScope, setStateScope] = useState<RegistrationScope>(() => ({
+    eventId,
+    userId,
+    initialRegistered,
+  }))
   const activeScopeRef = useRef<RegistrationScope | null>(stateScope)
+  const restoringScopeRef = useRef<RegistrationScope | null>(null)
   const [pendingOperations, setPendingOperations] = useState<
     ReadonlyMap<RegistrationScope, ReadonlySet<symbol>>
   >(() => new Map())
@@ -110,7 +116,7 @@ export function useEventRegistration({
   // A hook instance may be reused for another event or user. Reset during render
   // so React retries with the new scope before persistence/recovery effects commit.
   if (stateScope.eventId !== eventId || stateScope.userId !== userId) {
-    setStateScope({ eventId, userId })
+    setStateScope({ eventId, userId, initialRegistered })
     setIsRegistered(initialRegistered)
     setParticipantCount(initialParticipantCount)
     setQrToken(initialQrToken)
@@ -125,22 +131,24 @@ export function useEventRegistration({
     setParticipantCount(initialParticipantCount)
   }, [initialParticipantCount])
 
-  // Restore cached registration state on mount
+  // Recover only when a scope first mounts. Later prop updates are authoritative.
   useEffect(() => {
     if (!userId) return
     try {
       const cached = localStorage.getItem(regKey(eventId, userId))
-      if (cached === "1" && !initialRegistered) {
+      if (cached === "1" && !stateScope.initialRegistered) {
+        restoringScopeRef.current = stateScope
         setIsRegistered(true)
       }
     } catch {
       // ignore
     }
-  }, [eventId, userId, initialRegistered])
+  }, [eventId, userId, stateScope])
 
   // Persist registration state to localStorage
   useEffect(() => {
     if (!userId) return
+    if (!isRegistered && restoringScopeRef.current === stateScope) return
     try {
       if (isRegistered) {
         localStorage.setItem(regKey(eventId, userId), "1")
@@ -150,11 +158,14 @@ export function useEventRegistration({
     } catch {
       // ignore
     }
-  }, [isRegistered, eventId, userId])
+  }, [isRegistered, eventId, userId, stateScope])
 
   // Sync QR token with registered state and localStorage
   useEffect(() => {
     if (!isRegistered) {
+      // Recovery schedules a registered render. Keep its caches intact until
+      // that render commits, without carrying the recovery into another scope.
+      if (restoringScopeRef.current === stateScope) return
       setQrToken(undefined)
       try {
         localStorage.removeItem(qrKey(eventId, userId))
@@ -164,6 +175,7 @@ export function useEventRegistration({
       return
     }
 
+    restoringScopeRef.current = null
     if (initialQrToken) {
       setQrToken(initialQrToken)
       try {
@@ -180,7 +192,7 @@ export function useEventRegistration({
         // ignore
       }
     }
-  }, [isRegistered, initialQrToken, eventId, userId])
+  }, [isRegistered, initialQrToken, eventId, userId, stateScope])
 
   const sync = useCallback(async (): Promise<"registered" | "unregistered" | null> => {
     const operationScope = stateScope
@@ -213,6 +225,16 @@ export function useEventRegistration({
         }
       }
 
+      // A different mounted card can change the shared cache while this hook's
+      // boolean stays unchanged, so persist every authoritative reconciliation.
+      if (userId) {
+        try {
+          if (nextRegistered) localStorage.setItem(regKey(eventId, userId), "1")
+          else localStorage.removeItem(regKey(eventId, userId))
+        } catch {
+          // ignore
+        }
+      }
       setIsRegistered(nextRegistered)
       return nextRegistered ? "registered" : "unregistered"
     } catch {
