@@ -107,7 +107,11 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     await expect(page).toHaveURL(new URL("/login", resetOrigin).href)
 
     await submitLogin(page, email, firstPassword)
-    await expect(page.getByRole("alert")).toBeVisible()
+    const rejectedLoginAlert = page
+      .locator("form")
+      .filter({ has: page.locator("#login-submit") })
+      .getByRole("alert")
+    await expect(rejectedLoginAlert).toBeVisible()
     await expect(page).toHaveURL(/\/login/)
     await loginWith(page, email, newPassword)
     await page.context().clearCookies()
@@ -128,7 +132,12 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     await page.getByRole("button", { name: "Сохранить пароль" }).click()
     const replayResult = await replayResponse
     expect(replayResult.status(), "a consumed reset token must be rejected by the API").toBe(400)
-    const replayAlert = page.getByRole("alert")
+    // Scope to the reset form so the app's empty global live region cannot
+    // satisfy this assertion before the consumed-token error is rendered.
+    const replayAlert = page
+      .locator("form")
+      .filter({ has: page.locator("#reset-submit-btn") })
+      .getByRole("alert")
     await expect(replayAlert).toBeVisible()
     const replayFeedback = await replayAlert.evaluate(
       (alert, resetToken) => ({

@@ -1,4 +1,6 @@
+import type { Response } from "@playwright/test"
 import { expect, loginAs, ROLES, test, type Role } from "./fixtures"
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
 
 const ROLE_NAMES: Role[] = ["student", "teacher", "admin"]
 const WRONG_PASSWORD_CASES = [
@@ -65,7 +67,12 @@ test.describe("localized rejected-login acceptance", () => {
       const loginResponse = await loginResponsePromise
       expect(loginResponse.status(), "rejected login must return HTTP 401").toBe(401)
 
-      const feedback = page.getByRole("alert")
+      // The app also has a persistent, empty screen-reader announcer. Verify
+      // the submitted form's own error instead of that unrelated live region.
+      const feedback = page
+        .locator("form")
+        .filter({ has: page.locator("#login-submit") })
+        .getByRole("alert")
       await expect(feedback).toBeVisible()
       const feedbackText = (await feedback.textContent())?.trim() ?? ""
       const isExactGenericFeedback =
@@ -90,9 +97,10 @@ test.describe("localized rejected-login acceptance", () => {
   }
 })
 
-test("admin can access the admin page and user listing", async ({ page }) => {
+test("admin can access the admin page and user listing", async ({ page }, testInfo) => {
   await loginAs(page, "admin")
   const adminUsers = await page.request.get("/api/v1/users")
+  reportLiveHttpStatus(testInfo.project.name, "admin-users", adminUsers.status())
   expect(adminUsers.status(), "admin GET /api/v1/users should be allowed").toBe(200)
   const adminUserRecords = (await adminUsers.json()) as { email: string }[]
   expect(
@@ -107,19 +115,33 @@ test("admin can access the admin page and user listing", async ({ page }) => {
   ).toBeVisible()
 })
 
-test("admin can access feature-flag diagnostics", async ({ page }) => {
+test("admin can access feature-flag diagnostics", async ({ page }, testInfo) => {
   await loginAs(page, "admin")
-  await page.goto("/admin/feature-flags")
-  await expect(page).toHaveURL(/\/admin\/feature-flags$/)
-  await expect(
-    page.getByRole("heading", {
-      level: 1,
-      name: /Feature Flag Diagnostics|Диагностика флагов функций/iu,
-    })
-  ).toBeVisible()
-
   const featureFlags = await page.request.get("/api/v1/admin/feature-flags")
+  reportLiveHttpStatus(testInfo.project.name, "admin-feature-flags", featureFlags.status())
   expect(featureFlags.status(), "admin GET /api/v1/admin/feature-flags should be allowed").toBe(200)
+
+  const reportFeatureFlagsResponse = (response: Response) => {
+    if (
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === "/api/v1/admin/feature-flags"
+    ) {
+      reportLiveHttpStatus(testInfo.project.name, "admin-feature-flags-ui", response.status())
+    }
+  }
+  page.on("response", reportFeatureFlagsResponse)
+  try {
+    await page.goto("/admin/feature-flags")
+    await expect(page).toHaveURL(/\/admin\/feature-flags$/)
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: /Feature Flag Diagnostics|Диагностика флагов функций/iu,
+      })
+    ).toBeVisible()
+  } finally {
+    page.off("response", reportFeatureFlagsResponse)
+  }
 })
 
 for (const role of ["student", "teacher"] as const) {

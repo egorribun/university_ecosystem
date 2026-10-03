@@ -26,6 +26,16 @@ test("password reset rejects redirect abuse, reuse, and cleanup outside its own 
   assert.match(source, /expect\(replayFeedback\.containsResetToken\)\.toBe\(false\)/u)
   assert.match(source, /const replayResponse = page\.waitForResponse\(/u)
   assert.match(source, /replayResponse[\s\S]*?status\(\)[\s\S]*?\.toBe\(400\)/u)
+  for (const submitId of ["login-submit", "reset-submit-btn"]) {
+    assert.match(
+      source,
+      new RegExp(
+        `page\\s*\\.locator\\("form"\\)\\s*\\.filter\\(\\{ has: page\\.locator\\("#${submitId}"\\) \\}\\)\\s*\\.getByRole\\("alert"\\)`,
+        "u"
+      )
+    )
+  }
+  assert.doesNotMatch(source, /page\.getByRole\("alert"\)|\.first\(\)/u)
   assert.match(source, /encodeURIComponent\(userId\)/u)
   assert.match(source, /"X-CSRF-Token"/u)
   assert.match(source, /finally/u)

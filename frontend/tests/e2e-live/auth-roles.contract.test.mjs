@@ -66,6 +66,47 @@ test("auth roles contract is part of the shared live-contract preflight", async 
   )
 })
 
+test("admin API probes report only bounded status diagnostics before UI navigation", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  assert.match(spec, /import \{ reportLiveHttpStatus \} from "\.\/http-status-diagnostic"/u)
+  for (const [check, response, destination] of [
+    ["admin-users", "adminUsers", "/admin/users"],
+    ["admin-feature-flags", "featureFlags", "/admin/feature-flags"],
+  ]) {
+    const report = `reportLiveHttpStatus(testInfo.project.name, "${check}", ${response}.status())`
+    const reportIndex = spec.indexOf(report)
+    const assertionIndex = spec.indexOf(`expect(${response}.status()`, reportIndex)
+    const navigationIndex = spec.indexOf(`page.goto("${destination}")`, assertionIndex)
+    assert.ok(reportIndex >= 0 && assertionIndex > reportIndex && navigationIndex > assertionIndex)
+    assert.equal(spec.split(report).length - 1, 1)
+  }
+})
+
+test("feature-flag UI diagnostics observe only the existing API response and release the listener", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const section = spec.slice(
+    spec.indexOf('test("admin can access feature-flag diagnostics"'),
+    spec.indexOf('for (const role of ["student", "teacher"]')
+  )
+  assert.match(
+    section,
+    /response\.request\(\)\.method\(\) === "GET"\s*&&\s*new URL\(response\.url\(\)\)\.pathname === "\/api\/v1\/admin\/feature-flags"/u
+  )
+  assert.match(
+    section,
+    /reportLiveHttpStatus\(testInfo\.project\.name, "admin-feature-flags-ui", response\.status\(\)\)/u
+  )
+  assert.match(
+    section,
+    /\.toBe\(200\)[\s\S]*?page\.on\("response", reportFeatureFlagsResponse\)\s*try \{[\s\S]*?page\.goto\("\/admin\/feature-flags"\)[\s\S]*?\.toBeVisible\(\)\s*\} finally \{\s*page\.off\("response", reportFeatureFlagsResponse\)/u
+  )
+  assert.equal([...section.matchAll(/page\.request\.get\(/gu)].length, 1)
+  assert.doesNotMatch(
+    section,
+    /waitForResponse|response\.(?:body|json|text|headers)\(|console\.|process\.stdout/u
+  )
+})
+
 test("real wrong-password acceptance checks localized generic feedback without echo", async () => {
   const [spec, loginRoute, loginPage, loginForm, loginFlow, russianSource, englishSource] =
     await Promise.all([
@@ -133,6 +174,11 @@ test("real wrong-password acceptance checks localized generic feedback without e
     rejectedLoginSection,
     /expect\(loginResponse\.status\(\), "rejected login must return HTTP 401"\)\.toBe\(401\)/u
   )
+  assert.match(
+    rejectedLoginSection,
+    /page\s*\.locator\("form"\)\s*\.filter\(\{ has: page\.locator\("#login-submit"\) \}\)\s*\.getByRole\("alert"\)/u
+  )
+  assert.doesNotMatch(rejectedLoginSection, /page\.getByRole\("alert"\)|\.first\(\)/u)
   assert.match(
     rejectedLoginSection,
     /feedbackText\s*===\s*expectedError[\s\S]*?!feedbackText\.includes\(identity\)[\s\S]*?!feedbackText\.includes\(wrongPassword\)/u
