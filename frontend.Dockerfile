@@ -110,6 +110,8 @@ ENV FRONTEND_BUILD_UNMINIFIED=$FRONTEND_BUILD_UNMINIFIED
 ARG FRONTEND_REACT_DEV_MODE=""
 ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
 COPY --from=deps /app/node_modules ./node_modules
+# Preserve the local lint adapter's pinned engine outside root node_modules.
+COPY --from=deps /app/scripts/boundary-micromatch-compat ./scripts/boundary-micromatch-compat
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg

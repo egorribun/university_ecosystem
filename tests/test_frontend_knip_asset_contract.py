@@ -23,14 +23,15 @@ def _read_frontend(relative_path: str) -> str:
 
 def test_vitest_source_tests_and_setup_keep_fixture_handlers_discoverable() -> None:
     knip = json.loads((FRONTEND / "knip.json").read_text(encoding="utf-8"))
+    root_workspace = knip["workspaces"]["."]
 
     # Only globs that match real files: Knip reports unmatched entries as
     # configuration hints, and treatConfigHintsAsErrors makes those fatal.
     source_test_globs = ["src/**/*.test.ts", "src/**/*.test.tsx"]
-    assert all(pattern in knip["entry"] for pattern in source_test_globs)
-    assert not any(".spec." in pattern for pattern in knip["entry"])
-    assert "wasm-sanitizer/tests/**/*.js" in knip["entry"]
-    assert "src/**/*.{ts,tsx,css,mdx}" in knip["project"]
+    assert all(pattern in root_workspace["entry"] for pattern in source_test_globs)
+    assert not any(".spec." in pattern for pattern in root_workspace["entry"])
+    assert "wasm-sanitizer/tests/**/*.js" in root_workspace["entry"]
+    assert "src/**/*.{ts,tsx,css,mdx}" in root_workspace["project"]
 
     # Vitest loads setupTests before every source test (Knip's Vitest plugin
     # adds it as an entry). That setup imports the handwritten handlers, which
@@ -45,6 +46,21 @@ def test_vitest_source_tests_and_setup_keep_fixture_handlers_discoverable() -> N
         fnmatch.fnmatchcase(handlers, pattern)
         for pattern in knip.get("ignoreIssues", {})
     )
+
+
+def test_boundary_adapter_uses_its_own_manifest_without_disabling_checks() -> None:
+    knip = json.loads((FRONTEND / "knip.json").read_text(encoding="utf-8"))
+    adapter = "scripts/boundary-micromatch-compat"
+
+    # Root-level patterns are ignored once workspaces are enabled. The local
+    # package must own its imports, rather than ignoring its picomatch usage.
+    assert "entry" not in knip
+    assert "project" not in knip
+    assert set(knip["workspaces"]) == {".", adapter}
+    assert knip["workspaces"][adapter] == {}
+    manifest = json.loads(_read_frontend(f"{adapter}/package.json"))
+    assert manifest["dependencies"] == {"picomatch": "2.3.2"}
+    assert (FRONTEND / adapter / manifest["main"]).is_file()
 
 
 def test_each_file_ignore_is_exact_and_points_to_generated_output() -> None:

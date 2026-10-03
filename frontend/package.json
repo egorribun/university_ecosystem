@@ -16,7 +16,7 @@
     "preview": "vite preview",
     "start": "node ./scripts/server-prod.mjs",
     "lint": "eslint --max-warnings=0 --ext .ts,.tsx,.js,.mjs,.cjs \"src\" \"tests\" \"scripts\"",
-    "lint:architecture": "node --test scripts/eslint-architecture.test.mjs scripts/ui-barrel-boundary.test.mjs",
+    "lint:architecture": "node --test scripts/eslint-architecture.test.mjs scripts/ui-barrel-boundary.test.mjs scripts/boundary-micromatch-compat.test.mjs",
     "lint:knip": "knip --reporter compact --no-progress",
     "lint:all": "npm run lint && npm run lint:architecture && npm run manifests:check && npm run tokens:check && npm run tokens:sync && npm run lint:knip",
     "lint:fix": "npm run lint -- --fix",
@@ -159,7 +159,7 @@
     "cross-env": "^10.1.0",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-boundaries": "^7.2.0",
+    "eslint-plugin-boundaries": "7.2.0",
     "eslint-plugin-i18next": "^6.1.3",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react": "^7.37.5",
@@ -180,6 +180,7 @@
     "js-yaml": "^4.3.2",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.3.0",
+    "micromatch": "file:./scripts/boundary-micromatch-compat",
     "msw": "^2.12.7",
     "msw-auto-mock": "^0.32.1",
     "openapi-types": "^12.1.3",
@@ -240,6 +241,9 @@
     },
     "eslint-plugin-react-hooks": {
       "zod-validation-error": "4.0.2"
+    },
+    "eslint-plugin-boundaries@7.2.0": {
+      "micromatch": "$micromatch"
     }
   },
   "allowScripts": {

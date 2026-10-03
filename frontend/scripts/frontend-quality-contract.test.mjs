@@ -271,6 +271,7 @@ test("LHCI binary setup skips Unix symlink operations on Windows only", async ()
 
 test("Knip analyzes frontend tests as export consumers", async () => {
   const knipConfig = await readJson(new URL("knip.json", frontendRoot))
+  const rootWorkspace = knipConfig.workspaces["."]
 
   assert.equal(
     knipConfig.treatConfigHintsAsErrors,
@@ -281,7 +282,7 @@ test("Knip analyzes frontend tests as export consumers", async () => {
   // Only patterns that match real files: Knip reports unmatched entries as
   // configuration hints, which this gate treats as errors.
   for (const pattern of ["src/**/*.test.ts", "src/**/*.test.tsx"]) {
-    assert.ok(knipConfig.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
+    assert.ok(rootWorkspace.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
   }
 })
 
