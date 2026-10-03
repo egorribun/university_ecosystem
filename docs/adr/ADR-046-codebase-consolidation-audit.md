@@ -108,9 +108,16 @@ documented CHECK-backed NOT NULL columns), RBAC and cross-module contracts.
   no translation (clients saw e.g. `errors.chat.self_chat`) are translated and
   `tests/test_localization_key_coverage.py` keeps the dictionary complete;
   `BusinessRuleViolation` messages are translated too.
-- **Data**: revision `202610010001` drops the unused `user_stats` and
-  `vector_chunks` tables (reversible); their models, the model-default policy
-  and the unused `qdrant-client`/`polars` dependencies are removed.
+- **Data**: revision `202610010001` retains the unused `user_stats` and
+  `vector_chunks` tables, indexes and rows during online upgrade and downgrade.
+  Their runtime models, model-default inventory entries and unused
+  `qdrant-client`/`polars` dependencies are removed. Migration-only definitions in
+  `app/core/db/retained_table_metadata.py` preserve explicit schema ownership and
+  normal Alembic drift checks without restoring the runtime models. Physical
+  removal requires a separate reviewed maintenance plan with backup, restore and
+  deployed-catalog evidence; no destructive cleanup is scheduled by this revision.
+  A database that ran the earlier destructive draft must restore its data from
+  backup; a downgrade cannot recover deleted rows by recreating empty tables.
 - **Frontend**: the activity comparison cards derive "previous" from the
   server `trend` (one definition, not a second client-side split of truncated
   lists), fabricated `4.4`/`0.3` grade defaults are gone, and the never-emitted
