@@ -428,12 +428,12 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
     assert live_stand.main(["seed", "--demo"]) == 0
     assert live_stand.main(["seed", "--demo"]) == 0
 
-    if len(runs) != 4 or token_sizes != [32]:
+    if len(runs) != 6 or token_sizes != [32]:
         pytest.fail("repeated seed invocations must reuse one owner-scoped password")
 
-    admin_commands = [runs[1][0], runs[3][0]]
-    admin_environments = [runs[1][1], runs[3][1]]
-    demo_environments = [runs[0][1], runs[2][1]]
+    admin_commands = [runs[1][0], runs[4][0]]
+    admin_environments = [runs[1][1], runs[4][1]]
+    non_admin_environments = [runs[index][1] for index in (0, 2, 3, 5)]
     expected_seed_environment = {
         "COMPOSE_PROJECT_NAME": owner.project_name,
         "LIVE_STAND_OWNER_VERIFIED": "1",
@@ -448,12 +448,12 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
                 for index in range(len(command))
             ):
                 pytest.fail("live seed command omitted its verified owner target")
-    if daemon_checks != [owner] * 6:
+    if daemon_checks != [owner] * 8:
         pytest.fail("each seed subprocess must reverify the owned Docker daemon")
-    if resource_checks != [owner] * 4:
+    if resource_checks != [owner] * 6:
         pytest.fail("each seed subprocess must verify signed Compose resources")
-    if any("TEST_PASSWORD" in environment for environment in demo_environments):
-        pytest.fail("demo-data seeding must not receive the admin password")
+    if any("TEST_PASSWORD" in environment for environment in non_admin_environments):
+        pytest.fail("only admin-account seeding may receive the admin password")
 
     generated_passwords = [
         environment.get("TEST_PASSWORD") for environment in admin_environments
@@ -678,19 +678,21 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             pytest.fail("a second E2E run against the preserved stand should succeed")
 
         if (
-            len(runs) != 4
+            len(runs) != 6
             or len(dependency_runs) != 2
             or len(playwright_runs) != 2
             or token_sizes != [32]
         ):
             pytest.fail(
-                "two E2E runs must reuse one persisted password and each run both seeds"
+                "two E2E runs must reuse one persisted password and each run all seeds"
             )
         if event_order != [
             "seed",
             "seed",
+            "seed",
             "bootstrap",
             "playwright",
+            "seed",
             "seed",
             "seed",
             "bootstrap",
@@ -704,7 +706,8 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
 
         demo_command, _demo_cwd, demo_env = runs[0]
         admin_command, _admin_cwd, admin_env = runs[1]
-        second_admin_env = runs[3][2]
+        authorization_command, _authorization_cwd, authorization_env = runs[2]
+        second_admin_env = runs[4][2]
         dependency_frontend, dependency_environment = dependency_runs[0]
         (
             e2e_cwd,
@@ -728,8 +731,8 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             or stored_password.get("password") != generated_password
         ):
             pytest.fail("the persisted admin password must belong to this stand")
-        if "TEST_PASSWORD" in demo_env:
-            pytest.fail("the demo seed must not receive the admin password")
+        if "TEST_PASSWORD" in demo_env or "TEST_PASSWORD" in authorization_env:
+            pytest.fail("only the admin account seed may receive the admin password")
         if e2e_env.get("TEST_PASSWORD") != generated_password:
             pytest.fail("the Playwright child must receive the same per-run password")
         if playwright_password != generated_password:
@@ -741,8 +744,9 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         if (
             "scripts/seed_demo_data.py" not in demo_command
             or "scripts/seed_admin_data.py" not in admin_command
+            or "scripts/seed_live_authorization.py" not in authorization_command
         ):
-            pytest.fail("the E2E command must run demo and admin seed scripts")
+            pytest.fail("the E2E command must run demo, admin, and authorization seeds")
         if (
             "-e" not in admin_command
             or "TEST_PASSWORD" not in admin_command

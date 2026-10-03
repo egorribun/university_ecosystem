@@ -153,7 +153,11 @@ VOLUME_OWNER_SCHEMA_VERSION = 3
 LEGACY_OWNER_SCHEMA_VERSION = 2
 DAEMON_FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
-SEED_SCRIPTS = ("scripts/seed_demo_data.py", "scripts/seed_admin_data.py")
+SEED_SCRIPTS = (
+    "scripts/seed_demo_data.py",
+    "scripts/seed_admin_data.py",
+    "scripts/seed_live_authorization.py",
+)
 LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
 LIVE_E2E_SMOKE_FILES = (
     "tests/e2e-live/auth-roles.live.spec.ts",
@@ -2265,6 +2269,10 @@ def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> Non
         if script == "scripts/seed_admin_data.py":
             run_env = {**env, "TEST_PASSWORD": admin_password}
             run_options.extend(("-e", "TEST_PASSWORD"))
+        if script == "scripts/seed_live_authorization.py":
+            run_options.extend(
+                ("-v", f"{source_root / 'schema.zed'}:/app/schema.zed:ro")
+            )
         run_options.extend(("backend", "python", script))
         try:
             _verify_stand_owner_compose_resources(WORKTREE, owner)
