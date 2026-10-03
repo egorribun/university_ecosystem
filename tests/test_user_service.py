@@ -62,6 +62,7 @@ def mock_repo():
     # existing `repo._get_orm.return_value = ...` setups configure both (no call-
     # arg assertions on _get_orm exist, so aliasing is safe).
     repo.get_orm_for_update_with_relations = repo._get_orm
+    repo.get_orm_for_anonymization = repo._get_orm
     repo._to_dto = MagicMock()
     repo.add = MagicMock()
     repo.update = AsyncMock()

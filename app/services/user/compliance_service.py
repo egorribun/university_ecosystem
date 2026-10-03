@@ -75,7 +75,7 @@ class UserComplianceService:
             raise PermissionDenied()
 
         # Fetch ORM user
-        db_user = await self.repo._get_orm(user_id)
+        db_user = await self.repo.get_orm_for_anonymization(user_id)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
@@ -200,7 +200,7 @@ class UserComplianceService:
 
         # Fetch ORM user
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity)
+        db_user = await self.repo.get_orm_for_anonymization(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 

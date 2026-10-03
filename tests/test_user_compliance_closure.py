@@ -60,7 +60,7 @@ async def test_delete_user_data_success_anonymizes_revokes_logs_and_refreshes():
     user_id = uuid4()
     orm_user = SimpleNamespace(id=user_id)
     updated = SimpleNamespace(email=f"deleted+{user_id}@deleted.example.com")
-    repo._get_orm.return_value = orm_user
+    repo.get_orm_for_anonymization.return_value = orm_user
     repo.get.return_value = updated
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
@@ -241,7 +241,7 @@ async def test_admin_delete_user_rejects_non_admin():
 @pytest.mark.asyncio
 async def test_admin_delete_user_rejects_missing_target():
     repo = _repo()
-    repo._get_orm.return_value = None
+    repo.get_orm_for_anonymization.return_value = None
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
     with pytest.raises(EntityNotFound):
@@ -254,7 +254,7 @@ async def test_admin_delete_user_rejects_missing_target():
 async def test_admin_delete_user_rejects_self_delete():
     repo = _repo()
     user_id = uuid4()
-    repo._get_orm.return_value = SimpleNamespace(id=user_id)
+    repo.get_orm_for_anonymization.return_value = SimpleNamespace(id=user_id)
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
     with pytest.raises(BusinessRuleViolation):

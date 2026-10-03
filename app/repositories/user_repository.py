@@ -150,6 +150,24 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    async def get_orm_for_anonymization(self, id: uuid.UUID | str) -> User | None:
+        """Lock the account and load each relation that anonymization mutates."""
+        target_id = self._cast_id(id)
+        stmt = (
+            select(User)
+            .where(User.id == target_id)
+            .options(
+                selectinload(User.profile),
+                selectinload(User.preferences),
+                selectinload(User.education_path),
+                selectinload(User.spotify),
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update(of=User)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def list_users(
         self,
         filters: schemas.UserSearchFilter | None = None,
