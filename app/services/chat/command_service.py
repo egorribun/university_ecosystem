@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
@@ -32,6 +33,9 @@ if TYPE_CHECKING:
     from app.schemas.dtos.chat import AttachmentDTO
 
     from .notification_service import ChatNotificationService
+
+from fastapi import HTTPException, status
+from redis.exceptions import WatchError
 
 from app.api.validation import (
     ensure_exists,
@@ -82,6 +86,45 @@ def _make_idempotency_key(
     else:
         digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
     return f"idm:msg:{digest}"
+
+
+async def _change_idempotency_slot(
+    key: str, expected: str, replacement: str | None = None, *, ttl: int = 300
+) -> bool:
+    """Compare and mutate atomically; an expired owner cannot alter a new lease."""
+    from app.deps.cache import get_cache_client
+
+    cache = await get_cache_client()
+    while True:
+        async with cache.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                current = await pipe.get(key)
+                if isinstance(current, bytes):
+                    current = current.decode("utf-8")
+                if current != expected:
+                    return False
+                pipe.multi()
+                if replacement is None:
+                    pipe.delete(key)
+                else:
+                    pipe.set(key, replacement, ex=ttl)
+                await pipe.execute()
+                return True
+            except WatchError:
+                # Re-read ownership after an expiry/replacement during WATCH.
+                continue
+
+
+def _idempotency_in_progress() -> None:
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": "idempotency_in_progress",
+            "message": "This message is already being processed; retry with the same key",
+        },
+        headers={"Retry-After": "1"},
+    )
 
 
 if TYPE_CHECKING:
@@ -136,9 +179,13 @@ class ChatMessageDispatcher:
         ``Idempotency-Key`` header.  If a key is provided and a cached response
         exists in Redis (TTL 24 h), it is returned immediately — no duplicate
         message is created.  The key is namespaced by ``(chat_id, user_id)`` to
-        prevent cross-user and cross-chat replay attacks.
+        prevent cross-user and cross-chat replay attacks. An occupied pending
+        slot returns HTTP 409 with Retry-After; retry with the same key to obtain
+        the committed message. This is a bounded Redis lease, not a durable DB
+        uniqueness guarantee after Redis state loss or lease expiry.
         """
         _idempotency_cache_key: str | None = None
+        _pending_value: str | None = None
 
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
@@ -168,8 +215,8 @@ class ChatMessageDispatcher:
                     _hit = _json.loads(_cached)
                     _msg_id = uuid.UUID(_hit["message_id"])
                 except (ValueError, KeyError, TypeError):  # RZ-28-01
-                    # Legacy entry: full JSON from before BE-02 — fall through to
-                    # re-send path (idempotency protection degraded, not broken).
+                    # Pending or malformed entries must still acquire the slot
+                    # below; never treat a cache parse failure as ownership.
                     pass
                 else:
                     _full = await self.repository.get_message_by_id(
@@ -224,28 +271,17 @@ class ChatMessageDispatcher:
         # surface genuine infrastructure failures quickly.
         _UPLOAD_TIMEOUT_SECONDS = 30.0
 
-        # RACE-BE-01 (audit Wave 10): Reserve the idempotency slot BEFORE any
-        # upload so that failures in Phase 1 OR Phase 2 both hit the same except
-        # clause and release the slot.  Without pre-reservation the slot is only
-        # written on success (line ~300); a Phase-2 DB failure leaves no record
-        # and the next retry re-uploads — creating duplicate S3 objects.
-        #
-        # Redis SET NX: "pending" marks the slot as in-flight.  TTL 300 s covers
-        # the maximum upload + DB write time with room to spare.  An existing
-        # "pending" value means a concurrent/retried request — we fall through to
-        # the normal flow; the DB unique constraint is the final arbiter.
+        # Reserve before uploads. A losing request returns a retryable conflict;
+        # only the owner may write or release/promote the scoped client key.
         if _idempotency_cache_key:
-            import json as _json
-
-            from app.deps.cache import get_cache_client
-
-            _cache = await get_cache_client()
-            await _cache.set(
-                _idempotency_cache_key,
-                _json.dumps({"status": "pending"}),
-                nx=True,
-                ex=300,
+            _pending_value = json.dumps(
+                {"status": "pending", "owner": uuid.uuid4().hex}
             )
+            acquired = await _cache.set(
+                _idempotency_cache_key, _pending_value, nx=True, ex=300
+            )
+            if not acquired:
+                _idempotency_in_progress()
 
         # ── Phase 1 + Phase 2 wrapped together ───────────────────────────────
         # Both phases share the same exception handler so that a Phase-2 failure
@@ -285,13 +321,8 @@ class ChatMessageDispatcher:
             # Phase 1 failure: clean up any partial uploads and release slot.
             if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
-            if _idempotency_cache_key:
-                import json as _json
-
-                from app.deps.cache import get_cache_client
-
-                _cache = await get_cache_client()
-                await _cache.delete(_idempotency_cache_key)
+            if _idempotency_cache_key and _pending_value:
+                await _change_idempotency_slot(_idempotency_cache_key, _pending_value)
             raise
 
         # ── Phase 2: Atomic DB write ─────────────────────────────────────────
@@ -300,6 +331,13 @@ class ChatMessageDispatcher:
         # files (best-effort) and release the idempotency pending slot so the
         # next retry can start fresh — closing the RACE-BE-01 window.
         try:
+            if _idempotency_cache_key and _pending_value:
+                # Uploads may outlive the lease. Verify and renew ownership before
+                # entering the DB mutation, so an old uploader cannot insert.
+                if not await _change_idempotency_slot(
+                    _idempotency_cache_key, _pending_value, _pending_value
+                ):
+                    _idempotency_in_progress()
             message = Message(
                 chat_id=chat_id,
                 sender_id=user.id,
@@ -366,14 +404,19 @@ class ChatMessageDispatcher:
             # copies rather than re-using orphaned S3 objects.
             if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
-            if _idempotency_cache_key:
-                import json as _json
-
-                from app.deps.cache import get_cache_client
-
-                _cache = await get_cache_client()
-                await _cache.delete(_idempotency_cache_key)
+            if _idempotency_cache_key and _pending_value:
+                await _change_idempotency_slot(_idempotency_cache_key, _pending_value)
             raise
+
+        # Record the committed ID before response hydration, which may itself
+        # fail. A retry can then reload that same message rather than insert again.
+        if _idempotency_cache_key and _pending_value:
+            await _change_idempotency_slot(
+                _idempotency_cache_key,
+                _pending_value,
+                json.dumps({"status": "completed", "message_id": str(message.id)}),
+                ttl=86400,
+            )
 
         # Reload message with attachments for the response
         reloaded = await self.repository.get_last_messages(
@@ -421,29 +464,6 @@ class ChatMessageDispatcher:
         # await self.notification_service.notify_new_message(
         #     message, chat.participants, user
         # )
-
-        # ── Idempotency store (D-02 / BE-02 / RACE-BE-01) ───────────────────
-        # BE-02 (audit 2026-03-08 Wave 5): Store only the message ID rather than
-        # the full serialised MessageResponse.  Storing plaintext message content
-        # in Redis for 24 h is a data-protection risk: if Redis is exfiltrated,
-        # attackers gain access to all recently sent messages.  On cache hit we
-        # re-fetch the full message from the DB (one PK lookup — negligible cost).
-        #
-        # RACE-BE-01: Overwrite the "pending" placeholder set before Phase 1 with
-        # the "completed" entry including message_id.  SET replaces regardless
-        # of current value — atomic promotion from pending → completed.
-        if _idempotency_cache_key:
-            import json as _json
-
-            from app.deps.cache import get_cache_client
-
-            _cache = await get_cache_client()
-            _slim = _json.dumps({"status": "completed", "message_id": str(msg_data.id)})
-            await _cache.set(
-                _idempotency_cache_key,
-                _slim,
-                ex=86400,  # 24 h — covers any reasonable client retry window
-            )
 
         return msg_data
 

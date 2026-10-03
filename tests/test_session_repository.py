@@ -16,6 +16,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ActiveSession
@@ -162,3 +163,89 @@ async def test_get_last_seen_map_empty_and_populated(repo, db_session, user_fact
     result = await repo.get_last_seen_map([user.id])
     assert user.id in result
     assert result[user.id] is not None
+
+
+@pytest.fixture
+async def revocation_sessions(db_session, user_factory):
+    owner = await user_factory()
+    other = await user_factory()
+    now = datetime.now(UTC)
+    sessions = {}
+    for name, user_id, revoked_at in [
+        ("current", owner.id, None),
+        ("laptop", owner.id, None),
+        ("tablet", owner.id, None),
+        ("revoked", owner.id, now - timedelta(days=1)),
+        ("other", other.id, None),
+    ]:
+        sessions[name] = await _add(
+            db_session,
+            user_id,
+            jti=f"revoke-{name}",
+            created_at=now - timedelta(days=2),
+            expires_at=now + timedelta(hours=1),
+            revoked_at=revoked_at,
+        )
+    return owner, other, sessions
+
+
+async def _revocation_times(db_session):
+    result = await db_session.execute(
+        select(ActiveSession.id, ActiveSession.revoked_at)
+    )
+    return dict(result.all())
+
+
+@pytest.mark.asyncio
+async def test_revoke_only_owned_active_session(repo, db_session, revocation_sessions):
+    owner, other, sessions = revocation_sessions
+    before = await _revocation_times(db_session)
+    target = sessions["laptop"].id
+
+    assert await repo.revoke(target, other.id) is False
+    assert await _revocation_times(db_session) == before
+    assert await repo.revoke(target, owner.id) is True
+    after = await _revocation_times(db_session)
+    assert after[target] is not None
+    assert {key: value for key, value in after.items() if key != target} == {
+        key: value for key, value in before.items() if key != target
+    }
+    assert await repo.revoke(target, owner.id) is False
+    assert await repo.revoke(uuid.uuid4(), owner.id) is False
+    assert await _revocation_times(db_session) == after
+
+
+@pytest.mark.asyncio
+async def test_revoke_all_except_preserves_current_and_other_users(
+    repo, db_session, revocation_sessions
+):
+    owner, _, sessions = revocation_sessions
+    before = await _revocation_times(db_session)
+
+    assert await repo.revoke_all_except(owner.id, sessions["current"].id) == 2
+
+    after = await _revocation_times(db_session)
+    for name in ("laptop", "tablet"):
+        assert after[sessions[name].id] is not None
+    for name in ("current", "revoked", "other"):
+        assert after[sessions[name].id] == before[sessions[name].id]
+    assert await repo.revoke_all_except(owner.id, sessions["current"].id) == 0
+    assert await _revocation_times(db_session) == after
+
+
+@pytest.mark.asyncio
+async def test_revoke_all_for_user_preserves_other_users_and_existing_timestamp(
+    repo, db_session, revocation_sessions
+):
+    owner, _, sessions = revocation_sessions
+    before = await _revocation_times(db_session)
+
+    assert await repo.revoke_all_for_user(owner.id) == 3
+
+    after = await _revocation_times(db_session)
+    for name in ("current", "laptop", "tablet"):
+        assert after[sessions[name].id] is not None
+    for name in ("revoked", "other"):
+        assert after[sessions[name].id] == before[sessions[name].id]
+    assert await repo.revoke_all_for_user(owner.id) == 0
+    assert await _revocation_times(db_session) == after

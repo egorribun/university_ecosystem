@@ -50,7 +50,9 @@ def auth_service():
     audit = MagicMock()
     auth_repo = MagicMock()
     user_repo = MagicMock()
+    user_repo.change_password_if_current = AsyncMock(return_value=1)
     session_repo = MagicMock()
+    session_repo.update = AsyncMock()
     uow = MagicMock()
     uow.__aenter__.return_value = uow
     uow.__aexit__.return_value = None
@@ -731,7 +733,7 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
     )
     publish_revocations.assert_awaited_once_with(revocations)
     assert lifecycle_events.index("collect") < lifecycle_events.index("commit")
-    assert lifecycle_events.index("commit") < lifecycle_events.index("publish")
+    assert lifecycle_events.index("publish") < lifecycle_events.index("commit")
     # db_user is not the original user → second attach call fires (L359-360)
     assert attach_mock.await_count == 2
     csrf_mock.assert_called_once_with(request_mock)

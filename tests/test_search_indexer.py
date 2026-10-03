@@ -24,6 +24,8 @@ def _fake_service() -> MagicMock:
     service.ensure_index = AsyncMock()
     service.bulk_index = AsyncMock(side_effect=lambda index, docs: (len(docs), 0))
     service.close = AsyncMock()
+    service.publish_rebuilt_indices = AsyncMock()
+    service.delete_index = AsyncMock()
     return service
 
 
@@ -208,10 +210,13 @@ async def test_reindex_all_pages_through_active_rows(session, service, user_fact
     counts = await search_indexer.reindex_all(batch_size=2)
 
     assert counts == {"news": 3, "events": 2}
+    replacements = service.publish_rebuilt_indices.await_args.args[0]
     assert [c.args[0] for c in service.ensure_index.await_args_list] == [
-        "news",
-        "events",
+        replacements["news"],
+        replacements["events"],
     ]
+    assert replacements["news"].startswith("news-rebuild-")
+    assert replacements["events"].startswith("events-rebuild-")
     assert service.bulk_index.await_count == 3  # news pages of 2+1, one event page
     service.close.assert_awaited_once()
 

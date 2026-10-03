@@ -109,6 +109,7 @@ async def _issue(
     return await service.issue(
         db,
         user_id=user.id,
+        expected_mfa_epoch=int(user.mfa_epoch or 0),
         flow="login",
         session_identifier=SESSION,
         client_fingerprint=FINGERPRINT,
@@ -946,6 +947,7 @@ async def test_resend_rejects_lost_revision_cas_without_writing_delivery(
     challenge = SimpleNamespace(
         id=uuid.uuid4(),
         user_id=user.id,
+        payload={"mfa_epoch": 0},
         flow="login",
         session_identifier=SESSION,
         client_fingerprint=FINGERPRINT,
@@ -1171,6 +1173,7 @@ async def test_recovery_code_is_rejected_for_email_only_flows(
     issued = await otp_service.issue(
         db_session,
         user_id=test_user.id,
+        expected_mfa_epoch=int(test_user.mfa_epoch or 0),
         flow=flow,
         session_identifier=SESSION,
         client_fingerprint=FINGERPRINT,
@@ -1214,6 +1217,7 @@ async def test_recovery_opaque_uses_utc_for_default_consumption_time(
     challenge = SimpleNamespace(
         id=uuid.uuid4(),
         user_id=user.id,
+        payload={"mfa_epoch": 0},
         flow="step_up",
         method=MFA_METHOD_EMAIL_OTP,
         session_identifier=SESSION,

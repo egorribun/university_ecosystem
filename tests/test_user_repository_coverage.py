@@ -532,3 +532,141 @@ async def test_list_users_keeps_profiles_without_a_status(user_repo, db_session)
     assert listed[free_text.id].profile.status == "Учусь и работаю"
     assert listed[no_status.id].profile is not None
     assert listed[no_status.id].profile.status is None
+
+
+@pytest.mark.asyncio
+async def test_list_users_restricts_group_membership(
+    user_repo, db_session, user_factory
+):
+    from app.schemas import schemas
+
+    group = models.Group(name="Target cohort")
+    other_group = models.Group(name="Other cohort")
+    db_session.add_all([group, other_group])
+    await db_session.flush()
+    first = await user_factory(group_id=group.id)
+    second = await user_factory(group_id=group.id)
+    await user_factory(group_id=other_group.id)
+    await user_factory(group_id=None)
+
+    results = await user_repo.list_users(schemas.UserSearchFilter(group_id=group.id))
+
+    assert {user.id for user in results} == {first.id, second.id}
+    assert all(user.group_id == group.id for user in results)
+
+
+@pytest.mark.asyncio
+async def test_count_active_excludes_disabled_accounts(user_repo, user_factory):
+    assert await user_repo.count_active() == 0
+    await user_factory(is_active=True)
+    await user_factory(is_active=False)
+    await user_factory(is_active=True)
+
+    assert await user_repo.count_active() == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("as_string", [False, True], ids=["uuid", "string"])
+async def test_get_user_sessions_excludes_revoked_and_other_users(
+    user_repo, db_session, user_factory, as_string
+):
+    owner = await user_factory()
+    other = await user_factory()
+    now = datetime.datetime.now(datetime.UTC)
+    sessions = [
+        models.ActiveSession(
+            user_id=owner.id,
+            jti=f"session-list-{index}",
+            created_at=now - datetime.timedelta(minutes=4 - index),
+            expires_at=now + datetime.timedelta(hours=1),
+            revoked_at=now if index == 3 else None,
+        )
+        for index in range(4)
+    ]
+    db_session.add_all(
+        [
+            *sessions,
+            models.ActiveSession(
+                user_id=other.id,
+                jti="session-list-other",
+                created_at=now,
+                expires_at=now + datetime.timedelta(hours=1),
+            ),
+        ]
+    )
+    await db_session.flush()
+    user_id = str(owner.id) if as_string else owner.id
+
+    results = await user_repo.get_user_sessions(user_id, limit=2)
+
+    assert [session.id for session in results] == [sessions[2].id, sessions[1].id]
+    assert all(session.user_id == owner.id for session in results)
+    assert all(session.revoked_at is None for session in results)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("as_string", [False, True], ids=["uuid", "string"])
+async def test_get_user_notifications_caps_and_orders_owned_records(
+    user_repo, db_session, user_factory, as_string
+):
+    owner = await user_factory()
+    other = await user_factory()
+    now = datetime.datetime.now(datetime.UTC)
+    notifications = [
+        models.Notification(
+            user_id=owner.id,
+            title=f"Owned notification {index}",
+            created_at=now - datetime.timedelta(seconds=101 - index),
+        )
+        for index in range(101)
+    ]
+    db_session.add_all(
+        [
+            *notifications,
+            models.Notification(user_id=other.id, title="Other user", created_at=now),
+        ]
+    )
+    await db_session.flush()
+    user_id = str(owner.id) if as_string else owner.id
+
+    results = await user_repo.get_user_notifications(user_id, limit=1000)
+
+    assert [item.id for item in results] == [
+        item.id for item in reversed(notifications[1:])
+    ]
+    assert all(item.user_id == owner.id for item in results)
+    limited = await user_repo.get_user_notifications(user_id, limit=2)
+    assert [item.id for item in limited] == [
+        notifications[-1].id,
+        notifications[-2].id,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_user_collection_lookups_reject_malformed_identifiers(user_repo):
+    assert await user_repo.get_user_sessions("not-a-uuid") == []
+    assert await user_repo.get_user_notifications("not-a-uuid") == []
+
+
+@pytest.mark.asyncio
+async def test_check_email_exists_accepts_string_exclusion_and_rejects_invalid_id(
+    user_repo, test_user
+):
+    assert (
+        await user_repo.check_email_exists(
+            test_user.email.upper(), exclude_user_id=str(test_user.id)
+        )
+        is False
+    )
+    assert (
+        await user_repo.check_email_exists(
+            test_user.email.upper(), exclude_user_id=str(uuid.uuid4())
+        )
+        is True
+    )
+    assert (
+        await user_repo.check_email_exists(
+            test_user.email, exclude_user_id="not-a-uuid"
+        )
+        is False
+    )

@@ -28,6 +28,7 @@ from fastapi import (
 from sqlalchemy import select
 
 from app.api.deps import (
+    get_current_admin_user_from_dishka,
     get_current_user_from_dishka,
     get_locale,
 )
@@ -503,7 +504,7 @@ async def typing_indicator(
 @inject
 async def clear_chat_history(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    current_user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
     maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:
@@ -519,7 +520,7 @@ async def clear_chat_history(
 @inject
 async def delete_chat(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    current_user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
     maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:

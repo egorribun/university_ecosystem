@@ -85,6 +85,7 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     db.get.return_value = db_event
     vector = MagicMock()
     vector.get_embedding = AsyncMock(return_value=[0.1, 0.2])
+    vector.close = AsyncMock()
     with (
         patch.object(event_handlers, "async_session", lambda: _session(db)),
         patch.object(event_handlers, "VectorService", return_value=vector),

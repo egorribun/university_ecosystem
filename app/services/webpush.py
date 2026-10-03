@@ -38,7 +38,13 @@ from app.core.ssrf import validate_and_resolve, validate_public_https_url
 from app.models import PushSubscription, User
 
 if TYPE_CHECKING:
+    from requests.adapters import _HostParams, _PoolKwargs
     from sqlalchemy.orm import Session
+
+    class _PinnedPoolKwargs(_PoolKwargs):
+        assert_hostname: str
+        server_hostname: str
+
 
 logger = get_logger(__name__)
 _URL_IN_ERROR_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
@@ -89,6 +95,33 @@ class _PinnedHTTPSAdapter(HTTPAdapter):
         self._resolved_ip = resolved_ip
         self._resolved_port = resolved_port
         super().__init__(max_retries=0)
+
+    def build_connection_pool_key_attributes(
+        self, request: Any, verify: Any, cert: Any = None
+    ) -> tuple[_HostParams, _PinnedPoolKwargs]:
+        """Pin the socket address without changing the provider's TLS identity."""
+        parsed = urlparse(request.url)
+        if (
+            parsed.scheme.lower() != "https"
+            or parsed.hostname != self._hostname
+            or (parsed.port or 443) != self._resolved_port
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("Request does not match the pinned HTTPS origin")
+        if verify is False:
+            raise ValueError("Pinned HTTPS delivery requires TLS verification")
+        host_params, pool_kwargs = super().build_connection_pool_key_attributes(
+            request, verify, cert
+        )
+        host_params["host"] = self._resolved_ip
+        host_params["port"] = self._resolved_port
+        pinned_kwargs: _PinnedPoolKwargs = {
+            **pool_kwargs,
+            "assert_hostname": self._hostname,
+            "server_hostname": self._hostname,
+        }
+        return host_params, pinned_kwargs
 
     def add_headers(self, request: Any, **kwargs: Any) -> None:
         """Keep the provider Host header while the socket targets the pinned IP."""
@@ -608,40 +641,6 @@ def _resolve_ttl(meta: Mapping[str, Any]) -> int:
     if mapped_ttl is not None and mapped_ttl > 0:
         return mapped_ttl
     return _DEFAULT_TTL_SECONDS
-
-
-def _compose_payload(
-    payload: Mapping[str, Any],
-    meta: Mapping[str, Any] | None,
-    *,
-    locale: str | None = None,
-) -> dict[str, Any]:
-    result = {
-        "title": str(
-            payload.get("title")
-            or translate("notifications.default_title", locale=locale)
-        ),
-        "options": deepcopy(payload.get("options", {})),
-        "data": deepcopy(payload.get("data", {})),
-    }
-    clean_meta = (
-        {key: value for key, value in (meta or {}).items() if value is not None}
-        if meta
-        else {}
-    )
-    if clean_meta:
-        result["_meta"] = clean_meta
-    return result
-
-
-def _apply_quiet_mode(payload: dict[str, Any]) -> None:
-    options = payload.setdefault("options", {})
-    options["silent"] = True
-    options["renotify"] = False
-    options["requireInteraction"] = False
-    options["vibrate"] = []
-    data_payload = payload.setdefault("data", {})
-    data_payload["dnd_suppressed"] = True
 
 
 def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:

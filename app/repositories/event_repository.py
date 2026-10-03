@@ -8,11 +8,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import and_, delete, func, or_, select, type_coerce, update
 from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm.attributes import flag_dirty
 
 import app.models as models
 from app.core.config import settings
+from app.core.events import EventCreated, EventUpdated
 from app.core.protocols import AsyncDatabaseSession
 from app.models import Event
 from app.repositories.base import BaseRepository
@@ -20,6 +23,8 @@ from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventSearchResultDTO
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from sqlalchemy.sql.elements import ColumnElement
 
     from app.core.protocols import AsyncDatabaseSession
 
@@ -29,6 +34,35 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
     def __init__(self, db: AsyncDatabaseSession):
         super().__init__(db)
+
+    async def create(self, obj_in: dict[str, Any]) -> EventDTO:
+        result = await super().create(obj_in)
+        record = await self._get_orm(result.id)
+        assert record is not None  # noqa: S101
+        record.record_event(
+            EventCreated(
+                event_id_entity=record.id,
+                title=record.title,
+                organizer_id=record.created_by,
+            )
+        )
+        # Capture in this transaction so rollback cannot retain an emitter.
+        flag_dirty(record)
+        await self.db.flush()
+        return result
+
+    async def update(self, id: Any, obj_in: dict[str, Any]) -> EventDTO | None:
+        result = await super().update(id, obj_in)
+        if result is not None:
+            record = await self._get_orm(result.id)
+            assert record is not None  # noqa: S101
+            record.record_event(
+                EventUpdated(event_id_entity=record.id, title=record.title)
+            )
+            # Capture in this transaction so rollback cannot retain an emitter.
+            flag_dirty(record)
+            await self.db.flush()
+        return result
 
     @property
     def model(self) -> type[Event]:
@@ -98,27 +132,36 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         location: str | None = None,
         is_active: bool | None = True,
         limit: int = 20,
-        cursor: tuple[datetime, uuid.UUID | int | str] | None = None,
+        cursor: tuple[datetime, uuid.UUID | int | str]
+        | tuple[datetime, str, float | None]
+        | None = None,
         query_embedding: list[float] | None = None,
     ) -> Sequence[EventSearchResultDTO]:
         now = datetime.now(UTC)
 
         # Build conditions
         conditions: list[Any] = []
-        rank_expr = None
+        rank_expr: ColumnElement[float] | None = None
 
         if search_query:
             ts_query = func.plainto_tsquery("simple", search_query)
             conditions.append(Event.search_vector.op("@@")(ts_query))
-            rank_expr = func.ts_rank(Event.search_vector, ts_query)
+            rank_expr = func.coalesce(func.ts_rank(Event.search_vector, ts_query), 0.0)
 
             if (
                 settings.semantic_search_enabled
                 and query_embedding
                 and any(abs(v) > 1e-9 for v in query_embedding)
             ):
-                sim_score = 1.0 - Event.embedding.cosine_distance(query_embedding)
-                rank_expr = (rank_expr + sim_score * 2.0).label("hybrid_rank")
+                distance = type_coerce(Event.embedding, Vector(1536)).cosine_distance(
+                    query_embedding
+                )
+                # Legacy zero-norm vectors produce NaN in pgvector. Treat these
+                # as absent embeddings in both ranking and cursor predicates.
+                sim_score = 1.0 - func.nullif(distance, float("nan"))
+                rank_expr = (rank_expr + func.coalesce(sim_score, 0.0) * 2.0).label(
+                    "hybrid_rank"
+                )
                 conditions = [or_(and_(*conditions), sim_score > 0.6)]
 
         if event_type:
@@ -146,17 +189,27 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             conditions.append(Event.ends_at < now)
 
         if cursor:
-            last_starts_at, last_id = cursor
-            last_id = self._cast_id(last_id)
-            conditions.append(
-                or_(
-                    Event.starts_at > last_starts_at,
-                    and_(
-                        Event.starts_at == last_starts_at,
-                        Event.id > last_id,
-                    ),
-                )
+            last_starts_at, raw_id = cursor[:2]
+            last_id = self._cast_id(raw_id)
+            after_time = or_(
+                Event.starts_at > last_starts_at,
+                and_(Event.starts_at == last_starts_at, Event.id > last_id),
             )
+            if rank_expr is not None:
+                last_rank = (
+                    cursor[2]
+                    if len(cursor) == 3
+                    else await self.db.scalar(
+                        select(rank_expr).where(Event.id == last_id)
+                    )
+                )
+                if last_rank is None:
+                    return []
+                conditions.append(
+                    or_(rank_expr < last_rank, and_(rank_expr == last_rank, after_time))
+                )
+            else:
+                conditions.append(after_time)
 
         # PERF-W10-02: Replaced the global aggregating CTE with a correlated
         # scalar subquery.  The CTE scanned the entire event_attendance table
@@ -199,6 +252,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             stmt = stmt.where(and_(*conditions))
 
         if rank_expr is not None:
+            stmt = stmt.add_columns(rank_expr)
             stmt = stmt.order_by(
                 rank_expr.desc(), Event.starts_at.asc(), Event.id.asc()
             )
@@ -212,6 +266,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
         return [
             EventSearchResultDTO(
+                rank=float(row[3]) if rank_expr is not None else None,
                 event=row[0] if isinstance(row[0], EventDTO) else self._to_dto(row[0]),
                 participant_count=row[1] or 0,
                 user_attendance=EventAttendanceDTO.model_validate(row[2])

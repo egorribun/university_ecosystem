@@ -75,7 +75,7 @@ class GraphQLTokenValidator:
 
         # Step 4b — MFA epoch: sessions minted before the last MFA change are dead
         # (same policy as REST via app.services.auth.session_policy).
-        if not session_epoch_is_current(active_session, user):
+        if not session_epoch_is_current(active_session.mfa_epoch, user.mfa_epoch):
             return None
 
         # Step 5 — Fingerprint validation (revokes session on mismatch, fail-closed)

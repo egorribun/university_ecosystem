@@ -11984,6 +11984,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "summary": "Spotify Callback",
         "tags": ["spotify"]
       }
@@ -12282,7 +12287,7 @@
     },
     "/api/v1/stats/summary": {
       "get": {
-        "description": "Return attendance, grades and participation stats in a single request.\n\nPERF-1 (audit 2026-03): replaces three separate client-side round-trips.\nAll three sub-queries run concurrently via asyncio.gather and share the\nsame Redis cache entries as the individual endpoints.",
+        "description": "Return attendance, grades and participation stats in a single request.\n\nPERF-1 (audit 2026-03): replaces three separate client-side round-trips.\nThe queries share one request-scoped AsyncSession, so run sequentially.\nThey reuse the same Redis cache entries as the individual endpoints.",
         "operationId": "stats_summary_api_v1_stats_summary_get",
         "parameters": [
           {

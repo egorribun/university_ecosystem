@@ -97,11 +97,13 @@ async def _guarded[T](
         await service.close()
 
 
-async def index_news(news_id: uuid.UUID | None) -> None:
+async def index_news(news_id: uuid.UUID | str | None) -> None:
     if news_id is None:
         return
     async with async_session() as db:
-        news = await db.get(models.News, news_id)
+        news = await db.get(
+            models.News, uuid.UUID(news_id) if isinstance(news_id, str) else news_id
+        )
     if news is None:
         return
     document = news_document(news)
@@ -110,12 +112,14 @@ async def index_news(news_id: uuid.UUID | None) -> None:
     )
 
 
-async def index_event(event_id: uuid.UUID | None) -> None:
+async def index_event(event_id: uuid.UUID | str | None) -> None:
     """Index an active event; deactivated or missing events leave the index."""
     if event_id is None:
         return
     async with async_session() as db:
-        event = await db.get(models.Event, event_id)
+        event = await db.get(
+            models.Event, uuid.UUID(event_id) if isinstance(event_id, str) else event_id
+        )
     if event is None or not event.is_active:
         await remove_document(EVENTS_INDEX, event_id)
         return
@@ -130,12 +134,20 @@ async def remove_document(index: str, document_id: uuid.UUID | int | str) -> Non
 
 
 async def reindex_all(*, batch_size: int = 200) -> dict[str, int]:
-    """Rebuild both indices from the database; returns indexed counts."""
+    """Build replacements and atomically publish them only after complete success.
+
+    Run during a maintenance window with content writes and outbox delivery paused:
+    this recovery operation does not replay changes made while the scan is running.
+    """
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
     counts = {NEWS_INDEX: 0, EVENTS_INDEX: 0}
     service = build_search_service()
+    replacements = {name: f"{name}-rebuild-{uuid.uuid4().hex}" for name in counts}
+    publication_started = False
     try:
-        await service.ensure_index(NEWS_INDEX, NEWS_MAPPINGS)
-        await service.ensure_index(EVENTS_INDEX, EVENTS_MAPPINGS)
+        await service.ensure_index(replacements[NEWS_INDEX], NEWS_MAPPINGS)
+        await service.ensure_index(replacements[EVENTS_INDEX], EVENTS_MAPPINGS)
         async with async_session() as db:
             for index, model, builder, condition in (
                 (NEWS_INDEX, models.News, news_document, None),
@@ -152,11 +164,27 @@ async def reindex_all(*, batch_size: int = 200) -> dict[str, int]:
                     rows = (await db.execute(page)).scalars().all()
                     if not rows:
                         break
-                    ok, _failed = await service.bulk_index(
-                        index, [builder(row) for row in rows]
+                    ok, failed = await service.bulk_index(
+                        replacements[index], [builder(row) for row in rows]
                     )
+                    if failed or ok != len(rows):
+                        raise RuntimeError(
+                            f"Search rebuild bulk failed for {index}: {ok} indexed, {failed} failed"
+                        )
                     counts[index] += ok
                     last_id = rows[-1].id
+        publication_started = True
+        await service.publish_rebuilt_indices(replacements)
     finally:
+        # A transport timeout during the alias switch has an uncertain outcome.
+        # Retain replacements then: deleting them could destroy the live indices.
+        if not publication_started:
+            for replacement in replacements.values():
+                try:
+                    await service.delete_index(replacement)
+                except _SEARCH_UNAVAILABLE:
+                    logger.warning(
+                        "Unable to clean failed search rebuild %s", replacement
+                    )
         await service.close()
     return counts

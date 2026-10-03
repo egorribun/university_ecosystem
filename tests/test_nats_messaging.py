@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -94,3 +95,112 @@ def test_get_nats_service():
     s1 = get_nats_service()
     s2 = get_nats_service()
     assert s1 is s2
+
+
+@pytest.fixture
+async def connected_nats(monkeypatch):
+    client = MagicMock()
+    client.is_connected = True
+    client.publish = AsyncMock()
+    client.drain = AsyncMock()
+    monkeypatch.setattr("nats.connect", AsyncMock(return_value=client))
+    service = NatsService()
+    await service.connect()
+    return service, client
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("payload", "msg_id", "expected_id"),
+    [
+        ({"id": "domain", "event_id": "event"}, "explicit", "explicit"),
+        ({"id": "domain", "event_id": "event"}, None, "domain"),
+        ({"id": "", "event_id": "event"}, None, "event"),
+        ({"event_id": 42}, None, "42"),
+        (b"raw-event", "explicit", "explicit"),
+    ],
+    ids=["explicit", "payload-id", "event-id", "numeric-id", "bytes"],
+)
+async def test_publish_preserves_payload_and_copies_headers(
+    connected_nats, payload, msg_id, expected_id
+):
+    service, client = connected_nats
+    headers = {"Trace-Id": "trace-123", "Nats-Msg-Id": "caller-header"}
+
+    await service.publish("events.created", payload, headers=headers, msg_id=msg_id)
+
+    client.publish.assert_awaited_once()
+    call = client.publish.await_args
+    assert call.args[0] == "events.created"
+    emitted = call.args[1]
+    if isinstance(payload, dict):
+        assert NatsMessage(subject=call.args[0], data=emitted).json() == payload
+    else:
+        assert emitted == payload
+    assert call.kwargs["headers"] == {
+        "Trace-Id": "trace-123",
+        "Nats-Msg-Id": expected_id,
+    }
+    assert headers == {"Trace-Id": "trace-123", "Nats-Msg-Id": "caller-header"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "payload", [{"message": "Привет"}, b"raw-event"], ids=["dict", "bytes"]
+)
+async def test_publish_generates_distinct_deduplication_ids(connected_nats, payload):
+    service, client = connected_nats
+
+    await service.publish("events.created", payload)
+    await service.publish("events.created", payload)
+
+    emitted_ids = [
+        uuid.UUID(call.kwargs["headers"]["Nats-Msg-Id"])
+        for call in client.publish.await_args_list
+    ]
+    assert len(emitted_ids) == 2
+    assert all(value.version == 4 for value in emitted_ids)
+    assert emitted_ids[0] != emitted_ids[1]
+
+
+@pytest.mark.anyio
+async def test_publish_rejects_unserializable_payload_before_transport(connected_nats):
+    service, client = connected_nats
+
+    with pytest.raises(TypeError):
+        await service.publish("events.created", {"unsupported": object()})
+
+    client.publish.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_publish_propagates_transport_failure(connected_nats):
+    service, client = connected_nats
+    client.publish.side_effect = ConnectionError("transport unavailable")
+
+    with pytest.raises(ConnectionError, match="transport unavailable"):
+        await service.publish("events.created", b"raw-event", msg_id="retryable-id")
+
+    client.publish.assert_awaited_once_with(
+        "events.created", b"raw-event", headers={"Nats-Msg-Id": "retryable-id"}
+    )
+
+
+@pytest.mark.anyio
+async def test_publish_and_subscribe_require_connection():
+    service = NatsService()
+    with pytest.raises(RuntimeError, match="Not connected to NATS"):
+        await service.publish("events.created", b"raw-event")
+    with pytest.raises(RuntimeError, match="Not connected to NATS"):
+        await service.subscribe("events.created", AsyncMock())
+
+
+@pytest.mark.anyio
+async def test_close_without_subscriptions_drains_once(connected_nats):
+    service, client = connected_nats
+
+    await service.close()
+    await service.close()
+
+    client.drain.assert_awaited_once_with()
+    assert service.is_connected is False

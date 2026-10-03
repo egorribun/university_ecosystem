@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import socket
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -492,6 +493,28 @@ class TestAPIDeps:
 # ===========================================================================
 
 
+@pytest.fixture
+def deterministic_embedding_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """API tests exercise URL validation without a live embedding provider."""
+    resolve = socket.getaddrinfo
+
+    def lookup(host, port, *args, **kwargs):
+        if host == "api.openai.com":
+            return [
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    6,
+                    "",
+                    ("93.184.216.34", port or 443),
+                )
+            ]
+        return resolve(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+
+
+@pytest.mark.usefixtures("deterministic_embedding_dns")
 class TestNewsAPI:
     @pytest.mark.asyncio
     async def test_list_news(self, async_client: AsyncClient, user_factory, db_session):
@@ -508,6 +531,7 @@ class TestNewsAPI:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("deterministic_embedding_dns")
 class TestEventsAPI:
     @pytest.mark.asyncio
     async def test_list_events(
@@ -750,12 +774,13 @@ class TestGraphQLAdvancedCoverage:
                 manifest = _load_manifest()
                 assert manifest == {"foo": "bar"}
 
-            # 6. Allowlist lookup happy path
-            ext_module._query_allowlist = {"hash123": "query { me }"}
+            # 6. Allowlist lookup happy path: the hash binds to this exact query.
+            query_hash = ext_module._hash_query("query { me }")
+            ext_module._query_allowlist = {query_hash: "query { me }"}
             # Send query with valid hash in extensions
             exec_ctx = MagicMock()
             exec_ctx.query = "query { me }"
-            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": "hash123"}}
+            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": query_hash}}
             ext = PersistedQueryExtension()
             ext.execution_context = exec_ctx
             async for _ in ext.on_validate():

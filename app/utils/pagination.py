@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -92,6 +93,34 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return dt, secondary_id
     except (ValueError, TypeError, OverflowError, OSError):
         return None
+
+
+def encode_ranked_datetime_cursor(
+    dt: datetime, secondary_id: str, score: float | None
+) -> str:
+    """Encode every sort key; retain explicit null scores for semantic search."""
+    if score is not None and not math.isfinite(score):
+        raise ValueError("Ranked cursor score must be finite")
+    score_text = "null" if score is None else repr(score)
+    return f"r1:{score_text}:{encode_datetime_cursor(dt, secondary_id)}"
+
+
+def decode_ranked_datetime_cursor(
+    cursor: str | None,
+) -> tuple[datetime, str, float | None] | None:
+    if not cursor or not cursor.startswith("r1:"):
+        return None
+    try:
+        _, score_text, datetime_cursor = cursor.split(":", 2)
+        score = None if score_text == "null" else float(score_text)
+        if score is not None and not math.isfinite(score):
+            return None
+        decoded = decode_datetime_cursor(datetime_cursor)
+        if decoded is not None:
+            return decoded[0], decoded[1], score
+    except (ValueError, TypeError):
+        pass
+    return None
 
 
 class PaginatedResponse[T](BaseModel):

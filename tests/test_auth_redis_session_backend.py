@@ -177,11 +177,12 @@ async def test_get_session_backend_non_redis_backend_returns_null(monkeypatch):
     monkeypatch.setattr(rs.settings, "session_storage_backend", "memory")
 
     backend = await rs.get_session_backend()
-    # NullSessionBackend: revocation disabled — always valid + warn-once.
+    # Cache-free backend still checks the durable revocation store.
     assert await backend.is_session_valid("a") is True  # first call warns
     assert await backend.is_session_valid("b") is True  # second skips the warn branch
     await backend.register_session("u", "j", datetime.now(UTC))  # no-op
-    await backend.revoke_session("j")  # no-op
+    await backend.revoke_session("j")
+    assert await backend.is_session_valid("j") is False
 
 
 @pytest.mark.asyncio

@@ -334,6 +334,7 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
         issued = await service.issue(
             setup,
             user_id=USER_ID,
+            expected_mfa_epoch=0,
             flow="login",
             session_identifier=SESSION_ID,
             client_fingerprint=FINGERPRINT,
@@ -369,6 +370,7 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
         verify_resend = await service.issue(
             setup,
             user_id=USER_ID,
+            expected_mfa_epoch=0,
             flow="login",
             session_identifier=f"{SESSION_ID}-verify-resend",
             client_fingerprint=FINGERPRINT,

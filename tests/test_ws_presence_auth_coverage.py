@@ -149,7 +149,7 @@ async def test_get_user_from_ticket_infrastructure_failure() -> None:
 async def test_get_user_from_ticket_invalid_uuid() -> None:
     ticket = secrets.token_hex(32)
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = "not-a-uuid:valid-jti-string"
+    mock_redis.getdel.return_value = f"not-a-uuid:valid-jti-string:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
 
     with patch("app.deps.cache.get_cache_client", return_value=mock_redis):
         user, jti = await get_user_from_ticket(ticket)
@@ -165,7 +165,9 @@ async def test_get_user_from_ticket_valid_lookup_flow(
     user_id = str(uuid.uuid4())
     jti = "mocked-jti-session"
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -207,7 +209,9 @@ async def test_get_user_from_ticket_jti_revoked_redis(
     user_id = str(uuid.uuid4())
     jti = "revoked-jti"
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -240,7 +244,9 @@ async def test_get_user_from_ticket_redis_exceptions(
     user_id = str(uuid.uuid4())
     jti = "mocked-jti-session"
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -280,7 +286,9 @@ async def test_get_user_from_ticket_resolve_user_edge_cases() -> None:
     jti = "some-jti"
 
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
     mock_redis.exists = AsyncMock(return_value=False)
 
     # 1. User not found

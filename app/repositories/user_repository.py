@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, exists, func, or_, select
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.orm import contains_eager, selectinload
 
 import app.models as models
@@ -444,6 +444,39 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         await self.db.flush()
         await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
         return self._to_dto(user)
+
+    async def rehash_password_if_current(
+        self, user_id: uuid.UUID, *, expected_hash: str, new_hash: str
+    ) -> bool:
+        """Upgrade hash parameters only if the validated password is still current."""
+        result = await self.db.execute(
+            update(User)
+            .where(User.id == user_id, User.hashed_password == expected_hash)
+            .values(hashed_password=new_hash)
+            .returning(User.id)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def change_password_if_current(
+        self, user_id: uuid.UUID, *, expected_hash: str, new_hash: str
+    ) -> int | None:
+        """Atomically replace a verified password and advance the login epoch.
+
+        The UPDATE holds the same User row lock as session creation. Its hash
+        predicate rejects a password/reset change that raced the verification;
+        the epoch invalidates credentials validated before this transition.
+        """
+        result = await self.db.execute(
+            update(User)
+            .where(User.id == user_id, User.hashed_password == expected_hash)
+            .values(
+                hashed_password=new_hash,
+                mfa_epoch=func.coalesce(User.mfa_epoch, 0) + 1,
+            )
+            .returning(User.mfa_epoch)
+        )
+        epoch = result.scalar_one_or_none()
+        return int(epoch) if epoch is not None else None
 
     async def update(
         self, id: uuid.UUID | str, obj_in: Any | dict[str, Any]

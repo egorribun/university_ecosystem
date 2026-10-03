@@ -16,7 +16,7 @@ def _group() -> None:
 def reindex(
     batch_size: int = typer.Option(200, min=1, max=1000, help="Rows per bulk request"),
 ) -> None:
-    """Rebuild the Elasticsearch news and events indices from the database."""
+    """Rebuild search during maintenance with content writes/outbox paused."""
     counts = asyncio.run(reindex_all(batch_size=batch_size))
     for index, total in counts.items():
         typer.echo(f"{index}: {total} documents indexed")

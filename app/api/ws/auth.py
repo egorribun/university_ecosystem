@@ -107,7 +107,8 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
 
     RZ-W14-01 (audit 2026-03-23 Wave 14): atomically consumes the ticket via
     Redis GETDEL so it cannot be replayed.  The ticket was issued by
-    POST /ws/ticket and stores "{user_id}:{jti}" under "ott:ws:{ticket}".
+    POST /ws/ticket stores "{user_id}:{jti}:{expires_at_unix_seconds}"
+    under "ott:ws:{ticket}".
 
     Returns (None, None) if the ticket is missing, expired, already used,
     or if the referenced session is invalid.
@@ -126,15 +127,25 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
 
         redis = await get_cache_client()
         # GETDEL: atomic read + delete — prevents replay of the same ticket
-        raw: str | None = await redis.getdel(f"{TICKET_KEY_PREFIX}{ticket}")
+        raw: str | bytes | None = await redis.getdel(f"{TICKET_KEY_PREFIX}{ticket}")
         if not raw:
             logger.debug("WS ticket not found or already used: %.8s…", ticket)
             return None, None
 
-        # Canonical format is exactly "{user_id}:{jti}". Extra segments are
-        # rejected so untrusted tenant data cannot be smuggled into the JTI.
+        if isinstance(raw, bytes):
+            raw = raw.decode("ascii")
+        # Reject legacy two-field tickets and any alternate expiry encoding.
+        # Match Go's positive signed-int64 decimal contract without accepting
+        # whitespace, a sign, Unicode digits, fractions, or leading zeroes.
         parts = raw.split(":")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
+        if (
+            len(parts) != 3
+            or not parts[0]
+            or not parts[1]
+            or not 1 <= len(parts[2]) <= 19
+            or parts[2][0] not in "123456789"
+            or any(char not in "0123456789" for char in parts[2])
+        ):
             # RZ-W19-04 (audit 2026-03-24 Wave 19): truncate to 4 chars max to
             # prevent creating an oracle for brute-forcing valid tickets.
             # Previously %.8s could reveal most of a short ticket.
@@ -147,7 +158,13 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
             )
             return None, None
 
-        user_id_str, jti = parts
+        user_id_str, jti, expiry_text = parts
+        expires_at_seconds = int(expiry_text)
+        if (
+            expires_at_seconds > 2**63 - 1
+            or expires_at_seconds <= datetime.now(UTC).timestamp()
+        ):
+            return None, None
 
     except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — ticket validation failure returns None (reviewed TD-27-04)
         logger.warning("WS ticket validation error: %s", exc)

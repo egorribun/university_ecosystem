@@ -77,7 +77,7 @@ async def test_reset_mfa_changed_without_notification():
     assert result_user is user
     assert result_stats is stats
     publish_revocations.assert_awaited_once_with(pending)
-    assert events == ["commit", "publish"]
+    assert events == ["publish", "commit"]
     audit_cli.assert_called_once()
 
 

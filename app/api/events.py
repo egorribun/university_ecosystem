@@ -579,7 +579,8 @@ async def get_event(
     event_id: uuid.UUID | int,
     request: Request,
     response: Response,
-    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    # Detail may repair legacy QR material, so it must use the primary UoW.
+    events: FromDishka[EventService],
     user: models.User = Depends(get_current_user_from_dishka),
     if_none_match: str | None = Header(default=None),
 ) -> schemas.EventOut | Response | Any:

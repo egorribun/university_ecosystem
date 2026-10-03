@@ -219,21 +219,9 @@ async def test_event_repository_search_events_sqlite_compatible(
 
 @pytest.mark.asyncio
 async def test_event_repository_search_events_postgres_query_builder(monkeypatch):
-    from sqlalchemy import func
-    from sqlalchemy.sql.operators import ColumnOperators
-
     from app.core.config import settings
 
-    # Force semantic search enabled for this test
     monkeypatch.setattr(settings, "semantic_search_enabled", True)
-
-    # Monkeypatch the missing pgvector cosine_distance comparator method which is not defined on SQLite Text column variant
-    monkeypatch.setattr(
-        ColumnOperators,
-        "cosine_distance",
-        lambda self, *args, **kwargs: func.cosine_distance(self, *args),
-        raising=False,
-    )
 
     # Mock AsyncDatabaseSession to verify generated SQL statement without running on SQLite
     mock_db = AsyncMock()
@@ -261,7 +249,7 @@ async def test_event_repository_search_events_postgres_query_builder(monkeypatch
         about=None,
         about_en=None,
     )
-    mock_row = (mock_event_dto, 1, None)
+    mock_row = (mock_event_dto, 1, None, 0.5)
     mock_result.all.return_value = [mock_row]
     mock_db.execute.return_value = mock_result
 
@@ -281,9 +269,67 @@ async def test_event_repository_search_events_postgres_query_builder(monkeypatch
     # Assert PostgreSQL-specific tsquery and @@ operations exist in compiled query
     assert "@@" in sql_str
     assert "plainto_tsquery" in sql_str
+    assert "<=>" in sql_str
 
     # 2. Run search_events with search_query but NO embedding to test the False branch
     await repo.search_events(
         search_query="rust conference",
         query_embedding=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_title_search_keyset_preserves_ties_without_repeating_events(
+    db_session, user_factory
+):
+    user = await user_factory()
+    starts = datetime.datetime(2026, 10, 1, 12, tzinfo=datetime.UTC)
+    expected = [uuid.UUID(int=value) for value in (40, 30, 20, 10, 50)]
+    offsets = [1, 0, 0, 0, -1]
+    events = [
+        Event(
+            id=event_id,
+            title="Keyset Workshop",
+            starts_at=starts + datetime.timedelta(days=offset),
+            ends_at=starts + datetime.timedelta(days=offset, hours=1),
+            created_by=user.id,
+        )
+        for event_id, offset in zip(expected, offsets, strict=True)
+    ]
+    db_session.add_all(events)
+    db_session.add(
+        Event(
+            title="Unrelated event",
+            starts_at=starts,
+            ends_at=starts + datetime.timedelta(hours=1),
+            created_by=user.id,
+        )
+    )
+    await db_session.commit()
+    repo = EventRepository(db_session)
+
+    first = await repo.search("  KEYSET  ", limit=2)
+    second = await repo.search(
+        "keyset",
+        limit=2,
+        after_starts_at=first[-1].starts_at,
+        after_id=first[-1].id,
+    )
+    third = await repo.search(
+        "keyset",
+        limit=2,
+        after_starts_at=second[-1].starts_at,
+        after_id=second[-1].id,
+    )
+    assert [event.id for event in first] == expected[:2]
+    assert [event.id for event in second] == expected[2:4]
+    assert [event.id for event in third] == expected[4:]
+    assert (
+        await repo.search(
+            "keyset",
+            limit=2,
+            after_starts_at=third[-1].starts_at,
+            after_id=third[-1].id,
+        )
+        == []
     )

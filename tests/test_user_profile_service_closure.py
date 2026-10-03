@@ -311,11 +311,11 @@ async def test_admin_reset_returns_fresh_mfa_dto_and_commits_notification_first(
     assert result.mfa_default_method is None
     assert result.email_mfa_enabled_at is None
     reset_mfa.assert_awaited_once_with(profile_service.repo.db, user=db_user)
-    assert events == ["reset", "notification", "commit", "publish"]
+    assert events == ["reset", "notification", "publish", "commit"]
 
 
 @pytest.mark.asyncio
-async def test_admin_reset_commit_failure_rolls_back_without_redis_publish(
+async def test_admin_reset_commit_failure_rolls_back_retaining_redis_revocation(
     profile_service,
 ) -> None:
     user_id = uuid4()
@@ -357,4 +357,4 @@ async def test_admin_reset_commit_failure_rolls_back_without_redis_publish(
 
     profile_service.notifications.send_security_notification.assert_awaited_once()
     profile_service.uow.rollback.assert_awaited_once()
-    publish.assert_not_awaited()
+    publish.assert_awaited_once()

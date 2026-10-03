@@ -382,7 +382,7 @@ async def create_user(
     data: schemas.UserCreate,
     request: Request,
     service: FromDishka[UserComplianceService],
-    user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.UserOut:
     user_dto = await service.create_user(data, request, user)
     return schemas.UserOut.model_validate(user_dto)

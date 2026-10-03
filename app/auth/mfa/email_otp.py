@@ -478,6 +478,7 @@ class EmailOtpService:
         db: AsyncSession,
         *,
         user_id: uuid.UUID,
+        expected_mfa_epoch: int,
         flow: str,
         session_identifier: str,
         client_fingerprint: str,
@@ -496,6 +497,13 @@ class EmailOtpService:
         _user, recipient = await self._resolve_recipient(
             db, user_id=user_id, flow=flow, for_update=True
         )
+        current_epoch = int(getattr(_user, "mfa_epoch", 0) or 0)
+        if (
+            type(expected_mfa_epoch) is not int
+            or expected_mfa_epoch < 0
+            or expected_mfa_epoch != current_epoch
+        ):
+            raise MfaOtpRejected()
         issued_at = now or datetime.now(UTC)
         challenge_id = generate_uuid7()
         revision = 1
@@ -527,7 +535,7 @@ class EmailOtpService:
             consumed_at=None,
             locked_at=None,
             created_at=issued_at,
-            payload=None,
+            payload={"mfa_epoch": current_epoch},
             attempt_count=0,
             state=ChallengeState.PENDING,
         )
@@ -563,6 +571,23 @@ class EmailOtpService:
             resend_available_at=resend_available_at,
             delivery_hint=mask_email(recipient),
         )
+
+    @staticmethod
+    def _validate_challenge_epoch(challenge: MfaChallenge, user: User) -> None:
+        """Keep the original credential epoch through OTP, recovery and resend.
+
+        Unbound legacy challenges fail closed and must be reissued. Never adopt
+        the current epoch when a password or factor change rotated the account.
+        Call only while holding the User lock acquired by _resolve_recipient.
+        """
+        payload = getattr(challenge, "payload", None)
+        epoch = payload.get("mfa_epoch") if isinstance(payload, dict) else None
+        if (
+            type(epoch) is not int
+            or epoch < 0
+            or epoch != int(getattr(user, "mfa_epoch", 0) or 0)
+        ):
+            raise MfaOtpRejected()
 
     async def _load_bound_challenge(
         self,
@@ -754,6 +779,7 @@ class EmailOtpService:
             session_identifier=opaque.session_identifier,
             client_fingerprint=client_fingerprint,
         )
+        self._validate_challenge_epoch(challenge, user)
         expected_recipient = self._recipient_digest(
             key_id=challenge.token_key_id,
             email=recipient,
@@ -808,6 +834,7 @@ class EmailOtpService:
             client_fingerprint=client_fingerprint,
         )
         checked_at = now or datetime.now(UTC)
+        self._validate_challenge_epoch(challenge, user)
         expected_recipient = self._recipient_digest(
             key_id=challenge.token_key_id,
             email=recipient,
@@ -911,6 +938,7 @@ class EmailOtpService:
             session_identifier=session_identifier,
             client_fingerprint=client_fingerprint,
         )
+        self._validate_challenge_epoch(challenge, _user)
         expected_recipient = self._recipient_digest(
             key_id=challenge.token_key_id,
             email=recipient,

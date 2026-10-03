@@ -51,9 +51,12 @@ async def _run_db_success(
     cache_client: AsyncMock | None = None,
     settings_value: SimpleNamespace | None = None,
     use_factory: bool = False,
+    session_epoch: int | None = 0,
+    user_epoch: int | None = 0,
 ):
-    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=user_epoch)
     session = _session(user_id=user_id, jti=jti)
+    session.mfa_epoch = session_epoch
     repo = MagicMock()
     repo.get_active_session_with_user = AsyncMock(return_value=(user, session))
     service = redis_service or AsyncMock()
@@ -101,6 +104,33 @@ async def _run_db_success(
                 request, "token", AsyncMock(), service
             )
     return result, user, session, client, repo
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("session_epoch", "user_epoch", "expected"),
+    [(3, 3, True), (None, 0, True), (0, None, True), (1, 2, False)],
+)
+async def test_current_user_enforces_mfa_epoch(session_epoch, user_epoch, expected):
+    request = _request()
+    validation = _run_db_success(
+        request,
+        uuid4(),
+        "epoch-jti",
+        AsyncMock(),
+        session_epoch=session_epoch,
+        user_epoch=user_epoch,
+    )
+
+    if expected:
+        result, user, session, _client, _repo = await validation
+        assert result is user
+        assert request.state.active_session is session
+    else:
+        with pytest.raises(HTTPException) as exc:
+            await validation
+        assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert not hasattr(request.state, "active_session")
 
 
 def test_redis_service_factory_constructs_service():

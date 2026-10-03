@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 from typing import Annotated, Any, Literal, cast
 
@@ -196,8 +195,8 @@ async def stats_summary(
     """Return attendance, grades and participation stats in a single request.
 
     PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
-    All three sub-queries run concurrently via asyncio.gather and share the
-    same Redis cache entries as the individual endpoints.
+    The queries share one request-scoped AsyncSession, so run sequentially.
+    They reuse the same Redis cache entries as the individual endpoints.
     """
     period_key, days = _resolve_period(period)
     locale = resolve_locale(request=request, user=user)
@@ -216,11 +215,9 @@ async def stats_summary(
             skip_cache=skip_cache,
         )
 
-    attendance_r, grades_r, participation_r = await asyncio.gather(
-        handler.handle(_make_query("attendance")),
-        handler.handle(_make_query("grades")),
-        handler.handle(_make_query("participation")),
-    )
+    attendance_r = await handler.handle(_make_query("attendance"))
+    grades_r = await handler.handle(_make_query("grades"))
+    participation_r = await handler.handle(_make_query("participation"))
 
     # Build a combined ETag from the three sub-ETags.
     sub_etags = "".join(r.etag or "" for r in (attendance_r, grades_r, participation_r))

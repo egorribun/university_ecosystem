@@ -61,6 +61,7 @@ def _challenge(
         id=uuid.UUID("11111111-1111-7111-8111-111111111111"),
         user_id=user_id or uuid.UUID("22222222-2222-7222-8222-222222222222"),
         flow=flow,
+        payload={"mfa_epoch": 0},
         method=MFA_METHOD_EMAIL_OTP,
         session_identifier=SESSION,
         client_fingerprint=FINGERPRINT,
@@ -335,6 +336,7 @@ async def test_issue_binds_recipient_lookup_to_user_and_persists_outbox(
     issued = await service.issue(
         db,
         user_id=user_id,
+        expected_mfa_epoch=0,
         flow="login",
         session_identifier=SESSION,
         client_fingerprint=FINGERPRINT,
@@ -387,6 +389,7 @@ async def test_issue_without_explicit_clock_uses_utc_for_expiry_contract(
         issued = await service.issue(
             db,
             user_id=user_id,
+            expected_mfa_epoch=0,
             flow="login",
             session_identifier=SESSION,
             client_fingerprint=FINGERPRINT,

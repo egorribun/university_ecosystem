@@ -69,6 +69,7 @@ def _email_challenge(**overrides: object) -> SimpleNamespace:
         "id": uuid.uuid4(),
         "user_id": uuid.uuid4(),
         "flow": "login",
+        "payload": {"mfa_epoch": 0},
         "method": MFA_METHOD_EMAIL_OTP,
         "session_identifier": "login-session",
         "client_fingerprint": "f" * 64,
@@ -592,22 +593,23 @@ async def test_get_challenge_rejects_missing_row_and_digest_mismatch(
 
 
 @pytest.mark.asyncio
-async def test_publish_revocations_keeps_database_authoritative_on_backend_failure(
+async def test_publish_revocations_propagates_backend_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.auth.redis_session as redis_session_module
+    import app.services.auth.redis_session as redis_session_module
 
     monkeypatch.setattr(
         redis_session_module,
-        "get_session_backend",
-        AsyncMock(side_effect=RuntimeError("redis unavailable")),
+        "RedisSessionService",
+        MagicMock(side_effect=RuntimeError("redis unavailable")),
     )
     revocation = MfaSessionRevocation(
         jti="session-jti",
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
     )
 
-    await publish_mfa_session_revocations([revocation])
+    with pytest.raises(RuntimeError, match="redis unavailable"):
+        await publish_mfa_session_revocations([revocation])
 
 
 @pytest.mark.parametrize(("ip", "user_agent"), [(None, "agent"), ("203.0.113.2", None)])
@@ -1033,7 +1035,7 @@ async def test_step_up_challenge_requires_active_session_at_completion() -> None
 
 
 @pytest.mark.asyncio
-async def test_email_mfa_enablement_revokes_sibling_sessions_after_commit() -> None:
+async def test_email_mfa_enablement_revokes_sibling_sessions_before_commit() -> None:
     challenge = _email_challenge(flow="email_mfa_enablement")
     user = SimpleNamespace(id=challenge.user_id)
     active_session = SimpleNamespace(id=uuid.uuid4())
@@ -1092,7 +1094,7 @@ async def test_email_mfa_enablement_revokes_sibling_sessions_after_commit() -> N
         current_session_id=active_session.id,
     )
     publish_revocations.assert_awaited_once_with(pending)
-    assert order == ["commit", "sibling-revocations", "current-session"]
+    assert order == ["sibling-revocations", "commit", "current-session"]
 
 
 @pytest.mark.asyncio
@@ -2555,6 +2557,7 @@ async def test_verified_email_otp_applies_only_its_factor_side_effects(
         mfa_epoch=2,
         mfa_default_method=initial_default,
     )
+    challenge.payload = {"mfa_epoch": user.mfa_epoch}
     service._resolve_recipient = AsyncMock(return_value=(user, recipient))  # type: ignore[method-assign]
     service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
     consumed = MagicMock()

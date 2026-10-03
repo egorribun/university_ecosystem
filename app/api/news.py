@@ -26,6 +26,7 @@ from app.api.deps import (
     get_current_user_from_dishka,
     get_current_user_optional_from_dishka,
 )
+from app.api.deps.auth import ensure_admin, get_permission_checker
 from app.api.deps.etag import _set_language_headers, cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import (
@@ -33,6 +34,7 @@ from app.api.validation import (
     raise_not_found,
     raise_validation_error,
 )
+from app.auth.rbac import PermissionChecker
 from app.core.cache_versioning import news_cache_version
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
@@ -45,7 +47,6 @@ from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
-from app.models.enums import UserRole
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
@@ -401,14 +402,17 @@ async def delete_comment(
     request: Request,
     service: FromDishka[NewsService],
     user: models.User = Depends(get_current_user_from_dishka),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     try:
-        await service.delete_comment(
-            comment_id,
-            user.id,
-            is_admin=(user.role == UserRole.ADMIN),
-        )
+        try:
+            await service.delete_comment(comment_id, user.id, is_admin=False)
+        except PermissionError:
+            # Ownership is checked before any mutation. Only the privileged
+            # moderation exception needs the authoritative administrator grant.
+            await ensure_admin(checker, user, request)
+            await service.delete_comment(comment_id, user.id, is_admin=True)
         return {"ok": True}
     except LookupError:
         raise_not_found("news", locale, exact_key="errors.not_found")

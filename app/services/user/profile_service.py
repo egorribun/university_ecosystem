@@ -157,10 +157,11 @@ class UserProfileService:
                     title=title,
                     body=body,
                 )
+            if reset_stats is not None:
+                await mfa.publish_mfa_session_revocations(
+                    reset_stats.session_revocations
+                )
             await self.uow.commit()
-
-        if reset_stats is not None:
-            await mfa.publish_mfa_session_revocations(reset_stats.session_revocations)
 
         if reset_requested:
             log_id = uuid.UUID(str(user_id)) if isinstance(user_id, str) else user_id

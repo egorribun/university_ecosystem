@@ -179,9 +179,8 @@ async def test_validate_credentials_success_with_new_hash(
     )
 
     assert res_user == user
-    mocks["user_repo"].update.assert_awaited_once_with(
-        "123",
-        {"hashed_password": "new_hash"},  # pragma: allowlist secret
+    mocks["user_repo"].rehash_password_if_current.assert_awaited_once_with(
+        "123", expected_hash="old_hash", new_hash="new_hash"
     )
     mocks["uow"].commit.assert_awaited_once()
 

@@ -11,30 +11,31 @@ an MFA change stayed valid on ``/graphql`` and ``/ws/chat``.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Protocol
+
+    class _SessionLike(Protocol):
+        @property
+        def user_id(self) -> object: ...
+        @property
+        def expires_at(self) -> datetime: ...
+        @property
+        def revoked_at(self) -> datetime | None: ...
+        @property
+        def mfa_epoch(self) -> int | None: ...
+
+    class _UserLike(Protocol):
+        @property
+        def id(self) -> object: ...
+        @property
+        def mfa_epoch(self) -> int | None: ...
 
 
-class _SessionLike(Protocol):
-    @property
-    def user_id(self) -> object: ...
-    @property
-    def expires_at(self) -> datetime: ...
-    @property
-    def revoked_at(self) -> datetime | None: ...
-    @property
-    def mfa_epoch(self) -> int | None: ...
-
-
-class _UserLike(Protocol):
-    @property
-    def id(self) -> object: ...
-    @property
-    def mfa_epoch(self) -> int | None: ...
-
-
-def session_epoch_is_current(session: _SessionLike, user: _UserLike) -> bool:
-    """A session minted before the user's last MFA change is no longer valid."""
-    return int(session.mfa_epoch or 0) == int(user.mfa_epoch or 0)
+def session_epoch_is_current(session_epoch: int | None, user_epoch: int | None) -> bool:
+    """Compare stored epochs, treating legacy unset values as epoch zero."""
+    return int(session_epoch or 0) == int(user_epoch or 0)
 
 
 def session_is_expired(session: _SessionLike, now: datetime | None = None) -> bool:
@@ -50,5 +51,5 @@ def session_is_usable(session: _SessionLike, user: _UserLike) -> bool:
         session.user_id == user.id
         and session.revoked_at is None
         and not session_is_expired(session)
-        and session_epoch_is_current(session, user)
+        and session_epoch_is_current(session.mfa_epoch, user.mfa_epoch)
     )

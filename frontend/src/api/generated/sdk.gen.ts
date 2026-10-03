@@ -3109,6 +3109,7 @@ export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends bool
     ThrowOnError
   >({
     responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/spotify/callback",
     ...options,
   })
@@ -3247,8 +3248,8 @@ export const participationSummaryApiV1StatsParticipationGet = <
  * Return attendance, grades and participation stats in a single request.
  *
  * PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
- * All three sub-queries run concurrently via asyncio.gather and share the
- * same Redis cache entries as the individual endpoints.
+ * The queries share one request-scoped AsyncSession, so run sequentially.
+ * They reuse the same Redis cache entries as the individual endpoints.
  */
 export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = false>(
   options?: Options<StatsSummaryApiV1StatsSummaryGetData, ThrowOnError>

@@ -198,7 +198,7 @@ async def test_admin_maintenance_fails_closed_for_chat_without_rls_identity(
     uow.commit.assert_not_awaited()
 
 
-async def test_send_message_continues_when_cached_message_was_deleted():
+async def test_send_message_does_not_recreate_deleted_cached_message():
     uow = _uow()
     user = _user()
     chat = MagicMock()
@@ -212,6 +212,7 @@ async def test_send_message_continues_when_cached_message_was_deleted():
     uow.chats.get_last_messages = AsyncMock(return_value={})
     cache = AsyncMock()
     cache.get.return_value = json.dumps({"message_id": str(uuid.uuid4())})
+    cache.set.return_value = False
     response = MagicMock()
     response.id = uuid.uuid4()
 
@@ -220,11 +221,13 @@ async def test_send_message_continues_when_cached_message_was_deleted():
         patch.object(command_service, "MessageResponse", return_value=response),
         patch.object(command_service.ws_manager, "is_online", return_value=False),
     ):
-        result = await ChatMessageDispatcher(
-            uow, MagicMock(), MagicMock()
-        ).send_message(chat.id, user, "new message", [], "en", idempotency_key="retry")
+        with pytest.raises(HTTPException) as exc:
+            await ChatMessageDispatcher(uow, MagicMock(), MagicMock()).send_message(
+                chat.id, user, "new message", [], "en", idempotency_key="retry"
+            )
 
-    assert result is response
+    assert exc.value.status_code == 409
+    uow.chats.create_message.assert_not_awaited()
     uow.chats.get_by_id.assert_awaited_once_with(chat.id)
 
 

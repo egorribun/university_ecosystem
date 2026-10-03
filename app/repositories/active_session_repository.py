@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm.interfaces import LoaderOption
 
+from app.auth.mfa.lifecycle import (
+    collect_mfa_session_revocations,
+    publish_mfa_session_revocations,
+)
 from app.models import ActiveSession, User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
@@ -77,34 +81,18 @@ class ActiveSessionRepository(
     async def revoke_all_except(
         self, user_id: uuid.UUID, current_session_id: uuid.UUID
     ) -> int:
-        """Revoke all sessions except the current one. Returns count of revoked."""
-        now = datetime.now(UTC)
-        result = await self.db.execute(
-            update(ActiveSession)
-            .where(
-                and_(
-                    ActiveSession.user_id == user_id,
-                    ActiveSession.id != current_session_id,
-                    ActiveSession.revoked_at.is_(None),
-                )
-            )
-            .values(revoked_at=now)
-        )
-        await self.db.flush()
-        return int(getattr(result, "rowcount", 0) or 0)
+        """Revoke sibling credentials in both PostgreSQL and Redis before commit."""
+        return await self._revoke_sessions(user_id, current_session_id)
 
     async def revoke_all_for_user(self, user_id: uuid.UUID) -> int:
-        """Revoke all sessions for a user. Returns count of revoked."""
-        now = datetime.now(UTC)
-        result = await self.db.execute(
-            update(ActiveSession)
-            .where(
-                and_(
-                    ActiveSession.user_id == user_id,
-                    ActiveSession.revoked_at.is_(None),
-                )
-            )
-            .values(revoked_at=now)
+        """Revoke every credential in both PostgreSQL and Redis before commit."""
+        return await self._revoke_sessions(user_id, None)
+
+    async def _revoke_sessions(
+        self, user_id: uuid.UUID, current_session_id: uuid.UUID | None
+    ) -> int:
+        pending = await collect_mfa_session_revocations(
+            self.db, user_id=user_id, current_session_id=current_session_id
         )
-        await self.db.flush()
-        return int(getattr(result, "rowcount", 0) or 0)
+        await publish_mfa_session_revocations(pending)
+        return len(pending)

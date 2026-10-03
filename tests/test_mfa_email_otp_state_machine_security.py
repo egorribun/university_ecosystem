@@ -94,7 +94,7 @@ async def test_resend_cooldown_uses_supplied_clock_without_mutating_challenge() 
         active_kek_id="active",
         rate_limiter=limiter,
     )
-    user = SimpleNamespace(id=uuid.uuid4(), email="otp-state@example.test")
+    user = SimpleNamespace(id=uuid.uuid4(), email="otp-state@example.test", mfa_epoch=0)
     challenge = SimpleNamespace(
         id=uuid.uuid4(),
         user_id=user.id,
@@ -110,6 +110,7 @@ async def test_resend_cooldown_uses_supplied_clock_without_mutating_challenge() 
         expires_at=NOW + timedelta(minutes=10),
         resend_available_at=NOW + timedelta(seconds=1),
         attempt_count=0,
+        payload={"mfa_epoch": 0},
     )
     service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
         return_value=(user, user.email)
@@ -315,6 +316,7 @@ async def test_recovery_rejects_pending_challenge_with_exhausted_attempt_budget(
     user = SimpleNamespace(
         id=uuid.uuid4(),
         email="otp-state@example.test",
+        mfa_epoch=0,
     )
     challenge = SimpleNamespace(
         id=uuid.uuid4(),
@@ -328,6 +330,7 @@ async def test_recovery_rejects_pending_challenge_with_exhausted_attempt_budget(
         locked_at=None,
         consumed_at=None,
         token_key_id="active",
+        payload={"mfa_epoch": 0},
     )
     challenge.recipient_digest = service._recipient_digest(
         key_id="active", email=user.email
@@ -378,7 +381,7 @@ async def test_resend_rejects_pending_challenge_with_exhausted_attempt_budget() 
         active_kek_id="active",
         rate_limiter=MagicMock(),
     )
-    user = SimpleNamespace(id=uuid.uuid4(), email="otp-state@example.test")
+    user = SimpleNamespace(id=uuid.uuid4(), email="otp-state@example.test", mfa_epoch=0)
     challenge = SimpleNamespace(
         id=uuid.uuid4(),
         user_id=user.id,
@@ -394,6 +397,7 @@ async def test_resend_rejects_pending_challenge_with_exhausted_attempt_budget() 
         expires_at=NOW + timedelta(minutes=1),
         resend_available_at=NOW - timedelta(seconds=1),
         attempt_count=OTP_MAX_FAILED_ATTEMPTS,
+        payload={"mfa_epoch": 0},
     )
     service._rate_limit = AsyncMock()  # type: ignore[method-assign]
     service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]

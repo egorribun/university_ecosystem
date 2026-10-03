@@ -388,7 +388,9 @@ def test_spotify_mint_state_token_no_secret():
     with patch("app.api.spotify.settings") as mock_settings:
         mock_settings.spotify_oauth_state_secret = ""
         with pytest.raises(ValueError, match="SPOTIFY_OAUTH_STATE_SECRET must be set"):
-            spotify_api._mint_state_token("user1", expires_minutes=5)
+            spotify_api._mint_state_token(
+                "user1", session_id="session1", nonce="nonce1", expires_minutes=5
+            )
 
 
 def test_spotify_coerce_expires():

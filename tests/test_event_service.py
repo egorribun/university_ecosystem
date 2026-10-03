@@ -592,8 +592,8 @@ async def test_get_event_detail_refreshes_secret_material(
 
     with (
         patch(
-            "app.services.event_service.attendance_tokens.ensure_secret_material",
-            return_value=True,
+            "app.services.event_service.attendance_tokens.secret_material_updates",
+            return_value={"qr_secret": "secret", "qr_hmac": "repaired"},
         ),
         patch(
             "app.services.event_service.attendance_tokens.issue_token",
@@ -602,7 +602,7 @@ async def test_get_event_detail_refreshes_secret_material(
     ):
         out = await event_service.get_event_detail(event_id, user_id)
 
-    # ensure_secret_material True -> the repo update + commit branch runs.
+    # Explicit repairs are persisted before token issuance.
     mock_repo.update_attendance.assert_awaited_once()
     mock_uow.commit.assert_awaited_once()
     assert out is not None

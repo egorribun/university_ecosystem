@@ -124,6 +124,16 @@ async def login(
             bg_tasks=bg_tasks,
             trust_device=trust_device,
         )
+    except MfaOtpRejected as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            translate(
+                "errors.auth.credentials_invalid",
+                locale=resolve_locale(request=request),
+            ),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
     except RateLimitExceeded as exc:
         await db.rollback()
         raise _mfa_rate_limit_error(exc, detail="MFA request rejected") from exc
@@ -168,6 +178,16 @@ async def login_json(
             bg_tasks=bg_tasks,
             trust_device=payload.trust_device,
         )
+    except MfaOtpRejected as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            translate(
+                "errors.auth.credentials_invalid",
+                locale=resolve_locale(request=request),
+            ),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
     except RateLimitExceeded as exc:
         await db.rollback()
         raise _mfa_rate_limit_error(exc, detail="MFA request rejected") from exc
@@ -334,14 +354,20 @@ async def verify_mfa_challenge(
             path="/",
         )
 
-    if challenge.flow in {
-        "step_up",
-        "email_verification",
-        "email_mfa_enablement",
-    }:
+    if challenge.flow in {"email_verification", "step_up", "email_mfa_enablement"}:
+        # Each authenticated-session flow fails closed at the same boundary.
         if active_session is None:
             await db.rollback()
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "MFA verification failed")
+        if challenge.flow == "email_verification":
+            # Mailbox ownership is not an enrolled authentication factor. Preserve
+            # the existing MFA freshness and never mint a login session.
+            result = await login_service.build_session_response(
+                user=user, session=active_session
+            )
+            await db.commit()
+            return result
+
         pending_revocations = []
         if challenge.flow == "email_mfa_enablement":
             pending_revocations = await mfa.revoke_sibling_sessions_for_factor_change(
@@ -355,8 +381,14 @@ async def verify_mfa_challenge(
             request=request,
             method=payload.method,
         )
-        await db.commit()
-        await mfa.publish_mfa_session_revocations(pending_revocations)
+        try:
+            await mfa.publish_mfa_session_revocations(pending_revocations)
+            await db.commit()
+        except (
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: rollback security mutation then re-raise
+            await db.rollback()
+            raise
         await login_service.publish_completed_step_up(
             user=user,
             session=active_session,

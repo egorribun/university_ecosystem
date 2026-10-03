@@ -16,6 +16,7 @@ raise / succeed without touching network or DB):
 
 from __future__ import annotations
 
+import socket
 import uuid
 from datetime import time
 from types import SimpleNamespace
@@ -34,6 +35,28 @@ from app.services.webpush import (
     _sanitize_vibrate,
     send_web_push,
 )
+
+
+@pytest.fixture(autouse=True)
+def deterministic_push_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provider response unit tests must not rely on public DNS availability."""
+    resolve = socket.getaddrinfo
+
+    def lookup(host, port, *args, **kwargs):
+        if host == "fcm.googleapis.com":
+            return [
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    6,
+                    "",
+                    ("93.184.216.34", port or 443),
+                )
+            ]
+        return resolve(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+
 
 # ── 1. _mask_endpoint ────────────────────────────────────────────────────────
 

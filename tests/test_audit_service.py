@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import json
 import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from starlette.requests import Request
 
 from app.services.audit_service import (
     AuditService,
@@ -166,6 +168,40 @@ def test_redact_sensitive_redacts_keys_nested_and_in_lists():
 # --------------------------------------------------------------------------- #
 # Convenience wrappers — each delegates to .log with the right event/level     #
 # --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("method", "event", "logger_name", "level"),
+    [
+        ("logout", "auth.logout", "app.auth", logging.INFO),
+        ("rate_limit_exceeded", "access.rate_limit", "app.access", logging.WARNING),
+    ],
+)
+def test_convenience_audit_events_emit_identity_and_request_context(
+    caplog, method, event, logger_name, level
+):
+    user_id = uuid4()
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/account",
+            "headers": [],
+            "client": ("203.0.113.9", 4321),
+        }
+    )
+    with caplog.at_level(logging.INFO, logger=logger_name):
+        getattr(AuditService(), method)(request, user_id)
+
+    records = [record for record in caplog.records if record.name == logger_name]
+    assert len(records) == 1
+    assert records[0].levelno == level
+    payload = json.loads(records[0].getMessage())
+    assert payload["event"] == event
+    assert payload["user_id"] == str(user_id)
+    assert payload["path"] == "/account"
+    assert payload["method"] == "POST"
+    assert payload["ip"] == "203.0.113.9"
 
 
 # --------------------------------------------------------------------------- #

@@ -52,11 +52,11 @@ async def _commit_and_publish_mfa_revocations(
     pending: list[mfa.MfaSessionRevocation],
 ) -> None:
     try:
+        await mfa.publish_mfa_session_revocations(pending)
         await db.commit()
     except Exception:  # RZ-22-01-JUSTIFIED: transaction cleanup before re-raise
         await db.rollback()
         raise
-    await mfa.publish_mfa_session_revocations(pending)
 
 
 def _mfa_rate_limit_error(exc: RateLimitExceeded) -> HTTPException:
@@ -87,6 +87,7 @@ async def _issue_email_challenge_for_session(
         issued = await login_service.get_email_otp_service().issue(
             db,
             user_id=user.id,
+            expected_mfa_epoch=int(getattr(user, "mfa_epoch", 0) or 0),
             flow=flow,
             session_identifier=str(session.id),
             client_fingerprint=extract_request_fingerprint(request),
@@ -277,13 +278,13 @@ async def confirm_totp_enrollment(
             session=session,
             method=mfa.MFA_METHOD_TOTP,
         )
+        await mfa.publish_mfa_session_revocations(pending_revocations)
         await db.commit()
     except (
         Exception
     ):  # RZ-22-01-JUSTIFIED: transaction boundary rolls back then re-raises
         await db.rollback()
         raise
-    await mfa.publish_mfa_session_revocations(pending_revocations)
     await db.refresh(updated)
 
     audit.log(

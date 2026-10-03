@@ -86,15 +86,20 @@ def test_cqrs_provider():
 
 
 # 3. app/core/di/content.py
-def test_content_provider():
+@pytest.mark.asyncio
+async def test_content_provider():
     provider = ContentProvider()
     db = MagicMock()
     uow = MagicMock()
     vector = MagicMock()
 
     assert provider.notification_service(db) is not None
-    with patch("app.services.vector_service.validate_url_not_internal"):
-        assert provider.vector_service(db) is not None
+    vector_scope = provider.vector_service(db)
+    vector_service = await anext(vector_scope)
+    assert vector_service.db is db
+    assert not vector_service._client.is_closed
+    await vector_scope.aclose()
+    assert vector_service._client.is_closed
     assert provider.group_service(db) is not None
     assert provider.event_service(uow, vector) is not None
     assert provider.story_service(uow) is not None

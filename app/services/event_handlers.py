@@ -7,6 +7,7 @@ These handlers are registered with the EventBus during application startup.
 
 from __future__ import annotations
 
+import math
 from typing import cast
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
+from app.core.config import settings
 from app.core.database import async_session
 from app.core.events import (
     AttachmentCleanupRequested,
@@ -128,7 +130,7 @@ async def handle_mfa_email_delivery_requested(
 async def handle_event_created(event: EventCreated) -> None:
     """Handle event creation events."""
     logger.info(
-        "Event created: event_id=%d, organizer=%d, title=%s",
+        "Event created: event_id=%s, organizer=%s, title=%s",
         event.event_id_entity,
         event.organizer_id,
         event.title,
@@ -164,37 +166,69 @@ async def handle_notification_sent(event: NotificationSent) -> None:
     # - Analytics
 
 
-async def generate_event_embedding(event: EventCreated) -> None:
+def _content_entity_id(value: UUID | str | None) -> UUID | None:
+    """Stored outbox payloads encode UUIDs as strings."""
+    return UUID(value) if isinstance(value, str) else value
+
+
+def _usable_content_embedding(embedding: list[float]) -> bool:
+    if (
+        embedding
+        and all(math.isfinite(value) for value in embedding)
+        and any(embedding)
+    ):
+        return True
+    if not settings.semantic_search_enabled or not settings.embedding_api_key:
+        # An intentionally disabled provider has no projection to update.
+        return False
+    # The query API can degrade to a zero vector; a durable projection must retry
+    # an active provider failure instead of storing a zero/NaN-producing embedding.
+    raise RuntimeError(
+        "Embedding projection failed: provider returned no usable vector"
+    )
+
+
+async def generate_event_embedding(event: EventCreated | EventUpdated) -> None:
     """Generate embedding for newly created event."""
     async with async_session() as db:
         # An event handler runs outside any request scope and opens its own
         # session, so it constructs the service over that session directly.
         vector_service = VectorService(db=db)
-        # Fetch the event to get full content
-        db_event = await db.get(models.Event, event.event_id_entity)
-        if not db_event:
-            return
+        try:
+            # Fetch the event to get full content
+            event_id = _content_entity_id(event.event_id_entity)
+            db_event = await db.get(models.Event, event_id)
+            if not db_event:
+                return
 
-        text_to_embed = (
-            f"{db_event.title} {db_event.description or ''} {db_event.location or ''}"
-        )
-        embedding = await vector_service.get_embedding(text_to_embed)
-        db_event.embedding = embedding
-        await db.commit()
+            text_to_embed = f"{db_event.title} {db_event.description or ''} {db_event.location or ''}"
+            embedding = await vector_service.get_embedding(text_to_embed)
+            if not _usable_content_embedding(embedding):
+                return
+            db_event.embedding = embedding
+            await db.commit()
+        finally:
+            await vector_service.close()
 
 
-async def generate_news_embedding(event: NewsCreated) -> None:
+async def generate_news_embedding(event: NewsCreated | NewsUpdated) -> None:
     """Generate embedding for newly created news."""
     async with async_session() as db:
         vector_service = VectorService(db=db)
-        db_news = await db.get(models.News, event.news_id)
-        if not db_news:
-            return
+        try:
+            news_id = _content_entity_id(event.news_id)
+            db_news = await db.get(models.News, news_id)
+            if not db_news:
+                return
 
-        text_to_embed = f"{db_news.title} {db_news.content}"
-        embedding = await vector_service.get_embedding(text_to_embed)
-        db_news.embedding = embedding
-        await db.commit()
+            text_to_embed = f"{db_news.title} {db_news.content}"
+            embedding = await vector_service.get_embedding(text_to_embed)
+            if not _usable_content_embedding(embedding):
+                return
+            db_news.embedding = embedding
+            await db.commit()
+        finally:
+            await vector_service.close()
 
 
 async def index_news_for_search(event: NewsCreated | NewsUpdated) -> None:

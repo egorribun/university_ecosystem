@@ -20,6 +20,9 @@ INVENTORY = (
 ADMIN_GATE = "app.api.deps.auth.get_current_admin_user_from_dishka"
 
 ADMIN_ONLY_ROUTE_IDS = [
+    "app.api.users:create_user:POST:",
+    "app.api.chat:clear_chat_history:POST:/{chat_id}/clear",
+    "app.api.chat:delete_chat:DELETE:/{chat_id}",
     "app.api.news:create_news:POST:",
     "app.api.news:update_news:PATCH:/{id}",
     "app.api.news:delete_news:DELETE:/{id}",

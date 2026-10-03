@@ -10,15 +10,15 @@ from fastapi import APIRouter, Depends, Request, status
 
 import app.models as models
 from app.api.deps import get_current_user_from_dishka
+from app.api.deps.auth import ensure_admin, get_permission_checker
 from app.api.validation import (
-    raise_forbidden,
     raise_not_found,
     require_teacher_or_admin,
 )
+from app.auth.rbac import PermissionChecker
 from app.core.localization import resolve_locale
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
-from app.models.enums import UserRole
 from app.schemas import schemas
 from app.services.grade_service import (
     GradeNotFoundError,
@@ -74,6 +74,7 @@ async def modify_grade(
     service: FromDishka[GradeService],
     db: FromDishka[AsyncDatabaseSession],
     user: Annotated[models.User, Depends(get_current_user_from_dishka)],
+    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
 ) -> schemas.GradeOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
@@ -82,8 +83,8 @@ async def modify_grade(
     if existing is None:
         raise_not_found("grades", locale)
     # Teachers may only correct grades they assigned themselves.
-    if user.role != UserRole.ADMIN and existing.assigned_by != user.id:
-        raise_forbidden(locale)
+    if existing.assigned_by != user.id:
+        await ensure_admin(checker, user, request)
 
     try:
         grade = await service.modify_grade(

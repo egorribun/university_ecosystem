@@ -39,16 +39,24 @@ def _user(session, **overrides):
     return SimpleNamespace(**values)
 
 
-def test_epoch_matches_only_when_equal():
-    session = _session()
-    assert session_epoch_is_current(session, _user(session))
-    assert not session_epoch_is_current(session, _user(session, mfa_epoch=4))
-
-
-def test_missing_epochs_are_treated_as_zero():
-    session = _session(mfa_epoch=None)
-    assert session_epoch_is_current(session, _user(session, mfa_epoch=None))
-    assert session_epoch_is_current(session, _user(session, mfa_epoch=0))
+@pytest.mark.parametrize(
+    ("session_epoch", "user_epoch", "expected"),
+    [
+        (3, 3, True),
+        (3, 4, False),
+        (4, 3, False),
+        (0, 0, True),
+        (None, None, True),
+        (None, 0, True),
+        (0, None, True),
+        (None, 1, False),
+        (1, None, False),
+    ],
+)
+def test_epoch_compares_scalar_values_with_none_treated_as_zero(
+    session_epoch, user_epoch, expected
+):
+    assert session_epoch_is_current(session_epoch, user_epoch) is expected
 
 
 def test_expiry_handles_naive_and_aware_datetimes():
@@ -62,9 +70,12 @@ def test_expiry_defaults_to_current_time():
     assert session_is_expired(_session(expires_at=datetime(2000, 1, 1, tzinfo=UTC)))
 
 
-def test_usable_session_passes():
-    session = _session()
-    assert session_is_usable(session, _user(session))
+@pytest.mark.parametrize(
+    ("session_epoch", "user_epoch"), [(3, 3), (None, 0), (0, None)]
+)
+def test_usable_session_passes(session_epoch, user_epoch):
+    session = _session(mfa_epoch=session_epoch)
+    assert session_is_usable(session, _user(session, mfa_epoch=user_epoch))
 
 
 @pytest.mark.parametrize(
@@ -107,9 +118,12 @@ async def test_graphql_validator_rejects_stale_mfa_epoch():
 
 
 @pytest.mark.asyncio
-async def test_graphql_validator_accepts_current_mfa_epoch():
-    session = _session()
-    user = _user(session)
+@pytest.mark.parametrize(
+    ("session_epoch", "user_epoch"), [(3, 3), (None, 0), (0, None)]
+)
+async def test_graphql_validator_accepts_current_mfa_epoch(session_epoch, user_epoch):
+    session = _session(mfa_epoch=session_epoch)
+    user = _user(session, mfa_epoch=user_epoch)
     validator = GraphQLTokenValidator(MagicMock(), AsyncMock())
     validator._redis_jti_check = AsyncMock(return_value=True)
     validator._load_db_session = AsyncMock(return_value=session)

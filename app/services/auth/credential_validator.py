@@ -102,7 +102,15 @@ class CredentialValidator:
             )
 
         if new_hash:
-            await self.user_repo.update(user.id, {"hashed_password": new_hash})
+            upgraded = await self.user_repo.rehash_password_if_current(
+                user.id, expected_hash=str(user.hashed_password), new_hash=new_hash
+            )
+            if not upgraded:
+                # A password change/reset won the account lock after credential
+                # verification. Never restore the old credential through rehash.
+                from app.api.validation import raise_unauthorized
+
+                raise_unauthorized(locale, "errors.auth.credentials_invalid")
             await self.uow.commit()
 
         if await self.lockout_service.clear_failed_attempts(normalized_email) > 0:

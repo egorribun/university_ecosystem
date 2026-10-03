@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 
 from app.models.logs import DataAccessLog
 from app.schemas.dtos.audit import DataAccessLogDTO
@@ -197,6 +198,35 @@ async def test_batch_log_data_access_builds_entries_and_honors_commit_flag():
 
 
 # --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+@pytest.mark.parametrize("commit", [True, False])
+async def test_batch_audit_commit_controls_durability(db_session, commit):
+    resource_id = str(uuid.uuid4())
+    await batch_log_data_access(
+        db_session,
+        entries=[
+            {"resource_type": "profile", "resource_id": resource_id, "action": "read"}
+        ],
+        request=_request(),
+        commit=commit,
+    )
+    await db_session.rollback()
+
+    rows = (
+        (
+            await db_session.execute(
+                select(DataAccessLog).where(DataAccessLog.resource_id == resource_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == int(commit)
+    if commit:
+        assert rows[0].action == "read"
+        assert rows[0].signature and len(rows[0].signature) == 64
+
+
 # cleanup_access_logs — retention guard + prune-returns-zero                   #
 # --------------------------------------------------------------------------- #
 
