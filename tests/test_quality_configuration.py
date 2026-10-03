@@ -377,6 +377,18 @@ def test_test_image_installs_atheris_toolchain() -> None:
     assert "libclang-rt-14-dev" in package_names
 
 
+def test_test_image_installs_git_for_openapi_baseline_regressions() -> None:
+    dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
+    package_install = re.search(
+        r"apt-get install -y --no-install-recommends \\\n(?P<packages>.*?)\n    &&",
+        dockerfile,
+        re.DOTALL,
+    )
+
+    assert package_install is not None
+    assert "git" in package_install.group("packages").split()
+
+
 def test_test_image_copies_rust_benches_declared_in_workspace_manifests() -> None:
     dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
 

@@ -12,7 +12,7 @@ WORKDIR /app
 RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-test,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl clang libclang-rt-14-dev \
+    build-essential curl clang libclang-rt-14-dev git \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash --create-home app
