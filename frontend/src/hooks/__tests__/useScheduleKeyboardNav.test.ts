@@ -71,6 +71,7 @@ describe("useScheduleKeyboardNav", () => {
     renderHook(() => useScheduleKeyboardNav(opts))
     press("Enter")
     expect(opts.onOpen).toHaveBeenCalledOnce()
+    expect(opts.onOpen).toHaveBeenCalledWith(0, 0)
     press("e")
     expect(opts.onEdit).toHaveBeenCalledOnce()
     press("Delete")
@@ -81,6 +82,17 @@ describe("useScheduleKeyboardNav", () => {
     expect(opts.onToggleShortcuts).toHaveBeenCalledOnce()
     press("t")
     expect(opts.onSelect).toHaveBeenLastCalledWith(0, 2)
+  })
+
+  it("opens the cell selected by arrow navigation", () => {
+    const opts = makeOpts()
+    renderHook(() => useScheduleKeyboardNav(opts))
+
+    press("ArrowRight")
+    press("ArrowDown")
+    press("Enter")
+
+    expect(opts.onOpen).toHaveBeenCalledWith(1, 1)
   })
 
   it("respects the ctrl/meta modifier guard on E / Delete / T", () => {

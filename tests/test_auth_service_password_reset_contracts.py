@@ -9,19 +9,29 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from fastapi import BackgroundTasks, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 import app.api.validation as validation_module
 import app.auth.security as security_module
 import app.services.auth_service as auth_module
+from app.core.exceptions.handlers import (
+    http_exception_handler,
+    password_reset_request_validation_exception_handler,
+)
 from app.core.localization import translate
+from app.schemas.identity import ForgotPasswordIn, ResetPasswordIn
 from app.services.auth_service import (
     AuthService,
     _password_reset_rate_limit_identifier,
@@ -31,6 +41,10 @@ _LOCALE = "ru"
 _TOKEN_DIGEST = "digest-of-token"  # pragma: allowlist secret
 _NEW_PASSWORD = "new-password-888"  # pragma: allowlist secret
 _EXPIRED_KEY = "errors.password.invalid_or_expired_link"
+
+
+class _CountIn(BaseModel):
+    count: int
 
 
 class _AsyncDatabase:
@@ -105,6 +119,130 @@ def _reset_environment(
 
     monkeypatch.setattr(validation_module, "translate", _spy)
     return lookups
+
+
+async def test_reset_error_instance_omits_untrusted_host_and_query_token() -> None:
+    query_marker = f"synthetic-reset-query-{uuid.uuid4().hex}"
+    reset_path = "/api/v1/users/password/reset"
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "server": ("reset-attacker.invalid", 443),
+            "client": ("127.0.0.1", 12345),
+            "root_path": "",
+            "path": reset_path,
+            "raw_path": reset_path.encode(),
+            "query_string": f"token={query_marker}".encode(),
+            "headers": [
+                (b"host", b"reset-attacker.invalid"),
+                (b"accept-language", b"en"),
+            ],
+        }
+    )
+
+    response = await http_exception_handler(
+        request, HTTPException(status_code=400, detail="Invalid reset request")
+    )
+    problem = json.loads(response.body)
+    response_text = response.body.decode()
+    is_safe = (
+        response.status_code == 400
+        and problem.get("instance") == reset_path
+        and query_marker not in response_text
+        and "reset-attacker.invalid" not in response_text
+    )
+
+    assert is_safe
+
+
+def test_reset_request_validation_does_not_echo_token_input() -> None:
+    token_marker = f"synthetic-reset-body-{uuid.uuid4().hex}"
+    test_app = FastAPI()
+    test_app.add_exception_handler(
+        RequestValidationError, password_reset_request_validation_exception_handler
+    )
+
+    @test_app.post("/api/v1/password/reset")
+    async def reset_endpoint(payload: ResetPasswordIn) -> dict[str, bool]:
+        return {"accepted": True}
+
+    response = TestClient(test_app).post(
+        "/api/v1/password/reset", json={"token": token_marker}
+    )
+    payload = response.json()
+    errors = payload.get("detail", [])
+    is_safe = (
+        response.status_code == 422
+        and token_marker not in response.text
+        and bool(errors)
+        and set(errors[0]) == {"loc", "msg", "type"}
+        and errors[0]["loc"] == ["body", "password"]
+        and isinstance(errors[0]["msg"], str)
+        and isinstance(errors[0]["type"], str)
+    )
+
+    assert is_safe
+
+
+def test_forgot_password_validation_does_not_echo_email_input() -> None:
+    email_marker = f"synthetic-forgot-email-{uuid.uuid4().hex}"
+    test_app = FastAPI()
+    test_app.add_exception_handler(
+        RequestValidationError, password_reset_request_validation_exception_handler
+    )
+
+    @test_app.post("/api/v1/password/forgot")
+    async def forgot_endpoint(payload: ForgotPasswordIn) -> dict[str, bool]:
+        return {"accepted": True}
+
+    response = TestClient(test_app).post(
+        "/api/v1/password/forgot", json={"email": email_marker}
+    )
+    payload = response.json()
+    errors = payload.get("detail", [])
+    is_safe = (
+        response.status_code == 422
+        and email_marker not in response.text
+        and bool(errors)
+        and set(errors[0]) == {"loc", "msg", "type"}
+        and errors[0]["loc"] == ["body", "email"]
+        and isinstance(errors[0]["msg"], str)
+        and isinstance(errors[0]["type"], str)
+    )
+
+    assert is_safe
+
+
+def test_other_validation_errors_keep_fastapi_input_details() -> None:
+    test_app = FastAPI()
+    test_app.add_exception_handler(
+        RequestValidationError, password_reset_request_validation_exception_handler
+    )
+
+    @test_app.post("/api/v1/profile")
+    async def update_profile(payload: _CountIn) -> dict[str, bool]:
+        return {"accepted": True}
+
+    response = TestClient(test_app).post(
+        "/api/v1/profile", json={"count": "not-an-integer"}
+    )
+    errors = response.json().get("detail", [])
+
+    assert response.status_code == 422
+    assert errors and errors[0].get("input") == "not-an-integer"
+
+
+def test_production_app_registers_password_reset_validation_handler() -> None:
+    from app.main import app
+
+    assert (
+        app.exception_handlers[RequestValidationError]
+        is password_reset_request_validation_exception_handler
+    )
 
 
 async def test_reset_success_pins_locks_arguments_and_revocation_scope(
@@ -339,3 +477,58 @@ def test_rate_limit_identifier_is_a_domain_separated_hmac_of_the_canonical_email
         _password_reset_rate_limit_identifier(" ÜSER@Example.com ")
         == f"password-reset:{expected}"
     )
+
+
+async def test_reset_link_uses_configured_origin_not_request_host_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host/forwarded-host input must not poison emailed password-reset links."""
+
+    user_id = uuid.uuid4()
+    service = _service()
+    service.user_repo.get_by_email = AsyncMock(
+        return_value=SimpleNamespace(
+            id=user_id,
+            email="student@example.edu",
+            full_name="Student",
+        )
+    )
+    service.auth_repo.create_password_reset_token = AsyncMock()
+    request = _request()
+    request.headers = {
+        "accept-language": "en",
+        "host": "attacker.example",
+        "x-forwarded-host": "attacker.example",
+        "forwarded": "host=attacker.example;proto=https",
+    }
+    background_tasks = MagicMock(spec=BackgroundTasks)
+
+    # Per-test signing markers are ephemeral, test-local values.
+    hmac_material = uuid.uuid4().hex
+    app_material = uuid.uuid4().hex
+
+    monkeypatch.setattr(
+        auth_module,
+        "settings",
+        SimpleNamespace(
+            token_hmac_secret=hmac_material,
+            environment="testing",
+            secret_key=app_material,
+            app_base_url_clean="https://portal.example.edu/app",
+        ),
+    )
+    monkeypatch.setattr("app.core.ratelimit.enforce_rate_limit", AsyncMock())
+    monkeypatch.setattr("app.core.ratelimit.get_default_strategy", lambda _: object())
+    monkeypatch.setattr(auth_module.secrets, "token_urlsafe", lambda _: "opaque-token")
+
+    with patch("asyncio.sleep", new=AsyncMock()):
+        await service.initiate_password_reset(
+            "student@example.edu", request, background_tasks
+        )
+
+    reset_link = background_tasks.add_task.call_args.args[2]
+    parsed_link = urlsplit(reset_link)
+    assert parsed_link.scheme == "https"
+    assert parsed_link.netloc == "portal.example.edu"
+    assert parsed_link.path == "/app/reset-password"
+    assert parse_qs(parsed_link.query) == {"token": ["opaque-token"]}

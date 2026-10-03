@@ -208,6 +208,10 @@ backend:
     # Malware scanning is opt-in for local development and mandatory in
     # staging/production (validated by the chart and backend at startup).
     eventFileScannerEnabled: false
+    # Public frontend origin used for emailed links and the API CORS allow-list.
+    # Leave empty to derive https://<ingress.hosts[0].host>; staging/production
+    # require it to equal that ingress origin.
+    frontendOrigin: ""
     # OpenFeature RPC provider endpoint. The flagd Service is deployed from
     # k8s/flagd/ in the same namespace by the GitOps stack.
     flagdHost: "flagd"
@@ -270,6 +274,9 @@ gateway:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     jwtAudience: "university-ecosystem-api"
     rateLimitRps: 100
+    # Exact proxy IPs/CIDRs only; empty disables forwarded-header trust and
+    # preserves the immediate peer address. Do not use broad cluster ranges.
+    trustedProxies: []
     # Plaintext is suitable only for the NetworkPolicy-isolated development
     # chart. Set true when gRPC/OTLP endpoints terminate trusted TLS.
     grpcUseTLS: false
@@ -406,6 +413,25 @@ ingress:
   hosts:
     - host: university.example.com
       paths:
+        # The browser uses relative URLs, so its origin must expose each backend.
+        - path: /api
+          pathType: Prefix
+          service: gateway
+        - path: /graphql
+          pathType: Exact
+          service: gateway
+        - path: /ws/ticket
+          pathType: Exact
+          service: gateway
+        - path: /ws/chat
+          pathType: Exact
+          service: ws-hub
+        - path: /static
+          pathType: Prefix
+          service: backend
+        - path: /.well-known
+          pathType: Prefix
+          service: backend
         - path: /
           pathType: Prefix
           service: frontend
@@ -431,6 +457,33 @@ ingress:
       hosts:
         - university.example.com
         - api.university.example.com
+
+# Gateway API preview, managed by an externally installed Envoy Gateway.
+# It is intentionally blocked until per-client limits and request-buffer
+# resource requirements are validated.
+gatewayApi:
+  enabled: false
+  # Create or verify this cluster-scoped GatewayClass in the controlled
+  # Gateway API bootstrap before enabling the chart; this chart does not own it.
+  gatewayClassName: eg
+  # Select exactly one original-client-IP source to match the edge topology.
+  # Leave empty until the operator confirms whether Envoy receives the original
+  # TCP peer or a sanitized X-Forwarded-For chain from trusted proxies.
+  clientIPDetection: {}
+  # Envoy Gateway local rate limiting is per proxy and per route. This partial
+  # policy keeps the retained 50 requests/second cap for each distinct source IP;
+  # it does not implement the ingress controller's 5x burst contract.
+  rateLimit:
+    requests: 50
+    unit: Second
+  # Envoy Gateway v1.9 buffers a whole request before forwarding. The chart
+  # attaches this only to the isolated /api/v1 route, never upgrade routes.
+  requestBuffer:
+    limit: 50Mi
+  # Data-plane pods selected by NetworkPolicies when Gateway API is enabled.
+  networkPolicy:
+    namespaceSelector: {}
+    podSelector: {}
 
 # Network Policy ingress-controller selector.
 # DEBT-07 (RZ-W13): parametrized so the chart works with any ingress controller

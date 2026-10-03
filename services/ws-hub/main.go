@@ -345,14 +345,6 @@ func initRevocationRedis(ctx context.Context, cfg *config.Config, logger *slog.L
 	return client, nil
 }
 
-func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
-	// Compatibility helper used by isolated tests. Production startup calls
-	// setupHubWithRevocation with the separate durable security Redis obtained
-	// by initRevocationRedis; an L2/cache Redis must never be treated as that
-	// revocation authority.
-	return setupHubWithRevocation(ctx, cfg, logger, nc, rdb, nil, spiffeClients...)
-}
-
 func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb, revocationRDB *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
 	var spiffeClient *spiffe.Client
 	if len(spiffeClients) > 0 {

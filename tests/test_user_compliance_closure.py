@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import Request
+from sqlalchemy import event
 
+from app import models
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     EntityNotFound,
     PermissionDenied,
 )
+from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
+from app.services.audit_service import AuditService
 from app.services.user.compliance_service import UserComplianceService
 
 
@@ -60,7 +65,7 @@ async def test_delete_user_data_success_anonymizes_revokes_logs_and_refreshes():
     user_id = uuid4()
     orm_user = SimpleNamespace(id=user_id)
     updated = SimpleNamespace(email=f"deleted+{user_id}@deleted.example.com")
-    repo._get_orm.return_value = orm_user
+    repo.get_orm_for_anonymization.return_value = orm_user
     repo.get.return_value = updated
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
@@ -228,6 +233,81 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
 
 
 @pytest.mark.asyncio
+async def test_export_user_data_does_not_overlap_queries_on_shared_session(
+    user_factory, db_session
+):
+    user = await user_factory()
+    user_id, session_id, notification_id = user.id, uuid4(), uuid4()
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            models.ActiveSession(
+                id=session_id,
+                user_id=user_id,
+                jti=str(uuid4()),
+                expires_at=now + timedelta(hours=1),
+            ),
+            models.Notification(
+                id=notification_id,
+                user_id=user_id,
+                title="Export fixture",
+                body="Persisted notification",
+                created_at=now,
+            ),
+            models.DataAccessLog(
+                actor_user_id=user_id,
+                subject_user_id=user_id,
+                resource_type="profile",
+                resource_id=str(user_id),
+                action="read",
+                created_at=now,
+            ),
+        ]
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users/me/export", "headers": []}
+    )
+    pending_queries = set()
+    connections = set()
+    max_pending_queries = 0
+
+    def before_query(conn, cursor, statement, parameters, context, executemany):
+        nonlocal max_pending_queries
+        pending_queries.add(id(context))
+        connections.add(id(conn.connection))
+        max_pending_queries = max(max_pending_queries, len(pending_queries))
+
+    def after_query(conn, cursor, statement, parameters, context, executemany):
+        pending_queries.remove(id(context))
+
+    # Observe real driver calls, including the profile read that establishes
+    # the session's connection before the three export-section queries.
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", before_query)
+    event.listen(engine, "after_cursor_execute", after_query)
+    try:
+        result = await service.export_user_data(SimpleNamespace(id=user_id), request)
+    finally:
+        event.remove(engine, "before_cursor_execute", before_query)
+        event.remove(engine, "after_cursor_execute", after_query)
+
+    assert result.profile["id"] == user_id
+    assert [item["id"] for item in result.sessions] == [session_id]
+    assert [item["id"] for item in result.notifications] == [notification_id]
+    assert [item["action"] for item in result.access_logs] == ["read"]
+    assert result.access_logs[0]["resource_id"] == str(user_id)
+    assert not pending_queries
+    assert len(connections) == 1
+    assert max_pending_queries == 1, (
+        "Export submitted overlapping statements on the same session/connection"
+    )
+
+
+@pytest.mark.asyncio
 async def test_admin_delete_user_rejects_non_admin():
     repo = _repo()
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
@@ -241,7 +321,7 @@ async def test_admin_delete_user_rejects_non_admin():
 @pytest.mark.asyncio
 async def test_admin_delete_user_rejects_missing_target():
     repo = _repo()
-    repo._get_orm.return_value = None
+    repo.get_orm_for_anonymization.return_value = None
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
     with pytest.raises(EntityNotFound):
@@ -254,7 +334,7 @@ async def test_admin_delete_user_rejects_missing_target():
 async def test_admin_delete_user_rejects_self_delete():
     repo = _repo()
     user_id = uuid4()
-    repo._get_orm.return_value = SimpleNamespace(id=user_id)
+    repo.get_orm_for_anonymization.return_value = SimpleNamespace(id=user_id)
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
     with pytest.raises(BusinessRuleViolation):

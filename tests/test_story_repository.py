@@ -113,41 +113,6 @@ async def test_get_active_respects_skip_and_limit(repo, db_session):
 
 
 @pytest.mark.asyncio
-async def test_get_by_user_filters_and_orders(repo, db_session, user_factory):
-    user = await user_factory()
-    other = await user_factory()
-    now = datetime.now(UTC)
-    await _add_story(
-        repo.db,
-        title="u-old",
-        created_by=user.id,
-        created_at=now - timedelta(hours=2),
-        published_at=now,
-        expires_at=now + timedelta(hours=10),
-    )
-    await _add_story(
-        repo.db,
-        title="u-new",
-        created_by=user.id,
-        created_at=now - timedelta(minutes=5),
-        published_at=now,
-        expires_at=now + timedelta(hours=10),
-    )
-    await _add_story(
-        repo.db,
-        title="other",
-        created_by=other.id,
-        created_at=now,
-        published_at=now,
-        expires_at=now + timedelta(hours=10),
-    )
-
-    rows = await repo.get_by_user(user.id)
-    # created_by == user, ORDER BY created_at DESC.
-    assert [s.title for s in rows] == ["u-new", "u-old"]
-
-
-@pytest.mark.asyncio
 async def test_count_active_counts_active_nonexpired_including_future_published(
     repo, db_session
 ):
@@ -180,36 +145,6 @@ async def test_count_active_counts_active_nonexpired_including_future_published(
         expires_at=now + timedelta(hours=10),
     )
     assert await repo.count_active() == 2
-
-
-@pytest.mark.asyncio
-async def test_get_expired_orders_asc_and_limits(repo, db_session):
-    now = datetime.now(UTC)
-    await _add_story(
-        repo.db,
-        title="e1",
-        published_at=now - timedelta(hours=10),
-        expires_at=now - timedelta(hours=3),
-    )
-    await _add_story(
-        repo.db,
-        title="e2",
-        published_at=now - timedelta(hours=8),
-        expires_at=now - timedelta(hours=1),
-    )
-    await _add_story(
-        repo.db,
-        title="live",
-        published_at=now,
-        expires_at=now + timedelta(hours=10),
-    )
-
-    rows = await repo.get_expired(limit=10)
-    # expires_at <= now, ORDER BY expires_at ASC.
-    assert [s.title for s in rows] == ["e1", "e2"]
-
-    limited = await repo.get_expired(limit=1)
-    assert [s.title for s in limited] == ["e1"]
 
 
 @pytest.mark.asyncio

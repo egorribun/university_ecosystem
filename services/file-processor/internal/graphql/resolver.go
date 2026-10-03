@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	gql "github.com/graph-gophers/graphql-go"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/university-ecosystem/file-processor/internal/jobcontract"
 	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	enumspb "go.temporal.io/api/enums/v1"
@@ -79,15 +80,23 @@ func (r *Resolver) File(args struct{ ID gql.ID }) *FileResolver {
 	}
 }
 
+func resizeOptions(input ProcessFileInput) map[string]interface{} {
+	options := make(map[string]interface{})
+	if input.Width != nil {
+		options["width"] = int(*input.Width)
+	}
+	if input.Height != nil {
+		options["height"] = int(*input.Height)
+	}
+	return options
+}
+
 // ProcessFile starts a file processing job.
 func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFileInput }) (*FileJobResolver, error) {
-	options := make(map[string]interface{})
-	if args.Input.Width != nil {
-		options["width"] = int(*args.Input.Width)
+	if _, supported := jobcontract.AllowedTypes[args.Input.Type]; !supported {
+		return nil, fmt.Errorf("unsupported file type: %q", args.Input.Type)
 	}
-	if args.Input.Height != nil {
-		options["height"] = int(*args.Input.Height)
-	}
+	options := resizeOptions(args.Input)
 
 	safeSourceKey, err := sanitizeKey(args.Input.SourceKey)
 	if err != nil {

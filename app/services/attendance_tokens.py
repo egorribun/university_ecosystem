@@ -59,22 +59,24 @@ def compute_secret_hmac(secret: str) -> str:
     return _b64encode(digest)
 
 
-def ensure_secret_material(attendance: Any) -> bool:
-    """Ensure an attendance row has valid secret material.
-
-    Returns ``True`` if the record was modified.
-    """
-
+def secret_material_updates(attendance: Any) -> dict[str, str]:
+    """Compute repairs without mutating an ORM row or immutable repository DTO."""
     secret = getattr(attendance, "qr_secret", None)
     hmac_value = getattr(attendance, "qr_hmac", None)
     if secret and hmac_value:
         expected = compute_secret_hmac(secret)
         if secrets.compare_digest(expected, hmac_value):
-            return False
+            return {}
     new_secret = secret or generate_secret()
-    attendance.qr_secret = new_secret
-    attendance.qr_hmac = compute_secret_hmac(new_secret)
-    return True
+    return {"qr_secret": new_secret, "qr_hmac": compute_secret_hmac(new_secret)}
+
+
+def ensure_secret_material(attendance: Any) -> bool:
+    """Repair a mutable attendance ORM row; DTO callers persist explicit updates."""
+    updates = secret_material_updates(attendance)
+    for field, value in updates.items():
+        setattr(attendance, field, value)
+    return bool(updates)
 
 
 @dataclass(slots=True)
@@ -210,5 +212,6 @@ __all__ = [
     "ensure_secret_material",
     "generate_secret",
     "issue_token",
+    "secret_material_updates",
     "verify_token",
 ]

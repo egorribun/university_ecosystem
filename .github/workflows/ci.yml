@@ -2530,7 +2530,8 @@ jobs:
         image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          # Passwordless auth is limited to this disposable job service.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: test_migration
         options: >-
           --health-cmd "pg_isready -U test"
@@ -2557,7 +2558,7 @@ jobs:
 
       - name: Run supported migration round-trip and verify boundary
         env:
-          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/test_migration
+          DATABASE_URL: postgresql+asyncpg://test@localhost:5433/test_migration
           ENVIRONMENT: test
           SECRET_KEY: test-secret-key-for-ci-migration-gate-only  # pragma: allowlist secret
           SAFE_DOWNGRADE_TARGET: ${{ steps.migration-policy.outputs.safe_target }}
@@ -2575,6 +2576,30 @@ jobs:
           uv run alembic upgrade head
 
           echo "=== Migration round-trip complete ==="
+
+      - name: Build backend image for password preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="local/migrate-passwords-ci:${GITHUB_SHA}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --file backend.Dockerfile \
+            --tag "$image_tag" \
+            --load \
+            .
+          image_id="$(docker image inspect --format '{{.Id}}' "$image_tag")"
+          if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "backend image did not produce a full immutable image ID" >&2
+            exit 1
+          fi
+          printf 'MIGPASS_BACKEND_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
+          printf 'backend_image_config_digest=%s\n' "$image_id" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify password preflight in immutable backend image
+        env:
+          DATABASE_URL: postgresql+asyncpg://test@127.0.0.1:5433/test_migration
+        run: uv run python scripts/quality/migrate_passwords_image_gate.py
 
   # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
   # Runs lightweight Python consumer contract tests (no Go/FFI needed).
@@ -2803,7 +2828,7 @@ jobs:
     # Phase 3 QA — ADR-023: Run PyO3 FFI tests under AddressSanitizer + LeakSanitizer.
     # Memory errors that cross the Rust/Python boundary are invisible to Python's GC;
     # ASan instruments every allocation so these classes of bugs fail loudly at CI time.
-    name: "Rust FFI — ASan / LSan"
+    name: "Rust FFI - ASan / LSan"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -2862,7 +2887,7 @@ jobs:
     # Phase V: Run PyO3 FFI tests under ThreadSanitizer.
     # Data races that cross the Rust/Python FFI boundary are extremely hard to debug;
     # TSan instruments every memory access and synchronization primitive to fail loudly.
-    name: "Rust FFI — TSan"
+    name: "Rust FFI - TSan"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -4941,7 +4966,9 @@ jobs:
           tar xzf /tmp/k6.tar.gz -C /tmp
           sudo mv "/tmp/k6-v${k6_version}-linux-amd64/k6" /usr/local/bin/
       - name: Validate k6 script syntax
-        run: k6 inspect tests/performance/ws_hub_10k_test.js
+        run: |
+          k6 inspect tests/performance/ws_hub_10k_test.js
+          k6 inspect tests/performance/ws_hub_mvp_load_test.js
 
   coverage-policy-gate:
     name: Coverage & Quality Policy Gate
@@ -5256,7 +5283,26 @@ jobs:
           test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 7
           test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 3
           test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/rust -name 'codecov.json' -type f | wc -l)" -eq 4
+          # Match the three application crates in the coverage contract and
+          # Rust producer upload. A count alone also accepts substituted paths.
+          rust_codecov_reports=(
+            artifacts/coverage/rust/rust-native/codecov.json
+            artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+            artifacts/coverage/rust/rust-crypto/codecov.json
+          )
+          for report in "${rust_codecov_reports[@]}"; do
+            if [[ ! -s "$report" ]]; then
+              echo "::error::Missing or empty required Rust Codecov report: $report"
+              exit 1
+            fi
+          done
+          expected_rust_codecov_reports="$(printf '%s\n' "${rust_codecov_reports[@]}" | LC_ALL=C sort)"
+          actual_rust_codecov_reports="$(find artifacts/coverage/rust -name 'codecov.json' -type f -print | LC_ALL=C sort)"
+          if [[ "$actual_rust_codecov_reports" != "$expected_rust_codecov_reports" ]]; then
+            echo "::error::Rust Codecov report inventory does not match the required components"
+            printf 'Expected reports:\n%s\nActual reports:\n%s\n' "$expected_rust_codecov_reports" "$actual_rust_codecov_reports"
+            exit 1
+          fi
           verify_producer() {
             local metadata="$1"
             local job="$2"
@@ -6054,6 +6100,15 @@ jobs:
             fi
           done
 
+          # Performance Gate depends directly on frontend tests. If those
+          # tests fail or are skipped, GitHub skips the dependent job too; that
+          # expected skip must not become a second, misleading CI failure.
+          # Cancellation and unrelated skips remain fail-closed.
+          performance_expected_result=success
+          if [[ "$FRONTEND_TESTS_RESULT" == "failure" || "$FRONTEND_TESTS_RESULT" == "skipped" ]]; then
+            performance_expected_result=skipped
+          fi
+
           # Mutation execution and aggregation are intentionally phase-gated on
           # the aggregate coverage contract. The Stryker preflight may overlap
           # coverage, but a failed prerequisite still blocks execution. In that
@@ -6091,6 +6146,8 @@ jobs:
             expected_result=success
             if [[ "$job" == "coverage-policy-gate" ]]; then
               expected_result="$coverage_expected_result"
+            elif [[ "$job" == "performance-gate" ]]; then
+              expected_result="$performance_expected_result"
             elif [[ "$job" == mutation-tests-* ]]; then
               expected_result="$mutation_expected_result"
             elif [[ "$job" == "chaos-tests" ]]; then

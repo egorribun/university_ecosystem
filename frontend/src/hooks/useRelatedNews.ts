@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
 import { type NewsItem } from "@/api/news"
 import { inferCategory, type NewsCategory } from "@/features/news/categories"
 
@@ -9,8 +10,10 @@ import { inferCategory, type NewsCategory } from "@/features/news/categories"
  */
 export function useRelatedNews(currentId: string, category: NewsCategory, limit = 3): NewsItem[] {
   const queryClient = useQueryClient()
+  const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
 
   return useMemo(() => {
+    if (!sessionIsCurrent) return []
     // Pull from all cached news list queries
     const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: NewsItem[] }> }>({
       queryKey: ["news", "list"],
@@ -46,5 +49,5 @@ export function useRelatedNews(currentId: string, category: NewsCategory, limit 
       .slice(0, limit - sameCategory.length)
 
     return [...sameCategory, ...remaining].slice(0, limit)
-  }, [queryClient, currentId, category, limit])
+  }, [queryClient, currentId, category, limit, sessionIsCurrent])
 }

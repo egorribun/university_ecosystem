@@ -7,7 +7,7 @@ package service
 //   - ProcessFile: nil WorkflowRun returned by Temporal client without error
 //     (lines 117-119 in server.go — the guard that wraps a nil-dereference that
 //     would otherwise panic when calling we.GetID()).
-//   - validateProcessFileRequest: all four allowed file types accepted.
+//   - validateProcessFileRequest: implemented file types accepted.
 //   - validateProcessFileRequest: exactly at the options-count limit (accepted).
 //   - ProcessFile: options map is correctly forwarded to the workflow job.
 
@@ -58,13 +58,9 @@ func TestProcessFile_NilWorkflowRunIsRejected(t *testing.T) {
 }
 
 func TestValidateProcessFileRequest_AllAllowedTypesAreAccepted(t *testing.T) {
-	// Ensure every entry of allowedFileTypes passes validation without errors.
-	// This guards against accidental removals from the allowlist.
+	// Only implemented operations may pass the ingress validation.
 	cases := []string{
 		"image_resize",
-		"image_compress",
-		"pdf_preview",
-		"video_transcode",
 	}
 	for _, fileType := range cases {
 		t.Run(fileType, func(t *testing.T) {
@@ -153,9 +149,9 @@ func TestProcessFile_WorkflowIDIsPrefixedWithJobID(t *testing.T) {
 	s := &Server{TemporalClient: mc}
 	req := &pb.ProcessFileRequest{
 		Id:        "my-unique-job",
-		Type:      "pdf_preview",
-		SourceKey: "docs/report.pdf",
-		DestKey:   "preview/report.png",
+		Type:      "image_resize",
+		SourceKey: "images/report.png",
+		DestKey:   "resized/report.png",
 	}
 
 	_, err := s.ProcessFile(context.Background(), req)
@@ -170,7 +166,7 @@ func TestProcessFile_UnsupportedTypeReturnsInvalidArgument(t *testing.T) {
 	s := &Server{TemporalClient: nil}
 	req := &pb.ProcessFileRequest{
 		Id:        "job-bad-type",
-		Type:      "audio_normalize", // not in allowedFileTypes
+		Type:      "audio_normalize", // not implemented
 		SourceKey: "src/audio.mp3",
 		DestKey:   "dst/audio.aac",
 	}

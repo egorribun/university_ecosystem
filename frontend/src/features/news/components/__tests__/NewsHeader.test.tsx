@@ -7,8 +7,10 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
+import { useState } from "react"
 
 import { NewsHeader } from "@/features/news/components/NewsHeader"
+import type { NewsCategory } from "@/features/news/categories"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 type Props = Parameters<typeof NewsHeader>[0]
@@ -89,6 +91,103 @@ describe("NewsHeader", () => {
     allButton.blur()
     fireEvent.keyDown(toolbar, { key: "ArrowRight" })
     expect(document.activeElement).not.toBe(categoryButtons[1])
+  })
+
+  it("centers a newly active category inside the horizontal toolbar without moving page scroll", async () => {
+    const toolbarScrollTo = vi.fn()
+    const pageScrollTo = vi.fn()
+    const originalElementScrollTo = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollTo"
+    )
+    const originalWindowScrollTo = Object.getOwnPropertyDescriptor(window, "scrollTo")
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: toolbarScrollTo,
+    })
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: pageScrollTo,
+    })
+
+    const makeRect = (left: number, width: number) =>
+      ({
+        x: left,
+        y: 0,
+        left,
+        top: 0,
+        right: left + width,
+        bottom: 44,
+        width,
+        height: 44,
+        toJSON: () => ({}),
+      }) as DOMRect
+
+    const StatefulNewsHeader = () => {
+      const [activeCategory, setActiveCategory] = useState<NewsCategory | "all" | "saved">("all")
+      return (
+        <NewsHeader
+          onAddClick={vi.fn()}
+          isAdmin={false}
+          searchQuery=""
+          onSearchChange={vi.fn()}
+          activeCategory={activeCategory}
+          onCategoryChange={setActiveCategory}
+          sortMode="newest"
+          onSortChange={vi.fn()}
+        />
+      )
+    }
+
+    let view: Awaited<ReturnType<typeof renderWithRouter>> | undefined
+    try {
+      view = await renderWithRouter({ ui: StatefulNewsHeader, authProvider: false })
+      const toolbar = screen.getByRole("toolbar")
+      Object.defineProperties(toolbar, {
+        scrollWidth: { configurable: true, value: 600 },
+        clientWidth: { configurable: true, value: 300 },
+        scrollLeft: { configurable: true, writable: true, value: 20 },
+      })
+      toolbar.getBoundingClientRect = () => makeRect(0, 300)
+      const scienceButton = screen.getByRole("button", { name: /science/i })
+      scienceButton.getBoundingClientRect = () => makeRect(240, 80)
+
+      pageScrollTo.mockClear()
+      await userEvent.click(scienceButton)
+
+      await waitFor(() =>
+        expect(toolbarScrollTo).toHaveBeenCalledWith({
+          left: 150,
+          top: 0,
+          behavior: "instant",
+        })
+      )
+      expect(screen.getByRole("button", { name: /science/i })).toHaveAttribute(
+        "aria-current",
+        "page"
+      )
+      expect(pageScrollTo).not.toHaveBeenCalled()
+
+      const allButton = screen.getByRole("button", { name: /^all$/i })
+      allButton.getBoundingClientRect = () => makeRect(110, 80)
+      toolbarScrollTo.mockClear()
+      await userEvent.click(allButton)
+      expect(allButton).toHaveAttribute("aria-current", "page")
+      expect(toolbarScrollTo).not.toHaveBeenCalled()
+      expect(pageScrollTo).not.toHaveBeenCalled()
+    } finally {
+      view?.unmount()
+      if (originalElementScrollTo) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", originalElementScrollTo)
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollTo")
+      }
+      if (originalWindowScrollTo) {
+        Object.defineProperty(window, "scrollTo", originalWindowScrollTo)
+      } else {
+        Reflect.deleteProperty(window, "scrollTo")
+      }
+    }
   })
 
   it("keeps the sticky category bar below a changing mobile visual viewport offset", async () => {

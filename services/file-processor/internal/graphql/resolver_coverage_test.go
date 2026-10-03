@@ -115,7 +115,7 @@ func TestProcessFile_SuccessThreadsOptionsAndPrefix(t *testing.T) {
 	r := &Resolver{TemporalClient: fake}
 
 	input := ProcessFileInput{
-		Type:      "image",
+		Type:      "image_resize",
 		SourceKey: "src/a.png",
 		DestKey:   "dst/a.png",
 		Width:     int32Ptr(640),
@@ -135,10 +135,38 @@ func TestProcessFile_SuccessThreadsOptionsAndPrefix(t *testing.T) {
 	assert.Equal(t, "dst/a.png", capturedJob.DestKey)
 }
 
+func TestProcessFilePreservesOptionalResizeDimensions(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		width, height *int32
+		want          map[string]interface{}
+	}{
+		{name: "omitted", want: map[string]interface{}{}},
+		{name: "width only", width: int32Ptr(640), want: map[string]interface{}{"width": 640}},
+		{name: "height only", height: int32Ptr(480), want: map[string]interface{}{"height": 480}},
+		{name: "explicit zero", width: int32Ptr(0), height: int32Ptr(0), want: map[string]interface{}{"width": 0, "height": 0}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var job workflow.ProcessJob
+			resolver := &Resolver{TemporalClient: &fakeTemporalClient{
+				executeFunc: func(_ context.Context, _ client.StartWorkflowOptions, _ interface{}, args ...interface{}) (client.WorkflowRun, error) {
+					job = args[0].(workflow.ProcessJob)
+					return &fakeWorkflowRun{id: "resize-options"}, nil
+				},
+			}}
+			_, err := resolver.ProcessFile(context.Background(), struct{ Input ProcessFileInput }{
+				Input: ProcessFileInput{Type: "image_resize", SourceKey: "src/a.png", DestKey: "dst/a.png", Width: test.width, Height: test.height},
+			})
+			require.NoError(t, err)
+			require.Equal(t, test.want, job.Options)
+		})
+	}
+}
+
 func TestProcessFile_InvalidSourceKeyRejected(t *testing.T) {
 	r := &Resolver{TemporalClient: &fakeTemporalClient{}}
 	_, err := r.ProcessFile(context.Background(), struct{ Input ProcessFileInput }{
-		Input: ProcessFileInput{Type: "image", SourceKey: "../etc/passwd", DestKey: "dst/ok.png"},
+		Input: ProcessFileInput{Type: "image_resize", SourceKey: "../etc/passwd", DestKey: "dst/ok.png"},
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid source key")
@@ -147,7 +175,7 @@ func TestProcessFile_InvalidSourceKeyRejected(t *testing.T) {
 func TestProcessFile_InvalidDestKeyRejected(t *testing.T) {
 	r := &Resolver{TemporalClient: &fakeTemporalClient{}}
 	_, err := r.ProcessFile(context.Background(), struct{ Input ProcessFileInput }{
-		Input: ProcessFileInput{Type: "image", SourceKey: "src/ok.png", DestKey: "../../boom"},
+		Input: ProcessFileInput{Type: "image_resize", SourceKey: "src/ok.png", DestKey: "../../boom"},
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid destination key")
@@ -161,7 +189,7 @@ func TestProcessFile_ExecuteWorkflowErrorPropagates(t *testing.T) {
 	}
 	r := &Resolver{TemporalClient: fake}
 	_, err := r.ProcessFile(context.Background(), struct{ Input ProcessFileInput }{
-		Input: ProcessFileInput{Type: "image", SourceKey: "src/ok.png", DestKey: "dst/ok.png"},
+		Input: ProcessFileInput{Type: "image_resize", SourceKey: "src/ok.png", DestKey: "dst/ok.png"},
 	})
 	require.Error(t, err)
 }

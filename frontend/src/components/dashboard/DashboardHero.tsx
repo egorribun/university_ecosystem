@@ -6,6 +6,7 @@ import WeatherWidget from "@/components/ui/WeatherWidget"
 import { Sparkles } from "lucide-react"
 import { useGreeting } from "@/hooks/useGreeting"
 import { nowParity } from "@/utils/scheduleUtils"
+import { Skeleton } from "@/components/ui/Skeleton"
 
 /** Wave 49: Calculate ISO week number */
 function getISOWeekNumber(date: Date): number {
@@ -21,25 +22,34 @@ interface DashboardHeroProps {
   hh: string
   mm: string
   dateStr: string
+  isClockReady?: boolean
   isNarrow: boolean
   prefersReducedMotion: boolean
   /** Wave 54: Stories slot — rendered inside hero flex-row at ≥1220px */
   storiesSlot?: React.ReactNode
 }
 
-export function DashboardHero({ user, time, hh, mm, dateStr, storiesSlot }: DashboardHeroProps) {
+export function DashboardHero({
+  user,
+  time,
+  hh,
+  mm,
+  dateStr,
+  isClockReady = true,
+  storiesSlot,
+}: DashboardHeroProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const { greeting, greetingKey, specialKey, emoji } = useGreeting(time)
 
   // Wave 49: Academic week number + parity (replaces day progress ring)
   const weekNumber = useMemo(() => getISOWeekNumber(time), [time])
-  const parity = nowParity()
+  const parity = isClockReady ? nowParity(time) : null
 
   return (
     <section className="relative flex w-full flex-col px-4 pb-3 pt-5 text-text-primary sm:px-6 md:px-10 lg:px-14 min-h-[260px]">
       <div className="relative z-deep">
         <header
-          className={`glass-noise relative rounded-xl border border-(--dash-border) px-8 py-8 md:px-10 md:py-9 greeting-${greetingKey}`}
+          className={`glass-noise relative rounded-xl border border-(--dash-border) px-8 py-8 md:px-10 md:py-9 greeting-${isClockReady ? greetingKey : "night"}`}
           style={{
             background: "var(--hero-card-bg)",
             boxShadow:
@@ -58,20 +68,42 @@ export function DashboardHero({ user, time, hh, mm, dateStr, storiesSlot }: Dash
               <h1
                 className="font-display font-extrabold leading-[1.15] tracking-tight min-h-[2lh]"
                 style={{ fontSize: "clamp(1.75rem, 3vw, 2.75rem)" }}
+                aria-busy={!isClockReady}
+                aria-label={!isClockReady ? t("common:aria.loadingGreeting") : undefined}
               >
-                {specialKey && (
-                  <span className="mr-2 inline-flex text-amber-400">
-                    <Sparkles className="h-8 w-8" aria-hidden="true" />
-                  </span>
-                )}
-                {greeting}
-                {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
-                {emoji && (
-                  <span className="ml-2 inline-block" aria-hidden="true">
-                    {emoji}
-                  </span>
+                {isClockReady ? (
+                  <>
+                    {specialKey && (
+                      <span className="mr-2 inline-flex text-amber-400">
+                        <Sparkles className="h-8 w-8" aria-hidden="true" />
+                      </span>
+                    )}
+                    {greeting}
+                    {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
+                    {emoji && (
+                      <span className="ml-2 inline-block" aria-hidden="true">
+                        {emoji}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="skeleton inline-block rounded-(--radius-md) bg-muted animate-pulse align-middle"
+                    style={{ width: "14rem", height: "2.5rem" }}
+                  />
                 )}
               </h1>
+              {!isClockReady && (
+                <span
+                  className="sr-only"
+                  role="status"
+                  aria-live="polite"
+                  aria-label={t("common:aria.loadingGreeting")}
+                >
+                  {t("common:aria.loadingGreeting")}
+                </span>
+              )}
               <div
                 className="flex min-h-[40px] flex-wrap items-center gap-x-4 gap-y-2"
                 role="status"
@@ -80,25 +112,37 @@ export function DashboardHero({ user, time, hh, mm, dateStr, storiesSlot }: Dash
                 <Badge
                   size="sm"
                   className="shrink-0 border-(--dash-border) bg-white/(--opacity-faint) font-mono text-text-primary"
-                  aria-label={t("common:ariaCurrentTime")}
+                  aria-label={
+                    isClockReady ? t("common:ariaCurrentTime") : t("common:aria.loadingTime")
+                  }
                 >
                   <span className="flex items-baseline gap-1.5 font-mono text-xl leading-none tabular-nums">
-                    <span>{hh}</span>
+                    <span>{isClockReady ? hh : "--"}</span>
                     <span aria-hidden="true" className="inline-block opacity-soft">
                       :
                     </span>
-                    <span>{mm}</span>
+                    <span>{isClockReady ? mm : "--"}</span>
                   </span>
                 </Badge>
-                <span className="shrink-0 text-base font-medium opacity-heavy">
-                  {t("dashboard:academicWeek", { week: weekNumber })}
-                  {" · "}
-                  <span className="text-brand">
-                    {parity === "even" ? t("dashboard:parityEven") : t("dashboard:parityOdd")}
+                {isClockReady ? (
+                  <span className="shrink-0 text-base font-medium opacity-heavy">
+                    {t("dashboard:academicWeek", { week: weekNumber })}
+                    {" · "}
+                    <span className="text-brand">
+                      {parity === "even" ? t("dashboard:parityEven") : t("dashboard:parityOdd")}
+                    </span>
                   </span>
-                </span>
+                ) : (
+                  <Skeleton width="5rem" height="1rem" />
+                )}
                 <WeatherWidget className="shrink-0" />
-                <span className="text-base font-medium opacity-heavy">{dateStr}</span>
+                <span className="text-base font-medium opacity-heavy">
+                  {isClockReady ? (
+                    dateStr
+                  ) : (
+                    <Skeleton width="8rem" height="1rem" ariaLabel={t("common:aria.loadingDate")} />
+                  )}
+                </span>
               </div>
             </div>
 

@@ -29,14 +29,14 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-func TestFetchJWKSPublicKey_EdgeCases(t *testing.T) {
+func TestFetchJWKSKeySet_EdgeCases(t *testing.T) {
 	t.Run("nil response", func(t *testing.T) {
 		client := &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				return nil, nil
 			}),
 		}
-		_, err := fetchJWKSPublicKey(context.Background(), client, "http://localhost")
+		_, err := fetchJWKSKeySet(context.Background(), client, "http://localhost")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "returned a nil *Response")
 	})
@@ -50,7 +50,7 @@ func TestFetchJWKSPublicKey_EdgeCases(t *testing.T) {
 				}, nil
 			}),
 		}
-		_, err := fetchJWKSPublicKey(context.Background(), client, "http://localhost")
+		_, err := fetchJWKSKeySet(context.Background(), client, "http://localhost")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read body")
 	})
@@ -62,7 +62,7 @@ func TestFetchJWKSPublicKey_EdgeCases(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchJWKSPublicKey(context.Background(), http.DefaultClient, server.URL)
+		_, err := fetchJWKSKeySet(context.Background(), http.DefaultClient, server.URL)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no RSA key found")
 	})
@@ -74,7 +74,7 @@ func TestFetchJWKSPublicKey_EdgeCases(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchJWKSPublicKey(context.Background(), http.DefaultClient, server.URL)
+		_, err := fetchJWKSKeySet(context.Background(), http.DefaultClient, server.URL)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no RSA key found")
 	})
@@ -87,7 +87,7 @@ func TestShouldRefreshProbabilistic_Expired(t *testing.T) {
 }
 
 func TestVerifySession_NilRedis(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	m.redis = nil
 
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "jti-123", true)

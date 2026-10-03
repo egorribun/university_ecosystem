@@ -45,3 +45,4 @@ This directory contains architectural decision records (ADRs) for the University
 43. [ADR-043: Retire the Python SPIFFE and mTLS Subsystem](ADR-043-retire-python-spiffe-mtls.md)
 44. [ADR-044: Retire the Unused Native Sanitizer](ADR-044-retire-unused-native-sanitizer.md)
 45. [ADR-045: Mutation Hang Diagnostics Without a Kill Watchdog](ADR-045-mutation-hang-diagnostics-without-a-kill-watchdog.md)
+46. [ADR-046: Codebase Consolidation After the 2026-10 Architecture Audit](ADR-046-codebase-consolidation-audit.md)

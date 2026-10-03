@@ -14,7 +14,8 @@ def mock_db():
 
 @pytest.fixture
 def vector_service(mock_db):
-    service = VectorService(mock_db)
+    with patch.object(settings, "embedding_api_base", "https://93.184.216.34"):
+        service = VectorService(mock_db)
     return service
 
 
@@ -180,7 +181,7 @@ async def test_search_similar_with_scores_no_attributes(vector_service, mock_db)
 
 @pytest.mark.asyncio
 async def test_vector_service_context_manager(mock_db):
-    with patch("app.services.vector_service.validate_url_not_internal"):
+    with patch("app.services.vector_service.validate_url_not_internal_async"):
         async with VectorService(mock_db) as service:
             service._client.aclose = AsyncMock()
             assert service.db is mock_db
@@ -256,12 +257,33 @@ async def test_search_similar_with_scores_model_attributes(vector_service, mock_
         assert mock_stmt.where.call_count >= 2
 
 
-def test_vector_service_ssrf_validation(mock_db):
-    """Test that VectorService initialization validates settings.embedding_api_base for SSRF."""
-    with patch(
-        "app.services.vector_service.validate_url_not_internal",
-        side_effect=ValueError("SSRF Blocked"),
-    ) as mock_validate:
-        with pytest.raises(ValueError, match="SSRF Blocked"):
-            VectorService(mock_db)
-        mock_validate.assert_called_once_with(settings.embedding_api_base)
+@pytest.mark.asyncio
+async def test_vector_service_ssrf_validation(mock_db):
+    """Validate at the active request boundary, before any provider POST."""
+    with (
+        patch.object(settings, "semantic_search_enabled", True),
+        patch.object(settings, "embedding_api_key", "fake-key"),
+        patch.object(settings, "embedding_api_base", "http://127.0.0.1"),
+    ):
+        async with VectorService(mock_db) as service:
+            service._client.post = AsyncMock()
+            with pytest.raises(ValueError, match="SSRF"):
+                await service.get_embedding("private")
+            service._client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled,key", [(False, "fake-key"), (True, None)])
+async def test_unused_embedding_provider_never_resolves_dns(mock_db, enabled, key):
+    with (
+        patch.object(settings, "semantic_search_enabled", enabled),
+        patch.object(settings, "embedding_api_key", key),
+        patch("socket.getaddrinfo", side_effect=AssertionError("Unexpected DNS")),
+    ):
+        async with VectorService(mock_db) as service:
+            service._client.post = AsyncMock()
+            assert (
+                await service.get_embedding("unused")
+                == [0.0] * settings.embedding_dimensions
+            )
+            service._client.post.assert_not_awaited()

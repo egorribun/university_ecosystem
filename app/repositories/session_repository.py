@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, func, select, update
 
 from app.core.protocols import AsyncDatabaseSession
 from app.models import ActiveSession
@@ -44,36 +44,6 @@ class SessionRepository(
         row = result.scalars().first()
         return self._to_dto(row) if row else None
 
-    async def get_active_for_user(
-        self, user_id: uuid.UUID | str | int, *, skip: int = 0, limit: int = 50
-    ) -> list[ActiveSessionDTO]:
-        """Get active sessions for a user, ordered by last_seen_at descending."""
-        result = await self.db.execute(
-            select(ActiveSession)
-            .where(
-                and_(
-                    ActiveSession.user_id == user_id,
-                    ActiveSession.revoked_at.is_(None),
-                )
-            )
-            .order_by(ActiveSession.last_seen_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        return [self._to_dto(row) for row in result.scalars().all()]
-
-    async def count_active_for_user(self, user_id: uuid.UUID | str | int) -> int:
-        """Count active sessions for a user."""
-        result = await self.db.execute(
-            select(func.count(ActiveSession.id)).where(
-                and_(
-                    ActiveSession.user_id == user_id,
-                    ActiveSession.revoked_at.is_(None),
-                )
-            )
-        )
-        return result.scalar() or 0
-
     async def revoke(
         self, session_id: uuid.UUID | str | int, user_id: uuid.UUID | str | int
     ) -> bool:
@@ -85,22 +55,6 @@ class SessionRepository(
                 and_(
                     ActiveSession.id == session_id,
                     ActiveSession.user_id == user_id,
-                    ActiveSession.revoked_at.is_(None),
-                )
-            )
-            .values(revoked_at=now)
-        )
-        await self.db.flush()
-        return (int(getattr(result, "rowcount", 0) or 0)) > 0
-
-    async def revoke_by_jti(self, jti: str) -> bool:
-        """Revoke a session by JTI."""
-        now = datetime.now(UTC)
-        result = await self.db.execute(
-            update(ActiveSession)
-            .where(
-                and_(
-                    ActiveSession.jti == jti,
                     ActiveSession.revoked_at.is_(None),
                 )
             )
@@ -140,39 +94,6 @@ class SessionRepository(
                 )
             )
             .values(revoked_at=now)
-        )
-        await self.db.flush()
-        return int(getattr(result, "rowcount", 0) or 0)
-
-    async def cleanup_expired(self, max_age_days: int = 30) -> int:
-        """Delete truly dormant sessions older than max_age_days.
-
-        A session is considered dormant when BOTH:
-         - created_at is older than the cutoff, AND
-         - last_seen_at is also older than the cutoff (or never set).
-
-        This preserves active long-lived ("trusted device") sessions that
-        were created more than 30 days ago but are still being used today.
-        RZ-TD-5: previous implementation deleted by created_at alone, silently
-        revoking active sessions and causing unexplained 401s for users.
-        """
-        from datetime import timedelta
-
-        cutoff = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        cutoff = cutoff - timedelta(days=max_age_days)
-
-        result = await self.db.execute(
-            delete(ActiveSession).where(
-                and_(
-                    ActiveSession.created_at < cutoff,
-                    # Only delete sessions that appear dormant (never seen, or
-                    # last seen before the cutoff). Active sessions are preserved.
-                    or_(
-                        ActiveSession.last_seen_at.is_(None),
-                        ActiveSession.last_seen_at < cutoff,
-                    ),
-                )
-            )
         )
         await self.db.flush()
         return int(getattr(result, "rowcount", 0) or 0)

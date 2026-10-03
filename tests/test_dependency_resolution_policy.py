@@ -97,6 +97,7 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
         "cryptography": "2026-08-01T00:00:00Z",
         "h2": "2026-08-04T00:00:00Z",
         "mcp": "2026-08-04T00:00:00Z",
+        "pyjwt": "2026-09-29T00:00:00Z",
     }
 
     renovate = _read_renovate()

@@ -2,8 +2,8 @@ package main
 
 // Coverage tests (testing session 9) for the pure auth helpers in main.go:
 // parseRSAPublicKey, jwtKeyFunc (FIX-ALG-01 algorithm-confusion guards),
-// httpJWTMiddleware (incl. the FIX-ALG-02 downgrade pre-check), authFunc
-// (gRPC metadata path) and the setupGRPCServer smoke.
+// httpJWTMiddlewareWithOptions (incl. the FIX-ALG-02 downgrade pre-check),
+// authFuncWithOptions (gRPC metadata path) and the setupGRPCServer smoke.
 //
 // ⛔ setupGraphQLServer is deliberately NOT called (os.ReadFile of
 // schema.graphql relative to cwd + os.Exit(1) on failure); connectTemporal /
@@ -175,7 +175,7 @@ func TestJWTKeyFunc_AlgorithmMatrix(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// httpJWTMiddleware
+// httpJWTMiddlewareWithOptions
 // ---------------------------------------------------------------------------
 
 func runMiddleware(t *testing.T, secret string, rsaPub *rsa.PublicKey, authHeader string) (*httptest.ResponseRecorder, *string) {
@@ -186,7 +186,7 @@ func runMiddleware(t *testing.T, secret string, rsaPub *rsa.PublicKey, authHeade
 			capturedSub = &sub
 		}
 	})
-	handler := httpJWTMiddleware(secret, rsaPub, testLogger(), next)
+	handler := httpJWTMiddlewareWithOptions(secret, rsaPub, testLogger(), jwtAuthOptions{RequireRS256: rsaPub != nil}, next)
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", nil)
 	if authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
@@ -271,7 +271,7 @@ func TestHTTPJWTMiddleware_TenantContextUsesSignedClaimOnly(t *testing.T) {
 			next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				tenant, _ = r.Context().Value(tenantIDKey).(string)
 			})
-			handler := httpJWTMiddleware("hmac-secret", nil, testLogger(), next)
+			handler := httpJWTMiddlewareWithOptions("hmac-secret", nil, testLogger(), jwtAuthOptions{}, next)
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/graphql", nil)
 			if tc.header != "" {
 				req.Header.Set("X-Tenant-ID", tc.header)
@@ -296,7 +296,7 @@ func TestHTTPJWTMiddleware_TenantContextUsesSignedClaimOnly(t *testing.T) {
 		next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			tenant, _ = r.Context().Value(tenantIDKey).(string)
 		})
-		handler := httpJWTMiddleware("hmac-secret", nil, testLogger(), next)
+		handler := httpJWTMiddlewareWithOptions("hmac-secret", nil, testLogger(), jwtAuthOptions{}, next)
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/graphql", nil)
 		req.Header.Set("Authorization", "Bearer "+claimlessToken)
 		req.Header.Set("X-Tenant-ID", "forged-header-tenant")
@@ -309,7 +309,7 @@ func TestHTTPJWTMiddleware_TenantContextUsesSignedClaimOnly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// authFunc — gRPC metadata path
+// authFuncWithOptions — gRPC metadata path
 // ---------------------------------------------------------------------------
 
 func metadataCtx(token string) context.Context {
@@ -318,7 +318,7 @@ func metadataCtx(token string) context.Context {
 }
 
 func TestAuthFunc_ValidTokenPutsSubInContext(t *testing.T) {
-	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), validAuthClaims("grpc-user", "grpc-session"))
 
 	ctx, err := fn(metadataCtx(token))
@@ -328,7 +328,7 @@ func TestAuthFunc_ValidTokenPutsSubInContext(t *testing.T) {
 
 // As above, this exercises verifier behavior, not current token minting.
 func TestAuthFunc_TenantContextUsesSignedClaimOnly(t *testing.T) {
-	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{
 		"sub":       "grpc-tenant-user",
 		"tenant_id": "claim-tenant",
@@ -371,7 +371,7 @@ func TestAuthFunc_TenantContextUsesSignedClaimOnly(t *testing.T) {
 }
 
 func TestAuthFunc_InvalidTokenUnauthenticated(t *testing.T) {
-	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("other-secret"), jwt.MapClaims{"sub": "x"})
 
 	_, err := fn(metadataCtx(token))
@@ -380,7 +380,7 @@ func TestAuthFunc_InvalidTokenUnauthenticated(t *testing.T) {
 }
 
 func TestAuthFunc_MissingSubRejected(t *testing.T) {
-	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{"role": "nobody"})
 
 	_, err := fn(metadataCtx(token))
@@ -395,13 +395,13 @@ func TestAuthFunc_NonMapClaimsAreRejected(t *testing.T) {
 		return &jwt.Token{Claims: &jwt.RegisteredClaims{}, Valid: true}, nil
 	}
 
-	_, err := authFunc("test-secret", nil, testLogger())(metadataCtx("synthetic"))
+	_, err := authFuncWithOptions("test-secret", nil, testLogger(), jwtAuthOptions{})(metadataCtx("synthetic"))
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
 func TestAuthFunc_MissingMetadataErrors(t *testing.T) {
-	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
 	_, err := fn(context.Background())
 	require.Error(t, err)
 }

@@ -131,12 +131,6 @@ const ReadSchema = v.object({
   read_at: v.nullable(v.string()),
 })
 
-const OnlineSchema = v.object({
-  type: v.literal("online"),
-  user_id: UuidString,
-  status: v.boolean(),
-})
-
 // Legacy backend admin presence response.  Keep it in the current catalog so
 // parseWsMessage does not drop a valid frame emitted by MessageDispatcher.
 const OnlineListSchema = v.object({
@@ -201,7 +195,6 @@ export const WsServerMessageSchema = v.variant("type", [
   NewMessageSchema,
   TypingSchema,
   ReadSchema,
-  OnlineSchema,
   OnlineListSchema,
   PresenceSchema,
   MessageEditedSchema,

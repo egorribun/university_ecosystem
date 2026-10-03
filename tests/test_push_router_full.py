@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import AsyncClient
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
 from app.models import PushSubscription, UserPushTopic
+from app.models.users import UserPreferences
+from app.routers import notifications as notifications_router
 from app.services.webpush import WebPushResult
 
 # ---------------------------------------------------------------------------
@@ -92,6 +95,42 @@ class TestSubscribe:
         assert "id" in data
 
     @pytest.mark.asyncio
+    async def test_subscription_logs_do_not_expose_endpoint_token(
+        self,
+        async_client: AsyncClient,
+        user_factory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        hashed = await get_password_hash(_TEST_PASSWORD)
+        user = await user_factory(hashed_password=hashed, is_active=True)
+        headers = await _login(async_client, user.email)
+        endpoint_token = "subscription-" + "marker-" + uuid.uuid4().hex
+        endpoint = f"https://push.example.com/{endpoint_token}"
+        mock_logger = MagicMock()
+        monkeypatch.setattr(notifications_router, "logger", mock_logger)
+
+        async def allow_public_endpoint(_endpoint: str) -> None:
+            return None
+
+        monkeypatch.setattr(
+            notifications_router, "validate_public_https_url", lambda _url: None
+        )
+        monkeypatch.setattr(
+            notifications_router,
+            "_validate_public_endpoint_dns",
+            allow_public_endpoint,
+        )
+
+        response = await async_client.post(
+            "/push/subscribe",
+            json=_sub_payload(endpoint=endpoint),
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        assert "subscription-marker-" not in str(mock_logger.mock_calls)
+
+    @pytest.mark.asyncio
     async def test_update_existing_subscription(
         self,
         async_client: AsyncClient,
@@ -134,7 +173,7 @@ class TestSubscribe:
         }
         resp = await async_client.post("/push/subscribe", json=payload, headers=headers)
         assert resp.status_code == 400
-        assert resp.json()["detail"]["error"] == "invalid_subscription"
+        assert resp.json()["code"] == "invalid_subscription"
 
     @pytest.mark.asyncio
     async def test_private_endpoint_is_rejected_before_persistence(
@@ -150,7 +189,7 @@ class TestSubscribe:
             headers=headers,
         )
         assert resp.status_code == 400
-        assert resp.json()["detail"]["error"] == "invalid_subscription"
+        assert resp.json()["code"] == "invalid_subscription"
 
     @pytest.mark.asyncio
     async def test_validation_empty_keys(
@@ -166,7 +205,7 @@ class TestSubscribe:
         }
         resp = await async_client.post("/push/subscribe", json=payload, headers=headers)
         assert resp.status_code == 400
-        fields = resp.json()["detail"]["fields"]
+        fields = resp.json()["fields"]
         assert len(fields) == 2
 
     @pytest.mark.asyncio
@@ -262,7 +301,7 @@ class TestUpdateTopics:
             headers=headers,
         )
         assert resp.status_code == 404
-        assert resp.json()["detail"]["error"] == "subscription_not_found"
+        assert resp.json()["code"] == "subscription_not_found"
 
     @pytest.mark.asyncio
     async def test_update_topics_empty_endpoint(
@@ -452,6 +491,60 @@ class TestSendTest:
         )
         assert resp.status_code == 200
         assert resp.json()["sent"] == 1
+
+    @pytest.mark.asyncio
+    async def test_target_quiet_hours_are_loaded_for_push_test_delivery(
+        self,
+        async_client: AsyncClient,
+        user_factory,
+        push_subscription_factory,
+        db_session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        hashed = await get_password_hash(_TEST_PASSWORD)
+        admin = await user_factory(hashed_password=hashed, is_active=True, role="admin")
+        target = await user_factory(hashed_password=hashed, is_active=True)
+        target.preferences = UserPreferences(user_id=target.id, dnd_enabled=True)
+        db_session.add(target.preferences)
+        await push_subscription_factory(user=target)
+        await db_session.commit()
+        target_id = target.id
+        db_session.expunge_all()
+        captured_payloads: list[dict[str, object]] = []
+
+        async def capture_delivery(_subscription, payload):
+            captured_payloads.append(dict(payload))
+            return WebPushResult(
+                subscription_id=uuid.uuid4(),
+                endpoint="https://push.example.com/synthetic-test",
+                user_id=target_id,
+                status="sent",
+            )
+
+        async def skip_result_processing(_results) -> None:
+            return None
+
+        monkeypatch.setattr(
+            "app.services.push_service._deliver_to_subscription", capture_delivery
+        )
+        monkeypatch.setattr(
+            "app.services.webpush.process_push_results", skip_result_processing
+        )
+
+        headers = await _login(async_client, admin.email)
+        response = await async_client.post(
+            "/push/test",
+            json={"title": "Quiet hours", "topic": "system", "user_id": str(target_id)},
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["sent"] == 1
+        assert len(captured_payloads) == 1
+        assert captured_payloads[0]["silent"] is True
+        data = captured_payloads[0]["data"]
+        assert isinstance(data, dict)
+        assert data["dnd_suppressed"] is True
 
     @pytest.mark.asyncio
     async def test_target_user_not_found(

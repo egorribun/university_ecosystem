@@ -300,6 +300,18 @@ def _assert_contract_on_engine(sync_url: str, engine: Engine) -> None:
             == "a" * 64
         )
 
+    # Keep the migration-contract assertions above pinned to the historical
+    # retirement revision, then bring the owned database to the current ORM
+    # schema before the concurrency scenario loads User with every mapped
+    # column. New additive migrations may extend User after the revision under
+    # test (for example, the private demo-seed ownership marker).
+    _upgrade(sync_url, "head")
+    with engine.connect() as connection:
+        user_columns = {
+            column["name"] for column in inspect(connection).get_columns("users")
+        }
+        assert "demo_seed_key" in user_columns
+
 
 @pytest.mark.asyncio
 async def test_postgres_migration_and_two_connection_security_races(
@@ -319,9 +331,13 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
     service = _service()
 
     async with sessions() as setup:
+        # Retirement rotates the account epoch; model a fresh authenticated login.
+        user = await setup.get(User, USER_ID)
+        assert user is not None
         issued = await service.issue(
             setup,
             user_id=USER_ID,
+            expected_mfa_epoch=user.mfa_epoch,
             flow="login",
             session_identifier=SESSION_ID,
             client_fingerprint=FINGERPRINT,
@@ -354,9 +370,12 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
     assert sum(await asyncio.gather(verify_email(), verify_email())) == 1
 
     async with sessions() as setup:
+        user = await setup.get(User, USER_ID)
+        assert user is not None
         verify_resend = await service.issue(
             setup,
             user_id=USER_ID,
+            expected_mfa_epoch=user.mfa_epoch,
             flow="login",
             session_identifier=f"{SESSION_ID}-verify-resend",
             client_fingerprint=FINGERPRINT,

@@ -292,6 +292,25 @@ coverage exclusion.
 - Fresh current-SHA coverage, mutation, schema-drift and security evidence is
   required before a phase is accepted.
 
+## Deployed-Catalog Preflight Command
+
+Run the read-only preflight against the target PostgreSQL database before and
+after each DDL phase. Set `DATABASE_URL` through the approved secret
+environment, then run:
+
+```powershell
+uv run --locked python scripts/be02_catalog_preflight.py --phase 1
+uv run --locked python scripts/be02_catalog_preflight.py --phase 3
+uv run --locked python scripts/be02_catalog_preflight.py --phase 4
+```
+
+Phase two emits no DDL and is not a selectable preflight phase. Phase four is
+the default for compatibility with existing invocations. The command runs in
+a read-only transaction and reports each target as `pending`, `converged`, or
+`blocked`; it does not apply migrations, acquire table locks, or accept the
+database URL as a command-line argument. A deployed-catalog result remains
+required evidence and cannot be replaced by an offline catalog fixture.
+
 ## Consequences
 
 ### Positive
@@ -310,6 +329,17 @@ coverage exclusion.
 - Source metadata and deployed DDL may differ until the catalog evidence is
   collected, so local SQLite tests cannot certify completion alone.
 - JSON, partition and composite-key fields require additional design review.
+
+## Later change
+
+Revision `202610010001` retires the unused `user_stats` and `vector_chunks`
+runtime models while retaining their physical schemas and data during online
+upgrade and downgrade. The inventory in `quality/model-default-policy.json`
+therefore no longer contains them. Their historical scalar defaults, columns,
+constraints and indexes remain explicitly owned by migration-only metadata in
+`app/core/db/retained_table_metadata.py` and are still checked by Alembic autogenerate.
+Physical removal needs a separate reviewed maintenance plan; it is not part of
+this online revision.
 
 ## Related Decisions
 

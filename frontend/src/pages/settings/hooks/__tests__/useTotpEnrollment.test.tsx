@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
     totp_enrollments: [] as MfaTotpEnrollment[],
   },
   setUser: vi.fn(),
-  fetchQuery: vi.fn(async () => ({ id: "fresh-user" })),
+  fetchQuery: vi.fn(async () => ({ id: "user-1" })),
   startTotpEnrollment: vi.fn(),
   confirmTotpEnrollment: vi.fn(),
   deleteTotpEnrollment: vi.fn(),
@@ -94,7 +94,7 @@ beforeEach(() => {
   mocks.confirmTotpEnrollment.mockResolvedValue(undefined)
   mocks.deleteTotpEnrollment.mockResolvedValue({ mfa_default_method: null, mfa_required: false })
   mocks.deletePendingTotpEnrollment.mockResolvedValue(undefined)
-  mocks.fetchQuery.mockResolvedValue({ id: "fresh-user" })
+  mocks.fetchQuery.mockResolvedValue({ id: "user-1" })
 })
 
 describe("useTotpEnrollment — derived state", () => {

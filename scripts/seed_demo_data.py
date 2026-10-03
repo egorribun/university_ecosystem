@@ -2,49 +2,61 @@
 Seed script — creates demo data after a fresh Docker install.
 
 Usage:
-    python scripts/seed_demo_data.py
+    python scripts/live_stand.py seed --demo
 
-Requires the Docker stack to be running (PostgreSQL reachable).
-Safe to re-run: each section skips silently on unique-constraint violations.
+Run through the owner-checked live stand command, or the narrowly scoped
+admin-smoke GitHub workflow target. Direct execution against any other database
+fails closed.
 """
 
 import asyncio
+import secrets
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
+from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
 
-# When running from the host machine (outside Docker) the DATABASE_URL in .env
-# uses the Docker-internal hostname "postgres" which doesn't resolve on the host.
-# Replace it with "localhost" ONLY when we had to load .env (i.e. we're on the host).
-_loaded_from_dotenv = False
 if "DATABASE_URL" not in os.environ:
     try:
         from dotenv import load_dotenv
 
         load_dotenv()
-        _loaded_from_dotenv = True
     except ImportError:
         pass
 
-if _loaded_from_dotenv:
-    _db_url = os.environ.get("DATABASE_URL", "")
-    if "@postgres:" in _db_url:
-        os.environ["DATABASE_URL"] = _db_url.replace("@postgres:", "@localhost:")
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
 
-from sqlalchemy.exc import IntegrityError  # noqa: E402
+from app.auth.security import get_password_hash_sync
+from app.core.database import async_session, init_database
+from app.models.chat import Chat, chat_participants
+from app.models.enums import UserRole
+from app.models.events import Event
+from app.models.news import News
+from app.models.schedule import Group, Schedule
+from app.models.stories import Story
+from app.models.users import EducationPath, User, UserProfile
+from scripts.seed_target import require_owned_live_stand_target
 
-from app.auth.security import get_password_hash_sync  # noqa: E402
-from app.core.database import async_session, init_database  # noqa: E402
-from app.models.enums import UserRole  # noqa: E402
-from app.models.events import Event  # noqa: E402
-from app.models.news import News  # noqa: E402
-from app.models.schedule import Group, Schedule  # noqa: E402
-from app.models.stories import Story  # noqa: E402
-from app.models.users import EducationPath, User, UserProfile  # noqa: E402
+# RFC 2606 example.com identities remain synthetic and satisfy the API EmailStr contract.
+DEMO_PEER_EMAIL = "demo.peer@example.com"
+DEMO_PEER_USER_SEED_KEY = "ue-demo-v1:user:primary-peer"
+DEMO_SECOND_PEER_EMAIL = "demo.peer.two@example.com"
+DEMO_SECOND_PEER_USER_SEED_KEY = "ue-demo-v1:user:secondary-peer"
+DEMO_PRIMARY_USER_EMAIL = "test@university.dev"
+DEMO_PRIMARY_USER_SEED_KEY = "ue-demo-v1:user:primary-owner"
+DEMO_CLASS_GROUP_SEED_KEY = "ue-demo-v1:group:class"
+DEMO_DM_SEED_KEY = "ue-demo-v1:messenger:dm-primary-peer"
+DEMO_GROUP_SEED_KEY = "ue-demo-v1:messenger:group"
+DEMO_GROUP_NAME = "University Ecosystem Demo Group"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -384,6 +396,194 @@ EVENTS_DATA = [
     },
 ]
 
+
+def _add_english_fields(
+    records: list[dict], translations: list[dict[str, str]]
+) -> None:
+    if len(records) != len(translations):
+        raise RuntimeError("English demo content must match the Russian records")
+    for record, translation in zip(records, translations, strict=True):
+        record.update({f"{field}_en": value for field, value in translation.items()})
+
+
+_add_english_fields(
+    NEWS_DATA,
+    [
+        {
+            "title": "GUU ranks among the country's top 20 universities",
+            "content": "The annual national ranking placed State University of Management 18th among Russia's leading universities. Progress in digital learning, research publications, and graduate employment helped raise the result.",
+        },
+        {
+            "title": "Applications open for the international AI conference",
+            "content": "The Department of Information Technology invites research submissions for the 16th International Conference on Intelligent Systems and Technologies. Abstracts are due May 15, 2026; participation is free for university students and postgraduate students.",
+        },
+        {
+            "title": "GUU students win the FinTech Challenge 2026 hackathon",
+            "content": "The Byte and Code team from the Institute of Information Technology won the national financial technology hackathon. Their machine-learning borrower scoring system was built in 48 hours, earning a cash prize and internship offers from three major banks.",
+        },
+        {
+            "title": "New robotics lab opens in Building A",
+            "content": "A new robotics and industrial automation lab has opened through the Priority 2030 program. It includes industrial robot arms, machine vision, and control-system workstations for eligible students.",
+        },
+        {
+            "title": "Open Day takes place on April 12",
+            "content": "Prospective students and their families are invited to meet faculty, tour the campus, and learn about university programs and admissions. Registration is available online.",
+        },
+        {
+            "title": "Sechenov scholarships for medical students",
+            "content": "Applications are open for scholarships supporting medical students with strong academic results and research interests. The award recognizes outstanding work in healthcare and biomedical studies.",
+        },
+        {
+            "title": "Healthy Campus spring sports festival",
+            "content": "The spring festival brings students together for team sports, fitness activities, and friendly competitions. Join the campus community for an active day outdoors.",
+        },
+        {
+            "title": "Partnership agreement signed with Yandex Education",
+            "content": "The university and Yandex Education will develop joint learning programs, practical projects, and career opportunities for students in technology and digital fields.",
+        },
+        {
+            "title": "Student startup competition: apply by May 5",
+            "content": "Student teams can submit startup ideas for expert review and partner support. Selected projects will receive mentoring and the chance to present at the final showcase.",
+        },
+        {
+            "title": "New AI Ethics course opens to all programs",
+            "content": "The interdisciplinary course explores responsible AI, bias, privacy, and the social impact of automated systems. Students from every program are welcome to enroll.",
+        },
+    ],
+)
+
+_add_english_fields(
+    STORIES_DATA,
+    [
+        {
+            "title": "🎓 Exam season: preparation tips",
+            "short_text": "Seven proven ways to prepare for exams, shared by senior students.",
+        },
+        {
+            "title": "📢 Open lecture: Web 3.0",
+            "short_text": "Tomorrow at 18:00 in room 301: a lecture on decentralized application architecture.",
+        },
+        {
+            "title": "🏆 We won!",
+            "short_text": "A GUU team took first place at the regional programming championship.",
+        },
+        {
+            "title": "☕ New café in Building B",
+            "short_text": "A student café has opened with breakfasts from 99 rubles. Open from 08:00.",
+        },
+        {
+            "title": "📚 Library updates its catalog",
+            "short_text": "More than 200 new books on programming, data science, and cybersecurity are now available.",
+        },
+        {
+            "title": "🎸 Student band rehearsal",
+            "short_text": "The student rock band Zero Pointer is looking for a drummer. Auditions are Friday at 17:00.",
+        },
+        {
+            "title": "🌱 Campus cleanup day",
+            "short_text": "Join the spring campus cleanup this Saturday. Meet at 10:00 by Building A.",
+        },
+        {
+            "title": "💼 Career fair",
+            "short_text": "April 15 is Career Day. More than 40 companies are looking for interns and graduates.",
+        },
+        {
+            "title": "🔬 GUU Science Day",
+            "short_text": "Explore student research projects and vote for your favorite to win partner prizes.",
+        },
+        {
+            "title": "🍕 Faculty pizza evening",
+            "short_text": "Friday at 19:00 in the IT Institute lobby: an informal gathering with classmates and faculty.",
+        },
+        {
+            "title": "📱 Mobile app update",
+            "short_text": "Version 2.5 adds push notifications for classes and a new group chat.",
+        },
+        {
+            "title": "🎨 Student exhibition",
+            "short_text": "A gallery in Building C is showing fourth-year student design projects.",
+        },
+        {
+            "title": "🏋️ Gym and martial arts",
+            "short_text": "Sign up for martial arts by April 20 at the second-floor sports building.",
+        },
+        {
+            "title": "🚀 Meetup: startups and IT careers",
+            "short_text": "Graduates will share how they went from first-year students to CTOs. Wednesday at 18:30.",
+        },
+        {
+            "title": "🌍 2026–27 exchange program",
+            "short_text": "Applications are open for academic exchange at universities in Germany and Finland.",
+        },
+    ],
+)
+
+_add_english_fields(
+    EVENTS_DATA,
+    [
+        {
+            "title": "Open lecture: The future of AI in education",
+            "description": "Professor Andrey Volkov of Moscow State University will discuss generative models in teaching, automated assessment, and personalized learning paths.",
+            "location": "Assembly Hall, Building A, GUU",
+            "event_type": "lecture",
+        },
+        {
+            "title": "Workshop: FastAPI from zero to production",
+            "description": "Build a REST API in this practical one-day workshop. Participants will create a complete microservice with authentication, tests, and a Docker build.",
+            "location": "Lab 204, Building B",
+            "event_type": "workshop",
+        },
+        {
+            "title": "Algorithmic programming olympiad",
+            "description": "An open team competition for groups of two or three. Solve ten Codeforces problems in five hours for a share of the 120,000-ruble prize fund.",
+            "location": "Computer Lab 315, Building G",
+            "event_type": "competition",
+        },
+        {
+            "title": "Spring concert of student arts groups",
+            "description": "The annual concert features the GUU choir, student theater, dance groups, and vocal ensembles. Admission is free with a student ID.",
+            "location": "Grand Assembly Hall",
+            "event_type": "cultural",
+        },
+        {
+            "title": "IT Career Fair",
+            "description": "More than 40 partner companies will present internships and jobs for students and graduates in IT fields.",
+            "location": "Grand Assembly Hall and Building A foyer",
+            "event_type": "workshop",
+        },
+        {
+            "title": "Digital University hackathon",
+            "description": "A 48-hour hackathon to build digital services for the university ecosystem, including scheduling, notifications, and academic analytics.",
+            "location": "GUU Tech Hub coworking space, Building C",
+            "event_type": "competition",
+        },
+        {
+            "title": "Masterclass: public speaking and pitching",
+            "description": "Rhetoric coach Elena Smirnova will lead practical exercises on startup pitch structure, voice, and presentation to investors.",
+            "location": "Room 118, Building A",
+            "event_type": "workshop",
+        },
+        {
+            "title": "GUU mini-football championship",
+            "description": "An interfaculty knockout tournament. Teams of eight may apply; matches take place on weekends throughout May.",
+            "location": "GUU Sports Complex, Field 1",
+            "event_type": "sports",
+        },
+        {
+            "title": "IT Institute thesis project defenses 2026",
+            "description": "Students from the Institute of Information Technology will present their final qualification projects. Visitors are welcome to attend and ask questions.",
+            "location": "Conference Hall, third floor, Building B",
+            "event_type": "lecture",
+        },
+        {
+            "title": "Class of 2026 graduation ceremony",
+            "description": "Celebrate the 2026 graduates with remarks from the rector, award presentations, and a reception.",
+            "location": "GUU Central Assembly Hall",
+            "event_type": "cultural",
+        },
+    ],
+)
+
 # (weekday, pair_number, subject, teacher, room, lesson_type, parity)
 SCHEDULE_DATA = [
     # ── Monday ───────────────────────────────────────────────────
@@ -515,36 +715,20 @@ _DAY_BASE = {
 # ---------------------------------------------------------------------------
 
 
-async def seed_group(db) -> Group:
-    group = Group(name="ЗИ-301", course=3, faculty="Институт информационных технологий")
-    db.add(group)
-    await db.flush()
-    print(f"  ✓ Group: {group.name} (id={group.id})")
-    return group
-
-
-async def seed_user(db, group: Group) -> User:
-    hashed = get_password_hash_sync("TestPass@2024x")
-    user = User.create(
-        email="test@university.dev",
-        hashed_password=hashed,
-        role=UserRole.STUDENT,
-        is_active=True,
-    )
-    user.group_id = group.id
-    db.add(user)
-    await db.flush()
-
-    profile = UserProfile(
-        user_id=user.id,
+def _demo_user_profile(user_id) -> UserProfile:
+    return UserProfile(
+        user_id=user_id,
         full_name="Тест Студентов",
         about="Тестовый студент для демонстрации возможностей платформы ГУУ.",
         telegram="@test_student_guu",
         status="Учусь, программирую, пью кофе ☕",
         avatar_url="https://picsum.photos/seed/avatar_test/256/256",
     )
-    edu = EducationPath(
-        user_id=user.id,
+
+
+def _demo_education_path(user_id) -> EducationPath:
+    return EducationPath(
+        user_id=user_id,
         institute="Институт информационных технологий",
         course="3",
         education_level="Бакалавриат",
@@ -552,6 +736,95 @@ async def seed_user(db, group: Group) -> User:
         program="Информационные системы и технологии",
         record_book_number="ЗИ-301-042",
     )
+
+
+async def seed_group(db) -> Group:
+    owned_group = cast(
+        Group | None,
+        await db.scalar(
+            select(Group).where(Group.demo_seed_key == DEMO_CLASS_GROUP_SEED_KEY)
+        ),
+    )
+    if owned_group is not None:
+        return owned_group
+
+    canonical_group = cast(
+        Group | None,
+        await db.scalar(
+            select(Group).where(
+                Group.name == "ЗИ-301",
+                Group.course == 3,
+                Group.faculty == "Институт информационных технологий",
+            )
+        ),
+    )
+    if canonical_group is not None:
+        raise RuntimeError(
+            "canonical demo group is unowned; verify any legacy demo group and "
+            "follow the migration's reviewed recovery note before seeding"
+        )
+
+    group = Group(
+        name="ЗИ-301",
+        course=3,
+        faculty="Институт информационных технологий",
+        demo_seed_key=DEMO_CLASS_GROUP_SEED_KEY,
+    )
+    db.add(group)
+    await db.flush()
+    print(f"  ✓ Group: {group.name} (id={group.id})")
+    return group
+
+
+async def seed_user(db, group: Group) -> User:
+    existing = cast(
+        User | None,
+        await db.scalar(select(User).where(User.email == DEMO_PRIMARY_USER_EMAIL)),
+    )
+    key_owner = cast(
+        User | None,
+        await db.scalar(
+            select(User).where(User.demo_seed_key == DEMO_PRIMARY_USER_SEED_KEY)
+        ),
+    )
+    if existing is not None:
+        if key_owner is None or key_owner.id != existing.id:
+            raise RuntimeError(
+                "canonical demo account is unowned; verify any legacy demo account "
+                "and follow the migration's reviewed recovery note before seeding"
+            )
+        if existing.role != UserRole.STUDENT:
+            raise ValueError("refusing to change the role of an existing demo account")
+        profile_exists = await db.scalar(
+            select(UserProfile.user_id).where(UserProfile.user_id == existing.id)
+        )
+        if profile_exists is None:
+            db.add(_demo_user_profile(existing.id))
+        education_exists = await db.scalar(
+            select(EducationPath.user_id).where(EducationPath.user_id == existing.id)
+        )
+        if education_exists is None:
+            db.add(_demo_education_path(existing.id))
+        await db.flush()
+        return existing
+
+    if key_owner is not None:
+        raise RuntimeError("canonical demo account ownership key is already occupied")
+
+    hashed = get_password_hash_sync("TestPass@2024x")
+    user = User.create(
+        email=DEMO_PRIMARY_USER_EMAIL,
+        hashed_password=hashed,
+        role=UserRole.STUDENT,
+        is_active=True,
+    )
+    user.group_id = group.id
+    user.demo_seed_key = DEMO_PRIMARY_USER_SEED_KEY
+    db.add(user)
+    await db.flush()
+
+    profile = _demo_user_profile(user.id)
+    edu = _demo_education_path(user.id)
     db.add(profile)
     db.add(edu)
     await db.flush()
@@ -559,11 +832,266 @@ async def seed_user(db, group: Group) -> User:
     return user
 
 
+async def _seed_demo_peer_user(
+    db: AsyncSession,
+    group: Group,
+    *,
+    email: str,
+    seed_key: str,
+    legacy_email: str,
+    full_name: str,
+) -> User:
+    if not email.casefold().endswith("@example.com"):
+        raise RuntimeError(
+            "synthetic demo peer identity must use the example.com domain"
+        )
+
+    existing = cast(
+        User | None, await db.scalar(select(User).where(User.email == email))
+    )
+    key_owner = cast(
+        User | None,
+        await db.scalar(select(User).where(User.demo_seed_key == seed_key)),
+    )
+    if existing is not None:
+        if (
+            existing.role is not UserRole.STUDENT
+            or key_owner is None
+            or key_owner.id != existing.id
+        ):
+            raise RuntimeError("reserved demo peer identity is occupied")
+        return existing
+
+    if key_owner is not None:
+        # Repair only the exact legacy identity with its original private owner
+        # key and student role. Preserve the account ID, password and all edits.
+        # The canonical address was checked above, so an occupied address never
+        # gets claimed and a drifted ownership key never becomes an adoption.
+        if key_owner.email != legacy_email or key_owner.role is not UserRole.STUDENT:
+            raise RuntimeError("reserved demo peer ownership key is occupied")
+        key_owner.email = email
+        await db.flush()
+        return key_owner
+
+    # The raw value is deliberately ephemeral: only its Argon2id hash is stored,
+    # so this synthetic participant cannot be logged into with a seeded password.
+    # Guarantee every required character class without reducing random entropy.
+    hashed_password = get_password_hash_sync(secrets.token_urlsafe(32) + "!Aa0")
+    peer = User.create(
+        email=email,
+        hashed_password=hashed_password,
+        role=UserRole.STUDENT,
+        is_active=True,
+    )
+    peer.group_id = group.id
+    peer.demo_seed_key = seed_key
+    db.add(peer)
+    await db.flush()
+
+    db.add(
+        UserProfile(
+            user_id=peer.id,
+            full_name=full_name,
+            about="Synthetic participant for the live demo.",
+        )
+    )
+    db.add(
+        EducationPath(
+            user_id=peer.id,
+            institute="Demo University",
+            course="3",
+            education_level="Bachelor",
+            track="General Studies",
+            program="Synthetic Demo Program",
+        )
+    )
+    await db.flush()
+    print("  ✓ Synthetic Messenger peer prepared")
+    return peer
+
+
+async def seed_demo_peer_user(db: AsyncSession, group: Group) -> User:
+    """Create or verify the reserved non-loginable primary synthetic peer."""
+    return await _seed_demo_peer_user(
+        db,
+        group,
+        email=DEMO_PEER_EMAIL,
+        seed_key=DEMO_PEER_USER_SEED_KEY,
+        legacy_email="demo.peer@example.test",
+        full_name="Synthetic Demo Student",
+    )
+
+
+async def seed_demo_second_peer_user(db: AsyncSession, group: Group) -> User:
+    """Create or verify the second reserved non-loginable synthetic peer."""
+    return await _seed_demo_peer_user(
+        db,
+        group,
+        email=DEMO_SECOND_PEER_EMAIL,
+        seed_key=DEMO_SECOND_PEER_USER_SEED_KEY,
+        legacy_email="demo.peer.two@example.test",
+        full_name="Synthetic Demo Student Two",
+    )
+
+
+async def _invalidate_demo_chat_caches(
+    chat_id: UUID, participant_ids: tuple[UUID, ...]
+) -> None:
+    from app.api.ws.presence import (
+        invalidate_chat_participants_cache,
+        invalidate_presence_audience_cache,
+    )
+
+    await invalidate_chat_participants_cache(chat_id)
+    await invalidate_presence_audience_cache(*participant_ids)
+
+
+async def seed_demo_dm(db: AsyncSession, owner: User, peer: User) -> Chat:
+    """Ensure the live-demo pair has one normal two-member Messenger DM."""
+    if owner.id is None or peer.id is None or owner.id == peer.id:
+        raise RuntimeError("demo DM participants must be distinct")
+
+    chat = cast(
+        Chat | None,
+        await db.scalar(
+            select(Chat)
+            .where(Chat.demo_seed_key == DEMO_DM_SEED_KEY)
+            .options(selectinload(Chat.participants))
+        ),
+    )
+    expected_ids = {owner.id, peer.id}
+    if chat is not None:
+        actual_ids = {participant.id for participant in chat.participants}
+        if chat.chat_type != "dm" or actual_ids != expected_ids:
+            raise RuntimeError("demo DM ownership key has drifted")
+        return chat
+
+    existing_pair = (
+        await db.scalars(_exact_chat_membership_query((owner, peer), "dm"))
+    ).all()
+    if existing_pair:
+        raise RuntimeError("reserved demo DM participant pair is already occupied")
+
+    chat = Chat(chat_type="dm", demo_seed_key=DEMO_DM_SEED_KEY)
+    chat.participants.append(owner)
+    chat.participants.append(peer)
+    db.add(chat)
+    await db.flush()
+    await _invalidate_demo_chat_caches(chat.id, (owner.id, peer.id))
+    print("  ✓ Synthetic Messenger DM prepared")
+    return chat
+
+
+def _exact_chat_membership_query(
+    users: tuple[User, ...], chat_type: str
+) -> Select[tuple[Chat]]:
+    participant_chats = [
+        select(chat_participants.c.chat_id).where(
+            chat_participants.c.user_id == user.id
+        )
+        for user in users
+    ]
+    participant_count = (
+        select(func.count())
+        .where(chat_participants.c.chat_id == Chat.id)
+        .correlate(Chat)
+        .scalar_subquery()
+    )
+    return (
+        select(Chat)
+        .where(
+            Chat.chat_type == chat_type,
+            *(Chat.id.in_(chat_ids) for chat_ids in participant_chats),
+            participant_count == len(users),
+        )
+        .options(selectinload(Chat.participants))
+    )
+
+
+async def seed_demo_group(db: AsyncSession, owner: User, peers: list[User]) -> Chat:
+    """Seed one named group, keyed privately and guarded against stale peers."""
+    participants = (owner, *peers)
+    participant_ids = [participant.id for participant in participants]
+    if (
+        len(peers) != 2
+        or any(participant_id is None for participant_id in participant_ids)
+        or len(set(participant_ids)) != 3
+        or peers[0].email != DEMO_PEER_EMAIL
+        or peers[1].email != DEMO_SECOND_PEER_EMAIL
+        or any(peer.role is not UserRole.STUDENT for peer in peers)
+    ):
+        raise RuntimeError("demo group requires the reserved synthetic participants")
+
+    chat = cast(
+        Chat | None,
+        await db.scalar(
+            select(Chat)
+            .where(Chat.demo_seed_key == DEMO_GROUP_SEED_KEY)
+            .options(selectinload(Chat.participants))
+        ),
+    )
+    expected_ids = set(participant_ids)
+    if chat is not None:
+        actual_ids = {participant.id for participant in chat.participants}
+        if chat.chat_type != "group" or actual_ids != expected_ids:
+            raise RuntimeError("demo group ownership key has drifted")
+        return chat
+
+    # A migration rollback removes only the nullable key column. The reserved
+    # peers remain, so any group using either peer is ambiguous and blocks seed
+    # creation instead of being adopted or duplicated on re-upgrade.
+    peer_chats = select(chat_participants.c.chat_id).where(
+        chat_participants.c.user_id.in_([peers[0].id, peers[1].id])
+    )
+    unmarked_peer_groups = (
+        await db.scalars(
+            select(Chat)
+            .where(Chat.chat_type == "group", Chat.id.in_(peer_chats))
+            .options(selectinload(Chat.participants))
+        )
+    ).all()
+    if unmarked_peer_groups:
+        raise RuntimeError("reserved demo group peer membership is already occupied")
+
+    chat = Chat(
+        chat_type="group",
+        name=DEMO_GROUP_NAME,
+        created_by=owner.id,
+        demo_seed_key=DEMO_GROUP_SEED_KEY,
+    )
+    chat.participants.extend(participants)
+    db.add(chat)
+    await db.flush()
+    await _invalidate_demo_chat_caches(chat.id, tuple(sorted(participant_ids, key=str)))
+    print("  ✓ Synthetic Messenger group prepared")
+    return chat
+
+
 async def seed_news(db, user: User) -> None:
     for item in NEWS_DATA:
+        existing_seed = await db.scalar(
+            select(News).where(
+                News.title == item["title"],
+                News.author_id == user.id,
+            )
+        )
+        if existing_seed is not None:
+            if existing_seed.content == item["content"]:
+                if not existing_seed.title_en:
+                    existing_seed.title_en = item["title_en"]
+                if not existing_seed.content_en:
+                    existing_seed.content_en = item["content_en"]
+            continue
+        title_collision = await db.scalar(
+            select(News).where(News.title == item["title"])
+        )
+        if title_collision is not None:
+            continue
         news = News(
             title=item["title"],
+            title_en=item["title_en"],
             content=item["content"],
+            content_en=item["content_en"],
             author_id=user.id,
             image_url=item["image_url"],
         )
@@ -576,9 +1104,53 @@ async def seed_stories(db, user: User) -> None:
     now = datetime.now(UTC)
     far_future = now + timedelta(days=365)
     for item in STORIES_DATA:
+        existing_seed = await db.scalar(
+            select(Story).where(
+                Story.title == item["title"],
+                Story.created_by == user.id,
+            )
+        )
+        if existing_seed is not None:
+            # Backfill only a seed row whose source-language content is intact.
+            # Preserve every populated translation; lifecycle changes require
+            # the populated translations to be canonical as well.
+            canonical_content_matches = (
+                all(
+                    getattr(existing_seed, field) == item[field]
+                    for field in ("title", "short_text", "cover_url")
+                )
+                and getattr(existing_seed, "cta_url", None) is None
+            )
+            canonical_translations_match = all(
+                getattr(existing_seed, field, None) in (None, item.get(field))
+                for field in ("title_en", "short_text_en")
+            )
+            if canonical_content_matches:
+                for field in ("title_en", "short_text_en"):
+                    canonical_translation = item.get(field)
+                    if canonical_translation and not getattr(existing_seed, field):
+                        setattr(existing_seed, field, canonical_translation)
+            if canonical_content_matches and canonical_translations_match:
+                expires_at = existing_seed.expires_at
+                if expires_at is not None:
+                    if expires_at.tzinfo is None:
+                        expires_at = expires_at.replace(tzinfo=UTC)
+                    else:
+                        expires_at = expires_at.astimezone(UTC)
+                    if expires_at <= now:
+                        existing_seed.is_active = True
+                        existing_seed.expires_at = far_future
+            continue
+        title_collision = await db.scalar(
+            select(Story).where(Story.title == item["title"])
+        )
+        if title_collision is not None:
+            continue
         story = Story(
             title=item["title"],
+            title_en=item.get("title_en"),
             short_text=item["short_text"],
+            short_text_en=item.get("short_text_en"),
             cover_url=item["cover_url"],
             is_active=True,
             published_at=now,
@@ -592,11 +1164,45 @@ async def seed_stories(db, user: User) -> None:
 
 async def seed_events(db, user: User) -> None:
     for item in EVENTS_DATA:
+        existing_seed = await db.scalar(
+            select(Event).where(
+                Event.title == item["title"],
+                Event.starts_at == item["starts_at"],
+                Event.created_by == user.id,
+            )
+        )
+        if existing_seed is not None:
+            source_matches = all(
+                getattr(existing_seed, field) == item[field]
+                for field in ("description", "location", "event_type")
+            )
+            if source_matches:
+                for field in (
+                    "title_en",
+                    "description_en",
+                    "location_en",
+                    "event_type_en",
+                ):
+                    if not getattr(existing_seed, field):
+                        setattr(existing_seed, field, item[field])
+            continue
+        natural_key_collision = await db.scalar(
+            select(Event).where(
+                Event.title == item["title"],
+                Event.starts_at == item["starts_at"],
+            )
+        )
+        if natural_key_collision is not None:
+            continue
         ev = Event(
             title=item["title"],
+            title_en=item["title_en"],
             description=item["description"],
+            description_en=item["description_en"],
             location=item["location"],
+            location_en=item["location_en"],
             event_type=item["event_type"],
+            event_type_en=item["event_type_en"],
             starts_at=item["starts_at"],
             ends_at=item["ends_at"],
             image_url=item["image_url"],
@@ -610,9 +1216,26 @@ async def seed_events(db, user: User) -> None:
 
 async def seed_schedule(db, group: Group, user: User) -> None:
     rows = 0
+    existing_rows = await db.scalars(
+        select(Schedule).where(Schedule.group_id == group.id)
+    )
+    existing_keys = {
+        (
+            entry.weekday,
+            entry.start_time.replace(tzinfo=UTC)
+            if entry.start_time.tzinfo is None
+            else entry.start_time.astimezone(UTC),
+            entry.parity,
+            entry.subject,
+        )
+        for entry in existing_rows.all()
+    }
     for weekday, pair_num, subject, teacher, room, lesson_type, parity in SCHEDULE_DATA:
         base = _DAY_BASE[weekday]
         start, end = _pair(base, pair_num)
+        key = (weekday, start, parity, subject)
+        if key in existing_keys:
+            continue
         entry = Schedule(
             group_id=group.id,
             creator_id=user.id,
@@ -626,6 +1249,7 @@ async def seed_schedule(db, group: Group, user: User) -> None:
             lesson_type=lesson_type,
         )
         db.add(entry)
+        existing_keys.add(key)
         rows += 1
     await db.flush()
     print(f"  ✓ Schedule: {rows} entries (odd + even weeks)")
@@ -636,7 +1260,17 @@ async def seed_schedule(db, group: Group, user: User) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _is_live_stand_demo_target(project: str) -> bool:
+    return (
+        os.environ.get("UE_SEED_TARGET") is None
+        and os.environ.get("LIVE_STAND_OWNER_VERIFIED") == "1"
+        and os.environ.get("LIVE_STAND_SEED_PROJECT") == project
+        and os.environ.get("COMPOSE_PROJECT_NAME") == project
+    )
+
+
 async def main() -> None:
+    target_project = require_owned_live_stand_target()
     print("Initialising database connection…")
     init_database()
 
@@ -648,19 +1282,18 @@ async def main() -> None:
             await seed_stories(db, user)
             await seed_events(db, user)
             await seed_schedule(db, group, user)
+            if _is_live_stand_demo_target(target_project):
+                peer = await seed_demo_peer_user(db, group)
+                second_peer = await seed_demo_second_peer_user(db, group)
+                await seed_demo_dm(db, user, peer)
+                await seed_demo_group(db, user, [peer, second_peer])
             await db.commit()
             print("\nAll demo data committed successfully.")
-            print("Login: test@university.dev / TestPass@2024x")
-        except IntegrityError as exc:
+        except IntegrityError:
             await db.rollback()
-            # Check if it's a duplicate-key error (already seeded)
-            msg = str(exc.orig).lower() if exc.orig else str(exc).lower()
-            if "unique" in msg or "duplicate" in msg:
-                print("\n⚠ Data already exists — skipped (no changes made).")
-                print("  To reseed, truncate the tables first.")
-            else:
-                print(f"\n✗ IntegrityError: {exc}")
-                raise
+            raise RuntimeError(
+                "demo seed transaction failed and was rolled back"
+            ) from None
 
 
 if __name__ == "__main__":

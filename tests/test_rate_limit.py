@@ -1,8 +1,8 @@
-import asyncio
+import threading
 
 import httpx
 import pytest
-from fastapi import Depends, FastAPI, Response, status
+from fastapi import Depends, FastAPI, Request, Response, status
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hypo_settings
 from hypothesis import strategies as st
@@ -280,6 +280,50 @@ async def test_sensitive_login_rate_limit(
         status.HTTP_429_TOO_MANY_REQUESTS,
         status.HTTP_423_LOCKED,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("route_path", "request_path"),
+    [
+        ("/login", "/api/v1/auth/login"),
+        ("/login/json", "/api/v1/auth/login/json"),
+    ],
+)
+async def test_login_route_limit_is_not_replaced_by_generic_sensitive_limit(
+    monkeypatch, route_path, request_path
+):
+    """Login's configured threshold remains effective when the generic one differs."""
+    from importlib import import_module
+
+    auth_login = import_module("app.api.auth.login")
+    login_route = next(
+        route
+        for route in auth_login.router.routes
+        if getattr(route, "path", None) == route_path
+    )
+    login_dependency = login_route.dependant.dependencies[0].call
+
+    monkeypatch.setitem(settings.__dict__, "rate_limit_sensitive_value", "1/minute")
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    rate_limit.clear_memory_state()
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": request_path,
+            "headers": [],
+            "query_string": b"",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("198.51.100.29", 8080),
+            "root_path": "",
+        }
+    )
+
+    await login_dependency(request)
+    await login_dependency(request)
 
 
 @pytest.mark.asyncio
@@ -810,14 +854,11 @@ async def test_check_rate_limit_blocks_after_limit(
     # Clear redis AND in-memory state between hypothesis iterations
     await _rate_limit_redis_client.flushall()
     from app.core.ratelimit import clear_memory_state
+    from app.core.ratelimit.strategies import base as rate_limit_base
 
     clear_memory_state()
-    monkeypatch.setattr("app.core.ratelimit.strategies.base._shared_clients", {})
-    # Reset the single write lock (replaces the removed _shared_client_locks dict).
-    # PERF-3 audit 2026-02-26: per-URL lock dict was replaced by one module-level lock.
-    monkeypatch.setattr(
-        "app.core.ratelimit.strategies.base._shared_clients_write_lock", asyncio.Lock()
-    )
+    monkeypatch.setattr(rate_limit_base, "_shared_clients", {})
+    monkeypatch.setattr(rate_limit_base, "_shared_clients_guard", threading.Lock())
 
     namespace = "prop"
     limit = 2

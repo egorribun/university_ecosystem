@@ -204,96 +204,6 @@ async def test_query_cost_extension_no_document():
 # ---------------------------------------------------------------------------
 
 
-def test_is_authenticated_true():
-    from app.graphql.permissions import IsAuthenticated
-
-    perm = IsAuthenticated()
-    info = MagicMock()
-    info.context.is_authenticated = True
-    assert perm.has_permission(None, info) is True
-
-
-def test_is_authenticated_false():
-    from app.graphql.permissions import IsAuthenticated
-
-    perm = IsAuthenticated()
-    info = MagicMock()
-    info.context.is_authenticated = False
-    assert perm.has_permission(None, info) is False
-
-
-@pytest.mark.asyncio
-async def test_is_admin_not_authenticated():
-    from app.graphql.permissions import IsAdmin
-
-    perm = IsAdmin()
-    info = MagicMock()
-    info.context.is_authenticated = False
-    info.context.current_user = None
-    result = await perm.has_permission(None, info)
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_is_admin_no_checker():
-    from app.graphql.permissions import IsAdmin
-
-    perm = IsAdmin()
-    info = MagicMock()
-    info.context.is_authenticated = True
-    info.context.current_user = MagicMock(id=uuid.uuid4())
-    # Remove checker attribute
-    del info.context.checker
-    result = await perm.has_permission(None, info)
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_is_admin_spicedb_unavailable():
-    from app.auth.rbac import SpiceDBUnavailableError
-    from app.graphql.permissions import IsAdmin
-
-    perm = IsAdmin()
-    info = MagicMock()
-    info.context.is_authenticated = True
-    info.context.current_user = MagicMock(id=uuid.uuid4())
-    checker = AsyncMock()
-    checker.check_admin = AsyncMock(side_effect=SpiceDBUnavailableError("down"))
-    info.context.checker = checker
-    result = await perm.has_permission(None, info)
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_is_admin_unexpected_exception():
-    from app.graphql.permissions import IsAdmin
-
-    perm = IsAdmin()
-    info = MagicMock()
-    info.context.is_authenticated = True
-    info.context.current_user = MagicMock(id=uuid.uuid4())
-    checker = AsyncMock()
-    checker.check_admin = AsyncMock(side_effect=RuntimeError("boom"))
-    info.context.checker = checker
-    result = await perm.has_permission(None, info)
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_is_admin_success():
-    from app.graphql.permissions import IsAdmin
-
-    perm = IsAdmin()
-    info = MagicMock()
-    info.context.is_authenticated = True
-    info.context.current_user = MagicMock(id=uuid.uuid4())
-    checker = AsyncMock()
-    checker.check_admin = AsyncMock(return_value=True)
-    info.context.checker = checker
-    result = await perm.has_permission(None, info)
-    assert result is True
-
-
 # ---------------------------------------------------------------------------
 # 3. repositories/user_stats_repository.py
 # ---------------------------------------------------------------------------
@@ -321,7 +231,7 @@ async def test_user_stats_repository_get_attendance_stats_raw():
 
 
 @pytest.mark.asyncio
-async def test_user_stats_repository_get_grade_notifications():
+async def test_user_stats_repository_get_grades():
     from app.repositories.user_stats_repository import UserStatsRepository
 
     mock_db = AsyncMock()
@@ -333,7 +243,7 @@ async def test_user_stats_repository_get_grade_notifications():
 
     repo = UserStatsRepository(mock_db)
     now = datetime.now(UTC)
-    rows = await repo.get_grade_notifications(
+    rows = await repo.get_grades(
         user_id=uuid.uuid4(),
         start_date=now - timedelta(days=30),
         end_date=now,
@@ -358,17 +268,6 @@ async def test_user_stats_repository_get_participation_stats_raw():
         now=now,
     )
     assert rows == []
-
-
-def test_get_user_stats_repository_factory():
-    from app.repositories.user_stats_repository import (
-        UserStatsRepository,
-        get_user_stats_repository,
-    )
-
-    mock_db = MagicMock()
-    repo = get_user_stats_repository(mock_db)
-    assert isinstance(repo, UserStatsRepository)
 
 
 # ---------------------------------------------------------------------------
@@ -399,35 +298,6 @@ def test_normalize_time_aware():
     assert result.tzinfo is not None
 
 
-def test_serialize_access_logs_csv_empty():
-    from app.services.data_access import serialize_access_logs_csv
-
-    csv_out = serialize_access_logs_csv([])
-    assert "created_at" in csv_out
-
-
-def test_serialize_access_logs_csv_with_entries():
-    from app.schemas.dtos.audit import DataAccessLogDTO
-    from app.services.data_access import serialize_access_logs_csv
-
-    entry = DataAccessLogDTO(
-        id=uuid.uuid4(),
-        actor_user_id=uuid.uuid4(),
-        subject_user_id=uuid.uuid4(),
-        resource_type="user",
-        resource_id="123",
-        action="read",
-        ip_address="127.0.0.1",
-        user_agent="pytest",
-        context={"key": "value"},
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        signature="abc123",
-    )
-    csv_out = serialize_access_logs_csv([entry])
-    assert "user" in csv_out
-    assert "read" in csv_out
-
-
 @pytest.mark.asyncio
 async def test_cleanup_access_logs_zero_retention():
     from app.services.data_access import cleanup_access_logs
@@ -449,105 +319,9 @@ async def test_cleanup_access_logs_with_db():
     assert result == 5
 
 
-@pytest.mark.asyncio
-async def test_export_access_logs_no_filters():
-    from app.services.data_access import export_access_logs
-
-    mock_db = AsyncMock()
-    scalars_mock = MagicMock()
-    scalars_mock.all.return_value = []
-    result_mock = MagicMock()
-    result_mock.scalars.return_value = scalars_mock
-    mock_db.execute = AsyncMock(return_value=result_mock)
-
-    with patch("app.services.data_access.AuditRepository") as MockRepo:
-        mock_repo = MagicMock()
-        mock_repo._to_dto = MagicMock(return_value=MagicMock())
-        MockRepo.return_value = mock_repo
-        result = await export_access_logs(mock_db)
-    assert isinstance(result, list)
-
-
-@pytest.mark.asyncio
-async def test_export_access_logs_with_all_filters():
-    from app.services.data_access import export_access_logs
-
-    mock_db = AsyncMock()
-    scalars_mock = MagicMock()
-    scalars_mock.all.return_value = []
-    result_mock = MagicMock()
-    result_mock.scalars.return_value = scalars_mock
-    mock_db.execute = AsyncMock(return_value=result_mock)
-
-    with patch("app.services.data_access.AuditRepository") as MockRepo:
-        MockRepo.return_value = MagicMock(_to_dto=MagicMock())
-        now = datetime.now(UTC)
-        result = await export_access_logs(
-            mock_db,
-            start_at=now - timedelta(days=30),
-            end_at=now,
-            actor_user_id=1,
-            subject_user_id=2,
-        )
-    assert isinstance(result, list)
-
-
 # ---------------------------------------------------------------------------
 # 5. services/cache_invalidation.py
 # ---------------------------------------------------------------------------
-
-
-def test_cache_tag_enum_values():
-    from app.services.cache_invalidation import CacheTag
-
-    assert CacheTag.SCHEDULE == "tag:schedule"
-    assert CacheTag.USER == "tag:user"
-    assert CacheTag.EVENT == "tag:event"
-    assert CacheTag.NEWS == "tag:news"
-    assert CacheTag.GROUPS == "tag:groups"
-    assert CacheTag.NOTIFICATIONS == "tag:notifications"
-
-
-def test_get_tags_for_key_schedule():
-    from app.services.cache_invalidation import CacheTag, get_tags_for_key
-
-    tags = get_tags_for_key("schedule:group:123")
-    assert CacheTag.SCHEDULE in tags
-
-
-def test_get_tags_for_key_user():
-    from app.services.cache_invalidation import CacheTag, get_tags_for_key
-
-    tags = get_tags_for_key("user:profile:abc")
-    assert CacheTag.USER in tags
-
-
-def test_get_tags_for_key_no_match():
-    from app.services.cache_invalidation import get_tags_for_key
-
-    tags = get_tags_for_key("some:random:key")
-    assert tags == []
-
-
-def test_get_tags_for_key_event():
-    from app.services.cache_invalidation import CacheTag, get_tags_for_key
-
-    tags = get_tags_for_key("event:detail:456")
-    assert CacheTag.EVENT in tags
-
-
-def test_get_tags_for_key_news():
-    from app.services.cache_invalidation import CacheTag, get_tags_for_key
-
-    tags = get_tags_for_key("news:latest")
-    assert CacheTag.NEWS in tags
-
-
-def test_get_tags_for_key_groups():
-    from app.services.cache_invalidation import CacheTag, get_tags_for_key
-
-    tags = get_tags_for_key("groups:list:all")
-    assert CacheTag.GROUPS in tags
 
 
 # ---------------------------------------------------------------------------

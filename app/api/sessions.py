@@ -11,11 +11,9 @@ from app.api.deps import (
     get_current_user_from_dishka,
     require_fresh_mfa,
 )
-from app.api.validation import (
-    raise_http_error,
-    require_admin,
-    require_owner_or_admin,
-)
+from app.api.deps.auth import ensure_admin, get_permission_checker
+from app.api.validation import raise_http_error
+from app.auth.rbac import PermissionChecker
 from app.auth.security import decode_token
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale
@@ -61,11 +59,13 @@ async def _resolve_target_user(
     user_repo: UserRepository,
     current_user: User | UserDTO,
     requested_user_id: uuid.UUID | None,
+    checker: PermissionChecker,
+    request: Request,
     locale: str,
 ) -> tuple[uuid.UUID, User | UserDTO]:
     if requested_user_id is None or requested_user_id == current_user.id:
         return current_user.id, current_user
-    require_admin(current_user, locale)
+    await ensure_admin(checker, current_user, request)
     target = await user_repo.get(requested_user_id)
     if target is None:
         raise_http_error(
@@ -80,6 +80,7 @@ async def _resolve_target_user(
 async def list_sessions(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
     db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
     session_service: FromDishka[SessionService],
     user_id: uuid.UUID | None = None,
@@ -90,6 +91,8 @@ async def list_sessions(
         user_repo=user_repo,
         current_user=current_user,
         requested_user_id=user_id,
+        checker=checker,
+        request=request,
         locale=locale,
     )
     sessions = await session_service.get_active_sessions_for_user(target_user_id)
@@ -111,6 +114,7 @@ async def revoke_session(
     session_service: FromDishka[SessionService],
     mfa_check: None = Depends(require_fresh_mfa),
     current_user: User = Depends(get_current_user_from_dishka),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> schemas.ActiveSessionOut:
     locale = resolve_locale(request=request, user=current_user)
     session = await session_service.get_session_by_id(session_id)
@@ -119,7 +123,8 @@ async def revoke_session(
             status.HTTP_404_NOT_FOUND, "errors.auth.session_not_found", locale
         )
     # MED-W19: ensure_exists removed — unreachable after raise_http_error above.
-    require_owner_or_admin(current_user, locale, owner_id=session.user_id)
+    if session.user_id != current_user.id:
+        await ensure_admin(checker, current_user, request)
 
     revoked_session = await session_service.revoke_session_by_id(session_id)
     # LOW-W19: removed dead `raise ValueError("Unreachable")` — revoke_session_by_id
@@ -144,6 +149,7 @@ async def revoke_other_sessions(
     session_service: FromDishka[SessionService],
     mfa_check: None = Depends(require_fresh_mfa),
     current_user: User = Depends(get_current_user_from_dishka),
+    checker: PermissionChecker = Depends(get_permission_checker),
     user_id: uuid.UUID | None = None,
 ) -> schemas.SessionBulkRevokeOut:
     locale = resolve_locale(request=request, user=current_user)
@@ -152,6 +158,8 @@ async def revoke_other_sessions(
         user_repo=user_repo,
         current_user=current_user,
         requested_user_id=user_id,
+        checker=checker,
+        request=request,
         locale=locale,
     )
     current_jti = _extract_jti(request)

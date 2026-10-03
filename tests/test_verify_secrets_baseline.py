@@ -104,7 +104,11 @@ def test_trusted_base_rejects_new_baseline_suppression(
     )
 
     assert result == 1
-    assert "trusted base" in capsys.readouterr().err.lower()
+    error = capsys.readouterr().err
+    assert "trusted base" in error.lower()
+    assert "src/a.py:11" in error
+    assert "Secret Keyword" in error
+    assert "digest-b" not in error
 
 
 def test_trusted_base_stale_addition_preserves_removal_semantics(

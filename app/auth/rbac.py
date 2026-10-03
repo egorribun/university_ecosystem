@@ -67,7 +67,9 @@ _SPICEDB_CALL_TIMEOUT_SECONDS: float = 2.0
 #
 # The cache stores the last-known result for each (user, resource, permission)
 # tuple.  Results are served stale while SpiceDB is unavailable, but for
-# DIFFERENT durations depending on whether the cached result is ALLOW or DENY:
+# DIFFERENT durations depending on whether the cached result is ALLOW or DENY.
+# The admin permission is the exception: a cached ALLOW is never served during
+# an outage. It requires a live decision; cached DENY remains safe.
 #
 #   DENY  (False) results → up to _GRACE_TTL_SECONDS        (60 s)
 #   ALLOW (True)  results → up to _PERMISSION_POSITIVE_TTL_SECONDS (30 s)
@@ -319,7 +321,12 @@ class PermissionChecker:
                     if cached_result is True
                     else _GRACE_TTL_SECONDS
                 )
-                if age <= max_ttl:
+                # Admin operations require a live grant, including direct
+                # check_permission callers and tenant/campus admin checks.
+                # Negative cached results remain safe; ordinary read grace is
+                # unchanged. An open circuit follows this same fail-closed path.
+                allow_stale = permission != "admin" or cached_result is False
+                if allow_stale and age <= max_ttl:
                     logger.warning(
                         "SpiceDB unavailable — serving cached permission result "
                         "(%s:%s#%s for %s, age=%.1fs, result=%s)",

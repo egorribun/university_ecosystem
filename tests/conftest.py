@@ -261,7 +261,7 @@ if os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1":
     try:
         import atexit
 
-        from testcontainers.postgres import PostgresContainer
+        from testcontainers.community.postgres import PostgresContainer
 
         # Start a lightweight Postgres container with pgvector support per worker process
         _container = PostgresContainer(
@@ -506,6 +506,44 @@ def monkeypatch_session() -> Iterator[pytest.MonkeyPatch]:
     mp = pytest.MonkeyPatch()
     yield mp
     mp.undo()
+
+
+@pytest.fixture
+def preserve_logging_configuration() -> Iterator[None]:
+    """Isolate tests that intentionally replace the process-wide log setup.
+
+    Pytest reuses its capture handlers between tests. Leaving a console
+    formatter attached makes later error-path tests render every traceback
+    through Rich, including the very large generated sources used by mutmut.
+    Restore the original handlers and processors without filtering any records.
+    """
+    import logging
+
+    import structlog
+
+    import app.core.logging as logging_mod
+
+    root = logging.getLogger()
+    handlers = root.handlers[:]
+    handler_state = [
+        (handler, handler.formatter, handler.level) for handler in handlers
+    ]
+    root_level = root.level
+    configuration = structlog.get_config().copy()
+    structlog_configured = structlog.is_configured()
+    app_configured = logging_mod._configured
+    try:
+        yield
+    finally:
+        root.handlers[:] = handlers
+        root.setLevel(root_level)
+        for handler, formatter, level in handler_state:
+            handler.setFormatter(formatter)
+            handler.setLevel(level)
+        structlog.configure(**configuration)
+        if not structlog_configured:
+            structlog.reset_defaults()
+        logging_mod._configured = app_configured
 
 
 @pytest.fixture(autouse=True)

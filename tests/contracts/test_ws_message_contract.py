@@ -130,7 +130,6 @@ WS_MESSAGE_REQUIRED_FIELDS: dict[str, set[str]] = {
     "new_message": {"type", "chat_id", "message"},
     "typing": {"type", "chat_id", "user_id", "user_name"},
     "read": {"type", "chat_id", "user_id", "read_at"},
-    "online": {"type", "user_id", "status"},
     "online_list": {"type", "users"},
     "presence": {"type", "user_id", "active", "last_seen"},
     "message_edited": {"type", "chat_id", "message_id", "content", "edited_at"},
@@ -193,18 +192,6 @@ def test_presence_message_format():
     missing = required - set(msg.keys())
     assert not missing, f"Presence message missing required fields: {missing}"
     assert isinstance(msg["active"], bool), "active must be boolean"
-
-
-def test_online_message_format():
-    """Online status messages must include user_id and status (boolean)."""
-    msg = {
-        "type": "online",
-        "user_id": str(uuid.uuid4()),
-        "status": True,
-    }
-    required = WS_MESSAGE_REQUIRED_FIELDS["online"]
-    missing = required - set(msg.keys())
-    assert not missing, f"Online message missing required fields: {missing}"
 
 
 def test_new_message_format():
@@ -295,7 +282,7 @@ def test_backend_contract_ignores_generated_mutmut_variant_bodies(tmp_path: Path
 
 def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
     """ws-hub accepts transport commands only; REST owns read receipts."""
-    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave", "message"})
+    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave"})
     assert "read" not in WS_HUB_CLIENT_MESSAGE_TYPES
     assert "typing" not in WS_HUB_CLIENT_MESSAGE_TYPES
 

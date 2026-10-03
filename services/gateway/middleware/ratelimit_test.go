@@ -130,6 +130,59 @@ func TestRateLimiter_GetClientKey_TrimsWhitespaceFromForwardedIP(t *testing.T) {
 	assert.Equal(t, "ip:172.16.0.1", capturedKey)
 }
 
+func TestRateLimiter_GetClientKey_DoesNotTrustSpoofedForwardedIPFromPrivatePeer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rateLimiter := &RateLimiter{rps: 100}
+	router := gin.New()
+	router.ForwardedByClientIP = true
+	// The zero-value gateway config must disable forwarded-header trust.
+	if err := router.SetTrustedProxies(nil); err != nil {
+		t.Fatalf("failed to set trusted proxies: %v", err)
+	}
+
+	var capturedKey string
+	router.GET("/test", func(c *gin.Context) {
+		capturedKey = rateLimiter.getClientKey(c)
+		c.Status(http.StatusOK)
+	})
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	request.RemoteAddr = "10.41.2.7:45678"
+	request.Header.Set("X-Forwarded-For", "198.51.100.77")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "ip:10.41.2.7", capturedKey)
+}
+
+func TestRateLimiter_GetClientKey_UsesClientIPFromConfiguredTrustedProxyChain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rateLimiter := &RateLimiter{rps: 100}
+	router := gin.New()
+	router.ForwardedByClientIP = true
+	if err := router.SetTrustedProxies([]string{"10.200.0.0/24"}); err != nil {
+		t.Fatalf("failed to set trusted proxies: %v", err)
+	}
+
+	var capturedKey string
+	router.GET("/test", func(c *gin.Context) {
+		capturedKey = rateLimiter.getClientKey(c)
+		c.Status(http.StatusOK)
+	})
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	request.RemoteAddr = "10.200.0.12:45678"
+	request.Header.Set("X-Forwarded-For", "198.51.100.25, 10.200.0.8")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "ip:198.51.100.25", capturedKey)
+}
+
 func TestRateLimiter_GetClientKey_PrefersUserIDOverIP(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

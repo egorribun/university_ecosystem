@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto"
+import { MessageChannel } from "node:worker_threads"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { http, HttpResponse } from "msw"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
@@ -160,7 +161,7 @@ type ServiceWorkerTestingApi = {
   processPendingNavigations: () => Promise<void>
   processPendingReports: () => Promise<void>
   processAllQueues: () => Promise<void>
-  handleMediaRequest: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  handleMediaRequest: (input: RequestInfo | URL, event?: Event) => Promise<Response>
 }
 
 type SwModule = typeof import("@/sw")
@@ -231,7 +232,25 @@ const loadServiceWorker = async () => {
   if (!testing) {
     throw new Error("Service worker testing helpers were not registered")
   }
-  return testing
+  const api = await import("@/sw/api")
+  const scope = self as unknown as TestServiceWorkerScope
+  vi.stubGlobal("MessageChannel", MessageChannel)
+  scope.clients.get = vi.fn(
+    async () =>
+      ({
+        type: "window",
+        postMessage: (_data: unknown, ports: MessagePort[]) =>
+          ports[0]!.postMessage({
+            sessionHash: api.getSessionHash(),
+            sessionScope: api.getSessionCacheScope(),
+          }),
+      }) as unknown as WindowClient
+  )
+  return {
+    ...testing,
+    handleMediaRequest: (input: RequestInfo | URL) =>
+      testing.handleMediaRequest(input, { clientId: "controlled" } as FetchEvent),
+  }
 }
 
 let originalSelf: typeof globalThis
@@ -656,10 +675,14 @@ describe("service worker media cache controls", () => {
 
     const first = await sw.handleMediaRequest(mediaUrl)
     await expect(first.text()).resolves.toBe("private-response-1")
-    expect(scope.caches.__store.has("media-private:alpha")).toBe(true)
+    expect(
+      [...scope.caches.__store.keys()].some((name) => name.startsWith("media-private:alpha:"))
+    ).toBe(true)
 
     await dispatchSwMessage({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
-    expect(scope.caches.__store.has("media-private:alpha")).toBe(false)
+    expect(
+      [...scope.caches.__store.keys()].some((name) => name.startsWith("media-private:alpha:"))
+    ).toBe(false)
 
     await dispatchSwMessage({
       type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
@@ -673,7 +696,9 @@ describe("service worker media cache controls", () => {
     )
 
     await expect(sw.handleMediaRequest(mediaUrl)).rejects.toThrow()
-    const betaCache = await scope.caches.open("media-private:beta")
+    const betaCache = await scope.caches.open(
+      `media-private:${(await import("@/sw/api")).getSessionCacheScope()}`
+    )
     await expect(betaCache.match(mediaUrl)).resolves.toBeUndefined()
   })
 
@@ -697,13 +722,13 @@ describe("service worker media cache controls", () => {
 
     const first = await sw.handleMediaRequest(mediaUrl)
     await expect(first.text()).resolves.toBe("public-response")
-    expect(scope.caches.__store.has("media-public")).toBe(true)
+    expect(scope.caches.__store.has("media-public:v2")).toBe(true)
 
     const second = await sw.handleMediaRequest(mediaUrl)
     await expect(second.text()).resolves.toBe("public-response")
   })
 
-  test("signed media responses are cached publicly even during authenticated sessions", async () => {
+  test("signed media responses stay in the authenticated session namespace", async () => {
     const sw = await loadServiceWorker()
     const scope = self as unknown as TestServiceWorkerScope
     const mediaUrl = "https://example.com/media/signed.png"
@@ -723,8 +748,10 @@ describe("service worker media cache controls", () => {
 
     const first = await sw.handleMediaRequest(mediaUrl)
     await expect(first.text()).resolves.toBe("signed-media")
-    expect(scope.caches.__store.has("media-public")).toBe(true)
-    expect(scope.caches.__store.has("media-private:gamma")).toBe(false)
+    expect(scope.caches.__store.has("media-public:v2")).toBe(true)
+    expect(
+      [...scope.caches.__store.keys()].some((name) => name.startsWith("media-private:gamma:"))
+    ).toBe(true)
 
     server.use(
       http.get(mediaUrl, () => {
@@ -746,7 +773,9 @@ describe("service worker media cache controls", () => {
       sessionHash: "delta",
     })
 
-    const cache = await scope.caches.open("media-private:delta")
+    const cache = await scope.caches.open(
+      `media-private:${(await import("@/sw/api")).getSessionCacheScope()}`
+    )
     await cache.put(mediaUrl, new Response("cached-delta-val"))
 
     const response = await sw.handleMediaRequest(mediaUrl)

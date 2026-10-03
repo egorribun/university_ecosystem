@@ -67,15 +67,6 @@ async def test_get_published(news_repo, mock_db):
 
 
 @pytest.mark.asyncio
-async def test_get_latest(news_repo):
-    with patch.object(news_repo, "get_published", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = ["latest"]
-        result = await news_repo.get_latest(limit=5)
-        assert result == ["latest"]
-        mock_get.assert_called_with(skip=0, limit=5)
-
-
-@pytest.mark.asyncio
 async def test_search(news_repo, mock_db):
     id1 = uuid.uuid4()
     mock_news = MagicMock()
@@ -96,26 +87,6 @@ async def test_search(news_repo, mock_db):
 
     assert len(result) == 1
     assert result[0].title == "found"
-
-
-@pytest.mark.asyncio
-async def test_count_total(news_repo, mock_db):
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = 42
-    mock_db.execute.return_value = mock_result
-
-    count = await news_repo.count_total()
-    assert count == 42
-
-
-@pytest.mark.asyncio
-async def test_count_total_none(news_repo, mock_db):
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = None
-    mock_db.execute.return_value = mock_result
-
-    count = await news_repo.count_total()
-    assert count == 0
 
 
 @pytest.mark.asyncio

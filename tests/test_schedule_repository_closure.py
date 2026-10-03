@@ -16,8 +16,6 @@ from app.repositories.schedule_repository import (
     GroupRepository,
     ScheduleRepository,
     _restore_cached,
-    get_group_repository,
-    get_schedule_repository,
 )
 from app.schemas.dtos import GroupDTO, ScheduleDTO
 
@@ -161,13 +159,6 @@ async def test_create_records_creator_and_invalidates_global_cache():
     assert created_payload["creator_id"] == "creator-1"
     assert delete.await_count == 1
     delete.assert_awaited_once_with("schedule:groups")
-
-
-def test_repository_factories_bind_database():
-    db = MagicMock()
-
-    assert get_group_repository(db).db is db
-    assert get_schedule_repository(db).db is db
 
 
 def test_repository_model_and_dto_properties():

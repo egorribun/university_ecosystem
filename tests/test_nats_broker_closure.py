@@ -30,7 +30,7 @@ def _payload(name: str, *, args: list | None = None) -> dict:
     }
 
 
-async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
+async def test_connect_registers_streams_and_lifecycle_callbacks() -> None:
     broker = NatsTaskBroker()
     mock_nc = AsyncMock()
     mock_js = AsyncMock()
@@ -44,7 +44,7 @@ async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
         await kwargs["reconnected_cb"]()
         await kwargs["disconnected_cb"]()
 
-    assert mock_js.add_stream.await_count == 5
+    assert mock_js.add_stream.await_count == 6
     configs = [c.kwargs["config"] for c in mock_js.add_stream.await_args_list]
     assert configs[0].name == "TASK_QUEUE"
     assert configs[0].subjects == ["tasks.>"]
@@ -56,6 +56,8 @@ async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
     assert configs[3].subjects == ["notifications.*"]
     assert configs[4].name == "OUTBOX_EVENTS"
     assert configs[4].subjects == ["outbox.*"]
+    assert configs[5].name == "CACHE_INVALIDATIONS"
+    assert configs[5].subjects == ["cache.invalidate"]
 
 
 @pytest.mark.asyncio
@@ -341,3 +343,145 @@ def test_jetstream_property_returns_current_context() -> None:
     broker._js = context  # type: ignore[assignment]
 
     assert broker.js is context
+
+
+# --- Bounded redelivery / dead-letter queue -----------------------------------
+
+
+def _task(name: str = "demo") -> _NatsTaskPayload:
+    return _NatsTaskPayload(
+        id="task-1", name=name, args=[1, "two"], kwargs={"flag": True}
+    )
+
+
+def _delivered(count: int) -> AsyncMock:
+    message = AsyncMock()
+    message.metadata = SimpleNamespace(num_delivered=count)
+    return message
+
+
+def test_num_delivered_defaults_to_one_without_jetstream_metadata() -> None:
+    assert NatsTaskBroker._num_delivered(_delivered(4)) == 4
+    assert NatsTaskBroker._num_delivered(object()) == 1
+    assert NatsTaskBroker._num_delivered(SimpleNamespace(metadata=None)) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("delivered", "delay"), [(1, 5.0), (2, 10.0), (4, 40.0)])
+async def test_failed_task_is_nacked_with_exponential_backoff(
+    delivered: int, delay: float
+) -> None:
+    broker = NatsTaskBroker()
+    message = _delivered(delivered)
+    broker._dead_letter = AsyncMock()  # type: ignore[method-assign]
+
+    with patch.object(nats_broker_module, "_MAX_DELIVERIES", 10):
+        await broker._retry_or_dead_letter(message, _task(), "boom")
+
+    message.nak.assert_awaited_once_with(delay=delay)
+    message.term.assert_not_awaited()
+    broker._dead_letter.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_backoff_is_capped() -> None:
+    broker = NatsTaskBroker()
+    message = _delivered(30)
+    with patch.object(nats_broker_module, "_MAX_DELIVERIES", 100):
+        await broker._retry_or_dead_letter(message, _task(), "boom")
+    message.nak.assert_awaited_once_with(delay=nats_broker_module._RETRY_MAX_DELAY_S)
+
+
+@pytest.mark.asyncio
+async def test_exhausted_task_is_parked_in_dlq_and_terminated() -> None:
+    broker = NatsTaskBroker()
+    message = _delivered(nats_broker_module._MAX_DELIVERIES)
+    broker._dead_letter = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    await broker._retry_or_dead_letter(message, _task(), "boom")
+
+    broker._dead_letter.assert_awaited_once()
+    message.term.assert_awaited_once()
+    message.nak.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_task_is_kept_alive_when_dlq_persistence_fails() -> None:
+    broker = NatsTaskBroker()
+    message = _delivered(nats_broker_module._MAX_DELIVERIES)
+    broker._dead_letter = AsyncMock(return_value=False)  # type: ignore[method-assign]
+
+    await broker._retry_or_dead_letter(message, _task(), "boom")
+
+    message.term.assert_not_awaited()
+    message.nak.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_persists_task_and_commits() -> None:
+    session = AsyncMock()
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    queue = MagicMock(add_failed_job=AsyncMock())
+
+    with (
+        patch("app.core.database.async_session", return_value=context),
+        patch("app.workers.dead_letter_queue.DeadLetterQueue", return_value=queue),
+    ):
+        stored = await NatsTaskBroker()._dead_letter(_task(), "x" * 5000, 5)
+
+    assert stored is True
+    queue.add_failed_job.assert_awaited_once()
+    call = queue.add_failed_job.await_args.kwargs
+    assert call["job_type"] == "demo"
+    assert call["payload"] == {"args": [1, "two"], "kwargs": {"flag": True}}
+    assert len(call["error_message"]) == 2000
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_reports_persistence_failure() -> None:
+    from sqlalchemy.exc import OperationalError
+
+    with patch(
+        "app.core.database.async_session",
+        side_effect=OperationalError("stmt", {}, Exception("db down")),
+    ):
+        assert await NatsTaskBroker()._dead_letter(_task(), "boom", 5) is False
+
+
+@pytest.mark.asyncio
+async def test_replay_dead_letter_reenqueues_original_arguments() -> None:
+    broker = NatsTaskBroker()
+    broker.enqueue = AsyncMock()  # type: ignore[method-assign]
+
+    await broker.replay_dead_letter("demo", {"args": [1], "kwargs": {"a": 2}})
+    await broker.replay_dead_letter("bare", {})
+
+    assert broker.enqueue.await_args_list[0].args == ("demo", 1)
+    assert broker.enqueue.await_args_list[0].kwargs == {"a": 2}
+    assert broker.enqueue.await_args_list[1].args == ("bare",)
+
+
+async def test_run_worker_dead_letters_task_after_max_deliveries() -> None:
+    broker = NatsTaskBroker()
+    mock_js = AsyncMock()
+    mock_sub = AsyncMock()
+    mock_js.pull_subscribe.return_value = mock_sub
+    message = _message(_payload("closure.poison"))
+    message.metadata = SimpleNamespace(num_delivered=nats_broker_module._MAX_DELIVERIES)
+    mock_sub.fetch.side_effect = [[message], asyncio.CancelledError()]
+    broker._js = mock_js
+    broker._dead_letter = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    @broker.task(name="closure.poison")
+    async def poison_handler() -> None:
+        raise RuntimeError("always fails")
+
+    with pytest.raises(asyncio.CancelledError):
+        await broker.run_worker()
+
+    broker._dead_letter.assert_awaited_once()
+    message.term.assert_awaited_once()
+    message.nak.assert_not_awaited()

@@ -12,20 +12,13 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Чтобы передать идентификатор релиза в Sentry, задайте `VITE_APP_RELEASE`. Значение подставляется на этапе сборки.
 - Для включения клиентского мониторинга ошибок задайте `VITE_SENTRY_DSN` и, при необходимости, `VITE_ENVIRONMENT`. В дев-сборке SDK автоматически не активируется.
 - Логгер на фронтенде (`src/app/logger.ts`) автоматически отправляет `logError`/`logWarning` в Sentry и дублирует вывод в консоль. Необработанные `Promise`/`axios` ошибки перехватываются глобальными хендлерами (`initGlobalErrorHandlers()` вызывается в `src/main.tsx`).
-- Чтобы собирать Web Vitals, установите `VITE_ENABLE_WEB_VITALS=true`. При необходимости отправляйте метрики на собственный эндпоинт через `VITE_WEB_VITALS_ENDPOINT` (иначе они пишутся в консоль). Флаг игнорируется в dev/test средах, поэтому CI не упадёт даже при включённой переменной.
-- Release-blocking полевые Core Web Vitals сертифицируются отдельно workflow
-  `cwv-field-certification.yml`. URL exporter выводится только из проверенных,
-  привязанных к SHA staging deployment metadata; отдельный export URL не
-  принимается. Exporter обязан проверять GitHub OIDC audience
-  `university-cwv-exporter`, repository, protected `main` ref и environment
-  `staging`, а затем возвращать только наблюдения точных `release_sha`, frontend
-  image digest и deploy run/attempt. Поддерживаемый collector contract:
-  `web-vitals` 6.1.1 и exporter schema version `1`. Deploy workflow создаёт
-  неизменяемый `staging-deployment-<sha>` artifact только после rollout, smoke и
-  Kyverno-проверок. Сертификация принимает его по точному run ID/attempt,
-  отклоняет старое/частичное/чужое evidence, проверяет p75 LCP/INP/CLS и публикует
-  SHA-bound artifact с build-provenance attestation. Ручная загрузка отчёта не
-  является допустимым источником release evidence.
+- Для отдельной диагностики Web Vitals можно при сборке задать `VITE_ENABLE_WEB_VITALS=true` и, при необходимости, `VITE_WEB_VITALS_ENDPOINT`; без эндпоинта метрики пишутся в консоль. Canonical MVP release image задаёт endpoint `/api/v1/cwv`, но отключает сбор через `VITE_ENABLE_WEB_VITALS=false` и `VITE_CWV_TRUSTED_RUM=false`.
+- Field Core Web Vitals (field CWV) и их сертификация находятся вне MVP: приёмка
+  не использует внешнее staging/production или измерения на реальных устройствах,
+  а canonical release frontend не включает сбор field CWV. Для MVP применяются
+  локальные Lighthouse/CI проверки и Compose/kind-приёмка. Ручная сертификация в
+  `cwv-field-certification.yml` и production-only certificate guard остаются для
+  будущих внешних развёртываний; они не являются предусловием выпуска `v1.0.0`.
 - Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
@@ -363,18 +356,20 @@ server {
 ## Notifications worker
 
 - Для корректной отправки push-уведомлений запустите отдельный воркер: `python -m app.workers.notifications`.
-- При запуске API и воркера в разных процессах выключите встроенный планировщик в API, установив `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
-- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`). Периодичность проверки задаётся `NOTIFICATION_QUEUE_DEAD_LETTER_CLEANUP_INTERVAL_SECONDS` (минимум 300 секунд; значение `0` отключает планировщик).
+- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
-## Очистка сессий пользователей
+## Расписание периодической очистки
 
-- API автоматически удаляет устаревшие записи из `active_sessions` при старте и затем каждые 15 минут.
-- Частоту можно изменить переменной `SESSION_CLEANUP_INTERVAL_SECONDS` (минимум 30 секунд). Значение `0` выключает фоновой планировщик; при этом скрипт очистки можно запускать вручную, вызвав `python -m app.services.session_cleanup` внутри контейнера/виртуального окружения.
+API запускает один почасовой планировщик (`app/core/lifespan.py::_periodic_scheduler_loop`; стартовый джиттер 0–60 с разносит нагрузку при rolling deploy). Периодичность задана в коде и не настраивается для отдельных задач:
 
-## Очистка MFA-челленджей
+| Периодичность | Задачи |
+|---|---|
+| каждый час | истёкшие stories, устаревшие токены сброса пароля, токены смены e-mail, MFA-челленджи, продуктовые gauge (активные пользователи, MFA) |
+| каждые 6 часов | истёкшие и отозванные сессии |
+| ежедневно в 02:00 UTC | устаревшие уведомления, задания notification-queue из dead-letter, privacy-артефакты (и CWV-наблюдения) |
 
-- Утилита `cleanup_stale_mfa_challenges` удаляет записи, у которых и срок действия, и отметка `consumed_at` старше `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
-- Планировщик запускается каждые 10 минут по умолчанию (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, минимум 30 секунд). Значение `0` отключает фоновой цикл, но задачу можно запускать вручную через `python -m app.services.mfa_challenge_cleanup`.
-- Рекомендуется выдерживать интервал 5–10 минут, чтобы база не разрасталась и не блокировала логин-формы. Следите за метриками `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total` и `_deleted_total`, чтобы замечать аномальные пики или ошибки очистки.
+Окна хранения настраиваются (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Каждую задачу можно запустить вручную, например `python -m app.services.session_cleanup` или `python -m app.services.mfa_challenge_cleanup`. Следите за метриками `periodic_task_*_runs_total`, `_errors_total` и `_deleted_total`.
+
+Отзыв сессий (logout, `/auth/sessions/*`) удаляет строки в БД сразу; после обновления с релиза, где строки только помечались отозванными, один раз запустите очистку сессий, чтобы `/auth/sessions` и операторские дашборды были согласованы.

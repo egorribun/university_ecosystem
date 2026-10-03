@@ -17,6 +17,7 @@ import (
 
 	"log/slog"
 
+	"github.com/gorilla/websocket"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
@@ -49,6 +50,65 @@ type Message struct {
 	To       string            `json:"to,omitempty"`
 	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
 	*MessageReplayMetadata
+}
+
+type roomMembershipKey struct {
+	userID string
+	roomID string
+}
+
+type roomMembershipLockEntry struct {
+	mu         sync.Mutex
+	references int
+}
+
+type roomMembershipLockRegistry struct {
+	mu      sync.Mutex
+	entries map[roomMembershipKey]*roomMembershipLockEntry
+}
+
+type roomMembershipLock struct {
+	registry *roomMembershipLockRegistry
+	key      roomMembershipKey
+	entry    *roomMembershipLockEntry
+}
+
+func (r *roomMembershipLockRegistry) acquire(key roomMembershipKey) *roomMembershipLock {
+	r.mu.Lock()
+	if r.entries == nil {
+		r.entries = make(map[roomMembershipKey]*roomMembershipLockEntry)
+	}
+	entry := r.entries[key]
+	if entry == nil {
+		entry = &roomMembershipLockEntry{}
+		r.entries[key] = entry
+	}
+	entry.references++
+	r.mu.Unlock()
+
+	return &roomMembershipLock{registry: r, key: key, entry: entry}
+}
+
+func (l *roomMembershipLock) Lock() {
+	l.entry.mu.Lock()
+}
+
+func (l *roomMembershipLock) Unlock() {
+	l.entry.mu.Unlock()
+	l.release()
+}
+
+func (l *roomMembershipLock) release() {
+	l.registry.mu.Lock()
+	defer l.registry.mu.Unlock()
+
+	if l.registry.entries[l.key] != l.entry {
+		return
+	}
+	l.entry.references--
+	if l.entry.references == 0 {
+		delete(l.registry.entries, l.key)
+	}
 }
 
 func (m *Message) replaySequence() uint64 {
@@ -97,6 +157,16 @@ type Hub struct {
 	maxClients int
 	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
 	broadcastWorkers int
+	// roomMembershipLocks serialize room authorization with revocation. Entries
+	// exist only while a caller is holding or waiting for the matching key.
+	roomMembershipLocks roomMembershipLockRegistry
+	// pendingRoomRevocations keep joins denied after an authorization refresh
+	// fails. The signed JetStream event remains unacked until the refresh works.
+	pendingRoomRevocationsMu sync.RWMutex
+	pendingRoomRevocations   map[roomMembershipKey]struct{}
+	// subscribeCacheInvalidations is a package-test seam; production leaves it
+	// nil so revocations always use the durable JetStream stream below.
+	subscribeCacheInvalidations func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
 	// internalSecret is the shared secret for local HMAC validation.
 	internalSecret string
 	// msgLimiters is a per-client token-bucket map that limits NATS publish rate.
@@ -107,9 +177,14 @@ type Hub struct {
 	clientMsgRateBurst int
 	// ctx is the lifecycle context for the Hub, cancelled when Run() exits.
 	// Used by ReadPump/WritePump goroutines to detect hub shutdown (RZ-24-02).
-	ctx           context.Context
-	ctxCancel     context.CancelFunc
-	limiterCancel context.CancelFunc
+	ctx              context.Context
+	ctxCancel        context.CancelFunc
+	runStarted       bool
+	runWG            sync.WaitGroup
+	clientPumpWG     sync.WaitGroup
+	clientEvictionWG sync.WaitGroup
+	limiterCleanupWG sync.WaitGroup
+	limiterCancel    context.CancelFunc
 	// sessionRevocationCancel owns the dedicated Redis Pub/Sub consumer.
 	// It is cancelled during Stop so the tracked listener cannot outlive the Hub.
 	sessionRevocationCancel context.CancelFunc
@@ -483,14 +558,106 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	return nil
 }
 
-// Context returns the hub's lifecycle context in a thread-safe manner.
-func (h *Hub) Context() context.Context {
-	if h == nil {
-		return nil
-	}
+// registerClient transfers a newly upgraded client to Run without allowing a
+// handler to block forever when shutdown wins the race. The pump wait-group
+// entries are reserved under lifecycleMu before Stop can start waiting.
+func (h *Hub) registerClient(client *Client) bool {
 	h.lifecycleMu.Lock()
-	defer h.lifecycleMu.Unlock()
-	return h.ctx
+	runCtx := h.ctx
+	if h.stopped.Load() || runCtx == nil || runCtx.Err() != nil {
+		h.lifecycleMu.Unlock()
+		return false
+	}
+	h.clientPumpWG.Add(2)
+	h.lifecycleMu.Unlock()
+
+	select {
+	case h.Register <- client:
+		return true
+	case <-runCtx.Done():
+		h.clientPumpWG.Done()
+		h.clientPumpWG.Done()
+		return false
+	}
+}
+
+func (h *Hub) startClientPumps(client *Client, clientCtx context.Context) {
+	StartTrackedGoroutine(func() {
+		defer h.clientPumpWG.Done()
+		client.WritePump()
+	})
+	StartTrackedGoroutine(func() {
+		defer h.clientPumpWG.Done()
+		client.ReadPump(clientCtx)
+	})
+}
+
+// unregisterClient routes teardown through the Run loop while it is live and
+// performs it synchronously once that loop has stopped or is stopping.
+func (h *Hub) unregisterClient(ctx context.Context, client *Client) {
+	h.lifecycleMu.Lock()
+	runCtx := h.ctx
+	stopped := h.stopped.Load()
+	h.lifecycleMu.Unlock()
+	if stopped {
+		h.handleUnregister(ctx, client)
+		return
+	}
+	if runCtx == nil {
+		select {
+		case h.Unregister <- client:
+		default:
+			h.handleUnregister(ctx, client)
+		}
+		return
+	}
+	select {
+	case h.Unregister <- client:
+	case <-runCtx.Done():
+		h.handleUnregister(ctx, client)
+	}
+}
+
+func (h *Hub) dispatchBroadcast(ctx context.Context, msg *Message, broadcastCh, sequencedBroadcastCh chan<- *Message) {
+	target := broadcastCh
+	if msg.replaySequence() > 0 {
+		target = sequencedBroadcastCh
+	}
+	select {
+	case target <- msg:
+	default:
+		BroadcastDropsTotal.Inc()
+		if msg.replaySequence() > 0 {
+			h.failRoomClients(msg.Room)
+		}
+		h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
+			"type", msg.Type,
+			"room", msg.Room)
+	}
+}
+
+func (h *Hub) beginRun(parent context.Context) (context.Context, context.CancelFunc, bool) {
+	runCtx, runCancel := context.WithCancel(parent)
+	h.lifecycleMu.Lock()
+	if h.stopped.Load() || h.runStarted {
+		h.lifecycleMu.Unlock()
+		runCancel()
+		return nil, nil, false
+	}
+	h.runStarted = true
+	h.ctx, h.ctxCancel = runCtx, runCancel
+	h.runWG.Add(1)
+	h.lifecycleMu.Unlock()
+	return runCtx, runCancel, true
+}
+
+func (h *Hub) endRun(runCancel context.CancelFunc) {
+	runCancel()
+	h.lifecycleMu.Lock()
+	h.ctx, h.ctxCancel = nil, nil
+	h.runStarted = false
+	h.lifecycleMu.Unlock()
+	h.runWG.Done()
 }
 
 // Run starts the hub's main select loop.
@@ -504,16 +671,11 @@ func (h *Hub) Context() context.Context {
 // h.broadcastWorkers (set from cfg.BroadcastWorkers / WS_BROADCAST_WORKERS
 // env var, default 2×GOMAXPROCS) instead of the hard-coded constant 4.
 func (h *Hub) Run(ctx context.Context) {
-	runCtx, runCancel := context.WithCancel(ctx)
-	h.lifecycleMu.Lock()
-	h.ctx, h.ctxCancel = runCtx, runCancel
-	h.lifecycleMu.Unlock()
-	defer func() {
-		runCancel()
-		h.lifecycleMu.Lock()
-		h.ctx, h.ctxCancel = nil, nil
-		h.lifecycleMu.Unlock()
-	}()
+	runCtx, runCancel, started := h.beginRun(ctx)
+	if !started {
+		return
+	}
+	defer h.endRun(runCancel)
 
 	workers := h.broadcastWorkers
 	if workers <= 0 {
@@ -564,21 +726,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.handleUnregister(ctx, client)
 
 		case msg := <-h.Broadcast:
-			target := broadcastCh
-			if msg.replaySequence() > 0 {
-				target = sequencedBroadcastCh
-			}
-			select {
-			case target <- msg:
-			default:
-				BroadcastDropsTotal.Inc()
-				if msg.replaySequence() > 0 {
-					h.failRoomClients(msg.Room)
-				}
-				h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
-					"type", msg.Type,
-					"room", msg.Room)
-			}
+			h.dispatchBroadcast(ctx, msg, broadcastCh, sequencedBroadcastCh)
 
 		case <-queueDepthTicker.C:
 			BroadcastQueueDepth.Set(float64(len(broadcastCh) + len(sequencedBroadcastCh)))
@@ -602,9 +750,25 @@ func (h *Hub) failRoomClients(room string) {
 }
 
 func (h *Hub) handleRegister(ctx context.Context, client *Client) {
+	// Serialize final admission with Stop and Run-context cancellation. A
+	// register rendezvous can release its sender before this function starts,
+	// allowing an already-started pump to unregister synchronously while shutdown
+	// is in progress. Holding lifecycleMu through insertion and metric accounting
+	// makes either registration precede shutdown completely or be rejected.
+	h.lifecycleMu.Lock()
 	h.mu.Lock()
+	if h.stopped.Load() || (h.runStarted && (h.ctx == nil || h.ctx.Err() != nil)) {
+		h.mu.Unlock()
+		h.lifecycleMu.Unlock()
+		client.cancelConnection()
+		client.closeOnce.Do(func() { safeClose(client.Send) })
+		client.closeTransport("Failed to close connection after hub shutdown")
+		return
+	}
+
 	if h.maxClients > 0 && len(h.Clients) >= h.maxClients {
 		h.mu.Unlock()
+		h.lifecycleMu.Unlock()
 		if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelWarn) {
 			h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
 				"id", client.ID,
@@ -621,8 +785,9 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 		return
 	}
 	h.Clients[client.ID] = client
-	h.mu.Unlock()
 	ActiveConnections.Inc()
+	h.mu.Unlock()
+	h.lifecycleMu.Unlock()
 	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
 		h.Logger.InfoContext(ctx, "Client connected", "id", client.ID)
 	}
@@ -642,6 +807,7 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 		h.mu.Lock()
 		client.mu.Lock()
 		for room := range client.Rooms {
+			delete(client.Rooms, room)
 			if clients, ok := h.Rooms[room]; ok {
 				delete(clients, client)
 				if len(clients) == 0 {
@@ -766,6 +932,15 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 }
 
 func (h *Hub) deliverBroadcastRecipient(ctx context.Context, msg *Message, data []byte, recipient recipient) {
+	if msg != nil && msg.Room != "" {
+		lock := h.roomMembershipLock(recipient.client.UserID, msg.Room)
+		lock.Lock()
+		defer lock.Unlock()
+		if !h.isRoomMember(msg.Room, recipient.client) {
+			return
+		}
+	}
+
 	enqueueResult := recipient.client.enqueueRoomBroadcast(msg, data)
 	if enqueueResult == roomEnqueueDelivered {
 		MessagesDeliveredTotal.Inc()
@@ -788,15 +963,26 @@ func (h *Hub) deliverBroadcastRecipient(ctx context.Context, msg *Message, data 
 	h.scheduleClientEviction(recipient.client)
 }
 
+func (h *Hub) isRoomMember(room string, client *Client) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	_, ok := h.Rooms[room][client]
+	return ok
+}
+
 func (h *Hub) scheduleClientEviction(client *Client) {
-	StartTrackedGoroutine(func() {
-		select {
-		case h.Unregister <- client:
-		case <-h.ctx.Done():
-			// RZ-24-03: Hub shutting down; close client directly.
-			client.closeOnce.Do(func() { safeClose(client.Send) })
-		}
-	})
+	h.lifecycleMu.Lock()
+	if h.stopped.Load() {
+		h.lifecycleMu.Unlock()
+		client.Disconnect(websocket.CloseTryAgainLater, "slow client evicted")
+		return
+	}
+	h.clientEvictionWG.Add(1)
+	h.lifecycleMu.Unlock()
+
+	startTrackedGoroutine(func() {
+		client.Disconnect(websocket.CloseTryAgainLater, "slow client evicted")
+	}, h.clientEvictionWG.Done)
 }
 
 // SubscribeToNATS registers NATS subscriptions and stores them for graceful shutdown.
@@ -825,16 +1011,16 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	var err error
 	h.chatReplayAvailable.Store(false)
 	h.chatStreamIncarnation = ""
+	if h.js == nil {
+		h.js, err = jetStreamContextFunc(h.Nats)
+		if err != nil {
+			return fmt.Errorf("initialize JetStream for durable cache invalidations: %w", err)
+		}
+	}
 
 	if h.enableJetStream {
 		if h.internalSecret == "" {
 			return fmt.Errorf("secure chat replay requires a non-empty signing secret")
-		}
-		if h.js == nil {
-			h.js, err = jetStreamContextFunc(h.Nats)
-			if err != nil {
-				return fmt.Errorf("initialize JetStream context: %w", err)
-			}
 		}
 		streamInfo, infoErr := h.js.StreamInfo(h.streamChat)
 		if infoErr != nil {
@@ -877,12 +1063,24 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	}
 	h.subs = append(h.subs, chatSub, notifSub)
 
-	invSub, err := coreNATSSubscribeFunc(h.Nats, "cache.invalidate", h.handleCacheInvalidation(appCtx))
+	// Membership revocations are published through the backend transactional
+	// outbox and must reach every replica after downtime. Keep this subscription
+	// durable even when Core NATS is selected for chat delivery.
+	invHandler := h.handleCacheInvalidation(appCtx)
+	invOpts := []nats.SubOpt{nats.DeliverAll(), nats.AckExplicit(), nats.ManualAck()}
+	var invSub *nats.Subscription
+	if h.subscribeCacheInvalidations != nil {
+		invSub, err = h.subscribeCacheInvalidations(invHandler, invOpts...)
+	} else {
+		invSub, err = h.js.Subscribe("cache.invalidate", invHandler, invOpts...)
+	}
 	if err != nil {
-		h.Logger.ErrorContext(appCtx, "NATS cache invalidation subscription failed", "err", err)
+		h.Logger.ErrorContext(appCtx, "JetStream cache invalidation subscription failed", "err", err)
 		return err
 	}
-	h.subs = append(h.subs, invSub)
+	if invSub != nil {
+		h.subs = append(h.subs, invSub)
+	}
 
 	ctrlSub, err := coreNATSSubscribeFunc(h.Nats, "ws_hub.control", h.handleControlMessage(appCtx))
 	if err != nil {
@@ -1103,15 +1301,20 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 	}
 }
 
+type cacheInvalidationPayload struct {
+	Data struct {
+		EvictRoom bool   `json:"evict_room,omitempty"`
+		RoomID    string `json:"room_id"`
+		Timestamp uint64 `json:"timestamp"`
+		UserID    string `json:"user_id"`
+	} `json:"data"`
+	Signature string `json:"signature"`
+}
+
 func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS cache.invalidate callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
+		defer h.recoverCacheInvalidationPanic(appCtx, msg)
 
 		select {
 		case <-appCtx.Done():
@@ -1122,7 +1325,7 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
 		defer cancel()
 		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
+		msgCtx, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
 			trace.WithAttributes(
 				semconv.MessagingSystemKey.String("nats"),
 				semconv.MessagingOperationTypeKey.String("receive"),
@@ -1131,45 +1334,189 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 		)
 		defer span.End()
 
-		var payload struct {
-			Data struct {
-				RoomID    string `json:"room_id"`
-				Timestamp uint64 `json:"timestamp"`
-				UserID    string `json:"user_id"`
-			} `json:"data"`
-			Signature string `json:"signature"`
-		}
+		h.processCacheInvalidationMessage(msgCtx, msg, span)
+	}
+}
 
-		if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
-			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS cache.invalidate message dropped",
-				"subject", msg.Subject, "size", len(msg.Data), "err", err)
-			return
-		}
+func (h *Hub) recoverCacheInvalidationPanic(ctx context.Context, msg *nats.Msg) {
+	if recovered := recover(); recovered != nil {
+		h.Logger.ErrorContext(ctx, "NATS cache.invalidate callback panic recovered",
+			"panic", recovered, "subject", msg.Subject)
+	}
+}
 
-		dataBytes, err := hubJSONMarshalFunc(payload.Data)
-		if err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to marshal validation data", "err", err)
-			return
-		}
+func (h *Hub) processCacheInvalidationMessage(ctx context.Context, msg *nats.Msg, span trace.Span) {
+	payload, ok := h.decodeCacheInvalidationMessage(ctx, msg)
+	if !ok {
+		return
+	}
+	if !h.verifyCacheInvalidationSignature(ctx, msg, payload) {
+		return
+	}
+	if !h.applyCacheInvalidation(ctx, msg, span, payload) {
+		return
+	}
+	safeAck(msg)
+}
 
-		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
-		if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
-			return
-		}
-		expectedSigBytes := hFunc.Sum(nil)
+func (h *Hub) decodeCacheInvalidationMessage(
+	ctx context.Context,
+	msg *nats.Msg,
+) (cacheInvalidationPayload, bool) {
+	var payload cacheInvalidationPayload
+	if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
+		h.Logger.WarnContext(ctx, "ws-hub: malformed NATS cache.invalidate message dropped",
+			"subject", msg.Subject, "size", len(msg.Data), "err", err)
+		h.rejectCacheInvalidation(ctx, msg)
+		return payload, false
+	}
+	if !cacheInvalidationIdentifiersValid(payload) {
+		h.Logger.WarnContext(ctx, "ws-hub: invalid cache.invalidate identifiers dropped",
+			"subject", msg.Subject)
+		h.rejectCacheInvalidation(ctx, msg)
+		return payload, false
+	}
+	return payload, true
+}
 
-		payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
-		if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
-			h.Logger.WarnContext(msgCtx, "Invalid internal NATS signature — dropping event",
-				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID)
-			return
-		}
+func cacheInvalidationIdentifiersValid(payload cacheInvalidationPayload) bool {
+	return isValidUUID(payload.Data.UserID) &&
+		(!payload.Data.EvictRoom || isValidUUID(payload.Data.RoomID)) &&
+		(payload.Data.EvictRoom || payload.Data.RoomID == "" || isValidUUID(payload.Data.RoomID))
+}
 
-		if h.authClient != nil {
-			h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
+func (h *Hub) verifyCacheInvalidationSignature(
+	ctx context.Context,
+	msg *nats.Msg,
+	payload cacheInvalidationPayload,
+) bool {
+	dataBytes, err := hubJSONMarshalFunc(payload.Data)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "Failed to marshal validation data", "err", err)
+		h.rejectCacheInvalidation(ctx, msg)
+		return false
+	}
+
+	hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
+	if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
+		h.Logger.ErrorContext(ctx, "Failed to write data to HMAC", "err", err)
+		h.rejectCacheInvalidation(ctx, msg)
+		return false
+	}
+	expectedSigBytes := hFunc.Sum(nil)
+
+	payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
+	if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
+		h.Logger.WarnContext(ctx, "Invalid internal NATS signature — dropping event",
+			"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID)
+		h.rejectCacheInvalidation(ctx, msg)
+		return false
+	}
+	return true
+}
+
+func (h *Hub) rejectCacheInvalidation(ctx context.Context, msg *nats.Msg) {
+	if err := safeTerm(msg); err != nil &&
+		!errors.Is(err, nats.ErrMsgNotBound) && !errors.Is(err, nats.ErrNotJSMessage) {
+		h.Logger.WarnContext(ctx, "Failed to terminate invalid cache invalidation", "err", err)
+	}
+}
+
+func (h *Hub) applyCacheInvalidation(
+	ctx context.Context,
+	msg *nats.Msg,
+	span trace.Span,
+	payload cacheInvalidationPayload,
+) bool {
+	if payload.Data.EvictRoom {
+		if err := h.evictRoomMembership(ctx, payload.Data.UserID, payload.Data.RoomID); err != nil {
+			h.Logger.ErrorContext(ctx, "Room membership revocation could not be confirmed; retrying",
+				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID, "err", err)
+			span.RecordError(err)
+			safeNakWithDelay(msg, 5*time.Second)
+			return false
+		}
+	} else if h.authClient != nil {
+		h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
+	}
+	return true
+}
+
+func (h *Hub) roomMembershipLock(userID, roomID string) *roomMembershipLock {
+	return h.roomMembershipLocks.acquire(roomMembershipKey{userID: userID, roomID: roomID})
+}
+
+func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) error {
+	lock := h.roomMembershipLock(userID, roomID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	refresher, ok := h.authClient.(RoomAuthorizationRefresher)
+	if !ok {
+		h.markRoomRevocationPending(userID, roomID)
+		h.revokeRoomMember(userID, roomID)
+		return errors.New("room auth client cannot confirm uncached membership state")
+	}
+	allowed, err := refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	if err != nil {
+		h.markRoomRevocationPending(userID, roomID)
+		h.revokeRoomMember(userID, roomID)
+		return fmt.Errorf("refresh room authorization: %w", err)
+	}
+	h.clearRoomRevocationPending(userID, roomID)
+	if allowed {
+		// JetStream can redeliver an older removal after a later re-add. A fresh
+		// authorization check prevents that replay from evicting a valid member.
+		return nil
+	}
+
+	h.revokeRoomMember(userID, roomID)
+	return nil
+}
+
+func (h *Hub) revokeRoomMember(userID, roomID string) {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.Rooms[roomID]))
+	for client := range h.Rooms[roomID] {
+		if client.UserID == userID {
+			clients = append(clients, client)
 		}
 	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		// The invalidation decoder validates roomID as a UUID; the other fields are
+		// constants, so this string-only notice has no JSON marshal failure case.
+		notice := []byte(
+			`{"code":"` + roomAccessRevokedCode +
+				`","detail":"` + roomAccessRevokedDetail +
+				`","room":"` + roomID +
+				`","type":"error"}`,
+		)
+		client.revokeRoom(roomID, notice)
+	}
+}
+
+func (h *Hub) markRoomRevocationPending(userID, roomID string) {
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	if h.pendingRoomRevocations == nil {
+		h.pendingRoomRevocations = make(map[roomMembershipKey]struct{})
+	}
+	h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}] = struct{}{}
+}
+
+func (h *Hub) clearRoomRevocationPending(userID, roomID string) {
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	delete(h.pendingRoomRevocations, roomMembershipKey{userID: userID, roomID: roomID})
+}
+
+func (h *Hub) isRoomRevocationPending(userID, roomID string) bool {
+	h.pendingRoomRevocationsMu.RLock()
+	defer h.pendingRoomRevocationsMu.RUnlock()
+	_, pending := h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}]
+	return pending
 }
 
 type controlPayload struct {
@@ -1294,13 +1641,6 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	}
 }
 
-// DisconnectSession closes only the active connection(s) associated with one
-// immutable session JTI. The Hub lock is released before RevokeSession takes
-// the client gate, preserving the Hub.mu -> Client.mu lock-order invariant.
-func (h *Hub) DisconnectSession(jti string, closeCode int, reason string) {
-	h.disconnectSessionContext(context.Background(), jti, closeCode, reason)
-}
-
 // disconnectSessionContext is the context-aware implementation used by
 // lifecycle consumers. The exported compatibility wrapper above keeps the
 // existing no-context API for callers that do not have a request context.
@@ -1337,13 +1677,22 @@ func (h *Hub) disconnectSessionContext(ctx context.Context, jti string, closeCod
 func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 	cleanupCtx, cancel := context.WithCancel(ctx)
 	h.lifecycleMu.Lock()
+	if h.stopped.Load() {
+		h.lifecycleMu.Unlock()
+		cancel()
+		return
+	}
 	if h.limiterCancel != nil {
 		h.limiterCancel()
 	}
 	h.limiterCancel = cancel
+	// Add under lifecycleMu so Stop cannot begin Wait until all admitted
+	// cleanup workers have reserved their completion count.
+	h.limiterCleanupWG.Add(1)
 	h.lifecycleMu.Unlock()
 
 	StartTrackedGoroutine(func() {
+		defer h.limiterCleanupWG.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				h.Logger.ErrorContext(cleanupCtx, "CRITICAL: Panic in LimiterCleanup goroutine avoided ws-hub crash", "panic", r)
@@ -1386,6 +1735,11 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 
 // Stop drains all NATS subscriptions (flushing in-flight messages).
 func (h *Hub) Stop() {
+	//nolint:contextcheck // Stop is a context-free lifecycle API; its shutdown cannot be canceled by callers.
+	h.stop(context.Background())
+}
+
+func (h *Hub) stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
 		h.lifecycleMu.Lock()
 		h.stopped.Store(true)
@@ -1401,13 +1755,18 @@ func (h *Hub) Stop() {
 			h.sessionRevocationCancel = nil
 		}
 		h.lifecycleMu.Unlock()
+		h.limiterCleanupWG.Wait()
+		h.runWG.Wait()
+		h.clientEvictionWG.Wait()
+		h.closeActiveClients(ctx)
+		h.clientPumpWG.Wait()
 		// A stopped Hub must not leave a Pub/Sub consumer behind. The listener's
 		// WaitGroup entry is registered while lifecycleMu is held, before Stop
 		// can set stopped and begin this join.
 		h.sessionRevocationWG.Wait()
 		for _, sub := range h.subs {
 			if err := sub.Drain(); err != nil {
-				h.Logger.WarnContext(context.Background(), "NATS subscription drain error", "err", err)
+				h.Logger.WarnContext(ctx, "NATS subscription drain error", "err", err)
 			}
 		}
 		if h.UpgradeLimiter != nil {
@@ -1421,6 +1780,22 @@ func (h *Hub) Stop() {
 	})
 }
 
+func (h *Hub) closeActiveClients(ctx context.Context) {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.Clients))
+	for _, client := range h.Clients {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		client.cancelConnection()
+		client.cancelAllRoomReplays()
+		client.closeTransportWithControlFrame(1001, "server shutting down")
+		h.handleUnregister(ctx, client)
+	}
+}
+
 // HasJWKSCache reports whether the JWKS cache has been initialised.
 // MOD-W17-05: Used by the readiness health endpoint to detect degraded state.
 func (h *Hub) HasJWKSCache() bool {
@@ -1429,8 +1804,22 @@ func (h *Hub) HasJWKSCache() bool {
 	return h.jwksCache != nil
 }
 
-// AuthorizeRoomJoin verifies that userID is a participant of the given room.
-func (h *Hub) AuthorizeRoomJoin(ctx context.Context, userID, room string) bool {
+// authorizeRoomJoinLocked expects the caller to hold the matching keyed
+// membership lock so a pending revoke cannot race an authoritative re-check
+// and rejoin.
+func (h *Hub) authorizeRoomJoinLocked(ctx context.Context, userID, room string) bool {
+	if h.isRoomRevocationPending(userID, room) {
+		refresher, ok := h.authClient.(RoomAuthorizationRefresher)
+		if !ok {
+			return false
+		}
+		allowed, err := refresher.RefreshRoomAuthorization(ctx, userID, room)
+		if err != nil {
+			return false
+		}
+		h.clearRoomRevocationPending(userID, room)
+		return allowed
+	}
 	if h.authClient == nil {
 		h.Logger.WarnContext(ctx, "AuthorizeRoomJoin: no auth client configured, denying",
 			"user", userID, "room", room)

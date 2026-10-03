@@ -8,8 +8,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, exists, func, or_, select
-from sqlalchemy.orm import contains_eager, joinedload, selectinload
+from sqlalchemy import delete, exists, func, or_, select, update
+from sqlalchemy.orm import contains_eager, selectinload
 
 import app.models as models
 from app.core.protocols import AsyncDatabaseSession
@@ -17,7 +17,6 @@ from app.models import User, UserProfile
 from app.models.user_loaders import (
     USER_AUTH_WITH_MFA_OPTIONS,
     USER_MFA_COLLECTION_OPTIONS,
-    USER_MFA_LOAD_OPTIONS,
     USER_MFA_RELATIONSHIP_NAMES,
 )
 from app.repositories.base import BaseRepository
@@ -60,7 +59,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
 
         stmt = select(User).where(User.id == id).options(*USER_AUTH_WITH_MFA_OPTIONS)
         if with_for_update:
-            stmt = stmt.with_for_update()
+            # Joined 1:1 relationships are nullable outer joins; lock only the
+            # account row so PostgreSQL does not try to lock their nullable sides.
+            stmt = stmt.with_for_update(of=User)
 
         result = await self.db.execute(stmt)
         obj = result.scalars().first()
@@ -110,62 +111,6 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         obj = result.scalars().first()
         return UserAuthDTO.model_validate(obj) if obj else None
 
-    async def get_by_email_only(self, login: str) -> UserDTO | None:
-        """Find user by email address (case-insensitive).
-
-        TD-002 (audit 2026-03-10): Renamed from ``get_by_login`` and the dead
-        ``or_()`` wrapper removed. The previous docstring claimed to search by
-        "email or username/login" but the or_() had only one branch (email),
-        making the promise a lie. Until a username field is added to the User
-        model, this method correctly documents its single search key.
-        """
-        stmt = (
-            select(User)
-            .where(func.lower(User.email) == login.strip().lower())
-            .options(*USER_MFA_LOAD_OPTIONS)
-        )
-        result = await self.db.execute(stmt)
-        obj = result.scalar_one_or_none()
-        return self._to_dto(obj) if obj else None
-
-    async def get_by_email_or_raise(self, email: str) -> UserDTO:
-        """Get user by email or raise ValueError.
-
-        TD-010 (audit 2026-03-04): email address removed from the error message
-        to prevent PII propagation into logs, error trackers, and API responses.
-        """
-        user = await self.get_by_email(email)
-        if user is None:
-            raise ValueError("User not found")
-        return user
-
-    async def get_with_full_profile(self, user_id: uuid.UUID | str) -> UserDTO | None:
-        """Fetch a user with profile, preferences, and education_path in ONE query.
-
-        Use this instead of :meth:`get` when all three delegated sub-objects are
-        needed (e.g. /users/me, profile edit page).  A single LEFT OUTER JOIN
-        replaces the three consecutive selectin round-trips that the lazy
-        ``selectin`` relationship strategy would otherwise issue.
-        """
-        if isinstance(user_id, str):
-            try:
-                user_id = uuid.UUID(user_id)
-            except ValueError:
-                return None
-        stmt = (
-            select(User)
-            .where(User.id == user_id)
-            .options(
-                joinedload(User.profile),
-                joinedload(User.preferences),
-                joinedload(User.education_path),
-                *USER_MFA_LOAD_OPTIONS,
-            )
-        )
-        result = await self.db.execute(stmt)
-        obj = result.unique().scalars().first()
-        return self._to_dto(obj) if obj else None
-
     async def get_orm_for_update_with_relations(
         self, id: uuid.UUID | str
     ) -> User | None:
@@ -201,6 +146,24 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
                 selectinload(User.education_path),
             )
             .with_for_update()
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_orm_for_anonymization(self, id: uuid.UUID | str) -> User | None:
+        """Lock the account and load each relation that anonymization mutates."""
+        target_id = self._cast_id(id)
+        stmt = (
+            select(User)
+            .where(User.id == target_id)
+            .options(
+                selectinload(User.profile),
+                selectinload(User.preferences),
+                selectinload(User.education_path),
+                selectinload(User.spotify),
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update(of=User)
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()
@@ -276,31 +239,10 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         objs = result.unique().scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
-    async def get_active_users(
-        self, *, skip: int = 0, limit: int = 100
-    ) -> list[UserDTO]:
-        """Get only active users."""
-        result = await self.db.execute(
-            select(User)
-            .where(User.is_active.is_(True))
-            .offset(skip)
-            .limit(limit)
-            .options(*USER_MFA_LOAD_OPTIONS)
-        )
-        objs = result.scalars().all()
-        return [self._to_dto(obj) for obj in objs]
-
     async def count_active(self) -> int:
         """Count active users."""
         result = await self.db.execute(
             select(func.count(User.id)).where(User.is_active.is_(True))
-        )
-        return result.scalar() or 0
-
-    async def count_with_mfa(self) -> int:
-        """Count users with MFA enabled."""
-        result = await self.db.execute(
-            select(func.count(User.id)).where(User.mfa_required.is_(True))
         )
         return result.scalar() or 0
 
@@ -372,44 +314,6 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
     # RZ-12 (audit 2026-03-05): Hard-cap at 50 — MFA challenges are short-lived
     # objects; returning 1000 at once is never a valid business requirement.
     _MFA_CHALLENGES_MAX_LIMIT: int = 50
-
-    async def get_user_mfa_challenges(
-        self, user_id: uuid.UUID | str, limit: int = 50
-    ) -> list[models.MfaChallenge]:
-        """Get user MFA challenges."""
-        if isinstance(user_id, str):
-            try:
-                user_id = uuid.UUID(user_id)
-            except ValueError:
-                return []
-
-        capped = min(limit, self._MFA_CHALLENGES_MAX_LIMIT)
-        stmt = (
-            select(models.MfaChallenge)
-            .where(models.MfaChallenge.user_id == user_id)
-            .limit(capped)
-            .order_by(models.MfaChallenge.created_at.desc())
-        )
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
-
-    async def get_user_totp_enrollments(
-        self, user_id: uuid.UUID | str
-    ) -> list[models.MfaTotpEnrollment]:
-        """Get user TOTP enrollments."""
-        if isinstance(user_id, str):
-            try:
-                user_id = uuid.UUID(user_id)
-            except ValueError:
-                return []
-
-        stmt = (
-            select(models.MfaTotpEnrollment)
-            .where(models.MfaTotpEnrollment.user_id == user_id)
-            .order_by(models.MfaTotpEnrollment.created_at.desc())
-        )
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
 
     async def check_email_exists(
         self, email: str, exclude_user_id: uuid.UUID | str | None = None
@@ -558,6 +462,39 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         await self.db.flush()
         await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
         return self._to_dto(user)
+
+    async def rehash_password_if_current(
+        self, user_id: uuid.UUID, *, expected_hash: str, new_hash: str
+    ) -> bool:
+        """Upgrade hash parameters only if the validated password is still current."""
+        result = await self.db.execute(
+            update(User)
+            .where(User.id == user_id, User.hashed_password == expected_hash)
+            .values(hashed_password=new_hash)
+            .returning(User.id)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def change_password_if_current(
+        self, user_id: uuid.UUID, *, expected_hash: str, new_hash: str
+    ) -> int | None:
+        """Atomically replace a verified password and advance the login epoch.
+
+        The UPDATE holds the same User row lock as session creation. Its hash
+        predicate rejects a password/reset change that raced the verification;
+        the epoch invalidates credentials validated before this transition.
+        """
+        result = await self.db.execute(
+            update(User)
+            .where(User.id == user_id, User.hashed_password == expected_hash)
+            .values(
+                hashed_password=new_hash,
+                mfa_epoch=func.coalesce(User.mfa_epoch, 0) + 1,
+            )
+            .returning(User.mfa_epoch)
+        )
+        epoch = result.scalar_one_or_none()
+        return int(epoch) if epoch is not None else None
 
     async def update(
         self, id: uuid.UUID | str, obj_in: Any | dict[str, Any]

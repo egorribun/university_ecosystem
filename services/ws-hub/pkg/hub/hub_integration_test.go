@@ -54,10 +54,8 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 
 	natsContainer, err := tcnats.Run(ctx,
 		"nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652",
-		// JetStream not required for the cache.invalidate / chat.* / notifications.*
-		// subjects this test suite covers — they run on core NATS pub/sub.
-		// The testcontainers NATS module enables JetStream by default; this suite
-		// intentionally uses only core pub/sub subjects.
+		// Chat and notification delivery in this suite uses Core NATS; room
+		// revocations still require a retained JetStream stream.
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {
@@ -78,6 +76,23 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 	if err != nil {
 		_ = natsContainer.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("nats connect: %v", err)
+	}
+	js, err := nc.JetStream()
+	if err != nil {
+		nc.Close()
+		_ = natsContainer.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
+		t.Fatalf("NATS JetStream context: %v", err)
+	}
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:      "CACHE_INVALIDATIONS",
+		Subjects:  []string{"cache.invalidate"},
+		Storage:   nats.MemoryStorage,
+		Retention: nats.LimitsPolicy,
+	})
+	if err != nil {
+		nc.Close()
+		_ = natsContainer.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
+		t.Fatalf("create cache invalidation stream: %v", err)
 	}
 
 	cleanup := func() {
@@ -512,7 +527,7 @@ func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
 	}
 	setTicket := func(t *testing.T, token, userID string) {
 		t.Helper()
-		require.NoError(t, rdb.Set(ctx, "ott:ws:"+token, userID+":"+validSessionJTI, 30*time.Second).Err())
+		require.NoError(t, rdb.Set(ctx, "ott:ws:"+token, userID+":"+validSessionJTI+":9999999999", 30*time.Second).Err())
 	}
 	tok1, uid1 := mkTicket(0xa1)
 	tok2, uid2 := mkTicket(0xa2)

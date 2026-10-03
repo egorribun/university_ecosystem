@@ -42,6 +42,26 @@ const formatMessageTime = (dateString: string) => {
 // sender, or a new calendar day starts a fresh group.
 const GROUP_GAP_MS = 5 * 60 * 1000
 
+const mergeMessageVersions = (live: ApiMessage, fetched: ApiMessage): ApiMessage => {
+  const merged = { ...fetched, ...live }
+  const deletedAt = live.deleted_at ?? fetched.deleted_at
+  if (deletedAt) {
+    // Deletion is terminal, even if a stale REST/cache snapshot still contains
+    // the old text or attachments.
+    return { ...merged, deleted_at: deletedAt, content: "", attachments: [] }
+  }
+
+  const liveEditTime = live.edited_at ? Date.parse(live.edited_at) : Number.NaN
+  const fetchedEditTime = fetched.edited_at ? Date.parse(fetched.edited_at) : Number.NaN
+  const fetchedHasNewerEdit =
+    Number.isFinite(fetchedEditTime) &&
+    (!live.edited_at || !Number.isFinite(liveEditTime) || fetchedEditTime > liveEditTime)
+
+  return fetchedHasNewerEdit
+    ? { ...merged, content: fetched.content, edited_at: fetched.edited_at }
+    : merged
+}
+
 // Wave 208 SW5 — same-calendar-day check (local time) for date dividers + group
 // boundaries. Pure (no locale / t) so it stays a module-level helper.
 const isSameCalendarDay = (a: Date, b: Date): boolean =>
@@ -57,7 +77,10 @@ const mergeOlderMessagePage = (
   olderPage.items.forEach((message) => byId.set(message.id, message))
   // The live cache wins at an overlapping cursor boundary: it may already
   // contain a newer edit/delete/read or WebSocket update than the REST page.
-  current?.items.forEach((message) => byId.set(message.id, message))
+  current?.items.forEach((message) => {
+    const fetched = byId.get(message.id)
+    byId.set(message.id, fetched ? mergeMessageVersions(message, fetched) : message)
+  })
   const items = [...byId.values()].sort((left, right) => {
     const chronological = new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
     return chronological || left.id.localeCompare(right.id)
@@ -76,10 +99,13 @@ const mergeHydratedMessagePage = (
   const byId = new Map<string, ApiMessage>()
   fetched.items.forEach((message) => byId.set(message.id, message))
   // The cache is sampled only after this request resolves, so it may contain a
-  // newer WebSocket edit/delete/read/reaction than the REST snapshot. Without a
-  // comparable server version on Message, the live record must win same-id
-  // conflicts; live-only ids are retained as well.
-  current?.items.forEach((message) => byId.set(message.id, message))
+  // newer WebSocket edit/delete/read/reaction than the REST snapshot. Compare
+  // edit timestamps when available, preserve either deletion tombstone, and
+  // otherwise retain the live record plus live-only ids.
+  current?.items.forEach((message) => {
+    const server = byId.get(message.id)
+    byId.set(message.id, server ? mergeMessageVersions(message, server) : message)
+  })
   const items = [...byId.values()].sort((left, right) => {
     const chronological = new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
     return chronological || left.id.localeCompare(right.id)

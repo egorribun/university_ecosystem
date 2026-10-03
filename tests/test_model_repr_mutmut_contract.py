@@ -25,9 +25,7 @@ from app.models.users import (
     User,
     UserPreferences,
     UserProfile,
-    UserStats,
 )
-from app.models.vector_shard import VectorChunk
 
 
 def test_remaining_model_reprs_are_mapped_in_mutmut_stats() -> None:
@@ -149,18 +147,6 @@ def test_remaining_model_reprs_are_mapped_in_mutmut_stats() -> None:
     )
     assert repr(InviteCode(id=identifier, code="INVITE-1", is_used=False)) == (
         f"<InviteCode(id={identifier}, code='INVITE-1', used=False)>"
-    )
-    assert repr(UserStats(user_id=identifier)) == f"<UserStats(user_id={identifier})>"
-    assert repr(
-        VectorChunk(
-            id=identifier,
-            tenant_id=other_identifier,
-            document_id="document-1",
-            chunk_index=3,
-        )
-    ) == (
-        f"<VectorChunk(id={identifier}, tenant_id={other_identifier}, "
-        "doc=document-1, chunk=3)>"
     )
     namespace = _NamespaceView(object(), DatabaseSettings)
     assert repr(namespace) == "<_NamespaceView(DatabaseSettings)>"

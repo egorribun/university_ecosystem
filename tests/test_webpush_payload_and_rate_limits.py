@@ -16,6 +16,7 @@ consuming module per the session conventions. No DB access needed.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -24,14 +25,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.services.webpush as webpush_module
-from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
 from app.services.webpush import (
-    _check_rate_limit,
     _get_sync_url,
     _initialize_sync_resources,
     _mask_endpoint,
     _normalize_payload,
-    build_payload,
+    _redact_urls_in_error,
     send_web_push,
 )
 
@@ -96,6 +95,80 @@ class TestMaskEndpoint:
 
     def test_blank_endpoint_returns_none(self) -> None:
         assert _mask_endpoint("   ") is None
+
+    def test_ipv6_endpoint_mask_keeps_brackets_and_hides_path(self) -> None:
+        endpoint_path = "push-token-fixture"
+
+        masked = _mask_endpoint(f"https://[2001:4860:4860::8888]/{endpoint_path}")
+
+        assert masked is not None
+        assert masked.startswith("https://[2001:4860:4860::8888]/…#")
+        assert endpoint_path not in masked
+
+
+class TestEndpointValidationEdges:
+    def test_ip_literal_guard_ignores_an_endpoint_without_hostname(self) -> None:
+        webpush_module._reject_non_global_endpoint_host("/relative/path")
+
+    @pytest.mark.parametrize("resolver_answer", [object(), "not-an-ip-address"])
+    def test_reject_non_global_addresses_rejects_malformed_answers(
+        self, resolver_answer: object
+    ) -> None:
+        with pytest.raises(ValueError, match="invalid address"):
+            webpush_module._reject_non_global_resolved_addresses(
+                [resolver_answer]  # type: ignore[list-item]
+            )
+
+    @pytest.mark.asyncio
+    async def test_endpoint_without_hostname_fails_before_dns(self) -> None:
+        with pytest.raises(ValueError, match="no hostname"):
+            await webpush_module._validate_public_endpoint_dns("/relative/path")
+
+    @pytest.mark.asyncio
+    async def test_global_ip_literal_skips_dns_lookup(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        lookup = AsyncMock(side_effect=AssertionError("unexpected DNS lookup"))
+        monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", lookup)
+
+        await webpush_module._validate_public_endpoint_dns("https://8.8.8.8/send")
+
+        lookup.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_empty_dns_answer_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        lookup = AsyncMock(return_value=[])
+        monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", lookup)
+
+        with pytest.raises(ValueError, match="returned no addresses"):
+            await webpush_module._validate_public_endpoint_dns(
+                "https://push.example.test/send"
+            )
+
+    @pytest.mark.parametrize(
+        "resolver_result",
+        [
+            ["not-a-getaddrinfo-tuple"],
+            [(0, 0, 0, "", "not-a-sockaddr-tuple")],
+            [(0, 0, 0, "", ("93.184.216.34",))],
+            [(0, 0, 0, "", (123, 443))],
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_malformed_dns_shapes_fail_closed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        resolver_result: list[object],
+    ) -> None:
+        lookup = AsyncMock(return_value=resolver_result)
+        monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", lookup)
+
+        with pytest.raises(ValueError, match="invalid address"):
+            await webpush_module._validate_public_endpoint_dns(
+                "https://push.example.test/send"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -259,65 +332,6 @@ class TestNormalizePayloadEdges:
 # ---------------------------------------------------------------------------
 
 
-class TestCheckRateLimit:
-    async def test_zero_limit_short_circuits(self) -> None:
-        """limit <= 0 returns an allow-all info without touching Redis (L492-493)."""
-        info = await _check_rate_limit("user:1", namespace="webpush", limit=0)
-        assert info.allowed is True
-        assert info.remaining == 0
-        assert info.retry_after == 0
-
-    async def test_disabled_rate_limiting_short_circuits(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """settings.rate_limit_enabled=False short-circuits (L492-493)."""
-        monkeypatch.setattr(
-            webpush_module, "settings", SimpleNamespace(rate_limit_enabled=False)
-        )
-        info = await _check_rate_limit("user:1", namespace="webpush", limit=7)
-        assert info.allowed is True
-        assert info.remaining == 7
-
-    async def test_delegates_to_enforce_rate_limit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Enabled path delegates to enforce_rate_limit with the strategy (L494-500)."""
-        monkeypatch.setattr(
-            webpush_module, "settings", SimpleNamespace(rate_limit_enabled=True)
-        )
-        expected = RateLimitInfo(True, 4, 0)
-        fake_enforce = AsyncMock(return_value=expected)
-        strategy = object()
-        monkeypatch.setattr(webpush_module, "enforce_rate_limit", fake_enforce)
-        monkeypatch.setattr(
-            webpush_module, "get_default_strategy", MagicMock(return_value=strategy)
-        )
-        info = await _check_rate_limit("user:42", namespace="webpush", limit=5)
-        assert info is expected
-        fake_enforce.assert_awaited_once_with(
-            identifier="user:42",
-            limit=5,
-            window_seconds=60,
-            strategy=strategy,
-        )
-
-    async def test_rate_limit_exceeded_returns_exc_info(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """RateLimitExceeded is swallowed and its info returned (L501-502)."""
-        monkeypatch.setattr(
-            webpush_module, "settings", SimpleNamespace(rate_limit_enabled=True)
-        )
-        denied = RateLimitInfo(False, 0, 30)
-        fake_enforce = AsyncMock(side_effect=RateLimitExceeded(denied))
-        monkeypatch.setattr(webpush_module, "enforce_rate_limit", fake_enforce)
-        monkeypatch.setattr(
-            webpush_module, "get_default_strategy", MagicMock(return_value=object())
-        )
-        info = await _check_rate_limit("user:9", namespace="webpush", limit=3)
-        assert info is denied
-
-
 # ---------------------------------------------------------------------------
 # build_payload edge branches (L547, 574-601)
 # ---------------------------------------------------------------------------
@@ -330,59 +344,6 @@ class TestBuildPayloadEdges:
         monkeypatch.setattr(
             webpush_module, "render_notification_template", lambda *a, **k: {}
         )
-
-    def test_template_merge_skips_none_values(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """None input values do not override template defaults (L547)."""
-        monkeypatch.setattr(
-            webpush_module,
-            "render_notification_template",
-            lambda *a, **k: {"title": "Template Title", "body": "TB"},
-        )
-        result = build_payload("typed", {"title": None, "icon": "i.png"})
-        assert result["title"] == "Template Title"
-        assert result["options"]["body"] == "TB"
-        assert result["options"]["icon"] == "i.png"
-
-    def test_actions_and_action_urls(self, no_template: None) -> None:
-        """Actions populate options + actionUrls data (L574, 576)."""
-        result = build_payload(
-            "t",
-            {
-                "title": "T",
-                "actions": [{"action": "open", "title": "Open", "url": "/x"}],
-            },
-        )
-        assert result["options"]["actions"] == [{"action": "open", "title": "Open"}]
-        assert result["data"]["actionUrls"] == {"open": "/x"}
-
-    def test_vibrate_sanitized(self, no_template: None) -> None:
-        """Vibrate list survives into options (L579)."""
-        result = build_payload("t", {"title": "T", "vibrate": [10, 20.5]})
-        assert result["options"]["vibrate"] == [10, 20]
-
-    def test_silent_with_valid_timestamp(self, no_template: None) -> None:
-        """silent + castable timestamp produce both options (L586-591)."""
-        result = build_payload("t", {"title": "T", "silent": True, "timestamp": "1234"})
-        assert result["options"]["silent"] is True
-        assert result["options"]["timestamp"] == 1234
-
-    def test_silent_with_invalid_timestamp_suppressed(self, no_template: None) -> None:
-        """Un-castable timestamp is suppressed without crashing (L588-590)."""
-        result = build_payload("t", {"title": "T", "silent": 0, "timestamp": "nope"})
-        assert result["options"]["silent"] is False
-        assert "timestamp" not in result["options"]
-
-    def test_meta_ttl_string_coerced(self, no_template: None) -> None:
-        """String ttl is cast to int into _meta (L598-599)."""
-        result = build_payload("t", {"title": "T", "ttl": "300"})
-        assert result["_meta"]["ttl"] == 300
-
-    def test_meta_ttl_invalid_skipped(self, no_template: None) -> None:
-        """Un-castable ttl is skipped; other meta keys survive (L600-601)."""
-        result = build_payload("t", {"title": "T", "ttl": "soon", "urgency": "high"})
-        assert result["_meta"] == {"urgency": "high"}
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +371,11 @@ class TestSendWebPushHeaders:
         def fake_webpush(**kwargs: Any) -> None:
             captured.update(kwargs)
 
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _url: [("93.184.216.34", 443)],
+        )
         monkeypatch.setattr(webpush_module, "webpush", fake_webpush)
         result = send_web_push(
             self._make_sub(),
@@ -422,3 +388,175 @@ class TestSendWebPushHeaders:
         # high urgency maps to the 5-minute TTL
         assert headers["TTL"] == "300"
         assert captured["ttl"] == 300
+
+    def test_transport_timeout_bounds_the_worker_thread_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A timed-out async caller must not leave an unbounded HTTP worker."""
+        captured: dict[str, Any] = {}
+
+        class _Session:
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(
+            webpush_module, "validate_public_https_url", lambda _url: None
+        )
+        monkeypatch.setattr(
+            webpush_module, "validate_and_resolve", lambda _url: ["93.184.216.35"]
+        )
+        monkeypatch.setattr(
+            webpush_module,
+            "_create_pinned_webpush_session",
+            lambda _url, _ip: _Session(),
+        )
+        monkeypatch.setattr(
+            webpush_module, "webpush", lambda **kwargs: captured.update(kwargs)
+        )
+
+        result = send_web_push(
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                endpoint="https://push.example.test/send",
+                user_id=uuid.uuid4(),
+                p256dh="synthetic-public-key",
+                auth="synthetic-auth",
+                user=None,
+            ),
+            {"title": "T"},
+        )
+
+        assert result.status == "sent"
+        assert captured.get("timeout") == webpush_module._PUSH_CALL_TIMEOUT_SECONDS
+
+    def test_send_rejects_unspecified_dns_answer_before_transport(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        endpoint = "https://push.example.test/unspecified-address-fixture"
+        factory = MagicMock()
+        transport = MagicMock()
+        monkeypatch.setattr(
+            webpush_module, "validate_public_https_url", lambda _url: None
+        )
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _url: [("::", 443)],
+        )
+        monkeypatch.setattr(webpush_module, "_create_pinned_webpush_session", factory)
+        monkeypatch.setattr(webpush_module, "webpush", transport)
+
+        result = send_web_push(
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                endpoint=endpoint,
+                user_id=uuid.uuid4(),
+                p256dh="synthetic-public-key",
+                auth="synthetic-auth",
+                user=None,
+            ),
+            {"title": "T"},
+        )
+
+        assert result.status == "error"
+        assert result.error == "URL resolved to an unspecified address"
+        factory.assert_not_called()
+        transport.assert_not_called()
+
+    def test_transport_error_redacts_endpoint_path_from_logs_and_detail(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        endpoint_path = "push-" + "token-fixture"
+        endpoint = "https://push.example.test/" + endpoint_path
+
+        class _Session:
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(
+            webpush_module, "validate_public_https_url", lambda _url: None
+        )
+        monkeypatch.setattr(
+            webpush_module, "validate_and_resolve", lambda _url: ["93.184.216.35"]
+        )
+        monkeypatch.setattr(
+            webpush_module,
+            "_create_pinned_webpush_session",
+            lambda _url, _ip: _Session(),
+        )
+
+        def fail_with_endpoint(**_kwargs: Any) -> None:
+            raise ConnectionError(f"connection failed for {endpoint}")
+
+        monkeypatch.setattr(webpush_module, "webpush", fail_with_endpoint)
+        caplog.set_level("ERROR")
+
+        result = send_web_push(
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                endpoint=endpoint,
+                user_id=uuid.uuid4(),
+                p256dh="public-key-fixture",
+                auth="auth-fixture",
+                user=None,
+            ),
+            {"title": "T"},
+        )
+
+        assert result.status == "error"
+        assert endpoint_path not in (result.error or "")
+        assert endpoint_path not in caplog.text
+
+    def test_provider_error_redacts_endpoint_path_from_detail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pywebpush import WebPushException
+
+        endpoint_path = "push-" + "token-fixture"
+        endpoint = "https://push.example.test/" + endpoint_path
+
+        class _Session:
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(
+            webpush_module, "validate_public_https_url", lambda _url: None
+        )
+        monkeypatch.setattr(
+            webpush_module, "validate_and_resolve", lambda _url: ["93.184.216.35"]
+        )
+        monkeypatch.setattr(
+            webpush_module,
+            "_create_pinned_webpush_session",
+            lambda _url, _ip: _Session(),
+        )
+
+        def fail_with_endpoint(**_kwargs: Any) -> None:
+            raise WebPushException(f"provider failed for {endpoint}")
+
+        monkeypatch.setattr(webpush_module, "webpush", fail_with_endpoint)
+
+        result = send_web_push(
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                endpoint=endpoint,
+                user_id=uuid.uuid4(),
+                p256dh="public-key-fixture",
+                auth="auth-fixture",
+                user=None,
+            ),
+            {"title": "T"},
+        )
+
+        assert result.status == "error"
+        assert endpoint_path not in (result.error or "")
+
+    def test_error_redaction_matches_case_insensitive_url_schemes(self) -> None:
+        endpoint_path = "push-token-fixture"
+
+        result = _redact_urls_in_error(
+            f"Provider returned HTTPS://push.example.test/{endpoint_path}"
+        )
+
+        assert endpoint_path not in result
+        assert "push.example.test" in result

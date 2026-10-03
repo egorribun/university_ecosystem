@@ -9,6 +9,7 @@ import {
   saveSubscription,
 } from "@/api/notifications"
 import { withExpectedConsole } from "@/tests/strictConsole"
+import { registerServiceWorker } from "../register-sw"
 
 vi.mock("@/api/notifications", () => ({
   deleteSubscription: vi.fn(),
@@ -37,6 +38,9 @@ describe("subscribe", () => {
     vi.resetModules()
     vi.useFakeTimers()
     vi.clearAllMocks()
+    // Module mocks survive resetModules; clearAllMocks only clears their calls.
+    // Each test starts without the fallback registration installed by another test.
+    vi.mocked(registerServiceWorker).mockReset().mockResolvedValue(null)
     vi.mocked(saveSubscription).mockResolvedValue({} as any)
     vi.mocked(deleteSubscription).mockResolvedValue(undefined)
 

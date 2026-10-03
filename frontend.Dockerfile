@@ -75,6 +75,10 @@ RUN --mount=type=cache,target=/root/.npm \
 # Stage 4: Builder
 FROM base AS builder
 ENV SKIP_WASM_BUILD=1
+# Keep the production image build on the same finite memory envelope as the
+# Linux CI frontend builds: Vite's Rust worker pool uses native RSS outside
+# the 1536 MiB V8 heap, and the measured Docker build peaked near 1981 MiB.
+ENV FRONTEND_BUILD_MAX_RSS_MB=2048 FRONTEND_BUILD_MAX_OLD_SPACE_MB=1536
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 ARG VITE_APP_RELEASE=""
@@ -106,6 +110,8 @@ ENV FRONTEND_BUILD_UNMINIFIED=$FRONTEND_BUILD_UNMINIFIED
 ARG FRONTEND_REACT_DEV_MODE=""
 ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
 COPY --from=deps /app/node_modules ./node_modules
+# Preserve the local lint adapter's pinned engine outside root node_modules.
+COPY --from=deps /app/scripts/boundary-micromatch-compat ./scripts/boundary-micromatch-compat
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg

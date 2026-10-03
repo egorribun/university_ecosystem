@@ -26,7 +26,7 @@ func TestNewInternalAPIAuthClient_FailsFastWhenCacheConstructionFails(t *testing
 	assert.PanicsWithValue(
 		t,
 		"failed to initialize LRU cache: synthetic auth cache failure",
-		func() { NewInternalAPIAuthClient("http://auth.test", nil) },
+		func() { NewInternalAPIAuthClientWithToken("http://auth.test", "", nil) },
 	)
 }
 

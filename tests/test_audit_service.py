@@ -1,5 +1,8 @@
 """Tests for the enhanced audit service."""
 
+import hashlib
+import hmac
+import json
 import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -7,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from starlette.requests import Request
 
 from app.services.audit_service import (
     AuditService,
@@ -166,30 +170,38 @@ def test_redact_sensitive_redacts_keys_nested_and_in_lists():
 # --------------------------------------------------------------------------- #
 
 
-def test_convenience_wrappers_delegate_to_log():
-    svc = AuditService()
-    req = MagicMock()
-    uid = uuid4()
-    with patch.object(svc, "log") as mock_log:
-        svc.login_success(req, uid)
-        svc.login_failure(req, reason="bad_pw")
-        svc.logout(req, uid)
-        svc.mfa_failure(req, uid, reason="bad_otp")
-        svc.access_denied(req, uid, reason="rbac")
-        svc.rate_limit_exceeded(req, uid)
+@pytest.mark.parametrize(
+    ("method", "event", "logger_name", "level"),
+    [
+        ("logout", "auth.logout", "app.auth", logging.INFO),
+        ("rate_limit_exceeded", "access.rate_limit", "app.access", logging.WARNING),
+    ],
+)
+def test_convenience_audit_events_emit_identity_and_request_context(
+    caplog, method, event, logger_name, level
+):
+    user_id = uuid4()
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/account",
+            "headers": [],
+            "client": ("203.0.113.9", 4321),
+        }
+    )
+    with caplog.at_level(logging.INFO, logger=logger_name):
+        getattr(AuditService(), method)(request, user_id)
 
-    events = [c.args[0] for c in mock_log.call_args_list]
-    assert events == [
-        SecurityEvent.AUTH_LOGIN_SUCCESS,
-        SecurityEvent.AUTH_LOGIN_FAILURE,
-        SecurityEvent.AUTH_LOGOUT,
-        SecurityEvent.MFA_VERIFY_FAILURE,
-        SecurityEvent.ACCESS_DENIED,
-        SecurityEvent.RATE_LIMIT_EXCEEDED,
-    ]
-    # login_failure / mfa_failure / access_denied / rate_limit escalate to WARNING.
-    assert mock_log.call_args_list[1].kwargs["level"] == logging.WARNING
-    assert mock_log.call_args_list[3].kwargs["level"] == logging.WARNING
+    records = [record for record in caplog.records if record.name == logger_name]
+    assert len(records) == 1
+    assert records[0].levelno == level
+    payload = json.loads(records[0].getMessage())
+    assert payload["event"] == event
+    assert payload["user_id"] == str(user_id)
+    assert payload["path"] == "/account"
+    assert payload["method"] == "POST"
+    assert payload["ip"] == "203.0.113.9"
 
 
 # --------------------------------------------------------------------------- #
@@ -292,7 +304,9 @@ def _fake_log(signature=None):
         resource_type="user",
         resource_id="42",
         action="read",
+        context={"detail": "original"},
         ip_address="10.0.0.1",
+        user_agent="synthetic-agent-original",
         created_at=datetime.now(UTC),
         signature=signature,
     )
@@ -305,9 +319,27 @@ def test_secure_audit_init_with_single_key_and_explicit_keys():
     assert svc2._primary_key == b"a"
 
 
+def test_secure_audit_init_uses_configured_rotation_keys(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.audit_service.settings",
+        SimpleNamespace(audit_log_secret=" current-key , previous-key "),
+    )
+
+    service = SecureAuditService()
+
+    assert service._signing_keys == [b"current-key", b"previous-key"]
+
+
 def test_secure_audit_parse_signing_keys_empty_raises():
     with pytest.raises(ValueError, match="must not be empty"):
         SecureAuditService._parse_signing_keys("  ,  ")
+
+
+def test_secure_audit_parse_signing_keys_keeps_nonempty_rotation_entries():
+    assert SecureAuditService._parse_signing_keys(" first , , second ") == [
+        b"first",
+        b"second",
+    ]
 
 
 def test_secure_audit_compute_signature_is_deterministic():
@@ -316,7 +348,8 @@ def test_secure_audit_compute_signature_is_deterministic():
     sig1 = svc._compute_signature(log)
     sig2 = svc._compute_signature(log)
     assert sig1 == sig2
-    assert len(sig1) == 64  # hex SHA-256
+    assert sig1.startswith("v2:")
+    assert len(sig1.removeprefix("v2:")) == 64  # hex SHA-256
 
 
 def test_secure_audit_verify_integrity_roundtrip_and_tamper():
@@ -331,42 +364,44 @@ def test_secure_audit_verify_integrity_roundtrip_and_tamper():
     assert svc.verify_integrity(log) is False
 
 
+@pytest.mark.parametrize("field", ["context", "user_agent"])
+def test_secure_audit_integrity_detects_metadata_tampering(field: str) -> None:
+    svc = SecureAuditService(signing_key=b"signing-key")
+    log = _fake_log()
+    log.signature = svc._compute_signature(log)
+
+    if field == "context":
+        log.context = {"detail": "changed"}
+    else:
+        log.user_agent = "synthetic-agent-changed"
+
+    assert svc.verify_integrity(log) is False
+
+
+def test_secure_audit_verify_integrity_accepts_legacy_signature() -> None:
+    svc = SecureAuditService(signing_key=b"signing-key")
+    log = _fake_log()
+    legacy_parts = [
+        str(log.id or ""),
+        str(log.actor_user_id or ""),
+        str(log.subject_user_id or ""),
+        str(log.resource_type or ""),
+        str(log.resource_id or ""),
+        str(log.action or ""),
+        str(log.ip_address or ""),
+        log.created_at.isoformat(),
+    ]
+    legacy_data = "|".join(legacy_parts)
+    log.signature = hmac.new(
+        b"signing-key", legacy_data.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    assert svc.verify_integrity(log) is True
+
+
 def test_secure_audit_verify_integrity_unsigned_is_false():
     svc = SecureAuditService(signing_key=b"k")
     assert svc.verify_integrity(_fake_log(signature=None)) is False
-
-
-def test_secure_audit_resign_frozen_dto_returns_false():
-    # _fake_log is not a DataAccessLog ORM instance, so resign cannot mutate it.
-    svc = SecureAuditService(signing_key=b"k")
-    log = _fake_log()
-    log.signature = svc._compute_signature(log)
-    assert svc.resign_log(log) is False
-
-
-@pytest.mark.asyncio
-async def test_secure_audit_create_log_and_verify_batch(db_session, user_factory):
-    # actor_user_id must reference a real users row: the PostgreSQL integration
-    # tier enforces the data_access_logs.actor_user_id FK (SQLite does not by
-    # default), so a synthetic uuid4() raises ForeignKeyViolationError on CI.
-    actor = await user_factory()
-    svc = SecureAuditService(signing_key=b"db-signing-key")
-
-    dto = await svc.create_log(
-        db_session,
-        actor_user_id=actor.id,
-        resource_type="user",
-        resource_id="7",
-        action="read",
-        ip_address="127.0.0.1",
-    )
-    # The signature is computed over the flushed row (id + created_at locked in).
-    assert dto.signature
-    assert svc.verify_integrity(dto) is True
-
-    total, valid, invalid_ids = await svc.verify_batch(db_session)
-    assert total >= 1
-    assert valid == total - len(invalid_ids)
 
 
 @pytest.mark.asyncio

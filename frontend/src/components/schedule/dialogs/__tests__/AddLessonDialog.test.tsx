@@ -30,6 +30,7 @@ vi.mock("react-i18next", () => ({
 
 import {
   AddLessonDialog,
+  recurringLessonDateTime,
   createAddLessonChoiceUpdater,
   createAddLessonFieldUpdater,
   isAddLessonFormValid,
@@ -204,8 +205,8 @@ describe("AddLessonDialog", () => {
         room: "",
         // lecture config -> backend[0] = "LECTURE"
         lesson_type: "LECTURE",
-        start_time: "mondayT09:00:00",
-        end_time: "mondayT10:30:00",
+        start_time: "1970-01-05T09:00:00",
+        end_time: "1970-01-05T10:30:00",
         weekday: "monday",
         parity: "both",
         group_id: "g1",
@@ -438,5 +439,32 @@ describe("AddLessonDialog", () => {
     expect(screen.getByText("schedule:dialog.addTitle")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
     expect(screen.queryByText("schedule:dialog.addTitle")).not.toBeInTheDocument()
+  })
+})
+
+describe("recurring lesson datetime contract", () => {
+  it.each(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])(
+    "uses a valid reference date for %s",
+    (weekday) => {
+      const index = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+      ].indexOf(weekday)
+      const value = recurringLessonDateTime(weekday, "09:15")
+      expect(value).toBe(`1970-01-${String(5 + index).padStart(2, "0")}T09:15:00`)
+      expect(new Date(`${value}Z`).getUTCDay()).toBe((index + 1) % 7)
+    }
+  )
+  it.each([
+    ["unknown", "09:00"],
+    ["monday", "24:00"],
+    ["tuesday", "09:60"],
+  ])("rejects invalid weekday/time %s %s", (day, time) => {
+    expect(() => recurringLessonDateTime(day, time)).toThrow("Invalid recurring lesson time")
   })
 })

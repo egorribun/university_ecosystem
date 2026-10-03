@@ -641,6 +641,27 @@ def test_validate_config_requires_file_scanning_in_release_environments() -> Non
     assert "backend.config.eventFileScannerEnabled" in template
 
 
+def test_backend_receives_public_frontend_origin_from_ingress() -> None:
+    resources = _render_staging(release_name="frontend-origin-contract")
+    backend = _component_resource(resources, "Deployment", "backend")
+    env = {
+        item["name"]: item.get("value")
+        for item in backend["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    origin = "https://university.staging.example.org"
+    assert env["APP_BASE_URL"] == origin
+    assert env["FRONTEND_ORIGIN"] == origin
+    assert env["FRONTEND_ORIGINS"] == origin
+
+
+def test_validate_config_pins_frontend_origin_to_the_ingress_host() -> None:
+    template = (CHART / "templates" / "validate-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert 'include "university-ecosystem.frontendOrigin"' in template
+    assert "backend.config.frontendOrigin" in template
+
+
 def test_outbox_worker_receives_release_file_scanner_guard() -> None:
     resources = _render_staging(release_name="outbox-scanner-contract")
     outbox = _component_resource(resources, "Deployment", "outbox-worker")
@@ -1914,3 +1935,65 @@ def test_backend_cwv_environment_is_typed_and_not_in_backend_env_values() -> Non
         "CWV_EXPORT_OIDC_SUBJECT",
     ):
         assert name in env
+
+
+@pytest.mark.parametrize("profile", [CHART / "values.yaml", STAGING_VALUES])
+def test_frontend_ingress_routes_browser_requests_to_their_owners(
+    profile: Path,
+) -> None:
+    hosts = _values(profile)["ingress"]["hosts"]
+    frontend = next(
+        host
+        for host in hosts
+        if any(path["service"] == "frontend" for path in host["paths"])
+    )
+
+    def destination(url: str) -> str:
+        matching = [
+            path
+            for path in frontend["paths"]
+            if (
+                url == path["path"]
+                if path["pathType"] == "Exact"
+                else url == path["path"]
+                or url.startswith(path["path"].rstrip("/") + "/")
+            )
+        ]
+        return max(matching, key=lambda path: len(path["path"]))["service"]
+
+    for path in (
+        "/api/v1/auth/csrf-cookie",
+        "/api/v1/auth/login",
+        "/api/v1/img/avatar",
+        "/api/admin/users",
+        "/graphql",
+        "/ws/ticket",
+    ):
+        assert destination(path) == "gateway", path
+    assert destination("/ws/chat") == "ws-hub"
+    assert destination("/static/uploads/avatar.png") == "backend"
+    assert destination("/.well-known/jwks.json") == "backend"
+    assert destination("/events") == "frontend"
+
+
+def test_gateway_accepts_only_its_declared_browser_origin() -> None:
+    resources = _render_staging(release_name="browser-origin-contract")
+    gateway = _component_resource(resources, "Deployment", "gateway")
+    env = {
+        entry["name"]: entry.get("value")
+        for entry in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["ALLOWED_ORIGINS"] == "https://university.staging.example.org"
+
+
+def test_documented_go_overlay_pairs_local_grpc_transports() -> None:
+    overlay = _values(ROOT / "docker-compose.go.yml")["services"]
+    assert overlay["gateway"]["environment"]["GRPC_USE_TLS"] == "false"
+    assert (
+        overlay["gateway"]["environment"]["VITE_ENVIRONMENT"]
+        == "${ENVIRONMENT:-development}"
+    )
+    processor = overlay["file-processor"]["environment"]
+    assert not processor.get("FP_GRPC_TLS_CERT_FILE")
+    assert not processor.get("SPIFFE_SOCKET_PATH")
+    assert processor["FP_ENVIRONMENT"] == "${ENVIRONMENT:-development}"

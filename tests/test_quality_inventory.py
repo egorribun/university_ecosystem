@@ -11,6 +11,7 @@ try:
         check_anti_patterns,
         check_python_duplicates_and_imports,
         find_python_repository_references,
+        find_typescript_repository_references,
         matches_source,
     )
     from scripts.quality.generate_test_inventory import (
@@ -131,6 +132,48 @@ def test_api_dependency_contract_is_backed_by_repository_references() -> None:
     )
 
 
+def test_typescript_contract_is_backed_by_repository_references() -> None:
+    contract_path = (
+        "frontend/src/__tests__/events-history-scroll-restoration.contract.test.ts"
+    )
+    contract = Path(contract_path)
+    scenario = "frontend/tests/e2e/events-history-scroll-restoration.spec.ts"
+    references = find_typescript_repository_references(contract)
+
+    assert references == {scenario}
+    assert matches_source(
+        contract_path,
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={scenario},
+    )
+
+
+def test_typescript_repository_references_reject_dynamic_and_outside_paths(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repository = tmp_path / "repository"
+    contract = repository / "frontend" / "src" / "contract.test.ts"
+    contract.parent.mkdir(parents=True)
+    (repository / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+    outside = tmp_path / "outside.ts"
+    outside.write_text("export {}", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    contract.write_text(
+        'readFileSync(resolve(process.cwd(), target), "utf8")',
+        encoding="utf-8",
+    )
+    assert find_typescript_repository_references(contract) == set()
+
+    contract.write_text(
+        'readFileSync(resolve(process.cwd(), "../../outside.ts"), "utf8")',
+        encoding="utf-8",
+    )
+    assert find_typescript_repository_references(contract) == set()
+
+
 def test_inventory_ignores_root_output_backups_but_keeps_authored_artifact_modules(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -161,6 +204,10 @@ def test_inventory_prunes_dependency_and_hidden_directories(
     (tmp_path / "node_modules" / "pkg" / "hidden.ts").write_text(
         "export {}", encoding="utf-8"
     )
+    (tmp_path / "mutants" / "tests").mkdir(parents=True)
+    (tmp_path / "mutants" / "tests" / "test_generated_copy.py").write_text(
+        "pass", encoding="utf-8"
+    )
     (tmp_path / ".codex" / "cache").mkdir(parents=True)
     (tmp_path / ".codex" / "cache" / "hidden.py").write_text("pass", encoding="utf-8")
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
@@ -188,6 +235,7 @@ def test_inventory_prunes_dependency_and_hidden_directories(
         "app/visible.py",
     }
     assert should_prune_directory("node_modules") is True
+    assert should_prune_directory("mutants") is True
     assert should_prune_directory(".codex") is True
     assert should_prune_directory("stryker-tmp") is True
     assert should_prune_directory(".github") is False
@@ -405,6 +453,25 @@ HOOK = Path(".husky/pre-commit")
             "alembic/versions/202608250001_expand_email_otp_mfa.py",
         },
     )
+
+
+def test_python_contract_visits_keyword_only_defaults_with_missing_defaults(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        """
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[1]
+def helper(*, required, target=ROOT / "quality" / "quality-contract.json"):
+    return required, target
+""",
+    )
+
+    assert find_python_repository_references(contract_test) == {
+        "quality/quality-contract.json"
+    }
 
 
 def test_python_contract_path_match_requires_a_real_inventory_target(

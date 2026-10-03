@@ -90,7 +90,7 @@ async def test_confirm_totp_enrollment_not_found():
 
 
 @pytest.mark.asyncio
-async def test_confirm_totp_rollback_does_not_publish_redis_revocations():
+async def test_confirm_totp_rollback_retains_redis_revocations():
     payload = MagicMock(
         spec=TotpEnrollmentConfirmIn, enrollment_id="123", code="123456"
     )
@@ -133,11 +133,11 @@ async def test_confirm_totp_rollback_does_not_publish_redis_revocations():
             )
 
     db.rollback.assert_awaited_once()
-    publish.assert_not_awaited()
+    publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_disable_email_commit_failure_rolls_back_without_redis_publish():
+async def test_disable_email_commit_failure_rolls_back_retaining_redis_revocation():
     db = AsyncMock()
     db.commit.side_effect = RuntimeError("commit failed")
     request = MagicMock()
@@ -158,11 +158,11 @@ async def test_disable_email_commit_failure_rolls_back_without_redis_publish():
             )
 
     db.rollback.assert_awaited_once()
-    publish.assert_not_awaited()
+    publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_disable_totp_publishes_revocations_only_after_commit():
+async def test_disable_totp_publishes_revocations_before_commit():
     events: list[str] = []
     db = AsyncMock()
     db.commit.side_effect = lambda: events.append("commit")
@@ -188,11 +188,11 @@ async def test_disable_totp_publishes_revocations_only_after_commit():
             "enrollment_123", request, db, MagicMock(), None, user
         )
 
-    assert events == ["commit", "publish"]
+    assert events == ["publish", "commit"]
 
 
 @pytest.mark.asyncio
-async def test_disable_totp_commit_failure_rolls_back_without_redis_publish():
+async def test_disable_totp_commit_failure_rolls_back_retaining_redis_revocation():
     db = AsyncMock()
     db.commit.side_effect = RuntimeError("commit failed")
     request = MagicMock()
@@ -215,7 +215,7 @@ async def test_disable_totp_commit_failure_rolls_back_without_redis_publish():
             )
 
     db.rollback.assert_awaited_once()
-    publish.assert_not_awaited()
+    publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio

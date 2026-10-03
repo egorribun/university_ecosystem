@@ -27,6 +27,20 @@ def _session(db: AsyncMock) -> MagicMock:
     return context
 
 
+def _configure_message_rls_mock(db: AsyncMock, member_id=None) -> None:
+    selected_member = member_id or uuid4()
+
+    async def execute(statement, parameters=None):
+        if "chat_participants" in str(statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: selected_member)
+        return SimpleNamespace()
+
+    db.execute.side_effect = execute
+    db.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    )
+
+
 @pytest.mark.asyncio
 async def test_generate_news_embedding_returns_when_news_is_missing(monkeypatch):
     db = AsyncMock()
@@ -45,8 +59,9 @@ async def test_generate_news_embedding_returns_when_news_is_missing(monkeypatch)
     db.commit.assert_not_awaited()
 
 
-def _message(sender_id):
+def _message(sender_id, chat_id):
     return SimpleNamespace(
+        chat_id=chat_id,
         sender_id=sender_id,
         sender=None,
         reply_to_message_id=None,
@@ -57,6 +72,7 @@ def _message(sender_id):
 async def test_handle_message_sent_returns_when_message_is_missing(monkeypatch):
     db = AsyncMock()
     db.get.return_value = None
+    _configure_message_rls_mock(db)
     monkeypatch.setattr(
         "app.services.event_handlers.async_session", lambda: _session(db)
     )
@@ -73,8 +89,10 @@ async def test_handle_message_sent_returns_when_message_is_missing(monkeypatch):
 @pytest.mark.asyncio
 async def test_handle_message_sent_returns_when_sender_is_missing(monkeypatch):
     sender_id = uuid4()
+    chat_id = uuid4()
     db = AsyncMock()
-    db.get.side_effect = [_message(sender_id), None]
+    db.get.side_effect = [_message(sender_id, chat_id), None]
+    _configure_message_rls_mock(db, sender_id)
     monkeypatch.setattr(
         "app.services.event_handlers.async_session", lambda: _session(db)
     )
@@ -84,7 +102,7 @@ async def test_handle_message_sent_returns_when_sender_is_missing(monkeypatch):
         patch("app.services.chat.notification_service.ChatNotificationService"),
     ):
         await handle_message_sent(
-            MessageSent(message_id=uuid4(), chat_id=uuid4(), sender_id=sender_id)
+            MessageSent(message_id=uuid4(), chat_id=chat_id, sender_id=sender_id)
         )
 
     db.commit.assert_not_awaited()
@@ -94,7 +112,6 @@ async def test_handle_message_sent_returns_when_sender_is_missing(monkeypatch):
 async def test_handle_message_sent_returns_when_chat_id_is_missing(monkeypatch):
     sender_id = uuid4()
     db = AsyncMock()
-    db.get.side_effect = [_message(sender_id), SimpleNamespace(id=sender_id)]
     monkeypatch.setattr(
         "app.services.event_handlers.async_session", lambda: _session(db)
     )
@@ -107,14 +124,20 @@ async def test_handle_message_sent_returns_when_chat_id_is_missing(monkeypatch):
             MessageSent(message_id=uuid4(), chat_id=None, sender_id=sender_id)
         )
 
+    db.get.assert_not_awaited()
     db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_handle_message_sent_returns_when_chat_is_missing(monkeypatch):
     sender_id = uuid4()
+    chat_id = uuid4()
     db = AsyncMock()
-    db.get.side_effect = [_message(sender_id), SimpleNamespace(id=sender_id)]
+    db.get.side_effect = [
+        _message(sender_id, chat_id),
+        SimpleNamespace(id=sender_id),
+    ]
+    _configure_message_rls_mock(db, sender_id)
     monkeypatch.setattr(
         "app.services.event_handlers.async_session", lambda: _session(db)
     )
@@ -126,7 +149,7 @@ async def test_handle_message_sent_returns_when_chat_is_missing(monkeypatch):
         patch("app.services.chat.notification_service.ChatNotificationService"),
     ):
         await handle_message_sent(
-            MessageSent(message_id=uuid4(), chat_id=uuid4(), sender_id=sender_id)
+            MessageSent(message_id=uuid4(), chat_id=chat_id, sender_id=sender_id)
         )
 
     repo.get_by_id.assert_awaited_once()

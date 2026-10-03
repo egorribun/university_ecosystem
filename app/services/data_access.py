@@ -4,7 +4,7 @@ import csv
 import io
 import json
 import uuid
-from collections.abc import AsyncIterable, Iterable
+from collections.abc import AsyncIterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -150,65 +150,6 @@ async def cleanup_access_logs(
     repo = AuditRepository(db)
     count = await repo.prune_logs(cutoff)
     return count
-
-
-async def export_access_logs(
-    db: AsyncDatabaseSession,
-    *,
-    start_at: datetime | None = None,
-    end_at: datetime | None = None,
-    limit: int = 10_000,
-    actor_user_id: int | None = None,
-    subject_user_id: int | None = None,
-) -> Iterable[DataAccessLogDTO]:
-    start = _normalize_time(start_at)
-    end = _normalize_time(end_at)
-    stmt = select(DataAccessLog).order_by(DataAccessLog.created_at.desc()).limit(limit)
-    if start is not None:
-        stmt = stmt.where(DataAccessLog.created_at >= start)
-    if end is not None:
-        stmt = stmt.where(DataAccessLog.created_at <= end)
-    if actor_user_id is not None:
-        stmt = stmt.where(DataAccessLog.actor_user_id == actor_user_id)
-    if subject_user_id is not None:
-        stmt = stmt.where(DataAccessLog.subject_user_id == subject_user_id)
-    result = await db.execute(stmt)
-
-    repo = AuditRepository(db)
-    return [repo._to_dto(row) for row in result.scalars().all()]
-
-
-def serialize_access_logs_csv(entries: Iterable[DataAccessLogDTO]) -> str:
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(
-        [
-            "created_at",
-            "actor_user_id",
-            "subject_user_id",
-            "resource_type",
-            "resource_id",
-            "action",
-            "ip_address",
-            "user_agent",
-            "context",
-        ]
-    )
-    for entry in entries:
-        writer.writerow(
-            [
-                entry.created_at.isoformat() if entry.created_at else None,
-                entry.actor_user_id,
-                entry.subject_user_id,
-                entry.resource_type,
-                entry.resource_id,
-                entry.action,
-                entry.ip_address,
-                entry.user_agent,
-                entry.context,
-            ]
-        )
-    return buffer.getvalue()
 
 
 async def export_access_logs_stream(

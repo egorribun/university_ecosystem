@@ -52,6 +52,7 @@ spec:
     - Ingress
     - Egress
   ingress:
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     # Accept traffic from the ingress controller.
     # Labels are configured in values.yaml under networkPolicy.ingressController
     # so the chart works with nginx, Traefik, AWS ALB, or Istio.
@@ -69,6 +70,24 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    # Envoy Gateway data plane selected explicitly by gatewayApi.networkPolicy.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
     # Internal health-check / Prometheus scraping from the monitoring namespace.
     - from:
         - namespaceSelector:
@@ -156,6 +175,7 @@ spec:
     - Ingress
     - Egress
   ingress:
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     - from:
         - namespaceSelector:
             matchLabels:
@@ -170,6 +190,23 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.wsHub.service.port }}
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.wsHub.service.port }}
+    {{- end }}
   egress:
     - to:
         - podSelector:
@@ -340,6 +377,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     # The ingress controller terminates TLS for the public API origin and
     # forwards only the explicitly routed /.well-known discovery path here.
     # Keep the selector configurable for nginx, Traefik, AWS ALB, or Istio.
@@ -357,6 +395,24 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    # The Gateway API route sends /.well-known directly to the backend.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8000
+    {{- end }}
     - from:
         - podSelector:
             matchLabels:
@@ -522,6 +578,7 @@ spec:
     - Ingress
     - Egress
   ingress:
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     - from:
         - namespaceSelector:
             matchLabels:
@@ -536,6 +593,23 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.frontend.service.port }}
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.frontend.service.port }}
+    {{- end }}
   egress:
     - to:
         - podSelector:

@@ -55,7 +55,9 @@ async def test_validate_credentials_active_lockout(validator, mocks):
 
 
 @pytest.mark.asyncio
-async def test_validate_credentials_invalid_user_triggers_lockout(validator, mocks):
+async def test_validate_credentials_invalid_user_locks_out_without_alert(
+    validator, mocks
+):
     mocks["lockout_service"].get_active_lockout.return_value = None
     mocks["profile_service"].get_auth_user_by_email.return_value = None
 
@@ -77,7 +79,10 @@ async def test_validate_credentials_invalid_user_triggers_lockout(validator, moc
             )
 
         assert exc.value.status_code == 423
-        mock_kick.assert_awaited_once_with("test@example.com", "", "en")
+        mocks["lockout_service"].register_failed_attempt.assert_awaited_once_with(
+            "test@example.com", None
+        )
+        mock_kick.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -174,9 +179,8 @@ async def test_validate_credentials_success_with_new_hash(
     )
 
     assert res_user == user
-    mocks["user_repo"].update.assert_awaited_once_with(
-        "123",
-        {"hashed_password": "new_hash"},  # pragma: allowlist secret
+    mocks["user_repo"].rehash_password_if_current.assert_awaited_once_with(
+        "123", expected_hash="old_hash", new_hash="new_hash"
     )
     mocks["uow"].commit.assert_awaited_once()
 

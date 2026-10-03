@@ -22,6 +22,7 @@ def _request(headers: list[tuple[bytes, bytes]] | None = None):
             "method": "GET",
             "path": "/auth/sessions",
             "headers": headers or [],
+            "query_string": b"",
             "client": ("127.0.0.1", 1234),
         }
     )
@@ -62,6 +63,10 @@ def test_token_and_jti_extraction_defensive_paths(monkeypatch):
     assert sessions._extract_jti(bearer) is None
 
 
+def _checker(*, is_admin: bool) -> SimpleNamespace:
+    return SimpleNamespace(check_admin=AsyncMock(return_value=is_admin))
+
+
 @pytest.mark.asyncio
 async def test_resolve_target_user_reports_missing_admin_target():
     admin = SimpleNamespace(id=uuid.uuid4(), role=UserRole.ADMIN)
@@ -72,6 +77,8 @@ async def test_resolve_target_user_reports_missing_admin_target():
             user_repo=repo,
             current_user=admin,
             requested_user_id=uuid.uuid4(),
+            checker=_checker(is_admin=True),
+            request=_request(),
             locale="en",
         )
 
@@ -85,17 +92,58 @@ async def test_resolve_target_user_returns_admin_target():
     target = SimpleNamespace(id=uuid.uuid4(), role=UserRole.STUDENT)
     repo = SimpleNamespace(get=AsyncMock(return_value=target))
 
-    with patch.object(sessions, "require_admin") as require_admin:
-        target_id, resolved = await sessions._resolve_target_user(
-            user_repo=repo,
-            current_user=admin,
-            requested_user_id=target.id,
-            locale="en",
-        )
+    checker = _checker(is_admin=True)
+    request = _request()
+
+    target_id, resolved = await sessions._resolve_target_user(
+        user_repo=repo,
+        current_user=admin,
+        requested_user_id=target.id,
+        checker=checker,
+        request=request,
+        locale="en",
+    )
 
     assert target_id == target.id
     assert resolved is target
-    require_admin.assert_called_once_with(admin, "en")
+    checker.check_admin.assert_awaited_once_with(str(admin.id), user=admin)
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_user_rejects_non_admin_even_with_admin_role_column():
+    stale_admin = SimpleNamespace(id=uuid.uuid4(), role=UserRole.ADMIN)
+    repo = SimpleNamespace(get=AsyncMock())
+
+    with pytest.raises(HTTPException) as exc:
+        await sessions._resolve_target_user(
+            user_repo=repo,
+            current_user=stale_admin,
+            requested_user_id=uuid.uuid4(),
+            checker=_checker(is_admin=False),
+            request=_request(),
+            locale="en",
+        )
+
+    assert exc.value.status_code == 403
+    repo.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_user_returns_self_without_admin_check():
+    user = SimpleNamespace(id=uuid.uuid4(), role=UserRole.STUDENT)
+    checker = _checker(is_admin=False)
+
+    target_id, resolved = await sessions._resolve_target_user(
+        user_repo=SimpleNamespace(get=AsyncMock()),
+        current_user=user,
+        requested_user_id=None,
+        checker=checker,
+        request=_request(),
+        locale="en",
+    )
+
+    assert (target_id, resolved) == (user.id, user)
+    checker.check_admin.assert_not_awaited()
 
 
 def _active_session(*, user_id: uuid.UUID, jti: str) -> SimpleNamespace:
@@ -136,6 +184,7 @@ async def test_list_sessions_marks_current_token():
             sessions.list_sessions,
             request=request,
             current_user=user,
+            checker=_checker(is_admin=False),
             provides={"AsyncDatabaseSession": AsyncMock(), "SessionService": service},
         )
 
@@ -154,7 +203,13 @@ async def test_revoke_session_handles_service_returning_none():
     with patch.object(sessions, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
             await sessions.revoke_session.__dishka_orig_func__(
-                uuid.uuid4(), _request(), AsyncMock(), service, None, user
+                uuid.uuid4(),
+                _request(),
+                AsyncMock(),
+                service,
+                None,
+                user,
+                _checker(is_admin=False),
             )
 
     assert exc.value.status_code == 404
@@ -169,7 +224,13 @@ async def test_revoke_session_reports_missing_session():
     with patch.object(sessions, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
             await sessions.revoke_session.__dishka_orig_func__(
-                uuid.uuid4(), _request(), AsyncMock(), service, None, user
+                uuid.uuid4(),
+                _request(),
+                AsyncMock(),
+                service,
+                None,
+                user,
+                _checker(is_admin=False),
             )
 
     assert exc.value.status_code == 404
@@ -214,3 +275,29 @@ async def test_revoke_other_sessions_returns_bulk_count_and_current_jti():
 
     assert result.revoked == 2
     service.revoke_other_sessions.assert_awaited_once_with(user.id, "current")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("is_admin", "expected"), [(False, 403), (True, 200)])
+async def test_revoke_session_of_another_user_requires_spicedb_admin(
+    is_admin: bool, expected: int
+):
+    actor = SimpleNamespace(id=uuid.uuid4(), role=UserRole.ADMIN)
+    existing = _active_session(user_id=uuid.uuid4(), jti="old")
+    service = MagicMock()
+    service.get_session_by_id = AsyncMock(return_value=existing)
+    service.revoke_session_by_id = AsyncMock(return_value=existing)
+    checker = _checker(is_admin=is_admin)
+
+    with patch.object(sessions, "resolve_locale", return_value="en"):
+        try:
+            result = await sessions.revoke_session.__dishka_orig_func__(
+                existing.id, _request(), AsyncMock(), service, None, actor, checker
+            )
+            status_code = 200
+            assert result.id == existing.id
+        except HTTPException as exc:
+            status_code = exc.status_code
+
+    assert status_code == expected
+    checker.check_admin.assert_awaited_once_with(str(actor.id), user=actor)

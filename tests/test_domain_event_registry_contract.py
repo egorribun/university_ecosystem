@@ -115,6 +115,44 @@ async def test_outbox_dispatches_a_recorded_schedule_deletion() -> None:
     assert event.subject == "Physics"
 
 
+@pytest.mark.asyncio
+async def test_message_sent_round_trip_normalizes_uuid_identifiers() -> None:
+    from app.core.events import MessageSent
+
+    message_id = uuid.uuid4()
+    chat_id = uuid.uuid4()
+    sender_id = uuid.uuid4()
+    payload = {
+        "message_id": str(message_id),
+        "chat_id": str(chat_id),
+        "sender_id": str(sender_id),
+        "content_preview": "synthetic preview",
+    }
+
+    rebuilt = MessageSent.from_dict(payload.copy())
+    assert rebuilt.message_id == message_id
+    assert rebuilt.chat_id == chat_id
+    assert rebuilt.sender_id == sender_id
+
+    stored = MagicMock()
+    stored.id = uuid.uuid4()
+    stored.event_type = MessageSent.EVENT_TYPE
+    stored.payload = payload
+    stored.metadata_ = None
+    stored.aggregate_id_uuid = chat_id
+    stored.sequence_number = 1
+    stored.aggregate_type = "chat"
+    bus = AsyncMock()
+    with patch("app.workers.outbox.event_bus", bus):
+        await OutboxWorker()._dispatch_event(stored)
+
+    dispatched = bus.publish.await_args.args[0]
+    assert isinstance(dispatched, MessageSent)
+    assert dispatched.message_id == message_id
+    assert dispatched.chat_id == chat_id
+    assert dispatched.sender_id == sender_id
+
+
 def test_schedule_deletion_rebuilds_from_a_stored_payload() -> None:
     from app.core.events import ScheduleDeleted
 

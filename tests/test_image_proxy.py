@@ -174,7 +174,7 @@ def test_guess_mime_svg():
 # ===========================================================================
 # get_transformed_image tests
 # ===========================================================================
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from app.services.image_proxy import (
     _cache_decode,
@@ -247,7 +247,7 @@ async def test_get_transformed_image_cache_miss_transform_webp():
         # Verify it transformed to WebP (starts with WebP header RIFF...WEBP)
         assert data.startswith(b"RIFF")
         mock_backend.read_file.assert_called_once()
-        mock_redis.setex.assert_called_once()
+        mock_redis.set.assert_awaited_once_with(ANY, ANY, ex=24 * 60 * 60)
 
 
 @pytest.mark.anyio
@@ -286,10 +286,10 @@ async def test_get_transformed_image_redis_get_error():
 
 
 @pytest.mark.anyio
-async def test_get_transformed_image_redis_setex_error():
+async def test_get_transformed_image_redis_set_error():
     mock_redis = AsyncMock()
     mock_redis.get.return_value = None
-    mock_redis.setex.side_effect = OSError("Redis read-only")
+    mock_redis.set.side_effect = OSError("Redis read-only")
 
     png_data = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -305,7 +305,7 @@ async def test_get_transformed_image_redis_setex_error():
                 mock_backend, "/static/avatar.png", width=10, format_preference="webp"
             )
             assert mime == "image/webp"
-            mock_redis.setex.assert_called_once()
+            mock_redis.set.assert_awaited_once()
             mock_warn.assert_called_once()
             assert "Redis cache write failed" in mock_warn.call_args[0][0]
 

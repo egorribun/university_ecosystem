@@ -50,7 +50,9 @@ def auth_service():
     audit = MagicMock()
     auth_repo = MagicMock()
     user_repo = MagicMock()
+    user_repo.change_password_if_current = AsyncMock(return_value=1)
     session_repo = MagicMock()
+    session_repo.update = AsyncMock()
     uow = MagicMock()
     uow.__aenter__.return_value = uow
     uow.__aexit__.return_value = None
@@ -688,6 +690,31 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
     monkeypatch.setattr(auth_module, "attach_pending_email", attach_mock)
     monkeypatch.setattr(auth_module, "ensure_mfa_relationships_loaded", AsyncMock())
     monkeypatch.setattr(auth_module, "refresh_user_mfa_preferences", AsyncMock())
+    revocation = object()
+    revocations = [revocation]
+    lifecycle_events: list[str] = []
+    collect_revocations = AsyncMock(
+        side_effect=lambda *args, **kwargs: (
+            lifecycle_events.append("collect"),
+            revocations,
+        )[1]
+    )
+    publish_revocations = AsyncMock(
+        side_effect=lambda pending: lifecycle_events.append("publish")
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "collect_mfa_session_revocations",
+        collect_revocations,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "publish_mfa_session_revocations",
+        publish_revocations,
+        raising=False,
+    )
+    auth_service.uow.commit.side_effect = lambda: lifecycle_events.append("commit")
     csrf_mock = MagicMock()
     monkeypatch.setattr(csrf_module, "signal_csrf_rotation", csrf_mock)
 
@@ -699,6 +726,14 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
     assert db_user.email_verified_at >= datetime.now(UTC) - timedelta(seconds=2)
     assert db_user.mfa_default_method is None
     auth_service.auth_repo.mark_email_change_token_used.assert_awaited_once_with(12)
+    collect_revocations.assert_awaited_once_with(
+        auth_service.auth_repo.db,
+        user_id=db_user.id,
+        current_session_id=None,
+    )
+    publish_revocations.assert_awaited_once_with(revocations)
+    assert lifecycle_events.index("collect") < lifecycle_events.index("commit")
+    assert lifecycle_events.index("publish") < lifecycle_events.index("commit")
     # db_user is not the original user → second attach call fires (L359-360)
     assert attach_mock.await_count == 2
     csrf_mock.assert_called_once_with(request_mock)

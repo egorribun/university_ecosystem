@@ -1,55 +1,27 @@
-# Wave 112 (foundation) — Chromatic visual regression testing.
+# Chromatic visual regression workflow. The Storybook addon is configured in
+# `.storybook/main.ts`; this workflow runs only on trusted default-branch pushes
+# or a repository_dispatch that verifies the current `main` SHA. Pull requests
+# do not receive a runner or the project token.
 #
-# Storybook + @chromatic-com/storybook are already wired locally
-# (.storybook/main.ts has the addon). This workflow uploads built stories
-# to Chromatic for visual diff review on every PR.
+# Six proven nondeterministic stories opt out of Chromatic snapshots:
+# - WeatherParticles: continuously randomized canvas particles.
+# - MapLibreMap: WebGL output and remote map tiles vary with GPU/network state.
+# - ParticleAuthBackground and MfaChallengeView: animated particle backgrounds
+#   cannot be frozen into stable images.
+# - EventCard: relative-date/status text changes with wall-clock time.
+# - FlipCountdown: live countdown text changes with wall-clock time.
+# Keep these six exclusions limited to snapshot capture; their behavior and
+# accessibility still need coverage in the relevant tests. Add no new exclusion
+# without reproducing the source of nondeterminism and reviewing the impact.
 #
-# Setup: add CHROMATIC_PROJECT_TOKEN to repo Secrets. Without the secret
-# the job is skipped (safe no-op for forks and unauthenticated PRs).
-#
-# Baselines accepted in SW3 (after consistency tokens settle) — until then
-# Chromatic runs in collect-only mode.
-#
-# ✅ Wave 123 SW1 (2026-04-30) — UNBLOCKED. Storybook + Vite 8/Rolldown
-# runtime failure (`__STORYBOOK_MODULE_CORE_EVENTS_PREVIEW_ERRORS__ is
-# not defined`) resolved via `build.rolldownOptions.output.strictExecutionOrder:
-# true` in `.storybook/main.ts` viteFinal hook. Per the canonical workaround
-# documented in vitejs/vite#21948 (closed 2026-04-07 by Vite 8.0.6), Rolldown's
-# module execution order optimization must be disabled for Storybook's
-# custom module loader to wire up its globals before chunks try to read
-# them. Build verified: storybook-static loads cleanly, EventCard story
-# renders with 0 console errors (chrome-devtools-mcp 2026-04-30).
-#
-# Upstream issue resolution chain (all closed as of 2026-04-30):
-#
-#   - https://github.com/storybookjs/storybook/issues/33789 (Vite 8 umbrella; closed 2026-03-10)
-#   - https://github.com/vitejs/rolldown-vite/issues/562 (`__STORYBOOK_MODULE_*`; closed 2026-03-19 as DUPLICATE of vite#21948)
-#   - https://github.com/storybookjs/storybook/issues/31711 (PREVIEW_API; closed 2025-10-13)
-#   - https://github.com/rolldown/rolldown/issues/3982 (`import.meta.glob`; closed 2025-09-11)
-#   - https://github.com/vitejs/vite/issues/21948 (root cause; closed 2026-04-07 by Vite 8.0.6)
-#
-# ✅ Wave 201 (2026-05-30) — ACTIVATION-READY. The 6 non-deterministic stories
-# (WeatherParticles + MapLibreMap canvas/WebGL; ParticleAuthBackground +
-# MfaChallengeView particle bg; EventCard relative-time; FlipCountdown live
-# clock) carry `parameters.chromatic.disableSnapshot: true` so the first baseline
-# is clean. Full activation runbook: docs/audits/AUDIT_WAVE201.md.
-#
-# To enable Chromatic baseline (USER actions in repo settings):
-#
-#   1. Add `CHROMATIC_PROJECT_TOKEN` Secret — value is NOT hardcoded here; it
-#      lives in your Chromatic dashboard / `memory/wave122_chromatic_upstream.md`.
-#   2. Set `CHROMATIC_ENABLED=true` repo variable.
-#   3. Open/merge a PR touching `frontend/**` → this workflow triggers + uploads
-#      built stories. A merge to `main` auto-accepts the initial baseline
-#      (`autoAcceptChanges` below); subsequent PRs then surface diffs.
-#   4. Accept/review baselines in the Chromatic dashboard.
-#   5. (Optional follow-up, after the baseline is trusted) flip
-#      `exitZeroOnChanges: true → false` below to BLOCK PRs on un-accepted diffs.
-#
-# See `memory/wave122_chromatic_upstream.md` for full diagnosis history,
-# Storybook/Vite version requirements, and durability notes for the
-# `strictExecutionOrder` workaround.
-
+# Activation requires available plan/quota, the repository secret
+# `CHROMATIC_PROJECT_TOKEN`, both repository variables
+# `CHROMATIC_ENABLED=true` and `CHROMATIC_BILLING_ACTIVE=true`, and removal of
+# the `skip: true` guard below. A trusted `main` run collects/updates the
+# baseline; inspect it in the Chromatic dashboard while `exitZeroOnChanges`
+# remains `true`. Only consider `false` after the baseline is trusted. This
+# workflow currently runs on `main`, so that setting alone does not add a
+# pull-request gate. Keep `autoAcceptChanges` scoped to trusted `main`.
 name: Chromatic
 
 on:
@@ -79,26 +51,15 @@ jobs:
     name: Chromatic Visual Regression
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # DISABLED 2026-06-13 (user request) — the Chromatic billing quota for this
-    # cycle is exhausted, so `chromaui/action` posts a "UI Tests" GitHub commit
-    # status that HANGS on "Update your plan to resume testing" indefinitely
-    # (the PR stays MERGEABLE but perpetually shows a pending check). The job is
-    # gated behind a SECOND, never-set repo variable `CHROMATIC_BILLING_ACTIVE`
-    # so it never runs regardless of `CHROMATIC_ENABLED` — the action never runs
-    # → no build → no stuck "UI Tests"/"UI Review" status on new commit SHAs. The
-    # job shows as "skipping" (neutral, never a fail/pending). (A literal
-    # `if: false` is rejected by the actionlint pre-commit hook as a constant
-    # expression, hence the sentinel-var form.) chromatic.yml is a STANDALONE
-    # workflow (NOT part of ci.yml's `ci-success` aggregate) → fully isolated.
+    # The variable gate keeps this standalone workflow from running until
+    # Chromatic plan/quota is available. It is independent of ci.yml's
+    # `ci-success` aggregate. The publish step's `skip: true` is a second
+    # disabled-by-default guard and posts no snapshots.
     #
-    # TO RE-ENABLE once the Chromatic plan/quota is restored:
-    #   1. Drop the `&& vars.CHROMATIC_BILLING_ACTIVE == 'true'` clause below (back
-    #      to just `if: ${{ vars.CHROMATIC_ENABLED == 'true' }}`) — OR set the
-    #      `CHROMATIC_BILLING_ACTIVE=true` repo variable.
-    #   2. Remove the `skip: true` line added to the Publish step below (it green-
-    #      stubs — posts passing statuses WITHOUT consuming snapshots — so even a
-    #      premature re-enable can't hang the PR again; remove it to resume real
-    #      visual diffs).
+    # To activate, confirm plan/quota, set `CHROMATIC_PROJECT_TOKEN`, set both
+    # repository variables to `true`, then remove `skip: true` below. Keep the
+    # main-only event condition and report-only mode while the baseline is
+    # collected and reviewed.
     # The publish action receives a project token and executes repository code;
     # keep it on trusted default-branch events only. Pull requests get no
     # runner and no token, even when Chromatic is enabled.
@@ -192,19 +153,12 @@ jobs:
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
-          # 2026-06-13: the job above is hard-disabled (`if: false`) because the
-          # Chromatic billing quota is exhausted and the "UI Tests" status hangs.
-          # `skip: true` is retained here as the green-stub guard: if the job is
-          # ever re-enabled while the quota is still gone, the action posts a
-          # PASSING build status WITHOUT consuming snapshots (clears BOTH the
-          # "UI Tests" and "UI Review" statuses) instead of hanging the PR.
-          # Remove this line (and restore the `if:` gate) to resume real visual
-          # diffs once the plan/quota is restored. (Per Chromatic docs `skip`
-          # marks the build passed without snapshotting → no "Storybook Publish"
-          # confirmation either, which is acceptable while disabled.)
+          # Disabled-by-default safety guard. Remove only after confirming the
+          # project plan/quota and configuring the token and repository variables.
           skip: true
-          # Collect-only / REPORT mode (W201): diffs are visible but don't block PRs.
-          # Enforce by flipping this to `false` once the baseline is trusted.
+          # Collect-only / report mode: visual changes do not fail this workflow.
+          # Keep this true through baseline review; this workflow currently runs
+          # on trusted-main events, not pull requests.
           exitZeroOnChanges: true
           onlyChanged: true
           autoAcceptChanges: ${{ github.ref == 'refs/heads/main' }}

@@ -1,10 +1,7 @@
-import uuid
 from typing import Any
 
 import app.models as models
 from app.core.constants import ANONYMIZED_USER_CREDENTIAL
-from app.core.exceptions.domain import EntityAlreadyExists
-from app.repositories.user_repository import UserRepository
 
 
 async def delete_static_file(path: str) -> None:
@@ -127,13 +124,3 @@ async def anonymize_user_data(user: models.User) -> str:
     user.education_path = None
 
     return anonymized_email
-
-
-async def validate_user_email(
-    repo: UserRepository, email: str, exclude_user_id: uuid.UUID | str | None = None
-) -> str:
-    """Validate email and check for uniqueness."""
-    validated_email = str(email).strip().lower()
-    if await repo.check_email_exists(validated_email, exclude_user_id=exclude_user_id):
-        raise EntityAlreadyExists("User", validated_email)
-    return validated_email

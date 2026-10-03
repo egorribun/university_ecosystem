@@ -1,15 +1,20 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import api, { SKIP_UNAUTHORIZED_HEADER } from "@/api/client"
 import type { NowPlaying } from "@/types/spotify"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { captureSessionEpoch, getSessionEpoch } from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 export const nowPlayingQueryKey = ["spotify", "now-playing"] as const
 export const SPOTIFY_REAUTH_EVENT = "spotify:reauth-required"
 
 const isTestEnv = import.meta.env.MODE === "test"
 
-const STORAGE_KEY = "spotify:now-playing:last"
+const storageKey = (owner: string) =>
+  `spotify:now-playing:last:account:${encodeURIComponent(owner)}`
+const getCurrentConfirmedUserId = () => getConfirmedUserId(useAuthStore.getState())
 
 const RATE_LIMIT_FALLBACK_MS = 5_000
 const RATE_LIMIT_BUFFER_MS = 250
@@ -86,9 +91,11 @@ const normalizeNowPlaying = (input: RawNowPlaying): NowPlaying | null => {
   return payload
 }
 
-const readCachedNowPlaying = (): NowPlaying | null | undefined => {
+const readCachedNowPlaying = (owner: string | null): NowPlaying | null | undefined => {
+  if (owner === null || getCurrentConfirmedUserId() !== owner) return undefined
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    // Never adopt the legacy ownerless snapshot.
+    const raw = window.localStorage.getItem(storageKey(owner))
     if (raw) return normalizeNowPlaying(JSON.parse(raw) as RawNowPlaying)
   } catch {
     // No browser storage (server rendering) or a malformed entry.
@@ -96,35 +103,42 @@ const readCachedNowPlaying = (): NowPlaying | null | undefined => {
   return undefined
 }
 
-const persistNowPlaying = (value: NowPlaying | null) => {
+const persistNowPlaying = (owner: string | null, value: NowPlaying | null) => {
+  if (owner === null || getCurrentConfirmedUserId() !== owner) return
   // Without browser storage (server rendering) there is nothing to persist.
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+    window.localStorage.setItem(storageKey(owner), JSON.stringify(value))
   } catch {
     /* noop */
   }
 }
 
-const resolvePlaceholderData = (
-  previous: NowPlaying | null | undefined,
-  cached: NowPlaying | null | undefined
-): NowPlaying | null => {
-  if (previous !== undefined) return previous ?? null
-  return cached ?? null
-}
-
 export const fetchNowPlaying = async () => {
+  const owner = getCurrentConfirmedUserId()
+  const currentSession = captureSessionEpoch()
+  const assertCurrentSession = () => {
+    if (
+      typeof window !== "undefined" &&
+      (owner === null || !currentSession() || getCurrentConfirmedUserId() !== owner)
+    ) {
+      throw new DOMException("Session changed", "AbortError")
+    }
+  }
+  assertCurrentSession()
   try {
     const res = await api.get<RawNowPlaying>("/spotify/now-playing", {
       validateStatus: (status) => status >= 200 && status < 300,
       headers: { [SKIP_UNAUTHORIZED_HEADER]: "1" },
     })
 
+    assertCurrentSession()
     clearRateLimit()
 
     // A 204 has an empty body, which normalizes to "nothing playing".
     return normalizeNowPlaying(res.data)
   } catch (error) {
+    // An old account's response must not update the query or reauthorize a new account.
+    assertCurrentSession()
     if (isAxiosError(error)) {
       if (error.response?.status === 401) {
         clearRateLimit()
@@ -174,17 +188,40 @@ const computeRefetchInterval = ({
 
 /** Retry a failed poll once, except when the server asked us to back off. */
 const shouldRetryNowPlaying = (failureCount: number, error: Error): boolean =>
-  !(isAxiosError(error) && error.response?.status === 429) && failureCount < 1
+  error.name !== "AbortError" &&
+  !(isAxiosError(error) && error.response?.status === 429) &&
+  failureCount < 1
 
 export const useNowPlaying = (enabled: boolean) => {
-  const [cached] = useState(readCachedNowPlaying)
+  const owner = useAuthStore(getConfirmedUserId)
+  const epoch = getSessionEpoch()
+  const isCurrentSession = useMemo(() => {
+    const currentSession = captureSessionEpoch()
+    return () => epoch === getSessionEpoch() && currentSession()
+  }, [epoch])
+  const ownsSession = useCallback(
+    () =>
+      typeof window === "undefined" ||
+      (owner !== null && isCurrentSession() && getCurrentConfirmedUserId() === owner),
+    [owner, isCurrentSession]
+  )
+  const active = enabled && (typeof window === "undefined" || owner !== null)
+  const cached = useMemo(
+    () => (isCurrentSession() ? readCachedNowPlaying(owner) : undefined),
+    [owner, isCurrentSession]
+  )
 
   const query = useQuery<NowPlaying | null, Error, NowPlaying | null, typeof nowPlayingQueryKey>({
     queryKey: nowPlayingQueryKey,
-    queryFn: fetchNowPlaying,
-    enabled,
+    queryFn: () => {
+      if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
+      return fetchNowPlaying()
+    },
+    enabled: active,
     initialData: cached,
-    placeholderData: (previous) => resolvePlaceholderData(previous, cached),
+    // QueryObserver retains previous data after client.clear; only this owner's snapshot is safe.
+    placeholderData: () => cached ?? null,
+    select: (data) => (ownsSession() ? data : null),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     // Spotify requires the network; the application's offlineFirst default must not apply.
@@ -192,7 +229,8 @@ export const useNowPlaying = (enabled: boolean) => {
     retry: shouldRetryNowPlaying,
     refetchOnWindowFocus: false,
     // A hidden document already stops polling inside computeRefetchInterval.
-    refetchInterval: ({ state }) => computeRefetchInterval({ enabled, data: state.data ?? null }),
+    refetchInterval: ({ state }) =>
+      computeRefetchInterval({ enabled: active, data: state.data ?? null }),
   })
 
   const { data, refetch } = query
@@ -201,20 +239,21 @@ export const useNowPlaying = (enabled: boolean) => {
   // failed poll keeps the last data, so persisting on every data change
   // stores exactly what was last shown.
   useEffect(() => {
-    persistNowPlaying(data ?? null)
-  }, [data])
+    if (!query.isSuccess || !ownsSession()) return
+    persistNowPlaying(owner, data ?? null)
+  }, [data, owner, query.isSuccess, ownsSession])
 
   useEffect(() => {
     // Effects never run during server rendering, so the document exists here.
-    if (!enabled) return
+    if (!active) return
     const listener = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && ownsSession()) {
         void refetch()
       }
     }
     document.addEventListener("visibilitychange", listener)
     return () => document.removeEventListener("visibilitychange", listener)
-  }, [enabled, refetch])
+  }, [active, refetch, ownsSession])
 
   return query
 }
@@ -226,6 +265,5 @@ export const __testing = {
   computeInterval,
   computeRefetchInterval,
   persistNowPlaying,
-  resolvePlaceholderData,
   shouldRetryNowPlaying,
 }

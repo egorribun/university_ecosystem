@@ -1,0 +1,20 @@
+{
+  "user_stats": {
+    "create_table": "CREATE TABLE user_stats (\n\tuser_id UUID NOT NULL, \n\tattendance_percent FLOAT DEFAULT '0.0' NOT NULL, \n\tattendance_present INTEGER DEFAULT '0' NOT NULL, \n\tattendance_total INTEGER DEFAULT '0' NOT NULL, \n\tattendance_trend FLOAT DEFAULT '0.0' NOT NULL, \n\tgrades_average FLOAT DEFAULT '0.0' NOT NULL, \n\tgrades_trend FLOAT DEFAULT '0.0' NOT NULL, \n\tparticipation_events INTEGER DEFAULT '0' NOT NULL, \n\tparticipation_hours FLOAT DEFAULT '0.0' NOT NULL, \n\tparticipation_groups INTEGER DEFAULT '0' NOT NULL, \n\tparticipation_trend INTEGER DEFAULT '0' NOT NULL, \n\tlast_computed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, \n\tPRIMARY KEY (user_id), \n\tFOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE\n)",
+    "indexes": []
+  },
+  "vector_chunks": {
+    "create_table": "CREATE TABLE vector_chunks (\n\ttenant_id UUID NOT NULL, \n\tcourse_id VARCHAR(256), \n\tdocument_id VARCHAR(256) NOT NULL, \n\tchunk_index INTEGER DEFAULT '0' NOT NULL, \n\tcontent TEXT NOT NULL, \n\tembedding VECTOR(1536), \n\tpayload JSON, \n\tis_active BOOLEAN DEFAULT 'true' NOT NULL, \n\tcreated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, \n\tupdated_at TIMESTAMP WITH TIME ZONE, \n\tid UUID NOT NULL, \n\tPRIMARY KEY (id)\n)",
+    "indexes": [
+      "CREATE INDEX ix_vector_chunks_chunk_index ON vector_chunks (chunk_index)",
+      "CREATE INDEX ix_vector_chunks_course_id ON vector_chunks (course_id)",
+      "CREATE INDEX ix_vector_chunks_created_at ON vector_chunks (created_at)",
+      "CREATE INDEX ix_vector_chunks_document_id ON vector_chunks (document_id)",
+      "CREATE INDEX ix_vector_chunks_embedding ON vector_chunks (embedding)",
+      "CREATE INDEX ix_vector_chunks_is_active ON vector_chunks (is_active)",
+      "CREATE INDEX ix_vector_chunks_tenant_course ON vector_chunks (tenant_id, course_id)",
+      "CREATE INDEX ix_vector_chunks_tenant_doc ON vector_chunks (tenant_id, document_id)",
+      "CREATE INDEX ix_vector_chunks_tenant_id ON vector_chunks (tenant_id)"
+    ]
+  }
+}

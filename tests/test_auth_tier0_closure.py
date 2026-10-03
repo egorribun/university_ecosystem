@@ -150,8 +150,9 @@ async def test_graphql_validator_allows_active_user_without_legacy_fingerprint()
         jti="live-jti",
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
         fingerprint_hash=None,
+        mfa_epoch=0,
     )
-    user = SimpleNamespace(id=user_id, is_active=True)
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
     session_result = MagicMock()
     session_result.scalar_one_or_none.return_value = active_session
     user_result = MagicMock()
@@ -247,10 +248,11 @@ async def test_graphql_validator_fingerprint_success_and_failure_are_fail_closed
 
     request = MagicMock()
     validator = GraphQLTokenValidator(request, AsyncMock())
-    user = SimpleNamespace(id=uuid4(), is_active=True)
+    user = SimpleNamespace(id=uuid4(), is_active=True, mfa_epoch=0)
     active_session = SimpleNamespace(
         fingerprint_hash="stored",
         jti="jti",
+        mfa_epoch=0,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
     )
 

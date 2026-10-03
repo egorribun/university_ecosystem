@@ -81,29 +81,6 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         """
         return await self._get_orm(id, with_for_update=True)
 
-    async def get_or_raise(self, id: Any, *, with_for_update: bool = False) -> DTOT:
-        # LOW-W19: do not leak model name or id value into exception message —
-        # both are internal details that must not reach API error responses.
-        dto = await self.get(id, with_for_update=with_for_update)
-        if dto is None:
-            raise ValueError("Resource not found")
-        return dto
-
-    async def get_by_ids(
-        self, ids: list[Any], *, with_for_update: bool = False
-    ) -> Sequence[DTOT]:
-        if not ids:
-            return []
-        target_ids = [self._cast_id(idx) for idx in ids]
-        stmt = select(self.model).where(
-            cast("type[Identifiable]", self.model).id.in_(target_ids)
-        )
-        if with_for_update:
-            stmt = stmt.with_for_update()
-        result = await self.db.execute(stmt)
-        objs = result.scalars().all()
-        return [self._to_dto(obj) for obj in objs]
-
     # TD-14-02 (audit 2026-03-23): Defence-in-depth cap — the ORM layer must
     # not trust its callers.  An internal service call with limit=99999 returns
     # a multi-MB payload and exhausts the connection pool.  Consistent with

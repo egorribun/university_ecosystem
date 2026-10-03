@@ -1,10 +1,14 @@
-import { useCallback } from "react"
+import { useCallback, useEffect, useRef } from "react"
+import { captureSessionEpoch, rotateBrowserSession } from "@/stores/sessionEpoch"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import type { TFunction } from "i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import api, { API_UNAUTHORIZED_EVENT, type ApiRequestConfig } from "@/api/client"
+import { EVENTS_PAGE_SIZE, prefetchEventsListQuery } from "@/api/hooks/events"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
+import { prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
+import { prefetchDashboardStories } from "@/hooks/useDashboardStories"
 import type { PendingMfaResponse, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
 import {
@@ -92,37 +96,34 @@ export const useAuthApi = (
   updateSessionSigningKey: (value: string | null) => void,
   authOperation: boolean,
   setAuthOperation: (value: boolean) => void,
-  resetEtagCache: () => void
+  resetEtagCache: () => void,
+  pendingMfa: PendingMfaState | null = null
 ) => {
   const { t } = useTranslation("auth")
   const queryClient = useQueryClient()
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const prefetchDashboardData = useCallback(
     async (profileUser: User) => {
       // Lighthouse builds use a synthetic authenticated user so every route
       // can be audited without a real login.  The dashboard is then loaded
-      // directly by each route, making this post-login warm-up redundant and
-      // expensive: its dynamic imports fan out into the dashboard/news/events
-      // graph on every audit navigation.  Keep the optimization explicitly
-      // scoped to the VITE_LHCI build flag; normal production and development
-      // login flows retain the eager dashboard warm-up.
+      // directly by each route, making this post-login warm-up redundant for
+      // audits. Skip it in LHCI, including its dynamic dashboard-news chunk
+      // load; normal production and development login flows retain the eager
+      // dashboard warm-up.
       if (import.meta.env.VITE_LHCI === "true") return
 
       try {
         const activeLanguage = i18n.resolvedLanguage ?? i18n.language ?? "ru"
         const language = activeLanguage === "en" ? "en" : "ru"
 
-        const [
-          { prefetchDashboardStories },
-          { prefetchDashboardNews },
-          { prefetchDashboardEvents },
-          { prefetchEventsListQuery, EVENTS_PAGE_SIZE },
-        ] = await Promise.all([
-          import("@/hooks/useDashboardStories"),
-          import("@/hooks/useDashboardNews"),
-          import("@/hooks/useDashboardEvents"),
-          import("@/api/hooks/events"),
-        ])
+        const { prefetchDashboardNews } = await import("@/hooks/useDashboardNews")
 
         void prefetchDashboardStories(queryClient)
         void prefetchDashboardNews(queryClient, language)
@@ -151,6 +152,9 @@ export const useAuthApi = (
       trustDevice = false
     ): Promise<PendingMfaState | null> => {
       if (authOperation) return null
+      rotateBrowserSession()
+      const currentSession = captureSessionEpoch()
+      const ownsSession = () => mounted.current && currentSession()
       setAuthOperation(true)
       let result: PendingMfaState | null = null
       try {
@@ -170,6 +174,7 @@ export const useAuthApi = (
           } as ApiRequestConfig
         )
 
+        if (!ownsSession()) return null
         if (response.status === 202) {
           const mfaResponse = response.data as PendingMfaResponse
           const pendingState: PendingMfaState = {
@@ -200,6 +205,7 @@ export const useAuthApi = (
           void prefetchDashboardData(data.user)
         }
       } catch (error) {
+        if (!ownsSession()) return null
         setAuthOperation(false)
         if (isAxiosError(error) && error.response?.status === 423) {
           const retryAfter = error.response.headers["retry-after"]
@@ -229,6 +235,8 @@ export const useAuthApi = (
   )
 
   const logout = useCallback(async () => {
+    rotateBrowserSession()
+    const ownsSession = captureSessionEpoch()
     try {
       if (user) {
         // Keep the browser subscription so it can be recovered on the next
@@ -245,13 +253,21 @@ export const useAuthApi = (
     } catch (error) {
       logError("Logout failed", { error })
     } finally {
-      handleUnauthorized()
+      if (mounted.current && ownsSession()) handleUnauthorized()
     }
   }, [handleUnauthorized, user])
 
   const submitMfaChallenge = useCallback(
     async ({ method = "totp", code, challengeToken }: SubmitMfaChallengePayload) => {
       if (authOperation) return
+      // Step-up elevates the existing session. Rotating its lifetime would
+      // invalidate the settings action waiting to retry after verification.
+      const authenticatedStepUp = user !== null && pendingMfa?.reason !== "login"
+      if (!authenticatedStepUp) rotateBrowserSession()
+      const currentSession = captureSessionEpoch()
+      const ownsSession = () => mounted.current && currentSession()
+      if (!ownsSession()) return
+      let accepted = false
       setAuthOperation(true)
       try {
         const payload: MfaVerifyPayload = {
@@ -263,22 +279,30 @@ export const useAuthApi = (
         const response = await api.post<TokenWithProfileResponse>("/auth/mfa/verify", payload, {
           skipRateLimitQueue: true,
         } as ApiRequestConfig)
+        if (!ownsSession()) return
         const data = response.data
 
         if (isTokenWithProfileResponse(data)) {
-          updateSessionSigningKey(extractSigningKey(data))
-          incrementSessionEpoch() // RED-02 Wave 11: epoch bump after MFA login
+          if (authenticatedStepUp && data.user.id !== user.id) {
+            throw new Error("MFA response does not match the current account")
+          }
+          accepted = true
+          if (!authenticatedStepUp) {
+            updateSessionSigningKey(extractSigningKey(data))
+            incrementSessionEpoch() // RED-02 Wave 11: epoch bump after MFA login
+          }
           setUser(data.user)
           updatePendingMfa(null)
-          if (data.user.spotify_connected) {
-            window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
+          if (!authenticatedStepUp) {
+            if (data.user.spotify_connected) {
+              window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
+            }
+            syncPushAfterAuthentication(data.user.id)
+            void prefetchDashboardData(data.user)
           }
-
-          syncPushAfterAuthentication(data.user.id)
-
-          void prefetchDashboardData(data.user)
         }
       } catch (error) {
+        if (!ownsSession()) return
         if (isAxiosError(error) && error.response?.status === 423) {
           const retryAfter = error.response.headers["retry-after"]
           const seconds = retryAfter ? parseInt(retryAfter, 10) : null
@@ -290,11 +314,13 @@ export const useAuthApi = (
         }
         throw error
       } finally {
-        setAuthOperation(false)
+        if (accepted || ownsSession()) setAuthOperation(false)
       }
     },
     [
       authOperation,
+      pendingMfa?.reason,
+      user,
       prefetchDashboardData,
       setAuthOperation,
       setUser,
@@ -305,10 +331,14 @@ export const useAuthApi = (
   )
 
   const requireMfa = useCallback(async (): Promise<PendingMfaState | null> => {
+    const currentSession = captureSessionEpoch()
+    const ownsSession = () => mounted.current && currentSession()
+    if (!ownsSession()) return null
     try {
       const response = await api.post<PendingMfaResponse>("/auth/mfa/step-up", null, {
         skipRateLimitQueue: true,
       } as ApiRequestConfig)
+      if (!ownsSession()) return null
       if (response.status === 202) {
         const pendingState: PendingMfaState = { ...response.data, reason: "step-up" }
         updatePendingMfa(pendingState)
@@ -316,6 +346,7 @@ export const useAuthApi = (
       }
       return null
     } catch (error) {
+      if (!ownsSession()) return null
       if (isAxiosError(error)) {
         if (error.response?.status === 401) {
           window.dispatchEvent(new Event(API_UNAUTHORIZED_EVENT))
@@ -331,18 +362,25 @@ export const useAuthApi = (
   }, [updatePendingMfa])
 
   const refresh = useCallback(async () => {
+    const currentSession = captureSessionEpoch()
+    const ownsSession = () => mounted.current && currentSession()
+    if (!ownsSession()) return
+    let accepted = false
     resetEtagCache()
     setAuthOperation(true)
     try {
       const profile = (await fetchCurrentUser()) as User
+      if (!ownsSession()) return
+      accepted = true
       setUser(profile)
       syncPushAfterAuthentication(profile.id)
     } catch (error) {
+      if (!ownsSession()) return
       if (isAxiosError(error) && error.response?.status === 401) {
         handleUnauthorized()
       }
     } finally {
-      setAuthOperation(false)
+      if (accepted || ownsSession()) setAuthOperation(false)
     }
   }, [handleUnauthorized, resetEtagCache, setAuthOperation, setUser])
 

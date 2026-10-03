@@ -200,50 +200,9 @@ class AuditService:
 
     # Convenience methods for common security events
 
-    def login_success(self, request: Request, user_id: UUID) -> None:
-        """Log successful login."""
-        self.log(
-            SecurityEvent.AUTH_LOGIN_SUCCESS, request, user_id, reason="authenticated"
-        )
-
-    def login_failure(
-        self, request: Request, reason: str = "invalid_credentials"
-    ) -> None:
-        """Log failed login attempt."""
-        self.log(
-            SecurityEvent.AUTH_LOGIN_FAILURE,
-            request,
-            reason=reason,
-            level=logging.WARNING,
-        )
-
     def logout(self, request: Request, user_id: UUID) -> None:
         """Log user logout."""
         self.log(SecurityEvent.AUTH_LOGOUT, request, user_id)
-
-    def mfa_failure(
-        self, request: Request, user_id: UUID, reason: str = "invalid_code"
-    ) -> None:
-        """Log MFA verification failure."""
-        self.log(
-            SecurityEvent.MFA_VERIFY_FAILURE,
-            request,
-            user_id,
-            reason=reason,
-            level=logging.WARNING,
-        )
-
-    def access_denied(
-        self, request: Request, user_id: UUID | None, reason: str
-    ) -> None:
-        """Log access denial."""
-        self.log(
-            SecurityEvent.ACCESS_DENIED,
-            request,
-            user_id,
-            reason=reason,
-            level=logging.WARNING,
-        )
 
     def rate_limit_exceeded(
         self, request: Request, user_id: UUID | None = None
@@ -353,6 +312,8 @@ def auditable(
 # Secure Audit Service with HMAC Integrity
 # ============================================================================
 
+_AUDIT_LOG_SIGNATURE_V2_PREFIX = "v2:"
+
 
 class SecureAuditService:
     """
@@ -384,7 +345,37 @@ class SecureAuditService:
     def _compute_signature(
         self, log: DataAccessLog | DataAccessLogDTO, *, key: bytes | None = None
     ) -> str:
-        """Compute HMAC signature for an audit log entry."""
+        """Sign all persisted audit-log fields covered by the v2 scheme."""
+        data = self._signature_payload_v2(log)
+        signing_key = key or self._primary_key
+        digest = hmac.new(signing_key, data.encode("utf-8"), sha256).hexdigest()
+        return f"{_AUDIT_LOG_SIGNATURE_V2_PREFIX}{digest}"
+
+    @staticmethod
+    def _signature_payload_v2(log: DataAccessLog | DataAccessLogDTO) -> str:
+        """Return a canonical, versioned payload for complete audit signatures."""
+        payload = {
+            "version": 2,
+            "id": str(log.id or ""),
+            "actor_user_id": str(log.actor_user_id or ""),
+            "subject_user_id": str(log.subject_user_id or ""),
+            "resource_type": str(log.resource_type or ""),
+            "resource_id": str(log.resource_id or ""),
+            "action": str(log.action or ""),
+            "context": getattr(log, "context", None),
+            "ip_address": str(log.ip_address or ""),
+            "user_agent": str(getattr(log, "user_agent", None) or ""),
+            "created_at": (
+                log.created_at.isoformat()
+                if log.created_at
+                else datetime.now(UTC).isoformat()
+            ),
+        }
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+
+    @staticmethod
+    def _legacy_signature_payload(log: DataAccessLog | DataAccessLogDTO) -> str:
+        """Reproduce the original unversioned payload for existing signatures."""
         data_parts = [
             str(log.id or ""),
             str(log.actor_user_id or ""),
@@ -399,30 +390,43 @@ class SecureAuditService:
                 else datetime.now(UTC).isoformat()
             ),
         ]
-        data = "|".join(data_parts)
+        return "|".join(data_parts)
+
+    def _compute_legacy_signature(
+        self, log: DataAccessLog | DataAccessLogDTO, *, key: bytes | None = None
+    ) -> str:
+        """Compute the historical v1 signature for compatibility verification."""
+        data = self._legacy_signature_payload(log)
         signing_key = key or self._primary_key
         return hmac.new(signing_key, data.encode("utf-8"), sha256).hexdigest()
 
     def _find_valid_key(self, log: DataAccessLog | DataAccessLogDTO) -> bytes | None:
-        """Return the signing key that matches the stored signature, if any."""
+        """Return the key matching a v2 or legacy v1 signature, if any.
+
+        Historical bare SHA-256 digests remain verifiable using their original
+        field set. They do not authenticate ``context`` or ``user_agent``; the
+        admin API must not present those legacy values as verified metadata.
+        """
         if not log.signature:
             return None
 
-        data_parts = [
-            str(log.id or ""),
-            str(log.actor_user_id or ""),
-            str(log.subject_user_id or ""),
-            str(log.resource_type or ""),
-            str(log.resource_id or ""),
-            str(log.action or ""),
-            str(log.ip_address or ""),
-            (
-                log.created_at.isoformat()
-                if log.created_at
-                else datetime.now(UTC).isoformat()
-            ),
-        ]
-        data = "|".join(data_parts)
+        signature = str(log.signature)
+        if signature.startswith(_AUDIT_LOG_SIGNATURE_V2_PREFIX):
+            digest = signature.removeprefix(_AUDIT_LOG_SIGNATURE_V2_PREFIX)
+            if len(digest) != 64 or any(
+                char not in "0123456789abcdef" for char in digest
+            ):
+                return None
+            data = self._signature_payload_v2(log)
+            use_v2 = True
+        elif len(signature) == 64 and all(
+            char in "0123456789abcdef" for char in signature
+        ):
+            digest = signature
+            data = self._legacy_signature_payload(log)
+            use_v2 = False
+        else:
+            return None
 
         try:
             import rust_ext
@@ -430,13 +434,17 @@ class SecureAuditService:
             # Convert bytes keys to strings for the Rust extension
             keys_str = [k.decode("utf-8") for k in self._signing_keys]
 
-            if rust_ext.verify_audit_signature(keys_str, data, str(log.signature)):
+            if rust_ext.verify_audit_signature(keys_str, data, digest):
                 # Find which exact key matched (needed for re-signing logic)
                 # In a high-performance scenario, Rust handles the bulk check.
                 # We only re-check manually if we need the specific key index.
                 for signing_key in self._signing_keys:
-                    expected = self._compute_signature(log, key=signing_key)
-                    if hmac.compare_digest(str(log.signature), expected):
+                    expected = (
+                        self._compute_signature(log, key=signing_key)
+                        if use_v2
+                        else self._compute_legacy_signature(log, key=signing_key)
+                    )
+                    if hmac.compare_digest(signature, expected):
                         return signing_key
                 return None
         except (RuntimeError, ImportError, OSError):
@@ -444,8 +452,12 @@ class SecureAuditService:
 
         # Fallback pure-Python HMAC verification routine if rust_ext is unavailable or fails
         for signing_key in self._signing_keys:
-            expected = self._compute_signature(log, key=signing_key)
-            if hmac.compare_digest(str(log.signature), expected):
+            expected = (
+                self._compute_signature(log, key=signing_key)
+                if use_v2
+                else self._compute_legacy_signature(log, key=signing_key)
+            )
+            if hmac.compare_digest(signature, expected):
                 return signing_key
 
         return None
@@ -496,34 +508,13 @@ class SecureAuditService:
         )
 
     def verify_integrity(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
-        """Verify the integrity of an audit log entry."""
+        """Verify the fields authenticated by the signature's declared scheme."""
         return self._find_valid_key(log) is not None
 
-    def resign_log(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
-        """
-        Re-sign an audit log entry with the primary key if needed.
-
-        Returns True when the signature was updated.
-        """
-        valid_key = self._find_valid_key(log)
-        if valid_key is None:
-            return False
-        primary_signature = self._compute_signature(log, key=self._primary_key)
-        if not isinstance(log, DataAccessLog):
-            # Cannot re-sign a frozen DTO in-place, caller should handle
-            return False
-
-        log.signature = primary_signature
-        return True
-
-    async def verify_batch(
-        self, db: AsyncDatabaseSession, *, limit: int = 1000
-    ) -> tuple[int, int, list[UUID]]:
-        """Verify integrity of a batch of audit logs."""
-        repo = AuditRepository(db)
-        logs = await repo.list_logs(limit=limit)
-        invalid_ids = [log.id for log in logs if not self.verify_integrity(log)]
-        return len(logs), len(logs) - len(invalid_ids), invalid_ids
+    @staticmethod
+    def signature_covers_metadata(log: DataAccessLog | DataAccessLogDTO) -> bool:
+        """Whether this signature version authenticates context and user agent."""
+        return str(log.signature or "").startswith(_AUDIT_LOG_SIGNATURE_V2_PREFIX)
 
     @staticmethod
     def canonicalize_event_payload(

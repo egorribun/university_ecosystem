@@ -386,6 +386,7 @@
             "storageS3Bucket": {"type": "string"}, "storageS3Region": {"type": "string"},
             "storageS3EndpointURL": {"type": "string"}, "storageS3BaseURL": {"type": "string"},
             "minioSecure": {"type": "boolean"}, "eventFileScannerEnabled": {"type": "boolean"},
+            "frontendOrigin": {"type": "string"},
             "flagdHost": {"type": "string"},
             "flagdPort": {"type": "integer", "minimum": 1, "maximum": 65535}
           }
@@ -412,7 +413,9 @@
           "type": "object", "additionalProperties": false,
           "properties": {
             "jwtSecret": {"type": "string"}, "jwtAudience": {"type": "string"},
-            "rateLimitRps": {"type": "integer", "minimum": 1}, "grpcUseTLS": {"type": "boolean"},
+            "rateLimitRps": {"type": "integer", "minimum": 1},
+            "trustedProxies": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "grpcUseTLS": {"type": "boolean"},
             "otelEndpoint": {"type": "string"}, "h3Enabled": {"type": "boolean"}
           }
         }
@@ -532,6 +535,60 @@
             "hosts": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
           }
         }}
+      }
+    },
+    "gatewayApi": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "gatewayClassName", "clientIPDetection", "rateLimit", "requestBuffer", "networkPolicy"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "gatewayClassName": {"$ref": "#/definitions/secretResourceName"},
+        "clientIPDetection": {
+          "type": "object", "additionalProperties": false, "maxProperties": 1,
+          "description": "Explicit original-client-IP mode required by per-client rate-limit selectors; the empty default is deliberately not deployable.",
+          "properties": {
+            "directSourceIP": {"type": "object", "additionalProperties": false, "maxProperties": 0},
+            "xForwardedFor": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "numTrustedHops": {"type": "integer", "minimum": 0},
+                "trustedCIDRs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+              },
+              "oneOf": [
+                {"required": ["numTrustedHops"]},
+                {"required": ["trustedCIDRs"]}
+              ]
+            }
+          }
+        },
+        "rateLimit": {
+          "type": "object", "additionalProperties": false,
+          "required": ["requests", "unit"],
+          "properties": {
+            "requests": {"type": "integer", "enum": [50]},
+            "unit": {"type": "string", "enum": ["Second"]}
+          },
+          "description": "Fixed partial local per-source-IP limit retained from ingress; no burst parameter is exposed by the pinned Envoy Gateway policy API."
+        },
+        "requestBuffer": {
+          "type": "object", "additionalProperties": false,
+          "required": ["limit"],
+          "properties": {
+            "limit": {
+              "type": "string",
+              "enum": ["50Mi"],
+              "description": "Maximum request body size for the isolated API HTTPRoute; fixed to the retained 50 MiB ingress contract."
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object", "additionalProperties": false,
+          "required": ["namespaceSelector", "podSelector"],
+          "properties": {
+            "namespaceSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+            "podSelector": {"type": "object", "additionalProperties": {"type": "string"}}
+          }
+        }
       }
     },
     "otel": {

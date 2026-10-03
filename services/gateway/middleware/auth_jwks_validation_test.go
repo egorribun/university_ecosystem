@@ -52,17 +52,17 @@ func TestShouldRefreshProbabilistic(t *testing.T) {
 	t.Logf("Probabilistic refresh result: %v", res)
 }
 
-// TestFetchJWKSPublicKey_Errors verifies various error paths in fetchJWKSPublicKey.
-func TestFetchJWKSPublicKey_Errors(t *testing.T) {
+// TestFetchJWKSKeySet_Errors verifies various error paths in fetchJWKSKeySet.
+func TestFetchJWKSKeySet_Errors(t *testing.T) {
 	httpClient := &http.Client{Timeout: 2 * time.Second}
 
 	t.Run("invalid url", func(t *testing.T) {
-		_, err := fetchJWKSPublicKey(context.Background(), httpClient, "invalid-proto://url")
+		_, err := fetchJWKSKeySet(context.Background(), httpClient, "invalid-proto://url")
 		assert.Error(t, err)
 	})
 
 	t.Run("invalid request target", func(t *testing.T) {
-		_, err := fetchJWKSPublicKey(context.Background(), httpClient, "http://example.com/\n")
+		_, err := fetchJWKSKeySet(context.Background(), httpClient, "http://example.com/\n")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "create request")
 	})
@@ -73,7 +73,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchJWKSPublicKey(context.Background(), httpClient, server.URL)
+		_, err := fetchJWKSKeySet(context.Background(), httpClient, server.URL)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unexpected status 404")
 	})
@@ -87,7 +87,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchJWKSPublicKey(context.Background(), httpClient, server.URL)
+		_, err := fetchJWKSKeySet(context.Background(), httpClient, server.URL)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "jwks: no PEM block found")
 	})
@@ -107,7 +107,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err = fetchJWKSPublicKey(context.Background(), httpClient, server.URL)
+		_, err = fetchJWKSKeySet(context.Background(), httpClient, server.URL)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "jwks: key is not RSA")
 	})
@@ -119,7 +119,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchJWKSPublicKey(context.Background(), httpClient, server.URL)
+		_, err := fetchJWKSKeySet(context.Background(), httpClient, server.URL)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "jwks: no RSA key found")
 	})
@@ -131,7 +131,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchJWKSPublicKey(context.Background(), httpClient, server.URL)
+		_, err := fetchJWKSKeySet(context.Background(), httpClient, server.URL)
 		assert.Error(t, err)
 	})
 
@@ -142,7 +142,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchJWKSPublicKey(context.Background(), httpClient, server.URL)
+		_, err := fetchJWKSKeySet(context.Background(), httpClient, server.URL)
 		assert.Error(t, err)
 	})
 }
@@ -150,7 +150,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 // TestWarmL1Cache_Coverage verifies WarmL1Cache behavior.
 func TestWarmL1Cache_Coverage(t *testing.T) {
 	t.Run("redis nil", func(t *testing.T) {
-		m := NewJWTMiddleware("secret", nil)
+		m := NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig())
 		assert.NotPanics(t, func() {
 			m.WarmL1Cache(context.Background())
 		})
@@ -167,7 +167,7 @@ func TestWarmL1Cache_Coverage(t *testing.T) {
 		err = mr.Set("revoked:jti:token2", "1")
 		require.NoError(t, err)
 
-		m := NewJWTMiddleware("secret", rClient)
+		m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 		assert.NotPanics(t, func() {
 			m.WarmL1Cache(context.Background())
 		})
@@ -183,7 +183,7 @@ func TestWarmL1Cache_Coverage(t *testing.T) {
 		// Close client to force scanner error
 		rClient.Close() //nolint:errcheck,gosec // G104: intentional close to force redis scanner error
 
-		m := NewJWTMiddleware("secret", rClient)
+		m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 		assert.NotPanics(t, func() {
 			m.WarmL1Cache(context.Background())
 		})
@@ -196,7 +196,7 @@ func TestListenForRevocations_PanicRecovery(t *testing.T) {
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer func() { require.NoError(t, rClient.Close()) }()
 
-	m := NewJWTMiddleware("secret", rClient)
+	m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	panicked := make(chan struct{})
@@ -221,7 +221,7 @@ func TestVerifySession_JTIEmpty(t *testing.T) {
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer func() { require.NoError(t, rClient.Close()) }()
 
-	m := NewJWTMiddleware("secret", rClient)
+	m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "", true)
 	assert.False(t, isValid)
 	assert.False(t, shouldDeny)
@@ -235,7 +235,7 @@ func TestCheckSessionInRedis_Error(t *testing.T) {
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	rClient.Close() //nolint:errcheck,gosec // G104: intentional close to force redis error
 
-	m := NewJWTMiddleware("secret", rClient)
+	m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "some-jti", true)
 	assert.False(t, isValid)
 	assert.True(t, shouldDeny)
@@ -251,7 +251,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
 
-		m := NewJWTMiddleware("secret", rClient)
+		m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 		router := gin.New()
 		router.Use(m.Validate(context.Background()))
 		router.GET("/test", func(c *gin.Context) {
@@ -283,7 +283,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
 
-		m := NewJWTMiddleware("secret", rClient)
+		m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 		router := gin.New()
 		router.Use(m.Validate(context.Background()))
 		router.GET("/test", func(c *gin.Context) {
@@ -320,7 +320,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
 
-		m := NewJWTMiddleware("secret", rClient)
+		m := NewJWTMiddlewareWithConfig("secret", "", rClient, DefaultL1CacheConfig())
 		router := gin.New()
 		router.Use(m.Optional(context.Background()))
 		router.GET("/test", func(c *gin.Context) {

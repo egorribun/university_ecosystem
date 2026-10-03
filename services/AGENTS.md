@@ -67,6 +67,9 @@ if exists {
 - Messages exceeding 60 KB (61,440 bytes) must be rejected immediately.
 - The hub sends a `message_too_large` error frame to the sender client and terminates the frame processing pipeline (RZ-31-02).
 
+### 3.2.1. Per-Client Inbound Rate Limit
+- Every inbound frame (including malformed or unknown ones) consumes a token from a per-client bucket (`WS_CLIENT_MSG_RATE_LIMIT`, burst `WS_CLIENT_MSG_BURST`). Frames over budget are dropped and the client receives `{"type":"rate_limit_exceeded"}`. Each accepted frame costs a session-revocation check, so this limit also bounds Redis load.
+
 ### 3.3. Client Limits & Connection Pre-Check
 - `maxClients` limit must be validated in `HandleWebSocket` **before** executing the HTTP-to-WebSocket connection upgrade (TD-31-05).
 
@@ -77,7 +80,7 @@ if exists {
 - **Path**: Frontend clients connect to `/ws/chat`; Caddy rewrites the request path to `/ws`.
 - **Ticket Validation**: WebSocket connections require a one-time ticket (`ott:ws:<ticket>`) issued by the backend and validated against Redis using `REDIS_PASSWORD`.
 - **Allowed Origins**: `ALLOWED_ORIGINS` must include `http://localhost` (port 80 Caddy) in development and local compose configurations.
-- **Message Types**: All incoming payload types must be validated against the whitelist map `allowedMessageTypes`.
+- **Message Types**: Client-to-hub frames are limited to `join` and `leave` and must be validated against `allowedMessageTypes`. Chat mutations are backend-owned REST/outbox operations; never relay an arbitrary client payload into the trusted `chat.*` event stream.
 
 ---
 

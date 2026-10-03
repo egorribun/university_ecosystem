@@ -141,10 +141,10 @@ async def test_publish_jetstream_propagates_subject_correctly() -> None:
     assert call_subject == "files.process"
 
 
-async def test_nats_jetstream_five_file_backed_streams_with_seven_day_retention() -> (
+async def test_nats_jetstream_six_file_backed_streams_with_seven_day_retention() -> (
     None
 ):
-    """NatsTaskBroker.connect() provisions 5 file-backed streams with 7-day retention."""
+    """NatsTaskBroker.connect() provisions 6 file-backed streams with 7-day retention."""
     broker = NatsTaskBroker()
 
     mock_js = AsyncMock()
@@ -157,13 +157,14 @@ async def test_nats_jetstream_five_file_backed_streams_with_seven_day_retention(
     ):
         await broker.connect()
 
-    assert mock_js.add_stream.await_count == 5
+    assert mock_js.add_stream.await_count == 6
     expected_streams = {
         "TASK_QUEUE": ["tasks.>"],
         "FILES_PROCESS": ["files.process"],
         "CHAT_EVENTS": ["chat.*"],
         "NOTIFICATIONS_EVENTS": ["notifications.*"],
         "OUTBOX_EVENTS": ["outbox.*"],
+        "CACHE_INVALIDATIONS": ["cache.invalidate"],
     }
 
     for call in mock_js.add_stream.call_args_list:
@@ -303,7 +304,8 @@ async def test_outbox_worker_process_batch_increments_error_count_on_failure() -
 
     # Mock db session that returns our synthetic event from the query.
     mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [mock_event]
+    # batch_size=1 projects the pending retry flag alongside the event.
+    mock_result.all.return_value = [(mock_event, False)]
 
     mock_count_result = MagicMock()
     mock_count_result.scalar_one.return_value = 1
@@ -318,10 +320,11 @@ async def test_outbox_worker_process_batch_increments_error_count_on_failure() -
 
     worker = OutboxWorker(poll_interval=0.0, batch_size=1, max_retries=3)
 
+    dispatch = AsyncMock(side_effect=RuntimeError("broker down"))
     with patch("app.workers.outbox.async_session", mock_session_factory):
-        with patch("app.workers.outbox.event_bus") as mock_bus:
-            mock_bus.emit = AsyncMock(side_effect=RuntimeError("broker down"))
+        with patch.object(worker, "_dispatch_event", dispatch):
             await worker.process_batch()
+    dispatch.assert_awaited_once_with(mock_event)
 
     # The worker must increment error_count on dispatch failure.
     assert mock_event.error_count == 1, (
@@ -403,8 +406,8 @@ async def test_outbox_worker_promotes_to_dlq_after_max_retries() -> None:
     forever, blocking all subsequent events (head-of-line blocking) and
     exhausting retry workers.
 
-    The test sets error_count = max_retries so the *next* failure triggers the
-    DLQ path rather than a simple increment.
+    The test sets error_count just below max_retries so the next failure reaches
+    the DLQ threshold rather than only incrementing the retry count.
     """
     from unittest.mock import MagicMock
 
@@ -414,12 +417,13 @@ async def test_outbox_worker_promotes_to_dlq_after_max_retries() -> None:
     mock_event = MagicMock()
     mock_event.id = uuid.uuid4()
     mock_event.event_type = "test.dlq"
-    mock_event.error_count = max_retries  # already at the threshold
+    mock_event.error_count = max_retries - 1  # next failure reaches the threshold
     mock_event.processed_at = None
     mock_event.status = "pending"
 
     mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [mock_event]
+    # batch_size=1 projects the pending retry flag alongside the event.
+    mock_result.all.return_value = [(mock_event, False)]
 
     mock_count_result = MagicMock()
     mock_count_result.scalar_one.return_value = 1
@@ -434,21 +438,18 @@ async def test_outbox_worker_promotes_to_dlq_after_max_retries() -> None:
 
     worker = OutboxWorker(poll_interval=0.0, batch_size=1, max_retries=max_retries)
 
+    dispatch = AsyncMock(side_effect=RuntimeError("broker down"))
     with patch("app.workers.outbox.async_session", mock_session_factory):
-        with patch("app.workers.outbox.event_bus") as mock_bus:
-            mock_bus.emit = AsyncMock(side_effect=RuntimeError("broker down"))
+        with patch.object(worker, "_dispatch_event", dispatch):
             await worker.process_batch()
+    dispatch.assert_awaited_once_with(mock_event)
 
-    # After exceeding max_retries the event status must change to reflect DLQ
-    # promotion (the exact field name depends on the OutboxWorker implementation;
-    # we accept either error_count > max_retries OR status changed to 'failed').
-    promoted_to_dlq = mock_event.error_count > max_retries or getattr(
-        mock_event, "status", "pending"
-    ) in ("failed", "dlq")
-    assert promoted_to_dlq, (
-        f"Event must be promoted to DLQ after {max_retries} retries. "
-        f"error_count={mock_event.error_count}, status={getattr(mock_event, 'status', 'n/a')}"
-    )
+    assert mock_event.error_count == max_retries
+    assert mock_event.processed_at is not None
+    assert mock_db.add.call_count == 1
+    dlq_entry = mock_db.add.call_args.args[0]
+    assert dlq_entry.original_event_id == mock_event.id
+    assert dlq_entry.retry_count == max_retries
 
 
 # ---------------------------------------------------------------------------

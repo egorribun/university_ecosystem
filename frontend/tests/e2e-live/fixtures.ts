@@ -1,4 +1,6 @@
 import { expect, test as base, type Page } from "@playwright/test"
+import { createLivePageErrorDiagnostics } from "./page-error-diagnostic"
+import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
 
 /**
  * Accounts created by scripts/seed_demo_data.py and scripts/seed_admin_data.py
@@ -15,13 +17,47 @@ export const ROLES = {
   },
   admin: {
     email: "admin@university.dev",
-    password: "Admin@2024test", // pragma: allowlist secret -- disposable stand seed account
+    password: requireLiveAdminPassword(),
   },
 } as const
 
 export type Role = keyof typeof ROLES
 
-const MAILPIT_URL = process.env.LIVE_MAILPIT_URL ?? "http://127.0.0.1:18025"
+/** Additional seeded accounts used only to form an isolated live group chat. */
+export const GROUP_CHAT_ACCOUNTS = {
+  secondMember: {
+    email: "ivan.sokolov@university.dev",
+    password: "Student@2024test", // pragma: allowlist secret -- disposable stand seed account
+  },
+  nonMember: {
+    email: "sergey.lebedev@university.dev",
+    password: "Teacher@2024test", // pragma: allowlist secret -- disposable stand seed account
+  },
+} as const
+
+/** Stable name lets the live group isolation scenario safely reuse its own group. */
+export const LIVE_GROUP_CHAT_NAME = "University Ecosystem live Messenger isolation"
+
+const configuredMailpitURL = process.env.LIVE_MAILPIT_URL
+if (!configuredMailpitURL) {
+  throw new Error("LIVE_MAILPIT_URL must be set to the endpoint printed by scripts/live_stand.py")
+}
+const mailpitURL = new URL(configuredMailpitURL)
+if (
+  mailpitURL.protocol !== "http:" ||
+  !["localhost", "127.0.0.1"].includes(mailpitURL.hostname) ||
+  mailpitURL.username !== "" ||
+  mailpitURL.password !== "" ||
+  !mailpitURL.port ||
+  Number(mailpitURL.port) < 20_000 ||
+  Number(mailpitURL.port) > 45_000 ||
+  mailpitURL.pathname !== "/" ||
+  mailpitURL.search !== "" ||
+  mailpitURL.hash !== ""
+) {
+  throw new Error("LIVE_MAILPIT_URL must use HTTP and an explicit live-stand loopback port")
+}
+const MAILPIT_URL = mailpitURL.toString().replace(/\/$/, "")
 
 /** Submits the login form without asserting where it lands. */
 export async function submitLogin(page: Page, email: string, password: string): Promise<void> {
@@ -100,10 +136,27 @@ export async function stubBreachedPasswordLookup(page: Page): Promise<void> {
 /** Fails the test on any uncaught page exception, the live lane's crash signal. */
 export const test = base.extend<{ pageErrors: Error[] }>({
   pageErrors: [
-    async ({ page }, use) => {
+    async ({ page }, use, testInfo) => {
       const errors: Error[] = []
-      page.on("pageerror", (error) => errors.push(error))
+      const isResetScenario =
+        (testInfo.project.name === "desktop" || testInfo.project.name === "mobile") &&
+        testInfo.file.replace(/\\/g, "/").endsWith("/tests/e2e-live/password-reset.live.spec.ts") &&
+        testInfo.title ===
+          "a student resets with the Mailpit link without retaining tokens or following hostile redirects"
+      const pageErrorDiagnostics = createLivePageErrorDiagnostics()
+      page.on("pageerror", (error) => {
+        errors.push(error)
+        if (!isResetScenario) return
+        let pathname = ""
+        try {
+          pathname = new URL(page.url()).pathname
+        } catch {
+          // An unavailable current URL is classified as other, never a new failure.
+        }
+        pageErrorDiagnostics.record(error, pathname)
+      })
       await use(errors)
+      if (isResetScenario) pageErrorDiagnostics.report(testInfo.project.name, "password-reset")
       expect(errors, errors.map((error) => error.message).join("\n")).toEqual([])
     },
     { auto: true },

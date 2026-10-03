@@ -241,16 +241,7 @@ def test_runtime_source_has_no_executable_coverage_pragmas() -> None:
             if "pragma: no cover" in line:
                 usages.append((path.relative_to(ROOT).as_posix(), line.strip()))
 
-    assert usages == [
-        (
-            "app/core/event_decorators.py",
-            "]: ...  # pragma: no cover - typing-only overload",
-        ),
-        (
-            "app/core/event_decorators.py",
-            "]: ...  # pragma: no cover - typing-only overload",
-        ),
-    ]
+    assert usages == []
 
 
 def test_governance_quality_configuration_matches_contract() -> None:
@@ -386,6 +377,18 @@ def test_test_image_installs_atheris_toolchain() -> None:
     assert "libclang-rt-14-dev" in package_names
 
 
+def test_test_image_installs_git_for_openapi_baseline_regressions() -> None:
+    dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
+    package_install = re.search(
+        r"apt-get install -y --no-install-recommends \\\n(?P<packages>.*?)\n    &&",
+        dockerfile,
+        re.DOTALL,
+    )
+
+    assert package_install is not None
+    assert "git" in package_install.group("packages").split()
+
+
 def test_test_image_copies_rust_benches_declared_in_workspace_manifests() -> None:
     dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
 
@@ -500,6 +503,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "k8s/kyverno",
         "k8s/flagd",
         "frontend/scripts",
+        "frontend/knip.json",
         "frontend/package.json",
         "frontend/src/hooks",
         "frontend/src/hooks/useChatWebSocket.ts",
@@ -925,8 +929,5 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     assert package["scripts"]["test:watch"] == "vitest --configLoader runner"
 
     vitest_packages = package["devDependencies"]
-    vitest_specs = {
-        vitest_packages[name]
-        for name in ("vitest", "@vitest/browser", "@vitest/coverage-v8")
-    }
+    vitest_specs = {vitest_packages[name] for name in ("vitest", "@vitest/coverage-v8")}
     assert len(vitest_specs) == 1

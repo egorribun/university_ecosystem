@@ -443,27 +443,37 @@ describe("useDndSettings", () => {
     expect(result.current.dndEnd).toBe("05:30")
   })
 
-  it.each([
-    ["without a signed-in user", null],
-    ["without stored preferences", { id: "user-1", preferences: null }],
-  ])("enables DND %s", async (_label, user) => {
+  it("does not write preferences or adopt a profile without a signed-in user", () => {
+    mocks.user = null
     const setSnackbar = vi.fn()
-    mocks.user = user
-    mocks.put.mockResolvedValue({ data: enabledUser("22:00:00", "07:00:00") })
     const { result } = renderHook(() => useDndSettings(setSnackbar))
-
-    await act(async () => {
-      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
-      await vi.waitFor(() => expect(setSnackbar).toHaveBeenCalled())
-    })
-    expect(mocks.put).toHaveBeenCalledWith("/users/me", {
-      preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
-    })
-    expect(setSnackbar).toHaveBeenCalledWith({
-      text: "settings:dnd.snackbar.enabled",
-      severity: "success",
-    })
+    act(() => result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true))
+    expect(mocks.put).not.toHaveBeenCalled()
+    expect(mocks.setUser).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
   })
+
+  it.each([["without stored preferences", { id: "user-1", preferences: null }]])(
+    "enables DND %s",
+    async (_label, user) => {
+      const setSnackbar = vi.fn()
+      mocks.user = user
+      mocks.put.mockResolvedValue({ data: enabledUser("22:00:00", "07:00:00") })
+      const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+      await act(async () => {
+        result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+        await vi.waitFor(() => expect(setSnackbar).toHaveBeenCalled())
+      })
+      expect(mocks.put).toHaveBeenCalledWith("/users/me", {
+        preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+      })
+      expect(setSnackbar).toHaveBeenCalledWith({
+        text: "settings:dnd.snackbar.enabled",
+        severity: "success",
+      })
+    }
+  )
 
   it("enables DND with an edited start time and shows the range the server stored", async () => {
     const setSnackbar = vi.fn()

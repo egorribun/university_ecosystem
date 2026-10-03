@@ -1,0 +1,85 @@
+name: Owned Live Acceptance
+
+# Pull requests run the auth and password-reset smoke set through the isolated
+# live stand. Scheduled and manually dispatched runs exercise the full suite.
+# GitHub activates schedule/workflow_dispatch only after this file reaches the
+# repository's default branch; non-default manual refs are guarded below.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-acceptance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-acceptance:
+    name: Owned live acceptance (${{ github.event_name }})
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      LIVE_E2E_MODE: ${{ github.event_name == 'pull_request' && 'smoke' || 'full' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the event commit without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python runtime dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate live acceptance contracts before starting Docker
+        working-directory: frontend
+        run: npm run test:e2e:live:contract
+
+      - name: Install locked Chromium and Linux browser dependencies
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the owned live stand
+        id: start-stand
+        env:
+          STAND_REF: ${{ github.sha }}
+        run: uv run --frozen --no-sync python scripts/live_stand.py up --ref "$STAND_REF"
+
+      - name: Run live acceptance through the redacting runner
+        run: uv run --frozen --no-sync python scripts/live_stand.py e2e --mode "$LIVE_E2E_MODE"
+
+      - name: Stop owned containers and preserve stand data
+        if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
+        run: uv run --frozen --no-sync python scripts/live_stand.py stop

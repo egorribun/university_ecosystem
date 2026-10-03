@@ -115,7 +115,7 @@ class _Request:
     client = _Client()
 
 
-def _user(role=UserRole.ADMIN):
+def _user(role=UserRole.TEACHER):
     return SimpleNamespace(id=uuid.uuid4(), role=role)
 
 

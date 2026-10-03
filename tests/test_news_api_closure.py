@@ -472,12 +472,13 @@ async def test_delete_comment_success_and_error_paths() -> None:
     service = AsyncMock()
     comment_id = uuid.UUID(int=3)
 
-    for user, expected_admin in ((_user(), False), (_admin(), True)):
+    for user, expected_admin in ((_user(), False), (_admin(), False)):
         assert await call_injected(
             handler,
             comment_id=comment_id,
             request=_request(),
             user=user,
+            checker=SimpleNamespace(check_admin=AsyncMock(return_value=False)),
             provides={"NewsService": service},
         ) == {"ok": True}
         assert (
@@ -493,10 +494,37 @@ async def test_delete_comment_success_and_error_paths() -> None:
                 comment_id=comment_id,
                 request=_request(),
                 user=_user(),
+                checker=SimpleNamespace(check_admin=AsyncMock(return_value=False)),
                 provides={"NewsService": service},
             )
         assert exc_info.value.status_code == status_code
     service.delete_comment.side_effect = None
+
+
+async def test_delete_comment_preserves_service_denial_after_admin_check() -> None:
+    service = AsyncMock()
+    service.delete_comment.side_effect = PermissionError("Comment cannot be removed")
+    checker = SimpleNamespace(check_admin=AsyncMock(return_value=True))
+    comment_id = uuid.UUID(int=3)
+    user = _admin()
+
+    with pytest.raises(HTTPException) as denied:
+        await call_injected(
+            inspect.unwrap(news_api.delete_comment),
+            comment_id=comment_id,
+            request=_request(),
+            user=user,
+            checker=checker,
+            provides={"NewsService": service},
+        )
+
+    assert denied.value.status_code == 403
+    assert [
+        call.kwargs["is_admin"] for call in service.delete_comment.await_args_list
+    ] == [
+        False,
+        True,
+    ]
 
 
 async def test_upload_news_image_scans_and_saves() -> None:

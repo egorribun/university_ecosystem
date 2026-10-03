@@ -2,8 +2,8 @@ package service
 
 // Coverage tests (testing session 10) for validateProcessFileRequest arms that
 // TestGRPCPathTraversalRejection (path-traversal + oversized-key) does not
-// reach: empty id, unsupported type, empty source/dest, options-count limit,
-// and oversized option key/value. Direct gRPC-handler calls with a nil
+// reach: empty/overlong id, unsupported type, empty source/dest, options-count
+// limit, and oversized option key/value. Direct gRPC-handler calls with a nil
 // TemporalClient — every case returns at the validation boundary before any
 // workflow start, so no Temporal connection is needed.
 
@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/university-ecosystem/file-processor/internal/jobcontract"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -37,6 +38,13 @@ func TestValidateProcessFileRequest_RejectionArms(t *testing.T) {
 			name:         "empty id",
 			req:          &pb.ProcessFileRequest{Type: "image_resize", SourceKey: "s", DestKey: "d"},
 			wantContains: "id is required",
+		},
+		{
+			name: "id over shared limit",
+			req: &pb.ProcessFileRequest{
+				Id: strings.Repeat("j", jobcontract.MaxIDLen+1), Type: "image_resize", SourceKey: "s", DestKey: "d",
+			},
+			wantContains: "id exceeds",
 		},
 		{
 			name:         "unsupported type",
@@ -100,6 +108,36 @@ func TestValidateProcessFileRequest_RejectionArms(t *testing.T) {
 			require.True(t, ok, "expected a gRPC status error")
 			assert.Equal(t, codes.InvalidArgument, st.Code())
 			assert.Contains(t, st.Message(), tc.wantContains)
+		})
+	}
+}
+
+func TestValidateProcessFileRequestEnforcesSharedJobIDLimit(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		id      string
+		wantErr bool
+	}{
+		{name: "limit accepted", id: strings.Repeat("j", jobcontract.MaxIDLen)},
+		{name: "over limit rejected", id: strings.Repeat("j", jobcontract.MaxIDLen+1), wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req := &pb.ProcessFileRequest{
+				Id:        test.id,
+				Type:      "image_resize",
+				SourceKey: "input/image.png",
+				DestKey:   "output/image.png",
+			}
+
+			err := validateProcessFileRequest(req)
+			if !test.wantErr {
+				require.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err, "gRPC must enforce the same bounded job ID contract as asynchronous ingress")
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+			assert.Contains(t, status.Convert(err).Message(), "id")
 		})
 	}
 }

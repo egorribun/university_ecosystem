@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { useAuth, currentUserQueryKey } from "@/contexts/AuthContext"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -18,6 +19,8 @@ type SpotifyFeedbackKey =
 export default function SpotifyConnect() {
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
+  const captureOperation = useProfileSessionGuard()
+  const userId = user?.id
   const [actionLoading, setActionLoading] = useState(false)
   const [feedback, setFeedback] = useState<{
     key: SpotifyFeedbackKey
@@ -28,11 +31,19 @@ export default function SpotifyConnect() {
   const spotifyEnabled = Boolean(user?.spotify_connected || user?.spotify_is_connected)
   const { data: now, isFetching: refreshing, refetch } = useNowPlaying(spotifyEnabled)
 
+  useEffect(() => {
+    setActionLoading(false)
+    setFeedback(null)
+  }, [captureOperation])
+
   const connect = async () => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
     setFeedback(null)
     setActionLoading(true)
     try {
       const r = await api.get<{ url?: string }>("/spotify/auth-url")
+      if (!isCurrent()) return
       const safeUrl = sanitizeSpotifyAuthorizeUrl(r.data?.url)
       if (!safeUrl) {
         setFeedback({ key: "settings:integrations.spotify.snackbar.openFailed" })
@@ -40,21 +51,24 @@ export default function SpotifyConnect() {
       }
       window.location.href = safeUrl
     } catch {
-      setFeedback({ key: "settings:integrations.spotify.snackbar.connectFailed" })
+      if (isCurrent()) setFeedback({ key: "settings:integrations.spotify.snackbar.connectFailed" })
     } finally {
-      setActionLoading(false)
+      if (isCurrent()) setActionLoading(false)
     }
   }
 
   const disconnect = async () => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
     setFeedback(null)
     setActionLoading(true)
     let disconnected = false
     try {
       await api.post("/spotify/disconnect")
+      if (!isCurrent()) return
       disconnected = true
       setUser((prev) =>
-        prev
+        isCurrent() && prev && prev.id === userId
           ? {
               ...prev,
               spotify_connected: false,
@@ -63,47 +77,52 @@ export default function SpotifyConnect() {
             }
           : prev
       )
+      if (!isCurrent()) return
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: currentUserQueryKey }, { throwOnError: true }),
         queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }, { throwOnError: true }),
       ])
     } catch {
+      if (!isCurrent()) return
       setFeedback(
         disconnected
           ? { key: "common:errors.generic", disconnected: true }
           : { key: "settings:integrations.spotify.snackbar.disconnectFailed" }
       )
     } finally {
-      setActionLoading(false)
+      if (isCurrent()) setActionLoading(false)
     }
   }
 
   const refresh = async () => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
     setFeedback(null)
     try {
       await refetch({ throwOnError: true })
     } catch {
-      setFeedback({ key: "common:errors.generic" })
+      if (isCurrent()) setFeedback({ key: "common:errors.generic" })
     }
   }
 
   useEffect(() => {
     const qp = new URLSearchParams(window.location.search)
     if (!qp.get("spotify")) return
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
     let active = true
-    setFeedback(null)
     const refreshAfterCallback = async () => {
       try {
         await refetch({ throwOnError: true })
       } catch {
-        if (active) setFeedback({ key: "common:errors.generic" })
+        if (active && isCurrent()) setFeedback({ key: "common:errors.generic" })
       }
     }
     void refreshAfterCallback()
     return () => {
       active = false
     }
-  }, [refetch])
+  }, [captureOperation, refetch])
 
   if (!user) return null
 

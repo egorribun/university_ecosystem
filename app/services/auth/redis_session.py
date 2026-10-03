@@ -146,6 +146,19 @@ class RedisSessionService:
         except (RedisError, OSError):
             pass
 
+    async def invalidate_session_cache(self, jti: str) -> None:
+        """Discard cached metadata while preserving the authoritative session."""
+        if not self.redis_url:
+            return
+        try:
+            client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
+            await cast("Awaitable[Any]", client.delete(f"{self.KEY_PREFIX}{jti}"))
+        except (RedisError, OSError):
+            # Cache state is optional; every auth transport checks the DB epoch.
+            logger.warning(
+                "Failed to invalidate cached session metadata", exc_info=True
+            )
+
     async def revoke_session(
         self, jti: str, expires_at: datetime | None = None
     ) -> None:

@@ -36,16 +36,11 @@ class AppGeneralSettings(BaseAppSettings):
     auto_create_schema: bool | None = None
     attendance_token_secret: str = ""
     attendance_token_ttl_seconds: int = 300
-    session_cleanup_interval_seconds: int = 900
-    mfa_challenge_cleanup_interval_seconds: int = 600
     mfa_challenge_cleanup_grace_period_seconds: int = 600
-    password_reset_cleanup_interval_seconds: int = 3_600
     password_reset_cleanup_retention_minutes: int = 45
-    email_change_cleanup_interval_seconds: int = 3_600
     email_change_cleanup_retention_minutes: int = 45
     password_reset_max_active_tokens: int = 1
     stories_cleanup_enabled: bool = True
-    stories_retention_cleanup_interval_seconds: int = 86_400
     privacy_cleanup_interval_seconds: int = 86_400
     session_retention_days: int = 90
     mfa_retention_days: int = 30
@@ -58,7 +53,6 @@ class AppGeneralSettings(BaseAppSettings):
     enable_metrics_endpoint: bool = False
     # MED-W19: opt-in flag for X-Response-Time header; disabled by default to
     # avoid leaking internal timing information to external clients in production.
-    expose_timing_header: bool = False
     metrics_basic_auth_username: str = ""
     metrics_basic_auth_password: str = ""
     metrics_allowlist: str | list[str] = ""

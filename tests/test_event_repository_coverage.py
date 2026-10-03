@@ -21,114 +21,6 @@ def test_event_repository_factory_and_properties(db_session):
 
 
 @pytest.mark.asyncio
-async def test_event_repository_crud(db_session, user_factory):
-    user = await user_factory()
-    repo = EventRepository(db_session)
-
-    now = datetime.datetime.now(datetime.UTC)
-    starts1 = now + datetime.timedelta(days=1)
-    ends1 = starts1 + datetime.timedelta(hours=2)
-
-    starts2 = now + datetime.timedelta(days=2)
-    ends2 = starts2 + datetime.timedelta(hours=2)
-
-    # 1. Create event 1
-    event1 = Event(
-        id=generate_uuid7(),
-        title="Python Web Conference",
-        title_en="Python Web Conf",
-        description="Great event",
-        location="Online",
-        event_type="conference",
-        starts_at=starts1,
-        ends_at=ends1,
-        created_at=now - datetime.timedelta(seconds=10),
-        created_by=user.id,
-    )
-    # 2. Create event 2
-    event2 = Event(
-        id=generate_uuid7(),
-        title="Django Workshop",
-        title_en="Django WS",
-        description="Another great event",
-        location="Berlin",
-        event_type="workshop",
-        starts_at=starts2,
-        ends_at=ends2,
-        created_at=now,
-        created_by=user.id,
-    )
-    db_session.add_all([event1, event2])
-    await db_session.commit()
-
-    # 3. Test get_for_registration (SELECT FOR UPDATE)
-    loaded_orm = await repo.get_for_registration(event1.id)
-    assert loaded_orm is not None
-    assert loaded_orm.id == event1.id
-
-    missing_orm = await repo.get_for_registration(uuid.uuid4())
-    assert missing_orm is None
-
-    # 4. Test get_with_details
-    details = await repo.get_with_details(event1.id)
-    assert details is not None
-    assert details.title == "Python Web Conference"
-
-    # 5. Test count_upcoming
-    assert await repo.count_upcoming() == 2
-
-    # 6. Test get_upcoming
-    upcoming = await repo.get_upcoming(limit=5)
-    assert len(upcoming) == 2
-    assert upcoming[0].id == event1.id
-    assert upcoming[1].id == event2.id
-
-    # Test get_upcoming with cursor (starts_at > starts1, or starts_at == starts1 and id > event1.id)
-    # This should return event2!
-    upcoming_cursor = await repo.get_upcoming(
-        limit=5,
-        after_starts_at=starts1,
-        after_id=event1.id,
-    )
-    assert len(upcoming_cursor) == 1
-    assert upcoming_cursor[0].id == event2.id
-
-    # 7. Test get_by_organizer (ordered by created_at DESC)
-    by_org = await repo.get_by_organizer(user.id, limit=5)
-    assert len(by_org) == 2
-    # event2 was created later, so it should be first
-    assert by_org[0].id == event2.id
-    assert by_org[1].id == event1.id
-
-    # Test get_by_organizer with cursor
-    # (created_at < event2.created_at, or created_at == event2.created_at and id < event2.id)
-    # This should return event1!
-    by_org_cursor = await repo.get_by_organizer(
-        user.id,
-        limit=5,
-        after_created_at=event2.created_at,
-        after_id=event2.id,
-    )
-    assert len(by_org_cursor) == 1
-    assert by_org_cursor[0].id == event1.id
-
-    # 8. Test search by title
-    search_res = await repo.search("python")
-    assert len(search_res) == 1
-
-    search_cursor = await repo.search(
-        "python",
-        after_starts_at=starts1,
-        after_id=event1.id,
-    )
-    assert len(search_cursor) == 0
-
-    # Test escaping LIKE
-    search_escaped = await repo.search("python%")
-    assert len(search_escaped) == 0
-
-
-@pytest.mark.asyncio
 async def test_event_repository_attendance(db_session, user_factory):
     user = await user_factory()
     repo = EventRepository(db_session)
@@ -327,21 +219,9 @@ async def test_event_repository_search_events_sqlite_compatible(
 
 @pytest.mark.asyncio
 async def test_event_repository_search_events_postgres_query_builder(monkeypatch):
-    from sqlalchemy import func
-    from sqlalchemy.sql.operators import ColumnOperators
-
     from app.core.config import settings
 
-    # Force semantic search enabled for this test
     monkeypatch.setattr(settings, "semantic_search_enabled", True)
-
-    # Monkeypatch the missing pgvector cosine_distance comparator method which is not defined on SQLite Text column variant
-    monkeypatch.setattr(
-        ColumnOperators,
-        "cosine_distance",
-        lambda self, *args, **kwargs: func.cosine_distance(self, *args),
-        raising=False,
-    )
 
     # Mock AsyncDatabaseSession to verify generated SQL statement without running on SQLite
     mock_db = AsyncMock()
@@ -369,7 +249,7 @@ async def test_event_repository_search_events_postgres_query_builder(monkeypatch
         about=None,
         about_en=None,
     )
-    mock_row = (mock_event_dto, 1, None)
+    mock_row = (mock_event_dto, 1, None, 0.5)
     mock_result.all.return_value = [mock_row]
     mock_db.execute.return_value = mock_result
 
@@ -389,9 +269,67 @@ async def test_event_repository_search_events_postgres_query_builder(monkeypatch
     # Assert PostgreSQL-specific tsquery and @@ operations exist in compiled query
     assert "@@" in sql_str
     assert "plainto_tsquery" in sql_str
+    assert "<=>" in sql_str
 
     # 2. Run search_events with search_query but NO embedding to test the False branch
     await repo.search_events(
         search_query="rust conference",
         query_embedding=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_title_search_keyset_preserves_ties_without_repeating_events(
+    db_session, user_factory
+):
+    user = await user_factory()
+    starts = datetime.datetime(2026, 10, 1, 12, tzinfo=datetime.UTC)
+    expected = [uuid.UUID(int=value) for value in (40, 30, 20, 10, 50)]
+    offsets = [1, 0, 0, 0, -1]
+    events = [
+        Event(
+            id=event_id,
+            title="Keyset Workshop",
+            starts_at=starts + datetime.timedelta(days=offset),
+            ends_at=starts + datetime.timedelta(days=offset, hours=1),
+            created_by=user.id,
+        )
+        for event_id, offset in zip(expected, offsets, strict=True)
+    ]
+    db_session.add_all(events)
+    db_session.add(
+        Event(
+            title="Unrelated event",
+            starts_at=starts,
+            ends_at=starts + datetime.timedelta(hours=1),
+            created_by=user.id,
+        )
+    )
+    await db_session.commit()
+    repo = EventRepository(db_session)
+
+    first = await repo.search("  KEYSET  ", limit=2)
+    second = await repo.search(
+        "keyset",
+        limit=2,
+        after_starts_at=first[-1].starts_at,
+        after_id=first[-1].id,
+    )
+    third = await repo.search(
+        "keyset",
+        limit=2,
+        after_starts_at=second[-1].starts_at,
+        after_id=second[-1].id,
+    )
+    assert [event.id for event in first] == expected[:2]
+    assert [event.id for event in second] == expected[2:4]
+    assert [event.id for event in third] == expected[4:]
+    assert (
+        await repo.search(
+            "keyset",
+            limit=2,
+            after_starts_at=third[-1].starts_at,
+            after_id=third[-1].id,
+        )
+        == []
     )

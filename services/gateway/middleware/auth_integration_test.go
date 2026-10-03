@@ -148,7 +148,7 @@ func TestIntegration_WarmL1Cache(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 
-	m := NewJWTMiddleware("test-secret", rdb)
+	m := NewJWTMiddlewareWithConfig("test-secret", "", rdb, DefaultL1CacheConfig())
 
 	// Set revoked keys in Redis
 	require.NoError(t, rdb.Set(ctx, "revoked:jti:jti-warm-1", "1", 30*time.Second).Err())
@@ -178,7 +178,7 @@ func TestIntegration_ListenForRevocations(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	m := NewJWTMiddleware("test-secret", rdb)
+	m := NewJWTMiddlewareWithConfig("test-secret", "", rdb, DefaultL1CacheConfig())
 
 	// Start listener
 	m.ListenForRevocations(ctx)

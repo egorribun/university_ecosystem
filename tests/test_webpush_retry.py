@@ -16,6 +16,7 @@ raise / succeed without touching network or DB):
 
 from __future__ import annotations
 
+import socket
 import uuid
 from datetime import time
 from types import SimpleNamespace
@@ -34,6 +35,28 @@ from app.services.webpush import (
     _sanitize_vibrate,
     send_web_push,
 )
+
+
+@pytest.fixture(autouse=True)
+def deterministic_push_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provider response unit tests must not rely on public DNS availability."""
+    resolve = socket.getaddrinfo
+
+    def lookup(host, port, *args, **kwargs):
+        if host == "fcm.googleapis.com":
+            return [
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    6,
+                    "",
+                    ("93.184.216.34", port or 443),
+                )
+            ]
+        return resolve(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+
 
 # ── 1. _mask_endpoint ────────────────────────────────────────────────────────
 
@@ -286,15 +309,16 @@ def test_send_web_push_returns_error_on_5xx() -> None:
     assert result.status_code == 503
 
 
-def test_send_web_push_falls_back_to_message_match_when_no_response() -> None:
-    """If the exception lacks a response object, status is parsed from the message."""
+def test_send_web_push_does_not_trust_embedded_status_without_response() -> None:
+    """A status embedded in provider text is not authoritative without a response."""
     sub = _make_subscription()
     with patch("app.services.webpush.webpush") as mocked:
         # Exception with no .response attribute but '410' in message.
         exc = WebPushException("Subscription expired (410 Gone)")
         mocked.side_effect = exc
         result = send_web_push(sub, {"title": "Hi"})
-    assert result.status == "gone"
+    assert result.status == "error"
+    assert result.status_code is None
 
 
 @pytest.mark.parametrize(

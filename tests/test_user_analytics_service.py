@@ -1,6 +1,6 @@
 """Behavior and calculation tests for user analytics services.
 
-Pure-function coverage for ``_dt_to_iso`` / ``_parse_grade_payload`` (mirrors
+Pure-function coverage for ``_dt_to_iso`` (mirrors
 tests/test_notification_templates_units.py) plus real-DB coverage for the three
 stats methods with ``skip_cache=True`` (mirrors the repository-tier recipe:
 real ``user_factory()`` ids through all FKs, explicit recent ``created_at``).
@@ -8,7 +8,6 @@ real ``user_factory()`` ids through all FKs, explicit recent ``created_at``).
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -44,66 +43,6 @@ def test_dt_to_iso_naive_coerced_to_utc(svc):
 def test_dt_to_iso_aware_converted_to_utc(svc):
     aware = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     assert svc._dt_to_iso(aware) == "2026-06-01T12:00:00+00:00"
-
-
-# ---------------------------------------------------------------------------
-# _parse_grade_payload
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        None,
-        "",
-        "not-json{",
-        json.dumps(["not", "a", "dict"]),
-        json.dumps({"no_score": 1}),
-        json.dumps({"score": "not-a-number"}),
-    ],
-)
-def test_parse_grade_payload_rejects_invalid(svc, body):
-    assert (
-        svc._parse_grade_payload(body, fallback_title="T", fallback_date=None) is None
-    )
-
-
-def test_parse_grade_payload_full_payload(svc):
-    body = json.dumps(
-        {"score": 4.5, "max": 5, "course": "Math", "date": "2026-06-01T10:00:00+00:00"}
-    )
-    parsed = svc._parse_grade_payload(
-        body, fallback_title="Fallback", fallback_date=None
-    )
-    assert parsed == {
-        "course": "Math",
-        "score": 4.5,
-        "max": 5.0,
-        "date": "2026-06-01T10:00:00+00:00",
-    }
-
-
-def test_parse_grade_payload_fallbacks(svc):
-    """Non-numeric max → None; blank course → fallback title; bad date → fallback date."""
-    fallback_dt = datetime(2026, 6, 2, 9, 0, 0, tzinfo=UTC)
-    body = json.dumps(
-        {"score": "3", "max": "abc", "course": "  ", "date": "not-a-date"}
-    )
-    parsed = svc._parse_grade_payload(
-        body, fallback_title="Physics", fallback_date=fallback_dt
-    )
-    assert parsed is not None
-    assert parsed["score"] == 3.0
-    assert parsed["max"] is None
-    assert parsed["course"] == "Physics"
-    assert parsed["date"] == "2026-06-02T09:00:00+00:00"
-
-
-def test_parse_grade_payload_non_string_date_uses_fallback(svc):
-    body = json.dumps({"score": 5, "date": 12345})
-    parsed = svc._parse_grade_payload(body, fallback_title="T", fallback_date=None)
-    assert parsed is not None
-    assert parsed["date"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -145,28 +84,23 @@ async def _add_attended_event(
     return event
 
 
-async def _add_grade_notification(
+async def _add_grade(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    student_id: uuid.UUID,
     *,
-    payload: dict | str | None,
-    title: str = "Grade",
-) -> models.Notification:
-    now = datetime.now(UTC)
-    body = (
-        payload if isinstance(payload, str) or payload is None else json.dumps(payload)
+    score: float,
+    subject: str = "Math",
+    days_ago: float = 1,
+) -> models.Grade:
+    grade = models.Grade(
+        student_id=student_id,
+        subject=subject,
+        score=score,
+        created_at=datetime.now(UTC) - timedelta(days=days_ago),
     )
-    notif = models.Notification(
-        user_id=user_id,
-        title=title,
-        body=body,
-        type="grade",
-        created_at=now,
-        read=False,
-    )
-    db.add(notif)
+    db.add(grade)
     await db.flush()
-    return notif
+    return grade
 
 
 # ---------------------------------------------------------------------------
@@ -197,9 +131,28 @@ async def test_attendance_stats_with_recent_events(svc, db_session, user_factory
     assert result["percent"] == 100.0
     assert result["present"] == 2
     assert result["total"] == 2
+    assert result["trend"] == 100.0
     courses = {item["course"] for item in result["recent"]}
     assert courses == {"Lecture A", "Lecture B"}
     assert all(item["status"] == "present" for item in result["recent"])
+
+
+@pytest.mark.asyncio
+async def test_attendance_percent_counts_events_without_registration(
+    svc, db_session, user_factory
+):
+    user = await user_factory()
+    other = await user_factory()
+    await _add_attended_event(db_session, user.id, title="Mine")
+    await _add_attended_event(db_session, other.id, title="Not mine")
+
+    result = await svc.get_attendance_stats(
+        user_id=user.id, period_days=30, skip_cache=True
+    )
+    assert result["present"] == 1
+    assert result["total"] == 2
+    assert result["percent"] == 50.0
+    assert [item["course"] for item in result["recent"]] == ["Mine"]
 
 
 @pytest.mark.asyncio
@@ -223,38 +176,47 @@ async def test_attendance_stats_returns_cached_payload(svc, user_factory, monkey
 
 
 @pytest.mark.asyncio
-async def test_grade_stats_parses_and_averages(svc, db_session, user_factory):
+async def test_grade_stats_average_trend_and_recent(svc, db_session, user_factory):
     user = await user_factory()
-    await _add_grade_notification(
-        db_session, user.id, payload={"score": 4, "max": 5, "course": "Math"}
-    )
-    await _add_grade_notification(
-        db_session, user.id, payload={"score": 5, "max": 5, "course": "Physics"}
-    )
-    # Unparseable body is skipped without breaking the aggregate.
-    await _add_grade_notification(db_session, user.id, payload="not-json{")
+    await _add_grade(db_session, user.id, score=4, subject="Math", days_ago=1)
+    await _add_grade(db_session, user.id, score=5, subject="Physics", days_ago=2)
+    # Previous window (31-60 days ago).
+    await _add_grade(db_session, user.id, score=3, subject="Old", days_ago=40)
 
     result = await svc.get_grade_stats(user_id=user.id, period_days=30, skip_cache=True)
     assert result["total_grades"] == 2
     assert result["average"] == pytest.approx(4.5)
+    assert result["trend"] == pytest.approx(1.5)
     assert result["scale"] == "5"
-    assert len(result["recent"]) == 2
+    assert [item["course"] for item in result["recent"]] == ["Math", "Physics"]
+    assert result["recent"][0]["score"] == 4.0
+    assert result["recent"][0]["max"] is None
 
 
 @pytest.mark.asyncio
 async def test_grade_stats_detects_100_scale(svc, db_session, user_factory):
     user = await user_factory()
-    await _add_grade_notification(
-        db_session, user.id, payload={"score": 87, "max": 100, "course": "Chemistry"}
-    )
+    await _add_grade(db_session, user.id, score=87, subject="Chemistry")
     result = await svc.get_grade_stats(user_id=user.id, period_days=30, skip_cache=True)
     assert result["scale"] == "100"
     assert result["average"] == pytest.approx(87.0)
 
 
 @pytest.mark.asyncio
-async def test_grade_stats_empty(svc, user_factory):
+async def test_grade_stats_limits_recent_to_five(svc, db_session, user_factory):
     user = await user_factory()
+    for index in range(7):
+        await _add_grade(db_session, user.id, score=4, days_ago=index + 1)
+    result = await svc.get_grade_stats(user_id=user.id, period_days=30, skip_cache=True)
+    assert result["total_grades"] == 7
+    assert len(result["recent"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_grade_stats_ignores_other_students(svc, db_session, user_factory):
+    user = await user_factory()
+    other = await user_factory()
+    await _add_grade(db_session, other.id, score=5)
     result = await svc.get_grade_stats(user_id=user.id, period_days=30, skip_cache=True)
     assert result["total_grades"] == 0
     assert result["average"] == 0.0
@@ -264,14 +226,8 @@ async def test_grade_stats_empty(svc, user_factory):
 @pytest.mark.asyncio
 async def test_grade_stats_handles_zero_score(svc, db_session, user_factory):
     user = await user_factory()
-    await _add_grade_notification(
-        db_session,
-        user.id,
-        payload={"score": 0, "max": 5, "course": "Math"},
-    )
-
+    await _add_grade(db_session, user.id, score=0)
     result = await svc.get_grade_stats(user_id=user.id, period_days=30, skip_cache=True)
-
     assert result["total_grades"] == 1
     assert result["average"] == 0.0
 
@@ -291,6 +247,18 @@ async def test_grade_stats_returns_cached_payload(svc, user_factory, monkeypatch
     assert result is sentinel
 
 
+@pytest.mark.asyncio
+async def test_computed_stats_are_written_to_cache(svc, user_factory, monkeypatch):
+    user = await user_factory()
+    monkeypatch.setattr(stats_cache, "get_cached_stats", AsyncMock(return_value=None))
+    setter = AsyncMock()
+    monkeypatch.setattr(stats_cache, "set_cached_stats", setter)
+    result = await svc.get_grade_stats(user_id=user.id, period_days=7)
+    setter.assert_awaited_once()
+    assert setter.await_args.kwargs["kind"] == "grades"
+    assert setter.await_args.kwargs["payload"] is result
+
+
 # ---------------------------------------------------------------------------
 # get_participation_stats
 # ---------------------------------------------------------------------------
@@ -307,6 +275,9 @@ async def test_participation_stats_with_events(svc, db_session, user_factory):
         user_id=user.id, period_days=30, skip_cache=True
     )
     assert result["events"] == 1
+    assert result["hours"] == 1.0
+    assert result["groups"] == 1
+    assert result["trend"] == 1
     assert result["recent"][0]["title"] == "Hackathon"
     assert result["recent"][0]["role"] == "hackathon"
 

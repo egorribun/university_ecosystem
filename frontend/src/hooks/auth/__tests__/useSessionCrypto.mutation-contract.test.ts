@@ -309,6 +309,7 @@ describe("useSessionCrypto mutation contracts", () => {
     expect(postMessage).toHaveBeenCalledWith({
       type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
       sessionHash: "mock_pbkdf2",
+      sessionScope: expect.any(String),
     })
   })
 
@@ -344,11 +345,7 @@ describe("useSessionCrypto mutation contracts", () => {
       await Promise.resolve()
     })
 
-    expect(postMessage).toHaveBeenCalledTimes(1)
-    expect(postMessage).toHaveBeenCalledWith({
-      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
-      sessionHash: undefined,
-    })
+    expect(postMessage).not.toHaveBeenCalled()
   })
 
   it("purges the previous cache before publishing a key from an explicit update", async () => {
@@ -372,6 +369,7 @@ describe("useSessionCrypto mutation contracts", () => {
         {
           type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
           sessionHash: "mock_pbkdf2",
+          sessionScope: expect.any(String),
         },
       ],
     ])
@@ -489,6 +487,7 @@ describe("useSessionCrypto mutation contracts", () => {
     expect(postMessage).toHaveBeenCalledWith({
       type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
       sessionHash: "mock_pbkdf2",
+      sessionScope: expect.any(String),
     })
   })
 

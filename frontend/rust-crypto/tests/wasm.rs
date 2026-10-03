@@ -8,6 +8,7 @@
 
 #![cfg(target_arch = "wasm32")]
 
+use base64ct::{Base64, Encoding};
 use uni_wasm_crypto::{hmac_sha256_sign, hmac_sha256_sign_base64, pbkdf2_derive, scrypt_derive};
 use wasm_bindgen_test::*;
 
@@ -37,6 +38,41 @@ fn hmac_base64_parity_rfc4231_tc2() {
         hmac_sha256_sign_base64("Jefe", "what do ya want for nothing?"),
         "W9zBRr9gdU5qBCQmCJV1x1oAPwidJzmDnexYuWTsOEM=" // pragma: allowlist secret
     );
+}
+
+#[wasm_bindgen_test]
+fn hmac_base64_is_canonical_and_matches_hex_digest() {
+    let vectors = [
+        (
+            "\u{0b}".repeat(20),
+            "Hi There",
+            Some("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"), // pragma: allowlist secret
+        ),
+        (
+            "Jefe".to_string(),
+            "what do ya want for nothing?",
+            Some("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"), // pragma: allowlist secret
+        ),
+        ("ключ🔑".to_string(), "сообщение🌍", None),
+    ];
+
+    for (key, message, expected_hex) in vectors {
+        let base64 = hmac_sha256_sign_base64(&key, message);
+        let decoded = Base64::decode_vec(&base64).expect("standard padded Base64 output");
+
+        assert_eq!(base64.len(), 44, "SHA-256 Base64 output has 44 chars");
+        assert!(base64.ends_with('='), "standard Base64 output is padded");
+        assert_eq!(
+            Base64::encode_string(&decoded),
+            base64,
+            "encoding is canonical"
+        );
+        assert_eq!(hex::encode(&decoded), hmac_sha256_sign(&key, message));
+        if let Some(expected_hex) = expected_hex {
+            assert_eq!(hex::encode(&decoded), expected_hex);
+        }
+        assert_eq!(decoded.len(), 32);
+    }
 }
 
 #[wasm_bindgen_test]

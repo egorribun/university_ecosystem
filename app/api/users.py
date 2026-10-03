@@ -25,11 +25,12 @@ import app.models as models
 from app.api import deps
 from app.api.deps import (
     get_current_admin_user_from_dishka,
-    get_current_user_from_dishka,
     get_current_user_full,
     require_fresh_mfa,
 )
-from app.api.validation import raise_validation_error, require_admin
+from app.api.deps.auth import get_permission_checker
+from app.api.validation import raise_validation_error
+from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale
@@ -381,10 +382,20 @@ async def create_user(
     data: schemas.UserCreate,
     request: Request,
     service: FromDishka[UserComplianceService],
-    user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.UserOut:
     user_dto = await service.create_user(data, request, user)
     return schemas.UserOut.model_validate(user_dto)
+
+
+async def _is_spicedb_admin(checker: PermissionChecker, user: UserDTO) -> bool:
+    """Whether ``user`` may see admin-only fields; fails closed to ``False``."""
+    if user.role != UserRole.ADMIN:
+        return False
+    try:
+        return await checker.check_admin(str(user.id), user=user)
+    except SpiceDBUnavailableError:
+        return False
 
 
 @users_router.get(
@@ -398,12 +409,15 @@ async def get_users(
     bg: BackgroundTasks,
     service: FromDishka[UserProfileService],
     db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
     filters: schemas.UserSearchFilter = Depends(),
     current_user: UserDTO = Depends(deps.get_current_user_dto),
 ) -> list[schemas.UserPublicOut | schemas.UserOut]:
     """
     Search for users.
     Admins see full profiles (UserOut), others see only public info (UserPublicOut).
+    Full profiles require the SpiceDB admin permission as well as the role column;
+    an unreachable authorization service degrades to the public view.
     """
     users = await service.get_users(
         request,
@@ -424,7 +438,7 @@ async def get_users(
     ]
     bg.add_task(batch_log_data_access, db, entries=log_entries, request=request)
 
-    if current_user.role != UserRole.ADMIN:
+    if not await _is_spicedb_admin(checker, current_user):
         # Force strict serialization to public schema for non-admins
         return [
             schemas.UserPublicOut.model_validate(u, from_attributes=True) for u in users
@@ -449,14 +463,11 @@ async def export_access_audit(
     audit: FromDishka[AuditService],
     start_at: datetime | None = Query(None),
     end_at: datetime | None = Query(None),
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> Response:
     from datetime import timedelta
 
     from fastapi import HTTPException
-
-    locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
 
     # RZ-03: Enforce max date range to prevent full-table sequential scans.
     # A query spanning years would lock the DB reader replica under heavy load.

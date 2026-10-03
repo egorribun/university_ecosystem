@@ -13,6 +13,7 @@ import pytest
 from fastapi import HTTPException, status
 from starlette.requests import Request
 
+from app.core.exceptions import AppException, app_exception_handler
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     DomainException,
@@ -436,3 +437,60 @@ class TestHttpExceptionHandler:
         assert response.status_code == 401
         # Headers from the exception should be included
         # JSONResponse stores them in response.headers
+
+
+@pytest.mark.asyncio
+async def test_application_error_response_preserves_public_details():
+    error = AppException(
+        "The record changed", status_code=409, code="conflict", payload={"retry": True}
+    )
+    with patch("app.core.exceptions.get_trace_id", return_value="trace-app"):
+        response = await app_exception_handler(_make_request(), error)
+
+    assert str(error) == "The record changed"
+    assert response.status_code == 409
+    assert json.loads(response.body) == {
+        "detail": "The record changed",
+        "code": "conflict",
+        "payload": {"retry": True},
+        "trace_id": "trace-app",
+    }
+
+
+@pytest.mark.asyncio
+async def test_application_error_handler_hides_unexpected_exception_details():
+    with patch("app.core.exceptions.get_trace_id", return_value="trace-unexpected"):
+        response = await app_exception_handler(
+            _make_request(), RuntimeError("internal database diagnostic")
+        )
+
+    assert response.status_code == 500
+    assert json.loads(response.body) == {
+        "detail": "Internal Server Error",
+        "trace_id": "trace-unexpected",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_code", [None, ""])
+async def test_problem_response_omits_empty_code_without_losing_public_message(
+    error_code,
+):
+    response = await http_exception_handler(
+        _make_request(),
+        HTTPException(
+            409,
+            detail={
+                "error": error_code,
+                "message": "Please reload",
+                "retry": True,
+                "status": 200,
+            },
+        ),
+    )
+
+    body = json.loads(response.body)
+    assert response.status_code == body["status"] == 409
+    assert body["detail"] == "Please reload"
+    assert body["retry"] is True
+    assert "code" not in body

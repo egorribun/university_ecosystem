@@ -45,13 +45,13 @@ class TestRedisChaos:
     async def test_redis_set_failure_does_not_raise(self):
         """When Redis set fails, MultiLayerCache should not raise (fail-soft)."""
         mock_redis = AsyncMock()
-        mock_redis.setex.side_effect = ConnectionError("Redis write failure")
+        mock_redis.set.side_effect = ConnectionError("Redis write failure")
 
         cache = MultiLayerCache(redis_client=mock_redis)
         # Should not raise
         await cache.set("test-key", "test-value")
 
-        mock_redis.setex.assert_called_once()
+        mock_redis.set.assert_awaited_once()
 
     async def test_redis_invalidate_failure_does_not_raise(self):
         """When Redis scan/delete fails, MultiLayerCache should not raise."""

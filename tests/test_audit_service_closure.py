@@ -11,7 +11,6 @@ from uuid import uuid4
 import pytest
 
 import app.services.audit_service as audit_module
-from app.models.logs import DataAccessLog
 from app.services.audit_service import SecureAuditService, auditable
 
 
@@ -101,17 +100,8 @@ def test_secure_audit_rejects_empty_explicit_key_list():
 
 def test_find_valid_key_returns_none_when_rust_matches_but_key_recheck_fails():
     service = SecureAuditService(signing_keys=[b"old", b"new"])
-    log = SimpleNamespace(
-        id=uuid4(),
-        actor_user_id=None,
-        subject_user_id=None,
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        ip_address=None,
-        created_at=datetime.now(UTC),
-        signature="signature",
-    )
+    log = _audit_log_stub()
+    log.signature = service._compute_signature(log)
     rust = MagicMock()
     rust.verify_audit_signature.return_value = True
 
@@ -120,6 +110,21 @@ def test_find_valid_key_returns_none_when_rust_matches_but_key_recheck_fails():
         patch.object(service, "_compute_signature", return_value="different"),
     ):
         assert service._find_valid_key(log) is None
+
+
+@pytest.mark.parametrize("signature", ["v2:short", "v2:" + "g" * 64])
+def test_find_valid_key_rejects_malformed_v2_digest(signature: str) -> None:
+    service = SecureAuditService(signing_key=b"test-key")
+    log = _audit_log_stub(signature=signature)
+
+    assert service._find_valid_key(log) is None
+
+
+def test_find_valid_key_rejects_unversioned_non_digest_signature() -> None:
+    service = SecureAuditService(signing_key=b"test-key")
+    log = _audit_log_stub(signature="not-a-digest")
+
+    assert service._find_valid_key(log) is None
 
 
 def test_find_valid_key_falls_back_to_python_when_rust_is_unavailable():
@@ -141,38 +146,6 @@ def test_find_valid_key_falls_back_to_python_when_rust_is_unavailable():
 
     with patch.dict(sys.modules, {"rust_ext": rust}):
         assert service._find_valid_key(log) == b"new"
-
-
-def test_resign_log_updates_mutable_orm_log():
-    service = SecureAuditService(signing_key=b"primary")
-    log = DataAccessLog(
-        id=uuid4(),
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        created_at=datetime.now(UTC),
-    )
-    log.signature = service._compute_signature(log)
-    rust = MagicMock()
-    rust.verify_audit_signature.return_value = True
-
-    with patch.dict(sys.modules, {"rust_ext": rust}):
-        assert service.resign_log(log) is True
-
-    assert log.signature == service._compute_signature(log)
-
-
-def test_resign_log_rejects_unsigned_log():
-    service = SecureAuditService(signing_key=b"primary")
-    log = DataAccessLog(
-        id=uuid4(),
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        created_at=datetime.now(UTC),
-    )
-
-    assert service.resign_log(log) is False
 
 
 @pytest.mark.asyncio
@@ -284,26 +257,6 @@ async def test_create_log_returns_signed_copy_when_update_has_no_row():
     assert result is fallback
     created.model_copy.assert_called_once()
     assert created.model_copy.call_args.kwargs["update"]["signature"]
-
-
-@pytest.mark.asyncio
-async def test_verify_batch_returns_invalid_ids_and_honors_limit():
-    service = SecureAuditService(signing_key=b"key")
-    db = MagicMock()
-    valid = SimpleNamespace(id=uuid4())
-    invalid = SimpleNamespace(id=uuid4())
-
-    with patch.object(audit_module, "AuditRepository") as repository_type:
-        repository = repository_type.return_value
-        repository.list_logs = AsyncMock(return_value=[valid, invalid])
-        with patch.object(
-            service, "verify_integrity", side_effect=[True, False]
-        ) as verify:
-            result = await service.verify_batch(db, limit=17)
-
-    assert result == (2, 1, [invalid.id])
-    repository.list_logs.assert_awaited_once_with(limit=17)
-    assert verify.call_count == 2
 
 
 @pytest.mark.asyncio

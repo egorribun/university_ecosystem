@@ -460,7 +460,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       })
 
       await waitFor(() => {
-        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=Ni")
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=Ni")
       })
       await waitFor(() => {
         expect(latestQueryClient?.getQueryData(["users", "Ni"])).toEqual([
@@ -575,7 +575,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
         target: { value: "ab" },
       })
-      await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=ab"))
+      await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=ab"))
 
       mocks.apiGet.mockClear()
       rerender(
@@ -876,7 +876,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       target: { value: "A+B&C" },
     })
     await waitFor(() => {
-      expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=A%2BB%26C")
+      expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=A%2BB%26C")
     })
     const add = await screen.findByRole("button", { name: /Nina Newbie/ })
     expect(add.querySelector("img")).toHaveAttribute("src", AVATAR_PLACEHOLDER_URL)

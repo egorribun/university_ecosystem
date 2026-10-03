@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
-from app.core.ssrf import validate_url_not_internal
+from app.core.ssrf import validate_url_not_internal_async
 
 logger = get_logger(__name__)
 
@@ -36,10 +36,9 @@ class VectorService:
 
     def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
-        # RZ-W16-08: Block SSRF via configurable base URL.
-        validate_url_not_internal(settings.embedding_api_base)
+        self._base_url = settings.embedding_api_base
         self._client = httpx.AsyncClient(
-            base_url=settings.embedding_api_base,
+            base_url=self._base_url,
             headers={"Authorization": f"Bearer {settings.embedding_api_key}"}
             if settings.embedding_api_key
             else {},
@@ -55,6 +54,9 @@ class VectorService:
             logger.warning("Embedding API key not set, returning zero vector")
             return [0.0] * settings.embedding_dimensions
 
+        # Validate only when used, before transmitting the API key or input.
+        # Keep security rejection outside the provider-error fallback.
+        await validate_url_not_internal_async(self._base_url)
         try:
             response = await self._client.post(
                 "/embeddings", json={"input": text, "model": settings.embedding_model}

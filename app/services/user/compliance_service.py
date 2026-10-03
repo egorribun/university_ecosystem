@@ -75,7 +75,7 @@ class UserComplianceService:
             raise PermissionDenied()
 
         # Fetch ORM user
-        db_user = await self.repo._get_orm(user_id)
+        db_user = await self.repo.get_orm_for_anonymization(user_id)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
@@ -106,14 +106,10 @@ class UserComplianceService:
         # separately and their bindings/digests are never serialized.
         profile = db_user.model_dump(exclude={"mfa_challenges"})
 
-        import asyncio
-
-        # PERF-010 (audit 2026-03-04): Gather independent I/O fetches concurrently
-        sessions_list, notifications_list, access_logs = await asyncio.gather(
-            self.repo.get_user_sessions(user_identity),
-            self.repo.get_user_notifications(user_identity),
-            self.repo.get_user_access_logs(user_identity, limit=2000),
-        )
+        # These reads share one AsyncSession, which cannot be used concurrently.
+        sessions_list = await self.repo.get_user_sessions(user_identity)
+        notifications_list = await self.repo.get_user_notifications(user_identity)
+        access_logs = await self.repo.get_user_access_logs(user_identity, limit=2000)
 
         sessions = [
             {
@@ -200,7 +196,7 @@ class UserComplianceService:
 
         # Fetch ORM user
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity)
+        db_user = await self.repo.get_orm_for_anonymization(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 

@@ -369,6 +369,113 @@ def test_rust_codecov_reports_are_staged_for_trusted_upload() -> None:
     )
 
 
+@pytest.fixture
+def downloaded_coverage_shape(tmp_path: Path) -> str:
+    """Stage producer file layouts, then execute the consumer's real shape checks.
+
+    Run 37120306322's digest-verified ZIPs confirmed that the three Rust
+    diagnostic reports retain their component directories on download.
+    Provenance bytes are verified separately by the provenance test suite;
+    this fixture exercises the shell boundary before those identity checks.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+    rust_upload = _step_named(rust_job, "Upload Rust coverage artifacts")
+    codecov_upload = _step_named(rust_job, "Upload Rust Codecov diagnostic artifacts")
+    frontend_upload = _step_named(
+        frontend["jobs"]["unit-tests"], "Upload coverage artifacts"
+    )
+    contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    rust_components = {
+        report["component"]
+        for report in contract["coverage_reports"]
+        if report["format"] == "llvm-cov-json"
+    }
+    assert rust_components == {"rust-native", "rust-wasm-sanitizer", "rust-crypto"}
+    assert set(codecov_upload["with"]["path"].splitlines()) == {
+        f"artifacts/coverage/rust/{component}/codecov.json"
+        for component in rust_components
+    }
+
+    paths = [
+        f"artifacts/coverage/python/shards/.coverage.shard-{shard}"
+        for shard in range(4)
+    ]
+    for upload in (frontend_upload, rust_upload, codecov_upload):
+        paths.extend(upload["with"]["path"].splitlines())
+    for producer in workflow["jobs"]["go-tests"]["strategy"]["matrix"]["include"]:
+        report = Path(producer["coverage-canonical-path"])
+        paths.extend((str(report), str(report.with_name("coverage-provenance.json"))))
+    for relative_path in paths:
+        destination = tmp_path / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text("producer report\n", encoding="utf-8")
+
+    verify = _step_named(
+        workflow["jobs"]["coverage-policy-gate"], "Verify downloaded coverage artifacts"
+    )
+    shape_checks, separator, _ = verify["run"].partition("verify_producer() {")
+    assert separator, "the artifact shape checks must precede provenance verification"
+    return shape_checks
+
+
+def _run_coverage_shape_checks(
+    script: str, root: Path
+) -> subprocess.CompletedProcess[str]:
+    bash = which("bash")
+    assert bash is not None, "the workflow's Bash shell is required"
+    return subprocess.run(  # noqa: S603 -- execute the repository-owned workflow step
+        [bash, "-e", "-o", "pipefail", "-c", script],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_downloaded_coverage_shape_accepts_the_complete_producer_inventory(
+    downloaded_coverage_shape: str, tmp_path: Path
+) -> None:
+    result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "component", ["rust-native", "rust-wasm-sanitizer", "rust-crypto"]
+)
+@pytest.mark.parametrize("damage", ["missing", "empty", "misplaced"])
+def test_downloaded_coverage_shape_rejects_invalid_required_rust_diagnostics(
+    downloaded_coverage_shape: str, tmp_path: Path, component: str, damage: str
+) -> None:
+    report = tmp_path / "artifacts/coverage/rust" / component / "codecov.json"
+    if damage == "missing":
+        report.unlink()
+    elif damage == "empty":
+        report.write_text("", encoding="utf-8")
+    else:
+        # Preserve the count while substituting an unrecognized component.
+        replacement = report.parent.parent / "unexpected" / report.name
+        replacement.parent.mkdir()
+        report.rename(replacement)
+
+    result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    assert result.returncode != 0, "invalid required Rust diagnostic was accepted"
+
+
+@pytest.mark.parametrize("extra_directory", ["unexpected", "rust-native/nested"])
+def test_downloaded_coverage_shape_rejects_extra_rust_diagnostics(
+    downloaded_coverage_shape: str, tmp_path: Path, extra_directory: str
+) -> None:
+    extra = tmp_path / "artifacts/coverage/rust" / extra_directory / "codecov.json"
+    extra.parent.mkdir(parents=True)
+    extra.write_text("unexpected report\n", encoding="utf-8")
+
+    result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    assert result.returncode != 0, "extra Rust diagnostic was accepted"
+
+
 def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     rust_job = workflow["jobs"]["rust-tests"]
@@ -732,6 +839,32 @@ def test_ci_success_publishes_current_run_health_artifact() -> None:
     }
 
 
+def test_ci_success_allows_performance_gate_skip_only_after_frontend_failure() -> None:
+    """A dependency skip must not add a misleading second CI failure."""
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    ci_success = workflow["jobs"]["ci-success"]
+    run = ci_success["steps"][0]["run"]
+
+    assert "frontend-tests" in ci_success["needs"]
+    assert "performance-gate" in ci_success["needs"]
+    assert (
+        ci_success["steps"][0]["env"].get("FRONTEND_TESTS_RESULT")
+        == "${{ needs.frontend-tests.result }}"
+    )
+    assert '"frontend-tests|${{ needs.frontend-tests.result }}"' in run
+    assert '"performance-gate|${{ needs.performance-gate.result }}"' in run
+    assert "performance_expected_result=success" in run
+    assert (
+        'if [[ "$FRONTEND_TESTS_RESULT" == "failure" || '
+        '"$FRONTEND_TESTS_RESULT" == "skipped" ]]; then\n'
+        "  performance_expected_result=skipped\n"
+        "fi"
+    ) in run
+    assert 'elif [[ "$job" == "performance-gate" ]]; then' in run
+    assert 'expected_result="$performance_expected_result"' in run
+
+
 def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -> None:
     policies = {
         document["metadata"]["name"]
@@ -830,12 +963,13 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "uvicorn app.main:app" in http_provider_text
 
 
-def test_unreplayed_file_processor_pacts_remain_consumer_only() -> None:
+def test_unreplayed_pacts_remain_consumer_only() -> None:
     """Unreplayed schemas must not create artifacts consumed as provider pacts."""
 
     for filename in (
         "test_file_processor_contract.py",
         "test_files_process_contract.py",
+        "test_optimizer_grpc_contract.py",
     ):
         source = (REPOSITORY_ROOT / "tests" / "contracts" / filename).read_text(
             encoding="utf-8"
@@ -846,7 +980,12 @@ def test_unreplayed_file_processor_pacts_remain_consumer_only() -> None:
     consumer = workflow["jobs"]["consumer"]
     artifact_path = str(consumer["steps"][-1]["with"]["path"])
     assert "file-processor-university-backend.json" not in artifact_path
+    assert "university-backend-optimizer-service.json" not in artifact_path
     assert "university-backend-file-processor.json" in artifact_path
+    assert not (
+        REPOSITORY_ROOT
+        / "tests/contracts/pacts/university-backend-optimizer-service.json"
+    ).exists()
 
 
 def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
@@ -3886,6 +4025,35 @@ def test_frontend_unit_aggregate_publishes_hidden_junit_reports() -> None:
     )
 
 
+def test_semgrep_upload_uses_policy_filtered_sarif_and_keeps_raw_gate() -> None:
+    security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = security["jobs"]["semgrep"]["steps"]
+    prepare = next(
+        step
+        for step in steps
+        if step.get("name") == "Prepare policy-filtered SARIF for GitHub"
+    )
+    upload = next(
+        step
+        for step in steps
+        if step.get("name") == "Upload SARIF to GitHub Advanced Security"
+    )
+    gate = next(
+        step
+        for step in steps
+        if step.get("name") == "Fail if Semgrep reported findings or scan errors"
+    )
+
+    assert "--prepare-github-upload semgrep-github.sarif" in prepare["run"]
+    assert "--report semgrep.sarif" in prepare["run"]
+    assert "security/semgrep-suppression-policy.json" in prepare["run"]
+    assert upload["if"] == "always()"
+    assert upload["with"]["sarif_file"] == "semgrep-github.sarif"
+    assert "--report semgrep.sarif" in gate["run"]
+    assert '--scanner-status "$scan_status"' in gate["run"]
+    assert steps.index(prepare) < steps.index(upload) < steps.index(gate)
+
+
 def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
     workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     shard_job = workflow["jobs"]["unit-tests-shard"]
@@ -4082,7 +4250,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     cell_text = "\n".join(
         step.get("run", "") for step in cell_job["steps"] if isinstance(step, dict)
     )
-    assert "test_minio_integration.py" in cell_text
+    assert "test_s3_storage_integration.py" in cell_text
     assert "test_spicedb_integration.py" in cell_text
     assert jobs["browser-matrix"]["strategy"]["matrix"]["browser"] == [
         "chromium",
@@ -6975,36 +7143,65 @@ def test_required_go_benchmark_job_is_not_mislabeled_as_advisory() -> None:
         MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
     ],
 )
-def test_gateway_hash_ring_budget_uses_uninstrumented_benchmark_evidence(
+def test_performance_workflows_do_not_enforce_retired_gateway_hash_ring_budget(
     workflow_path: Path,
 ) -> None:
-    """The 250k lookup budget belongs to a repeated benchmark, not test coverage."""
+    """ADR-046 retired vector sharding and the root-package HashRing benchmark."""
 
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["benchmark"]["steps"]
-    budget_step = next(
-        step
-        for step in steps
-        if step.get("name") == "Enforce gateway HashRing lookup budget"
+    assert all(
+        step.get("name") != "Enforce gateway HashRing lookup budget" for step in steps
     )
-    assert budget_step == {
-        "name": "Enforce gateway HashRing lookup budget",
+    commands = "\n".join(str(step.get("run", "")) for step in steps)
+    assert "BenchmarkHashRingLookup" not in commands
+    assert "gateway-hashring-budget.txt" not in commands
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "capture_step_name"),
+    [
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "Capture Go benchmark evidence",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "Capture advisory Go benchmark evidence",
+        ),
+    ],
+)
+def test_performance_workflows_keep_active_go_benchmark_capture(
+    workflow_path: Path,
+    capture_step_name: str,
+) -> None:
+    """Retiring HashRing must preserve uninstrumented gateway and WS-Hub evidence."""
+
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["benchmark"]
+    assert job.get("continue-on-error", False) is False
+    capture_step = _step_named(job, capture_step_name)
+    assert capture_step == {
+        "name": capture_step_name,
         "shell": "bash",
         "run": """\
 set -euo pipefail
+mkdir -p artifacts/performance/advisory/go
 (
   cd services/gateway
-  go test -run=^$ -bench=^BenchmarkHashRingLookup$ -benchtime=1s -count=5 .
-) 2>&1 | tee artifacts/performance/advisory/go/gateway-hashring-budget.txt
-python3 scripts/quality/check_go_benchmark_budget.py \\
-  artifacts/performance/advisory/go/gateway-hashring-budget.txt \\
-  --benchmark BenchmarkHashRingLookup \\
-  --metric ns/op \\
-  --exclusive-maximum 4000 \\
-  --expected-samples 5
+  go test -bench=. -run=^$ ./...
+) 2>&1 | tee artifacts/performance/advisory/go/gateway-bench.txt
+(
+  cd services/ws-hub
+  go test -bench=. -run=^$ ./...
+) 2>&1 | tee artifacts/performance/advisory/go/wshub-bench.txt
+cat \\
+  artifacts/performance/advisory/go/gateway-bench.txt \\
+  artifacts/performance/advisory/go/wshub-bench.txt \\
+  > artifacts/performance/advisory/go/benchmarks.txt
 """,
     }
-    command = budget_step["run"]
+    command = capture_step["run"]
     _assert_fail_closed_shell_mode(command)
     _assert_no_shell_indirection_or_option_control(command)
     assert "-race" not in command
@@ -7702,9 +7899,11 @@ def test_canonical_producer_matrix_uses_repository_root_docker_build_context() -
     )
     build_args = str(build["with"]["build-args"])
     assert "VITE_APP_RELEASE={0}" in build_args
-    assert "VITE_ENABLE_WEB_VITALS=true" in build_args
-    assert "VITE_CWV_TRUSTED_RUM=true" in build_args
+    assert "VITE_ENABLE_WEB_VITALS=false" in build_args
+    assert "VITE_CWV_TRUSTED_RUM=false" in build_args
     assert "VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv" in build_args
+    assert "VITE_ENABLE_WEB_VITALS=true" not in build_args
+    assert "VITE_CWV_TRUSTED_RUM=true" not in build_args
     labels = str(build["with"]["labels"]).splitlines()
     assert labels == [
         "org.opencontainers.image.source=https://github.com/${{ github.repository }}",
@@ -8202,6 +8401,32 @@ def test_nightly_chaos_database_is_explicitly_test_owned() -> None:
     assert "localhost:54321/test_ecosystem" in str(prepare["run"])
     chaos = _provenance_step(job, "Run chaos and resilience tests")
     assert str(chaos["env"]["DATABASE_URL"]).endswith("/test_ecosystem")
+
+
+def test_asan_pytest_disables_schemathesis_autoload_without_disabling_lsan() -> None:
+    script = (REPOSITORY_ROOT / "scripts" / "run_asan_tests.sh").read_text(
+        encoding="utf-8"
+    )
+    invocation_start = script.index("  uv run pytest \\")
+    invocation = script[invocation_start:].split("\n\n# echo", maxsplit=1)[0]
+    environment = script[:invocation_start]
+
+    assert "-p no:schemathesis" in invocation
+    assert (
+        'ASAN_OPTIONS="${ASAN_LOG_OPT}detect_leaks=1:detect_odr_violation=0:abort_on_error=1"'
+        in environment
+    )
+    assert (
+        'LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt"'
+        in environment
+    )
+    for smoke_test in (
+        "tests/test_smoke_rust_audit.py",
+        "tests/test_smoke_rust_partitions.py",
+        "tests/test_property_based.py",
+        "tests/test_smoke_pyo3_ext.py",
+    ):
+        assert smoke_test in invocation
 
 
 def test_persistent_pytest_reset_jobs_use_explicit_narrow_opt_in() -> None:

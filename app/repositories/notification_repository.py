@@ -4,10 +4,9 @@ Notification repository for notification data access operations.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import select
 
 from app.models.notifications import Notification
 from app.repositories.base import BaseRepository
@@ -49,96 +48,6 @@ class NotificationRepository(
         stmt = stmt.order_by(Notification.created_at.desc()).offset(skip).limit(limit)
         result = await self.db.execute(stmt)
         return [self._to_dto(row) for row in result.scalars().all()]
-
-    async def get_unread_for_user(
-        self, user_id: uuid.UUID | str | int, *, limit: int = 50
-    ) -> list[NotificationDTO]:
-        """Get unread notifications for a user."""
-        return await self.get_for_user(user_id, limit=limit, unread_only=True)
-
-    async def count_unread(self, user_id: uuid.UUID | str | int) -> int:
-        """Count unread notifications for a user."""
-        result = await self.db.execute(
-            select(func.count(Notification.id)).where(
-                and_(
-                    Notification.user_id == user_id,
-                    Notification.read.is_(False),
-                )
-            )
-        )
-        return result.scalar() or 0
-
-    async def mark_as_read(
-        self,
-        notification_ids: list[uuid.UUID | str | int],
-        user_id: uuid.UUID | str | int,
-    ) -> int:
-        """Mark notifications as read. Returns count of updated records."""
-        if not notification_ids:
-            return 0
-
-        now = datetime.now(UTC)
-        result = await self.db.execute(
-            update(Notification)
-            .where(
-                and_(
-                    Notification.id.in_(notification_ids),
-                    Notification.user_id == user_id,
-                    Notification.read.is_(False),
-                )
-            )
-            .values(read=True, read_at=now)
-        )
-        await self.db.flush()
-        # LOW-W19: rowcount may be -1 (driver does not support it); treat as 0.
-        rc = getattr(result, "rowcount", 0)
-        if rc < 0:
-            return 0
-        return int(rc)
-
-    async def mark_all_as_read(self, user_id: uuid.UUID | str | int) -> int:
-        """Mark all notifications as read for a user."""
-        now = datetime.now(UTC)
-        result = await self.db.execute(
-            update(Notification)
-            .where(
-                and_(
-                    Notification.user_id == user_id,
-                    Notification.read.is_(False),
-                )
-            )
-            .values(read=True, read_at=now)
-        )
-        await self.db.flush()
-        # LOW-W19: rowcount may be -1 (driver does not support it); treat as 0.
-        rc = getattr(result, "rowcount", 0)
-        if rc < 0:
-            return 0
-        return int(rc)
-
-    async def get_by_dedupe_key(
-        self, user_id: uuid.UUID | str | int, dedupe_key: str
-    ) -> NotificationDTO | None:
-        """Get notification by deduplication key."""
-        result = await self.db.execute(
-            select(Notification).where(
-                and_(
-                    Notification.user_id == user_id,
-                    Notification.dedupe_key == dedupe_key,
-                )
-            )
-        )
-        row = result.scalars().first()
-        return self._to_dto(row) if row else None
-
-    async def count_by_type(self, user_id: uuid.UUID | str | int) -> dict[str, int]:
-        """Count notifications by type for a user."""
-        result = await self.db.execute(
-            select(Notification.type, func.count(Notification.id))
-            .where(Notification.user_id == user_id)
-            .group_by(Notification.type)
-        )
-        return {row[0] or "unknown": row[1] for row in result.all()}
 
 
 def get_notification_repository(db: AsyncDatabaseSession) -> NotificationRepository:

@@ -604,6 +604,65 @@ def test_python_coverage_scope_and_migration_gate_are_explicit() -> None:
     assert "--cov=alembic/versions" not in pytest_runs
 
 
+def test_migrate_passwords_image_gate_is_local_immutable_and_catalogued() -> None:
+    workflow = _workflow(CI)
+    job = workflow["jobs"]["db-migration-gate"]
+    postgres = job["services"]["postgres"]
+    postgres_env = postgres["env"]
+    assert _DIGEST.search(postgres["image"])
+    assert postgres_env["POSTGRES_HOST_AUTH_METHOD"] == "trust"
+    assert postgres_env["POSTGRES_DB"] == "test_migration"
+    assert "POSTGRES_PASSWORD" not in postgres_env
+    assert job["timeout-minutes"] == 20
+
+    build = _step(job, "Build backend image for password preflight")
+    build_script = build["run"]
+    assert "docker buildx build" in build_script
+    assert "--file backend.Dockerfile" in build_script
+    assert "--platform linux/amd64" in build_script
+    assert "--load" in build_script
+    assert "local/migrate-passwords-ci:${GITHUB_SHA}" in build_script
+    assert "docker image inspect --format '{{.Id}}'" in build_script
+    assert "^sha256:[0-9a-f]{64}$" in build_script
+    assert "MIGPASS_BACKEND_IMAGE_ID" in build_script
+    assert "backend_image_config_digest=" in build_script
+
+    verify = _step(job, "Verify password preflight in immutable backend image")
+    assert verify["env"]["DATABASE_URL"] == (
+        "postgresql+asyncpg://test@127.0.0.1:5433/test_migration"
+    )
+    assert (
+        verify["run"] == "uv run python scripts/quality/migrate_passwords_image_gate.py"
+    )
+    assert "${{ secrets." not in str(job)
+
+    helper = (ROOT / "scripts/quality/migrate_passwords_image_gate.py").read_text(
+        encoding="utf-8"
+    )
+    for required in (
+        "--network",
+        "host",
+        "/opt/venv/bin/python",
+        "migrate-passwords",
+        "assert-none",
+        "NOBYPASSRLS",
+        "Legacy bcrypt accounts remain: 1",
+        "No active legacy bcrypt accounts found.",
+    ):
+        assert required in helper
+
+    catalog = json.loads((ROOT / "quality/ci-check-catalog.json").read_text())
+    ci_catalog = next(
+        item
+        for item in catalog["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    migration_check = ci_catalog["jobs"]["db-migration-gate"]
+    assert migration_check["profile"] == "required-pr-main"
+    assert migration_check["check_name_template"] == "DB Migration Gate (Postgres)"
+    assert migration_check["expected_timeout_minutes"] == 20
+
+
 def test_migration_rollback_uses_the_canonical_uv_version() -> None:
     job = _workflow(CI)["jobs"]["db-migration-integrity"]
     setup_uv = next(
@@ -662,6 +721,34 @@ def test_spectral_upload_is_optional_but_enforcement_is_not() -> None:
     assert enforce["if"] == "always()"
     assert "--fail-severity error" in enforce["run"]
     assert job["steps"].index(upload) < job["steps"].index(enforce)
+
+
+def test_required_check_names_are_ascii_and_match_workflows_and_catalog() -> None:
+    catalog = json.loads(
+        (ROOT / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+    catalog_by_path = {item["path"]: item for item in catalog["workflows"]}
+    expected_jobs = (
+        (".github/workflows/ci.yml", "rust-ffi-asan", "Rust FFI - ASan / LSan"),
+        (".github/workflows/ci.yml", "rust-ffi-tsan", "Rust FFI - TSan"),
+        (
+            ".github/workflows/contract-validation.yml",
+            "spectral-lint",
+            "Spectral - OpenAPI lint",
+        ),
+    )
+
+    for workflow_path, job_id, expected_name in expected_jobs:
+        workflow = _workflow(ROOT / workflow_path)
+        job = workflow["jobs"][job_id]
+        catalog_template = catalog_by_path[workflow_path]["jobs"][job_id][
+            "check_name_template"
+        ]
+
+        assert job["name"] == expected_name
+        assert catalog_template == expected_name
+        assert expected_name.isascii()
+        assert "\u2014" not in job["name"]
 
 
 def test_visual_audit_reasserts_after_best_effort_evidence() -> None:
@@ -1335,6 +1422,35 @@ def test_external_workflow_images_use_the_audited_digests() -> None:
     for tag, pinned in EXPECTED_EXTERNAL_IMAGES.items():
         assert pinned in combined, f"expected pinned workflow image {pinned}"
         assert not re.search(rf"{re.escape(tag)}(?!@sha256:)", combined)
+
+
+def test_precommit_semgrep_image_matches_the_immutable_ci_image() -> None:
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))
+    hooks = [
+        hook
+        for repo in config["repos"]
+        for hook in repo.get("hooks", [])
+        if hook.get("id") == "semgrep-docker"
+    ]
+    assert len(hooks) == 1
+    hook = hooks[0]
+
+    ci_image = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"]["semgrep"][
+        "container"
+    ]["image"]
+    assert ci_image == EXPECTED_EXTERNAL_IMAGES["semgrep/semgrep:1.113.0"]
+
+    entry_tokens = shlex.split(hook.get("entry", ""))
+    local_images = [
+        token for token in entry_tokens if token.startswith("semgrep/semgrep:")
+    ]
+    assert local_images == [ci_image]
+    assert hook["args"] == ["--config", "auto", "--error", "--oss-only"]
+    assert hook["exclude"] == (
+        r"(^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|"
+        r"^frontend/coverage-[^/]+/"
+    )
+    assert hook["require_serial"] is True
 
 
 def test_go_and_compose_s3_cells_use_the_audited_seaweedfs_image() -> None:

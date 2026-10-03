@@ -76,9 +76,11 @@ async def test_story_admin_permissions(
     hashed = await get_password_hash(password)
     admin = await user_factory(role="admin", hashed_password=hashed)
     student = await user_factory(role="student", hashed_password=hashed)
+    teacher = await user_factory(role="teacher", hashed_password=hashed)
 
     admin_headers = await _login(async_client, admin.email, password)
     student_headers = await _login(async_client, student.email, password)
+    teacher_headers = await _login(async_client, teacher.email, password)
 
     publish_at = dt.datetime.now(dt.UTC)
     expires_at = publish_at + dt.timedelta(hours=2)
@@ -120,10 +122,15 @@ async def test_story_admin_permissions(
     await db_session.refresh(refreshed)
     assert refreshed.short_text == "Updated copy"
 
-    forbidden_delete = await async_client.delete(
-        f"/stories/{created_id}", headers=student_headers
-    )
-    assert forbidden_delete.status_code == 403
+    for headers in (student_headers, teacher_headers):
+        forbidden_delete = await async_client.delete(
+            f"/stories/{created_id}", headers=headers
+        )
+        assert forbidden_delete.status_code == 403
+        async with async_session() as verify_session:
+            assert (
+                await verify_session.get(models.Story, uuid.UUID(created_id))
+            ) is not None
 
     deleted = await async_client.delete(f"/stories/{created_id}", headers=admin_headers)
     assert deleted.status_code == 200

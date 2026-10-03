@@ -15,12 +15,9 @@ import pytest
 
 from app.api.ws.auth import (
     _JWT_DECODE_ERRORS,
-    extract_bearer_token,
-    extract_token_from_subprotocol,
     get_user_from_cookie,
     get_user_from_ticket,
     get_user_from_token,
-    select_subprotocol,
     update_last_seen,
 )
 
@@ -152,7 +149,7 @@ async def test_get_user_from_ticket_infrastructure_failure() -> None:
 async def test_get_user_from_ticket_invalid_uuid() -> None:
     ticket = secrets.token_hex(32)
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = "not-a-uuid:valid-jti-string"
+    mock_redis.getdel.return_value = f"not-a-uuid:valid-jti-string:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
 
     with patch("app.deps.cache.get_cache_client", return_value=mock_redis):
         user, jti = await get_user_from_ticket(ticket)
@@ -168,7 +165,9 @@ async def test_get_user_from_ticket_valid_lookup_flow(
     user_id = str(uuid.uuid4())
     jti = "mocked-jti-session"
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -210,7 +209,9 @@ async def test_get_user_from_ticket_jti_revoked_redis(
     user_id = str(uuid.uuid4())
     jti = "revoked-jti"
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -243,7 +244,9 @@ async def test_get_user_from_ticket_redis_exceptions(
     user_id = str(uuid.uuid4())
     jti = "mocked-jti-session"
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -283,7 +286,9 @@ async def test_get_user_from_ticket_resolve_user_edge_cases() -> None:
     jti = "some-jti"
 
     mock_redis = AsyncMock()
-    mock_redis.getdel.return_value = f"{user_id}:{jti}"
+    mock_redis.getdel.return_value = (
+        f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+    )
     mock_redis.exists = AsyncMock(return_value=False)
 
     # 1. User not found
@@ -664,34 +669,6 @@ async def test_get_user_from_cookie() -> None:
         mock_get.return_value = ("user", "jti")
         assert await get_user_from_cookie("cookie") == ("user", "jti")
         mock_get.assert_called_once_with("cookie")
-
-
-def test_extract_bearer_token() -> None:
-    assert extract_bearer_token(None) is None
-    assert extract_bearer_token("") is None
-    assert extract_bearer_token("Bearer token-value") == "token-value"
-    assert extract_bearer_token("bearer token-value") == "token-value"
-    assert extract_bearer_token("token-value") == "token-value"
-    assert extract_bearer_token("Bearer  ") == "Bearer"
-    assert extract_bearer_token("Bearer token extra") is None
-
-
-def test_extract_token_from_subprotocol() -> None:
-    assert extract_token_from_subprotocol(None) is None
-    assert extract_token_from_subprotocol("") is None
-    assert extract_token_from_subprotocol("access_token, jwt-token") == "jwt-token"
-    assert extract_token_from_subprotocol("bearer, jwt-token") == "jwt-token"
-    assert extract_token_from_subprotocol("authorization, jwt-token") == "jwt-token"
-    assert extract_token_from_subprotocol("access_token") is None
-    assert extract_token_from_subprotocol("other, protocol") is None
-
-
-def test_select_subprotocol() -> None:
-    assert select_subprotocol(None) is None
-    assert select_subprotocol("") is None
-    assert select_subprotocol("access_token, extra") == "access_token"
-    assert select_subprotocol("bearer") == "bearer"
-    assert select_subprotocol("other") is None
 
 
 @pytest.mark.asyncio

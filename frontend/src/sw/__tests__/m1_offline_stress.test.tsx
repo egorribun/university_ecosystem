@@ -1,4 +1,3 @@
-import { render, screen, fireEvent } from "@testing-library/react"
 import { IDBFactory } from "fake-indexeddb"
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import {
@@ -8,8 +7,6 @@ import {
   processPendingMutations,
 } from "../offline"
 import { enqueueOfflineMutation } from "../../api/offlineMutationQueue"
-import { SyncStatus } from "../../components/feedback/SyncStatus"
-import * as useSyncStatusModule from "../../hooks/useSyncStatus"
 
 // Mock logger
 vi.mock("../logger", () => ({
@@ -18,18 +15,7 @@ vi.mock("../logger", () => ({
   error: vi.fn(),
 }))
 
-// Mock react-i18next
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: any) => {
-      if (key === "common:sync.offline") return `Offline (${options?.count ?? 0} queued)`
-      if (key === "common:sync.online") return "All synced"
-      return options?.defaultValue || key
-    },
-  }),
-}))
-
-describe("Milestone 1 — Offline-First & SyncStatus Adversarial Stress Tests", () => {
+describe("Milestone 1 — Offline-First Adversarial Stress Tests", () => {
   let onlineSpy: MockInstance
 
   beforeEach(async () => {
@@ -171,94 +157,6 @@ describe("Milestone 1 — Offline-First & SyncStatus Adversarial Stress Tests", 
       await processPendingMutations()
       const remaining = await readPendingMutations()
       expect(remaining).toHaveLength(0) // Deleted from IDB after max retries
-    })
-  })
-
-  describe("2. SyncStatus UI Component Under Various States", () => {
-    it("renders nothing (returns null) when offline with 0 pending mutations", () => {
-      vi.spyOn(useSyncStatusModule, "useSyncStatus").mockReturnValue({
-        isOnline: false,
-        syncState: "offline",
-        pendingMutationsCount: 0,
-        isFetchingCount: 0,
-        totalPendingCount: 0,
-        triggerManualSync: vi.fn(),
-      })
-
-      const { container } = render(<SyncStatus />)
-      expect(container.firstChild).toBeNull()
-    })
-
-    it("renders offline warning indicator with badge count when offline with pending mutations", () => {
-      vi.spyOn(useSyncStatusModule, "useSyncStatus").mockReturnValue({
-        isOnline: false,
-        syncState: "offline",
-        pendingMutationsCount: 3,
-        isFetchingCount: 0,
-        totalPendingCount: 3,
-        triggerManualSync: vi.fn(),
-      })
-
-      render(<SyncStatus />)
-
-      const statusEl = screen.getByRole("status")
-      expect(statusEl).toBeInTheDocument()
-      expect(statusEl).toHaveAttribute("title", "Offline (3 queued)")
-      expect(screen.getByText("3")).toBeInTheDocument()
-    })
-
-    it("renders syncing state with spinner icon and count when syncing online", () => {
-      vi.spyOn(useSyncStatusModule, "useSyncStatus").mockReturnValue({
-        isOnline: true,
-        syncState: "syncing",
-        pendingMutationsCount: 2,
-        isFetchingCount: 1,
-        totalPendingCount: 2,
-        triggerManualSync: vi.fn(),
-      })
-
-      render(<SyncStatus />)
-
-      const statusEl = screen.getByRole("status")
-      expect(statusEl).toBeInTheDocument()
-      expect(statusEl).toHaveAttribute("title", "All synced")
-      expect(screen.getByText("2")).toBeInTheDocument()
-    })
-
-    it("renders synced state with checkmark icon when recently completed sync", () => {
-      vi.spyOn(useSyncStatusModule, "useSyncStatus").mockReturnValue({
-        isOnline: true,
-        syncState: "synced",
-        pendingMutationsCount: 0,
-        isFetchingCount: 0,
-        totalPendingCount: 0,
-        triggerManualSync: vi.fn(),
-      })
-
-      render(<SyncStatus />)
-
-      const statusEl = screen.getByRole("status")
-      expect(statusEl).toBeInTheDocument()
-      expect(statusEl.className).toContain("bg-success-bg")
-    })
-
-    it("triggers manual sync on user click", () => {
-      const manualSyncSpy = vi.fn().mockResolvedValue(undefined)
-      vi.spyOn(useSyncStatusModule, "useSyncStatus").mockReturnValue({
-        isOnline: true,
-        syncState: "idle",
-        pendingMutationsCount: 0,
-        isFetchingCount: 0,
-        totalPendingCount: 0,
-        triggerManualSync: manualSyncSpy,
-      })
-
-      render(<SyncStatus />)
-
-      const statusEl = screen.getByRole("status")
-      fireEvent.click(statusEl)
-
-      expect(manualSyncSpy).toHaveBeenCalledTimes(1)
     })
   })
 

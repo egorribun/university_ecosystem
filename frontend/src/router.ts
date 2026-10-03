@@ -2,6 +2,7 @@ import { createElement } from "react"
 import { createRouter } from "@tanstack/react-router"
 import { QueryClient } from "@tanstack/react-query"
 import { createQueryClient } from "./app/queryClient"
+import { configureRouterViewTransitions } from "./app/routerViewTransitions"
 import { routeTree } from "./routeTree.gen"
 
 export interface RouterContext {
@@ -72,7 +73,7 @@ const createAppRouter = () => {
   // guards read Zustand directly per Wave 174 SW1).
   const ssrAuth = globalThis.__ssrAuthGetter__?.()
 
-  return createRouter({
+  const router = createRouter({
     routeTree,
     context: {
       auth: ssrAuth ?? DEFAULT_AUTH,
@@ -159,6 +160,8 @@ const createAppRouter = () => {
     // achieves the same outcome: only the shellComponent renders
     // server-side, route `component`s skip SSR.
   })
+  configureRouterViewTransitions(router)
+  return router
 }
 
 // Wave 125 Phase 1 — TanStack Start v1's start-client-core/hydrateStart

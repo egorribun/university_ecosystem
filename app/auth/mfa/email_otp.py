@@ -12,7 +12,7 @@ import secrets
 import ssl
 import string
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from operator import attrgetter
@@ -195,8 +195,8 @@ class IssuedEmailOtp:
     """Internal-only handoff; API schemas deliberately never expose ``otp``."""
 
     challenge_id: uuid.UUID
-    challenge_token: str
-    otp: str
+    challenge_token: str = field(repr=False)
+    otp: str = field(repr=False)
     revision: int
     expires_at: datetime
     resend_available_at: datetime
@@ -436,7 +436,9 @@ class EmailOtpService:
     ) -> tuple[User, str]:
         stmt = select(User).where(User.id == user_id)
         if for_update:
-            stmt = stmt.with_for_update(nowait=False)
+            stmt = stmt.with_for_update(nowait=False).execution_options(
+                populate_existing=True
+            )
         user = (await db.execute(stmt)).scalar_one_or_none()
         if user is None or not user.is_active:
             raise MfaOtpRejected()
@@ -476,6 +478,7 @@ class EmailOtpService:
         db: AsyncSession,
         *,
         user_id: uuid.UUID,
+        expected_mfa_epoch: int,
         flow: str,
         session_identifier: str,
         client_fingerprint: str,
@@ -494,6 +497,13 @@ class EmailOtpService:
         _user, recipient = await self._resolve_recipient(
             db, user_id=user_id, flow=flow, for_update=True
         )
+        current_epoch = int(getattr(_user, "mfa_epoch", 0) or 0)
+        if (
+            type(expected_mfa_epoch) is not int
+            or expected_mfa_epoch < 0
+            or expected_mfa_epoch != current_epoch
+        ):
+            raise MfaOtpRejected()
         issued_at = now or datetime.now(UTC)
         challenge_id = generate_uuid7()
         revision = 1
@@ -525,7 +535,7 @@ class EmailOtpService:
             consumed_at=None,
             locked_at=None,
             created_at=issued_at,
-            payload=None,
+            payload={"mfa_epoch": current_epoch},
             attempt_count=0,
             state=ChallengeState.PENDING,
         )
@@ -562,6 +572,23 @@ class EmailOtpService:
             delivery_hint=mask_email(recipient),
         )
 
+    @staticmethod
+    def _validate_challenge_epoch(challenge: MfaChallenge, user: User) -> None:
+        """Keep the original credential epoch through OTP, recovery and resend.
+
+        Unbound legacy challenges fail closed and must be reissued. Never adopt
+        the current epoch when a password or factor change rotated the account.
+        Call only while holding the User lock acquired by _resolve_recipient.
+        """
+        payload = getattr(challenge, "payload", None)
+        epoch = payload.get("mfa_epoch") if isinstance(payload, dict) else None
+        if (
+            type(epoch) is not int
+            or epoch < 0
+            or epoch != int(getattr(user, "mfa_epoch", 0) or 0)
+        ):
+            raise MfaOtpRejected()
+
     async def _load_bound_challenge(
         self,
         db: AsyncSession,
@@ -578,6 +605,7 @@ class EmailOtpService:
                 select(MfaChallenge)
                 .where(MfaChallenge.id == challenge_id)
                 .with_for_update(nowait=False)
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if challenge is None:
@@ -751,6 +779,7 @@ class EmailOtpService:
             session_identifier=opaque.session_identifier,
             client_fingerprint=client_fingerprint,
         )
+        self._validate_challenge_epoch(challenge, user)
         expected_recipient = self._recipient_digest(
             key_id=challenge.token_key_id,
             email=recipient,
@@ -761,6 +790,7 @@ class EmailOtpService:
             or not hmac.compare_digest(expected_recipient, challenge.recipient_digest)
             or challenge.state != ChallengeState.PENDING
             or _aware(challenge.expires_at) <= checked_at
+            or challenge.attempt_count >= OTP_MAX_FAILED_ATTEMPTS
         ):
             raise MfaOtpRejected()
         if not await verify_recovery_code(db, user=user, code=code):
@@ -789,7 +819,6 @@ class EmailOtpService:
         now: datetime | None = None,
     ) -> MfaChallenge:
         await self._rate_limit(action="verify", user_id=user_id, client_ip=client_ip)
-        checked_at = now or datetime.now(UTC)
         user, recipient = await self._resolve_recipient(
             db,
             user_id=user_id,
@@ -804,6 +833,8 @@ class EmailOtpService:
             session_identifier=session_identifier,
             client_fingerprint=client_fingerprint,
         )
+        checked_at = now or datetime.now(UTC)
+        self._validate_challenge_epoch(challenge, user)
         expected_recipient = self._recipient_digest(
             key_id=challenge.token_key_id,
             email=recipient,
@@ -907,6 +938,7 @@ class EmailOtpService:
             session_identifier=session_identifier,
             client_fingerprint=client_fingerprint,
         )
+        self._validate_challenge_epoch(challenge, _user)
         expected_recipient = self._recipient_digest(
             key_id=challenge.token_key_id,
             email=recipient,
@@ -915,7 +947,10 @@ class EmailOtpService:
             expected_recipient, challenge.recipient_digest
         ):
             raise MfaOtpRejected()
-        if challenge.state != ChallengeState.PENDING:
+        if (
+            challenge.state != ChallengeState.PENDING
+            or challenge.attempt_count >= OTP_MAX_FAILED_ATTEMPTS
+        ):
             raise MfaOtpRejected()
         if (
             challenge.resend_available_at is not None

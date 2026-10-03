@@ -1,5 +1,6 @@
 import { memo } from "react"
 import { useTranslation } from "react-i18next"
+import { clsx } from "clsx"
 import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ScheduleCardSkeletonProps {
@@ -13,11 +14,14 @@ interface ScheduleCardSkeletonProps {
  * ScheduleCardSkeleton - Loading state for ScheduleCard component.
  * Displays placeholder lesson items matching the real component structure.
  */
-function ScheduleCardSkeletonInner({ items = 3, className = "" }: ScheduleCardSkeletonProps) {
+function ScheduleCardSkeletonInner({ items = 3, className }: ScheduleCardSkeletonProps) {
   const { t } = useTranslation()
   return (
     <div
-      className={`rounded-2xl border border-glass-border-subtle bg-glass-elevated p-4 sm:p-5 ${className}`}
+      className={clsx(
+        "rounded-2xl border border-glass-border-subtle bg-glass-elevated p-4 sm:p-5",
+        className
+      )}
       aria-busy="true"
       aria-label={t("common:aria.loadingSchedule")}
     >

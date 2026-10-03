@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import socket
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -492,6 +493,28 @@ class TestAPIDeps:
 # ===========================================================================
 
 
+@pytest.fixture
+def deterministic_embedding_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """API tests exercise URL validation without a live embedding provider."""
+    resolve = socket.getaddrinfo
+
+    def lookup(host, port, *args, **kwargs):
+        if host == "api.openai.com":
+            return [
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    6,
+                    "",
+                    ("93.184.216.34", port or 443),
+                )
+            ]
+        return resolve(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+
+
+@pytest.mark.usefixtures("deterministic_embedding_dns")
 class TestNewsAPI:
     @pytest.mark.asyncio
     async def test_list_news(self, async_client: AsyncClient, user_factory, db_session):
@@ -508,6 +531,7 @@ class TestNewsAPI:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("deterministic_embedding_dns")
 class TestEventsAPI:
     @pytest.mark.asyncio
     async def test_list_events(
@@ -561,58 +585,6 @@ class TestGraphQLAdvancedCoverage:
         user = MagicMock()
         ctx.current_user = user
         assert ctx.is_authenticated is True
-
-    @pytest.mark.asyncio
-    async def test_graphql_permissions_coverage(self):
-        from app.auth.rbac import SpiceDBUnavailableError
-        from app.graphql.permissions import IsAdmin, IsAuthenticated
-
-        source = None
-        info = MagicMock()
-        info.context = MagicMock()
-
-        # IsAuthenticated
-        perm_auth = IsAuthenticated()
-        info.context.is_authenticated = True
-        assert perm_auth.has_permission(source, info) is True
-        info.context.is_authenticated = False
-        assert perm_auth.has_permission(source, info) is False
-
-        # IsAdmin
-        perm_admin = IsAdmin()
-
-        # 1. Unauthenticated
-        info.context.is_authenticated = False
-        info.context.current_user = None
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 2. Authenticated but no checker in context
-        info.context.is_authenticated = True
-        info.context.current_user = MagicMock()
-        info.context.checker = None
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 3. Checker check_admin returns True
-        mock_checker = AsyncMock()
-        mock_checker.check_admin.return_value = True
-        info.context.checker = mock_checker
-        assert await perm_admin.has_permission(source, info) is True
-        mock_checker.check_admin.assert_called_once_with(
-            str(info.context.current_user.id)
-        )
-
-        # 4. Checker check_admin returns False
-        mock_checker.check_admin.reset_mock()
-        mock_checker.check_admin.return_value = False
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 5. SpiceDBUnavailableError
-        mock_checker.check_admin.side_effect = SpiceDBUnavailableError("SpiceDB down")
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 6. Unexpected Exception (RZ-22-01)
-        mock_checker.check_admin.side_effect = RuntimeError("DB crash")
-        assert await perm_admin.has_permission(source, info) is False
 
     @pytest.mark.asyncio
     async def test_increment_user_cost_fallback(self):
@@ -802,12 +774,13 @@ class TestGraphQLAdvancedCoverage:
                 manifest = _load_manifest()
                 assert manifest == {"foo": "bar"}
 
-            # 6. Allowlist lookup happy path
-            ext_module._query_allowlist = {"hash123": "query { me }"}
+            # 6. Allowlist lookup happy path: the hash binds to this exact query.
+            query_hash = ext_module._hash_query("query { me }")
+            ext_module._query_allowlist = {query_hash: "query { me }"}
             # Send query with valid hash in extensions
             exec_ctx = MagicMock()
             exec_ctx.query = "query { me }"
-            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": "hash123"}}
+            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": query_hash}}
             ext = PersistedQueryExtension()
             ext.execution_context = exec_ctx
             async for _ in ext.on_validate():

@@ -17,8 +17,8 @@ SVIDs from a SPIRE agent socket, SSL-context builders, and a
 `/api/v1/chat/check-participant`. `app/core/lifespan.py` started and stopped
 the manager, and `SecuritySettings` exposed five `spiffe_*` settings.
 
-A review of the subsystem (safe-pause handoff of 2026-09-29, section 10)
-found that it could never work:
+A review of the Python SPIFFE/mTLS subsystem on 2026-09-29 found that it could
+never work:
 
 1. The module imports `pyspiffe`. That distribution does not exist on PyPI;
    the maintained Python client is published as `spiffe` and has a different

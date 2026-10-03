@@ -671,7 +671,7 @@ def test_contract_v2_removes_manifest_self_hash_and_declares_all_native_evidence
     assert contract["manifest_path"] == "artifacts/coverage/quality-manifest.json"
     paths = [report["path"] for report in contract["coverage_reports"]]
     assert contract["manifest_path"] not in paths
-    assert len(paths) == len(set(paths)) == 16
+    assert len(paths) == len(set(paths)) == 14
     assert "artifacts/coverage/python/coverage.json" in paths
     assert "frontend/coverage/coverage-final.json" in paths
     assert (
@@ -679,7 +679,7 @@ def test_contract_v2_removes_manifest_self_hash_and_declares_all_native_evidence
             report["format"] == "llvm-cov-branch-json"
             for report in contract["coverage_reports"]
         )
-        == 4
+        == 3
     )
 
 

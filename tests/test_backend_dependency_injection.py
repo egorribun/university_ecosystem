@@ -13,13 +13,6 @@ from app.core.di.infrastructure import InfrastructureProvider
 from app.core.di.search import SearchProvider
 from app.core.di.spicedb import SpiceDBProvider
 from app.core.di.users import UserProvider
-from app.core.exceptions import (
-    AppException,
-    InvalidOperationException,
-    PermissionDeniedException,
-    ResourceNotFoundException,
-    app_exception_handler,
-)
 from app.core.health import check_database_connectivity, check_spicedb_health
 from app.core.logging import (
     add_otel_context,
@@ -93,15 +86,20 @@ def test_cqrs_provider():
 
 
 # 3. app/core/di/content.py
-def test_content_provider():
+@pytest.mark.asyncio
+async def test_content_provider():
     provider = ContentProvider()
     db = MagicMock()
     uow = MagicMock()
     vector = MagicMock()
 
     assert provider.notification_service(db) is not None
-    with patch("app.services.vector_service.validate_url_not_internal"):
-        assert provider.vector_service(db) is not None
+    vector_scope = provider.vector_service(db)
+    vector_service = await anext(vector_scope)
+    assert vector_service.db is db
+    assert not vector_service._client.is_closed
+    await vector_scope.aclose()
+    assert vector_service._client.is_closed
     assert provider.group_service(db) is not None
     assert provider.event_service(uow, vector) is not None
     assert provider.story_service(uow) is not None
@@ -275,34 +273,6 @@ async def test_spicedb_provider():
 
 
 # 8. app/core/exceptions/__init__.py
-@pytest.mark.asyncio
-async def test_app_exception_handler():
-    req = MagicMock()
-
-    # 1. Custom AppException
-    exc = AppException(
-        "Bad request", status_code=400, code="bad_request", payload={"key": "val"}
-    )
-    res = await app_exception_handler(req, exc)
-    assert res.status_code == 400
-
-    # 2. Inherited Exception
-    exc2 = ResourceNotFoundException("Not found")
-    res2 = await app_exception_handler(req, exc2)
-    assert res2.status_code == 404
-
-    exc3 = PermissionDeniedException("Denied")
-    res3 = await app_exception_handler(req, exc3)
-    assert res3.status_code == 403
-
-    exc4 = InvalidOperationException("Invalid")
-    res4 = await app_exception_handler(req, exc4)
-    assert res4.status_code == 400
-
-    # 3. Non-AppException
-    exc_non = ValueError("Critical issue")
-    res_non = await app_exception_handler(req, exc_non)
-    assert res_non.status_code == 500
 
 
 # 9. app/core/health.py
@@ -388,7 +358,7 @@ def test_logging_otel_context():
         assert "span_id" in res
 
 
-def test_configure_logging_non_json():
+def test_configure_logging_non_json(preserve_logging_configuration):
     import app.core.logging as logging_module
 
     # Force re-configure

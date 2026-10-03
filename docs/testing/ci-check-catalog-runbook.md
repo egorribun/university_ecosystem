@@ -36,6 +36,27 @@ process owner, and wall deadline remain unchanged. A quiet snapshot alone
 does not diagnose a stall; resource-aware inactivity policy is outside this
 rollout.
 
+## MIG-PASS-01 CI image preflight
+
+The existing required `DB Migration Gate (Postgres)` context also verifies the
+password preflight after its migration round-trip. CI builds `backend.Dockerfile`
+from the checked-out source, records Docker's full image config SHA-256 ID, and
+runs `python -m app.cli migrate-passwords assert-none` inside that image by ID.
+The job uses only its pinned, disposable PostgreSQL service. That service uses
+passwordless trust authentication inside the isolated CI runner; the helper
+refuses a non-local endpoint, a password-bearing URL, or a database other than
+the disposable migration database. It creates a dedicated non-superuser,
+`NOBYPASSRLS` reader with `SELECT` on `users`, checks the clean result, inserts a
+random synthetic active row with a non-verifiable bcrypt prefix sentinel and
+requires the expected nonzero result, verifies the row is unchanged, removes it,
+then requires a clean result again. The sentinel is only used to exercise the
+CLI's prefix predicate and is never passed to authentication code.
+
+This catalog entry proves the CI image and CLI wiring plus fail-closed behavior
+against disposable PostgreSQL. It does not use protected credentials or a
+deployed database and therefore does not satisfy the separate secret-backed
+deployment evidence still required by MIG-PASS-01.
+
 ## Metadata contract
 
 Each workflow records its source path, display name, owner, and exact trigger
@@ -97,6 +118,52 @@ transient runner or registry failure, rerun the same workflow manually and
 retain the first run's logs and SARIF.  Do not add an automatic retry until a
 captured stdout/stderr classifier, bounded attempts, first-attempt artifacts,
 and focused positive/negative tests prove transient-only behavior.
+
+### Cache trust boundary
+
+Treat cache entries as an optimization, never as source or quality evidence.
+Untrusted pull-request jobs must not create executable or generated-state cache
+entries that a privileged release job can restore.  A release cache needs its
+own trusted producer/scope and keys bound to the source lockfiles, runner OS,
+and relevant toolchain; any cache hit must still be validated by the normal
+build and release checks.
+
+The current YAML configures some of this boundary: `ci.yml` labels its
+pre-commit cache prefixes CI-only and states they must not be consumed by
+privileged `workflow_dispatch`/`workflow_run` jobs; the canonical image builder
+is main-only and `reusable-build-and-sign.yml` uses a per-image BuildKit cache
+scope.  PR frontend npm caches use `frontend/package-lock.json`, while the
+release tool's npm cache uses the repository-root `package-lock.json`.
+`test_precommit_cache_cannot_cross_into_privileged_workflows` protects the two
+pre-commit namespaces, and `test_reusable_node_cache_never_restores_stale_node_modules`
+checks that the reusable npm cache contains only lock-bound package downloads.
+This is not a complete cache-trust certification: no focused contract proves
+that every privileged consumer and cache backend cannot restore PR-writable
+state.  Keep that proof as an O3 acceptance item; different lockfile paths or
+cache names alone do not establish the trust boundary.
+
+### Fail-closed aggregation and upload errors
+
+A CI timing aggregate or release certificate must bind its required evidence
+to one intended repository, workflow, run ID, and source SHA, with an explicit
+attempt policy.  Missing identity, an unapproved attempt mix, source mismatch,
+duplicate logical results, or missing required evidence must make the aggregate
+unavailable or failed; they must never be silently combined into a green
+result.  If a workflow deliberately reuses earlier-attempt artifacts after a
+failed-job rerun, its selector policy and each producer-attempt identity must
+be explicit, and the aggregate must prove that the selected cohort is complete
+and compatible.  Strict timing analysis must reject jobs from mixed attempts.
+
+An artifact upload HTTP 403 is a transport/access failure.  It does not mean
+that a mutant was killed or that a certificate was produced: tests may have run,
+but the required evidence is absent.  Required upload failure must therefore
+block the evidence aggregate/certificate.  The critical-path analyzer already
+rejects mixed attempts in diagnostic input, and the `ci.yml` Stryker aggregate
+validates shard bytes and identities; however, strict analysis has no
+end-to-end workflow, and no focused contract test was found for a 403 upload
+being unable to create a killed-mutation certificate.  Do not describe those
+end-to-end properties as implemented until such a workflow path and negative
+test exist.
 
 ### Provider checks and expanded contexts
 
@@ -177,10 +244,24 @@ actually captured.
 The report is intentionally diagnostic-only: it observes the completed run
 through the GitHub Jobs API and therefore is a lower bound, not proof of the
 dependency DAG, archive bytes, or release provenance.  Strict timing evidence
-still requires the detached same-run DAG/artifact-selector workflow described
-in the continuation plan.  A missing or malformed report fails the existing
-finalizer after the authoritative result table has been evaluated, preserving
-the required fail-closed behavior without adding a fan-out job.
+must come from a trusted same-run workflow that obtains the DAG sidecar through
+the server-issued artifact selector, binds its repository/workflow/run/attempt/
+source identity to trusted workflow context, downloads and verifies the archive
+bytes against the selected digest, then passes both the DAG and detached
+provenance record to strict analysis.  The selector's REST metadata checks and
+digest format do not themselves verify downloaded bytes.  The analyzer must
+reject a missing or malformed DAG, identity mismatch, incomplete job timing,
+foreign/future artifact, or mixed run attempts; a diagnostic lower-bound report
+cannot substitute for that strict evidence.
+
+The analyzer and selector libraries have focused identity, digest, DAG, and
+mixed-attempt rejection tests.  The current `ci-success` path still publishes
+the Jobs-API lower bound, and no repository workflow invokes strict analysis
+end-to-end or verifies the selected archive bytes before analysis.  Strict
+reports are therefore not release evidence today.  A missing or malformed
+health report fails the existing finalizer after the authoritative result
+table has been evaluated, preserving the required fail-closed behavior without
+adding a fan-out job.
 
 ### Mutmut Helm dependency reuse
 

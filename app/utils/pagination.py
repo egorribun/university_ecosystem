@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import base64
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
-    from sqlalchemy import Select
-
-    from app.core.protocols import AsyncDatabaseSession as AsyncSession
+    pass
 
 
 class CursorParams(BaseModel):
@@ -96,85 +95,32 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return None
 
 
-async def paginate_cursor[T](
-    session: AsyncSession,
-    stmt: Select[Any],
-    cursor_column: Any,
-    params: CursorParams,
-    descending: bool = True,
-    include_total: bool = False,
-) -> CursorPage[T]:
-    """
-    Execute cursor-based pagination on a SQLAlchemy select statement.
+def encode_ranked_datetime_cursor(
+    dt: datetime, secondary_id: str, score: float | None
+) -> str:
+    """Encode every sort key; retain explicit null scores for semantic search."""
+    if score is not None and not math.isfinite(score):
+        raise ValueError("Ranked cursor score must be finite")
+    score_text = "null" if score is None else repr(score)
+    return f"r1:{score_text}:{encode_datetime_cursor(dt, secondary_id)}"
 
-    Args:
-        session: Database session
-        stmt: Base select statement (without limit/offset)
-        cursor_column: Column to use for cursor (typically id or created_at)
-        params: Pagination parameters
-        descending: If True, order descending (newest first)
-        include_total: If True, run count query for total
 
-    Returns:
-        CursorPage with items, next_cursor, and has_more flag
-    """
-    from sqlalchemy import func, select
-
-    total_count: int | None = None
-    if include_total:
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        count_result = await session.execute(count_stmt)
-        total_count = count_result.scalar() or 0
-
-    # Apply cursor filter if provided
-    if params.cursor:
-        cursor_value = decode_cursor(params.cursor)
-        if cursor_value:
-            import uuid
-
-            try:
-                # Try to cast to UUID if it looks like one, needed for SQLAlchemy 2.0+
-                # with sqlite/pgvector when the column is typed as UUID
-                target_value = (
-                    uuid.UUID(cursor_value) if len(cursor_value) >= 32 else cursor_value
-                )
-            except (ValueError, TypeError):
-                target_value = cursor_value
-
-            if descending:
-                stmt = stmt.where(cursor_column < target_value)
-            else:
-                stmt = stmt.where(cursor_column > target_value)
-
-    # Apply ordering
-    if descending:
-        stmt = stmt.order_by(cursor_column.desc())
-    else:
-        stmt = stmt.order_by(cursor_column.asc())
-
-    # Fetch one extra to check for more
-    stmt = stmt.limit(params.limit + 1)
-
-    result = await session.scalars(stmt)
-    items = list(result.all())
-
-    has_more = len(items) > params.limit
-    if has_more:
-        items = items[: params.limit]
-
-    next_cursor: str | None = None
-    if has_more and items:
-        last_item = items[-1]
-        last_cursor_value = getattr(last_item, cursor_column.key, None)
-        if last_cursor_value is not None:
-            next_cursor = encode_cursor(last_cursor_value)
-
-    return CursorPage(
-        items=items,
-        next_cursor=next_cursor,
-        has_more=has_more,
-        total_count=total_count,
-    )
+def decode_ranked_datetime_cursor(
+    cursor: str | None,
+) -> tuple[datetime, str, float | None] | None:
+    if not cursor or not cursor.startswith("r1:"):
+        return None
+    try:
+        _, score_text, datetime_cursor = cursor.split(":", 2)
+        score = None if score_text == "null" else float(score_text)
+        if score is not None and not math.isfinite(score):
+            return None
+        decoded = decode_datetime_cursor(datetime_cursor)
+        if decoded is not None:
+            return decoded[0], decoded[1], score
+    except (ValueError, TypeError):
+        pass
+    return None
 
 
 class PaginatedResponse[T](BaseModel):

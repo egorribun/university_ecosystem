@@ -17,7 +17,7 @@
  * ``useNewsListQuery({ language, limit: 12 })`` share the same cache.
  *
  * Cache layers (outermost first):
- *  1. ``placeholderData`` from ``StorageItem("news:list:<lang>")``
+ *  1. ``placeholderData`` from ``StorageItem("news:list:account:<userId>:<lang>")``
  *     — populated by the news detail/list pages on a successful load,
  *     served on cold mount in offline mode so the user sees something
  *     before the network resolves.
@@ -43,9 +43,15 @@ import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
 import { fetchNewsItem, type NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { captureSessionEpoch, getSessionEpoch } from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { pickPrivateListControls, type PrivateListControls } from "./privateListControls"
 
 /** Server-side default page size; mirror this in tests + msw handlers. */
 export const NEWS_PAGE_SIZE = 12
+
+const getCurrentConfirmedUserId = () => getConfirmedUserId(useAuthStore.getState())
 
 export type NewsListFilters = {
   language: string
@@ -132,10 +138,14 @@ const ensurePaginatedResponse = (
 
 const readPersistedNewsPage = (
   language: string,
-  limit: number
+  limit: number,
+  owner: string | null
 ): PaginatedResponse<NewsItem> | null => {
-  if (typeof window === "undefined") return null
-  const items = new StorageItem<NewsItem[]>(`news:list:${language}`).get()
+  if (typeof window === "undefined" || !owner || getCurrentConfirmedUserId() !== owner) return null
+  // Never adopt the legacy shared entry: its is_liked values have no owner.
+  const items = new StorageItem<NewsItem[]>(
+    `news:list:account:${encodeURIComponent(owner)}:${language}`
+  ).get()
   if (!Array.isArray(items) || items.length === 0) return null
   return {
     items,
@@ -197,8 +207,18 @@ export const getLatestNewsPage = (
 }
 
 const createNewsListQueryFn =
-  (queryClient: QueryClient, normalized: NormalizedNewsListFilters, queryKey: NewsListQueryKey) =>
+  (
+    queryClient: QueryClient,
+    normalized: NormalizedNewsListFilters,
+    queryKey: NewsListQueryKey,
+    owner: string | null
+  ) =>
   async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
+    const currentEpoch = captureSessionEpoch()
+    const ownsSession = () =>
+      typeof window === "undefined" ||
+      (owner !== null && currentEpoch() && getCurrentConfirmedUserId() === owner)
+    if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
     const etagKey = pageParam == null ? createNewsListEtagKey(normalized) : undefined
     const params: Record<string, unknown> = {
       limit: normalized.limit,
@@ -223,11 +243,13 @@ const createNewsListQueryFn =
       requestConfig as Parameters<typeof newsListApiV1NewsGet>[0]
     )
 
+    if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
+
     if (response.status === 304) {
       const cached =
         queryClient.getQueryData<InfiniteData<PaginatedResponse<NewsItem>, string | null>>(queryKey)
       return ensurePaginatedResponse(
-        cached?.pages?.[0] ?? readPersistedNewsPage(normalized.language, normalized.limit),
+        cached?.pages?.[0] ?? readPersistedNewsPage(normalized.language, normalized.limit, owner),
         normalized.limit
       )
     }
@@ -235,15 +257,14 @@ const createNewsListQueryFn =
     return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
   }
 
-type UseNewsListQueryOptions = Omit<
+type UseNewsListQueryOptions = PrivateListControls<
   UseInfiniteQueryOptions<
     PaginatedResponse<NewsItem>,
     Error,
     InfiniteData<PaginatedResponse<NewsItem>, string | null>,
     NewsListQueryKey,
     string | null
-  >,
-  "queryKey" | "queryFn" | "initialPageParam" | "getNextPageParam"
+  >
 >
 
 export type UseNewsListQueryResult = UseInfiniteQueryResult<
@@ -268,10 +289,9 @@ export type UseNewsListQueryResult = UseInfiniteQueryResult<
  * @param filters - ``language`` is the i18n locale used for both the
  *   ETag cache key and the offline placeholder localStorage key.
  *   ``limit`` is optional; defaults to ``NEWS_PAGE_SIZE`` (12).
- * @param options - Standard ``useInfiniteQuery`` options EXCEPT
- *   ``queryKey``, ``queryFn``, ``initialPageParam`` and
- *   ``getNextPageParam`` — those are owned by this hook. ``enabled``
- *   defaults to ``true``.
+ * @param options - Timing, enabled/retry/refetch, error presentation,
+ *   notification, and pagination controls. Data sources, transformations,
+ *   and query identity are owned by this hook. ``enabled`` defaults to true.
  * @returns The full ``useInfiniteQuery`` result extended with:
  *   - ``news``: flattened, deduplicated array of ``NewsItem`` across
  *     all loaded pages (memoised on ``query.data``).
@@ -292,21 +312,30 @@ export const useNewsListQuery = (
 ): UseNewsListQueryResult => {
   const queryClient = useQueryClient()
   const normalized = normalizeNewsListFilters(filters)
-  const queryKey: NewsListQueryKey = useMemo(() => ["news", "list", normalized], [normalized])
-  const { enabled = true, ...rest } = options ?? {}
+  const owner = useAuthStore(getConfirmedUserId)
+  const epoch = getSessionEpoch()
+  const isCurrentSession = useMemo(() => {
+    const ownsEpoch = captureSessionEpoch()
+    return () => epoch === getSessionEpoch() && ownsEpoch()
+  }, [epoch])
+  const queryKey = newsListQueryKey(filters)
+  const { enabled = true, ...rest } = pickPrivateListControls(options)
 
   // The query closure is cheap and must follow the normalized filter object on
   // every render. Keeping it direct also avoids a stale placeholder/query
   // contract when a caller changes locale or page size in place.
-  const queryFn = createNewsListQueryFn(queryClient, normalized, queryKey)
+  const queryFn = createNewsListQueryFn(queryClient, normalized, queryKey, owner)
 
   // Read once per locale/page-size pair. SSR can hydrate an already-created
   // query with an empty/error result, in which case TanStack Query does not
   // apply `placeholderData`; the same snapshot is therefore also used below
   // as the final offline fallback.
   const persistedPage = useMemo(
-    () => readPersistedNewsPage(normalized.language, normalized.limit),
-    [normalized.language, normalized.limit]
+    () =>
+      isCurrentSession()
+        ? readPersistedNewsPage(normalized.language, normalized.limit, owner)
+        : null,
+    [normalized.language, normalized.limit, owner, isCurrentSession]
   )
 
   // Read from localStorage as fallback for offline mode
@@ -324,21 +353,28 @@ export const useNewsListQuery = (
     NewsListQueryKey,
     string | null
   >({
+    staleTime: 30_000,
+    ...rest,
     queryKey,
-    enabled,
+    enabled: (typeof window === "undefined" || owner !== null) && enabled,
     initialPageParam: null as string | null,
     getNextPageParam: getNewsNextPageParam,
     queryFn,
-    staleTime: 30_000, // 30s — matches interaction query; prevents refetch on mount/focus
     placeholderData,
-    ...rest,
+    // A tab can observe a changed origin-wide session before the auth broadcast
+    // arrives. Do not expose its previously warm list through this observer.
+    select: (data) => {
+      if (!isCurrentSession()) return { pages: [], pageParams: [] }
+      return data
+    },
   })
 
   const news = useMemo(() => {
+    if (!isCurrentSession()) return []
     const liveNews = mergeNewsPages(query.data?.pages)
     if (liveNews.length > 0 || !query.isError) return liveNews
     return persistedPage?.items ?? []
-  }, [persistedPage, query.data, query.isError])
+  }, [persistedPage, query.data, query.isError, isCurrentSession])
   let pagination: PaginatedResponse<NewsItem> | null = null
   const queryData = query.data
   if (queryData) {
@@ -346,9 +382,18 @@ export const useNewsListQuery = (
   }
 
   useEffect(() => {
-    if (!query.isSuccess || query.isPlaceholderData) return
-    new StorageItem<NewsItem[]>(`news:list:${normalized.language}`).set(news)
-  }, [news, normalized.language, query.isPlaceholderData, query.isSuccess])
+    if (
+      !query.isSuccess ||
+      query.isPlaceholderData ||
+      !owner ||
+      !isCurrentSession() ||
+      getCurrentConfirmedUserId() !== owner
+    )
+      return
+    new StorageItem<NewsItem[]>(
+      `news:list:account:${encodeURIComponent(owner)}:${normalized.language}`
+    ).set(news)
+  }, [news, normalized.language, query.isPlaceholderData, query.isSuccess, owner, isCurrentSession])
 
   return {
     ...query,
@@ -377,8 +422,13 @@ export const useNewsListQuery = (
  */
 export const prefetchNewsListQuery = (queryClient: QueryClient, filters: NewsListFilters) => {
   const normalized = normalizeNewsListFilters(filters)
-  const queryKey: NewsListQueryKey = ["news", "list", normalized]
-  const queryFn = createNewsListQueryFn(queryClient, normalized, queryKey)
+  const queryKey = newsListQueryKey(filters)
+  const queryFn = createNewsListQueryFn(
+    queryClient,
+    normalized,
+    queryKey,
+    getCurrentConfirmedUserId()
+  )
 
   return queryClient.prefetchInfiniteQuery({
     queryKey,

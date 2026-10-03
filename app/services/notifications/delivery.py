@@ -82,6 +82,26 @@ def _is_push_configured() -> bool:
     return bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
 
 
+def push_subscription_query() -> Select[tuple[PushSubscription]]:
+    """Load push preferences even when the User identity is already in-session.
+
+    User preference relationships use ``lazy="noload"``.  ``populate_existing``
+    lets the select-in loaders replace the cached ``None``/empty values while
+    retaining the session's normal autoflush behavior.
+    """
+    return (
+        select(PushSubscription)
+        .where(PushSubscription.user.has(User.is_active.is_(True)))
+        .options(
+            selectinload(PushSubscription.user).options(
+                selectinload(User.push_topic_preferences),
+                selectinload(User.preferences),
+            )
+        )
+        .execution_options(populate_existing=True)
+    )
+
+
 # Re-export for backward compatibility (used in _send_push)
 send_web_push = webpush_module.send_web_push
 
@@ -194,13 +214,7 @@ async def redeliver_notifications(
 
     user_ids = list({uuid.UUID(str(item.user_id)) for item in notifications})
     subscription_rows = await db.execute(
-        select(PushSubscription)
-        .options(
-            selectinload(PushSubscription.user).selectinload(
-                User.push_topic_preferences
-            )
-        )
-        .where(PushSubscription.user_id.in_(user_ids))
+        push_subscription_query().where(PushSubscription.user_id.in_(user_ids))
     )
     subscriptions_by_user: defaultdict[uuid.UUID, list[PushSubscription]] = defaultdict(
         list
@@ -328,7 +342,9 @@ async def redeliver_notifications(
                     )
             else:
                 retryable_failures += 1
-                detail = f"exception:{result}"
+                # Exception text may contain the subscription URL, which is a
+                # bearer endpoint. Persist only its type, never its message.
+                detail = f"exception:{result.__class__.__name__}"
                 if prior_attempt is None:
                     delivery_rows.append(
                         _build_delivery_row(
@@ -503,13 +519,7 @@ async def create_notifications_for_users(
     # user are handled correctly without per-user round-trips.
     inserted_user_ids = list(notification_ids_by_user.keys())
     subs_result = await db.execute(
-        select(PushSubscription)
-        .options(
-            selectinload(PushSubscription.user).selectinload(
-                User.push_topic_preferences
-            )
-        )
-        .where(PushSubscription.user_id.in_(inserted_user_ids))
+        push_subscription_query().where(PushSubscription.user_id.in_(inserted_user_ids))
     )
     subs_by_user: defaultdict[uuid.UUID, list[PushSubscription]] = defaultdict(list)
     for _sub in subs_result.scalars():
@@ -669,7 +679,7 @@ async def create_notifications_for_users(
                             status="error",
                             subscription_id=uuid.UUID(str(sub.id)),
                             attempted_at=attempt_ts,
-                            detail=f"exception:{result}",
+                            detail=f"exception:{result.__class__.__name__}",
                         )
                     )
                     metrics.record_notification_failed(

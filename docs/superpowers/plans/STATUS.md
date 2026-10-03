@@ -1,76 +1,99 @@
-# MVP closure status
+# MVP — оперативный статус
 
-Короткий операционный срез. Полный контекст, состояние каждой фазы, незавершённые
-работы, ловушки окружения и порядок продолжения — в
-[MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md). Утверждённый план (цели и порядок фаз) — снимок
-[MVP_APPROVED_PLAN.md](MVP_APPROVED_PLAN.md); оригинал вне репозитория:
-`C:\Users\egorribun\.claude\plans\cached-cuddling-ladybug.md`.
-Требования к продукту — [ТЗ MVP](University_Ecosystem_MVP.md). Прежние handoff и
-continuation — в [archive/](archive/) и являются историей.
+Срез на 2026-10-03 UTC. Работа возобновлена. [Мастер-план](MVP_MASTER_PLAN.md)
+задаёт порядок приёмки, [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
+Текущий этап исправляет и полирует существующую реализацию; новые предметные
+функции не добавляются. Полная приёмка MVP и выпуск `v1.0.0` ещё не подтверждены.
 
-Правила evidence (решение 2026-09-28): доказательство — канонический CI run, JUnit и
-отчёты мутаций. Независимое ревью обязательно только для production-кода
-security/auth/data. RED→GREEN, fail-closed гейты и запрет timeout-инфляции,
-exclusions, waivers и ручной перемаркировки сохраняются. Мейнтейнер требует
-абсолютной чистоты кода и документации: документы обновляются в том же коммите, что
-и поведение.
+## Проверяемый контекст
 
-## Identity — 2026-09-29 (консолидация worktree)
+- Активная ветка — `egorribun`, основной PR — [#1306](https://github.com/egorribun/university_ecosystem/pull/1306).
+  Кодовый checkpoint этого обновления — `2d41e90b2ed526ddd019fac5fb09f727b732a71f`;
+  его проверенное локально дерево — `889686da8b6b834c731775fbace1c2a0277511eb`.
+- В `main` интегрированы отдельные исправления trusted workflow и изоляции
+  benchmark-процессов; проверенный base — `6fa133b57f62c554162876d4e6d8349f8060fce9`.
+  Пороги и число performance-измерений сохранены.
+- Для предшествующего hosted checkpoint `6bc0680` проверены [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37138408049),
+  [owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37138407594)
+  и [performance](https://github.com/egorribun/university_ecosystem/actions/runs/37138407678).
+  Четыре backend shard, frontend unit/browser checks, coverage policy, owned live
+  и performance прошли. Полный mutation verdict ещё отсутствует; новый exact-head
+  CI после текущего batch остаётся отдельным допуском. [Security Policy Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/37138406322)
+  для этого SHA прошёл. Старые результаты не выдаются за текущие.
+- Исходники, локальные инструменты и evidence разделены. Секреты, пользовательские
+  данные, volumes, backups, история Git и Alembic сохраняются. Source freeze и
+  hashes фиксируются перед aggregate-проверками; тяжёлые локальные mutation jobs
+  запускаются последовательно.
 
-| Что | Значение |
-| --- | --- |
-| Ветка / PR | `egorribun` / #1266 → `main` (`be8c6a197`, влит merge-ем `dfbb6561f`) |
-| `origin/egorribun` | до этой консолидации — `7f1dde6`; коммиты b1–b3 и s2 собраны локально, текущий push запустит проверки нового HEAD |
-| CI | Matrix `36553547083` на `634412103` — исторический прогон; его результаты не проверяют текущий HEAD. PR #1266 синхронизирован с `main` коммитом `7f1dde6` |
-| Security-PR | #1296 смержен в `main` 2026-09-28 (admin bypass, причина в merge-коммите) |
+## Подтверждённый прогресс
 
-## Фазы
+- На frontend snapshot `2d41e90` полный локальный
+  `npm run test:unit-ci` прошёл: **698 файлов, 8 382 теста**, **100%** statements
+  (19 119/19 119), branches (13 672/13 672), functions (4 556/4 556) и lines
+  (17 106/17 106). Это Linux/Node 24.19.0 evidence, а не вердикт нового hosted CI.
+  Последующее изменение STATUS проверено отдельно как документация;
+  runtime source/test bytes после полного прогона не менялись.
+- Проверенные исправления сохраняют регистрацию/QR при восстановлении и
+  согласовании кэша, блокируют действия над ещё не сохранёнными комментариями,
+  предотвращают двойную offline-навигацию из push, исправляют существующие
+  локализованные admin labels. Дополнены реальные pending/retry/cancellation
+  сценарии профиля, stories, Spotify и уведомлений. Действующие quality-пороги,
+  исключения и timeout не ослаблены.
+- Восстановлены необходимые inputs Python mutation workspace и изоляция
+  logging-тестов. Локальная генерация на дереве `f5fde98c` сохранила **54 410** идентичностей мутантов;
+  ограниченный настоящий stats-прогон прошёл **200 активных тестов** и отобразил
+  **134 функции**. Два ранее проблемных outbox-сценария завершились за 15,59 и
+  32,58 секунды при прежнем лимите 120 секунд. Это scoped evidence прежнего snapshot, не полный
+  backend mutation pass нового checkpoint.
+- CI на `367e97a` обнаружил orphan-классификацию новой subprocess-регрессии.
+  Checkpoint `6bc0680` делает её реальные logging imports видимыми статическому
+  inventory: выполняемый probe вынесен из строки в обычную приватную функцию.
+  Его тело совпадает по AST, проверки/набор случаев/изоляция сохранены. Focused
+  subprocess test, inventory, Ruff и secret checks проходят; allowlist не менялся.
+  Hosted Source/Test Inventory job `111247692803` на `6bc0680` также прошёл.
+- Последний [owned live run на `6bc0680`](https://github.com/egorribun/university_ecosystem/actions/runs/37138407594)
+  прошёл 18 сценариев с двумя предусмотренными role skips. Это ограниченный PR
+  smoke на прежнем SHA; он не закрывает полный live E2E, повторный запуск/restore
+  или resulting-main acceptance.
+- Частичный canonical frontend inventory на `46b08e9` проверен по provenance:
+  41/64 отчёта, 18 702/42 919 назначенных мутантов. В этом срезе остаются 1 069
+  Survived, 2 NoCoverage, 16 Timeout и 15 RuntimeError; 908 Ignored имеют действующее
+  основание. Срез неполный и не является score нового checkpoint. Producer success
+  не означает прохождение 100% viable gate.
 
-- [x] Ф0 CI разблокирован; инвентари: frontend (run `36443355112`, 5 511 открытых), backend (run `36553547083`, 250)
-- [x] Ф1 Security-PR #1296 смержен; undici в корневом lock обновлён
-- [x] Ф2 Гигиена процесса
-- [ ] Ф3 Мутации до 100% viable — frontend волна 1 влита (Stryker не подтверждён); WIP backend-патчи b1–b3 добавлены, их целевые наборы тестов ещё не запускались
-- [x] Ф4 Dependabot #1292–#1295 и #1298 в ветке
-- [ ] Ф5 Живой лейн: спеки `auth-roles` и `password-reset` есть, стенд устарел; нет CI-workflow
-- [ ] Ф6 Продуктовая приёмка по ТЗ §§2–13
-- [ ] Ф6b Дизайн-ревью по скриншотам стенда
-- [ ] Ф6c Чистота: сделаны файлы, зависимости, документация, SPIFFE, O9 и удаление нативного санитайзера (ADR-044); осталось Go `staticcheck`, демо-данные, ws-hub нагрузка, review
-- [ ] Ф6d Полный аудит мёртвого груза, лишнего кода и устаревшей документации (мастер-план, раздел 14)
-- [ ] Ф7 Spelling RU, zero-warning build, BE-02, O1–O8 (O9 закрыт, ADR-045)
-- [ ] Ф8 SeaweedFS по умолчанию и Helm rclone влиты; осталось метрики, Grafana, restore, реальный `up`
-- [ ] Ф9 Локальный kind
-- [ ] Ф10 Шесть immutable-образов, Trivy, SBOM
-- [ ] Ф11 Финальный SHA-bound аудит и документация
-- [ ] Ф12 Merge #1266 и post-merge (каждый шаг — с разрешения)
+## Ближайшие проверяемые результаты
 
-## Слабые места и сроки
+1. Довести exact-head CI нового опубликованного batch до конечного вердикта, особенно
+   Python mutation stats и последующее execution. Исправлять конкретные причины,
+   не переносить чужие или старые verdicts между SHA.
+2. Продолжить scoped mutation closure существующих auth/profile, уведомлений и
+   расписания. Сначала supported user-visible состояния и воспроизводимые баги;
+   для dead code — доказательство отсутствия потребителей. Неподтверждённые
+   defensive/equivalent случаи остаются открытыми, без waivers и ручных статусов.
+3. Связать каждый применимый пункт ТЗ и все 63 audit IDs с актуальным evidence
+   или точным открытым ограничением. Product, visual и infrastructure acceptance
+   не считать выполненными по unit coverage или mocked E2E.
+4. Продолжить приёмку RU/EN на 360/390/768/1024/1440 px и предоставить небольшие
+   визуальные комплекты для пользовательского review. Измерить предусмотренные
+   master plan performance и memory критерии на указанной конфигурации.
+5. Получить независимые deployed evidence для непустых PostgreSQL/Alembic
+   upgrade/rollback, S3 paired backup/restore и DB URL reads, RPO/RTO, WS load,
+   Gateway API/kind TLS/WS/gRPC и failure recovery. В текущей облачной среде
+   отсутствует локальный Docker/live-стек. Браузерные инструменты доступны;
+   hosted PR smoke закрывает только свой явно перечисленный набор.
 
-Оценка слабых мест проекта — мастер-план, раздел 13; влияние отложения мутационной
-работы на срок и предлагаемая риск-ориентированная политика — раздел 15 (решение
-мейнтейнера).
+## Открытые release gates
 
-## Состояние worktree
+Полный canonical mutation pass и exact-head CI; три сопоставимых полностью
+зелёных наблюдения; полный live/visual/performance acceptance; пользовательское
+утверждение визуальных baseline; WS load; deployed paired backup/restore и
+RPO/RTO; BE-02 на Docker/kind; финальный независимый security review и audit
+ledger; resulting-main evidence; шесть сертифицированных GHCR digests и их kind
+приёмка. Существующие ограничения и rollout-требования должны войти в release
+notes. До этих доказательств MVP не считается сертифицированным.
 
-Изменения `ue-b1`, `ue-b2`, `ue-b3` и `ue-s2` перенесены в `egorribun`; исходные
-worktree и патчи в `artifacts/wip/2026-09-29/` сохранены. Их целевые тесты и полный
-CI для объединённого HEAD ещё не запускались. `../ue-live` остаётся устаревшим
-стендом; чистый Dependabot worktree и его история учтены отдельно.
-
-## Решения мейнтейнера
-
-1. 2026-09-28: Security-PR #1296 смержен несмотря на красные проверки, унаследованные
-   от `main` (run `34989574430`); admin bypass выполнил мейнтейнер, причина в merge-коммите.
-2. 2026-09-28: четыре feature flag без потребителей удалены; flagd и страница
-   диагностики остаются с пустым состоянием.
-3. `docs/audits/AUDIT_PLATFORM_FULL.md` не закрыт (BE-02, RUST-P3-03); ledger
-   переносится в финальный аудит в Ф11, затем файл удаляется.
-4. 2026-09-29: абсолютная чистота кода и документации.
-5. 2026-09-29: по SPIFFE, нативному санитайзеру и O9 мейнтейнер делегировал решение;
-   принято: Python-SPIFFE удалён (ADR-043), нативный санитайзер удалён (ADR-044),
-   O9 закрыт (ADR-045).
-
-## Согласованные ограничения MVP
-
-CDC transport вне MVP (ADR-037). Реального staging нет — Docker Core/full и локальный
-kind. Реальные SMTP и push-провайдеры заменены Mailpit и локальным VAPID. Реальные
-устройства и field CWV — внешнее ограничение, фиксируется в финальном аудите.
+Административный bypass, force-push, изменение защиты ветки, удаление
+пользовательских данных и переписывание истории остаются запрещены. Внешнее
+production, реальные SMTP/push-провайдеры, физические устройства, CDC и field CWV
+не входят в MVP. Исторические checkpoint-результаты сохраняются в Git/evidence;
+машинные пути прежних сессий не являются предпосылкой продолжения.

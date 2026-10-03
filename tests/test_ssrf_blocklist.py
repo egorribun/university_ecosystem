@@ -44,8 +44,10 @@ class TestSSRFBlocklist:
         ],
     )
     def test_allows_public_urls(self, url: str) -> None:
-        # Should not raise
-        validate_url_not_internal(url)
+        # Exercise the real address classifier without depending on live DNS.
+        public_answer = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        with patch("app.core.ssrf.socket.getaddrinfo", return_value=public_answer):
+            validate_url_not_internal(url)
 
     def test_rejects_empty_hostname(self) -> None:
         with pytest.raises(ValueError, match="no hostname"):

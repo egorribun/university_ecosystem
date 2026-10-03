@@ -544,3 +544,22 @@ async def test_complete_step_up_forwards_all_bound_context(login_service):
         db_session=login_service.db,
         method="email_otp",
     )
+
+
+@pytest.mark.asyncio
+async def test_build_session_response_preserves_mfa_and_omits_access_token(
+    login_service,
+):
+    user = MagicMock()
+    session = MagicMock()
+    expected = MagicMock()
+    build = AsyncMock(return_value=expected)
+    login_service.session_manager.build_token_response = build
+
+    assert (
+        await login_service.build_session_response(user=user, session=session)
+        is expected
+    )
+    build.assert_awaited_once_with(
+        user, "", session, login_service.db, include_token=False
+    )

@@ -1,3 +1,5 @@
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 /**
  * @fileoverview Wave session-15 branch top-up for `src/api/hooks/news.ts`.
  *
@@ -17,7 +19,7 @@
  * queryFn closures see controlled responses.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -84,12 +86,15 @@ const freshClient = () =>
   })
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: "feed-test-user" } as UserState, loading: false })
   newsListMock.mockReset()
   fetchNewsItemMock.mockReset()
   if (typeof window !== "undefined") window.localStorage.clear()
 })
 
 afterEach(() => {
+  cleanup()
+  useAuthStore.setState({ user: null, loading: true })
   if (typeof window !== "undefined") window.localStorage.clear()
 })
 
@@ -245,7 +250,7 @@ describe("useNewsListQuery queryFn branches", () => {
 
   it("keeps the persisted page as the exact single placeholder page", () => {
     const persisted = [makeNews("persisted")]
-    window.localStorage.setItem("news:list:ru", JSON.stringify(persisted))
+    window.localStorage.setItem("news:list:account:feed-test-user:ru", JSON.stringify(persisted))
     const queryClient = freshClient()
     const { result } = renderHook(
       () => useNewsListQuery({ language: "ru", limit: 12 }, { enabled: false }),
@@ -353,7 +358,10 @@ describe("useNewsListQuery queryFn branches", () => {
 
   it("304 response restores the persisted page when the query cache is cold", async () => {
     const persistedItems = [makeNews("persisted-1"), makeNews("persisted-2")]
-    window.localStorage.setItem("news:list:ru", JSON.stringify(persistedItems))
+    window.localStorage.setItem(
+      "news:list:account:feed-test-user:ru",
+      JSON.stringify(persistedItems)
+    )
     newsListMock.mockResolvedValue({ status: 304, data: undefined })
 
     const queryClient = freshClient()
@@ -481,14 +489,16 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     await waitFor(() =>
-      expect(window.localStorage.getItem("news:list:ru")).toBe(JSON.stringify(received))
+      expect(window.localStorage.getItem("news:list:account:feed-test-user:ru")).toBe(
+        JSON.stringify(received)
+      )
     )
   })
 
   it("seeds news from localStorage when no network response yet", async () => {
     const stored = [makeNews("p1"), makeNews("p2")]
     // key shape: news:list:<language>
-    window.localStorage.setItem("news:list:ru", JSON.stringify(stored))
+    window.localStorage.setItem("news:list:account:feed-test-user:ru", JSON.stringify(stored))
 
     let resolveFn: (v: unknown) => void = () => {}
     newsListMock.mockImplementation(
@@ -514,7 +524,7 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
 
   it("keeps the persisted feed visible when an SSR-hydrated query fails offline", async () => {
     const stored = [makeNews("offline-1"), makeNews("offline-2")]
-    window.localStorage.setItem("news:list:ru", JSON.stringify(stored))
+    window.localStorage.setItem("news:list:account:feed-test-user:ru", JSON.stringify(stored))
     newsListMock.mockRejectedValue(new Error("offline"))
 
     const queryClient = freshClient()
@@ -544,7 +554,7 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
   })
 
   it("returns no placeholder when stored items are empty/missing", async () => {
-    window.localStorage.setItem("news:list:ru", JSON.stringify([]))
+    window.localStorage.setItem("news:list:account:feed-test-user:ru", JSON.stringify([]))
     newsListMock.mockResolvedValue(okPage([], null))
 
     const queryClient = freshClient()
@@ -556,7 +566,7 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
   })
 
   it("does not create a placeholder page for an empty persisted snapshot", async () => {
-    window.localStorage.setItem("news:list:ru", JSON.stringify([]))
+    window.localStorage.setItem("news:list:account:feed-test-user:ru", JSON.stringify([]))
     let resolveFn: (value: unknown) => void = () => {}
     newsListMock.mockImplementation(
       () => new Promise((resolve) => (resolveFn = resolve as (value: unknown) => void))
@@ -577,13 +587,13 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
   })
 
   it("placeholder swallows malformed JSON gracefully (news.ts:268-269)", async () => {
-    window.localStorage.setItem("news:list:ru", "{not-json")
+    window.localStorage.setItem("news:list:account:feed-test-user:ru", "{not-json")
     newsListMock.mockResolvedValue(okPage([], null))
 
     const queryClient = freshClient()
     const { result } = await withExpectedConsole(
       "warn",
-      '[Storage] Failed to parse key "news:list:ru"',
+      '[Storage] Failed to parse key "news:list:account:feed-test-user:ru"',
       () =>
         renderHook(() => useNewsListQuery({ language: "ru" }), {
           wrapper: makeWrapper(queryClient),
@@ -614,7 +624,7 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
 
   it("does not persist a placeholder before the network resolves", async () => {
     const stored = [makeNews("placeholder")]
-    window.localStorage.setItem("news:list:ru", JSON.stringify(stored))
+    window.localStorage.setItem("news:list:account:feed-test-user:ru", JSON.stringify(stored))
     let resolveRequest: (value: unknown) => void = () => {}
     newsListMock.mockImplementation(
       () =>
@@ -639,8 +649,14 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
   })
 
   it("refreshes the persisted snapshot and key when language or limit changes", () => {
-    window.localStorage.setItem("news:list:ru", JSON.stringify([makeNews("ru")]))
-    window.localStorage.setItem("news:list:en", JSON.stringify([makeNews("en")]))
+    window.localStorage.setItem(
+      "news:list:account:feed-test-user:ru",
+      JSON.stringify([makeNews("ru")])
+    )
+    window.localStorage.setItem(
+      "news:list:account:feed-test-user:en",
+      JSON.stringify([makeNews("en")])
+    )
     const queryClient = freshClient()
     const { result, rerender } = renderHook(
       ({ language, limit }: { language: string; limit: number }) =>

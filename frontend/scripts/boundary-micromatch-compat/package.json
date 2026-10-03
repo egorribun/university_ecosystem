@@ -1,0 +1,16 @@
+{
+  "name": "@university-ecosystem/boundary-micromatch-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The three micromatch APIs used by this repository's boundary lint tooling",
+  "main": "index.cjs",
+  "files": [
+    "index.cjs",
+    "LICENSE",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "picomatch": "2.3.2"
+  }
+}

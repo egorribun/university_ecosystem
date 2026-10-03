@@ -1,7 +1,7 @@
 {
   "$schema": "./ci-check-catalog.schema.json",
   "schema_version": 1,
-  "catalog_version": "1.1.0",
+  "catalog_version": "1.1.1",
   "repository": "egorribun/university_ecosystem",
   "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
   "profiles": {
@@ -67,6 +67,20 @@
         "review_required": false
       },
       "notes": "Informational or policy-independent check; never inferred to be branch-protection required."
+    },
+    "live-acceptance": {
+      "classification": "advisory",
+      "required_events": [],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Non-required live evidence: pull requests run auth/reset smoke, while scheduled and manually dispatched default-branch runs execute the full suite."
     },
     "nightly": {
       "classification": "nightly",
@@ -402,7 +416,7 @@
           "artifacts": [
             {
               "name_pattern": "admin-smoke-reports",
-              "path_pattern": "frontend/.screenshots/admin-visual-smoke",
+              "path_pattern": "${{ steps.smoke.outputs.artifact_dir }}",
               "required": false,
               "provenance": "none"
             }
@@ -1557,7 +1571,7 @@
         },
         "rust-ffi-asan": {
           "profile": "required-pr-main",
-          "check_name_template": "Rust FFI \u2014 ASan / LSan",
+          "check_name_template": "Rust FFI - ASan / LSan",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
@@ -1579,7 +1593,7 @@
         },
         "rust-ffi-tsan": {
           "profile": "required-pr-main",
-          "check_name_template": "Rust FFI \u2014 TSan",
+          "check_name_template": "Rust FFI - TSan",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
@@ -1854,8 +1868,8 @@
               "provenance": "none"
             },
             {
-             "name_pattern": "quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}",
-             "path_pattern": "coverage.xml\nartifacts/coverage/python/coverage.json\nfrontend/coverage/lcov.info\nfrontend/coverage/coverage-final.json\nartifacts/coverage/go/gateway/coverage.out\nartifacts/coverage/go/ws-hub/coverage.out\nartifacts/coverage/go/file-processor/coverage.out\nartifacts/coverage/go/shared/coverage.out\nartifacts/coverage/go/shared-inputs/logging/coverage.out\nartifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/provenance/python.json\nartifacts/coverage/provenance/go-shared.json\nartifacts/coverage/provenance/api-selection.json\nartifacts/coverage/provenance/aggregate.json\nfrontend/coverage/coverage-provenance.json\nartifacts/coverage/rust/coverage-provenance.json\nartifacts/coverage/go/gateway/coverage-provenance.json\nartifacts/coverage/go/ws-hub/coverage-provenance.json\nartifacts/coverage/go/file-processor/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/logging/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json\nartifacts/coverage/quality-manifest.json\nartifacts/coverage/quality-manifest.json.sha256\n",
+              "name_pattern": "quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "coverage.xml\nartifacts/coverage/python/coverage.json\nfrontend/coverage/lcov.info\nfrontend/coverage/coverage-final.json\nartifacts/coverage/go/gateway/coverage.out\nartifacts/coverage/go/ws-hub/coverage.out\nartifacts/coverage/go/file-processor/coverage.out\nartifacts/coverage/go/shared/coverage.out\nartifacts/coverage/go/shared-inputs/logging/coverage.out\nartifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/provenance/python.json\nartifacts/coverage/provenance/go-shared.json\nartifacts/coverage/provenance/api-selection.json\nartifacts/coverage/provenance/aggregate.json\nfrontend/coverage/coverage-provenance.json\nartifacts/coverage/rust/coverage-provenance.json\nartifacts/coverage/go/gateway/coverage-provenance.json\nartifacts/coverage/go/ws-hub/coverage-provenance.json\nartifacts/coverage/go/file-processor/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/logging/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json\nartifacts/coverage/quality-manifest.json\nartifacts/coverage/quality-manifest.json.sha256\n",
               "required": false,
               "provenance": "run_id_attempt"
             }
@@ -2079,16 +2093,16 @@
     },
     {
       "path": ".github/workflows/contract-tests.yml",
-      "name": "Contract Tests \u2014 cross-process Pact boundaries",
+      "name": "Contract Tests — cross-process Pact boundaries",
       "owner": "@egorribun",
       "events": [
         {
           "event": "push",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "pull_request",
-          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "workflow_dispatch",
@@ -2098,7 +2112,7 @@
       "jobs": {
         "consumer": {
           "profile": "required-pr-main",
-          "check_name_template": "Python consumer \u2014 generate pact",
+          "check_name_template": "Python consumer — generate pact",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
@@ -2106,7 +2120,7 @@
           "artifacts": [
             {
               "name_pattern": "pact-contracts-${{ github.sha }}",
-              "path_pattern": "tests/contracts/pacts/ws-hub-university-backend.json\ntests/contracts/pacts/gateway-university-backend.json\ntests/contracts/pacts/university-backend-file-processor.json\n",
+              "path_pattern": "${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}/ws-hub-university-backend.json\n${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}/gateway-university-backend.json\n${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}/university-backend-file-processor.json\n",
               "required": false,
               "provenance": "sha"
             }
@@ -2120,7 +2134,7 @@
         },
         "message-provider-verify": {
           "profile": "required-pr-main",
-          "check_name_template": "Message providers \u2014 verify Pact",
+          "check_name_template": "Message providers — verify Pact",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
@@ -2137,7 +2151,7 @@
         },
         "pact-provider-verify": {
           "profile": "required-pr-main",
-          "check_name_template": "Pact provider \u2014 backend HTTP replay",
+          "check_name_template": "Pact provider — backend HTTP replay",
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
@@ -2157,7 +2171,7 @@
     },
     {
       "path": ".github/workflows/contract-validation.yml",
-      "name": "Contract Validation \u2014 OpenAPI + Spectral",
+      "name": "Contract Validation — OpenAPI + Spectral",
       "owner": "@egorribun",
       "events": [
         {
@@ -2172,7 +2186,7 @@
       "jobs": {
         "spectral-lint": {
           "profile": "required-pr-main",
-          "check_name_template": "Spectral \u2014 OpenAPI lint",
+          "check_name_template": "Spectral - OpenAPI lint",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
@@ -2254,7 +2268,7 @@
     },
     {
       "path": ".github/workflows/dast.yml",
-      "name": "DAST \u2014 Nuclei + ZAP Scan",
+      "name": "DAST — Nuclei + ZAP Scan",
       "owner": "@egorribun",
       "events": [
         {
@@ -2653,7 +2667,7 @@
               "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
             }
           },
-          "check_name_template": "SBOM \u2014 ${{ matrix.service }}",
+          "check_name_template": "SBOM — ${{ matrix.service }}",
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "github.event_name == 'push' && github.ref == 'refs/heads/main'",
@@ -3575,7 +3589,7 @@
       "events": [
         {
           "event": "workflow_dispatch",
-          "guard": "{\"inputs\":{\"cwv-certification-run-attempt\":{\"description\":\"Exact staging field-CWV certification run attempt\",\"required\":true,\"type\":\"string\"},\"cwv-certification-run-id\":{\"description\":\"Successful staging field-CWV certification workflow run ID\",\"required\":true,\"type\":\"string\"},\"image-build-run-attempt\":{\"description\":\"Exact canonical image producer run attempt\",\"required\":true,\"type\":\"string\"},\"image-build-run-id\":{\"description\":\"Successful canonical six-image producer workflow run ID\",\"required\":true,\"type\":\"string\"},\"quality-run-id\":{\"description\":\"Successful CI run certified by the canonical image manifest\",\"required\":true,\"type\":\"string\"},\"release-sha\":{\"description\":\"Exact current main commit to release\",\"required\":true,\"type\":\"string\"}}}"
+          "guard": "{\"inputs\":{\"image-build-run-attempt\":{\"description\":\"Exact canonical image producer run attempt\",\"required\":true,\"type\":\"string\"},\"image-build-run-id\":{\"description\":\"Successful canonical six-image producer workflow run ID\",\"required\":true,\"type\":\"string\"},\"quality-run-id\":{\"description\":\"Successful CI run certified by the canonical image manifest\",\"required\":true,\"type\":\"string\"},\"release-sha\":{\"description\":\"Exact current main commit to release\",\"required\":true,\"type\":\"string\"}}}"
         }
       ],
       "jobs": {
@@ -3723,7 +3737,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"build_args\":{\"description\":\"Newline-separated list of build arguments\",\"required\":false,\"type\":\"string\"},\"canonical_frontend\":{\"default\":false,\"description\":\"Build the one staging-certified promotable frontend variant\",\"required\":false,\"type\":\"boolean\"},\"context\":{\"default\":\".\",\"description\":\"Docker build context\",\"required\":false,\"type\":\"string\"},\"file\":{\"description\":\"Path to Dockerfile\",\"required\":true,\"type\":\"string\"},\"image_name\":{\"description\":\"Subject name for the image (e.g., backend)\",\"required\":true,\"type\":\"string\"},\"source-sha\":{\"description\":\"Exact validated commit SHA to check out and build\",\"required\":true,\"type\":\"string\"},\"tags\":{\"description\":\"Newline-separated list of tags to push\",\"required\":true,\"type\":\"string\"},\"target\":{\"description\":\"Target stage in multi-stage build\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"digest\":{\"description\":\"The pushed image digest\",\"value\":\"${{ jobs.build.outputs.digest }}\"},\"reference\":{\"description\":\"The final immutable image reference\",\"value\":\"${{ jobs.build.outputs.reference }}\"}}}"
+          "guard": "{\"inputs\":{\"build_args\":{\"description\":\"Newline-separated list of build arguments\",\"required\":false,\"type\":\"string\"},\"canonical_frontend\":{\"default\":false,\"description\":\"Build the canonical frontend image for the release source\",\"required\":false,\"type\":\"boolean\"},\"context\":{\"default\":\".\",\"description\":\"Docker build context\",\"required\":false,\"type\":\"string\"},\"file\":{\"description\":\"Path to Dockerfile\",\"required\":true,\"type\":\"string\"},\"image_name\":{\"description\":\"Subject name for the image (e.g., backend)\",\"required\":true,\"type\":\"string\"},\"source-sha\":{\"description\":\"Exact validated commit SHA to check out and build\",\"required\":true,\"type\":\"string\"},\"tags\":{\"description\":\"Newline-separated list of tags to push\",\"required\":true,\"type\":\"string\"},\"target\":{\"description\":\"Target stage in multi-stage build\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"digest\":{\"description\":\"The pushed image digest\",\"value\":\"${{ jobs.build.outputs.digest }}\"},\"reference\":{\"description\":\"The final immutable image reference\",\"value\":\"${{ jobs.build.outputs.reference }}\"}}}"
         }
       ],
       "jobs": {
@@ -4499,7 +4513,7 @@
     },
     {
       "path": ".github/workflows/sbom.yml",
-      "name": "SBOM \u2014 Supply Chain Provenance",
+      "name": "SBOM — Supply Chain Provenance",
       "owner": "@egorribun",
       "events": [
         {
@@ -5013,6 +5027,43 @@
             "first_failure_preserved": true,
             "classifier": "not_applicable",
             "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/live-acceptance.yml",
+      "name": "Owned Live Acceptance",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"types\":[\"opened\",\"synchronize\",\"reopened\",\"ready_for_review\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 3 * * *\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "live-acceptance": {
+          "profile": "live-acceptance",
+          "check_name_template": "Owned live acceptance (${{ github.event_name }})",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "playwright-one-retry",
+            "review_required": true,
+            "notes": "The live Playwright config retries once in CI; the owner-aware runner suppresses individual output and reports aggregate counts only."
           }
         }
       }

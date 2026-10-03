@@ -567,7 +567,7 @@ func TestSubscribeToNATSTransactionalJetStreamBranches(t *testing.T) {
 		h.internalSecret = "secret" // pragma: allowlist secret -- inert unit-test fixture
 		jetStreamContextFunc = func(*nats.Conn) (nats.JetStreamContext, error) { return nil, errors.New("context failed") }
 		err := h.SubscribeToNATS(context.Background())
-		assert.ErrorContains(t, err, "initialize JetStream context")
+		assert.ErrorContains(t, err, "initialize JetStream")
 	})
 
 	t.Run("notification failure rolls back chat subscription", func(t *testing.T) {
@@ -602,7 +602,8 @@ func TestSubscribeToNATSTransactionalJetStreamBranches(t *testing.T) {
 		h := setupTestHub()
 		h.Nats = &nats.Conn{}
 		h.enableJetStream = true
-		h.internalSecret = "secret" // pragma: allowlist secret -- inert unit-test fixture
+		h.internalSecret = "secret"         // pragma: allowlist secret -- inert unit-test fixture
+		h.subscribeCacheInvalidations = nil // keep the durable invalidation subscription in the transactional fake
 		created := time.Now().UTC()
 		h.js = &scriptedSubscribeJetStream{
 			streamInfo: func(string, ...nats.JSOpt) (*nats.StreamInfo, error) { return &nats.StreamInfo{Created: created}, nil },

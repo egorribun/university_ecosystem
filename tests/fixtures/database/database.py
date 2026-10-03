@@ -489,7 +489,7 @@ async def prepare_database() -> AsyncIterator[None]:
                 event_type_en VARCHAR,
                 starts_at DATETIME NOT NULL,
                 ends_at DATETIME NOT NULL,
-                created_by VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_by VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
                 search_vector TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 is_active BOOLEAN DEFAULT 1,

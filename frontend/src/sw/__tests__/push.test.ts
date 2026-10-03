@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { initPushHandlers } from "../push"
 import { sanitizeReportPayload, storePendingNavigation, storePendingReport } from "../offline"
-import { buildNotificationDetails, parsePushEventData } from "@/push/notification-helpers"
+import {
+  buildNotificationDetails,
+  parsePushEventData,
+  type NotificationData,
+} from "@/push/notification-helpers"
 
 // Mock notification helpers
 vi.mock("@/push/notification-helpers", () => ({
@@ -10,14 +14,17 @@ vi.mock("@/push/notification-helpers", () => ({
     url: "/mock-url",
     data: { type: data ? data.type : "default" },
   })),
-  buildNotificationDetails: vi.fn((payload: any) => ({
-    title: "Mock Title",
-    options: {
-      body: payload.body,
-      data: { url: payload.url, type: payload.data?.type },
-    },
-  })),
+  buildNotificationDetails: vi.fn((payload: any) => {
+    const data = { url: payload.url, type: payload.data?.type }
+    return { title: "Mock Title", options: { body: payload.body, data }, data }
+  }),
 }))
+
+const notificationDetails = (title: string, body: string, data: NotificationData) => ({
+  title,
+  options: { body, data },
+  data,
+})
 
 // Mock offline storage helpers
 vi.mock("../offline", () => ({
@@ -35,6 +42,8 @@ describe("Service Worker - Push Notifications", () => {
   let onlineSpy: any
 
   beforeEach(() => {
+    vi.mocked(parsePushEventData).mockReset()
+    vi.mocked(buildNotificationDetails).mockReset()
     eventListeners.push = undefined as any
     eventListeners.notificationclick = undefined as any
 
@@ -81,18 +90,14 @@ describe("Service Worker - Push Notifications", () => {
     })
 
     it("posts message to visible clients for in-app push type", async () => {
-      vi.mocked(buildNotificationDetails).mockReturnValueOnce({
-        title: "Mock Title",
-        options: {
-          body: "Mock Body",
-          data: {
-            url: "/mock-url",
-            type: "in-app",
-            notificationId: "018f10c0-0000-7000-8000-000000000001",
-            topic: "news.published",
-          },
-        },
-      } as never)
+      vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+        notificationDetails("Mock Title", "Mock Body", {
+          url: "/mock-url",
+          type: "in-app",
+          notificationId: "018f10c0-0000-7000-8000-000000000001",
+          topic: "news.published",
+        })
+      )
       const mockClient = {
         visibilityState: "visible",
         postMessage: vi.fn(),
@@ -105,6 +110,8 @@ describe("Service Worker - Push Notifications", () => {
       }
 
       await (eventListeners.push as any)(mockEvent)
+      expect(mockEvent.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+      await mockEvent.waitUntil.mock.calls[0]?.[0]
 
       expect(mockClient.postMessage).toHaveBeenCalledWith({
         type: "PUSH_NOTIFICATION",
@@ -130,18 +137,195 @@ describe("Service Worker - Push Notifications", () => {
       }
 
       await (eventListeners.push as any)(mockEvent)
+      expect(mockEvent.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+      await mockEvent.waitUntil.mock.calls[0]?.[0]
 
       expect((self as any).registration.showNotification).toHaveBeenCalledWith("Mock Title", {
         body: "Mock Body",
         data: { url: "/mock-url", type: "default" },
       })
     })
+
+    it.each([
+      {
+        scenario: "delivers in-app messages only to the visible windows",
+        type: "in-app",
+        visibility: ["visible", "hidden", "visible"],
+        recipients: [0, 2],
+        systemNotifications: 0,
+      },
+      {
+        scenario: "shows a system notification when every window is hidden",
+        type: "in-app",
+        visibility: ["hidden", "hidden"],
+        recipients: [],
+        systemNotifications: 1,
+      },
+      {
+        scenario: "keeps default pushes as system notifications with a visible window",
+        type: "default",
+        visibility: ["visible", "hidden"],
+        recipients: [],
+        systemNotifications: 1,
+      },
+    ])("$scenario", async ({ type, visibility, recipients, systemNotifications }) => {
+      const clients = visibility.map((visibilityState) => ({
+        visibilityState,
+        postMessage: vi.fn(),
+      }))
+      ;((self as any).clients.matchAll as any).mockResolvedValue(clients)
+      const event = {
+        data: { type },
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+      }
+
+      eventListeners.push?.(event)
+      expect(event.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      expect((self as any).clients.matchAll).toHaveBeenCalledExactlyOnceWith({
+        type: "window",
+        includeUncontrolled: true,
+      })
+      for (const [index, client] of clients.entries()) {
+        if (recipients.includes(index)) {
+          expect(client.postMessage).toHaveBeenCalledExactlyOnceWith({
+            type: "PUSH_NOTIFICATION",
+            toast: { title: "Mock Title", body: "Mock Body", url: "/mock-url" },
+          })
+        } else {
+          expect(client.postMessage).not.toHaveBeenCalled()
+        }
+      }
+      expect((self as any).registration.showNotification).toHaveBeenCalledTimes(systemNotifications)
+      if (systemNotifications) {
+        expect((self as any).registration.showNotification).toHaveBeenCalledWith("Mock Title", {
+          body: "Mock Body",
+          data: { url: "/mock-url", type },
+        })
+      }
+    })
+
+    it("shows a fallback system notification for empty push data with a visible window", async () => {
+      const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+        "@/push/notification-helpers"
+      )
+      vi.mocked(parsePushEventData).mockImplementationOnce(helpers.parsePushEventData)
+      vi.mocked(buildNotificationDetails).mockImplementationOnce(helpers.buildNotificationDetails)
+      const client = { visibilityState: "visible", postMessage: vi.fn() }
+      ;((self as any).clients.matchAll as any).mockResolvedValue([client])
+      const event = {
+        data: null,
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+      }
+
+      eventListeners.push?.(event)
+      expect(event.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      const { title, options } = helpers.buildNotificationDetails({})
+      expect((self as any).registration.showNotification).toHaveBeenCalledExactlyOnceWith(
+        title,
+        options
+      )
+      expect(client.postMessage).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      {
+        label: "notification ID without a topic",
+        metadata: { notificationId: "notification-1" },
+        messageFields: { notificationId: "notification-1" },
+        toastFields: {
+          id: "notification-1",
+          data: { url: "/target", type: "in-app", notificationId: "notification-1" },
+        },
+      },
+      {
+        label: "topic without a notification ID",
+        metadata: { topic: "news.published" },
+        messageFields: { topic: "news.published" },
+        toastFields: { data: { url: "/target", type: "in-app", topic: "news.published" } },
+      },
+      {
+        label: "non-string metadata",
+        metadata: { notificationId: 42, topic: true },
+        messageFields: {},
+        toastFields: {},
+      },
+    ])(
+      "delivers formatted toast content with $label",
+      async ({ metadata, messageFields, toastFields }) => {
+        const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+          "@/push/notification-helpers"
+        )
+        vi.mocked(parsePushEventData).mockImplementationOnce(helpers.parsePushEventData)
+        vi.mocked(buildNotificationDetails).mockImplementationOnce(helpers.buildNotificationDetails)
+        const client = { visibilityState: "visible", postMessage: vi.fn() }
+        ;((self as any).clients.matchAll as any).mockResolvedValue([client])
+        const event = {
+          data: {
+            json: () => ({
+              title: "  Formatted title  ",
+              body: "  Formatted body  ",
+              url: "/target",
+              data: { type: "in-app", ...metadata },
+            }),
+            text: () => "",
+          },
+          waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+        }
+
+        eventListeners.push?.(event)
+        expect(event.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+        await event.waitUntil.mock.calls[0]?.[0]
+
+        expect(client.postMessage).toHaveBeenCalledExactlyOnceWith({
+          type: "PUSH_NOTIFICATION",
+          ...messageFields,
+          toast: {
+            title: "Formatted title",
+            body: "Formatted body",
+            url: "/target",
+            ...toastFields,
+          },
+        })
+        expect((self as any).registration.showNotification).not.toHaveBeenCalled()
+      }
+    )
   })
 
   describe("Notification Click Event Handler", () => {
     it("registers notificationclick event listener", () => {
       expect(self.addEventListener).toHaveBeenCalledWith("notificationclick", expect.any(Function))
       expect(eventListeners.notificationclick).toBeDefined()
+    })
+
+    it("opens the root without queuing or reporting when a notification has no data", async () => {
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      ;((self as any).clients.openWindow as any).mockResolvedValue({})
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+      const event = {
+        notification: { close: vi.fn(), data: null },
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+      }
+
+      eventListeners.notificationclick?.(event)
+      expect(event.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      expect(event.notification.close).toHaveBeenCalledOnce()
+      expect((self as any).clients.matchAll).toHaveBeenCalledExactlyOnceWith({
+        type: "window",
+        includeUncontrolled: true,
+      })
+      expect((self as any).clients.openWindow).toHaveBeenCalledExactlyOnceWith(
+        `${location.origin}/`
+      )
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(storePendingNavigation).not.toHaveBeenCalled()
+      expect(storePendingReport).not.toHaveBeenCalled()
     })
 
     it("closes the notification and focuses existing window if found", async () => {
@@ -200,6 +384,8 @@ describe("Service Worker - Push Notifications", () => {
         body: JSON.stringify({ ref: "email", notificationId: "123" }),
         keepalive: true,
       })
+      expect(storePendingNavigation).not.toHaveBeenCalled()
+      expect(storePendingReport).not.toHaveBeenCalled()
     })
 
     it("opens a window after ignoring non-matching clients", async () => {
@@ -309,16 +495,12 @@ describe("Service Worker - Push Notifications", () => {
       })
     })
 
-    it("uses payload and notification option fallbacks for an in-app toast", async () => {
-      vi.mocked(parsePushEventData).mockReturnValue({
-        body: "",
-        url: "",
-        data: { type: "in-app" },
-      } as never)
-      vi.mocked(buildNotificationDetails).mockReturnValue({
-        title: "Fallback title",
-        options: { body: "", data: { url: "/fallback-url" } },
-      } as never)
+    it("uses the normalized metadata URL when the top-level push URL is empty", async () => {
+      const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+        "@/push/notification-helpers"
+      )
+      vi.mocked(parsePushEventData).mockImplementationOnce(helpers.parsePushEventData)
+      vi.mocked(buildNotificationDetails).mockImplementationOnce(helpers.buildNotificationDetails)
 
       const mockClient = {
         visibilityState: "visible",
@@ -327,15 +509,25 @@ describe("Service Worker - Push Notifications", () => {
       ;((self as any).clients.matchAll as any).mockResolvedValue([mockClient])
 
       const mockEvent = {
-        data: { type: "in-app" },
+        data: {
+          json: () => ({
+            title: "Fallback title",
+            body: "Fallback body",
+            url: "",
+            data: { type: "in-app", url: "/fallback-url" },
+          }),
+          text: () => "",
+        },
         waitUntil: vi.fn((promise) => promise),
       }
 
       await (eventListeners.push as any)(mockEvent)
+      expect(mockEvent.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+      await mockEvent.waitUntil.mock.calls[0]?.[0]
 
       expect(mockClient.postMessage).toHaveBeenCalledWith({
         type: "PUSH_NOTIFICATION",
-        toast: { title: "Fallback title", body: "", url: "/fallback-url" },
+        toast: { title: "Fallback title", body: "Fallback body", url: "/fallback-url" },
       })
     })
 
@@ -361,53 +553,67 @@ describe("Service Worker - Push Notifications", () => {
       })
     })
 
-    it("uses the root URL when an in-app push has no URL in either payload", async () => {
-      vi.mocked(parsePushEventData).mockReturnValue({
-        body: "",
-        url: "",
-        data: { type: "in-app" },
-      } as never)
-      vi.mocked(buildNotificationDetails).mockReturnValue({
-        title: "Root fallback",
-        options: { body: "", data: {} },
-      } as never)
+    it.each([undefined, null])(
+      "uses root and default body when the in-app payload has no top-level URL and metadata URL is %s",
+      async (url) => {
+        const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+          "@/push/notification-helpers"
+        )
+        vi.mocked(parsePushEventData).mockImplementationOnce(helpers.parsePushEventData)
+        vi.mocked(buildNotificationDetails).mockImplementationOnce(helpers.buildNotificationDetails)
+        const mockClient = { visibilityState: "visible", postMessage: vi.fn() }
+        ;((self as any).clients.matchAll as any).mockResolvedValue([mockClient])
+
+        const mockEvent = {
+          data: {
+            json: () => ({ title: "Root fallback", data: { type: "in-app", url } }),
+            text: () => "",
+          },
+          waitUntil: vi.fn((promise) => promise),
+        }
+        await (eventListeners.push as any)(mockEvent)
+        expect(mockEvent.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+        await mockEvent.waitUntil.mock.calls[0]?.[0]
+
+        expect(mockClient.postMessage).toHaveBeenCalledWith({
+          type: "PUSH_NOTIFICATION",
+          toast: {
+            title: "Root fallback",
+            body: helpers.getDefaultNotificationBody(),
+            url: "/",
+          },
+        })
+      }
+    )
+
+    it("delivers a toast when optional notification metadata is absent", async () => {
+      const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+        "@/push/notification-helpers"
+      )
+      vi.mocked(parsePushEventData).mockImplementationOnce(helpers.parsePushEventData)
+      vi.mocked(buildNotificationDetails).mockImplementationOnce(helpers.buildNotificationDetails)
       const mockClient = { visibilityState: "visible", postMessage: vi.fn() }
       ;((self as any).clients.matchAll as any).mockResolvedValue([mockClient])
-
       const mockEvent = {
-        data: { type: "in-app" },
+        data: {
+          json: () => ({
+            title: "No metadata",
+            body: "Fallback body",
+            url: "/payload-url",
+            data: { type: "in-app" },
+          }),
+          text: () => "",
+        },
         waitUntil: vi.fn((promise) => promise),
       }
+
       await (eventListeners.push as any)(mockEvent)
+      expect(mockEvent.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+      await mockEvent.waitUntil.mock.calls[0]?.[0]
 
       expect(mockClient.postMessage).toHaveBeenCalledWith({
         type: "PUSH_NOTIFICATION",
-        toast: { title: "Root fallback", body: "", url: "/" },
-      })
-    })
-
-    it("uses an empty metadata object when notification options omit data", async () => {
-      vi.mocked(parsePushEventData).mockReturnValue({
-        body: "Fallback body",
-        url: "/payload-url",
-        data: { type: "in-app" },
-      } as never)
-      vi.mocked(buildNotificationDetails).mockReturnValue({
-        title: "No option data",
-        options: { body: "Fallback body" },
-      } as never)
-      const mockClient = { visibilityState: "visible", postMessage: vi.fn() }
-      ;((self as any).clients.matchAll as any).mockResolvedValue([mockClient])
-      const mockEvent = {
-        data: { type: "in-app" },
-        waitUntil: vi.fn((promise) => promise),
-      }
-
-      await (eventListeners.push as any)(mockEvent)
-
-      expect(mockClient.postMessage).toHaveBeenCalledWith({
-        type: "PUSH_NOTIFICATION",
-        toast: { title: "No option data", body: "Fallback body", url: "/payload-url" },
+        toast: { title: "No metadata", body: "Fallback body", url: "/payload-url" },
       })
     })
 
@@ -453,6 +659,7 @@ describe("Service Worker - Push Notifications", () => {
 
       expect(fetchMock).not.toHaveBeenCalled()
       expect(storePendingReport).not.toHaveBeenCalled()
+      expect(storePendingNavigation).not.toHaveBeenCalled()
     })
 
     it("queues navigation when an unsafe report URL and window opening both fail", async () => {

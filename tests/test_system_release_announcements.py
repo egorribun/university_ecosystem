@@ -116,28 +116,6 @@ def _admin() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_route_requires_an_admin() -> None:
-    user = _admin()
-    user.role = UserRole.TEACHER
-    with (
-        patch("app.routers.notifications.resolve_locale", return_value="en"),
-        patch(
-            "app.routers.notifications.announce_release", new=AsyncMock()
-        ) as announce,
-        pytest.raises(HTTPException) as exc,
-    ):
-        await call_injected(
-            push_router.announce_platform_release,
-            data=ReleaseAnnouncementRequest(version="1.4.0"),
-            request=MagicMock(),
-            user=user,
-            provides={"AsyncDatabaseSession": AsyncMock()},
-        )
-    assert exc.value.status_code == 403
-    announce.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_route_is_rate_limited() -> None:
     from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
 

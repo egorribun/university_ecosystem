@@ -148,13 +148,13 @@ async def test_user_service_mega():
         # self deletion check
         repo.get.side_effect = None
         repo.get.return_value = admin_dto
-        repo._get_orm.return_value = admin_user
+        repo.get_orm_for_anonymization.return_value = admin_user
         with pytest.raises(BusinessRuleViolation):
             await service.admin_delete_user(admin_user.id, request, admin_user)
 
         # not found check
         repo.get.return_value = None
-        repo._get_orm.return_value = None
+        repo.get_orm_for_anonymization.return_value = None
         with pytest.raises(EntityNotFound):
             await service.admin_delete_user(999, request, admin_user)
 

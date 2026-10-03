@@ -42,9 +42,10 @@ async def test_invalidate_for_update_swallows_metrics_failure():
 
 @pytest.mark.asyncio
 async def test_start_permission_watch_resets_backoff_after_clean_stream_end():
+    stale = {("u", "doc", "1", "read"): (True, 0.0)}
     with (
         patch("app.core.spicedb_watch.settings") as settings,
-        patch("app.auth.rbac._permission_cache", {}),
+        patch("app.auth.rbac._permission_cache", stale),
         patch(
             "app.core.spicedb_watch._watch_once",
             new=AsyncMock(side_effect=[None, asyncio.CancelledError()]),
@@ -58,3 +59,5 @@ async def test_start_permission_watch_resets_backoff_after_clean_stream_end():
 
     assert watch_once.await_count == 2
     sleep.assert_awaited_once_with(1.0)
+    # Decisions cached while no stream was open may be stale.
+    assert stale == {}

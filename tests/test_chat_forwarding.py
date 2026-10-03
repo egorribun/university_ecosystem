@@ -127,7 +127,9 @@ def _reload_side_effect(sources: dict[uuid.UUID, MessageDTO]):
     source DTOs), then with the NEW created ids (return DTOs echoing the persisted
     forwarded_from_name so the response is accurate)."""
 
-    async def _impl(ids: list[uuid.UUID]) -> dict[uuid.UUID, MessageDTO]:
+    async def _impl(
+        ids: list[uuid.UUID], **_kwargs: object
+    ) -> dict[uuid.UUID, MessageDTO]:
         return {
             i: (
                 sources[i]
@@ -224,6 +226,54 @@ class TestForwardMessages:
             )
 
         assert exc.value.status_code == 404
+        uow.chats.create_message.assert_not_awaited()
+        uow.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_deleted_source_message_is_rejected_before_copy_or_create(
+        self,
+    ) -> None:
+        uow = _mock_uow()
+        user = _mock_user()
+        dest = _mock_chat()
+        source_chat_id = uuid.uuid4()
+        source = _message_dto(
+            chat_id=source_chat_id,
+            sender_id=user.id,
+            content="",
+            deleted_at=NOW,
+            attachments=[_attachment_dto("https://cdn.example.com/private.pdf")],
+        )
+        uow.chats.get_by_id = AsyncMock(return_value=dest)
+        uow.chats.check_participant = AsyncMock(return_value=True)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
+        uow.chats.get_last_messages = AsyncMock(
+            side_effect=_reload_side_effect({source.id: source})
+        )
+        uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
+        uow.chats.add = MagicMock()
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
+        uow.chats.update_timestamp_by_id = AsyncMock()
+        attachment_service = MagicMock()
+        attachment_service.copy_for_forward = AsyncMock(
+            return_value={
+                "url": "https://cdn.example.com/forward-copy.pdf",
+                "file_type": "document",
+                "filename": "private.pdf",
+                "size": 14,
+            }
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await ChatMessageDispatcher(
+                uow, attachment_service, AsyncMock()
+            ).forward_messages(dest.id, user, source_chat_id, [source.id], locale="en")
+
+        assert exc.value.status_code == 404
+        uow.chats.get_last_messages.assert_awaited_once_with(
+            [source.id], user_id=user.id, live_only=True
+        )
+        attachment_service.copy_for_forward.assert_not_awaited()
         uow.chats.create_message.assert_not_awaited()
         uow.commit.assert_not_awaited()
 

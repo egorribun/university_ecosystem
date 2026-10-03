@@ -115,7 +115,8 @@ class TestIssueWsUpgradeTicket:
         value_arg = call_args[0][1]
 
         assert key_arg == f"{TICKET_KEY_PREFIX}{result.ticket}"
-        assert value_arg == f"{user_id}:{jti}"
+        expiry = int(mock_request.state.active_session.expires_at.timestamp())
+        assert value_arg == f"{user_id}:{jti}:{expiry}"
         assert call_args[1]["ex"] == 15
 
     @pytest.mark.asyncio
@@ -166,7 +167,7 @@ class TestGetUserFromTicket:
         user_id = uuid.uuid4()
         jti = str(uuid.uuid4())
         ticket = secrets.token_hex(32)
-        stored_value = f"{user_id}:{jti}"
+        stored_value = f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
 
         mock_user = _make_user()
         mock_user.id = user_id
@@ -233,7 +234,12 @@ class TestGetUserFromTicket:
         ticket = secrets.token_hex(32)
         # First call: GETDEL returns value; second call: None (already deleted)
         mock_redis = AsyncMock()
-        mock_redis.getdel = AsyncMock(side_effect=["some-uid:some-jti", None])
+        mock_redis.getdel = AsyncMock(
+            side_effect=[
+                f"some-uid:some-jti:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}",
+                None,
+            ]
+        )
         mock_redis.exists = AsyncMock(return_value=0)
 
         # First call — we expect it to attempt user resolution; short-circuit on invalid UUID
@@ -262,7 +268,7 @@ class TestGetUserFromTicket:
 
     @pytest.mark.asyncio
     async def test_ticket_payload_with_tenant_segment_is_rejected(self):
-        """The canonical OTT payload is exactly ``user_id:jti``."""
+        """The third field must be a canonical expiry, never a tenant identifier."""
         from app.api.ws.auth import get_user_from_ticket
 
         mock_redis = AsyncMock()
@@ -287,7 +293,9 @@ class TestGetUserFromTicket:
         ticket = secrets.token_hex(32)
 
         mock_redis = AsyncMock()
-        mock_redis.getdel = AsyncMock(return_value=f"{user_id}:{jti}")
+        mock_redis.getdel = AsyncMock(
+            return_value=f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
+        )
         # Simulate Redis revocation key present
         mock_redis.exists = AsyncMock(return_value=1)
 

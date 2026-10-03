@@ -144,7 +144,12 @@ export function useLoginForm() {
     } catch (error) {
       setError("root", {
         type: "server",
-        message: resolveAuthErrorMessage(error, t("auth:login.error")),
+        // Rejected credentials use the UI's generic copy in its current locale.
+        // API details can use different wording and must not replace this message.
+        message:
+          isAxiosError(error) && error.response?.status === 401
+            ? t("auth:login.error")
+            : resolveAuthErrorMessage(error, t("auth:login.error")),
       })
     }
   }

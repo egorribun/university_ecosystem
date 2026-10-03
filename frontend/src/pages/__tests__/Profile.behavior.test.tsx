@@ -1,8 +1,9 @@
 import type { ReactNode } from "react"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { User } from "@/types/User"
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
 
 const {
   authState,
@@ -316,6 +317,7 @@ const user = {
 describe("Profile behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    rotateBrowserSession()
     authState.user = user
     authState.loading = false
     authState.setUser.mockReset()
@@ -516,6 +518,33 @@ describe("Profile behavior", () => {
     })
   })
 
+  it.each(["logout", "switch"] as const)("ignores a delayed save after %s", async (transition) => {
+    let resolvePut!: (value: { data: User }) => void
+    const pending = new Promise<{ data: User }>((resolve) => {
+      resolvePut = resolve
+    })
+    apiState.put.mockReturnValueOnce(pending)
+    searchState.edit = "1"
+    const { rerender } = render(<Profile />)
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("true")
+    rotateBrowserSession()
+    authState.user =
+      transition === "switch" ? { ...user, id: "user-2", full_name: "Account B" } : null
+    rerender(<Profile />)
+    await act(async () => {
+      resolvePut({ data: user })
+      await pending
+    })
+    expect(authState.setUser).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("false")
+    expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue(
+      transition === "switch" ? "Account B" : ""
+    )
+  })
+
   it("initializes every editor field safely when optional profile records are absent", async () => {
     searchState.edit = "1"
     authState.user = {
@@ -676,9 +705,14 @@ describe("Profile behavior", () => {
     expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
   })
 
-  it("omits now playing when Spotify is disconnected or data is empty", () => {
-    authState.user = { ...user, spotify_connected: false } as User
-    nowPlayingState.data = null
+  it.each([
+    [false, null],
+    [false, undefined],
+    [true, null],
+    [true, undefined],
+  ])("omits now playing with Spotify connected %s and no data (%s)", (spotifyConnected, data) => {
+    authState.user = { ...user, spotify_connected: spotifyConnected } as User
+    nowPlayingState.data = data
 
     render(<Profile />)
 
@@ -757,5 +791,37 @@ describe("Profile behavior", () => {
 
     expect(screen.getByTestId("profile-root")).toBeInTheDocument()
     expect(screen.getByTestId("profile-header")).toBeInTheDocument()
+  })
+  it("does not save while the origin session belongs to a different tab", () => {
+    searchState.edit = "1"
+    render(<Profile />)
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "other-tab", hash: null })
+    )
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    expect(apiState.put).not.toHaveBeenCalled()
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("false")
+  })
+
+  it("does not show account A's delayed save error in account B's editor", async () => {
+    let reject!: (reason: unknown) => void
+    const pending = new Promise<never>((_resolve, rejectPromise) => {
+      reject = rejectPromise
+    })
+    apiState.put.mockReturnValueOnce(pending)
+    searchState.edit = "1"
+    const { rerender } = render(<Profile />)
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    rotateBrowserSession()
+    authState.user = { ...user, id: "user-2", full_name: "Account B" }
+    rerender(<Profile />)
+    await act(async () => {
+      reject(new Error("Account A failed"))
+      await pending.catch(() => undefined)
+    })
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("Account B")
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("false")
   })
 })

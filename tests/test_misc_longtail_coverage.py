@@ -7,12 +7,9 @@ sanitization, retry, request coalescing, privacy cleanup, and misc utilities.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
-
-import pytest
 
 # ===========================================================================
 # Domain Events — remaining from_dict() methods
@@ -182,81 +179,9 @@ class TestSanitization:
 # ===========================================================================
 
 
-class TestRetryUtil:
-    @pytest.mark.asyncio
-    async def test_retry_success(self):
-        from app.utils.retry import retry_async
-
-        call_count = 0
-
-        async def succeeds():
-            nonlocal call_count
-            call_count += 1
-            return "ok"
-
-        result = await retry_async(succeeds, max_attempts=3, base_delay=0.01)
-        assert result == "ok"
-        assert call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_retry_eventual_success(self):
-        from app.utils.retry import retry_async
-
-        call_count = 0
-
-        async def fails_then_succeeds():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise RuntimeError("Not yet")
-            return "ok"
-
-        result = await retry_async(fails_then_succeeds, max_attempts=5, base_delay=0.01)
-        assert result == "ok"
-        assert call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_retry_exhausted(self):
-        from app.utils.retry import RetryExhausted, retry_async
-
-        async def always_fails():
-            raise ValueError("fail")
-
-        with pytest.raises((RetryExhausted, ValueError)):
-            await asyncio.wait_for(
-                retry_async(always_fails, max_attempts=2, base_delay=0.01),
-                timeout=1.0,
-            )
-
-
 # ===========================================================================
 # Request coalescing
 # ===========================================================================
-
-
-class TestRequestCoalescing:
-    @pytest.mark.asyncio
-    async def test_coalesce_basic(self):
-        from app.utils.request_coalescing import coalesce_requests
-
-        call_count = 0
-
-        @coalesce_requests(prefix="test")
-        async def expensive_call(key: str) -> str:
-            nonlocal call_count
-            call_count += 1
-            return f"result-{key}"
-
-        result = await expensive_call("test")
-        assert result == "result-test"
-        assert call_count == 1
-
-    def test_build_request_key(self):
-        from app.utils.request_coalescing import _build_request_key
-
-        key = _build_request_key("prefix", "arg1", kwarg1="val1")
-        assert isinstance(key, str)
-        assert len(key) > 0
 
 
 # ===========================================================================

@@ -1,3 +1,5 @@
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 /**
  * Focused API/query contracts used by mutation testing.
  *
@@ -6,7 +8,7 @@
  * cancellation after an AbortSignal flips, and endpoint-context preservation.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { renderHook, waitFor } from "@testing-library/react"
+import { cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -111,6 +113,7 @@ const runActivity = (client: QueryClient) => {
 }
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: "feed-test-user" } as UserState, loading: false })
   vi.clearAllMocks()
   vi.unstubAllGlobals()
   mocks.storePendingMutation.mockResolvedValue(undefined)
@@ -118,6 +121,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
+  useAuthStore.setState({ user: null, loading: true })
   vi.unstubAllGlobals()
   window.localStorage.clear()
 })
@@ -261,8 +266,14 @@ describe("events query defensive contracts", () => {
   it("recomputes the events placeholder when the language changes", () => {
     const first = [makeEvent("ru-event")]
     const second = [makeEvent("en-event")]
-    window.localStorage.setItem("events:list:ru:active", JSON.stringify(first))
-    window.localStorage.setItem("events:list:en:active", JSON.stringify(second))
+    window.localStorage.setItem(
+      "events:list:account:feed-test-user:ru:active",
+      JSON.stringify(first)
+    )
+    window.localStorage.setItem(
+      "events:list:account:feed-test-user:en:active",
+      JSON.stringify(second)
+    )
     const client = makeClient()
     const { result, rerender } = renderHook(
       ({ language }: { language: string }) =>

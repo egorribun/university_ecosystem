@@ -31,6 +31,7 @@ from app.api.validation import (
     ensure_exists,
     raise_conflict,
     raise_forbidden,
+    raise_http_error,
     raise_not_found,
     require_teacher_or_admin,
 )
@@ -50,6 +51,7 @@ from app.services.event_service import EventService
 from app.services.file_scanner import scan_for_malware
 from app.services.notification_service import NotificationService
 from app.services.private_attachments import (
+    _path_segments,
     private_attachment_filename,
     private_attachment_response,
     private_attachment_storage_key,
@@ -65,13 +67,35 @@ router = APIRouter(prefix="/events", tags=["events"])
 _EVENTS_CACHE_CONTROL = "private, max-age=180"
 
 
-def _validate_id_type(id_val: uuid.UUID | int) -> None:
+def _event_attachment_url_matches_resource(
+    storage_url: str,
+    event_id: uuid.UUID | int,
+    filename: str,
+) -> bool:
+    """Require a private storage key to carry the same event identity as its row."""
+    segments = _path_segments(storage_url)
+    expected_directory = f"event_{event_id}"
+    for index, segment in enumerate(segments):
+        if segment != "event_files":
+            continue
+        tail = segments[index + 1 :]
+        if len(tail) == 1 and tail[0] == filename:
+            # Current flat keys embed the owner in the generated filename.
+            return filename.startswith(f"{expected_directory}_")
+        if len(tail) == 2 and tail[1] == filename:
+            # Historical hierarchical keys carry the owner in the directory.
+            return tail[0] == expected_directory
+    return False
+
+
+def _validate_id_type(id_val: uuid.UUID | int, request: Request) -> None:
     if isinstance(id_val, int):
         # Prevent SQLite/Postgres 64-bit signed integer overflow
         if not (-9223372036854775808 <= id_val <= 9223372036854775807):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="ID out of 64-bit integer range.",
+            raise_http_error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "errors.events.id_out_of_range",
+                resolve_locale(request=request),
             )
 
 
@@ -114,10 +138,9 @@ async def create_event(
         # TD-W19-01 (audit 2026-03-24 Wave 19): use localized error key instead of
         # raw exception message. Previously str(exc) leaked internal error details.
         logger.warning("Event creation failed: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="errors.events.creation_failed",
-        ) from exc
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.events.creation_failed", locale
+        )
     # ``request`` is a required FastAPI parameter and, since the route moved to
     # Dishka, also the carrier of the container -- it is never absent.  Whether
     # a cache exists is the real condition, and _increment_events_list_version
@@ -281,7 +304,7 @@ async def upload_event_file(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> models.EventFile:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
@@ -323,7 +346,7 @@ async def get_event_files(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> list[models.EventFile]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # Authorize against the parent event before touching its attachments.  The
@@ -367,7 +390,7 @@ async def download_event_file(
 ) -> Response:
     """Download an event file after checking the event's view permission."""
 
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
     try:
         private_attachment_storage_key("event", event_id, filename)
@@ -391,6 +414,9 @@ async def download_event_file(
             item
             for item in files
             if private_attachment_filename(item.file_url, "event") == filename
+            and _event_attachment_url_matches_resource(
+                item.file_url, event_id, filename
+            )
         ),
         None,
     )
@@ -419,7 +445,7 @@ async def upload_event_image(
     db: FromDishka[AsyncDatabaseSession],
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, str]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 Fix: Deny unlinked anonymous file uploads to prevent Storage DoS
@@ -475,9 +501,10 @@ async def update_event(
 
     old_image_url = q.image_url
     if isinstance(event_id, int):
-        raise HTTPException(
-            status_code=400,
-            detail="Integer event IDs are not supported; use a UUID.",
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST,
+            "errors.events.integer_id_unsupported",
+            locale,
         )
     ev_id = event_id
     try:
@@ -518,7 +545,7 @@ async def delete_event(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 (audit 2026-03-04): Replaced require_owner_or_admin() with
@@ -552,11 +579,12 @@ async def get_event(
     event_id: uuid.UUID | int,
     request: Request,
     response: Response,
-    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    # Detail may repair legacy QR material, so it must use the primary UoW.
+    events: FromDishka[EventService],
     user: models.User = Depends(get_current_user_from_dishka),
     if_none_match: str | None = Header(default=None),
 ) -> schemas.EventOut | Response | Any:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     payload = await events.get_event_detail(event_id, user.id, locale=locale)
@@ -575,7 +603,7 @@ async def delete_event_file(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
-    _validate_id_type(file_id)
+    _validate_id_type(file_id, request)
     locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)
     if not ef:

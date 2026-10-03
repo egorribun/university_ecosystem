@@ -32,6 +32,9 @@ type Config struct {
 	Port       string
 	BackendURL string
 	RedisURL   string
+	// TrustedProxies lists the exact proxy IPs or CIDRs allowed to supply
+	// forwarded client-address headers. Empty disables forwarded-header trust.
+	TrustedProxies []string
 	// RevocationRedisURL is the canonical cross-service session-revocation
 	// store. It is deliberately separate from RedisURL, which owns rate-limit
 	// state and may use another logical database.
@@ -117,6 +120,7 @@ func loadFromEnvironment() *Config {
 		Port:               getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:         getEnv("BACKEND_URL", "http://backend:8000"),
 		RedisURL:           getEnv("REDIS_URL", "redis://redis:6379/3"),
+		TrustedProxies:     getEnvSlice("GATEWAY_TRUSTED_PROXIES", nil),
 		RevocationRedisURL: revocationRedisURL,
 		JWTSecret:          os.Getenv("JWT_SECRET"), // No default — fail secure
 		JWTAudience:        jwtAudience,

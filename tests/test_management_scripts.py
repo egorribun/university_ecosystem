@@ -284,11 +284,11 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
             "ru",
         ]
         mock_audit.assert_called_once()
-        assert events == ["reset", "notification", "commit", "publish"]
+        assert events == ["reset", "notification", "publish", "commit"]
 
 
 @pytest.mark.asyncio
-async def test_reset_user_mfa_commit_failure_rolls_back_without_redis_publish(
+async def test_reset_user_mfa_commit_failure_rolls_back_retaining_redis_revocation(
     mock_db_session,
 ) -> None:
     user = MagicMock(id=1)
@@ -316,7 +316,7 @@ async def test_reset_user_mfa_commit_failure_rolls_back_without_redis_publish(
 
     notify.assert_awaited_once()
     mock_db_session.rollback.assert_awaited_once()
-    publish.assert_not_awaited()
+    publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio

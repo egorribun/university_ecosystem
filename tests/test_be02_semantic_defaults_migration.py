@@ -54,21 +54,25 @@ def test_remaining_timestamp_candidates_are_dual_declared() -> None:
         assert column.server_default is not None, qualified
 
 
+@pytest.mark.filterwarnings("error::pytest.PytestUnraisableExceptionWarning")
 def test_user_role_default_is_dual_declared_and_sqlite_compatible() -> None:
     role = Base.metadata.tables["users"].c.role
     assert role.default is not None
     assert role.server_default is not None
 
     engine = sa.create_engine("sqlite://")
-    probe = sa.Table(
-        "role_default_probe",
-        sa.MetaData(),
-        sa.Column("role", role.type, server_default=role.server_default.arg),
-    )
-    probe.create(engine)
-    with engine.begin() as connection:
-        inserted = connection.execute(probe.insert().returning(probe.c.role))
-        assert inserted.scalar_one() == "student"
+    try:
+        probe = sa.Table(
+            "role_default_probe",
+            sa.MetaData(),
+            sa.Column("role", role.type, server_default=role.server_default.arg),
+        )
+        probe.create(engine)
+        with engine.begin() as connection:
+            inserted = connection.execute(probe.insert().returning(probe.c.role))
+            assert inserted.scalar_one() == "student"
+    finally:
+        engine.dispose()
 
 
 def test_phase_four_migration_targets_only_reviewed_candidates() -> None:
@@ -87,13 +91,15 @@ def test_phase_four_policy_accounts_for_all_remaining_exceptions() -> None:
             Path(__file__).resolve().parents[1] / "quality/model-default-policy.json"
         ).read_text(encoding="utf-8")
     )
-    assert policy["expected"]["migration_head"] == "202609250001"
+    # Additive demo ownership migrations advance the inventory head; BE-02 phase
+    # four itself remains pinned to its original revision.
+    assert policy["expected"]["migration_head"] == "202610010001"
     assert policy["expected"]["effective_counts"] == {
-        "both": 94,
-        "python_only": 40,
+        "both": 80,
+        "python_only": 39,
         "server_only": 0,
     }
-    assert len(policy["exceptions"]) == 40
+    assert len(policy["exceptions"]) == 39
 
 
 def test_conflicting_timestamp_default_is_rejected() -> None:

@@ -69,6 +69,7 @@ def _email_challenge(**overrides: object) -> SimpleNamespace:
         "id": uuid.uuid4(),
         "user_id": uuid.uuid4(),
         "flow": "login",
+        "payload": {"mfa_epoch": 0},
         "method": MFA_METHOD_EMAIL_OTP,
         "session_identifier": "login-session",
         "client_fingerprint": "f" * 64,
@@ -215,6 +216,39 @@ async def test_resolve_recipient_enforces_flow_specific_email_state(
     statement = db.execute.await_args.args[0]
     lock = statement._for_update_arg
     assert lock is not None and lock.nowait is False
+    assert statement.get_execution_options().get("populate_existing") is True
+
+
+@pytest.mark.asyncio
+async def test_locked_email_challenge_lookup_refreshes_attempt_state() -> None:
+    service = _service()
+    challenge = _email_challenge()
+    token = email_otp_module._generate_challenge_token(challenge.id)
+    challenge.token_digest = service._digest(
+        key_id="active",
+        purpose="challenge-token",
+        challenge=challenge,
+        secret_value=token,
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = challenge
+    db = AsyncMock()
+    db.execute.return_value = result
+
+    loaded = await service._load_bound_challenge(
+        db,
+        challenge_token=token,
+        user_id=challenge.user_id,
+        flow=challenge.flow,
+        session_identifier=challenge.session_identifier,
+        client_fingerprint=challenge.client_fingerprint,
+    )
+
+    assert loaded is challenge
+    statement = db.execute.await_args.args[0]
+    lock = statement._for_update_arg
+    assert lock is not None and lock.nowait is False
+    assert statement.get_execution_options().get("populate_existing") is True
 
 
 @pytest.mark.parametrize(
@@ -559,22 +593,23 @@ async def test_get_challenge_rejects_missing_row_and_digest_mismatch(
 
 
 @pytest.mark.asyncio
-async def test_publish_revocations_keeps_database_authoritative_on_backend_failure(
+async def test_publish_revocations_propagates_backend_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.auth.redis_session as redis_session_module
+    import app.services.auth.redis_session as redis_session_module
 
     monkeypatch.setattr(
         redis_session_module,
-        "get_session_backend",
-        AsyncMock(side_effect=RuntimeError("redis unavailable")),
+        "RedisSessionService",
+        MagicMock(side_effect=RuntimeError("redis unavailable")),
     )
     revocation = MfaSessionRevocation(
         jti="session-jti",
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
     )
 
-    await publish_mfa_session_revocations([revocation])
+    with pytest.raises(RuntimeError, match="redis unavailable"):
+        await publish_mfa_session_revocations([revocation])
 
 
 @pytest.mark.parametrize(("ip", "user_agent"), [(None, "agent"), ("203.0.113.2", None)])
@@ -1000,16 +1035,80 @@ async def test_step_up_challenge_requires_active_session_at_completion() -> None
 
 
 @pytest.mark.asyncio
+async def test_email_mfa_enablement_revokes_sibling_sessions_before_commit() -> None:
+    challenge = _email_challenge(flow="email_mfa_enablement")
+    user = SimpleNamespace(id=challenge.user_id)
+    active_session = SimpleNamespace(id=uuid.uuid4())
+    request = _api_request(active_session=active_session)
+    email_service = MagicMock()
+    email_service.verify_opaque = AsyncMock(return_value=challenge)
+    login_service = MagicMock()
+    login_service.get_email_otp_service.return_value = email_service
+    expected = MagicMock()
+    login_service.complete_step_up = AsyncMock(return_value=expected)
+    order: list[str] = []
+    login_service.publish_completed_step_up = AsyncMock(
+        side_effect=lambda **_: order.append("current-session")
+    )
+    db = AsyncMock()
+    db.get.return_value = user
+    db.commit.side_effect = lambda: order.append("commit")
+    pending = [
+        MfaSessionRevocation(
+            jti="sibling-jti", expires_at=datetime.now(UTC) + timedelta(minutes=1)
+        )
+    ]
+
+    with (
+        patch.object(login_api, "get_current_user_optional", AsyncMock()),
+        patch.object(login_api, "extract_request_fingerprint", return_value="f" * 64),
+        patch("app.core.ratelimit.resolve_client_ip", return_value="203.0.113.5"),
+        patch.object(
+            login_api.mfa,
+            "revoke_sibling_sessions_for_factor_change",
+            AsyncMock(return_value=pending),
+        ) as collect_revocations,
+        patch.object(
+            login_api.mfa,
+            "publish_mfa_session_revocations",
+            AsyncMock(side_effect=lambda _: order.append("sibling-revocations")),
+        ) as publish_revocations,
+    ):
+        result = await login_api.verify_mfa_challenge.__dishka_orig_func__(
+            MfaVerifyIn(
+                method=MFA_METHOD_EMAIL_OTP,
+                challenge_token="a" * 32,
+                code="123456",
+            ),
+            MagicMock(),
+            request,
+            MagicMock(),
+            login_service,
+            db,
+        )
+
+    assert result is expected
+    collect_revocations.assert_awaited_once_with(
+        db,
+        user_id=user.id,
+        current_session_id=active_session.id,
+    )
+    publish_revocations.assert_awaited_once_with(pending)
+    assert order == ["sibling-revocations", "commit", "current-session"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("error", "expected_status"),
+    ("error", "expected_status", "expected_retry_after"),
     [
-        (email_otp_module.MfaOtpCooldown(), 429),
-        (MfaSecurityUnavailable(), 503),
-        (MfaOtpRejected(), 400),
+        (email_otp_module.MfaOtpCooldown(), 429, None),
+        (RateLimitExceeded(RateLimitInfo(False, 0, 17)), 429, "17"),
+        (MfaSecurityUnavailable(), 503, None),
+        (MfaOtpRejected(), 400, None),
     ],
 )
 async def test_resend_maps_domain_errors_without_leaking_account_state(
-    error: Exception, expected_status: int
+    error: Exception, expected_status: int, expected_retry_after: str | None
 ) -> None:
     email_service = MagicMock()
     email_service.resend_opaque = AsyncMock(side_effect=error)
@@ -1033,6 +1132,11 @@ async def test_resend_maps_domain_errors_without_leaking_account_state(
     assert exc_info.value.status_code == expected_status
     assert exc_info.value.detail == (
         "MFA service unavailable" if expected_status == 503 else "MFA request rejected"
+    )
+    assert exc_info.value.headers == (
+        {"Retry-After": expected_retry_after}
+        if expected_retry_after is not None
+        else None
     )
     db.rollback.assert_awaited_once()
 
@@ -1626,7 +1730,9 @@ async def test_mfa_verify_rejects_unknown_method_before_challenge_lookup() -> No
         )
 
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "Invalid MFA method"
+    from app.core.localization.dictionary import TRANSLATIONS
+
+    assert exc_info.value.detail in TRANSLATIONS["errors.mfa.invalid_method"].values()
     db.execute.assert_not_awaited()
 
 
@@ -2221,6 +2327,70 @@ async def test_opaque_token_routes_to_its_embedded_user() -> None:
 
 
 @pytest.mark.asyncio
+async def test_email_otp_expires_while_waiting_for_user_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service()
+    started_at = datetime.now(UTC)
+    clock = {"now": started_at}
+
+    class FakeDateTime:
+        @classmethod
+        def now(cls, tz: object = UTC) -> datetime:
+            del tz
+            return clock["now"]
+
+    monkeypatch.setattr(email_otp_module, "datetime", FakeDateTime)
+    recipient = "student@example.edu"
+    code = "123456"
+    challenge = _email_challenge(
+        expires_at=started_at + timedelta(seconds=1),
+        otp_key_id="active",
+        otp_digest=None,
+    )
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=recipient
+    )
+    challenge.otp_digest = service._digest(
+        key_id="active",
+        purpose="email-otp",
+        challenge=challenge,
+        secret_value=code,
+    )
+
+    async def wait_for_user_lock(
+        *_: object, **__: object
+    ) -> tuple[SimpleNamespace, str]:
+        clock["now"] = challenge.expires_at + timedelta(microseconds=1)
+        return SimpleNamespace(id=challenge.user_id), recipient
+
+    service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
+        side_effect=wait_for_user_lock
+    )
+    service._load_bound_challenge = AsyncMock(  # type: ignore[method-assign]
+        return_value=challenge
+    )
+    consumed = MagicMock()
+    consumed.one_or_none.return_value = (challenge.id,)
+    db = AsyncMock()
+    db.execute.return_value = consumed
+
+    with pytest.raises(MfaOtpRejected):
+        await service.verify(
+            db,
+            challenge_token="a" * 32,
+            code=code,
+            user_id=challenge.user_id,
+            flow="login",
+            session_identifier=challenge.session_identifier,
+            client_fingerprint=challenge.client_fingerprint,
+            client_ip="203.0.113.5",
+        )
+
+    db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_wrong_otp_rejects_without_flush_when_attempt_update_loses_race() -> None:
     service = _service()
     now = datetime.now(UTC)
@@ -2387,6 +2557,7 @@ async def test_verified_email_otp_applies_only_its_factor_side_effects(
         mfa_epoch=2,
         mfa_default_method=initial_default,
     )
+    challenge.payload = {"mfa_epoch": user.mfa_epoch}
     service._resolve_recipient = AsyncMock(return_value=(user, recipient))  # type: ignore[method-assign]
     service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
     consumed = MagicMock()

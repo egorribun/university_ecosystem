@@ -23,6 +23,7 @@ import {
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { ReleaseAnnouncementCard } from "./components/ReleaseAnnouncementCard"
 import { useLocaleFormatters } from "@/i18n/formatters"
+import { NOTIFICATION_TOPIC_LABEL_KEYS, normalizeNotificationTopic } from "@/notifications/contract"
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError(error)) {
@@ -482,7 +483,11 @@ export function AdminNotificationsFeature() {
                   ) : (
                     topicsData.allowed_topics.map((topic) => {
                       const normalized = normalizeTopicKey(topic)
-                      const translationKey = `notifications:topics.${normalized}`
+                      const canonicalTopic = normalizeNotificationTopic(normalized)
+                      const labelKey = canonicalTopic
+                        ? NOTIFICATION_TOPIC_LABEL_KEYS[canonicalTopic]
+                        : normalized
+                      const translationKey = `notifications:topics.${labelKey}`
                       const label = t(translationKey)
                       const resolvedLabel = label === translationKey ? topic : (label as string)
                       return (

@@ -249,7 +249,7 @@ def test_checked_in_layout_exactly_matches_the_quality_contract() -> None:
 
     assert len(slots) == 1
     assert slots[0].logical_artifact == "coverage-evidence"
-    assert len(slots[0].reports) == 16
+    assert len(slots[0].reports) == 14
 
 
 def _run_entrypoint(

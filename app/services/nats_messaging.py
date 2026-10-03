@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import nats
-from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 
 from app.core.logging import get_logger
 from app.core.orjson_utils import orjson
@@ -100,41 +99,6 @@ class NatsService:
             self._js = None
             logger.info("NATS connection closed")
 
-    async def ensure_stream(
-        self,
-        name: str,
-        subjects: list[str],
-        max_age: int = 604_800,  # 7 days in seconds
-    ) -> None:
-        """Create or update a JetStream stream.
-
-        Args:
-            name: Stream name
-            subjects: List of subjects to capture
-            max_age: Maximum message age in seconds (default: 7 days = 604,800s)
-        """
-        if not self._js:
-            raise RuntimeError("Not connected to NATS")
-
-        try:
-            await self._js.add_stream(
-                config=StreamConfig(
-                    name=name,
-                    subjects=subjects,
-                    storage=StorageType.FILE,
-                    retention=RetentionPolicy.LIMITS,
-                    max_age=max_age,
-                )
-            )
-            logger.info("Created/updated stream: %s", name)
-        except (
-            nats.errors.Error,
-            ConnectionError,
-            TimeoutError,
-            OSError,
-        ) as exc:  # RZ-20-04: Narrowed — NATS stream setup is idempotent.
-            logger.warning("Stream setup issue: %s", exc)
-
     async def publish(
         self,
         subject: str,
@@ -167,38 +131,6 @@ class NatsService:
         await self._client.publish(subject, data, headers=msg_headers)
         logger.debug("Published to %s", subject)
 
-    async def publish_jetstream(
-        self,
-        subject: str,
-        data: bytes | dict[str, Any],
-        headers: dict[str, str] | None = None,
-        msg_id: str | None = None,
-    ) -> None:
-        """Publish a message with JetStream acknowledgment.
-
-        Args:
-            subject: NATS subject (must be in a stream)
-            data: Message data
-            headers: Optional message headers
-            msg_id: Optional deduplication message ID
-        """
-        if not self._js:
-            raise RuntimeError("Not connected to NATS")
-
-        msg_headers: dict[str, str] = headers.copy() if headers else {}
-        dedup_id = msg_id
-        if not dedup_id and isinstance(data, dict):
-            dedup_id = data.get("id") or data.get("event_id")
-        if not dedup_id:
-            dedup_id = str(uuid.uuid4())
-        msg_headers["Nats-Msg-Id"] = str(dedup_id)
-
-        if isinstance(data, dict):
-            data = orjson.dumps(data)
-
-        ack = await self._js.publish(subject, data, headers=msg_headers)
-        logger.debug("Published to JetStream %s, seq=%d", subject, ack.seq)
-
     async def subscribe(
         self,
         subject: str,
@@ -227,62 +159,6 @@ class NatsService:
         sub = await self._client.subscribe(subject, queue=queue or "", cb=_wrapper)
         self._subscriptions.append(sub)
         logger.info("Subscribed to %s (queue=%s)", subject, queue)
-
-    async def subscribe_jetstream(
-        self,
-        stream: str,
-        subject: str,
-        handler: Callable[[NatsMessage], Coroutine[Any, Any, None]],
-        durable: str | None = None,
-        max_deliver: int = 5,
-    ) -> None:
-        """Subscribe to a JetStream subject with acknowledgment.
-
-        Args:
-            stream: Stream name
-            subject: Subject pattern
-            handler: Async function to handle messages
-            durable: Durable consumer name for persistence
-            max_deliver: Maximum delivery attempts before a message is considered
-                a dead-letter (poison message).  Defaults to 5.  Without this
-                cap, a handler that always raises will cause NATS to re-deliver
-                indefinitely, starving healthy messages and exhausting resources.
-                LOW-W19: poison-message guard — set max_deliver so that
-                permanently-failing messages are moved to the dead-letter stream
-                after ``max_deliver`` attempts rather than looping forever.
-        """
-        if not self._js:
-            raise RuntimeError("Not connected to NATS")
-
-        async def _wrapper(msg: Any) -> None:
-            headers = dict(msg.header) if msg.header else None
-            wrapped = NatsMessage(
-                subject=msg.subject,
-                data=msg.data,
-                headers=headers,
-                reply=msg.reply,
-            )
-            try:
-                await handler(wrapped)
-                await msg.ack()
-            except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NAKs message for retry (reviewed TD-27-04)
-                # RZ-20-04: KEEP broad catch — handlers are user-defined callbacks;
-                # any unhandled exception must nak() the message, never crash the
-                # subscription loop. Logged at ERROR for Sentry pickup.
-                logger.error("Handler error: %s", exc)
-                await msg.nak()
-
-        from nats.js.api import ConsumerConfig
-
-        sub = await self._js.subscribe(
-            subject,
-            stream=stream,
-            durable=durable,
-            config=ConsumerConfig(max_deliver=max_deliver),
-            cb=_wrapper,
-        )
-        self._subscriptions.append(sub)
-        logger.info("Subscribed to JetStream %s/%s", stream, subject)
 
 
 # Singleton instance

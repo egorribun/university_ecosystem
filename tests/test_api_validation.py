@@ -19,8 +19,6 @@ from app.api.validation import (
     raise_not_found,
     raise_unauthorized,
     raise_validation_error,
-    require_admin,
-    require_owner_or_admin,
     require_teacher_or_admin,
 )
 from app.models.enums import UserRole
@@ -78,28 +76,6 @@ class TestRaiseConflict:
         assert exc_info.value.status_code == 409
 
 
-class TestRequireAdmin:
-    """Tests for require_admin helper."""
-
-    def test_passes_for_admin(self):
-        """Should not raise for admin user."""
-        user = MagicMock()
-        user.role = "admin"
-
-        # Should not raise
-        require_admin(user, "ru")
-
-    def test_raises_for_non_admin(self):
-        """Should raise 403 for non-admin user."""
-        user = MagicMock()
-        user.role = "student"
-
-        with pytest.raises(HTTPException) as exc_info:
-            require_admin(user, "ru")
-
-        assert exc_info.value.status_code == 403
-
-
 class TestRequireTeacherOrAdmin:
     """Tests for require_teacher_or_admin helper."""
 
@@ -126,45 +102,6 @@ class TestRequireTeacherOrAdmin:
             require_teacher_or_admin(user, "ru")
 
         assert exc_info.value.status_code == 403
-
-
-class TestRequireOwnerOrAdmin:
-    """Tests for require_owner_or_admin helper."""
-
-    def test_passes_for_admin(self):
-        """Should not raise for admin user."""
-        user = MagicMock()
-        user.id = 1
-        user.role = "admin"
-
-        require_owner_or_admin(user, "ru", owner_id=99)
-
-    def test_passes_for_owner(self):
-        """Should not raise for resource owner."""
-        user = MagicMock()
-        user.id = 42
-        user.role = "student"
-
-        require_owner_or_admin(user, "ru", owner_id=42)
-
-    def test_raises_for_non_owner_non_admin(self):
-        """Should raise 403 for non-owner non-admin."""
-        user = MagicMock()
-        user.id = 1
-        user.role = "student"
-
-        with pytest.raises(HTTPException) as exc_info:
-            require_owner_or_admin(user, "ru", owner_id=99)
-
-        assert exc_info.value.status_code == 403
-
-    def test_passes_for_teacher_when_allowed(self):
-        """Should not raise for teacher when allow_teacher=True."""
-        user = MagicMock()
-        user.id = 1
-        user.role = "teacher"
-
-        require_owner_or_admin(user, "ru", owner_id=99, allow_teacher=True)
 
 
 class TestEnsureExists:
@@ -468,19 +405,6 @@ def test_helpers_tolerate_very_long_message_key() -> None:
 
 @hypo_settings(max_examples=20)
 @given(role=st.sampled_from(list(UserRole)))
-def test_require_admin_only_admin_passes(role: UserRole) -> None:
-    """Only ``UserRole.ADMIN`` may pass ``require_admin``."""
-    user = _make_user(role)
-    if role == UserRole.ADMIN:
-        require_admin(user, "en")  # must not raise
-    else:
-        with pytest.raises(HTTPException) as exc_info:
-            require_admin(user, "en")
-        assert exc_info.value.status_code == 403
-
-
-@hypo_settings(max_examples=20)
-@given(role=st.sampled_from(list(UserRole)))
 def test_require_teacher_or_admin_only_those_two_pass(role: UserRole) -> None:
     """Only ``ADMIN`` and ``TEACHER`` may pass ``require_teacher_or_admin``."""
     user = _make_user(role)
@@ -493,55 +417,6 @@ def test_require_teacher_or_admin_only_those_two_pass(role: UserRole) -> None:
 
 
 # ── 6. Owner-or-admin: covers role × ownership matrix ────────────────────────
-
-
-@hypo_settings(max_examples=30)
-@given(
-    role=st.sampled_from(list(UserRole)),
-    is_owner=st.booleans(),
-    allow_teacher=st.booleans(),
-)
-def test_require_owner_or_admin_matrix(
-    role: UserRole, is_owner: bool, allow_teacher: bool
-) -> None:
-    """Pass if admin OR (allow_teacher and teacher) OR owner; else 403."""
-    user_id = 42
-    owner_id = user_id if is_owner else 99
-
-    user = _make_user(role, user_id=user_id)
-
-    should_pass = (
-        role == UserRole.ADMIN
-        or (allow_teacher and role == UserRole.TEACHER)
-        or is_owner
-    )
-
-    if should_pass:
-        require_owner_or_admin(
-            user, "en", owner_id=owner_id, allow_teacher=allow_teacher
-        )
-    else:
-        with pytest.raises(HTTPException) as exc_info:
-            require_owner_or_admin(
-                user, "en", owner_id=owner_id, allow_teacher=allow_teacher
-            )
-        assert exc_info.value.status_code == 403
-
-
-@hypo_settings(max_examples=20)
-@given(
-    owner_id=st.one_of(
-        st.uuids(),
-        st.integers(min_value=-(2**31), max_value=2**31),
-        st.text(min_size=1, max_size=20),
-    ),
-)
-def test_require_owner_or_admin_owner_id_typing(
-    owner_id: uuid.UUID | int | str,
-) -> None:
-    """``owner_id`` accepts UUID / int / str — the owner branch must pass."""
-    user = _make_user(UserRole.STUDENT, user_id=owner_id)
-    require_owner_or_admin(user, "en", owner_id=owner_id)
 
 
 # ── 7. ensure_exists: identity for non-None, 404 for None ────────────────────

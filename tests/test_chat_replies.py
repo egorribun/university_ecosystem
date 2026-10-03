@@ -203,7 +203,9 @@ class TestSendMessageReply:
             )
 
         assert exc.value.status_code == 404
-        uow.chats.message_exists_in_chat.assert_awaited_once_with(reply_id, chat.id)
+        uow.chats.message_exists_in_chat.assert_awaited_once_with(
+            reply_id, chat.id, user_id=user.id
+        )
         uow.chats.create_message.assert_not_awaited()
         uow.commit.assert_not_awaited()
 
@@ -220,14 +222,16 @@ class TestSendMessageReply:
         uow.chats.update_timestamp_by_id = AsyncMock()
         # The response path reloads via get_last_messages; key by the requested id.
         uow.chats.get_last_messages = AsyncMock(
-            side_effect=lambda ids: {ids[0]: _message_dto(id=ids[0])}
+            side_effect=lambda ids, **_kwargs: {ids[0]: _message_dto(id=ids[0])}
         )
 
         await _dispatcher(uow).send_message(
             chat.id, user, "hi", [], locale="en", reply_to_message_id=reply_id
         )
 
-        uow.chats.message_exists_in_chat.assert_awaited_once_with(reply_id, chat.id)
+        uow.chats.message_exists_in_chat.assert_awaited_once_with(
+            reply_id, chat.id, user_id=user.id
+        )
         created = uow.chats.create_message.await_args.args[0]
         assert created.reply_to_message_id == reply_id
         assert created.content == "hi"
@@ -244,7 +248,7 @@ class TestSendMessageReply:
         uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
         uow.chats.update_timestamp_by_id = AsyncMock()
         uow.chats.get_last_messages = AsyncMock(
-            side_effect=lambda ids: {ids[0]: _message_dto(id=ids[0])}
+            side_effect=lambda ids, **_kwargs: {ids[0]: _message_dto(id=ids[0])}
         )
 
         await _dispatcher(uow).send_message(chat.id, user, "hi", [], locale="en")

@@ -7,6 +7,7 @@ and redis.py (RedisSlidingWindowStrategy with fakeredis).
 from __future__ import annotations
 
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
@@ -14,6 +15,7 @@ import pytest
 from redis.exceptions import NoScriptError, RedisError, ResponseError
 
 from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
+from app.core.ratelimit.strategies import base as rate_limit_base
 from app.core.ratelimit.strategies.base import (
     _create_redis_pool,
     _shared_clients,
@@ -93,6 +95,105 @@ class TestGetSharedClient:
             assert creation_count == 1
         finally:
             set_rate_limit_client_factory(None)
+
+    def test_concurrent_lookups_coordinate_one_synchronous_factory_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Coordinate concurrent cache lookups without cross-loop lock wakeups.
+
+        The fake returned object is only an identity sentinel; this does not
+        exercise Redis operations across loops, which remain bound to one ASGI
+        event loop per worker process.
+        """
+        redis_url = "redis://cross-loop:6379"
+        client = MagicMock()
+        factory_entered = threading.Event()
+        release_factory = threading.Event()
+        second_loop_ready = threading.Event()
+        second_guard_attempt = threading.Event()
+        foreign_call_soon: list[bool] = []
+        created: list[object] = []
+        returned: list[object] = []
+        errors: list[BaseException] = []
+
+        class ObservedLock:
+            def __init__(self) -> None:
+                self._lock = threading.Lock()
+
+            def __enter__(self) -> ObservedLock:
+                if threading.current_thread().name == "rate-limit-second-loop":
+                    second_guard_attempt.set()
+                self._lock.acquire()
+                return self
+
+            def __exit__(self, *_exc: object) -> None:
+                self._lock.release()
+
+        def blocking_factory(_url: str) -> MagicMock:
+            created.append(client)
+            factory_entered.set()
+            if not release_factory.wait(timeout=5):
+                raise AssertionError("test did not release client factory")
+            return client
+
+        monkeypatch.setattr(rate_limit_base, "_shared_clients", {})
+        monkeypatch.setattr(rate_limit_base, "_shared_clients_guard", ObservedLock())
+        monkeypatch.setattr(rate_limit_base, "_redis_factory", blocking_factory)
+
+        def first_loop_worker() -> None:
+            async def get_client() -> None:
+                asyncio.get_running_loop().set_debug(True)
+                returned.append(await get_shared_client(redis_url))
+
+            try:
+                asyncio.run(get_client())
+            except BaseException as exc:  # record cross-thread loop failures
+                errors.append(exc)
+
+        def second_loop_worker() -> None:
+            async def get_client() -> None:
+                loop = asyncio.get_running_loop()
+                loop.set_debug(True)
+                original_call_soon = loop.call_soon
+                owner_thread = threading.current_thread()
+
+                def checked_call_soon(callback, *args, **kwargs):
+                    if threading.current_thread() is not owner_thread:
+                        foreign_call_soon.append(True)
+                        return loop.call_soon_threadsafe(callback, *args, **kwargs)
+                    return original_call_soon(callback, *args, **kwargs)
+
+                loop.call_soon = checked_call_soon  # type: ignore[method-assign]
+                second_loop_ready.set()
+                returned.append(await get_shared_client(redis_url))
+
+            try:
+                asyncio.run(get_client())
+            except BaseException as exc:  # record cross-thread loop failures
+                errors.append(exc)
+
+        first = threading.Thread(target=first_loop_worker, name="rate-limit-first-loop")
+        second = threading.Thread(
+            target=second_loop_worker, name="rate-limit-second-loop"
+        )
+        try:
+            first.start()
+            assert factory_entered.wait(timeout=2)
+            second.start()
+            assert second_loop_ready.wait(timeout=2)
+            assert second_guard_attempt.wait(timeout=2)
+        finally:
+            release_factory.set()
+            first.join(timeout=3)
+            second.join(timeout=3)
+
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert not errors
+        assert len(created) == 1
+        assert len(returned) == 2
+        assert all(result is client for result in returned)
+        assert foreign_call_soon == []
 
 
 class TestSetRateLimitClientFactory:

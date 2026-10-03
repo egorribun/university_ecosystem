@@ -1,14 +1,18 @@
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
 import { AxiosError } from "axios"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, renderHook } from "@testing-library/react"
 import { usePasswordChange } from "../usePasswordChange"
 
 const mocks = vi.hoisted(() => ({
+  user: { id: "user-1" },
   post: vi.fn(),
   invalidateQueries: vi.fn(),
   t: (key: string, options?: { count?: number }) =>
     options?.count === undefined ? key : `${key}:${options.count}`,
 }))
+
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: mocks.user, loading: false }) }))
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: mocks.t }) }))
 vi.mock("@tanstack/react-query", () => ({
@@ -34,6 +38,8 @@ const setValidPasswords = (result: ReturnType<typeof renderPasswordChange>["resu
 
 describe("usePasswordChange", () => {
   beforeEach(() => {
+    rotateBrowserSession()
+    mocks.user = { id: "user-1" }
     mocks.post.mockReset()
     mocks.invalidateQueries.mockReset().mockResolvedValue(undefined)
   })
@@ -340,4 +346,50 @@ describe("usePasswordChange", () => {
       severity: "error",
     })
   })
+
+  it("does not replay a password step-up action after the account changes", async () => {
+    mocks.post.mockRejectedValueOnce({ isAxiosError: true, response: { status: 428 } })
+    const openStepUpFor = vi.fn()
+    const { result, rerender } = renderPasswordChange(openStepUpFor)
+    setValidPasswords(result)
+    await act(() => result.current.handlePasswordSubmit())
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    await act(() => openStepUpFor.mock.calls[0]![0]())
+    expect(mocks.post).toHaveBeenCalledTimes(1)
+  })
+  it.each(["success", "failure"] as const)(
+    "ignores a stale password %s after switching accounts",
+    async (outcome) => {
+      let resolve!: (value: unknown) => void
+      let reject!: (reason: unknown) => void
+      const pending = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise
+        reject = rejectPromise
+      })
+      mocks.post.mockReturnValueOnce(pending)
+      const { result, rerender, setSnackbar } = renderPasswordChange()
+      setValidPasswords(result)
+      let operation!: Promise<void>
+      act(() => {
+        operation = result.current.handlePasswordSubmit()
+      })
+      rotateBrowserSession()
+      mocks.user = { id: "user-2" }
+      rerender()
+      act(() => result.current.setCurrentPasswordValue("account-b-current"))
+      await act(async () => {
+        if (outcome === "success") resolve({ data: { ok: true, revoked_sessions: 2 } })
+        else reject(new Error("Account A failed"))
+        await operation
+      })
+      expect(result.current.currentPasswordValue).toBe("account-b-current")
+      expect(result.current.passwordBusy).toBe(false)
+      expect(result.current.passwordError).toBeNull()
+      expect(setSnackbar).not.toHaveBeenCalled()
+      expect(mocks.invalidateQueries).not.toHaveBeenCalled()
+    }
+  )
 })

@@ -98,75 +98,6 @@ class TestSendResetEmail:
 # ===========================================================================
 
 
-class TestCacheInvalidation:
-    def test_key_generators(self):
-        from app.services.cache_invalidation import (
-            event_cache_key,
-            events_list_cache_key,
-            news_cache_key,
-            news_list_cache_key,
-            schedule_cache_key,
-            user_cache_key,
-        )
-
-        assert "schedule" in schedule_cache_key("group1")
-        assert "user" in user_cache_key(123)
-        assert "event" in event_cache_key(456)
-        assert "event" in events_list_cache_key()
-        assert "news" in news_cache_key(789)
-        assert "news" in news_list_cache_key()
-
-    @pytest.mark.asyncio
-    async def test_invalidate_schedule_cache(self):
-        from app.services.cache_invalidation import invalidate_schedule_cache
-
-        with patch("app.services.cache_invalidation.get_cache") as mock_cache:
-            cache_inst = AsyncMock()
-            cache_inst.enabled = True
-            cache_inst.invalidate = AsyncMock()
-            mock_cache.return_value = cache_inst
-
-            await invalidate_schedule_cache("group1")
-            cache_inst.invalidate.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_cache_invalidator_context_manager(self):
-        from app.services.cache_invalidation import CacheInvalidator
-
-        with patch("app.services.cache_invalidation.get_cache") as mock_cache:
-            cache_inst = AsyncMock()
-            cache_inst.enabled = True
-            cache_inst.invalidate = AsyncMock()
-            mock_cache.return_value = cache_inst
-
-            async with CacheInvalidator() as inv:
-                inv.schedule("g1")
-                inv.schedule("g1")  # duplicate
-                inv.user(1)
-
-            # flush called on __aexit__
-            cache_inst.invalidate.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_cache_invalidator_dedup(self):
-        from app.services.cache_invalidation import CacheInvalidator
-
-        inv = CacheInvalidator()
-        inv.schedule("g1")
-        inv.schedule("g1")
-        inv.schedule("g2")
-
-        with patch("app.services.cache_invalidation.get_cache") as mock_cache:
-            cache_inst = AsyncMock()
-            cache_inst.enabled = True
-            cache_inst.invalidate = AsyncMock()
-            mock_cache.return_value = cache_inst
-
-            count = await inv.flush()
-            # Should deduplicate g1
-            assert count >= 2
-
-
 # ===========================================================================
 # Stats cache
 # ===========================================================================
@@ -288,18 +219,6 @@ class TestStoryService:
 
 
 class TestMfaChallengeCleanup:
-    def test_config_defaults(self):
-        from app.services.mfa_challenge_cleanup import MfaChallengeCleanupConfig
-
-        config = MfaChallengeCleanupConfig()
-        assert config.normalized_interval() >= 30
-
-    def test_config_min_interval(self):
-        from app.services.mfa_challenge_cleanup import MfaChallengeCleanupConfig
-
-        config = MfaChallengeCleanupConfig(interval_seconds=5)
-        assert config.normalized_interval() == 30
-
     @pytest.mark.asyncio
     async def test_cleanup_stale_challenges(self):
         from contextlib import asynccontextmanager
@@ -330,12 +249,6 @@ class TestMfaChallengeCleanup:
 
 
 class TestSessionCleanup:
-    def test_config_min_interval(self):
-        from app.services.session_cleanup import SessionCleanupConfig
-
-        config = SessionCleanupConfig(interval_seconds=10)
-        assert config.normalized_interval() == 30
-
     @pytest.mark.asyncio
     async def test_cleanup_expired_sessions(self):
         from contextlib import asynccontextmanager

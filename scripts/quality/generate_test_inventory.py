@@ -10,7 +10,15 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PRUNED_DIRECTORY_NAMES = frozenset(
-    {"node_modules", "dist", "build", "__pycache__", "stryker-tmp", ".stryker-tmp"}
+    {
+        "node_modules",
+        "dist",
+        "build",
+        "__pycache__",
+        "stryker-tmp",
+        ".stryker-tmp",
+        "mutants",
+    }
 )
 AUTHORED_HIDDEN_DIRECTORIES = frozenset({".github", ".husky"})
 

@@ -75,7 +75,7 @@ func TestStartJWKSRefresher_SuccessAndFailureAndCancel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	middleware := NewJWTMiddleware("secret", nil)
+	middleware := NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -88,11 +88,11 @@ func TestStartJWKSRefresher_SuccessAndFailureAndCancel(t *testing.T) {
 	time.Sleep(50 * time.Millisecond) // wait for loop shutdown
 }
 
-func TestFetchJWKSPublicKey_ErrorsAndPEMFallback(t *testing.T) {
+func TestFetchJWKSKeySet_ErrorsAndPEMFallback(t *testing.T) {
 	_, _, pemStr := generateRSAKeyPair()
 
 	// Invalid URL
-	_, err := fetchJWKSPublicKey(context.Background(), http.DefaultClient, "http://invalid-domain-xyz.local")
+	_, err := fetchJWKSKeySet(context.Background(), http.DefaultClient, "http://invalid-domain-xyz.local")
 	assert.Error(t, err)
 
 	// Nil response / RoundTripper fail
@@ -101,7 +101,7 @@ func TestFetchJWKSPublicKey_ErrorsAndPEMFallback(t *testing.T) {
 			return nil, errors.New("simulated error")
 		}),
 	}
-	_, err = fetchJWKSPublicKey(context.Background(), client, "http://example.com")
+	_, err = fetchJWKSKeySet(context.Background(), client, "http://example.com")
 	assert.Error(t, err)
 
 	// Non-200 Status
@@ -109,7 +109,7 @@ func TestFetchJWKSPublicKey_ErrorsAndPEMFallback(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srvError.Close()
-	_, err = fetchJWKSPublicKey(context.Background(), http.DefaultClient, srvError.URL)
+	_, err = fetchJWKSKeySet(context.Background(), http.DefaultClient, srvError.URL)
 	assert.Error(t, err)
 
 	// Valid PEM Fallback (Not JWKS format)
@@ -117,25 +117,25 @@ func TestFetchJWKSPublicKey_ErrorsAndPEMFallback(t *testing.T) {
 		_, _ = w.Write([]byte(pemStr)) //nolint:errcheck // test server PEM write
 	}))
 	defer srvPEM.Close()
-	pubKey, err := fetchJWKSPublicKey(context.Background(), http.DefaultClient, srvPEM.URL)
+	pemKeys, err := fetchJWKSKeySet(context.Background(), http.DefaultClient, srvPEM.URL)
 	assert.NoError(t, err)
-	assert.NotNil(t, pubKey)
+	assert.NotEmpty(t, pemKeys)
 
 	// Invalid JWKS JSON Structure (Non-RSA key)
 	srvInvalidJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"keys":[{"kty":"EC","crv":"P-256"}]}`)) //nolint:errcheck // test server invalid JWKS write
 	}))
 	defer srvInvalidJWKS.Close()
-	_, err = fetchJWKSPublicKey(context.Background(), http.DefaultClient, srvInvalidJWKS.URL)
+	_, err = fetchJWKSKeySet(context.Background(), http.DefaultClient, srvInvalidJWKS.URL)
 	assert.Error(t, err)
 }
 
-func TestFetchJWKSPublicKey_NilHTTPResponseIsRejected(t *testing.T) {
+func TestFetchJWKSKeySet_NilHTTPResponseIsRejected(t *testing.T) {
 	oldHTTPDo := httpDoFunc
 	t.Cleanup(func() { httpDoFunc = oldHTTPDo })
 	httpDoFunc = func(*http.Client, *http.Request) (*http.Response, error) { return nil, nil }
 
-	_, err := fetchJWKSPublicKey(context.Background(), http.DefaultClient, "http://example.com/jwks")
+	_, err := fetchJWKSKeySet(context.Background(), http.DefaultClient, "http://example.com/jwks")
 	require.EqualError(t, err, "jwks: fetch: nil response")
 }
 
@@ -161,7 +161,7 @@ func TestNewJWTMiddlewareWithConfig_RejectsAmbiguousAudiences(t *testing.T) {
 func TestListenForRevocations_PurgesThenStopsDuringBackoff(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
 	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
-	middleware := NewJWTMiddleware("secret", rdb)
+	middleware := NewJWTMiddlewareWithConfig("secret", "", rdb, DefaultL1CacheConfig())
 	middleware.l1cache.Add("cached-session", cacheEntry{exists: true, storedAt: time.Now()})
 
 	listenerEntered := make(chan struct{})
@@ -185,7 +185,7 @@ func TestListenForRevocations_PurgesThenStopsDuringBackoff(t *testing.T) {
 func TestListenForRevocations_AlreadyCancelledReturns(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
 	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
-	middleware := NewJWTMiddleware("secret", rdb)
+	middleware := NewJWTMiddlewareWithConfig("secret", "", rdb, DefaultL1CacheConfig())
 	listenerCalled := make(chan struct{}, 1)
 	middleware.listenOnceFunc = func(context.Context) {
 		listenerCalled <- struct{}{}
@@ -205,7 +205,7 @@ func TestListenForRevocations_AlreadyCancelledReturns(t *testing.T) {
 func TestListenForRevocations_ReconnectsAfterBackoffTimer(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
 	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
-	middleware := NewJWTMiddleware("secret", rdb)
+	middleware := NewJWTMiddlewareWithConfig("secret", "", rdb, DefaultL1CacheConfig())
 	calls := make(chan struct{}, 2)
 	middleware.listenOnceFunc = func(context.Context) {
 		calls <- struct{}{}
@@ -230,7 +230,7 @@ func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 	rdb := redis.NewClient(opt)
 	defer func() { _ = rdb.Close() }() //nolint:errcheck // ignore Redis client close error in test
 
-	middleware := NewJWTMiddleware("secret", rdb)
+	middleware := NewJWTMiddlewareWithConfig("secret", "", rdb, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Start listener
@@ -247,7 +247,7 @@ func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 
 func TestOptional_DowngradeAndServiceUnavailable(t *testing.T) {
 	priv, _, pemStr := generateRSAKeyPair()
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 
 	// Configure RSA public key
 	block, _ := pem.Decode([]byte(pemStr))

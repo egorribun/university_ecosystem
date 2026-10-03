@@ -8,11 +8,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.exceptions.domain import EntityAlreadyExists
 from app.services.user.logic import (
     anonymize_user_data,
     update_user_attributes,
-    validate_user_email,
 )
 from app.services.user_service import UserService
 
@@ -248,22 +246,6 @@ async def test_anonymize_user_data_skips_falsy_placeholder_profile():
 
     assert result.startswith("deleted+")
     assert user.profile.status == "deleted"
-
-
-@pytest.mark.asyncio
-async def test_validate_user_email_normalizes_and_checks_uniqueness():
-    repo = MagicMock()
-    repo.check_email_exists = AsyncMock(return_value=False)
-
-    assert await validate_user_email(repo, "  USER@Example.COM ") == "user@example.com"
-    repo.check_email_exists.assert_awaited_once_with(
-        "user@example.com", exclude_user_id=None
-    )
-
-    repo.check_email_exists.reset_mock()
-    repo.check_email_exists.return_value = True
-    with pytest.raises(EntityAlreadyExists):
-        await validate_user_email(repo, "duplicate@example.com", exclude_user_id="user")
 
 
 @pytest.mark.asyncio

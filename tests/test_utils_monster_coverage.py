@@ -1,5 +1,3 @@
-import datetime
-import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -54,58 +52,6 @@ async def test_monster_coverage_run():
     e_service = event_service.EventService(mock_uow, mock_vector)
     user_id = uuid.uuid4()
     await e_service.get_events(user_id=user_id, search="s", locale="ru")
-
-    # 4. STATS
-    with (
-        patch(
-            "app.services.stats_cache.get_cached_stats",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch("app.services.stats_cache.set_cached_stats", new_callable=AsyncMock),
-    ):
-        row = MagicMock(
-            current_total=1,
-            current_attended=1,
-            previous_total=1,
-            previous_attended=1,
-            rn=1,
-            starts_at=datetime.datetime.now(datetime.UTC),
-            title="T",
-        )
-        res_attr = MagicMock()
-        res_attr.all.return_value = [row]
-        mock_db.execute.return_value = res_attr
-        from app.services.user.analytics_service import UserAnalyticsService
-
-        u_service = UserAnalyticsService(mock_db)
-
-        user_id = uuid.uuid4()
-        await u_service.get_attendance_stats(user_id=1, period_days=30)
-
-        notif = models.Notification(
-            body=json.dumps({"score": 5, "course": "C"}),
-            title="T",
-            created_at=datetime.datetime.now(datetime.UTC),
-            _allow_system_managed_assignment=True,
-        )
-        res_grad = MagicMock()
-        res_grad.scalars.return_value.all.return_value = [notif]
-        mock_db.execute.return_value = res_grad
-        await u_service.get_grade_stats(user_id=1, period_days=30)
-
-        p_row = (
-            1,
-            datetime.datetime.now(datetime.UTC),
-            datetime.datetime.now(datetime.UTC),
-            datetime.datetime.now(datetime.UTC),
-            "T",
-            "lecture",
-        )
-        res_part = MagicMock()
-        res_part.all.return_value = [p_row]
-        mock_db.execute.return_value = res_part
-        await u_service.get_participation_stats(user_id=1, period_days=30)
 
     # 5. FILES
     assert normalize_filename_prefix("A B!") == "a-b"

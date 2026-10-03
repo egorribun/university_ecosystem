@@ -1,7 +1,7 @@
 """Tests for exception handlers and request-ID middleware.
 
-Handlers tested with a duck-typed SimpleNamespace request (resolve_locale +
-str(request.url) only need .url/.headers/.query_params). RequestIDMiddleware
+Handlers tested with a duck-typed SimpleNamespace request; its URL is a
+Starlette URL so handlers can read `.path` or stringify it. RequestIDMiddleware
 tested as a raw ASGI callable with async receive/send mocks.
 
 asyncio_mode = "auto" (pyproject) — async test fns need no decorator.
@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
+from starlette.datastructures import URL
 
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
@@ -47,7 +48,7 @@ def _make_request(
         query_params = types.SimpleNamespace(
             get=lambda key, _loc=locale: _loc if key == "lang" else None
         )
-    return types.SimpleNamespace(url=url, headers=None, query_params=query_params)
+    return types.SimpleNamespace(url=URL(url), headers=None, query_params=query_params)
 
 
 # ── _loc_to_pointer (RFC 6901) ────────────────────────────────────────────────
@@ -79,10 +80,28 @@ async def test_domain_handler_entity_not_found_404() -> None:
     body = json.loads(resp.body)
     assert body["type"] == "https://api.university.edu/probs/not-found"
     assert body["status"] == 404
-    assert body["instance"] == "http://testserver/api/v1/x"
+    assert body["instance"] == "/api/v1/x"
     assert isinstance(body["title"], str) and body["title"]
     assert isinstance(body["detail"], str) and body["detail"]
     assert "trace_id" in body
+
+
+async def test_domain_handler_instance_omits_untrusted_host_and_query() -> None:
+    marker = f"synthetic-reset-query-{uuid.uuid4().hex}"
+    path = "/api/v1/password/reset"
+    request = _make_request(f"https://reset-attacker.invalid{path}?token={marker}")
+    response = await domain_exception_handler(
+        request, EntityNotFound("User", "missing")
+    )
+    body = json.loads(response.body)
+    response_text = response.body.decode()
+    is_safe = (
+        body.get("instance") == path
+        and marker not in response_text
+        and "reset-attacker.invalid" not in response_text
+    )
+
+    assert is_safe
 
 
 async def test_domain_handler_already_exists_409() -> None:
@@ -145,7 +164,7 @@ async def test_http_handler_404() -> None:
     body = json.loads(resp.body)
     assert body["type"] == "about:blank"
     assert body["detail"] == "missing"  # exc.detail
-    assert body["instance"] == "http://testserver/api/v1/x"
+    assert body["instance"] == "/api/v1/x"
     assert isinstance(body["title"], str) and body["title"]
 
 

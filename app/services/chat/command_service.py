@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
@@ -32,6 +33,9 @@ if TYPE_CHECKING:
     from app.schemas.dtos.chat import AttachmentDTO
 
     from .notification_service import ChatNotificationService
+
+from fastapi import HTTPException, status
+from redis.exceptions import WatchError
 
 from app.api.validation import (
     ensure_exists,
@@ -82,6 +86,45 @@ def _make_idempotency_key(
     else:
         digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
     return f"idm:msg:{digest}"
+
+
+async def _change_idempotency_slot(
+    key: str, expected: str, replacement: str | None = None, *, ttl: int = 300
+) -> bool:
+    """Compare and mutate atomically; an expired owner cannot alter a new lease."""
+    from app.deps.cache import get_cache_client
+
+    cache = await get_cache_client()
+    while True:
+        async with cache.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                current = await pipe.get(key)
+                if isinstance(current, bytes):
+                    current = current.decode("utf-8")
+                if current != expected:
+                    return False
+                pipe.multi()
+                if replacement is None:
+                    pipe.delete(key)
+                else:
+                    pipe.set(key, replacement, ex=ttl)
+                await pipe.execute()
+                return True
+            except WatchError:
+                # Re-read ownership after an expiry/replacement during WATCH.
+                continue
+
+
+def _idempotency_in_progress() -> None:
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": "idempotency_in_progress",
+            "message": "This message is already being processed; retry with the same key",
+        },
+        headers={"Retry-After": "1"},
+    )
 
 
 if TYPE_CHECKING:
@@ -136,46 +179,13 @@ class ChatMessageDispatcher:
         ``Idempotency-Key`` header.  If a key is provided and a cached response
         exists in Redis (TTL 24 h), it is returned immediately — no duplicate
         message is created.  The key is namespaced by ``(chat_id, user_id)`` to
-        prevent cross-user and cross-chat replay attacks.
+        prevent cross-user and cross-chat replay attacks. An occupied pending
+        slot returns HTTP 409 with Retry-After; retry with the same key to obtain
+        the committed message. This is a bounded Redis lease, not a durable DB
+        uniqueness guarantee after Redis state loss or lease expiry.
         """
-        # ── Idempotency check (D-02) ────────────────────────────────────────
         _idempotency_cache_key: str | None = None
-        if idempotency_key:
-            import json as _json
-
-            from app.deps.cache import get_cache_client
-
-            _cache = await get_cache_client()
-            _idempotency_cache_key = _make_idempotency_key(
-                chat_id, user.id, idempotency_key
-            )
-            _cached = await _cache.get(_idempotency_cache_key)
-            if _cached:
-                # BE-02 (audit 2026-03-08 Wave 5): Cache now stores only the
-                # message ID (slim format) rather than the full serialised
-                # MessageResponse.  This prevents message content from sitting
-                # unencrypted in Redis for 24 h.  Re-fetch the full message from
-                # the DB on cache hit — one extra indexed PK lookup is negligible
-                # compared to avoiding plaintext content storage in the cache.
-                try:
-                    _hit = _json.loads(_cached)
-                    _msg_id = uuid.UUID(_hit["message_id"])
-                except (ValueError, KeyError, TypeError):  # RZ-28-01
-                    # Legacy entry: full JSON from before BE-02 — fall through to
-                    # re-send path (idempotency protection degraded, not broken).
-                    pass
-                else:
-                    _full = await self.repository.get_message_by_id(_msg_id)
-                    if _full is not None:
-                        # Wave 207 — exclude the raw replied_to DTO from the spread
-                        # (MessageResponse is extra="forbid"); inject the lean preview.
-                        return MessageResponse(
-                            **_full.model_dump(exclude={"replied_to"}),
-                            reply_to=ReplyPreview.from_message(_full.replied_to),
-                            sender_presence=PresenceStatus(
-                                active=ws_manager.is_online(_full.sender_id)
-                            ),
-                        )
+        _pending_value: str | None = None
 
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
@@ -187,6 +197,40 @@ class ChatMessageDispatcher:
         if not is_participant:
             raise_forbidden(locale, "errors.chat.not_participant")
 
+        # Check idempotency only after current membership authorization. A cached
+        # message ID is not an authorization grant; users removed from a chat must
+        # not retrieve an old response through the retry path.
+        if idempotency_key:
+            import json as _json
+
+            from app.deps.cache import get_cache_client
+
+            _cache = await get_cache_client()
+            _idempotency_cache_key = _make_idempotency_key(
+                chat_id, user.id, idempotency_key
+            )
+            _cached = await _cache.get(_idempotency_cache_key)
+            if _cached:
+                try:
+                    _hit = _json.loads(_cached)
+                    _msg_id = uuid.UUID(_hit["message_id"])
+                except (ValueError, KeyError, TypeError):  # RZ-28-01
+                    # Pending or malformed entries must still acquire the slot
+                    # below; never treat a cache parse failure as ownership.
+                    pass
+                else:
+                    _full = await self.repository.get_message_by_id(
+                        _msg_id, user_id=user.id, chat_id=chat_id
+                    )
+                    if _full is not None:
+                        return MessageResponse(
+                            **_full.model_dump(exclude={"replied_to"}),
+                            reply_to=ReplyPreview.from_message(_full.replied_to),
+                            sender_presence=PresenceStatus(
+                                active=ws_manager.is_online(_full.sender_id)
+                            ),
+                        )
+
         # Wave 207 — if this is a reply, the target must exist AND be in THIS chat.
         # message_exists_in_chat checks both (id == … AND chat_id == …) via EXISTS,
         # so a reply to a message in another chat — or a bogus id — 404s before any
@@ -194,7 +238,7 @@ class ChatMessageDispatcher:
         # the SET NULL self-FK.
         if reply_to_message_id is not None:
             target_in_chat = await self.repository.message_exists_in_chat(
-                reply_to_message_id, chat_id
+                reply_to_message_id, chat_id, user_id=user.id
             )
             if not target_in_chat:
                 raise_not_found("message", locale)
@@ -227,28 +271,17 @@ class ChatMessageDispatcher:
         # surface genuine infrastructure failures quickly.
         _UPLOAD_TIMEOUT_SECONDS = 30.0
 
-        # RACE-BE-01 (audit Wave 10): Reserve the idempotency slot BEFORE any
-        # upload so that failures in Phase 1 OR Phase 2 both hit the same except
-        # clause and release the slot.  Without pre-reservation the slot is only
-        # written on success (line ~300); a Phase-2 DB failure leaves no record
-        # and the next retry re-uploads — creating duplicate S3 objects.
-        #
-        # Redis SET NX: "pending" marks the slot as in-flight.  TTL 300 s covers
-        # the maximum upload + DB write time with room to spare.  An existing
-        # "pending" value means a concurrent/retried request — we fall through to
-        # the normal flow; the DB unique constraint is the final arbiter.
+        # Reserve before uploads. A losing request returns a retryable conflict;
+        # only the owner may write or release/promote the scoped client key.
         if _idempotency_cache_key:
-            import json as _json
-
-            from app.deps.cache import get_cache_client
-
-            _cache = await get_cache_client()
-            await _cache.set(
-                _idempotency_cache_key,
-                _json.dumps({"status": "pending"}),
-                nx=True,
-                ex=300,
+            _pending_value = json.dumps(
+                {"status": "pending", "owner": uuid.uuid4().hex}
             )
+            acquired = await _cache.set(
+                _idempotency_cache_key, _pending_value, nx=True, ex=300
+            )
+            if not acquired:
+                _idempotency_in_progress()
 
         # ── Phase 1 + Phase 2 wrapped together ───────────────────────────────
         # Both phases share the same exception handler so that a Phase-2 failure
@@ -288,13 +321,8 @@ class ChatMessageDispatcher:
             # Phase 1 failure: clean up any partial uploads and release slot.
             if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
-            if _idempotency_cache_key:
-                import json as _json
-
-                from app.deps.cache import get_cache_client
-
-                _cache = await get_cache_client()
-                await _cache.delete(_idempotency_cache_key)
+            if _idempotency_cache_key and _pending_value:
+                await _change_idempotency_slot(_idempotency_cache_key, _pending_value)
             raise
 
         # ── Phase 2: Atomic DB write ─────────────────────────────────────────
@@ -303,6 +331,13 @@ class ChatMessageDispatcher:
         # files (best-effort) and release the idempotency pending slot so the
         # next retry can start fresh — closing the RACE-BE-01 window.
         try:
+            if _idempotency_cache_key and _pending_value:
+                # Uploads may outlive the lease. Verify and renew ownership before
+                # entering the DB mutation, so an old uploader cannot insert.
+                if not await _change_idempotency_slot(
+                    _idempotency_cache_key, _pending_value, _pending_value
+                ):
+                    _idempotency_in_progress()
             message = Message(
                 chat_id=chat_id,
                 sender_id=user.id,
@@ -369,17 +404,24 @@ class ChatMessageDispatcher:
             # copies rather than re-using orphaned S3 objects.
             if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
-            if _idempotency_cache_key:
-                import json as _json
-
-                from app.deps.cache import get_cache_client
-
-                _cache = await get_cache_client()
-                await _cache.delete(_idempotency_cache_key)
+            if _idempotency_cache_key and _pending_value:
+                await _change_idempotency_slot(_idempotency_cache_key, _pending_value)
             raise
 
+        # Record the committed ID before response hydration, which may itself
+        # fail. A retry can then reload that same message rather than insert again.
+        if _idempotency_cache_key and _pending_value:
+            await _change_idempotency_slot(
+                _idempotency_cache_key,
+                _pending_value,
+                json.dumps({"status": "completed", "message_id": str(message.id)}),
+                ttl=86400,
+            )
+
         # Reload message with attachments for the response
-        reloaded = await self.repository.get_last_messages([message.id])
+        reloaded = await self.repository.get_last_messages(
+            [message.id], user_id=user.id
+        )
         full_message = reloaded.get(message.id)
 
         if not full_message:
@@ -422,29 +464,6 @@ class ChatMessageDispatcher:
         # await self.notification_service.notify_new_message(
         #     message, chat.participants, user
         # )
-
-        # ── Idempotency store (D-02 / BE-02 / RACE-BE-01) ───────────────────
-        # BE-02 (audit 2026-03-08 Wave 5): Store only the message ID rather than
-        # the full serialised MessageResponse.  Storing plaintext message content
-        # in Redis for 24 h is a data-protection risk: if Redis is exfiltrated,
-        # attackers gain access to all recently sent messages.  On cache hit we
-        # re-fetch the full message from the DB (one PK lookup — negligible cost).
-        #
-        # RACE-BE-01: Overwrite the "pending" placeholder set before Phase 1 with
-        # the "completed" entry including message_id.  setex replaces regardless
-        # of current value — atomic promotion from pending → completed.
-        if _idempotency_cache_key:
-            import json as _json
-
-            from app.deps.cache import get_cache_client
-
-            _cache = await get_cache_client()
-            _slim = _json.dumps({"status": "completed", "message_id": str(msg_data.id)})
-            await _cache.setex(
-                _idempotency_cache_key,
-                86400,  # 24 h — covers any reasonable client retry window
-                _slim,
-            )
 
         return msg_data
 
@@ -497,15 +516,23 @@ class ChatMessageDispatcher:
         # 3) Each id must belong to the source chat — validate ALL before creating
         #    ANY message (all-or-nothing). message_exists_in_chat is one EXISTS/id.
         for mid in ordered_ids:
-            if not await self.repository.message_exists_in_chat(mid, source_chat_id):
+            if not await self.repository.message_exists_in_chat(
+                mid, source_chat_id, user_id=user.id
+            ):
                 raise_not_found("message", locale)
 
-        # Batched load of the source messages (sender + attachments selectinload'd).
-        sources = await self.repository.get_last_messages(ordered_ids)
-        if len(sources) != len(ordered_ids):
+        # Load only live sources; a tombstone must not be forwarded with its
+        # retained attachment references. The DTO guard also fails closed if a
+        # repository implementation returns a tombstone despite the SQL filter.
+        sources = await self.repository.get_last_messages(
+            ordered_ids, user_id=user.id, live_only=True
+        )
+        if len(sources) != len(ordered_ids) or any(
+            source.deleted_at is not None for source in sources.values()
+        ):
             # Defensive TOCTOU guard — message_exists_in_chat validated each id
-            # above; a gap here would be a negligible same-session race. Fail
-            # before creating anything (all-or-nothing).
+            # above, then this live-only batch prevents a stale tombstone from
+            # reaching attachment copying or destination writes.
             raise_not_found("message", locale)
 
         # Resolve the ORIGINAL senders' display names for the "Forwarded from X"
@@ -600,7 +627,9 @@ class ChatMessageDispatcher:
         # preserving source order. forwarded_from_name auto-carries via model_dump;
         # a forward is not a reply → reply_to=None. message.id is the identity-map
         # PK (not expired on commit), so the reload-by-id is safe.
-        reloaded = await self.repository.get_last_messages([m.id for m in created])
+        reloaded = await self.repository.get_last_messages(
+            [m.id for m in created], user_id=user.id
+        )
         responses: list[MessageResponse] = []
         for message in created:
             presence = PresenceStatus(active=ws_manager.is_online(user.id))
@@ -696,10 +725,10 @@ class ChatMaintenanceService:
         new_content: str,
         locale: str,
     ) -> None:
-        """Edit a message's content (author-only) and broadcast it live.
+        """Edit a message's content (author-only) and queue durable delivery.
 
-        Wave 205 SW3 — copies the mark_read synchronous-broadcast pattern: participant
-        check → repo edit → commit → gated broadcast AFTER commit (read-your-write).
+        The transactional outbox records the event with the row mutation; its
+        handler broadcasts only after the commit succeeds.
         The repo's author-only WHERE means affected == 0 ⇒ not the author / missing /
         already deleted ⇒ 404 (raised before commit; nothing to persist).
         """
@@ -711,31 +740,14 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        edited_at, affected = await self.repository.edit_message(
-            message_id, user.id, new_content
+        _, affected = await self.repository.edit_message(
+            message_id, user.id, new_content, chat_id=chat_id
         )
         if affected == 0:
             raise_not_found("message", locale)
 
         async with self.uow:
             await self.uow.commit()
-
-        # Wave 205 SW3 — broadcast message_edited SYNCHRONOUSLY after commit so the
-        # edit flips live via the W204 bridge. exclude_user_id is omitted (broadcast
-        # to all): the NATS mirror can't exclude per-recipient anyway, and the FE
-        # cache-update is idempotent — the author's echo merely reconciles its
-        # optimistic client-time edited_at to the authoritative server value. A missed
-        # frame self-heals on refetch (edited_at is a persisted column).
-        await ws_manager.broadcast_to_chat(
-            chat_id,
-            {
-                "type": "message_edited",
-                "message_id": str(message_id),
-                "chat_id": str(chat_id),
-                "content": new_content,
-                "edited_at": edited_at.isoformat() if edited_at else None,
-            },
-        )
 
     async def soft_delete_message(
         self,
@@ -744,10 +756,11 @@ class ChatMaintenanceService:
         user: User,
         locale: str,
     ) -> None:
-        """Soft-delete a message (author-only) and broadcast the tombstone live.
+        """Soft-delete a message (author-only) and queue durable delivery.
 
-        Wave 205 SW3 — same synchronous-broadcast pattern as edit_message. The repo
-        clears content + stamps deleted_at (D1 tombstone); affected == 0 ⇒ 404.
+        The transactional outbox records the event with the tombstone mutation; its
+        handler broadcasts only after the commit succeeds. The repo clears content
+        and stamps deleted_at (D1 tombstone); affected == 0 ⇒ 404.
         """
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
@@ -757,24 +770,14 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        deleted_at, affected = await self.repository.soft_delete_message(
-            message_id, user.id
+        _, affected = await self.repository.soft_delete_message(
+            message_id, user.id, chat_id=chat_id
         )
         if affected == 0:
             raise_not_found("message", locale)
 
         async with self.uow:
             await self.uow.commit()
-
-        await ws_manager.broadcast_to_chat(
-            chat_id,
-            {
-                "type": "message_deleted",
-                "message_id": str(message_id),
-                "chat_id": str(chat_id),
-                "deleted_at": deleted_at.isoformat() if deleted_at else None,
-            },
-        )
 
     async def add_reaction(
         self,
@@ -801,7 +804,9 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+        if not await self.repository.message_exists_in_chat(
+            message_id, chat_id, user_id=user.id
+        ):
             raise_not_found("message", locale)
 
         is_new = await self.repository.add_reaction(message_id, user.id, emoji)
@@ -851,6 +856,11 @@ class ChatMaintenanceService:
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
+
+        if not await self.repository.message_exists_in_chat(
+            message_id, chat_id, user_id=user.id
+        ):
+            return
 
         affected = await self.repository.remove_reaction(message_id, user.id, emoji)
         async with self.uow:
@@ -978,12 +988,59 @@ class ChatMaintenanceService:
             raise_forbidden(locale, "errors.chat.remove_forbidden")
 
         affected = await self.repository.remove_participant(chat_id, target_user_id)
+        removal_event_id: uuid.UUID | None = None
+        if affected:
+            from app.core.events import (
+                ChatParticipantRemoved as _ChatParticipantRemoved,
+            )
+            from app.models.domain_events import StoredEvent as _StoredEvent
+            from app.utils.uuid_v7 import generate_uuid7 as _generate_uuid7
+
+            removal_event_id = _generate_uuid7()
+            self.repository.add(
+                _StoredEvent(
+                    id=removal_event_id,
+                    event_type=_ChatParticipantRemoved.EVENT_TYPE,
+                    aggregate_type="Chat",
+                    aggregate_id=str(chat_id),
+                    payload={
+                        "chat_id": str(chat_id),
+                        "user_id": str(target_user_id),
+                    },
+                )
+            )
         async with self.uow:
             await self.uow.commit()
 
         if affected:
-            await invalidate_chat_participants_cache(chat_id)
-            await invalidate_presence_audience_cache(target_user_id, *participant_ids)
+            cache_results = await asyncio.gather(
+                invalidate_chat_participants_cache(chat_id),
+                invalidate_presence_audience_cache(target_user_id, *participant_ids),
+                return_exceptions=True,
+            )
+
+            # The transactionally stored event remains the durable retry path.
+            # Publish the same event identity now for low-latency room eviction;
+            # JetStream deduplicates the outbox retry, and the hub also treats a
+            # repeated eviction as idempotent after refreshing membership.
+            from app.services.ws_hub_client import invalidate_ws_hub_cache
+
+            await asyncio.gather(
+                invalidate_ws_hub_cache(
+                    str(target_user_id),
+                    str(chat_id),
+                    evict_room=True,
+                    event_id=str(removal_event_id),
+                ),
+                return_exceptions=True,
+            )
+            # A cache failure must not prevent the independent room-revocation
+            # fast path. Preserve the existing error contract after all
+            # post-commit effects have had a chance to run; the stored event
+            # remains available for durable WS-hub retry.
+            for cache_result in cache_results:
+                if isinstance(cache_result, BaseException):
+                    raise cache_result
 
     async def rename_chat(
         self, chat_id: uuid.UUID, user: User, name: str, locale: str
@@ -1013,7 +1070,7 @@ class ChatMaintenanceService:
         self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:
         """Delete all messages in a chat (but keep the chat)."""
-        chat = await self.repository.get_by_id(chat_id, load_messages=True)
+        chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
         assert chat is not None  # noqa: S101
 
@@ -1026,12 +1083,27 @@ class ChatMaintenanceService:
         if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.history_clear_forbidden_non_admin")
 
+        rls_user_id = (
+            user.id
+            if user.id in participant_ids
+            else (chat.participants[0].id if chat.participants else None)
+        )
+        if rls_user_id is None:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        chat = await self.repository.get_by_id(
+            chat_id, load_messages=True, user_id=rls_user_id
+        )
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
         attachment_urls = await self.attachment_service.collect_urls(chat)
         message_count = len(chat.messages)
         attachment_count = len(attachment_urls)
 
         try:
-            await self.repository.delete_messages([m.id for m in chat.messages])
+            await self.repository.delete_messages(
+                [m.id for m in chat.messages], chat_id=chat_id, user_id=rls_user_id
+            )
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
 
             # PERF-W10-05: Durable cleanup via Outbox — StoredEvent is written in
@@ -1071,7 +1143,7 @@ class ChatMaintenanceService:
         self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:
         """Permanently delete a chat."""
-        chat = await self.repository.get_by_id(chat_id, load_messages=True)
+        chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
         assert chat is not None  # noqa: S101
 
@@ -1083,6 +1155,19 @@ class ChatMaintenanceService:
         # participant allows bad actors to delete evidence from the victim's device.
         if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.deletion_forbidden_non_admin")
+
+        rls_user_id = (
+            user.id
+            if user.id in participant_ids
+            else (chat.participants[0].id if chat.participants else None)
+        )
+        if rls_user_id is None:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        chat = await self.repository.get_by_id(
+            chat_id, load_messages=True, user_id=rls_user_id
+        )
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
 
         attachment_urls = await self.attachment_service.collect_urls(chat)
         message_count = len(chat.messages)

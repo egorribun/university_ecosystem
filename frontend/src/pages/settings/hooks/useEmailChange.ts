@@ -1,11 +1,11 @@
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
+import { useSessionProfileRefresh } from "./useSessionProfileRefresh"
 import { useState, useCallback, useEffect } from "react"
-import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
-import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
 import type { User } from "@/types/User"
 import type { SetSnackbar } from "@/pages/settings/types"
 
@@ -34,8 +34,9 @@ export function useEmailChange({
   openStepUpFor,
 }: UseEmailChangeOptions): UseEmailChangeReturn {
   const { t } = useTranslation(["settings"])
-  const { user, setUser } = useAuth()
-  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const captureOperation = useProfileSessionGuard()
+  const refreshUser = useSessionProfileRefresh()
 
   const [emailValue, setEmailValue] = useState(user?.email ?? "")
   const [emailPassword, setEmailPassword] = useState("")
@@ -43,6 +44,13 @@ export function useEmailChange({
   const [emailError, setEmailError] = useState<string | null>(null)
   const [emailPasswordError, setEmailPasswordError] = useState<string | null>(null)
   const [pendingEmail, setPendingEmail] = useState<string | null>(user?.pending_email ?? null)
+
+  useEffect(() => {
+    setEmailBusy(false)
+    setEmailPassword("")
+    setEmailError(null)
+    setEmailPasswordError(null)
+  }, [captureOperation])
 
   // Sync email from user context
   useEffect(() => {
@@ -52,16 +60,6 @@ export function useEmailChange({
   useEffect(() => {
     setPendingEmail(user?.pending_email ?? null)
   }, [user?.pending_email])
-
-  const refreshUser = useCallback(async () => {
-    const fresh = await queryClient.fetchQuery<User>({
-      queryKey: currentUserQueryKey,
-      queryFn: fetchCurrentUser,
-      staleTime: 0,
-    })
-    setUser(fresh)
-    return fresh
-  }, [queryClient, setUser])
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
@@ -83,7 +81,8 @@ export function useEmailChange({
 
   const handleEmailSubmit = useCallback(
     async (options?: { skipStepUp?: boolean }) => {
-      if (emailBusy) return
+      const isCurrent = captureOperation()
+      if (emailBusy || !isCurrent()) return
 
       let hasError = false
       const trimmedEmail = emailValue.trim()
@@ -115,16 +114,19 @@ export function useEmailChange({
           email: trimmedEmail,
           password: emailPassword,
         })
+        if (!isCurrent()) return
         setPendingEmail(trimmedEmail.toLowerCase())
-        await refreshUser()
+        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
         setEmailPassword("")
         setSnackbar({
           text: t("settings:security.email.confirmationSent", { email: trimmedEmail }),
           severity: "success",
         })
       } catch (error) {
+        if (!isCurrent()) return
         if (!options?.skipStepUp && isStepUpError(error) && openStepUpFor) {
           openStepUpFor(async () => {
+            if (!isCurrent()) return
             await handleEmailSubmit({ skipStepUp: true })
           })
           return
@@ -150,10 +152,11 @@ export function useEmailChange({
           setSnackbar({ text: message, severity: "error" })
         }
       } finally {
-        setEmailBusy(false)
+        if (isCurrent()) setEmailBusy(false)
       }
     },
     [
+      captureOperation,
       emailBusy,
       emailPassword,
       emailValue,

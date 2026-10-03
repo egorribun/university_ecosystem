@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -12,14 +11,15 @@ import jwt
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
+from redis.exceptions import RedisError
 
 from app.api.deps import get_current_user_from_dishka
 from app.api.validation import (
-    ensure_exists,
     raise_http_error,
     raise_unauthorized,
     raise_validation_error,
 )
+from app.auth.revocation import get_revocation_redis_client
 from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -64,7 +64,9 @@ _spotify_http_client = httpx.AsyncClient(
 )
 
 
-def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
+def _mint_state_token(
+    subject: str, *, session_id: str, nonce: str, expires_minutes: int
+) -> str:
     """Mint a short-lived JWT state token for the Spotify OAuth round-trip.
 
     RZ-002 (audit 2026-03-04): uses a dedicated spotify_oauth_state_secret
@@ -75,10 +77,11 @@ def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": subject,
+        "sid": session_id,
         "iat": now,
         "nbf": now,
         "exp": now + timedelta(minutes=expires_minutes),
-        "jti": str(uuid4()),
+        "jti": nonce,
     }
     # P2-W5-18: No fallback to spotify_token_secret — using the wrong key would
     # allow a confused-deputy attack.  The model_validator in integrations.py
@@ -90,6 +93,43 @@ def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
             "SPOTIFY_OAUTH_STATE_SECRET must be set before Spotify OAuth flows can be used."
         )
     return jwt.encode(payload, state_secret, algorithm="HS256")
+
+
+async def _consume_oauth_state(
+    state: str, *, request: Request, user: User, locale: str
+) -> None:
+    """Validate the initiating identity and atomically burn its one-time nonce."""
+    state_secret = settings.spotify_oauth_state_secret
+    if not state_secret:
+        raise_http_error(503, "errors.spotify.misconfigured", locale)
+    try:
+        payload = jwt.decode(
+            state,
+            state_secret,
+            algorithms=["HS256"],
+            options={"require": ["sub", "sid", "jti", "exp", "iat", "nbf"]},
+        )
+    except jwt.PyJWTError:
+        raise_validation_error("errors.spotify.invalid_state", locale)
+    session = getattr(request.state, "active_session", None)
+    nonce = payload.get("jti")
+    if (
+        session is None
+        or payload.get("sub") != str(user.id)
+        or payload.get("sid") != str(session.id)
+        or not isinstance(nonce, str)
+        or not nonce
+    ):
+        raise_validation_error("errors.spotify.invalid_state", locale)
+    try:
+        client = await get_revocation_redis_client()
+        bound_identity = await client.getdel(f"oauth:spotify:{nonce}")
+    except (RuntimeError, RedisError, OSError):
+        raise_http_error(503, "errors.spotify.service_unavailable", locale)
+    if isinstance(bound_identity, bytes):
+        bound_identity = bound_identity.decode("utf-8", errors="replace")
+    if bound_identity != f"{user.id}:{session.id}":
+        raise_validation_error("errors.spotify.invalid_state", locale)
 
 
 def _now_utc() -> datetime:
@@ -296,9 +336,26 @@ async def _ensure_access_token(
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
 async def spotify_auth_url(
+    request: Request,
     user: User = Depends(get_current_user_from_dishka),
 ) -> SpotifyAuthURL | dict[str, str]:
-    state_token = _mint_state_token(str(user.id), expires_minutes=10)
+    locale = resolve_locale(request=request, user=user)
+    session = getattr(request.state, "active_session", None)
+    if session is None:
+        raise_unauthorized(locale)
+    nonce = str(uuid4())
+    state_token = _mint_state_token(
+        str(user.id), session_id=str(session.id), nonce=nonce, expires_minutes=10
+    )
+    try:
+        client = await get_revocation_redis_client()
+        stored = await client.set(
+            f"oauth:spotify:{nonce}", f"{user.id}:{session.id}", ex=600, nx=True
+        )
+    except (RuntimeError, RedisError, OSError):
+        raise_http_error(503, "errors.spotify.service_unavailable", locale)
+    if not stored:
+        raise_http_error(503, "errors.spotify.service_unavailable", locale)
     params = {
         "client_id": settings.spotify_client_id,
         "response_type": "code",
@@ -325,23 +382,10 @@ async def spotify_callback(
     db: FromDishka[AsyncDatabaseSession],
     code: str = Query(...),
     state: str = Query(...),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> RedirectResponse:
-    locale = resolve_locale(request=request)
-    # RZ-W19-07: decode state with the SAME key used to mint it
-    state_secret = settings.spotify_oauth_state_secret
-    if not state_secret:
-        raise_http_error(503, "errors.spotify.misconfigured", locale)
-    try:
-        payload = jwt.decode(state, state_secret, algorithms=["HS256"])
-    except jwt.PyJWTError:
-        payload = {}
-    if not payload.get("sub"):
-        raise_validation_error("errors.spotify.invalid_state", locale)
-    user = await db.get(User, uuid.UUID(payload["sub"]))
-    if not user:
-        ensure_exists(user, "spotify.user_not_found", locale)
-        raise ValueError("Unreachable")
     locale = resolve_locale(request=request, user=user)
+    await _consume_oauth_state(state, request=request, user=user, locale=locale)
     try:
         async with _spotify_circuit_breaker:
             # TD-W16-07: Reuse module-level HTTP/2 client.

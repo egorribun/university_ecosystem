@@ -443,7 +443,7 @@ async def test_generate_event_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
+        patch("app.services.event_handlers.VectorService", return_value=AsyncMock()),
     ):
         await generate_event_embedding(mock_event)  # returns early when not found
 
@@ -466,7 +466,7 @@ async def test_generate_news_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
+        patch("app.services.event_handlers.VectorService", return_value=AsyncMock()),
     ):
         await generate_news_embedding(mock_event)
 
@@ -522,7 +522,7 @@ async def test_vector_service_get_embedding_disabled() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
@@ -543,7 +543,7 @@ async def test_vector_service_get_embedding_no_api_key() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -570,7 +570,7 @@ async def test_vector_service_get_embedding_http_success() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -597,7 +597,7 @@ async def test_vector_service_get_embedding_http_error() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -622,7 +622,7 @@ async def test_vector_service_search_similar_disabled() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
@@ -645,7 +645,7 @@ async def test_vector_service_search_similar_empty_embedding() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -666,7 +666,7 @@ async def test_vector_service_close() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
@@ -690,7 +690,7 @@ async def test_vector_service_search_disabled_returns_empty() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost:8001"
@@ -713,7 +713,7 @@ async def test_vector_service_search_empty_embedding_returns_empty() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost:8001"

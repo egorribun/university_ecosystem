@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   clientsClaim: vi.fn(),
   initApiCaching: vi.fn(),
   clearSessionCaches: vi.fn(),
+  purgeLegacyCaches: vi.fn(),
   setSessionHash: vi.fn(),
   log: vi.fn(),
   error: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("workbox-core", () => ({ clientsClaim: mocks.clientsClaim }))
 vi.mock("../sw/api", () => ({
   initApiCaching: mocks.initApiCaching,
   clearSessionCaches: mocks.clearSessionCaches,
+  purgeLegacyCaches: mocks.purgeLegacyCaches,
   setSessionHash: mocks.setSessionHash,
 }))
 vi.mock("../sw/logger", () => ({ log: mocks.log, error: mocks.error }))
@@ -106,6 +108,7 @@ beforeEach(() => {
   mocks.initOfflineQueue.mockResolvedValue(undefined)
   mocks.processOfflineQueues.mockResolvedValue(undefined)
   mocks.clearSessionCaches.mockResolvedValue(undefined)
+  mocks.purgeLegacyCaches.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -115,6 +118,19 @@ afterEach(() => {
 })
 
 describe("service-worker entrypoint", () => {
+  it("registers routes and push listeners before any asynchronous storage work", async () => {
+    mocks.clearSessionCaches.mockReturnValue(new Promise(() => undefined))
+    mocks.purgeLegacyCaches.mockReturnValue(new Promise(() => undefined))
+    mocks.initOfflineQueue.mockReturnValue(new Promise(() => undefined))
+    await import("../sw")
+    expect(mocks.initApiCaching).toHaveBeenCalledOnce()
+    expect(mocks.initMediaCaching).toHaveBeenCalledOnce()
+    expect(mocks.initPushHandlers).toHaveBeenCalledOnce()
+    expect(mocks.clearSessionCaches).not.toHaveBeenCalled()
+    expect(listeners.has("message")).toBe(true)
+    expect(listeners.has("sync")).toBe(true)
+  })
+
   it("bootstraps modules and exposes the real queue protocol surface", async () => {
     const module = await loadServiceWorker()
 
@@ -249,9 +265,50 @@ describe("service-worker entrypoint", () => {
 
     expect(scope.skipWaiting).toHaveBeenCalledTimes(2)
     expect(mocks.setSessionHash).toHaveBeenCalledOnce()
-    expect(mocks.setSessionHash).toHaveBeenCalledWith("session-a")
+    expect(mocks.setSessionHash).toHaveBeenCalledWith("session-a", undefined)
     expect(waitUntil).toHaveBeenCalledTimes(3)
     expect(waitUntil).toHaveBeenCalledWith(expect.any(Promise))
+  })
+
+  it.each([null, undefined])(
+    "clears the session when a trusted client sends a nullish hash: %s",
+    async (sessionHash) => {
+      await loadServiceWorker()
+      const waitUntil = vi.fn()
+
+      listeners.get("message")?.(
+        message({
+          data: { type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY, sessionHash },
+          waitUntil,
+        })
+      )
+
+      expect(mocks.clearSessionCaches).toHaveBeenCalledOnce()
+      expect(waitUntil).toHaveBeenCalledExactlyOnceWith(
+        mocks.clearSessionCaches.mock.results[0]?.value
+      )
+      expect(mocks.setSessionHash).not.toHaveBeenCalled()
+    }
+  )
+
+  it("forwards the live client's session scope without replacing its identity", async () => {
+    await loadServiceWorker()
+
+    listeners.get("message")?.(
+      message({
+        data: {
+          type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+          sessionHash: "account-a",
+          sessionScope: "account-a:live-page-nonce",
+        },
+      })
+    )
+
+    expect(mocks.setSessionHash).toHaveBeenCalledExactlyOnceWith(
+      "account-a",
+      "account-a:live-page-nonce"
+    )
+    expect(mocks.clearSessionCaches).not.toHaveBeenCalled()
   })
 
   it.each([

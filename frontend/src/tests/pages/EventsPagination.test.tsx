@@ -1,11 +1,12 @@
-import { screen, waitFor } from "@testing-library/react"
-import { describe, expect, it, beforeEach, vi } from "vitest"
+import { cleanup, screen, waitFor } from "@testing-library/react"
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest"
 import type { ContextType } from "react"
 import { QueryClient } from "@tanstack/react-query"
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { Event } from "@/types/Event"
-import { setTestEvents } from "../mocks/handlers"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { testUser, setTestEvents } from "../mocks/handlers"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("../../components/EventCard", () => ({
@@ -77,8 +78,14 @@ const authValue: AuthContextValue = {
 // retry slot.
 describe("Events initial feed", { retry: 2 }, () => {
   beforeEach(() => {
+    useAuthStore.setState({ user: testUser, loading: false })
     const events = Array.from({ length: 15 }, (_, index) => buildEvent(index + 1))
     setTestEvents(events)
+  })
+
+  afterEach(() => {
+    cleanup()
+    useAuthStore.setState({ user: null, loading: true })
   })
 
   it("renders the first page of events from the mocked feed", async () => {

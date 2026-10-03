@@ -14,6 +14,7 @@ from scripts.quality.capture_isolated_benchmarks import (
     CAPTURE_SIDE_WORKERS,
     CONTAINER_HOME,
     DOCKER_BINARY,
+    GO_IMAGE,
     PAIR_COUNT,
     TIMEOUT_BINARY,
     CaptureArguments,
@@ -1384,13 +1385,22 @@ def test_rust_benchmark_image_cannot_copy_candidate_build_context() -> None:
     assert "USER benchmark" in lines
 
 
+def test_disposable_test_runner_provides_the_pinned_benchmark_compiler() -> None:
+    """The maintained full Python runner must execute its real Go contracts."""
+    dockerfile = (REPOSITORY_ROOT / "Dockerfile.test").read_text(encoding="utf-8")
+    assert f"COPY --from={GO_IMAGE} /usr/local/go /usr/local/go" in dockerfile
+    assert 'GOTOOLCHAIN="local"' in dockerfile
+    assert 'PATH="/usr/local/go/bin:$PATH"' in dockerfile
+
+
 def test_go_measurement_isolates_benchmarks_without_losing_coverage(
     tmp_path: Path,
 ) -> None:
     """A retained fixture cannot affect later benchmarks in either package."""
 
-    if shutil.which("go") is None:
-        pytest.skip("Go is required for the real benchmark-process contract")
+    assert shutil.which("go") is not None, (
+        "Go is required for the real benchmark-process contract"
+    )
     (tmp_path / "go.mod").write_text("module example.test/isolation\n\ngo 1.20\n")
     fixture = """package isolation
 
@@ -1457,8 +1467,9 @@ def test_go_measurement_stops_on_discovery_or_benchmark_failure(
 ) -> None:
     """A failed package discovery or benchmark cannot become partial evidence."""
 
-    if shutil.which("go") is None:
-        pytest.skip("Go is required for the real benchmark-process contract")
+    assert shutil.which("go") is not None, (
+        "Go is required for the real benchmark-process contract"
+    )
     (tmp_path / "go.mod").write_text("module example.test/failure\n\ngo 1.20\n")
     (tmp_path / "failure_test.go").write_text(
         """package failure

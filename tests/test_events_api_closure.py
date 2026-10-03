@@ -64,11 +64,23 @@ def _result(*, rows: list[object] | None = None, scalar: object = 0) -> MagicMoc
 
 
 def test_id_and_cache_helpers_cover_boundaries() -> None:
-    api._validate_id_type(-(2**63))
-    api._validate_id_type(2**63 - 1)
+    request = SimpleNamespace(query_params={})
+    api._validate_id_type(-(2**63), request)
+    api._validate_id_type(2**63 - 1, request)
     with pytest.raises(HTTPException) as exc:
-        api._validate_id_type(2**63)
+        api._validate_id_type(2**63, request)
     assert exc.value.status_code == 422
+
+
+def test_event_attachment_storage_key_rejects_unrecognized_nested_layout() -> None:
+    event_id = uuid.uuid4()
+    storage_url = f"/static/event_files/event_{event_id}/nested/agenda.pdf"
+
+    assert not api._event_attachment_url_matches_resource(
+        storage_url,
+        event_id,
+        "agenda.pdf",
+    )
 
 
 @pytest.mark.asyncio

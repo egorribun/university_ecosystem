@@ -19,6 +19,7 @@ from app.models import User
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.dtos import UserDTO
+from app.services.auth.session_policy import session_is_usable
 
 logger = get_logger(__name__)
 
@@ -79,15 +80,7 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
                 return None, None
 
             active_session = await session_repo.get_by_jti(session_jti)
-            if not active_session or active_session.user_id != user.id:
-                return None, None
-
-            expires_at = active_session.expires_at
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-            if expires_at <= datetime.now(UTC):
-                return None, None
-            if active_session.revoked_at is not None:
+            if active_session is None or not session_is_usable(active_session, user):
                 return None, None
 
             return cast("User | UserDTO", user), session_jti
@@ -109,47 +102,13 @@ async def get_user_from_cookie(cookie_value: str) -> tuple[User | None, str | No
     )
 
 
-def extract_bearer_token(header_value: str | None) -> str | None:
-    """Parse `Authorization: Bearer <token>` or bare token header."""
-    if not header_value:
-        return None
-    parts = header_value.strip().split()
-    if len(parts) == 2 and parts[0].lower() == "bearer":
-        return parts[1]
-    if len(parts) == 1:
-        return parts[0]
-    return None
-
-
-def extract_token_from_subprotocol(header_value: str | None) -> str | None:
-    """Extract token from `Sec-WebSocket-Protocol: access_token, <JWT>` header."""
-    if not header_value:
-        return None
-    protocols = [p.strip() for p in header_value.split(",") if p.strip()]
-    for index, protocol in enumerate(protocols):
-        if protocol.lower() in {"access_token", "bearer", "authorization"}:
-            if index + 1 < len(protocols):
-                return protocols[index + 1]
-    return None
-
-
-def select_subprotocol(header_value: str | None) -> str | None:
-    """Select the first known WebSocket sub-protocol from the header."""
-    if not header_value:
-        return None
-    protocols = [p.strip() for p in header_value.split(",") if p.strip()]
-    for candidate in protocols:
-        if candidate.lower() in {"access_token", "bearer"}:
-            return candidate
-    return None
-
-
 async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
     """Validate a one-time WS upgrade ticket and return (user, jti).
 
     RZ-W14-01 (audit 2026-03-23 Wave 14): atomically consumes the ticket via
     Redis GETDEL so it cannot be replayed.  The ticket was issued by
-    POST /ws/ticket and stores "{user_id}:{jti}" under "ott:ws:{ticket}".
+    POST /ws/ticket stores "{user_id}:{jti}:{expires_at_unix_seconds}"
+    under "ott:ws:{ticket}".
 
     Returns (None, None) if the ticket is missing, expired, already used,
     or if the referenced session is invalid.
@@ -168,15 +127,25 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
 
         redis = await get_cache_client()
         # GETDEL: atomic read + delete — prevents replay of the same ticket
-        raw: str | None = await redis.getdel(f"{TICKET_KEY_PREFIX}{ticket}")
+        raw: str | bytes | None = await redis.getdel(f"{TICKET_KEY_PREFIX}{ticket}")
         if not raw:
             logger.debug("WS ticket not found or already used: %.8s…", ticket)
             return None, None
 
-        # Canonical format is exactly "{user_id}:{jti}". Extra segments are
-        # rejected so untrusted tenant data cannot be smuggled into the JTI.
+        if isinstance(raw, bytes):
+            raw = raw.decode("ascii")
+        # Reject legacy two-field tickets and any alternate expiry encoding.
+        # Match Go's positive signed-int64 decimal contract without accepting
+        # whitespace, a sign, Unicode digits, fractions, or leading zeroes.
         parts = raw.split(":")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
+        if (
+            len(parts) != 3
+            or not parts[0]
+            or not parts[1]
+            or not 1 <= len(parts[2]) <= 19
+            or parts[2][0] not in "123456789"
+            or any(char not in "0123456789" for char in parts[2])
+        ):
             # RZ-W19-04 (audit 2026-03-24 Wave 19): truncate to 4 chars max to
             # prevent creating an oracle for brute-forcing valid tickets.
             # Previously %.8s could reveal most of a short ticket.
@@ -189,7 +158,13 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
             )
             return None, None
 
-        user_id_str, jti = parts
+        user_id_str, jti, expiry_text = parts
+        expires_at_seconds = int(expiry_text)
+        if (
+            expires_at_seconds > 2**63 - 1
+            or expires_at_seconds <= datetime.now(UTC).timestamp()
+        ):
+            return None, None
 
     except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — ticket validation failure returns None (reviewed TD-27-04)
         logger.warning("WS ticket validation error: %s", exc)
@@ -227,15 +202,7 @@ async def _resolve_user_from_ids(
                 pass  # fallback to DB revoked_at check below
 
             active_session = await session_repo.get_by_jti(jti)
-            if not active_session or active_session.user_id != user.id:
-                return None, None
-
-            expires_at = active_session.expires_at
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-            if expires_at <= datetime.now(UTC):
-                return None, None
-            if active_session.revoked_at is not None:
+            if active_session is None or not session_is_usable(active_session, user):
                 return None, None
 
             return cast("User | None", user), jti
