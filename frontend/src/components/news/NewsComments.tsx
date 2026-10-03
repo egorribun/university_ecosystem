@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/Button"
 import { Textarea } from "@/components/ui/Textarea"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
-import type { NewsComment } from "@/hooks/useNewsInteraction"
+import { OPTIMISTIC_COMMENT_ID_PREFIX, type NewsComment } from "@/hooks/useNewsInteraction"
 import type { User } from "@/types/User"
 
 const COMMENT_MAX_LENGTH = 500
@@ -98,6 +98,7 @@ export function NewsComments({
                     <div className="flex items-center gap-0.5">
                       <button
                         type="button"
+                        disabled={comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)}
                         onClick={() => {
                           setEditingCommentId(comment.id)
                           setEditingCommentText(comment.content)
@@ -110,6 +111,7 @@ export function NewsComments({
                       </button>
                       <button
                         type="button"
+                        disabled={comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)}
                         onClick={() => setDeleteConfirmationId(comment.id)}
                         className="p-1.5 rounded-lg hover:bg-(--error-text)/(--opacity-subtle) text-(--error-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-medium)"
                         title={t("news:actions.deleteComment")}
