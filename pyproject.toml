@@ -520,7 +520,8 @@ skips = [
 
 [tool.deptry]
 # Runtime dependency hygiene for the application package (CI: quality job).
-# Scripts, tests and tooling use the dev group and are not scanned.
+# Tests and tooling use the dev group and are not scanned. Production command
+# and operational imports outside app/ are documented below.
 known_first_party = ["app"]
 
 [tool.deptry.package_module_name_map]
@@ -532,7 +533,9 @@ pyroscope-io = "pyroscope"
 # email-validator - pydantic EmailStr; python-multipart - FastAPI forms;
 # gunicorn - production server command; python-dotenv - seed scripts in the
 # backend image; protobuf - flagd/Authzed gRPC runtime (feature-flag contract).
-DEP002 = ["aiosqlite", "email-validator", "gunicorn", "protobuf", "python-dotenv", "python-multipart"]
+# minio - read-only scripts/s3_cutover_preflight.py mounted into the backend
+# image by docs/runbooks/s3-seaweedfs-cutover.md; it must remain in --no-dev installs.
+DEP002 = ["aiosqlite", "email-validator", "gunicorn", "minio", "protobuf", "python-dotenv", "python-multipart"]
 # Framework internals imported alongside the frameworks that pin them.
 DEP003 = ["graphql", "pydantic_core"]
 
