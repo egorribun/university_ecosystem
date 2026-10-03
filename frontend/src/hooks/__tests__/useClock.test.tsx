@@ -10,6 +10,48 @@ function ClockMarkup() {
   return <p>{`${hh}:${mm}|${dateStr}`}</p>
 }
 
+function mockLocalTimezone(initialTimezone: string) {
+  let timeZone = initialTimezone
+  const toLocaleDateString = Date.prototype.toLocaleDateString
+  const localTimePart = (date: Date, part: "hour" | "minute") => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date)
+    return Number(parts.find(({ type }) => type === part)?.value)
+  }
+
+  // Stryker uses Node worker threads, where process.env.TZ cannot change
+  // Date's native timezone. Model local reads with IANA timezone data while
+  // leaving the frozen instant, UTC methods and timer behavior intact.
+  const spies = [
+    vi.spyOn(Date.prototype, "getHours").mockImplementation(function (this: Date) {
+      return localTimePart(this, "hour")
+    }),
+    vi.spyOn(Date.prototype, "getMinutes").mockImplementation(function (this: Date) {
+      return localTimePart(this, "minute")
+    }),
+    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (
+      this: Date,
+      locales,
+      options
+    ) {
+      return toLocaleDateString.call(this, locales, { timeZone, ...options })
+    }),
+  ]
+
+  return {
+    setTimezone(nextTimezone: string) {
+      timeZone = nextTimezone
+    },
+    restore() {
+      spies.forEach((spy) => spy.mockRestore())
+    },
+  }
+}
+
 describe("useClock", () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -40,20 +82,22 @@ describe("useClock", () => {
     expect(() => unmount()).not.toThrow()
   })
 
-  it("hydrates the same clock snapshot when server and browser timezones differ", async () => {
-    const originalTimezone = process.env.TZ
+  it.each([
+    ["2026-09-30T03:14:52.000Z", "06:14|Wednesday, September 30"],
+    ["2026-09-30T22:14:52.000Z", "01:14|Thursday, October 1"],
+  ])("hydrates across server and browser timezones at %s", async (instant, expectedClock) => {
+    const timezone = mockLocalTimezone("UTC")
     const recoverableErrors: unknown[] = []
     const container = document.createElement("div")
     let unmount: (() => void) | undefined
 
     try {
-      vi.setSystemTime(new Date("2026-09-30T03:14:52.000Z"))
-      process.env.TZ = "UTC"
+      vi.setSystemTime(new Date(instant))
       const serverMarkup = renderToString(<ClockMarkup />)
-      expect(serverMarkup).toContain("--:--|")
+      expect(serverMarkup).toBe("<p>--:--|</p>")
       container.innerHTML = serverMarkup
 
-      process.env.TZ = "Europe/Istanbul"
+      timezone.setTimezone("Europe/Istanbul")
       const root = hydrateRoot(container, <ClockMarkup />, {
         onRecoverableError: (error) => recoverableErrors.push(error),
       })
@@ -62,11 +106,14 @@ describe("useClock", () => {
       await act(async () => {})
 
       expect(recoverableErrors).toEqual([])
-      expect(container.textContent).toContain("06:14")
+      expect(container.textContent).toBe(expectedClock)
+      expect(Date.now()).toBe(Date.parse(instant))
     } finally {
-      if (unmount) await act(async () => unmount?.())
-      if (originalTimezone === undefined) delete process.env.TZ
-      else process.env.TZ = originalTimezone
+      try {
+        if (unmount) await act(async () => unmount?.())
+      } finally {
+        timezone.restore()
+      }
     }
   })
 })
