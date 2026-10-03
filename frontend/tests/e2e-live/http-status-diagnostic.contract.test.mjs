@@ -63,7 +63,7 @@ test("HTTP diagnostics silently reject out-of-domain runtime values without coer
   )
 })
 
-test("HTTP diagnostics deduplicate records and stop at eight records per worker process", () => {
+test("HTTP diagnostics deduplicate records and stop at sixteen records per worker process", () => {
   const output = reportInChild(`
     for (let status = 100; status < 600; status += 1) {
       for (let duplicate = 0; duplicate < 10; duplicate += 1) {
@@ -74,10 +74,32 @@ test("HTTP diagnostics deduplicate records and stop at eight records per worker 
   assert.equal(
     output,
     Array.from(
-      { length: 8 },
+      { length: 16 },
       (_, index) =>
         `UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=${100 + index}\n`
     ).join("")
+  )
+})
+
+test("HTTP diagnostics retain a differing replay status after eight initial records", () => {
+  const initial = ["desktop", "mobile"].flatMap((project) =>
+    ["admin-users", "admin-feature-flags", "admin-feature-flags-ui", "password-reset-replay"].map(
+      (check) => [project, check, check === "password-reset-replay" ? 400 : 200]
+    )
+  )
+  // Synthetic retry status exercises retention; it is not a claim about live output.
+  const retry = ["mobile", "password-reset-replay", 429]
+  const calls = [...initial, retry, retry].map(
+    (record) => `reportLiveHttpStatus(${record.map((value) => JSON.stringify(value)).join(", ")})`
+  )
+  assert.equal(
+    reportInChild(calls.join("\n")),
+    [...initial, retry]
+      .map(
+        ([project, check, status]) =>
+          `UE_LIVE_HTTP_STATUS_V1 project=${project} check=${check} status=${status}\n`
+      )
+      .join("")
   )
 })
 

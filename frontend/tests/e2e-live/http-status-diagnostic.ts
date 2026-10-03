@@ -1,6 +1,6 @@
-// At most eight distinct records per worker process, including retries.
+// Bound both projects × four checks × two attempts (CI retries once).
 const emittedRecords = new Set<string>()
-const MAX_RECORDS = 8
+const MAX_RECORDS = 16
 
 export function reportLiveHttpStatus(
   project: string,

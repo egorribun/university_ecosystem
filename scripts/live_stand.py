@@ -2666,7 +2666,8 @@ _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
         "password-reset-replay",
     )
 }
-_PLAYWRIGHT_HTTP_STATUS_LIMIT = 8
+# Both projects × four checks × two attempts (CI retries once).
+_PLAYWRIGHT_HTTP_STATUS_LIMIT = 16
 
 
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:

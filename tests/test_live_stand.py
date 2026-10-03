@@ -1356,8 +1356,30 @@ def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
         for status in range(100, 600)
     )
     assert live_stand._live_playwright_http_statuses(output) == [
-        ("desktop", "admin-users", status) for status in range(100, 108)
+        ("desktop", "admin-users", status) for status in range(100, 116)
     ]
+
+
+def test_live_playwright_http_status_retains_retry_after_eight_initial_records() -> (
+    None
+):
+    initial = [
+        (project, check, 400 if check == "password-reset-replay" else 200)
+        for project in ("desktop", "mobile")
+        for check in (
+            "admin-users",
+            "admin-feature-flags",
+            "admin-feature-flags-ui",
+            "password-reset-replay",
+        )
+    ]
+    # Synthetic status proves retention without guessing the omitted live status.
+    retry = ("mobile", "password-reset-replay", 429)
+    output = "".join(
+        f"UE_LIVE_HTTP_STATUS_V1 project={project} check={check} status={status}\n"
+        for project, check, status in [*initial, retry, retry]
+    )
+    assert live_stand._live_playwright_http_statuses(output) == [*initial, retry]
 
 
 @pytest.mark.parametrize("return_code", [0, 1, 23])
