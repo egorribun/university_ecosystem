@@ -32,7 +32,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.core.spicedb import _parse_endpoint
+from app.core.spicedb import _parse_endpoint, create_async_spicedb_channel
 
 logger = get_logger(__name__)
 
@@ -43,7 +43,6 @@ _MAX_BACKOFF_S: float = 60.0
 
 async def _watch_once(token: str, host: str, port: int, use_ssl: bool) -> None:
     """Open a single Watch stream and process updates until it closes/errors."""
-    import grpc
     from authzed.api.v1 import (  # type: ignore[attr-defined]
         WatchRequest,
         WatchServiceStub,
@@ -52,13 +51,7 @@ async def _watch_once(token: str, host: str, port: int, use_ssl: bool) -> None:
     from app.auth.rbac import _permission_cache
 
     target = f"{host}:{port}"
-    if use_ssl:
-        from grpcutil import bearer_token_credentials
-
-        credentials = bearer_token_credentials(token)
-        channel = grpc.aio.secure_channel(target, credentials)
-    else:
-        channel = grpc.aio.insecure_channel(target)
+    channel = create_async_spicedb_channel(target, token, use_ssl=use_ssl)
 
     try:
         stub = WatchServiceStub(channel)
