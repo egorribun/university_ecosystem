@@ -5283,7 +5283,26 @@ jobs:
           test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 7
           test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 3
           test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/rust -name 'codecov.json' -type f | wc -l)" -eq 4
+          # Match the three application crates in the coverage contract and
+          # Rust producer upload. A count alone also accepts substituted paths.
+          rust_codecov_reports=(
+            artifacts/coverage/rust/rust-native/codecov.json
+            artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+            artifacts/coverage/rust/rust-crypto/codecov.json
+          )
+          for report in "${rust_codecov_reports[@]}"; do
+            if [[ ! -s "$report" ]]; then
+              echo "::error::Missing or empty required Rust Codecov report: $report"
+              exit 1
+            fi
+          done
+          expected_rust_codecov_reports="$(printf '%s\n' "${rust_codecov_reports[@]}" | LC_ALL=C sort)"
+          actual_rust_codecov_reports="$(find artifacts/coverage/rust -name 'codecov.json' -type f -print | LC_ALL=C sort)"
+          if [[ "$actual_rust_codecov_reports" != "$expected_rust_codecov_reports" ]]; then
+            echo "::error::Rust Codecov report inventory does not match the required components"
+            printf 'Expected reports:\n%s\nActual reports:\n%s\n' "$expected_rust_codecov_reports" "$actual_rust_codecov_reports"
+            exit 1
+          fi
           verify_producer() {
             local metadata="$1"
             local job="$2"

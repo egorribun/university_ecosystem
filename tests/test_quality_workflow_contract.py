@@ -369,6 +369,113 @@ def test_rust_codecov_reports_are_staged_for_trusted_upload() -> None:
     )
 
 
+@pytest.fixture
+def downloaded_coverage_shape(tmp_path: Path) -> str:
+    """Stage producer file layouts, then execute the consumer's real shape checks.
+
+    Run 37120306322's digest-verified ZIPs confirmed that the three Rust
+    diagnostic reports retain their component directories on download.
+    Provenance bytes are verified separately by the provenance test suite;
+    this fixture exercises the shell boundary before those identity checks.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+    rust_upload = _step_named(rust_job, "Upload Rust coverage artifacts")
+    codecov_upload = _step_named(rust_job, "Upload Rust Codecov diagnostic artifacts")
+    frontend_upload = _step_named(
+        frontend["jobs"]["unit-tests"], "Upload coverage artifacts"
+    )
+    contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    rust_components = {
+        report["component"]
+        for report in contract["coverage_reports"]
+        if report["format"] == "llvm-cov-json"
+    }
+    assert rust_components == {"rust-native", "rust-wasm-sanitizer", "rust-crypto"}
+    assert set(codecov_upload["with"]["path"].splitlines()) == {
+        f"artifacts/coverage/rust/{component}/codecov.json"
+        for component in rust_components
+    }
+
+    paths = [
+        f"artifacts/coverage/python/shards/.coverage.shard-{shard}"
+        for shard in range(4)
+    ]
+    for upload in (frontend_upload, rust_upload, codecov_upload):
+        paths.extend(upload["with"]["path"].splitlines())
+    for producer in workflow["jobs"]["go-tests"]["strategy"]["matrix"]["include"]:
+        report = Path(producer["coverage-canonical-path"])
+        paths.extend((str(report), str(report.with_name("coverage-provenance.json"))))
+    for relative_path in paths:
+        destination = tmp_path / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text("producer report\n", encoding="utf-8")
+
+    verify = _step_named(
+        workflow["jobs"]["coverage-policy-gate"], "Verify downloaded coverage artifacts"
+    )
+    shape_checks, separator, _ = verify["run"].partition("verify_producer() {")
+    assert separator, "the artifact shape checks must precede provenance verification"
+    return shape_checks
+
+
+def _run_coverage_shape_checks(
+    script: str, root: Path
+) -> subprocess.CompletedProcess[str]:
+    bash = which("bash")
+    assert bash is not None, "the workflow's Bash shell is required"
+    return subprocess.run(  # noqa: S603 -- execute the repository-owned workflow step
+        [bash, "-e", "-o", "pipefail", "-c", script],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_downloaded_coverage_shape_accepts_the_complete_producer_inventory(
+    downloaded_coverage_shape: str, tmp_path: Path
+) -> None:
+    result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "component", ["rust-native", "rust-wasm-sanitizer", "rust-crypto"]
+)
+@pytest.mark.parametrize("damage", ["missing", "empty", "misplaced"])
+def test_downloaded_coverage_shape_rejects_invalid_required_rust_diagnostics(
+    downloaded_coverage_shape: str, tmp_path: Path, component: str, damage: str
+) -> None:
+    report = tmp_path / "artifacts/coverage/rust" / component / "codecov.json"
+    if damage == "missing":
+        report.unlink()
+    elif damage == "empty":
+        report.write_text("", encoding="utf-8")
+    else:
+        # Preserve the count while substituting an unrecognized component.
+        replacement = report.parent.parent / "unexpected" / report.name
+        replacement.parent.mkdir()
+        report.rename(replacement)
+
+    result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    assert result.returncode != 0, "invalid required Rust diagnostic was accepted"
+
+
+@pytest.mark.parametrize("extra_directory", ["unexpected", "rust-native/nested"])
+def test_downloaded_coverage_shape_rejects_extra_rust_diagnostics(
+    downloaded_coverage_shape: str, tmp_path: Path, extra_directory: str
+) -> None:
+    extra = tmp_path / "artifacts/coverage/rust" / extra_directory / "codecov.json"
+    extra.parent.mkdir(parents=True)
+    extra.write_text("unexpected report\n", encoding="utf-8")
+
+    result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    assert result.returncode != 0, "extra Rust diagnostic was accepted"
+
+
 def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     rust_job = workflow["jobs"]["rust-tests"]
