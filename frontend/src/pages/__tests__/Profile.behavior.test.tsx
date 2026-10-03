@@ -705,9 +705,14 @@ describe("Profile behavior", () => {
     expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
   })
 
-  it("omits now playing when Spotify is disconnected or data is empty", () => {
-    authState.user = { ...user, spotify_connected: false } as User
-    nowPlayingState.data = null
+  it.each([
+    [false, null],
+    [false, undefined],
+    [true, null],
+    [true, undefined],
+  ])("omits now playing with Spotify connected %s and no data (%s)", (spotifyConnected, data) => {
+    authState.user = { ...user, spotify_connected: spotifyConnected } as User
+    nowPlayingState.data = data
 
     render(<Profile />)
 

@@ -165,11 +165,18 @@ describe("now-playing account isolation", () => {
       setIdentity(id, loading)
       const get = vi.spyOn(api, "get").mockResolvedValue(response("network"))
       const { result } = renderHook(() => useNowPlaying(true), createWrapper())
+      expect(result.current.data).toBeNull()
+      expect(result.current.isPlaceholderData).toBe(true)
       await act(async () => {
         await result.current.refetch()
       })
       await expect(fetchNowPlaying()).rejects.toMatchObject({ name: "AbortError" })
-      expect(result.current.data).toBeNull()
+      // The refetch promise can settle before React Query notifies the hook.
+      // Its pending null placeholder is removed once the error is rendered.
+      await waitFor(() => expect(result.current.isError).toBe(true))
+      expect(result.current.error).toMatchObject({ name: "AbortError" })
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.isPlaceholderData).toBe(false)
       expect(get).not.toHaveBeenCalled()
       expect(JSON.parse(localStorage.getItem(storageKey("account-a"))!)).toEqual(track("a"))
     }

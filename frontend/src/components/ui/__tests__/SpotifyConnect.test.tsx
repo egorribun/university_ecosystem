@@ -9,7 +9,7 @@ import ruSettings from "@/i18n/locales/ru/settings.json"
 
 const mockState = vi.hoisted(() => ({
   user: null as Record<string, unknown> | null,
-  nowPlaying: null as Record<string, unknown> | null,
+  nowPlaying: null as Record<string, unknown> | null | undefined,
   isFetching: false,
   refetch: vi.fn(() => Promise.resolve({ data: null })),
   setUser: vi.fn(),
@@ -226,17 +226,20 @@ describe("SpotifyConnect", () => {
     await waitFor(() => expect(button).toBeEnabled())
   })
 
-  it("shows the connected controls + display name when connected", () => {
+  it.each([null, undefined])("shows connected controls with no now-playing data (%s)", (data) => {
     mockState.user = {
       id: "user-1",
       spotify_connected: true,
       spotify_display_name: "Egor's Spotify",
     }
+    mockState.nowPlaying = data
     render(<SpotifyConnect />)
     expect(screen.getByText("Egor's Spotify")).toBeInTheDocument()
     expect(screen.getByText("common:buttons.refresh")).toBeInTheDocument()
     expect(screen.getByText("settings:integrations.spotify.disconnect")).toBeInTheDocument()
     expect(screen.queryByText("settings:integrations.spotify.connect")).not.toBeInTheDocument()
+    expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    expect(screen.queryByText("—")).not.toBeInTheDocument()
   })
 
   it("renders safe fallbacks for an incomplete now-playing payload", () => {
