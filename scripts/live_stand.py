@@ -2620,6 +2620,17 @@ _PLAYWRIGHT_COUNT_LINE = re.compile(
     r"\s*(?P<count>\d+)\s+(?P<kind>passed|failed|skipped)(?:\s+\([^()\r\n]*\))?\s*",
     re.IGNORECASE,
 )
+_PLAYWRIGHT_FAILURE_HEADER = re.compile(
+    r"  [1-9][0-9]{0,3}\) \[(?P<project>desktop|mobile)\] › "
+    r"(?P<source>[^ :]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
+    r"(?P<column>[1-9][0-9]{0,4}) › "
+)
+_PLAYWRIGHT_FAILURE_SOURCES = {
+    **{source: source for source in LIVE_E2E_SMOKE_FILES},
+    r"tests\e2e-live\auth-roles.live.spec.ts": "tests/e2e-live/auth-roles.live.spec.ts",
+    r"tests\e2e-live\password-reset.live.spec.ts": "tests/e2e-live/password-reset.live.spec.ts",
+}
+_PLAYWRIGHT_FAILURE_PROJECTS = {project: project for project in ("desktop", "mobile")}
 
 
 def _live_playwright_counts(output: str) -> dict[str, int]:
@@ -2633,10 +2644,49 @@ def _live_playwright_counts(output: str) -> dict[str, int]:
     return counts
 
 
+def _live_playwright_failure_locations(
+    output: str, *, cwd: Path
+) -> list[tuple[str, str, int]]:
+    """Return only allowlisted source locations, never titles or error text."""
+    locations: list[tuple[str, str, int]] = []
+    source_lines: dict[str, list[str]] = {}
+    # Split only actual reporter newlines, not control characters in a title.
+    for header in output.split("\n"):
+        if len(header) > 4096 or not header.isprintable():
+            continue
+        match = _PLAYWRIGHT_FAILURE_HEADER.match(header)
+        if match is None:
+            continue
+        source = _PLAYWRIGHT_FAILURE_SOURCES.get(match["source"])
+        if source is None:
+            continue
+        if source not in source_lines:
+            try:
+                source_lines[source] = (
+                    (cwd / source).read_text(encoding="utf-8").splitlines()
+                )
+            except (OSError, UnicodeError):
+                # Diagnostics must not expose paths/errors or replace the exit status.
+                source_lines[source] = []
+        lines = source_lines[source]
+        line_number = int(match["line"])
+        column = int(match["column"])
+        if line_number > len(lines) or column > len(lines[line_number - 1]) + 1:
+            continue
+        location = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            source,
+            line_number,
+        )
+        if location not in locations:
+            locations.append(location)
+    return locations
+
+
 def _run_live_playwright(
     *, cwd: Path, environment: dict[str, str], mode: str = "full"
 ) -> None:
-    """Run Playwright privately and expose only numeric summary and exit status."""
+    """Expose counts, allowlisted source locations and status; discard raw output."""
     command = _live_e2e_command(mode=mode)
     print("+", " ".join(command), flush=True)
     try:
@@ -2654,9 +2704,10 @@ def _run_live_playwright(
         raise StandError("could not launch the live Playwright command") from error
 
     return_code = completed.returncode
-    counts = _live_playwright_counts(
-        "\n".join((completed.stdout or "", completed.stderr or ""))
-    )
+    output = "\n".join((completed.stdout or "", completed.stderr or ""))
+    counts = _live_playwright_counts(output)
+    failure_locations = _live_playwright_failure_locations(output, cwd=cwd)
+    del output
     completed.stdout = ""
     completed.stderr = ""
     del completed
@@ -2667,6 +2718,11 @@ def _run_live_playwright(
             if name in counts
         )
         print(f"live E2E counts {count_summary}", flush=True)
+    for project, source, line_number in failure_locations:
+        print(
+            f"live E2E failure project={project} source={source} line={line_number}",
+            flush=True,
+        )
     outcome = "passed" if return_code == 0 else "failed"
     print(f"live E2E outcome={outcome} exit_code={return_code}", flush=True)
     if return_code != 0:
