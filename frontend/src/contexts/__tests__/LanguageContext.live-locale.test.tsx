@@ -110,6 +110,18 @@ describe("rejected-login live locale setup", () => {
         locator: (selector: string) => {
           mount()
           if (selector === "html") return document.documentElement
+          if (selector === "form") {
+            return {
+              filter: () => ({
+                getByRole: (role: string) => {
+                  expect(role).toBe("alert")
+                  // Stop at the form-scoped feedback boundary, after the
+                  // independent HTTP-status check has succeeded.
+                  throw readyForFeedback
+                },
+              }),
+            }
+          }
           return {
             fill: async () => undefined,
             click: async () => {
@@ -117,11 +129,6 @@ describe("rejected-login live locale setup", () => {
               releaseResponse?.(response)
             },
           }
-        },
-        getByRole: () => {
-          // Stop before inspecting UI copy: the independent status above must
-          // pass first, so expected feedback can never manufacture HTTP 401.
-          throw readyForFeedback
         },
       }
       const run = registeredCases.get(

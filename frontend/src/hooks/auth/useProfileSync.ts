@@ -1258,11 +1258,13 @@ export const useProfileSync = (
   useEffect(() => {
     const cachedUser = cachedUserRef.current
     if (cachedUser !== null) {
-      // The encrypted-cache bootstrap uses id "-1" as a render-only
-      // placeholder. It must not become fresh authoritative /users/me data,
-      // otherwise fetchQuery() returns the placeholder and never reaches the
-      // backend for the real profile.
-      if (cachedUser.id !== ENCRYPTED_CACHE_PLACEHOLDER_USER_ID) {
+      // SSR and encrypted-cache identities are render-only placeholders.
+      // Seeding either as fresh /users/me data makes fetchQuery() skip the
+      // backend, so the persister never receives a confirmed real identity.
+      if (
+        cachedUser.id !== ENCRYPTED_CACHE_PLACEHOLDER_USER_ID &&
+        cachedUser.id !== SSR_STUB_USER_ID
+      ) {
         queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUser)
       }
       cachedUserRef.current = null
