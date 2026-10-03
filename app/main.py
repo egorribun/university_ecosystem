@@ -39,7 +39,7 @@ from app.core.ratelimit.exceptions import (
     RateLimitStorageUnavailable,
 )
 from app.core.static import PublicStaticFiles
-from app.core.versioning import API_VERSION
+from app.core.versioning import API_V1_PREFIX, API_VERSION
 from app.graphql.schema import graphql_router
 from app.openapi import install_custom_openapi
 from app.services.file_scanner import (
@@ -154,6 +154,7 @@ async def get_root() -> JSONResponse:
 app.include_router(health_router)
 app.include_router(well_known_router, prefix="/.well-known", include_in_schema=False)
 app.include_router(public_api_router)
+app.include_router(admin_api_router, prefix=API_V1_PREFIX, include_in_schema=True)
 app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)
 app.include_router(websocket_router)

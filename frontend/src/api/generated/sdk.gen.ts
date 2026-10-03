@@ -204,6 +204,9 @@ import type {
   GetTimeTravelStateAdminAuditTimeTravelGetData,
   GetTimeTravelStateAdminAuditTimeTravelGetErrors,
   GetTimeTravelStateAdminAuditTimeTravelGetResponses,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetData,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses,
   GetUsersApiV1UsersGetData,
   GetUsersApiV1UsersGetErrors,
   GetUsersApiV1UsersGetResponses,
@@ -226,8 +229,13 @@ import type {
   ListAuditLogsAdminAuditGetData,
   ListAuditLogsAdminAuditGetErrors,
   ListAuditLogsAdminAuditGetResponses,
+  ListAuditLogsApiV1AdminAuditGetData,
+  ListAuditLogsApiV1AdminAuditGetErrors,
+  ListAuditLogsApiV1AdminAuditGetResponses,
   ListFeatureFlagsAdminFeatureFlagsGetData,
   ListFeatureFlagsAdminFeatureFlagsGetResponses,
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetData,
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses,
   ListNotificationDeadLettersData,
   ListNotificationDeadLettersErrors,
   ListNotificationDeadLettersResponses,
@@ -510,6 +518,73 @@ export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolea
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/admin/feature-flags",
+    ...options,
+  })
+
+/**
+ * List Audit Logs
+ *
+ * List audit logs with filtering and integrity verification.
+ */
+export const listAuditLogsApiV1AdminAuditGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAuditLogsApiV1AdminAuditGetData, ThrowOnError>
+): RequestResult<
+  ListAuditLogsApiV1AdminAuditGetResponses,
+  ListAuditLogsApiV1AdminAuditGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListAuditLogsApiV1AdminAuditGetResponses,
+    ListAuditLogsApiV1AdminAuditGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/admin/audit",
+    ...options,
+  })
+
+/**
+ * Get Time Travel State
+ *
+ * Reconstruct state of an aggregate entity at a target timestamp in history.
+ */
+export const getTimeTravelStateApiV1AdminAuditTimeTravelGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetTimeTravelStateApiV1AdminAuditTimeTravelGetData, ThrowOnError>
+): RequestResult<
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses,
+    GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/admin/audit/time-travel",
+    ...options,
+  })
+
+/**
+ * List Feature Flags
+ *
+ * List registered flags and their effective read-only evaluations.
+ */
+export const listFeatureFlagsApiV1AdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListFeatureFlagsApiV1AdminFeatureFlagsGetData, ThrowOnError>
+): RequestResult<ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/admin/feature-flags",
     ...options,
   })
 

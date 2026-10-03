@@ -365,6 +365,38 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.get(`${baseURL}/api/v1/admin/audit/time-travel`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getGetTimeTravelStateApiV1AdminAuditTimeTravelGet200Response(),
+        { status: 200 },
+      ],
+      [
+        await getGetTimeTravelStateApiV1AdminAuditTimeTravelGet422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[
+        next(`get /api/v1/admin/audit/time-travel`) % resultArray.length
+      ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.get(`${baseURL}/api/v1/auth/mfa/totp`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -989,6 +1021,56 @@ export const handlers = [
       resultArray[
         next(`delete /api/v1/events/attendance`) % resultArray.length
       ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/admin/audit`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [await getListAuditLogsApiV1AdminAuditGet200Response(), { status: 200 }],
+      [await getListAuditLogsApiV1AdminAuditGet422Response(), { status: 422 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/admin/audit`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/admin/feature-flags`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getListFeatureFlagsApiV1AdminFeatureFlagsGet200Response(),
+        { status: 200 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/admin/feature-flags`) % resultArray.length];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -4212,6 +4294,139 @@ export function getGetTimeTravelStateAdminAuditTimeTravelGet422Response() {
 }
 
 export function getListFeatureFlagsAdminFeatureFlagsGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      config_path: faker.lorem.words(),
+      default: faker.datatype.boolean(),
+      description: faker.lorem.words(),
+      enabled: faker.datatype.boolean(),
+      evaluation_reason: faker.lorem.words(),
+      management: faker.lorem.words(),
+      name: faker.person.fullName(),
+      provider: faker.lorem.words(),
+    }));
+  })();
+}
+
+export function getListAuditLogsApiV1AdminAuditGet200Response() {
+  return {
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        action: faker.lorem.words(),
+        actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        context: faker.helpers.arrayElement([{}, null]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        is_valid: faker.datatype.boolean(),
+        resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        resource_type: faker.lorem.words(),
+        subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        subject_user_id: faker.helpers.arrayElement([
+          faker.string.uuid(),
+          null,
+        ]),
+        user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    total: faker.number.int(),
+  };
+}
+
+export function getListAuditLogsApiV1AdminAuditGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetTimeTravelStateApiV1AdminAuditTimeTravelGet200Response() {
+  return {
+    aggregate_id: faker.string.uuid(),
+    aggregate_type: faker.lorem.words(),
+    chain_integrity_valid: faker.datatype.boolean(),
+    events_replayed: faker.number.int(),
+    state_at_timestamp: faker.helpers.arrayElement([{}, null]),
+    tampered_event_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    target_timestamp: faker.date.anytime().toISOString(),
+    version_at_timestamp: faker.helpers.arrayElement([
+      faker.number.int(),
+      null,
+    ]),
+  };
+}
+
+export function getGetTimeTravelStateApiV1AdminAuditTimeTravelGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getListFeatureFlagsApiV1AdminFeatureFlagsGet200Response() {
   return (() => {
     const arrayMin = 1;
     const arrayMax = MAX_ARRAY_LENGTH;
