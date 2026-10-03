@@ -92,15 +92,16 @@ func newRevocationTestClient(h *Hub, id, userID, jti, transport string, frames .
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &revocationTestSession{frames: frames, transportID: transport}
 	return &Client{
-		ID:         id,
-		UserID:     userID,
-		SessionJTI: jti,
-		Conn:       session,
-		Rooms:      make(map[string]bool),
-		Send:       make(chan []byte, 4),
-		Hub:        h,
-		ctx:        ctx,
-		cancel:     cancel,
+		ID:               id,
+		UserID:           userID,
+		SessionJTI:       jti,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		Conn:             session,
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, 4),
+		Hub:              h,
+		ctx:              ctx,
+		cancel:           cancel,
 	}, session
 }
 

@@ -91,13 +91,22 @@ shares the Redis instance.
 |-------------|-----|---------------|---------|---------|
 | `ott:ws:{ticket}` | 15s | Python `app/api/ws/ticket.py` | Python WS handler (`app/api/ws/auth.py`), Go ws-hub (`pkg/hub/handlers.go`) | One-time WebSocket upgrade ticket; consumed atomically via GETDEL |
 
-**Value format:** `{user_id}:{jti}` — colon-joined UUID strings (no colons in UUIDs).
+**Value format:** `{user_id}:{jti}:{expires_at_unix_seconds}` — exactly three
+non-empty colon-delimited fields. The final field is the floor of the authoritative
+`ActiveSession.expires_at` UTC Unix timestamp: a positive signed-int64 value encoded
+as ASCII decimal, with no sign, whitespace, leading zeros, fraction, or exponent.
+It is never derived from a sliding session-cache TTL.
 
 > **Cross-service invariant (RZ-W14-01, audit 2026-03-23 Wave 14):**
-> The `ott:ws:` prefix and the `{user_id}:{jti}` value format are shared between
+> The `ott:ws:` prefix and this three-field value format are shared between
 > Python (issuer) and both WS auth consumers (Python WS handler + Go ws-hub).
 > Both consumers perform GETDEL — the first consumer wins; concurrent duplicates
-> are silently rejected (ticket already deleted).  Ticket TTL is 15 seconds.
+> are rejected (ticket already deleted). Ticket TTL is 15 seconds by default and
+> limits when the upgrade can occur. The embedded session expiry independently
+> limits the authenticated connection and is checked before accepting the ticket.
+> Both consumers reject legacy two-field tickets and invalid or expired cutoffs;
+> rollout can therefore require clients with outstanding legacy tickets to request
+> a new ticket. No legacy-format fallback is permitted.
 > Tenant identity is intentionally excluded: a request header is not proof of
 > tenant membership. A future tenant-aware ticket format requires server-side
 > authorization plus an atomic versioned contract update in both consumers.

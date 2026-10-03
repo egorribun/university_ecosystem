@@ -17,6 +17,10 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       GATEWAY_PORT: "8080"
+      VITE_ENVIRONMENT: "${ENVIRONMENT:-development}"
+      # This local overlay pairs the processor's plaintext gRPC listener.
+      # Release-mode gateway validation still requires TLS and rejects this.
+      GRPC_USE_TLS: "false"
       # Comma-delimited exact proxy IPs/CIDRs. Empty fails closed and uses the
       # immediate peer; never set this to a broad RFC1918 or cluster range.
       GATEWAY_TRUSTED_PROXIES: "${GATEWAY_TRUSTED_PROXIES:-}"

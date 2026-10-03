@@ -149,6 +149,12 @@
       {{- fail "every wsHub.config.allowedOrigins entry must use https:// in staging/production" -}}
     {{- end -}}
   {{- end -}}
+  {{- if and (not .Values.ingress.enabled) (not .Values.gatewayApi.enabled) -}}
+    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
+  {{- end -}}
+  {{- if and .Values.ingress.enabled (or (not .Values.ingress.className) (not .Values.ingress.tls)) -}}
+    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
+  {{- end -}}
   {{- $frontendOrigin := printf "https://%s" (index .Values.ingress.hosts 0).host -}}
   {{- if or (ne (len .Values.wsHub.config.allowedOrigins) 1) (ne (index .Values.wsHub.config.allowedOrigins 0) $frontendOrigin) -}}
     {{- fail "wsHub.config.allowedOrigins must exactly equal the frontend ingress origin" -}}
@@ -240,12 +246,6 @@
     {{- if or (lt (int $autoscaling.minReplicas) 2) (lt (int $autoscaling.maxReplicas) (int $autoscaling.minReplicas)) -}}
       {{- fail (printf "%s.autoscaling requires minReplicas>=2 and maxReplicas>=minReplicas in staging/production" $component) -}}
     {{- end -}}
-  {{- end -}}
-  {{- if and (not .Values.ingress.enabled) (not .Values.gatewayApi.enabled) -}}
-    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
-  {{- end -}}
-  {{- if and .Values.ingress.enabled (or (not .Values.ingress.className) (not .Values.ingress.tls)) -}}
-    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
   {{- end -}}
   {{- if or (hasKey .Values.ingress.annotations "cert-manager.io/issuer") (hasKey .Values.ingress.annotations "cert-manager.io/cluster-issuer") -}}
     {{- fail "cert-manager issuer annotations are generated from ingress.issuer and must not be duplicated in ingress.annotations" -}}

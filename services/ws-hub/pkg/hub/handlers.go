@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,9 +37,10 @@ type contextKey string
 const tenantIDKey contextKey = "tenant_id"
 
 type upgradeTicketIdentity struct {
-	UserID     string
-	TenantID   string
-	SessionJTI string
+	UserID           string
+	TenantID         string
+	SessionJTI       string
+	SessionExpiresAt time.Time
 }
 
 const (
@@ -146,7 +148,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	//   1. Client calls POST /ws/ticket (cookie-authenticated) → gets a 15s OTT ticket.
 	//   2. Client opens wss://host/ws?ticket=<ott>.
 	//   3. ws-hub validates the ticket via Redis GETDEL (atomic, single-use).
-	//   4. The ticket stores "{user_id}:{jti}"; we reject revoked JTI values.
+	//   4. The ticket stores "{user_id}:{jti}:{expires_at_unix}"; we reject revoked JTI values.
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {
 		h.Logger.WarnContext(setupCtx, "WebSocket connection rejected: missing upgrade ticket")
@@ -208,16 +210,17 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	}
 
 	client := &Client{
-		ID:         newConnectionID(),
-		UserID:     identity.UserID,
-		SessionJTI: identity.SessionJTI,
-		Identity:   &ClientIdentity{TenantID: identity.TenantID},
-		Conn:       NewWebSocketSession(conn),
-		Rooms:      make(map[string]bool),
-		Send:       make(chan []byte, cfg.SendBufferSize),
-		Hub:        h,
-		ctx:        clientCtx,
-		cancel:     clientCancel,
+		ID:               newConnectionID(),
+		UserID:           identity.UserID,
+		SessionJTI:       identity.SessionJTI,
+		SessionExpiresAt: identity.SessionExpiresAt,
+		Identity:         &ClientIdentity{TenantID: identity.TenantID},
+		Conn:             NewWebSocketSession(conn),
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, cfg.SendBufferSize),
+		Hub:              h,
+		ctx:              clientCtx,
+		cancel:           clientCancel,
 	}
 
 	if !h.registerClient(client) {
@@ -294,16 +297,17 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	}
 
 	client := &Client{
-		ID:         newConnectionID(),
-		UserID:     identity.UserID,
-		SessionJTI: identity.SessionJTI,
-		Identity:   &ClientIdentity{TenantID: identity.TenantID},
-		Conn:       newWebTransportSessionFunc(sess),
-		Rooms:      make(map[string]bool),
-		Send:       make(chan []byte, cfg.SendBufferSize),
-		Hub:        h,
-		ctx:        clientCtx,
-		cancel:     clientCancel,
+		ID:               newConnectionID(),
+		UserID:           identity.UserID,
+		SessionJTI:       identity.SessionJTI,
+		SessionExpiresAt: identity.SessionExpiresAt,
+		Identity:         &ClientIdentity{TenantID: identity.TenantID},
+		Conn:             newWebTransportSessionFunc(sess),
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, cfg.SendBufferSize),
+		Hub:              h,
+		ctx:              clientCtx,
+		cancel:           clientCancel,
 	}
 
 	if !h.registerClient(client) {
@@ -329,14 +333,22 @@ func validateTicketFormat(ticket string) error {
 	return nil
 }
 
-func parseTicketPayload(raw string) (string, string, error) {
-	// Canonical format: exactly "{user_id}:{jti}". Tenant identity is not part
-	// of the OTT until the issuer can resolve membership server-side.
+func parseTicketPayload(raw string) (upgradeTicketIdentity, error) {
+	// Exactly user:JTI:expiry. Reject legacy tickets (normally valid for 15 seconds)
+	// rather than creating a connection without an authoritative expiry.
 	parts := strings.Split(raw, ":")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("malformed ticket payload")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
+		return upgradeTicketIdentity{}, fmt.Errorf("malformed ticket payload")
 	}
-	return parts[0], parts[1], nil
+	expires, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || expires <= 0 || strconv.FormatInt(expires, 10) != parts[2] {
+		return upgradeTicketIdentity{}, fmt.Errorf("malformed ticket payload expiry")
+	}
+	expiresAt := time.Unix(expires, 0)
+	if !time.Now().Before(expiresAt) {
+		return upgradeTicketIdentity{}, fmt.Errorf("ticket session is expired")
+	}
+	return upgradeTicketIdentity{UserID: parts[0], SessionJTI: parts[1], SessionExpiresAt: expiresAt}, nil
 }
 
 func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
@@ -359,7 +371,7 @@ func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
 // The ticket was issued by the Python backend (POST /ws/ticket) and stored as:
 //
 //	Key  : "ott:ws:{ticket}"
-//	Value: "{user_id}:{jti}"
+//	Value: "{user_id}:{jti}:{expires_at_unix}"
 //	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
 //
 // GETDEL makes the ticket single-use: if two concurrent upgrade requests race
@@ -382,7 +394,7 @@ func (h *Hub) validateUpgradeTicketIdentity(ctx context.Context, ticket string) 
 		return upgradeTicketIdentity{}, fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
-	userID, jti, err := parseTicketPayload(raw)
+	identity, err := parseTicketPayload(raw)
 	if err != nil {
 		return upgradeTicketIdentity{}, err
 	}
@@ -390,13 +402,13 @@ func (h *Hub) validateUpgradeTicketIdentity(ctx context.Context, ticket string) 
 	// accepting a transport: Pub/Sub intentionally ignores malformed events,
 	// so treating such a JTI as valid could otherwise create a connection that
 	// no canonical revocation publisher can target.
-	if !isValidSessionRevocationJTI(jti) {
+	if !isValidSessionRevocationJTI(identity.SessionJTI) {
 		return upgradeTicketIdentity{}, fmt.Errorf("invalid session JTI in ticket payload")
 	}
-	if err := h.checkJTINotRevoked(ctx, jti); err != nil {
+	if err := h.checkJTINotRevoked(ctx, identity.SessionJTI); err != nil {
 		return upgradeTicketIdentity{}, err
 	}
-	return upgradeTicketIdentity{UserID: userID, SessionJTI: jti}, nil
+	return identity, nil
 }
 
 // tryForceRefreshJWKS triggers an immediate JWKS refresh when a kid is not

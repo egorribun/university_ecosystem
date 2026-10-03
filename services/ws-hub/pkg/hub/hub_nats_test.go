@@ -75,6 +75,7 @@ func newNatsTestHub(auth RoomAuthClient, secret string, broadcastCap int) *Hub {
 		InternalSecret:      secret,
 	}
 	h := trackTestHub(NewHub(nil, logger, auth, cfg, nil))
+	h.sessionRevocationCheck = func(context.Context, string) error { return nil }
 	h.subscribeCacheInvalidations = func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error) {
 		return nil, nil
 	}
@@ -688,14 +689,16 @@ func TestRoomRevocationSerializesInFlightPrivateWriteWithAuthorizationRefresh(t 
 		order:        order,
 	}
 	client := &Client{
-		ID:     "in-flight-revocation-client",
-		UserID: user,
-		Rooms:  make(map[string]bool),
-		Conn:   session,
-		Send:   make(chan []byte, 1),
-		Hub:    h,
-		ctx:    ctx,
-		cancel: cancel,
+		ID:               "in-flight-revocation-client",
+		SessionJTI:       validSessionJTI,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		UserID:           user,
+		Rooms:            make(map[string]bool),
+		Conn:             session,
+		Send:             make(chan []byte, 1),
+		Hub:              h,
+		ctx:              ctx,
+		cancel:           cancel,
 	}
 	client.JoinRoom(room)
 	client.Send <- []byte(`{"type":"new_message","room":"22222222-2222-2222-2222-222222222222","payload":{"text":"private"}}`)

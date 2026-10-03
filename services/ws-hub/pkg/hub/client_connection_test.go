@@ -219,11 +219,13 @@ func TestClientWritePump_LogsWriteDeadlineErrorBeforeWriting(t *testing.T) {
 		writeObserved:    make(chan struct{}, 1),
 	}
 	client := &Client{
-		ID:   "write-deadline-client",
-		Conn: session,
-		Hub:  h,
-		Send: make(chan []byte, 1),
-		ctx:  ctx,
+		ID:               "write-deadline-client",
+		SessionJTI:       validSessionJTI,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		Conn:             session,
+		Hub:              h,
+		Send:             make(chan []byte, 1),
+		ctx:              ctx,
 	}
 	done := make(chan struct{})
 	go func() {
@@ -258,13 +260,15 @@ func TestClientWritePump_RoomWriteErrorReleasesMembershipLock(t *testing.T) {
 	const roomID = "22222222-2222-2222-2222-222222222222"
 	session := &recordingSession{writeMessageErr: errors.New("room socket write failed")}
 	client := &Client{
-		ID:     "room-write-error-client",
-		UserID: userID,
-		Rooms:  make(map[string]bool),
-		Conn:   session,
-		Send:   make(chan []byte, 1),
-		Hub:    h,
-		ctx:    ctx,
+		ID:               "room-write-error-client",
+		SessionJTI:       validSessionJTI,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		UserID:           userID,
+		Rooms:            make(map[string]bool),
+		Conn:             session,
+		Send:             make(chan []byte, 1),
+		Hub:              h,
+		ctx:              ctx,
 	}
 	client.JoinRoom(roomID)
 	client.Send <- []byte(`{"type":"new_message","room":"22222222-2222-2222-2222-222222222222"}`)

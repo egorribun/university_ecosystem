@@ -53,10 +53,10 @@ func TestAdversarial_ValidateTicketFormat_ExhaustiveFuzz(t *testing.T) {
 
 func TestAdversarial_ParseTicketPayload_ExhaustiveFuzz(t *testing.T) {
 	// Valid payload
-	u, j, err := parseTicketPayload("usr-12345:jti-abcde")
+	identity, err := parseTicketPayload("usr-12345:jti-abcde:9999999999")
 	require.NoError(t, err)
-	assert.Equal(t, "usr-12345", u)
-	assert.Equal(t, "jti-abcde", j)
+	assert.Equal(t, "usr-12345", identity.UserID)
+	assert.Equal(t, "jti-abcde", identity.SessionJTI)
 
 	invalidPayloads := []string{
 		"",
@@ -74,7 +74,7 @@ func TestAdversarial_ParseTicketPayload_ExhaustiveFuzz(t *testing.T) {
 
 	for _, p := range invalidPayloads {
 		t.Run("payload_"+p, func(t *testing.T) {
-			_, _, err := parseTicketPayload(p)
+			_, err := parseTicketPayload(p)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "malformed ticket payload")
 		})
@@ -93,7 +93,7 @@ func TestAdversarial_ValidateUpgradeTicket_ConcurrentRace(t *testing.T) {
 	h.revocationRedisClient = rdb
 
 	ticket := strings.Repeat("b2", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket, "racing-user:"+validSessionJTI))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket, "racing-user:"+validSessionJTI+":9999999999"))
 
 	const concurrency = 50
 	var successCount atomic.Int32
@@ -147,14 +147,14 @@ func TestAdversarial_ValidateUpgradeTicket_RevocationScenarios(t *testing.T) {
 
 	// 1. Unrevoked ticket
 	ticket1 := strings.Repeat("c3", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket1, "alice:"+validSessionJTI))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket1, "alice:"+validSessionJTI+":9999999999"))
 	identity, err := h.validateUpgradeTicketIdentity(context.Background(), ticket1)
 	require.NoError(t, err)
 	assert.Equal(t, "alice", identity.UserID)
 
 	// 2. Revoked ticket (key exists in revocation Redis)
 	ticket2 := strings.Repeat("d4", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket2, "bob:"+validSessionJTI))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket2, "bob:"+validSessionJTI+":9999999999"))
 	require.NoError(t, revMr.Set(revokedJTIKeyPrefix+validSessionJTI, "1"))
 	_, err = h.validateUpgradeTicketIdentity(context.Background(), ticket2)
 	require.Error(t, err)
@@ -162,7 +162,7 @@ func TestAdversarial_ValidateUpgradeTicket_RevocationScenarios(t *testing.T) {
 
 	// 3. Revocation Redis network failure / close
 	ticket3 := strings.Repeat("e5", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket3, "carol:"+validSessionJTI))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket3, "carol:"+validSessionJTI+":9999999999"))
 	revMr.Close() // simulate crash / network partition
 	_, err = h.validateUpgradeTicketIdentity(context.Background(), ticket3)
 	require.Error(t, err)

@@ -22,14 +22,11 @@ const (
 	MaxOptionValueLen = 1024
 )
 
-// AllowedTypes is the versioned file-processing type allow-list.  Keep this
-// list in the transport-neutral package so every ingress path accepts the same
-// contract.
+// AllowedTypes contains only job types with an implemented activity. Keep this
+// list shared by every ingress: compression, PDF preview and video transcoding
+// are not implemented and must not silently invoke the resize activity.
 var AllowedTypes = map[string]struct{}{
-	"image_resize":    {},
-	"image_compress":  {},
-	"pdf_preview":     {},
-	"video_transcode": {},
+	"image_resize": {},
 }
 
 // ValidationError is safe to include in structured logs: it contains a stable

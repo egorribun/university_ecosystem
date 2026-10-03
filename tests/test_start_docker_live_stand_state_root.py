@@ -472,14 +472,27 @@ def test_launcher_rejects_compose_without_override_support_before_env_writes(
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
     command_log = tmp_path / "docker-commands.txt"
-    fake_docker = fake_bin / "docker.cmd"
-    fake_docker.write_text(
-        "@echo off\r\n"
-        '>>"%LIVE_STAND_DOCKER_LOG%" echo %*\r\n'
-        'if "%1"=="compose" if "%2"=="version" echo v2.24.3\r\n'
-        "exit /b 0\r\n",
-        encoding="utf-8",
-    )
+    if os.name == "nt":
+        fake_docker = fake_bin / "docker.cmd"
+        fake_docker.write_text(
+            "@echo off\r\n"
+            '>>"%LIVE_STAND_DOCKER_LOG%" echo %*\r\n'
+            'if "%1"=="compose" if "%2"=="version" echo v2.24.3\r\n'
+            "exit /b 0\r\n",
+            encoding="utf-8",
+        )
+    else:
+        # PowerShell on Unix invokes native executables, not Windows batch files.
+        fake_docker = fake_bin / "docker"
+        fake_docker.write_text(
+            "#!/bin/sh\n"
+            'printf "%s\\n" "$*" >> "$LIVE_STAND_DOCKER_LOG"\n'
+            'if [ "$1" = compose ] && [ "${2:-}" = version ]; then\n'
+            '  printf "v2.24.3\\n"\n'
+            "fi\nexit 0\n",
+            encoding="utf-8",
+        )
+        fake_docker.chmod(0o700)
     env = _live_environment(state_root, public, private)
     env["PATH"] = os.pathsep.join((str(fake_bin), env.get("PATH", "")))
     env["LIVE_STAND_DOCKER_LOG"] = str(command_log)

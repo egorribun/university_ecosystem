@@ -165,6 +165,25 @@ ingress:
   hosts:
     - host: REQUIRED_FRONTEND_HOST
       paths:
+        # The browser uses relative URLs, so its origin must expose each backend.
+        - path: /api
+          pathType: Prefix
+          service: gateway
+        - path: /graphql
+          pathType: Exact
+          service: gateway
+        - path: /ws/ticket
+          pathType: Exact
+          service: gateway
+        - path: /ws/chat
+          pathType: Exact
+          service: ws-hub
+        - path: /static
+          pathType: Prefix
+          service: backend
+        - path: /.well-known
+          pathType: Prefix
+          service: backend
         - path: /
           pathType: Prefix
           service: frontend

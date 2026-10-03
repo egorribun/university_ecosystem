@@ -27,7 +27,7 @@ import (
 // For now, keeping it here and exporting.
 type ProcessJob struct {
 	ID        string `json:"id"`
-	Type      string `json:"type"` // resize, thumbnail, optimize
+	Type      string `json:"type"` // image_resize; validated by each ingress
 	SourceKey string `json:"source_key"`
 	DestKey   string `json:"dest_key"`
 	// Capability is retained in the wire shape for backwards-compatible job
@@ -236,7 +236,7 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	height, errH := getValidatedDimension(job.Options, "height", 600)
 
 	if errW != nil || errH != nil {
-		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInput", errW, errH)
+		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInputError", errW, errH)
 	}
 	// PERF-W5-01: Reject images whose total pixel count would exceed the memory budget.
 	if width*height > maxImagePixels {

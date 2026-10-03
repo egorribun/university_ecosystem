@@ -382,7 +382,7 @@ func TestHandleWebSocket_RejectsUpgradeWhenStopRacesTicketValidation(t *testing.
 	validateUpgradeTicketIdentityFunc = func(*Hub, context.Context, string) (upgradeTicketIdentity, error) {
 		close(validationStarted)
 		<-continueValidation
-		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session"}, nil
+		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session", SessionExpiresAt: time.Unix(9999999999, 0)}, nil
 	}
 	t.Cleanup(func() { validateUpgradeTicketIdentityFunc = oldValidate })
 
@@ -465,7 +465,7 @@ func TestHandleWebSocket_ClosesUpgradeWhenStopWinsBeforeRegistration(t *testing.
 
 	oldValidate := validateUpgradeTicketIdentityFunc
 	validateUpgradeTicketIdentityFunc = func(*Hub, context.Context, string) (upgradeTicketIdentity, error) {
-		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session"}, nil
+		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session", SessionExpiresAt: time.Unix(9999999999, 0)}, nil
 	}
 	t.Cleanup(func() { validateUpgradeTicketIdentityFunc = oldValidate })
 
@@ -543,7 +543,7 @@ func TestHandleWebTransport_RejectsRequestAfterStopBeforeUpgrade(t *testing.T) {
 		upgradeWTFunc = oldUpgrade
 	})
 	validateUpgradeTicketIdentityFunc = func(*Hub, context.Context, string) (upgradeTicketIdentity, error) {
-		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session"}, nil
+		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session", SessionExpiresAt: time.Unix(9999999999, 0)}, nil
 	}
 	upgradeCalled := false
 	upgradeWTFunc = func(*webtransport.Server, http.ResponseWriter, *http.Request) (*webtransport.Session, error) {
@@ -572,7 +572,7 @@ func TestHandleWebTransport_ClosesUpgradeWhenStopWinsBeforeRegistration(t *testi
 		newWebTransportSessionFunc = oldSession
 	})
 	validateUpgradeTicketIdentityFunc = func(*Hub, context.Context, string) (upgradeTicketIdentity, error) {
-		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session"}, nil
+		return upgradeTicketIdentity{UserID: "user", SessionJTI: "session", SessionExpiresAt: time.Unix(9999999999, 0)}, nil
 	}
 	upgradeStarted := make(chan struct{})
 	continueUpgrade := make(chan struct{})

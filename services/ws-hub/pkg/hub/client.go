@@ -34,23 +34,27 @@ type Client struct {
 	// full lifetime. It lets a canonical session-revocation event target one
 	// browser session without disconnecting the user's other devices.
 	SessionJTI string
-	Identity   *ClientIdentity
-	Conn       Session
-	Rooms      map[string]bool
-	Send       chan []byte
-	Hub        *Hub
-	mu         sync.Mutex
+	// SessionExpiresAt is the immutable cutoff from the authenticated OTT.
+	SessionExpiresAt time.Time
+	Identity         *ClientIdentity
+	Conn             Session
+	Rooms            map[string]bool
+	Send             chan []byte
+	Hub              *Hub
+	mu               sync.Mutex
 	// sessionGate serializes a revocation with an in-flight authorized action.
 	// It is never acquired while Hub.mu is held: DisconnectSession snapshots
 	// clients first, releases Hub.mu, and only then calls RevokeSession.
-	sessionGate        sync.RWMutex
-	sessionRevoked     atomic.Bool
-	writeMu            sync.Mutex
-	transportCloseOnce sync.Once
-	replayMu           sync.Mutex
-	replays            map[string]*roomReplayState
-	replayJoinLimiter  *rate.Limiter
-	closeOnce          sync.Once
+	sessionGate         sync.RWMutex
+	sessionRevoked      atomic.Bool
+	sessionCheckMu      sync.Mutex
+	sessionCheckedUntil time.Time
+	writeMu             sync.Mutex
+	transportCloseOnce  sync.Once
+	replayMu            sync.Mutex
+	replays             map[string]*roomReplayState
+	replayJoinLimiter   *rate.Limiter
+	closeOnce           sync.Once
 	// ctx / cancel are tied to this connection's lifetime.
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -299,25 +303,9 @@ func (c *Client) authorizeAndHandleIncomingMessage(ctx context.Context, msg Mess
 	c.sessionGate.RLock()
 	defer c.sessionGate.RUnlock()
 
-	if c.sessionRevoked.Load() {
-		return errors.New("session is already revoked")
+	if err := c.authorizeSession(ctx, time.Now(), false); err != nil {
+		return err
 	}
-	if c.SessionJTI == "" {
-		return errors.New("connection is missing session ticket identity")
-	}
-	if c.Hub == nil || c.Hub.sessionRevocationCheck == nil {
-		return errors.New("session revocation checker is unavailable")
-	}
-
-	checkCtx, cancel := context.WithTimeout(ctx, sessionActionRevocationTimeout)
-	defer cancel()
-	if err := c.Hub.sessionRevocationCheck(checkCtx, c.SessionJTI); err != nil {
-		return errors.New("session revocation check rejected the action")
-	}
-	if c.sessionRevoked.Load() {
-		return errors.New("session was revoked while authorizing action")
-	}
-
 	c.handleIncomingMessage(ctx, msg, data)
 	return nil
 }
@@ -1083,12 +1071,12 @@ func (c *Client) isInRoom(room string) bool {
 }
 
 // WritePump pumps messages from the hub to the session connection.
-//
-//nolint:gocognit,cyclop
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(writePumpPingInterval)
+	sessionTicker := time.NewTicker(sessionDeliveryRecheckInterval)
 	defer func() {
 		ticker.Stop()
+		sessionTicker.Stop()
 		c.Hub.msgLimiters.Delete(c.ID) // TD-24-05: clean limiter on WritePump exit too
 		c.closeTransport("Failed to close session connection in WritePump")
 	}()
@@ -1096,63 +1084,24 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case msg, ok := <-c.Send:
-			var room string
-			var roomScoped bool
-			var membershipLock *roomMembershipLock
-			if ok {
-				room, roomScoped = queuedFrameRoom(msg)
-				if roomScoped && c.Hub != nil {
-					// Match the lock order used by room revocation: membership lock,
-					// then writeMu. Holding the key lock through the socket write makes
-					// that write linearize before the authoritative refresh, or makes
-					// it observe the revoked local membership and drop the frame.
-					membershipLock = c.Hub.roomMembershipLock(c.UserID, room)
-					membershipLock.Lock()
+			if err := c.writeQueuedMessage(msg, ok); err != nil {
+				if errors.Is(err, errSessionInactive) {
+					c.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
 				}
-			}
-			c.writeMu.Lock()
-			if c.Conn != nil {
-				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
-					c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
-				}
-			}
-			if !ok {
-				if c.Conn != nil {
-					if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil && c.Hub != nil && c.Hub.Logger != nil {
-						c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
-					}
-				}
-				c.writeMu.Unlock()
-				// A closed channel has no frame; the membership lock is acquired only
-				// for an open-channel room frame above.
 				return
 			}
-			if !c.shouldDeliverRoomFrame(room, roomScoped) {
-				c.writeMu.Unlock()
-				if membershipLock != nil {
-					membershipLock.Unlock()
-				}
-				continue
-			}
-
-			if c.Conn != nil {
-				if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-					c.writeMu.Unlock()
-					if membershipLock != nil {
-						membershipLock.Unlock()
-					}
-					return
-				}
-			}
-			c.writeMu.Unlock()
-			if membershipLock != nil {
-				membershipLock.Unlock()
-			}
-
 		case <-c.ctx.Done():
-			// RZ-26-08: context cancelled (ReadPump exited) — stop immediately
 			return
-
+		case <-sessionTicker.C:
+			// Idle and pong-only clients must not depend on receiving a Pub/Sub
+			// notice. This also bounds lifetime when no private frames are queued.
+			c.sessionGate.RLock()
+			err := c.authorizeSession(c.ctx, time.Now(), true)
+			c.sessionGate.RUnlock()
+			if err != nil {
+				c.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
+				return
+			}
 		case <-ticker.C:
 			c.writeMu.Lock()
 			if c.Conn != nil {
@@ -1167,6 +1116,59 @@ func (c *Client) WritePump() {
 			c.writeMu.Unlock()
 		}
 	}
+}
+
+// writeQueuedMessage is the shared delivery boundary for live broadcasts,
+// replay, and user notifications. The lock order matches inbound actions:
+// sessionGate -> room membership -> writeMu -> Hub.mu -> Client.mu.
+func (c *Client) writeQueuedMessage(msg []byte, ok bool) error {
+	c.sessionGate.RLock()
+	defer c.sessionGate.RUnlock()
+
+	var room string
+	var roomScoped bool
+	if ok {
+		room, roomScoped = queuedFrameRoom(msg)
+		if roomScoped && c.Hub != nil {
+			membershipLock := c.Hub.roomMembershipLock(c.UserID, room)
+			membershipLock.Lock()
+			defer membershipLock.Unlock()
+		}
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if ok {
+		// Check after all potentially blocking locks, immediately before the
+		// write; an expired cached verdict may not survive lock contention.
+		if err := c.authorizeSession(c.ctx, time.Now(), true); err != nil {
+			return errSessionInactive
+		}
+	}
+	if c.Conn != nil {
+		if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
+		}
+	}
+	if !ok {
+		return c.writeQueuedClose()
+	}
+	if !c.shouldDeliverRoomFrame(room, roomScoped) {
+		return nil
+	}
+	if c.Conn != nil {
+		return c.Conn.WriteMessage(websocket.TextMessage, msg)
+	}
+	return nil
+}
+
+// writeQueuedClose is called under writeMu after the outbound queue closes.
+func (c *Client) writeQueuedClose() error {
+	if c.Conn != nil {
+		if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
+		}
+	}
+	return io.EOF
 }
 
 // JoinRoom adds the client to the specified room.

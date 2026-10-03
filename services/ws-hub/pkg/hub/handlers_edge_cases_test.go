@@ -111,7 +111,7 @@ func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T
 		newWebTransportSessionFunc = oldSession
 	})
 	validateUpgradeTicketIdentityFunc = func(*Hub, context.Context, string) (upgradeTicketIdentity, error) {
-		return upgradeTicketIdentity{UserID: "user-wt", TenantID: "tenant-wt", SessionJTI: "22222222-2222-4222-8222-222222222222"}, nil
+		return upgradeTicketIdentity{UserID: "user-wt", TenantID: "tenant-wt", SessionJTI: "22222222-2222-4222-8222-222222222222", SessionExpiresAt: time.Unix(9999999999, 0)}, nil
 	}
 	assert.NotNil(t, newWebTransportSessionFunc(nil))
 	upgradeWTFunc = func(*webtransport.Server, http.ResponseWriter, *http.Request) (*webtransport.Session, error) {
@@ -146,6 +146,7 @@ func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T
 		assert.Equal(t, "tenant-wt", client.Identity.TenantID)
 		assert.Equal(t, "tenant-wt", client.ctx.Value(tenantIDKey))
 		assert.Equal(t, "22222222-2222-4222-8222-222222222222", client.SessionJTI)
+		assert.Equal(t, time.Unix(9999999999, 0), client.SessionExpiresAt)
 	}
 }
 

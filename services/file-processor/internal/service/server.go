@@ -37,13 +37,6 @@ type Server struct {
 // Temporal workflow history. Without validation, invalid/malicious payloads are
 // retried 5 times before DLQ, wasting Temporal storage and compute. The Options
 // map is bounded to prevent DoS via bloated workflow history.
-var allowedFileTypes = map[string]bool{
-	"image_resize":    true,
-	"image_compress":  true,
-	"pdf_preview":     true,
-	"video_transcode": true,
-}
-
 const (
 	maxOptionsCount   = 10
 	maxOptionKeyLen   = 64
@@ -70,7 +63,7 @@ func validateProcessFileIdentity(req *pb.ProcessFileRequest) error {
 	if len(req.Id) > jobcontract.MaxIDLen {
 		return status.Errorf(codes.InvalidArgument, "id exceeds %d bytes", jobcontract.MaxIDLen)
 	}
-	if !allowedFileTypes[req.Type] {
+	if _, supported := jobcontract.AllowedTypes[req.Type]; !supported {
 		return status.Errorf(codes.InvalidArgument, "unsupported file type: %q", req.Type)
 	}
 	if req.SourceKey == "" || req.DestKey == "" {
