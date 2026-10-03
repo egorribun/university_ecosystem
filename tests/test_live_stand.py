@@ -1186,7 +1186,9 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
         command: Sequence[str], **kwargs: object
     ) -> subprocess.CompletedProcess:
         captured_calls.append({"command": command, **kwargs})
-        return subprocess.CompletedProcess(command, 1, stdout=stdout, stderr=stderr)
+        return subprocess.CompletedProcess(
+            command, 1, stdout=stdout.encode(), stderr=stderr.encode()
+        )
 
     monkeypatch.setattr(live_stand.subprocess, "run", fake_subprocess_run)
 
@@ -1228,18 +1230,154 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
         pytest.fail("the admin password must not appear in Playwright argv")
     if tuple(command) != live_stand._live_e2e_command():
         pytest.fail("the runner must use the platform-specific fixed npm launcher")
-    if call.get("capture_output") is not True or call.get("text") is not True:
+    if call.get("capture_output") is not True or call.get("text") is not False:
         pytest.fail("Playwright output must be captured before diagnostics are emitted")
+    assert "encoding" not in call and "errors" not in call
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize(
+    "check", ["admin-users", "admin-feature-flags", "admin-feature-flags-ui"]
+)
+@pytest.mark.parametrize("status", [100, 200, 403, 500, 599])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_http_status_accepts_only_fixed_domains(
+    project: str, check: str, status: int, newline: str
+) -> None:
+    sentinel = f"UE_LIVE_HTTP_STATUS_V1 project={project} check={check} status={status}{newline}"
+    assert live_stand._live_playwright_http_statuses(sentinel) == [
+        (project, check, status)
+    ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "UE_LIVE_HTTP_STATUS_V1 project=private-project check=admin-users status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=private-check status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=99\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=600\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=-200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=0200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200.0\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=２００\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200 private-token\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200 \n",
+        " UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
+        "title UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200",
+        "UE_LIVE_HTTP_STATUS_V2 project=desktop check=admin-users status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\r\r\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\x00\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\x1b[0m\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\u202e\n",
+        "private\vUE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
+        "private\rUE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
+        "private\u0085UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
+        "private\u2028UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status="
+        + "9" * 5000
+        + "\n",
+    ],
+)
+def test_live_playwright_http_status_rejects_malformed_records(line: str) -> None:
+    assert live_stand._live_playwright_http_statuses(line) == []
+
+
+def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
+    output = "".join(
+        f"UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status={status}\n"
+        * 10
+        for status in range(100, 600)
+    )
+    assert live_stand._live_playwright_http_statuses(output) == [
+        ("desktop", "admin-users", status) for status in range(100, 108)
+    ]
+
+
+@pytest.mark.parametrize("return_code", [0, 1, 23])
+def test_live_playwright_emits_only_bounded_http_statuses(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    return_code: int,
+) -> None:
+    sentinel = "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=503\n"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        return_code,
+        stdout=(
+            "private-title https://private.invalid/?token=private-token\n"
+            + sentinel * 20
+            + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=403\n"
+            + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-users status="
+        ).encode(),
+        stderr=(
+            b"401\n"
+            b"UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=500\n"
+            b"private-body private-credential private-browser-state\n"
+        ),
+    )
+    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    if return_code:
+        with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    outcome = "failed" if return_code else "passed"
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E HTTP project=desktop check=admin-users status=503",
+        "live E2E HTTP project=mobile check=admin-feature-flags status=403",
+        f"live E2E outcome={outcome} exit_code={return_code}",
+    ]
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_preserves_control_characters_before_http_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    run = subprocess.run
+    child_source = (
+        "import sys; "
+        "sys.stdout.buffer.write("
+        "b'private\\rUE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=401\\n'"
+        "+ b'UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=403\\r'"
+        "+ b'UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=500\\n'"
+        "+ b'UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=503\\r\\n')"
+    )
+
+    def run_actual_child(
+        _command: Sequence[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess:
+        return run((sys.executable, "-c", child_source), **kwargs)
+
+    monkeypatch.setattr(live_stand.subprocess, "run", run_actual_child)
+    live_stand._run_live_playwright(cwd=tmp_path, environment=dict(os.environ))
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command()),
+        "live E2E HTTP project=mobile check=admin-feature-flags status=503",
+        "live E2E outcome=passed exit_code=0",
+    ]
+    assert printed.err == ""
 
 
 @pytest.mark.parametrize("return_code", [0, 1, 23])
 @pytest.mark.parametrize("path_style", ["posix", "windows", "absolute"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
 def test_live_playwright_emits_only_validated_failure_locations(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
     return_code: int,
     path_style: str,
+    newline: str,
 ) -> None:
     for filename in live_stand.LIVE_E2E_SMOKE_FILES:
         source = tmp_path / filename
@@ -1280,6 +1418,8 @@ def test_live_playwright_emits_only_validated_failure_locations(
             completed.stderr = completed.stderr.replace(
                 source, source.replace("/", "\\")
             )
+    completed.stdout = completed.stdout.replace("\n", newline).encode()
+    completed.stderr = completed.stderr.replace("\n", newline).encode()
     monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
@@ -1300,7 +1440,7 @@ def test_live_playwright_emits_only_validated_failure_locations(
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == ""
+    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -1452,8 +1592,8 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(),
         23,
-        stdout=f"  1) [desktop] › {source_name}:1:1 › private-title\n",
-        stderr=f"        at {source}:2:1\n1 failed\n",
+        stdout=f"  1) [desktop] › {source_name}:1:1 › private-title\n".encode(),
+        stderr=f"        at {source}:2:1\n1 failed\n".encode(),
     )
     monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
     with pytest.raises(live_stand.StandError, match="exit code 23"):
@@ -1466,7 +1606,7 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
         "live E2E outcome=failed exit_code=23",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == ""
+    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("source_state", ["missing", "invalid-utf8", "directory"])

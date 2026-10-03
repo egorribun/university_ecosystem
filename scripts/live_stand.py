@@ -2646,6 +2646,39 @@ _PLAYWRIGHT_FRAME_LOCATION = re.compile(
     r"(?P<source>.{1,1024}):(?P<line>[1-9][0-9]{0,4}):"
     r"(?P<column>[1-9][0-9]{0,4})"
 )
+_PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
+    r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
+    r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui) "
+    r"status=(?P<status>[1-5][0-9]{2})"
+)
+_PLAYWRIGHT_HTTP_STATUS_CHECKS = {
+    check: check
+    for check in ("admin-users", "admin-feature-flags", "admin-feature-flags-ui")
+}
+_PLAYWRIGHT_HTTP_STATUS_LIMIT = 8
+
+
+def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
+    """Accept only complete stdout protocol records; discard all other content."""
+    statuses: list[tuple[str, str, int]] = []
+    # LF and CRLF terminate records; bare controls and EOF never do.
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 96 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_HTTP_STATUS_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            _PLAYWRIGHT_HTTP_STATUS_CHECKS[match["check"]],
+            int(match["status"]),
+        )
+        if record not in statuses:
+            statuses.append(record)
+            if len(statuses) == _PLAYWRIGHT_HTTP_STATUS_LIMIT:
+                break
+    return statuses
 
 
 def _live_playwright_counts(output: str) -> dict[str, int]:
@@ -2725,7 +2758,7 @@ def _live_playwright_failure_locations(
 def _run_live_playwright(
     *, cwd: Path, environment: dict[str, str], mode: str = "full"
 ) -> None:
-    """Expose counts, allowlisted source locations and status; discard raw output."""
+    """Expose bounded public diagnostics and exit status; discard raw output."""
     command = _live_e2e_command(mode=mode)
     print("+", " ".join(command), flush=True)
     try:
@@ -2735,27 +2768,32 @@ def _run_live_playwright(
             env=environment,
             check=False,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=False,
         )
     except OSError as error:
         raise StandError("could not launch the live Playwright command") from error
 
     return_code = completed.returncode
-    output = "\n".join((completed.stdout or "", completed.stderr or ""))
+    # Text mode converts bare CR into LF, which could fabricate protocol lines.
+    stdout = (completed.stdout or b"").decode("utf-8", errors="replace")
+    stderr = (completed.stderr or b"").decode("utf-8", errors="replace")
+    output = "\n".join((stdout, stderr))
     counts = _live_playwright_counts(output)
+    # Only the reviewed helper's stdout protocol can emit HTTP diagnostics.
+    http_statuses = _live_playwright_http_statuses(stdout)
     # A header from one stream must never authorize frames from the other.
     failure_locations = list(
         dict.fromkeys(
             location
-            for stream in (completed.stdout or "", completed.stderr or "")
-            for location in _live_playwright_failure_locations(stream, cwd=cwd)
+            for stream in (stdout, stderr)
+            for location in _live_playwright_failure_locations(
+                stream.replace("\r\n", "\n"), cwd=cwd
+            )
         )
     )
-    del output
-    completed.stdout = ""
-    completed.stderr = ""
+    del output, stdout, stderr
+    completed.stdout = b""
+    completed.stderr = b""
     del completed
     if counts:
         count_summary = " ".join(
@@ -2767,6 +2805,11 @@ def _run_live_playwright(
     for project, source, line_number, kind in failure_locations:
         print(
             f"live E2E failure project={project} source={source} line={line_number} kind={kind}",
+            flush=True,
+        )
+    for project, check, status in http_statuses:
+        print(
+            f"live E2E HTTP project={project} check={check} status={status}",
             flush=True,
         )
     outcome = "passed" if return_code == 0 else "failed"
