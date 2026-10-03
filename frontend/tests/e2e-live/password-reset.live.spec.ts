@@ -170,7 +170,8 @@ test("a student resets with the Mailpit link without retaining tokens or followi
           })
           return { status: response.status }
         }, createdUserId)
-        expect(cleanup.status).toBe(200)
+        // Keep cleanup failures visible without replacing an earlier reset failure.
+        expect.soft(cleanup.status).toBe(200)
       } finally {
         await cleanupContext.close()
       }

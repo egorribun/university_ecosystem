@@ -33,25 +33,37 @@ test.describe("localized rejected-login acceptance", () => {
   for (const { role, language, project, expectedError } of WRONG_PASSWORD_CASES) {
     test(`${role} receives generic ${language} feedback for one rejected login`, async ({
       page,
+      context,
     }, testInfo) => {
       test.skip(
         testInfo.project.name !== project,
         "Run only one rejected login per seeded role in the live matrix."
       )
 
-      await page.goto("/login")
-      await page.evaluate((selectedLanguage) => {
+      const liveBaseUrl = process.env.LIVE_BASE_URL
+      if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
+      // Seed both stores before the first document loads. Changing them on an
+      // already-open page races its pending language-persistence effect.
+      await context.addCookies([{ name: "ue:language", value: language, url: liveBaseUrl }])
+      await page.addInitScript((selectedLanguage) => {
         window.localStorage.setItem("ue:language", selectedLanguage)
-        document.cookie = `ue:language=${selectedLanguage}; Path=/; SameSite=Lax`
       }, language)
-      await page.reload()
+      await page.goto("/login")
+      await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page.locator("html")).toHaveAttribute("lang", language)
 
       const identity = ROLES[role].email
       const wrongPassword = "invalid-live-password-for-acceptance" // pragma: allowlist secret -- negative-login test fixture
       await page.locator("#email").fill(identity)
       await page.locator("#password").fill(wrongPassword)
+      const loginResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/v1/auth/login"
+      )
       await page.locator("#login-submit").click()
+      const loginResponse = await loginResponsePromise
+      expect(loginResponse.status(), "rejected login must return HTTP 401").toBe(401)
 
       const feedback = page.getByRole("alert")
       await expect(feedback).toBeVisible()
@@ -80,12 +92,6 @@ test.describe("localized rejected-login acceptance", () => {
 
 test("admin can access the admin page and user listing", async ({ page }) => {
   await loginAs(page, "admin")
-  await page.goto("/admin/users")
-  await expect(page).toHaveURL(/\/admin\/users/)
-  await expect(
-    page.getByText(ROLES.teacher.email, { exact: true }).filter({ visible: true })
-  ).toBeVisible()
-
   const adminUsers = await page.request.get("/api/v1/users")
   expect(adminUsers.status(), "admin GET /api/v1/users should be allowed").toBe(200)
   const adminUserRecords = (await adminUsers.json()) as { email: string }[]
@@ -93,6 +99,12 @@ test("admin can access the admin page and user listing", async ({ page }) => {
     adminUserRecords.some((user) => user.email === ROLES.teacher.email),
     "admin user listing should include the seeded teacher"
   ).toBe(true)
+
+  await page.goto("/admin/users")
+  await expect(page).toHaveURL(/\/admin\/users/)
+  await expect(
+    page.getByText(ROLES.teacher.email, { exact: true }).filter({ visible: true })
+  ).toBeVisible()
 })
 
 test("admin can access feature-flag diagnostics", async ({ page }) => {

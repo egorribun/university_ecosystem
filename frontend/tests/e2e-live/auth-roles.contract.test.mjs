@@ -108,7 +108,14 @@ test("real wrong-password acceptance checks localized generic feedback without e
   const rejectedLoginSection = spec.slice(rejectedLoginStart, adminSmokeStart)
   assert.match(spec, /await page\.goto\(["']\/login["']\)/u)
   assert.match(spec, /window\.localStorage\.setItem\(["']ue:language["'],\s*selectedLanguage\)/u)
-  assert.match(spec, /document\.cookie\s*=\s*`ue:language=\$\{selectedLanguage\}/u)
+  assert.match(
+    rejectedLoginSection,
+    /context\.addCookies\(\[\{ name: "ue:language", value: language, url: liveBaseUrl \}\]\)[\s\S]*?page\.addInitScript\([\s\S]*?await page\.goto\("\/login"\)/u
+  )
+  assert.match(
+    rejectedLoginSection,
+    /page\.waitForFunction\(\(\) => window\.__APP_HYDRATED === true\)/u
+  )
   assert.match(spec, /toHaveAttribute\(["']lang["'],\s*language\)/u)
   assert.match(rejectedLoginSection, /test\.describe\.configure\(\{\s*retries:\s*0\s*\}\)/u)
   assert.match(
@@ -117,7 +124,15 @@ test("real wrong-password acceptance checks localized generic feedback without e
   )
   assert.match(rejectedLoginSection, /page\.locator\(["']#email["']\)\.fill\(identity\)/u)
   assert.match(rejectedLoginSection, /page\.locator\(["']#password["']\)\.fill\(wrongPassword\)/u)
+  assert.match(
+    rejectedLoginSection,
+    /page\.waitForResponse\([\s\S]*?response\.request\(\)\.method\(\) === "POST"[\s\S]*?new URL\(response\.url\(\)\)\.pathname === "\/api\/v1\/auth\/login"/u
+  )
   assert.match(rejectedLoginSection, /page\.locator\(["']#login-submit["']\)\.click\(\)/u)
+  assert.match(
+    rejectedLoginSection,
+    /expect\(loginResponse\.status\(\), "rejected login must return HTTP 401"\)\.toBe\(401\)/u
+  )
   assert.match(
     rejectedLoginSection,
     /feedbackText\s*===\s*expectedError[\s\S]*?!feedbackText\.includes\(identity\)[\s\S]*?!feedbackText\.includes\(wrongPassword\)/u
