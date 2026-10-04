@@ -8,13 +8,24 @@
 ## Проверяемый контекст
 
 - Активная ветка — `egorribun`, основной PR — [#1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Проверенный кодовый checkpoint — `66ed540306b0929b8eb0ac02237e3bc70205382b`,
-  дерево — `ca742d2bc9532a86a24cafeec62ef16f93bb5e2b`.
+  Проверенный кодовый checkpoint — `2d669282437719ccae3fe5e2f71165a2fea44a66`,
+  дерево — `1474d6de037e5c30336a8053676dfb8fcfde0c5a`.
   Это обновление STATUS является последующей документационной дельтой.
 - В `main` интегрированы отдельные исправления trusted workflow и изоляции
   benchmark-процессов; проверенный base — `6fa133b57f62c554162876d4e6d8349f8060fce9`.
   Пороги и число performance-измерений сохранены.
-- Предыдущий опубликованный checkpoint `2595c0ebc674edb69557f3c6edd0a184973d62e2`
+- Опубликованный `b6d50fe468137b10942565bf5501000c04ec8437` имеет
+  [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37184644787).
+  Backend/frontend unit и coverage gates, browser smoke, types, security и
+  performance prerequisites прошли. Attempt 1 и отдельный retry единственного
+  frontend shard завершены; все 64 producer reports получены. Mutation gates
+  остаются неуспешными; результаты ниже разделяют исходный и повторный attempts.
+  [Owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37184644560)
+  остановился до Docker: структурный контракт ожидал старый вызов Enter без
+  ограничения координат. Контракт исправлен в checkpoint выше; полный локальный live-contract suite
+  (134 проверки) и 58 runtime keyboard controls прошли. Реальный live verdict нового
+  checkpoint ещё не получен.
+- Более ранний checkpoint `2595c0ebc674edb69557f3c6edd0a184973d62e2`
   имеет [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37164443034),
   [owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37164442808)
   и [performance](https://github.com/egorribun/university_ecosystem/actions/runs/37164442867).
@@ -32,13 +43,90 @@
 ## Подтверждённый прогресс
 
 - Свежий полный frontend unit/coverage-прогон на **Node 24.15.0** прошёл:
-  **714 файлов, 8 594 теста**, без skips/failures, **100%** statements
-  (19 141/19 141), branches (13 682/13 682), functions (4 561/4 561)
-  и lines (17 123/17 123). Все **4 642 authored inputs** сохранили hashes во время
-  прогона. Это локальное evidence кодового checkpoint выше, не hosted verdict.
-- На том же замороженном candidate прошли **674 backend/quality теста в 41 файле**,
-  без skips/failures и изменений authored inputs. Это объединённый affected-прогон,
-  а не полный backend suite или PostgreSQL/RLS/SKIP LOCKED integration.
+  **718 файлов, 8 635 тестов**, без skips/failures, **100%** statements
+  (19 141/19 141), branches (13 680/13 680), functions (4 561/4 561)
+  и lines (17 123/17 123). Все **4 652 authored inputs** сохранили hashes и modes.
+  Это локальное evidence кодового checkpoint выше, не hosted verdict.
+- Дополнительный полный frontend shuffle (seed 1306006, maxWorkers 4) теперь
+  также прошёл **8 635/8 635** без failures, skips и unhandled errors на том же
+  замороженном дереве. Прежний `c883ad73` на этом порядке дал 18 failures в
+  11 файлах и 2 unhandled errors; эти receipts сохранены. Исправлены владение
+  deferred imports/crypto/IndexedDB work, lifecycle service-worker событий,
+  сброс mock implementations, восстановление auth/storage/spies и изоляция
+  browser-history fixtures. Cold QR fallback проверяется отдельным controlled
+  import с существующим локальным SDK/MSW enrollment payload. Production code
+  этих исправлений не менялся. Один успешный seed не доказывает все порядки.
+- Свежий единый прогон на checkpoint выше прошёл **1 240 affected backend/workflow
+  тестов** в 83 файлах, без skips, failures и ошибок. Он объединяет 1 175 tests
+  предыдущего `4b35f8a5` и последующие 125: 60 фактических node identities
+  совпадают и исключены из повторного исполнения. Каждый из 1 240 уникальных
+  nodes прошёл setup/call/teardown ровно один раз; пропусков и лишних IDs нет.
+  Проверены analytics/MFA/rate-limit/NATS/workflow, chat/webpush, circuit-lock,
+  password-rehash, chat retry windows и search consumers. Это не полный backend suite и не настоящая
+  PostgreSQL/RLS/SKIP LOCKED/NATS/Elasticsearch integration. Все **4 652 inputs**
+  сохранены. Предыдущий `4b35f8a5` отдельно прошёл 1 175 tests; его
+  первоначальный collection setup с конфликтующим именем внешнего recorder
+  import сохранён как невалидная попытка. Нынешний прогон использует исправленный
+  отдельный namespace recorder и не переименовывает прежние receipts.
+- На текущем дереве прошли полные frontend types, scoped frontend/Python
+  lint/format, nonempty inventory и secret scans. Предшествующий `827f19ab`
+  отдельно прошёл полные frontend lint, scoped application mypy, actionlint,
+  **544 tooling tests**, **134 live contracts**, **47 policy/baseline tests**.
+  После него изменены только 12 рассмотренных source/test paths;
+  код tooling/workflow controls и пороги не менялись. Прежние tooling receipts не
+  переименованы в свежий прогон нового дерева. Тогда dependency layout был
+  приведён к обычной директории с идентичными установленными файлами; исходный
+  setup-specific отказ сохранён. Docker/live stack этими проверками не запускался.
+- Семь paths между `827f19ab` и `4b35f8a5` содержали: шесть прежних cross-loop circuit сценариев
+  с ограниченным owned subprocess preflight и тем же inline body; реальную
+  account-scoped password rehash проверку; in-process Elasticsearch SDK deletion
+  contracts; удаление из Skeleton избыточного default с публичными omitted/undefined
+  controls. Тогда дополнительно 910 frontend consumer tests прошли нормально
+  и на seeds 1306006/113017475. Эти прежние receipts не переименованы в новый
+  snapshot; fake transport не считается live Elasticsearch.
+- Последующие пять paths проверяют 24-hour completed chat replay и five-minute
+  lease takeover через публичный dispatcher на FakeRedis; omitted/undefined
+  debounce/scroll/observer defaults и владение cleanup. Отрицательные controls
+  подтверждают сохранение исключений из upload/fixture cleanup. Это не live Redis,
+  native browser geometry или browser animation proof. Ровно один private News
+  helper теперь требует уже разрешённый caller-ом method; default остаётся на
+  границе handleMutationError, body и public exports сохранены. Общее число
+  frontend branches уменьшилось на два относительно `827f19ab` вследствие двух
+  reviewed source simplifications, а не исключений или изменения порога.
+- Локальные exact/native mutation controls не меняют canonical statuses.
+  Empty-string delay/scroll variants не проходят types и не получают viable
+  kill credit. Margin residual остаётся открытым: native zero-offset normalization
+  не доказывает полную эквивалентность жизненного цикла hook.
+- Реальная soft-delete запись проверяется повторным авторизованным edit и
+  свежей DB session: tombstone целиком сохраняется. Webpush timeout tests
+  независимо наблюдают завершение caller, освобождают/дожидаются своих workers
+  и сохраняют неожиданные cleanup failures. Это тестовые контракты; прежний
+  canonical webpush Timeout не переклассифицирован локальным replay.
+- Необязательные глобальные LHCI wrapper links допускают read-only filesystem
+  (EROFS); ошибки локальных links и неожиданные I/O ошибки по-прежнему
+  завершают setup неуспешно. Реальный npm reinstall и запись в system paths
+  при локальных проверках не выполнялись.
+- Исправлена изоляция profile lifecycle fixture: незавершённая криптографическая
+  работа предыдущего теста могла занять следующий одноразовый gate и вызвать
+  перезапись ожидаемого test envelope. Теперь owned work завершается до
+  восстановления spies, а тест ждёт собственную readable publication.
+  Точное сравнение remote envelope сохранено. После воспроизведения на
+  неизменённом baseline финальный auth shuffle прошёл **410/410**; это
+  test-only correction, не заявление о найденном production regression.
+- Новые tests проверяют реальные grade/attendance окна и cache invalidation,
+  сохранение MFA challenge/delivery/outbox, population MFA metric,
+  восстановление Redis client factory и сохранённый replayable NATS dead letter.
+  Подмена network transport в NATS и прямой DI boundary MFA не выдаются за
+  полноценные network E2E.
+- Предыдущий восстановленный checkpoint `66ed5403` отдельно прошёл **674
+  backend/quality теста в 41 файле**. Этот исторический affected-прогон не
+  переименован в свежую проверку нынешнего дерева.
+- Исправлено падение participation stats для события без категории: обязательное
+  поле внутреннего DTO допускает уже разрешённый EventCreate/ORM null. Реальные
+  сохранённые строки проверяют окна, проценты, дробные часы, recent projection и
+  пользовательский cache/invalidation. Публичные hook/cache tests проверяют
+  слияние истории Messenger и обновление/частичную доступность Activity.
+  Точные локальные RED controls остаются диагностикой, не canonical kill credit.
 - Исправлены границы выбранной ячейки расписания и владение Enter встроенными
   кнопками/ссылками. Modal focus и закрытие подсказок Events используют существующий
   focus trap. Button использует реально генерируемые theme utilities и блокирует
@@ -58,11 +146,13 @@
 - Четыре прежних локальных inventory receipts признаны недействительными:
   command receipt перезаписал manifest, а checker принимал отсутствующий files
   как пустой список. Теперь некорректный/пустой manifest отклоняется fail-closed.
-  Свежий manifest содержит **4 209 records**, включая все **4 208** применимых
-  Git-authored paths без пропусков/дубликатов; дополнительный `tests/queries.log`
-  классифицирован как utility. В hosted workflow такого совпадения выходных путей
-  не обнаружено. Ruff, frontend types/lint/format, Markdownlint, links,
-  detect-secrets и GitLeaks проходят; baseline изменён только в метаданных строк.
+  Свежий manifest содержит **4 220 records**, включая все **4 218** применимых
+  authored paths без пропусков/дубликатов; дополнительные `.git` worktree
+  metadata и `tests/queries.log` не считаются authored evidence. В hosted workflow
+  такого совпадения выходных путей не обнаружено. Baseline изменён только в
+  номерах строк существующих workflow/QR fixture entries и generated timestamp;
+  fingerprints, entry counts, detector configuration и filters сохранены.
+  Новые исключения не добавлены.
 - Ранее исправлены cooldown signing-key запросов и владение их результатами,
   отмена устаревшего поиска и принадлежность install prompt текущему аккаунту.
   Реальные pending, retry, generation-change, cache, navigation и RU/EN Activity
@@ -90,10 +180,70 @@
   127 завершённых групп дали **3 501 Killed, 969 подтверждённых Survived, 19 Timeout**.
   Группа 47 не завершила full-map confirmation из-за QR clock-boundary baseline
   failure; её 25 primary Killed и 10 unconfirmed primary Survived не приравниваются
-  к завершённой группе. Clock-регрессия исправлена в новом candidate, но для него
-  требуется свежий canonical execution.
+  к завершённой группе. Clock-регрессия исправлена в `b6d50fe4`; историческая
+  неполная группа не переименована в результат новой кампании.
 - Ни compile-invalid, ни equivalent residuals не получают ручной переклассификации.
   Частичные локальные mutation-прогоны не заменяют полный exact-head gate.
+
+## Текущая mutation-кампания на b6d50fe4
+
+Frontend preflight проверен по immutable Git inputs: **42 915** identities,
+565 policy files, 43 файла без сгенерированных мутантов и 64 непересекающихся
+assignments. Backend generation содержит **54 418** identities; проверенный
+selected plan — **4 540** identities в 128 группах. Эти populations не наследуют
+counts/verdicts от 2595c0eb. Attempt 1 завершился failure 2026-10-04 в 13:33 UTC;
+полный snapshot содержит 367 checks: 214 success, 20 skipped и 133 failure.
+После единственного retry attempt 2 также завершён failure: полный exact-head
+snapshot содержит 367 checks — 215 success, 20 skipped и 132 failure, без pending.
+Gate не зелёный. Число failed jobs не равно числу отдельных production bugs.
+
+Backend завершён и полностью сверен: **128/128** groups, все **4 540** assignments
+ровно по одному разу, без missing/foreign entries, все proof stages complete.
+Итог — **3 673 Killed, 865 подтверждённых Survived, 2 Timeout**. Full-map
+confirmation дополнительно убила 81 primary survivor. На сравнимых unchanged
+function AST 112 прежних survivors и 17 timeouts теперь Killed; два прежних
+Killed теперь Survived, два прежних Timeout сохранились. Это raw comparison,
+не заявление о новых production regressions или ручной переклассификации.
+Оба оставшихся Timeout — webpush caller и native circuit-lock contention.
+
+Frontend attempt 1 полностью сохранён: **63/64** reports и **41 460/42 915**
+identities ровно по одному разу. Raw totals: **35 483 Killed, 4 694 Survived,
+8 NoCoverage, 34 Timeout, 31 RuntimeError, 0 CompileError, 1 210 Ignored**.
+Aggregate независимо отклонил incomplete 63/64 inventory. Shard 027 остановился
+до mutation execution при выборе artifact catalog; его **1 455** assigned
+identities отсутствуют именно в attempt 1. После завершения кампании однократно
+запрошен retry только этого job. В attempt 2 новый job `111447706572` прошёл
+selector/download/provenance/preflight validation и свежий Stryker execution
+на том же `b6d50fe4`, завершившись success. Его artifact `11307805307` содержит
+ровно 1 455 assigned signatures: 1 394 Killed, 23 Survived, 6 Timeout и 32 Ignored.
+Сохранённая identity preflight остаётся из attempt 1; первый attempt не подменяется новым.
+
+Полное объединение содержит **64/64 reports и 42 915/42 915 identities** без
+пропусков, дубликатов и чужих записей: 63 reports из attempt 1 и только shard 027
+из attempt 2. Raw totals — **36 877 Killed, 4 717 Survived, 8 NoCoverage,
+40 Timeout, 31 RuntimeError, 0 CompileError, 1 242 Ignored**. У каждой записи
+сохранён исходный producer attempt. Aggregate теперь отклоняет реальный Survived
+`shard-026:269`, а не отсутствие shard. Успешный retry producer не означает
+mutation pass.
+
+В локальном воспроизведении
+конкурентная загрузка artifacts меняет valid total_count между страницами и
+вызывает такой же прежний selector error. Исправление допускает три полных
+перечитывания в прежнем общем 120-second budget, отбрасывает partial scan и
+сохраняет provenance/digest/attempt checks. Его проверяют реальные extracted
+workflow scripts и actionlint. Конкретная причина удалённого shard 027 не
+установлена: прежний лог не сохранил значения ответа.
+
+Отдельно partial rerun выявил несовместимость timing-ledger analyzer: GitHub
+вернул carried-forward Contract Tests job с новым created_at после исходных
+started_at/completed_at. Analyzer отклонил chronology; последующие render/upload
+шаги не получили ledger. Исходные timestamps и ошибки сохранены. Это отдельная
+неисправность диагностики повторного запуска, не новый production regression;
+она ещё не исправлена в кодовом checkpoint выше.
+
+Завершённая кампания сохраняется для сопоставимого inventory. Локальные RED controls
+и исправления не меняют её raw outcomes и не заменяют свежий canonical execution
+следующего опубликованного checkpoint.
 
 ## Ближайшие проверяемые результаты
 
