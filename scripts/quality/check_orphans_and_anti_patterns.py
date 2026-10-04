@@ -7,7 +7,7 @@ import json
 import re
 import sys
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -905,6 +905,45 @@ def matches_source(
     return True
 
 
+def _inventory_validation_error(manifest: object) -> str | None:
+    """Validate the generated fields consumed by the quality checks."""
+    if not isinstance(manifest, dict):
+        return "manifest must be an object"
+    files = manifest.get("files")
+    if not isinstance(files, list) or not files:
+        return "files must be a non-empty list"
+    for index, record in enumerate(files):
+        location = f"files[{index}]"
+        if not isinstance(record, dict):
+            return f"{location} must be an object"
+        path = record.get("path")
+        if (
+            not isinstance(path, str)
+            or not path
+            or "\\" in path
+            or not PurePosixPath(path).name
+            or PurePosixPath(path).is_absolute()
+            or ".." in PurePosixPath(path).parts
+        ):
+            return f"{location}.path must be a non-empty repository-relative POSIX file path"
+        classification = record.get("classification")
+        if not isinstance(classification, str) or classification not in {
+            "source",
+            "test",
+            "generated",
+            "utility",
+        }:
+            return (
+                f"{location}.classification must be source, test, generated, or utility"
+            )
+        owner = record.get("owner")
+        if "owner" not in record or (
+            owner is not None and (not isinstance(owner, str) or not owner.strip())
+        ):
+            return f"{location}.owner must be a non-empty string or null"
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_arguments(argv)
 
@@ -932,11 +971,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
 
+    if validation_error := _inventory_validation_error(manifest):
+        print(f"ERROR: invalid inventory manifest: {validation_error}", file=sys.stderr)
+        return 2
+
     allowed_sleeps = mapping.get("allowed_sleeps", [])
     allowed_dynamic_skips = mapping.get("allowed_dynamic_skips", [])
     allowed_orphans = mapping.get("allowed_orphans", [])
 
-    files = manifest.get("files", [])
+    files = manifest["files"]
     errors = []
 
     source_paths = {f["path"] for f in files if f["classification"] == "source"}
