@@ -41,7 +41,9 @@ import {
 } from "@/utils/sanitize"
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  mocks.sanitize_rich_text.mockReset()
+  mocks.strip_html.mockReset()
+  mocks.logWarning.mockReset()
 })
 
 afterEach(() => {
