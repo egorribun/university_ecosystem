@@ -40,7 +40,19 @@ test("schedule grid keyboard acceptance uses the real seeded desktop route", () 
 })
 
 test("Enter resolves the visible keyboard-grid coordinates to the lesson details dialog", () => {
-  assert.match(keyboardHook, /case ["']Enter["']:[\s\S]{0,100}onOpen\?\.\(pos\.row,\s*pos\.col\)/u)
+  const enterBranch = keyboardHook.match(/case ["']Enter["']:[\s\S]*?(?=case ["']e["']:)/u)?.[0]
+  assert.ok(enterBranch, "the keyboard hook must handle Enter")
+  assert.match(keyboardHook, /const pos = activeCell \?\? \{ row: 0, col: 0 \}/u)
+  assert.match(
+    enterBranch,
+    /if \(target instanceof Element && target\.closest\(["']button, a\[href\]["']\)\) return\s*e\.preventDefault\(\)/u
+  )
+  assert.match(enterBranch, /const row = Math\.max\(0, Math\.min\(pos\.row, rowCount - 1\)\)/u)
+  assert.match(enterBranch, /const col = Math\.max\(0, Math\.min\(pos\.col, colCount - 1\)\)/u)
+  assert.match(
+    enterBranch,
+    /if \(row !== pos\.row \|\| col !== pos\.col\) moveTo\(row, col\)\s*onOpen\?\.\(row, col\)/u
+  )
   assert.match(schedulePage, /visibleWeekdayBackend\s*=\s*useMemo/u)
   assert.match(schedulePage, /buildTable\(displaySchedule,\s*visibleWeekdayBackend\)/u)
   assert.match(schedulePage, /onOpen:\s*handleKbOpen/u)
