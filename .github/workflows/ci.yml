@@ -880,28 +880,54 @@ jobs:
                 run.repository?.full_name !== owner + '/' + repo) {
               throw new Error('same-run workflow identity mismatch')
             }
-            const records = []
-            let total
-            for (let page = 1; page <= 100; page++) {
-              const result = await github.rest.actions.listWorkflowRunArtifacts({
-                owner, repo, run_id: context.runId, page, per_page: 100,
-                request: { timeout: remaining() },
-              })
-              const count = result.data.total_count
-              if (!Number.isInteger(count) || count < 0 || count > 10000 ||
-                  (total !== undefined && count !== total) ||
-                  !Array.isArray(result.data.artifacts) ||
-                  result.data.artifacts.length > 100) {
-                throw new Error('same-run artifact catalog is malformed')
+            let records
+            const maxScans = 3
+            for (let scan = 1; scan <= maxScans; scan++) {
+              const scanned = []
+              let total
+              let changed = false
+              for (let page = 1; page <= 100; page++) {
+                const result = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner, repo, run_id: context.runId, page, per_page: 100,
+                  request: { timeout: remaining() },
+                })
+                const count = result.data?.total_count
+                const artifacts = result.data?.artifacts
+                const diagnostic = 'scan=' + scan + ' page=' + page +
+                  ' total=' + (Number.isInteger(count) ? count : typeof count) +
+                  ' page_records=' + (Array.isArray(artifacts) ? artifacts.length : typeof artifacts) +
+                  ' scanned_records=' + scanned.length
+                if (!Number.isInteger(count) || count < 0 || count > 10000 ||
+                    !Array.isArray(artifacts) || artifacts.length > 100) {
+                  throw new Error('same-run artifact catalog is malformed (' + diagnostic + ')')
+                }
+                if ((artifacts.length === 0 && count > 0) ||
+                    scanned.length + artifacts.length > count) {
+                  throw new Error('same-run artifact catalog is partial (' + diagnostic + ')')
+                }
+                if (total !== undefined && count !== total) {
+                  // Concurrent producers can change the catalog between pages.
+                  // Never combine records from different catalog scans.
+                  core.warning('same-run artifact catalog changed: scan=' + scan +
+                    ' page=' + page + ' previous_total=' + total + ' total=' + count)
+                  changed = true
+                  break
+                }
+                total = count
+                scanned.push(...artifacts)
+                if (scanned.length === total) break
               }
-              total = count
-              records.push(...result.data.artifacts)
-              if (records.length === total) break
-              if (records.length > total || result.data.artifacts.length === 0) {
-                throw new Error('same-run artifact catalog is partial')
+              if (changed) continue
+              if (scanned.length !== total) {
+                throw new Error('same-run artifact catalog exceeds page bound (scan=' + scan +
+                  ' total=' + total + ' scanned_records=' + scanned.length + ')')
               }
+              records = scanned
+              break
             }
-            if (records.length !== total) throw new Error('same-run artifact catalog exceeds page bound')
+            if (!records) {
+              throw new Error('same-run artifact catalog did not stabilize (scans=' + maxScans + ')')
+            }
             const pattern = new RegExp(
               '^' + prefix + context.runId + '-([1-9][0-9]*)' +
               (suffix ? '-' + suffix : '') + '$'
