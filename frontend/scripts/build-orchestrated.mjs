@@ -185,6 +185,7 @@ async function step3_viteBuild() {
   // production via tanstackStart's top-level define + no environments.server
   // override here).
   const isReactDevMode = process.env.FRONTEND_REACT_DEV_MODE === "true"
+  const rolldownWorkerThreads = process.env.ROLLDOWN_WORKER_THREADS?.trim() || "4"
 
   const nodeOptions = [
     inheritedNodeOptions,
@@ -205,6 +206,8 @@ async function step3_viteBuild() {
       FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
       // See isReactDevMode above.
       FRONTEND_REACT_DEV_MODE: isReactDevMode ? "true" : "",
+      // Bound Rolldown's native Tokio pool independently of the host CPU count.
+      ROLLDOWN_WORKER_THREADS: rolldownWorkerThreads,
       NODE_OPTIONS: nodeOptions,
     }
 
