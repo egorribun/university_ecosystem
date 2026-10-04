@@ -102,9 +102,12 @@ class UserComplianceService:
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
-        # Export the public DTO only. Authentication challenges are counted
-        # separately and their bindings/digests are never serialized.
+        # Export the public DTO only. Challenge bindings and digests remain
+        # private; the account export includes only a count and safe metadata.
         profile = db_user.model_dump(exclude={"mfa_challenges"})
+        challenge_count, enrollments = await self.repo.get_user_mfa_export_summary(
+            user_identity
+        )
 
         # These reads share one AsyncSession, which cannot be used concurrently.
         sessions_list = await self.repo.get_user_sessions(user_identity)
@@ -135,20 +138,6 @@ class UserComplianceService:
                 "read_at": n.read_at,
             }
             for n in notifications_list
-        ]
-
-        challenge_count = len(getattr(db_user, "mfa_challenges", []))
-
-        enrollments = [
-            {
-                "id": e.id,
-                "label": e.label,
-                "is_active": e.is_active,
-                "confirmed_at": e.confirmed_at,
-                "revoked_at": e.revoked_at,
-                "created_at": e.created_at,
-            }
-            for e in getattr(db_user, "totp_enrollments", [])
         ]
 
         access_log_payload = [

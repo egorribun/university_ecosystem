@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.orm import contains_eager, selectinload
@@ -25,6 +25,15 @@ from app.schemas.dtos import UserAuthDTO, UserDTO
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
+
+
+class _MfaEnrollmentExport(TypedDict):
+    id: uuid.UUID
+    label: str | None
+    is_active: bool
+    confirmed_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
 
 
 class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str, Any]]):
@@ -286,6 +295,48 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_user_mfa_export_summary(
+        self, user_id: uuid.UUID
+    ) -> tuple[int, list[_MfaEnrollmentExport]]:
+        """Return the MFA fields allowed in a user's data export.
+
+        MFA enrollment and challenge secrets stay out of the public UserDTO;
+        export only exposes a challenge count and enrollment metadata.
+        """
+        count_result = await self.db.execute(
+            select(func.count(models.MfaChallenge.id)).where(
+                models.MfaChallenge.user_id == user_id
+            )
+        )
+        challenge_count = count_result.scalar_one()
+        result = await self.db.execute(
+            select(
+                models.MfaTotpEnrollment.id,
+                models.MfaTotpEnrollment.label,
+                models.MfaTotpEnrollment.is_active,
+                models.MfaTotpEnrollment.confirmed_at,
+                models.MfaTotpEnrollment.revoked_at,
+                models.MfaTotpEnrollment.created_at,
+            )
+            .where(models.MfaTotpEnrollment.user_id == user_id)
+            .order_by(
+                models.MfaTotpEnrollment.created_at,
+                models.MfaTotpEnrollment.id,
+            )
+        )
+        enrollments: list[_MfaEnrollmentExport] = [
+            {
+                "id": row.id,
+                "label": row.label,
+                "is_active": row.is_active,
+                "confirmed_at": row.confirmed_at,
+                "revoked_at": row.revoked_at,
+                "created_at": row.created_at,
+            }
+            for row in result
+        ]
+        return challenge_count, enrollments
 
     # RZ-12 (audit 2026-03-05): Hard-cap at 100. The old default of 1000 could
     # return multi-MB payloads bypassing the router-level MAX_PAGE_SIZE=200.

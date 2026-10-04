@@ -189,6 +189,7 @@ async def test_user_service_mega():
             created_at=datetime.datetime.now(datetime.UTC),
         )
     ]
+    repo.get_user_mfa_export_summary.return_value = (0, [])
     repo.get_user_mfa_challenges.return_value = []
     repo.get_user_totp_enrollments.return_value = []
     with (
@@ -209,6 +210,8 @@ async def test_user_service_mega():
         assert len(export.sessions) == 1
         assert len(export.notifications) == 1
         assert len(export.access_logs) == 1
+        assert export.mfa_challenge_count == 0
+        assert export.mfa_enrollments == []
 
 
 @pytest.mark.asyncio

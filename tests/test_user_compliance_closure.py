@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -152,7 +153,6 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
     now = datetime.now(UTC)
     session_id = uuid4()
     notification_id = uuid4()
-    challenge_id = uuid4()
     enrollment_id = uuid4()
     access_log_id = uuid4()
     db_user = SimpleNamespace(
@@ -160,27 +160,21 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
             "id": user_id,
             "email": "student@example.com",
         },
-        mfa_challenges=[
-            SimpleNamespace(
-                id=challenge_id,
-                challenge_type="totp",
-                expires_at=now,
-                consumed_at=None,
-                created_at=now,
-            )
-        ],
-        totp_enrollments=[
-            SimpleNamespace(
-                id=enrollment_id,
-                label="phone",
-                is_active=True,
-                confirmed_at=now,
-                revoked_at=None,
-                created_at=now,
-            )
-        ],
     )
     repo.get.return_value = db_user
+    repo.get_user_mfa_export_summary.return_value = (
+        1,
+        [
+            {
+                "id": enrollment_id,
+                "label": "phone",
+                "is_active": True,
+                "confirmed_at": now,
+                "revoked_at": None,
+                "created_at": now,
+            }
+        ],
+    )
     repo.get_user_sessions.return_value = [
         SimpleNamespace(
             id=session_id,
@@ -300,11 +294,108 @@ async def test_export_user_data_does_not_overlap_queries_on_shared_session(
     assert [item["id"] for item in result.notifications] == [notification_id]
     assert [item["action"] for item in result.access_logs] == ["read"]
     assert result.access_logs[0]["resource_id"] == str(user_id)
+    assert result.mfa_challenge_count == 0
+    assert result.mfa_enrollments == []
     assert not pending_queries
     assert len(connections) == 1
     assert max_pending_queries == 1, (
         "Export submitted overlapping statements on the same session/connection"
     )
+
+
+@pytest.mark.asyncio
+async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
+    user_factory, db_session
+):
+    user = await user_factory()
+    other_user = await user_factory()
+    user_id = user.id
+    now = datetime.now(UTC)
+    enrollment_secret = "test-only-enrollment-secret"  # pragma: allowlist secret
+    other_enrollment_secret = secrets.token_urlsafe(24)
+    enrollment_id = uuid4()
+    token_digest = "a" * 64
+    otp_digest = "b" * 64
+    recipient_digest = "r" * 64
+    db_session.add_all(
+        [
+            models.MfaTotpEnrollment(
+                id=enrollment_id,
+                user_id=user_id,
+                secret=enrollment_secret,
+                label="phone",
+                is_active=True,
+                confirmed_at=now,
+                created_at=now,
+            ),
+            models.MfaChallenge(
+                user_id=user_id,
+                challenge_type="email_otp",
+                flow="login",
+                session_identifier="export-fixture",
+                client_fingerprint="f" * 64,
+                method="email_otp",
+                token_digest=token_digest,
+                token_key_id="test-key",
+                recipient_digest=recipient_digest,
+                otp_digest=otp_digest,
+                otp_key_id="test-key",
+                expires_at=now + timedelta(minutes=5),
+            ),
+            models.MfaTotpEnrollment(
+                user_id=other_user.id,
+                secret=other_enrollment_secret,
+                label="other phone",
+                is_active=True,
+                confirmed_at=now,
+                created_at=now,
+            ),
+            models.MfaChallenge(
+                user_id=other_user.id,
+                challenge_type="email_otp",
+                flow="login",
+                session_identifier="other-export-fixture",
+                client_fingerprint="g" * 64,
+                method="email_otp",
+                token_digest="c" * 64,
+                token_key_id="test-key",
+                recipient_digest="s" * 64,
+                otp_digest="d" * 64,
+                otp_key_id="test-key",
+                expires_at=now + timedelta(minutes=5),
+            ),
+        ]
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users/me/export", "headers": []}
+    )
+
+    result = await service.export_user_data(SimpleNamespace(id=user_id), request)
+
+    assert result.mfa_challenge_count == 1
+    assert result.mfa_enrollments == [
+        {
+            "id": enrollment_id,
+            "label": "phone",
+            "is_active": True,
+            "confirmed_at": now.replace(tzinfo=None),
+            "revoked_at": None,
+            "created_at": now.replace(tzinfo=None),
+        }
+    ]
+    exported_json = result.model_dump_json()
+    assert enrollment_secret not in exported_json
+    assert token_digest not in exported_json
+    assert otp_digest not in exported_json
+    assert recipient_digest not in exported_json
+    assert other_enrollment_secret not in exported_json
+    assert '"secret"' not in exported_json
+    assert '"token_digest"' not in exported_json
+    assert '"otp_digest"' not in exported_json
 
 
 @pytest.mark.asyncio
