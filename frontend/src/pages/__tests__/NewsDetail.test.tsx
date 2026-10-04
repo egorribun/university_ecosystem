@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import NewsDetail from "../NewsDetail"
 
 const article = {
@@ -249,6 +249,8 @@ vi.mock("@/components/news/NewsDetailHeader", () => ({
 
 describe("NewsDetail", () => {
   beforeEach(() => {
+    // History entries created by another case must not choose this case's route.
+    vi.spyOn(window.history, "length", "get").mockReturnValue(1)
     mocks.query = { isLoading: false, isError: false, data: article }
     mocks.navigate.mockReset()
     mocks.removeQueries.mockReset()
@@ -275,6 +277,15 @@ describe("NewsDetail", () => {
       shareOptions: [],
       handleShare: vi.fn(),
       handleCopyLink: vi.fn(),
+    }
+  })
+
+  afterEach(() => {
+    try {
+      cleanup()
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
     }
   })
 
@@ -309,7 +320,7 @@ describe("NewsDetail", () => {
 
   it("uses browser history when a previous page exists", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined)
-    window.history.pushState({}, "", "/news/news-1")
+    vi.spyOn(window.history, "length", "get").mockReturnValue(2)
     mocks.query = { isLoading: false, isError: true, data: undefined }
 
     render(<NewsDetail />)
