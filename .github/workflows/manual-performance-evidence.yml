@@ -1,695 +1,2384 @@
 name: "Manual Performance Evidence"
-
-# This workflow is deliberately separate from benchmark.yml. Its job names are
-# disjoint from protected contexts, and it can only read repository contents.
+run-name: "REVISED checker diagnostic / 2595 shard 027"
 on:
-  workflow_dispatch: #checkov:skip=CKV_GHA_7:base SHA is validated before it reaches git
+  workflow_dispatch:
     inputs:
-      base_sha:
-        description: "Full immutable base commit SHA for same-run performance evidence"
+      harness_sha:
+        description: "Reviewed immutable diagnostic branch commit SHA"
         required: true
         type: string
-
 permissions:
   contents: read
-
-# Manual evidence runs share the hosted-runner pool and mutate no state.  Keep
-# one run per ref in flight, but queue a later dispatch so benchmark evidence
-# is never silently discarded by cancellation.
+  actions: read
 concurrency:
-  group: manual-performance-evidence-${{ github.ref }}
+  group: diagnostic-pr1306-checker-2595
   cancel-in-progress: false
-
 jobs:
-  benchmark:
-    name: Manual Performance Evidence / Run Go Benchmarks
+  diagnostic:
+    name: "Diagnostic only / Stryker TS6 checker with native TS7 parity"
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/pr1306-checker-2595' && github.sha == inputs.harness_sha && github.run_attempt == 1 && github.event.repository.private == false
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 270
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.26.6"
-          cache: true
-
-      - name: Capture advisory Go benchmark evidence
+      - name: Seed receipt, establish absolute deadline, materialize reviewed harness
         shell: bash
+        timeout-minutes: 2
         run: |
           set -euo pipefail
-          mkdir -p artifacts/performance/advisory/go
-          (
-            cd services/gateway
-            go test -bench=. -run=^$ ./...
-          ) 2>&1 | tee artifacts/performance/advisory/go/gateway-bench.txt
-          (
-            cd services/ws-hub
-            go test -bench=. -run=^$ ./...
-          ) 2>&1 | tee artifacts/performance/advisory/go/wshub-bench.txt
-          cat \
-            artifacts/performance/advisory/go/gateway-bench.txt \
-            artifacts/performance/advisory/go/wshub-bench.txt \
-            > artifacts/performance/advisory/go/benchmarks.txt
+          PROBE_BASE="${RUNNER_TEMP}/checker-2595-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$PROBE_BASE/harness" "$PROBE_BASE/output" "$PROBE_BASE/work"
+          export PROBE_BASE
+          cat > "$PROBE_BASE/harness/bootstrap.py" <<'PROBE_FILE_bootstrap_py'
+          import json
+          import os
+          import pathlib
+          import time
 
-      # ADR-046 retired vector sharding and its root-package HashRing benchmark.
-
-      - name: Upload advisory Go benchmark evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: manual-performance-advisory-go
-          path: artifacts/performance/advisory/go
-          if-no-files-found: warn
-          retention-days: 14
-
-  ws-hub-regression:
-    name: Manual Performance Evidence / WS-Hub Go Benchmark Regression Gate
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-
-      - name: Resolve immutable revisions and capture paired evidence
-        id: capture_ws_hub
-        shell: bash
-        env:
-          MANUAL_BASE_SHA: ${{ inputs.base_sha }}
-          MANUAL_CANDIDATE_SHA: ${{ github.sha }}
-          MANUAL_SOURCE_HEAD_SHA: ${{ github.sha }}
-          MANUAL_BASE_REF: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          BASE_SHA="$MANUAL_BASE_SHA"
-          CANDIDATE_SHA="$MANUAL_CANDIDATE_SHA"
-          SOURCE_HEAD_SHA="$MANUAL_SOURCE_HEAD_SHA"
-          BASE_REF="$MANUAL_BASE_REF"
-          ZERO_SHA="0000000000000000000000000000000000000000"
-          validate_sha() {
-            local value="$1"
-            local label="$2"
-            if [[ ! "$value" =~ ^[0-9a-fA-F]{40}$ ]]; then
-              echo "$label must be a full 40-hex commit SHA" >&2
-              exit 2
-            fi
+          root = pathlib.Path(os.environ["PROBE_BASE"])
+          values = {
+              "PROBE_HARNESS": str(root / "harness"),
+              "PROBE_OUTPUT": str(root / "output"),
+              "PROBE_WORK": str(root / "work"),
+              "PROBE_SOURCE": str(pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "source"),
+              "PROBE_PREFLIGHT": str(root / "preflight/PREFLIGHT_ARTIFACT.json"),
+              "PROBE_ABSOLUTE_DEADLINE": str(time.monotonic() + 16080),
           }
-          validate_sha "$BASE_SHA" "base SHA"
-          validate_sha "$CANDIDATE_SHA" "candidate SHA"
-          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
-          if [[ -z "$BASE_REF" ]]; then
-            echo "Base ref must be non-empty" >&2
-            exit 2
-          fi
-          if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then
-            echo "Initial-push all-zero SHAs cannot be benchmarked" >&2
-            exit 2
-          fi
-          if [[ "$SOURCE_HEAD_SHA" == "$ZERO_SHA" ]]; then
-            echo "All-zero source head SHA cannot be benchmarked" >&2
-            exit 2
-          fi
-          if [[ "$SOURCE_HEAD_SHA" != "$CANDIDATE_SHA" ]]; then
-            echo "Manual source head must equal the tested candidate SHA" >&2
-            exit 2
-          fi
-          echo "source_head_sha=$SOURCE_HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
-          ARTIFACT_ROOT="${RUNNER_TEMP}/quality-performance-ws-hub-${BASE_SHA}-${CANDIDATE_SHA}"
-          if [[ -e "$ARTIFACT_ROOT" ]]; then
-            echo "Performance artifact root must be fresh: $ARTIFACT_ROOT" >&2
-            exit 2
-          fi
-          echo "artifact_root=$ARTIFACT_ROOT" >> "$GITHUB_OUTPUT"
-
-          git fetch --no-tags origin "$BASE_SHA" "$CANDIDATE_SHA"
-          git cat-file -e "$SOURCE_HEAD_SHA^{commit}"
-          git cat-file -e "$BASE_SHA^{commit}"
-          git cat-file -e "$CANDIDATE_SHA^{commit}"
-          if [[ "$BASE_SHA" == "$CANDIDATE_SHA" ]]; then
-            echo "Base and candidate revisions must differ" >&2
-            exit 2
-          fi
-          if ! git merge-base --is-ancestor "$BASE_SHA" "$CANDIDATE_SHA"; then
-            echo "Base revision must be an ancestor of the candidate revision" >&2
-            exit 2
-          fi
-          if [[ "$(git rev-parse HEAD)" != "$CANDIDATE_SHA" ]]; then
-            echo "Checkout is not the immutable candidate SHA" >&2
-            exit 2
-          fi
-          PARENT_LINE="$(git rev-list --parents -n1 "$CANDIDATE_SHA")"
-          COMMIT_ID="${PARENT_LINE%% *}"
-          if [[ "$COMMIT_ID" != "$CANDIDATE_SHA" ]]; then
-            echo "Candidate parent record does not identify the candidate" >&2
-            exit 2
-          fi
-
-          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-ws-hub"
-          if [[ -e "$BASE_WORKTREE" ]]; then
-            echo "Base worktree path must be fresh: $BASE_WORKTREE" >&2
-            exit 2
-          fi
-          git worktree add --detach "$BASE_WORKTREE" "$BASE_SHA"
-          BASE_CAPTURE_HELPER="$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py"
-          BASE_COMPARATOR="$BASE_WORKTREE/scripts/quality/compare_paired_benchmarks.py"
-          if ! test -f "$BASE_CAPTURE_HELPER"; then
-            echo "Trusted base capture helper is absent: $BASE_CAPTURE_HELPER" >&2
-            exit 2
-          fi
-          if ! test -f "$BASE_COMPARATOR"; then
-            echo "Trusted base comparator is absent: $BASE_COMPARATOR" >&2
-            exit 2
-          fi
-
-          PYTHON_BIN="$(command -v python)"
-          if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then
-            echo "Python interpreter must resolve to an absolute executable" >&2
-            exit 2
-          fi
-          BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk '{print $1}')"
-          if [[ ! "$BASE_COMPARATOR_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "Trusted base comparator hash is invalid" >&2
-            exit 2
-          fi
-
+          with open(os.environ["GITHUB_ENV"], "a") as stream:
+              for key, value in values.items():
+                  stream.write(f"{key}={value}\n")
+          seed = {
+              "schema": 1,
+              "outcome": "inconclusive",
+              "diagnostic_only": True,
+              "release_eligible": False,
+              "kill_credit": 0,
+              "exclusion_credit": 0,
+              "harness_sha": os.environ["GITHUB_SHA"],
+              "source_sha": "2595c0ebc674edb69557f3c6edd0a184973d62e2",
+              "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "wall_clock_started": time.time(),
+              "absolute_monotonic_deadline": values["PROBE_ABSOLUTE_DEADLINE"],
+              "budget_seconds": 16080,
+              "finalization_reserve_seconds": 600,
+              "cleanup_reserve_seconds": 30,
+              "parity_reserve_seconds": 3600,
+              "upload_on_cancellation": "best effort; a hard kill or runner loss can prevent upload",
+          }
+          (root / "output/seed.json").write_text(json.dumps(seed, indent=2) + "\n")
+          PROBE_FILE_bootstrap_py
+          python3 "$PROBE_BASE/harness/bootstrap.py"
+          cat > "$PROBE_BASE/harness/pins.json" <<'PROBE_FILE_pins_json'
           {
-            echo "base_sha=$BASE_SHA"
-            echo "candidate_sha=$CANDIDATE_SHA"
-            echo "base_worktree=$BASE_WORKTREE"
-            echo "base_comparator=$BASE_COMPARATOR"
-            echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"
-            echo "python_bin=$PYTHON_BIN"
-          } >> "$GITHUB_OUTPUT"
-
-          "$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER" \
-            --format go \
-            --base-worktree "$BASE_WORKTREE" \
-            --candidate-worktree "$GITHUB_WORKSPACE" \
-            --artifact-root "$ARTIFACT_ROOT" \
-            --runner-temp "$RUNNER_TEMP" \
-            --base-revision "$BASE_SHA" \
-            --candidate-revision "$CANDIDATE_SHA"
-
-      - name: Record immutable benchmark provenance
-        shell: bash
-        env:
-          EVENT_NAME: workflow_dispatch
-          BASE_SHA: ${{ steps.capture_ws_hub.outputs.base_sha }}
-          TESTED_COMMIT_SHA: ${{ steps.capture_ws_hub.outputs.candidate_sha }}
-          SOURCE_HEAD_SHA: ${{ steps.capture_ws_hub.outputs.source_head_sha }}
-          BASE_REF: ${{ steps.capture_ws_hub.outputs.base_ref }}
-          ARTIFACT_ROOT: ${{ steps.capture_ws_hub.outputs.artifact_root }}
-        run: |
-          set -euo pipefail
-          validate_sha() {
-            local value="$1"
-            local label="$2"
-            if [[ ! "$value" =~ ^[0-9a-fA-F]{40}$ ]]; then
-              echo "$label must be a full 40-hex commit SHA" >&2
-              exit 2
-            fi
+            "schema": 1,
+            "label": "REVISED proposal; original proposal unavailable",
+            "source_sha": "2595c0ebc674edb69557f3c6edd0a184973d62e2",
+            "diagnostic_branch_base_sha": "b6d50fe468137b10942565bf5501000c04ec8437",
+            "diagnostic_branch": "diagnostic/pr1306-checker-2595",
+            "provider_run_id": 37164443034,
+            "provider_run_attempt": 1,
+            "provider_tested_merge_sha": "2f6177ac61ceb1f5cda1450dce07c3979d5407ef",
+            "provider_base_sha": "6fa133b57f62c554162876d4e6d8349f8060fce9",
+            "preflight_artifact_id": 11288907591,
+            "preflight_archive_sha256": "a4f367cbf16c2165103c7cd42387c67f1de47bcedd0a3370f2772749403f41dc",
+            "preflight_member_sha256": "87cae755912b9994d9004e9364d976d26917d12af1a765599ae83375514122b2",
+            "preflight_payload_sha256": "0740c5ffebfedd0d96df6a1d7606a6ed547db7d20df9b6c92cd43d5410274138",
+            "preflight_digest": "3027b8928a46d841dcecd59c7a55c3a76b95a5675bfe4b2efdf47e04f06faeeb",
+            "universe": 42897,
+            "shard_index": 27,
+            "signature_set_sha256": "500aa3d9d0aac1ea663ac3dd60b279e78a1adc5559ca93b167b5712c4a2c0167",
+            "checker_tarball": "https://registry.npmjs.org/@stryker-mutator/typescript-checker/-/typescript-checker-10.0.0.tgz",
+            "checker_integrity": "sha512-GLvC0LVd8RJ5SxR3eFcgb7DFKmw07DYtPXs942z6Qh7l6p7YBnFyd7lPw7nvA9UKEYDd22embrFmLlyC1XJjXw==",
+            "dependency_versions": {
+              "@stryker-mutator/core": "10.0.0",
+              "@stryker-mutator/api": "10.0.0",
+              "@stryker-mutator/util": "10.0.0",
+              "@stryker-mutator/vitest-runner": "10.0.0",
+              "typescript": "6.0.2",
+              "@typescript/old": "6.0.3",
+              "@typescript/native": "7.0.2",
+              "semver": "7.8.4"
+            }
           }
-          validate_sha "$BASE_SHA" "base SHA"
-          validate_sha "$TESTED_COMMIT_SHA" "tested commit SHA"
-          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
-          if [[ -z "$BASE_REF" ]]; then
-            echo "Benchmark provenance base ref is missing" >&2
-            exit 2
-          fi
-          if [[ "$SOURCE_HEAD_SHA" != "$TESTED_COMMIT_SHA" ]]; then
-            echo "Manual source head must equal the tested commit" >&2
-            exit 2
-          fi
-          if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]; then
-            echo "Benchmark provenance run id is invalid" >&2
-            exit 2
-          fi
-          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
-            echo "Benchmark provenance identity is incomplete" >&2
-            exit 2
-          fi
-          if [[ ! -d "$ARTIFACT_ROOT" ]]; then
-            echo "Benchmark provenance artifact root is missing" >&2
-            exit 2
-          fi
-          if [[ "$(git rev-parse HEAD)" != "$TESTED_COMMIT_SHA" ]]; then
-            echo "Benchmark provenance target is not the captured immutable artifact" >&2
-            exit 2
-          fi
-          if ! command -v jq >/dev/null 2>&1; then
-            echo "jq is required to record benchmark provenance" >&2
-            exit 2
-          fi
-          PARENT_LINE="$(git rev-list --parents -n1 "$TESTED_COMMIT_SHA")"
-          COMMIT_ID="${PARENT_LINE%% *}"
-          if [[ "$COMMIT_ID" != "$TESTED_COMMIT_SHA" ]]; then
-            echo "Tested commit parent record is invalid" >&2
-            exit 2
-          fi
-          PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
-          PROVENANCE_TMP="$ARTIFACT_ROOT/provenance.json.tmp"
-          jq -n \
-            --arg schema_version "1" \
-            --arg repository "$GITHUB_REPOSITORY" \
-            --arg workflow "$GITHUB_WORKFLOW" \
-            --arg workflow_ref "$GITHUB_WORKFLOW_REF" \
-            --arg event "$EVENT_NAME" \
-            --arg run_id "$GITHUB_RUN_ID" \
-            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
-            --arg ref "$GITHUB_REF" \
-            --arg base_ref "$BASE_REF" \
-            --arg base_sha "$BASE_SHA" \
-            --arg source_head_sha "$SOURCE_HEAD_SHA" \
-            --arg tested_commit_sha "$TESTED_COMMIT_SHA" \
-            --argjson tested_commit_parents "$PARENTS_JSON" \
-            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{schema_version: ($schema_version|tonumber), repository: $repository, workflow: $workflow, workflow_ref: $workflow_ref, event: $event, run_id: ($run_id|tonumber), run_attempt: ($run_attempt|tonumber), ref: $ref, base_ref: $base_ref, base_sha: $base_sha, source_head_sha: $source_head_sha, tested_commit_sha: $tested_commit_sha, tested_commit_parents: $tested_commit_parents, timestamp: $timestamp}' \
-            > "$PROVENANCE_TMP"
-          mv -- "$PROVENANCE_TMP" "$ARTIFACT_ROOT/provenance.json"
+          PROBE_FILE_pins_json
+          cat > "$PROBE_BASE/harness/probe-lib.mjs" <<'PROBE_FILE_probe_lib_mjs'
+          import { createHash } from "node:crypto";
+          export const sha256 = (value) =>
+            createHash("sha256").update(value).digest("hex");
+          export const json = (value) => JSON.stringify(value, null, 2) + "\n";
+          export function applyMutant(source, mutant) {
+            const lines = source.split("\n");
+            const offset = ({ line, column }) => {
+              if (
+                !Number.isInteger(line) ||
+                !Number.isInteger(column) ||
+                line < 0 ||
+                line >= lines.length ||
+                column < 0 ||
+                column > lines[line].length
+              )
+                throw Error("Invalid mutation range");
+              return lines.slice(0, line).reduce((n, s) => n + s.length + 1, 0) + column;
+            };
+            const start = offset(mutant.start),
+              end = offset(mutant.end);
+            if (end < start || typeof mutant.replacement !== "string")
+              throw Error("Invalid mutation range");
+            return source.slice(0, start) + mutant.replacement + source.slice(end);
+          }
+          export function assessPopulation(expected, results) {
+            const terminal = new Set([
+              "Killed",
+              "Survived",
+              "NoCoverage",
+              "Timeout",
+              "RuntimeError",
+              "CompileError",
+              "Ignored",
+            ]);
+            const want = new Set(expected),
+              seen = new Set(),
+              counts = {},
+              foreign = [],
+              duplicates = [],
+              invalid = [];
+            for (const r of results) {
+              if (!want.has(r.signature)) foreign.push(r.signature);
+              if (seen.has(r.signature)) duplicates.push(r.signature);
+              seen.add(r.signature);
+              counts[r.status] = (counts[r.status] ?? 0) + 1;
+              if (!terminal.has(r.status)) invalid.push(r.signature);
+            }
+            const missing = expected.filter((s) => !seen.has(s));
+            return {
+              expected: expected.length,
+              observed: results.length,
+              counts,
+              missing,
+              foreign,
+              duplicates,
+              invalid,
+              complete:
+                want.size === expected.length &&
+                !missing.length &&
+                !foreign.length &&
+                !duplicates.length &&
+                !invalid.length,
+              hasTestedViableMutant: results.some(
+                (r) => r.status === "Killed" || r.status === "Survived",
+              ),
+            };
+          }
+          export function parityVerdict(ts6, ts7) {
+            const fingerprint = (d) =>
+              JSON.stringify({ code: d.code, file: d.file, start: d.start, end: d.end });
+            const canonical = (ds) =>
+              JSON.stringify([...new Set(ds.map(fingerprint))].sort());
+            return ts6.length > 0 && ts7.length > 0 && canonical(ts6) === canonical(ts7)
+              ? "matched"
+              : "inconclusive";
+          }
+          PROBE_FILE_probe_lib_mjs
+          cat > "$PROBE_BASE/harness/compiler-diagnostics.mjs" <<'PROBE_FILE_compiler_diagnostics_mjs'
+          import fs from "node:fs";
+          import path from "node:path";
+          import { pathToFileURL } from "node:url";
 
-      - name: Compare paired benchmark evidence
-        shell: bash
-        env:
-          EVENT_NAME: workflow_dispatch
-          EXPECTED_SOURCE_HEAD_SHA: ${{ github.sha }}
-          EXPECTED_BASE_SHA: ${{ inputs.base_sha }}
-          EXPECTED_BASE_REF: ${{ github.ref_name }}
-          EXPECTED_RUN_ID: ${{ github.run_id }}
-          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
-          EXPECTED_TESTED_COMMIT_SHA: ${{ github.sha }}
-          ARTIFACT_ROOT: ${{ steps.capture_ws_hub.outputs.artifact_root }}
-        run: |
-          set -euo pipefail
-          ARTIFACT_ROOT="${{ steps.capture_ws_hub.outputs.artifact_root }}"
-          if [[ ! -f "$ARTIFACT_ROOT/provenance.json" ]]; then
-            echo "Benchmark provenance is missing" >&2
-            exit 2
-          fi
-          if [[ ! "$EXPECTED_RUN_ID" =~ ^[0-9]+$ ]]; then
-            echo "Expected workflow run id is invalid" >&2
-            exit 2
-          fi
-          if [[ ! "$EXPECTED_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
-            echo "Expected workflow run identity is invalid" >&2
-            exit 2
-          fi
-          if ! command -v jq >/dev/null 2>&1; then
-            echo "jq is required to verify benchmark provenance" >&2
-            exit 2
-          fi
-          PARENT_LINE="$(git rev-list --parents -n1 "$EXPECTED_TESTED_COMMIT_SHA")"
-          COMMIT_ID="${PARENT_LINE%% *}"
-          if [[ "$COMMIT_ID" != "$EXPECTED_TESTED_COMMIT_SHA" ]]; then
-            echo "Expected tested commit parent record is invalid" >&2
-            exit 2
-          fi
-          ACTUAL_PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
-          jq -e \
-            --arg event "$EVENT_NAME" \
-            --arg run_id "$EXPECTED_RUN_ID" \
-            --arg run_attempt "$EXPECTED_RUN_ATTEMPT" \
-            --arg ref "$GITHUB_REF" \
-            --arg base_ref "$EXPECTED_BASE_REF" \
-            --arg base_sha "$EXPECTED_BASE_SHA" \
-            --arg source_head_sha "$EXPECTED_SOURCE_HEAD_SHA" \
-            --arg tested_commit_sha "$EXPECTED_TESTED_COMMIT_SHA" \
-            --argjson expected_parents "$ACTUAL_PARENTS_JSON" \
-            '(.schema_version == 1 and .event == $event and (.run_id|tostring) == $run_id and (.run_attempt|tostring) == $run_attempt and .ref == $ref and .base_ref == $base_ref and .base_sha == $base_sha and .source_head_sha == $source_head_sha and .tested_commit_sha == $tested_commit_sha and .tested_commit_parents == $expected_parents and .source_head_sha == .tested_commit_sha)' \
-            "$ARTIFACT_ROOT/provenance.json" >/dev/null
-          BASE_COMPARATOR="${{ steps.capture_ws_hub.outputs.base_comparator }}"
-          PYTHON_BIN="${{ steps.capture_ws_hub.outputs.python_bin }}"
-          EXPECTED_COMPARATOR_SHA256="${{ steps.capture_ws_hub.outputs.base_comparator_sha256 }}"
-          ARTIFACT_ROOT="${{ steps.capture_ws_hub.outputs.artifact_root }}"
-          if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then
-            echo "Python interpreter must remain an absolute executable" >&2
-            exit 2
-          fi
-          if ! test -f "$BASE_COMPARATOR"; then
-            echo "Trusted base comparator is absent: $BASE_COMPARATOR" >&2
-            exit 2
-          fi
-          ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk '{print $1}')"
-          if [[ "$ACTUAL_COMPARATOR_SHA256" != "$EXPECTED_COMPARATOR_SHA256" ]]; then
-            echo "Trusted base comparator changed after capture" >&2
-            exit 2
-          fi
-          "$PYTHON_BIN" -I "$BASE_COMPARATOR" \
-            --format go \
-            --base-dir "$ARTIFACT_ROOT/base" \
-            --candidate-dir "$ARTIFACT_ROOT/candidate" \
-            --expected-pairs 12 \
-            --base-revision "${{ steps.capture_ws_hub.outputs.base_sha }}" \
-            --candidate-revision "${{ steps.capture_ws_hub.outputs.candidate_sha }}" \
-            --toolchain-json "$ARTIFACT_ROOT/toolchain.json" \
-            --output "$ARTIFACT_ROOT/comparison.json"
+          // Exactly v10.0.0 src/tsconfig-helpers.ts, single-project branch.
+          export const checkerCompilerOptions = Object.freeze({
+            allowUnreachableCode: true,
+            noUnusedLocals: false,
+            noUnusedParameters: false,
+            noEmit: true,
+            incremental: false,
+            composite: false,
+          });
 
-      - name: Upload paired benchmark evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+          export async function diagnostics(root, dependencyRoot, compiler, equivalent) {
+            root = path.resolve(root);
+            dependencyRoot = path.resolve(dependencyRoot);
+            const configPath = path.join(root, "tsconfig.json");
+            const ts = (
+              await import(
+                pathToFileURL(path.join(dependencyRoot, "typescript/lib/typescript.js"))
+              )
+            ).default;
+            const loaded = ts.readConfigFile(configPath, ts.sys.readFile);
+            if (loaded.error) throw Error("Cannot parse original tsconfig");
+            if (loaded.config.references)
+              throw Error(
+                "Project references require a separately reviewed parity design",
+              );
+            const config = structuredClone(loaded.config);
+            if (equivalent) {
+              config.compilerOptions = {
+                ...config.compilerOptions,
+                ...checkerCompilerOptions,
+              };
+              delete config.compilerOptions.tsBuildInfoFile;
+              delete config.compilerOptions.declarationDir;
+            }
+            const locate = (file, start, end) => {
+              if (!file) return { file: null, start: null, end: null, range: null };
+              const absolute = path.resolve(root, file);
+              const text = fs.readFileSync(absolute, "utf8");
+              if (
+                !Number.isInteger(start) ||
+                !Number.isInteger(end) ||
+                start < 0 ||
+                end < start ||
+                end > text.length
+              )
+                throw Error("Unrepresentable diagnostic range");
+              const point = (n) => {
+                const before = text.slice(0, n).split("\n");
+                return { line: before.length - 1, column: before.at(-1).length };
+              };
+              return {
+                file: path.relative(root, absolute).replaceAll("\\", "/"),
+                start,
+                end,
+                range: { start: point(start), end: point(end) },
+              };
+            };
+            if (compiler === "ts6") {
+              const parsed = ts.parseJsonConfigFileContent(
+                config,
+                ts.sys,
+                root,
+                undefined,
+                configPath,
+              );
+              const program = ts.createProgram(parsed.fileNames, parsed.options);
+              return [...parsed.errors, ...ts.getPreEmitDiagnostics(program)]
+                .filter((d) => d.category === ts.DiagnosticCategory.Error)
+                .map((d) => ({
+                  code: d.code,
+                  message: ts.flattenDiagnosticMessageText(d.messageText, "\n"),
+                  ...locate(
+                    d.file?.fileName,
+                    d.start,
+                    d.start === undefined ? undefined : d.start + (d.length ?? 0),
+                  ),
+                }));
+            }
+            if (compiler !== "ts7") throw Error("Unknown compiler");
+            const { API } = await import(
+              pathToFileURL(
+                path.join(dependencyRoot, "@typescript/native/dist/api/sync/api.js"),
+              )
+            );
+            const api = new API({
+              cwd: root,
+              fs: equivalent
+                ? {
+                    readFile: (file) =>
+                      path.resolve(file) === configPath
+                        ? JSON.stringify(config)
+                        : undefined,
+                  }
+                : undefined,
+            });
+            try {
+              const snapshot = api.updateSnapshot({ openProjects: [configPath] });
+              try {
+                const program = snapshot.getProject(configPath)?.program;
+                if (!program) throw Error("Native API omitted the project");
+                const all = [
+                  ...program.getConfigFileParsingDiagnostics(),
+                  ...program.getProgramDiagnostics(),
+                  ...program.getGlobalDiagnostics(),
+                  ...program.getSyntacticDiagnostics(),
+                  ...program.getBindDiagnostics(),
+                  ...program.getSemanticDiagnostics(),
+                ];
+                const values = all
+                  .filter((d) => d.category === 1)
+                  .map((d) => ({
+                    code: d.code,
+                    message: d.text,
+                    ...locate(d.fileName, d.pos, d.end),
+                  }));
+                return [...new Map(values.map((v) => [JSON.stringify(v), v])).values()];
+              } finally {
+                snapshot.dispose();
+              }
+            } finally {
+              api.close();
+            }
+          }
+
+          if (process.argv[1] === new URL(import.meta.url).pathname) {
+            const [root, deps, compiler, mode, out] = process.argv.slice(2);
+            const errors = await diagnostics(root, deps, compiler, mode === "equivalent");
+            fs.writeFileSync(
+              out,
+              JSON.stringify({ compiler, mode, errors }, null, 2) + "\n",
+            );
+            if (errors.length) process.exitCode = 1;
+          }
+          PROBE_FILE_compiler_diagnostics_mjs
+          cat > "$PROBE_BASE/harness/stryker-child.mjs" <<'PROBE_FILE_stryker_child_mjs'
+          import path from "node:path";
+          import { pathToFileURL } from "node:url";
+          import fs from "node:fs";
+          const root = process.env.PROBE_SOURCE;
+          const { Stryker } = await import(
+            pathToFileURL(
+              path.join(
+                root,
+                "frontend/node_modules/@stryker-mutator/core/dist/src/index.js",
+              ),
+            )
+          );
+          const canonical = (
+            await import(pathToFileURL(path.join(root, "frontend/stryker.config.mjs")))
+          ).default;
+          const options = {
+            configFile: path.join(root, "frontend/stryker.config.mjs"),
+            plugins: [
+              ...canonical.plugins,
+              path.join(process.env.PROBE_CHECKER, "dist/src/index.js"),
+              path.join(process.env.PROBE_HARNESS, "partial-reporter.mjs"),
+            ],
+            checkers: ["typescript"],
+            tsconfigFile: "tsconfig.json",
+            typescriptChecker: {
+              prioritizePerformanceOverAccuracy: false,
+              experimentalNativePreview: false,
+            },
+            concurrency: 4,
+            reporters: ["json", "bounded-diagnostic"],
+            jsonReporter: {
+              fileName: path.join(process.env.PROBE_OUTPUT, "mutation.raw.json"),
+            },
+          };
+          fs.writeFileSync(
+            path.join(process.env.PROBE_OUTPUT, "requested-options.json"),
+            JSON.stringify(options, null, 2) + "\n",
+          );
+          await new Stryker(options).runMutationTest();
+          PROBE_FILE_stryker_child_mjs
+          cat > "$PROBE_BASE/harness/partial-reporter.mjs" <<'PROBE_FILE_partial_reporter_mjs'
+          import fs from "node:fs";
+          import path from "node:path";
+          import { createHash } from "node:crypto";
+          import { pathToFileURL } from "node:url";
+          const api = await import(
+            pathToFileURL(
+              path.join(
+                process.env.PROBE_SOURCE,
+                "frontend/node_modules/@stryker-mutator/api/dist/src/plugin/index.js",
+              ),
+            )
+          );
+          const MAX_COUNT = 1460;
+          const MAX_BYTES = 64 * 1024 * 1024;
+          class BoundedDiagnosticReporter {
+            count = 0;
+            bytes = 0;
+            attemptedCount = 0;
+            attemptedBytes = 0;
+            failure = null;
+            reportReady = false;
+            finished = false;
+            hash = createHash("sha256");
+            output = process.env.PROBE_OUTPUT;
+
+            constructor() {
+              try {
+                // Fresh, privately owned output is mandatory. Never erase an old signal.
+                this.writeSignal("reporter.pending.json", {
+                  schema: 1,
+                  state: "pending",
+                });
+                for (const name of ["reporter.failure.json", "reporter.healthy.json"])
+                  if (fs.existsSync(path.join(this.output, name)))
+                    throw Error("Reporter signal already exists");
+                fs.closeSync(
+                  fs.openSync(path.join(this.output, "mutants.raw.jsonl"), "wx"),
+                );
+              } catch {
+                this.fail("reporter_initialization_failed");
+              }
+            }
+
+            writeSignal(name, value) {
+              const fd = fs.openSync(path.join(this.output, name), "wx", 0o600);
+              try {
+                fs.writeFileSync(fd, JSON.stringify(value) + "\n");
+                fs.fsyncSync(fd);
+              } finally {
+                fs.closeSync(fd);
+              }
+              const directory = fs.openSync(this.output, "r");
+              try {
+                fs.fsyncSync(directory);
+              } finally {
+                fs.closeSync(directory);
+              }
+            }
+
+            fail(reason) {
+              if (!this.failure) {
+                this.failure = Error(reason);
+                // BroadcastReporter catches callback errors. Also preserve failure in the
+                // child exit status, including when storage cannot accept the failure file.
+                process.exitCode = 1;
+                try {
+                  this.writeSignal("reporter.failure.json", {
+                    schema: 1,
+                    state: "failed",
+                    reason,
+                    attempted_count: this.attemptedCount,
+                    attempted_bytes: this.attemptedBytes,
+                    recorded_count: this.count,
+                    recorded_bytes: this.bytes,
+                  });
+                } catch {
+                  // Before clean wrapUp, pending or missing healthy evidence fails closed.
+                  // A late callback after wrapUp relies on the nonzero child status if
+                  // storage cannot persist failure. Never clear the in-memory latch.
+                }
+              }
+              throw this.failure;
+            }
+
+            active() {
+              if (this.failure) throw this.failure;
+              if (this.finished) this.fail("reporter_callback_after_wrap_up");
+            }
+
+            onMutantTested(result) {
+              this.active();
+              let line;
+              try {
+                // Preserve exactly what Stryker reported. No status synthesis or rewrites.
+                line = JSON.stringify(result) + "\n";
+                this.attemptedCount++;
+                this.attemptedBytes += Buffer.byteLength(line);
+              } catch {
+                this.fail("reporter_serialization_failed");
+              }
+              if (this.attemptedCount > MAX_COUNT || this.attemptedBytes > MAX_BYTES)
+                this.fail("partial_report_bound_exceeded");
+              try {
+                fs.appendFileSync(path.join(this.output, "mutants.raw.jsonl"), line);
+                this.hash.update(line);
+                this.count = this.attemptedCount;
+                this.bytes = this.attemptedBytes;
+              } catch {
+                this.fail("reporter_raw_write_failed");
+              }
+            }
+
+            onMutationTestReportReady() {
+              this.active();
+              this.reportReady = true;
+            }
+
+            wrapUp() {
+              if (this.failure) throw this.failure;
+              if (this.finished) return;
+              if (!this.reportReady) this.fail("reporter_final_report_missing");
+              try {
+                const fd = fs.openSync(path.join(this.output, "mutants.raw.jsonl"), "r");
+                try {
+                  fs.fsyncSync(fd);
+                } finally {
+                  fs.closeSync(fd);
+                }
+                this.writeSignal("reporter.healthy.json", {
+                  schema: 1,
+                  state: "healthy",
+                  report_ready: true,
+                  count: this.count,
+                  bytes: this.bytes,
+                  sha256: this.hash.digest("hex"),
+                  max_count: MAX_COUNT,
+                  max_bytes: MAX_BYTES,
+                });
+                // Final successful filesystem operation. If health write/fsync fails,
+                // pending remains even if a full-looking healthy JSON file was written.
+                fs.unlinkSync(path.join(this.output, "reporter.pending.json"));
+                this.finished = true;
+              } catch {
+                this.fail("reporter_finalization_failed");
+              }
+            }
+          }
+          export const strykerPlugins = [
+            api.declareClassPlugin(
+              api.PluginKind.Reporter,
+              "bounded-diagnostic",
+              BoundedDiagnosticReporter,
+            ),
+          ];
+          PROBE_FILE_partial_reporter_mjs
+          cat > "$PROBE_BASE/harness/probe-driver.mjs" <<'PROBE_FILE_probe_driver_mjs'
+          import fs from "node:fs";
+          import path from "node:path";
+          import { pathToFileURL } from "node:url";
+          import {
+            sha256,
+            json,
+            applyMutant,
+            assessPopulation,
+            parityVerdict,
+          } from "./probe-lib.mjs";
+          import {
+            diagnostics,
+            checkerCompilerOptions,
+          } from "./compiler-diagnostics.mjs";
+          const mode = process.argv[2],
+            root = process.env.PROBE_SOURCE,
+            out = process.env.PROBE_OUTPUT;
+          const deps = path.join(root, "frontend/node_modules"),
+            frontend = path.join(root, "frontend");
+          const api = await import(
+            pathToFileURL(path.join(frontend, "scripts/run-stryker.mjs"))
+          );
+          const write = (name, data) => {
+            const text = json(data);
+            if (Buffer.byteLength(text) > 128 * 1024 * 1024)
+              throw Error("JSON artifact cap exceeded");
+            fs.writeFileSync(path.join(out, name + ".tmp"), text);
+            fs.renameSync(path.join(out, name + ".tmp"), path.join(out, name));
+          };
+          const read = (name) =>
+            JSON.parse(fs.readFileSync(path.join(out, name), "utf8"));
+          const pins = JSON.parse(
+            fs.readFileSync(path.join(process.env.PROBE_HARNESS, "pins.json"), "utf8"),
+          );
+          async function verify() {
+            const raw = fs.readFileSync(process.env.PROBE_PREFLIGHT);
+            if (sha256(raw) !== pins.preflight_member_sha256)
+              throw Error("Preflight member hash mismatch");
+            const artifact = JSON.parse(raw);
+            const p = artifact.payload;
+            if (
+              sha256(json(p)) !== pins.preflight_payload_sha256 ||
+              artifact.payloadSha256 !== pins.preflight_payload_sha256 ||
+              sha256(JSON.stringify(p.preflight.files)) !== pins.preflight_digest
+            )
+              throw Error("Preflight payload/universe mismatch");
+            if (
+              p.workflow.runId !== String(pins.provider_run_id) ||
+              p.workflow.runAttempt !== "1" ||
+              p.workflow.sourceHeadSha !== pins.source_sha ||
+              p.workflow.sha !== pins.provider_tested_merge_sha
+            )
+              throw Error("Wrong provider identity");
+            for (const [file, expected] of Object.entries(p.sourceRevision.inputHashes)) {
+              const absolute = path.resolve(root, file);
+              if (
+                !absolute.startsWith(root + path.sep) ||
+                sha256(fs.readFileSync(absolute)) !== expected
+              )
+                throw Error("Original source input changed: " + file);
+            }
+            const shard = p.shardPlan[pins.shard_index];
+            if (
+              shard.id !== "shard-027" ||
+              shard.files.length !== 43 ||
+              shard.mutantCount !== 1460
+            )
+              throw Error("Shard assignment mismatch");
+            const preflightByFile = new Map(),
+              sourceByFile = new Map();
+            let universe = 0;
+            for (const [file, entry] of Object.entries(p.preflight.files)) {
+              const source = fs.readFileSync(path.join(frontend, file), "utf8");
+              if (sha256(source) !== entry.sourceSha256)
+                throw Error("Universe source changed: " + file);
+              preflightByFile.set(file, {
+                sourceSha256: entry.sourceSha256,
+                mutants: entry.mutantSignatures,
+              });
+              sourceByFile.set(file, source);
+              universe += entry.mutantSignatures.length;
+            }
+            const expected = [...preflightByFile]
+              .flatMap(([file, v]) =>
+                v.mutants.filter((s) =>
+                  shard.files.some((pattern) =>
+                    api.mutationPatternCoversMutant(pattern, s, file),
+                  ),
+                ),
+              )
+              .sort();
+            if (
+              universe !== 42897 ||
+              expected.length !== 1460 ||
+              new Set(expected).size !== 1460 ||
+              sha256(JSON.stringify(expected)) !== pins.signature_set_sha256
+            )
+              throw Error("Exact population mismatch");
+            return {
+              shard,
+              expected,
+              preflightByFile,
+              sourceByFile,
+              inputHashesChecked: Object.keys(p.sourceRevision.inputHashes).length,
+            };
+          }
+          if (mode === "prepare") {
+            const v = await verify();
+            write("assignment.json", {
+              ...pins,
+              patterns: v.shard.files,
+              expected_signatures: v.expected,
+              input_hashes_checked: v.inputHashesChecked,
+              preflight_source_count: v.preflightByFile.size,
+              diagnostic_only: true,
+              release_eligible: false,
+              checker_compiler_options: checkerCompilerOptions,
+              worker_split: {
+                configured: 4,
+                initial_checker: 2,
+                initial_vitest: 2,
+                vitest_after_checkers: 4,
+              },
+            });
+          } else if (mode === "producer") {
+            const v = await verify();
+            const temp = path.join(process.env.PROBE_WORK, "stryker");
+            fs.mkdirSync(temp);
+            await api.stageStrykerSandboxInputs(
+              temp,
+              path.join(root, "quality/coverage-source-policy.json"),
+            );
+            const cancel = api.installProcessSignalCancellation();
+            try {
+              const timeout = Number(process.env.PROBE_PHASE_REMAINING_MS);
+              if (!Number.isSafeInteger(timeout) || timeout < 1000)
+                throw Error("No producer budget");
+              await api.runStrykerShardExecution({
+                args: [path.join(process.env.PROBE_HARNESS, "stryker-child.mjs")],
+                description: "Diagnostic shard-027 checker",
+                env: {
+                  ...api.buildStrykerChildEnvironment(),
+                  STRYKER_CONCURRENCY: "4",
+                  STRYKER_TEMP_DIR: temp,
+                  STRYKER_SHARD_RUN: "1",
+                  STRYKER_MUTATE_JSON: JSON.stringify(v.shard.files),
+                  STRYKER_JSON_REPORT: path.join(out, "mutation.raw.json"),
+                  STRYKER_PROGRESS_ENABLED: "0",
+                },
+                timeoutMs: timeout,
+                abortSignal: cancel.signal,
+                shardTemp: temp,
+                runId: process.env.GITHUB_RUN_ID,
+                shardId: "shard-027",
+                progressEnabled: "0",
+              });
+              await verify();
+              write("producer-completed.json", {
+                process_tree_quiesced: true,
+                source_unchanged: true,
+              });
+            } finally {
+              cancel.dispose();
+            }
+          } else if (mode === "analyze") {
+            const v = await verify();
+            const bytes = fs.readFileSync(path.join(out, "mutation.raw.json"));
+            if (bytes.length > 128 * 1024 * 1024) throw Error("Raw report exceeded cap");
+            const raw = JSON.parse(bytes),
+              report = api.normalizeStrykerRuntimeReport(raw);
+            api.mergeShardReports({
+              shards: [{ ...v.shard, report }],
+              expectedPatterns: v.shard.files,
+              preflightByFile: v.preflightByFile,
+              sourceByFile: v.sourceByFile,
+            });
+            if (
+              JSON.stringify(raw.config.checkers) !== '["typescript"]' ||
+              raw.config.typescriptChecker?.prioritizePerformanceOverAccuracy !== false ||
+              raw.config.typescriptChecker?.experimentalNativePreview !== false ||
+              raw.config.concurrency !== 4
+            )
+              throw Error("Effective checker configuration mismatch");
+            const results = Object.entries(report.files).flatMap(([file, f]) =>
+              f.mutants.map((m) => ({
+                signature: api.mutationSignature(m, file),
+                id: m.id,
+                status: m.status,
+                statusReason: m.statusReason ?? null,
+              })),
+            );
+            const population = assessPopulation(v.expected, results);
+            write("population.json", {
+              ...population,
+              raw_report_sha256: sha256(bytes),
+              results,
+            });
+            const errors = results.filter((m) => m.status === "CompileError");
+            if (errors.some((m) => !m.statusReason))
+              throw Error("CompileError has no official reason");
+            write("parity-plan.json", {
+              expected: errors.length,
+              mutants: errors.map((m) => ({ ...m, parity: "pending" })),
+            });
+            if (!population.complete) throw Error("Incomplete population");
+          } else if (mode === "parity") {
+            const plan = read("parity-plan.json");
+            const replay = process.env.PROBE_REPLAY;
+            for (const item of plan.mutants) {
+              const mutant = JSON.parse(item.signature),
+                file = path.join(replay, "frontend", mutant.sourcePath),
+                original = fs.readFileSync(file, "utf8");
+              try {
+                fs.writeFileSync(file, applyMutant(original, mutant));
+                const ts6 = await diagnostics(
+                  path.join(replay, "frontend"),
+                  deps,
+                  "ts6",
+                  true,
+                );
+                const ts7 = await diagnostics(
+                  path.join(replay, "frontend"),
+                  deps,
+                  "ts7",
+                  true,
+                );
+                const officialCodes = [
+                  ...new Set(
+                    [...item.statusReason.matchAll(/\bTS(\d+):/g)].map((x) =>
+                      Number(x[1]),
+                    ),
+                  ),
+                ].sort((a, b) => a - b);
+                const replayCodes = [...new Set(ts6.map((x) => x.code))].sort(
+                  (a, b) => a - b,
+                );
+                const verdict =
+                  JSON.stringify(officialCodes) === JSON.stringify(replayCodes)
+                    ? parityVerdict(ts6, ts7)
+                    : "inconclusive";
+                const receipt = {
+                  signature: item.signature,
+                  id: item.id,
+                  raw_status: item.status,
+                  official_status_reason: item.statusReason,
+                  ts6,
+                  ts7,
+                  verdict,
+                };
+                const text = JSON.stringify(receipt) + "\n";
+                if (Buffer.byteLength(text) > 256 * 1024)
+                  throw Error("Parity receipt too large");
+                fs.appendFileSync(path.join(out, "parity.raw.jsonl"), text);
+              } finally {
+                fs.writeFileSync(file, original);
+              }
+            }
+            await verify();
+            write("parity-completed.json", {
+              expected: plan.expected,
+              source_unchanged: true,
+            });
+          } else throw Error("Unknown driver mode");
+          PROBE_FILE_probe_driver_mjs
+          cat > "$PROBE_BASE/harness/supervisor.py" <<'PROBE_FILE_supervisor_py'
+          #!/usr/bin/env python3
+          """Review candidate: one run, absolute deadline, bounded output, owned descendants."""
+
+          import base64
+          import ctypes
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import selectors
+          import shutil
+          import signal
+          import stat
+          import subprocess
+          import sys
+          import tarfile
+          import time
+          import urllib.request
+          from pathlib import PurePosixPath
+
+          GIB = 1024**3
+          ARTIFACT_LIMIT = (
+              GIB - 16 * 1024**2
+          )  # leave margin for receipt/manifest/upload container overhead
+          LOG_LIMIT = 8 * 1024**2
+
+
+          class ProbeFailure(RuntimeError):
+              pass
+
+
+          class SubreaperOwner:
+              """Own only descendants of this otherwise child-free, single-threaded caller."""
+
+              def __init__(self):
+                  if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
+                      raise ProbeFailure("Required Linux pidfd APIs are unavailable")
+                  self.pid = os.getpid()
+                  tasks = list(pathlib.Path("/proc/self/task").iterdir())
+                  if len(tasks) != 1:
+                      raise ProbeFailure("Process owner must be single-threaded")
+                  # WNOWAIT checks kernel ownership without reaping an unrelated child.
+                  try:
+                      os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                  except ChildProcessError:
+                      pass
+                  else:
+                      raise ProbeFailure("Process owner already has children before launch")
+                  self.start = self.identity(self.pid)["start"]
+                  descriptor = os.pidfd_open(self.pid)
+                  try:
+                      # Signal zero checks support/permission without delivering a signal.
+                      signal.pidfd_send_signal(descriptor, 0)
+                  finally:
+                      os.close(descriptor)
+                  self.libc = ctypes.CDLL(None, use_errno=True)
+                  previous = ctypes.c_int()
+                  if self.libc.prctl(37, ctypes.byref(previous), 0, 0, 0) != 0:
+                      raise ProbeFailure("Cannot read process-local subreaper attribute")
+                  self.previous = previous.value
+                  self.reaped = []
+                  self.cleanup_deadline = None
+                  if self.libc.prctl(36, 1, 0, 0, 0) != 0:
+                      raise ProbeFailure("Cannot enable process-local subreaper attribute")
+                  current = ctypes.c_int()
+                  if (
+                      self.libc.prctl(37, ctypes.byref(current), 0, 0, 0) != 0
+                      or current.value != 1
+                  ):
+                      self.libc.prctl(36, self.previous, 0, 0, 0)
+                      raise ProbeFailure("Process-local subreaper readback failed")
+
+              @staticmethod
+              def identity(pid):
+                  data = pathlib.Path(f"/proc/{pid}/stat").read_text()
+                  fields = data[data.rfind(")") + 2 :].split()
+                  return {"ppid": int(fields[1]), "start": int(fields[19])}
+
+              def collect(self, known, table):
+                  anchor = table.get(self.pid)
+                  if anchor is None or anchor["start"] != self.start:
+                      raise ProbeFailure("Process ownership anchor is unavailable")
+                  owned = descendants(self.pid, {**known, self.pid: self.start}, table)
+                  owned.pop(self.pid, None)
+                  return owned
+
+              def send(self, pid, start, sig):
+                  if pid == self.pid:
+                      raise ProbeFailure("Refusing to signal the process owner")
+                  try:
+                      descriptor = os.pidfd_open(pid)
+                  except ProcessLookupError:
+                      return
+                  try:
+                      try:
+                          current = self.identity(pid)
+                      except FileNotFoundError:
+                          return
+                      if current["start"] != start:
+                          return
+                      # The descriptor still refers to this identity if its PID later exits.
+                      try:
+                          signal.pidfd_send_signal(descriptor, sig)
+                      except ProcessLookupError:
+                          pass
+                  finally:
+                      os.close(descriptor)
+
+              def reap_adopted(self, direct_child):
+                  for pid, row in process_table().items():
+                      if pid == direct_child or row["ppid"] != self.pid:
+                          continue
+                      try:
+                          reaped, status = os.waitpid(pid, os.WNOHANG)
+                      except ChildProcessError:
+                          continue
+                      if reaped:
+                          self.reaped.append({"pid": reaped, "wait_status": status})
+
+              def drain_after_root_wait(self):
+                  while True:
+                      try:
+                          pid, status = os.waitpid(-1, os.WNOHANG)
+                      except ChildProcessError:
+                          return True
+                      if not pid:
+                          return False
+                      self.reaped.append({"pid": pid, "wait_status": status})
+
+              @staticmethod
+              def has_children():
+                  try:
+                      os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                  except ChildProcessError:
+                      return False
+                  return True
+
+              def release(self):
+                  if not self.drain_after_root_wait():
+                      # Constructor interruption or a recoverable cleanup error can leave
+                      # a live adopted child. Retry discovery/kill/reap within one budget.
+                      end = self.cleanup_deadline or (time.monotonic() + 30)
+                      known = {}
+                      while time.monotonic() < end:
+                          try:
+                              known.update(self.collect(known, process_table()))
+                              for pid, identity in known.items():
+                                  self.send(pid, identity, signal.SIGKILL)
+                          except (OSError, ProbeFailure):
+                              pass
+                          if self.drain_after_root_wait():
+                              break
+                          time.sleep(0.01)
+                      else:
+                          # Keep ownership enabled while this failing supervisor lives.
+                          raise ProbeFailure("Owned children remain; bounded cleanup exhausted")
+                      if self.libc.prctl(36, self.previous, 0, 0, 0) != 0:
+                          raise ProbeFailure("Cannot restore process-local subreaper attribute")
+                      raise ProbeFailure("Residual owned children required fallback cleanup")
+                  if self.libc.prctl(36, self.previous, 0, 0, 0) != 0:
+                      raise ProbeFailure("Cannot restore process-local subreaper attribute")
+
+
+          def atomic(path, value):
+              path = pathlib.Path(path)
+              temp = path.with_suffix(path.suffix + ".tmp")
+              temp.write_text(json.dumps(value, indent=2) + "\n")
+              temp.replace(path)
+
+
+          def process_table():
+              table = {}
+              for entry in pathlib.Path("/proc").iterdir():
+                  if not entry.name.isdigit():
+                      continue
+                  try:
+                      data = (entry / "stat").read_text()
+                      tail = data[data.rfind(")") + 2 :].split()
+                      table[int(entry.name)] = {
+                          "ppid": int(tail[1]),
+                          "start": int(tail[19]),
+                          "rss": int(tail[21]) * os.sysconf("SC_PAGE_SIZE"),
+                          "state": tail[0],
+                      }
+                  except (OSError, ValueError, IndexError):
+                      pass
+              return table
+
+
+          def descendants(root, known, table):
+              owned = {
+                  pid
+                  for pid, start in known.items()
+                  if pid in table and table[pid]["start"] == start
+              }
+              # Only a previously captured PID/start identity can seed ownership.
+              # An unknown root may already have exited and its PID may have been reused.
+              while True:
+                  more = {pid for pid, v in table.items() if v["ppid"] in owned}
+                  if more <= owned:
+                      break
+                  owned |= more
+              return {pid: table[pid]["start"] for pid in owned}
+
+
+          PROC_LIMIT = 256 * 1024
+
+
+          VALUE_LIMIT = 4096
+
+
+          EVENT_LIMIT = 8192
+
+
+          MAX_MOUNTS = 1024
+
+
+          MAX_CGROUP_MOUNTS = 64
+
+
+          MAX_SCOPES = 256
+
+
+          MIN_RESERVE = 3 * GIB
+
+
+          class TelemetryUnavailable(RuntimeError):
+              pass
+
+
+          class LocalFS:
+              """Only bounded reads. Actual mount identity is verified via an open FD."""
+
+              def _fd_identity(self, fd, path, mount):
+                  info = os.fstat(fd)
+                  device = f"{os.major(info.st_dev)}:{os.minor(info.st_dev)}"
+                  fdinfo = self.read_text(f"/proc/self/fdinfo/{fd}", VALUE_LIMIT)
+                  mount_ids = [
+                      line.split()[1]
+                      for line in fdinfo.splitlines()
+                      if line.startswith("mnt_id:")
+                  ]
+                  if device != mount["device"] or mount_ids != [str(mount["id"])]:
+                      raise TelemetryUnavailable("Cgroup mount identity mismatch: " + path)
+                  return device, info.st_ino
+
+              def read_text(self, path, limit, *, mount=None):
+                  fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+                  try:
+                      if not stat.S_ISREG(os.fstat(fd).st_mode):
+                          raise TelemetryUnavailable(
+                              "Telemetry is not a regular interface: " + path
+                          )
+                      if mount is not None:
+                          self._fd_identity(fd, path, mount)
+                      raw = bytearray()
+                      while len(raw) <= limit:
+                          chunk = os.read(fd, min(8192, limit + 1 - len(raw)))
+                          if not chunk:
+                              break
+                          raw.extend(chunk)
+                      if len(raw) > limit:
+                          raise TelemetryUnavailable("Telemetry read exceeds byte cap: " + path)
+                      return raw.decode("utf-8")
+                  finally:
+                      os.close(fd)
+
+              def scope_identity(self, path, mount):
+                  fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+                  try:
+                      return self._fd_identity(fd, path, mount)
+                  finally:
+                      os.close(fd)
+
+
+          def _uint(text):
+              value = text.strip()
+              if not re.fullmatch(r"[0-9]{1,20}", value) or int(value) > 2**64 - 1:
+                  raise TelemetryUnavailable("Invalid unsigned telemetry value")
+              return int(value)
+
+
+          def _path(text):
+              if len(text) > 4096 or not text.startswith("/") or "\x00" in text:
+                  raise TelemetryUnavailable("Invalid or overlong hierarchy path")
+              path = PurePosixPath(text)
+              if ".." in path.parts or len(path.parts) > 128 or str(path) != text:
+                  raise TelemetryUnavailable("Unsupported hierarchy path: " + text)
+              return path
+
+
+          def _unescape_mount(text):
+              # mountinfo escapes are decoded once, so a literal backslash is preserved.
+              escapes = {"040": " ", "011": "\t", "012": "\n", "134": "\\"}
+              return re.sub(r"\\(.){0,3}", lambda match: escapes[match.group()[1:]], text)
+
+
+          def _membership(text):
+              rows = [line[3:] for line in text.splitlines() if line.startswith("0::")]
+              if len(rows) != 1 or rows[0].endswith(" (deleted)"):
+                  raise TelemetryUnavailable("Exactly one live cgroup v2 membership is required")
+              return _path(rows[0])
+
+
+          def _mounts(text):
+              lines = text.splitlines()
+              if len(lines) > MAX_MOUNTS:
+                  raise TelemetryUnavailable("Mount record budget exceeded")
+              cgroups = []
+              seen_ids = set()
+              for line in lines:
+                  left, separator, right = line.partition(" - ")
+                  before, after = left.split(), right.split()
+                  if not separator or len(before) < 6 or len(after) < 3:
+                      raise TelemetryUnavailable("Malformed mountinfo record")
+                  mount_id = _uint(before[0])
+                  if mount_id in seen_ids:
+                      raise TelemetryUnavailable("Duplicate mount identity")
+                  seen_ids.add(mount_id)
+                  if after[0] != "cgroup2":
+                      continue
+                  if not re.fullmatch(r"[0-9]+:[0-9]+", before[2]):
+                      raise TelemetryUnavailable("Malformed cgroup device identity")
+                  cgroups.append(
+                      {
+                          "id": mount_id,
+                          "device": before[2],
+                          "root": str(_path(_unescape_mount(before[3]))),
+                          "point": str(_path(_unescape_mount(before[4]))),
+                      }
+                  )
+              if not cgroups or len(cgroups) > MAX_CGROUP_MOUNTS:
+                  raise TelemetryUnavailable("No cgroup2 mount or mount budget exceeded")
+              return cgroups
+
+
+          def _optional_read(fs, path, limit, mount):
+              try:
+                  return fs.read_text(path, limit, mount=mount).strip()
+              except FileNotFoundError:
+                  return None
+
+
+          def _scope(fs, path, logical, mount):
+              identity = fs.scope_identity(str(path), mount)
+              maximum = _optional_read(fs, str(path / "memory.max"), VALUE_LIMIT, mount)
+              current = _optional_read(fs, str(path / "memory.current"), VALUE_LIMIT, mount)
+              row = {
+                  "path": str(path),
+                  "cgroup_path": str(logical),
+                  "mount_id": mount["id"],
+                  "identity": list(identity),
+              }
+              if maximum is None and current is None:
+                  # Linux cgroup.c applies CFTYPE_NOT_ON_ROOT using !cgroup_parent(),
+                  # not the namespace root. A namespaced non-root still has cgroup.type.
+                  # Verify the entire documented layout, not merely a '/' pathname.
+                  absent = ["cgroup.type", "cgroup.events", "memory.peak", "memory.events"]
+                  if str(logical) != "/" or mount["root"] != "/" or str(path) != mount["point"]:
+                      raise TelemetryUnavailable(
+                          "Unexplained absent memory interfaces: " + str(path)
+                      )
+                  if any(
+                      _optional_read(fs, str(path / name), VALUE_LIMIT, mount) is not None
+                      for name in absent
+                  ):
+                      raise TelemetryUnavailable(
+                          "Missing memory interfaces at a non-global/unsupported root: "
+                          + str(path)
+                      )
+                  controllers = fs.read_text(
+                      str(path / "cgroup.controllers"), VALUE_LIMIT, mount=mount
+                  ).split()
+                  subtree = fs.read_text(
+                      str(path / "cgroup.subtree_control"), VALUE_LIMIT, mount=mount
+                  ).split()
+                  if (
+                      "memory" not in controllers
+                      or "memory" not in subtree
+                      or any(
+                          not re.fullmatch(r"[a-z][a-z0-9_]*", item)
+                          for item in controllers + subtree
+                      )
+                  ):
+                      raise TelemetryUnavailable(
+                          "Cannot establish documented memory-controller root layout"
+                      )
+                  row.update(
+                      status="documented_global_root_exception",
+                      **{"memory.max": None, "memory.current": None},
+                  )
+                  row["root_evidence"] = {
+                      "absent_interfaces": absent,
+                      "cgroup.controllers": controllers,
+                      "cgroup.subtree_control": subtree,
+                  }
+              elif maximum is None or current is None:
+                  raise TelemetryUnavailable("Incomplete memory.max/current pair at " + str(path))
+              else:
+                  row.update(
+                      status="observed",
+                      **{
+                          "memory.max": "max" if maximum == "max" else _uint(maximum),
+                          "memory.current": _uint(current),
+                      },
+                  )
+                  # Preserve the experiment's required peak/events prerequisites.
+                  row["memory.peak"] = _uint(
+                      fs.read_text(str(path / "memory.peak"), VALUE_LIMIT, mount=mount)
+                  )
+                  events = fs.read_text(
+                      str(path / "memory.events"), EVENT_LIMIT, mount=mount
+                  ).strip()
+                  parsed = {}
+                  for line in events.splitlines():
+                      parts = line.split()
+                      if (
+                          len(parts) != 2
+                          or parts[0] in parsed
+                          or not re.fullmatch(r"[a-z_]+", parts[0])
+                      ):
+                          raise TelemetryUnavailable("Malformed memory.events: " + str(path))
+                      parsed[parts[0]] = _uint(parts[1])
+                  if not {"low", "high", "max", "oom", "oom_kill"} <= set(parsed):
+                      raise TelemetryUnavailable(
+                          "Missing required memory.events counters: " + str(path)
+                      )
+                  row["memory.events"] = events
+                  row["memory.events.parsed"] = parsed
+              if fs.scope_identity(str(path), mount) != identity:
+                  raise TelemetryUnavailable("Cgroup scope changed during sample: " + str(path))
+              return identity, row
+
+
+          def cgroup_memory(*, fs=None, max_scopes=MAX_SCOPES):
+              """Return visible scopes, or raise TelemetryUnavailable; no root fallback.
+
+              fs is a read-only dependency for bounded fixtures. Production callers omit it.
+              Hidden ancestors are always unknown. Missing interfaces fail closed except
+              a validated documented global-root layout with non-applicable files.
+              """
+              fs = fs or LocalFS()
+              if not isinstance(max_scopes, int) or not 1 <= max_scopes <= MAX_SCOPES:
+                  raise TelemetryUnavailable("Invalid scope budget")
+              try:
+                  membership_text = fs.read_text("/proc/self/cgroup", PROC_LIMIT)
+                  mount_text = fs.read_text("/proc/self/mountinfo", PROC_LIMIT)
+                  membership = _membership(membership_text)
+                  compatible = []
+                  for mount in _mounts(mount_text):
+                      if membership.is_relative_to(mount["root"]):
+                          compatible.append(mount)
+                  if not compatible:
+                      raise TelemetryUnavailable(
+                          "No compatible visible cgroup2 membership mapping"
+                      )
+                  # Wider visible views first; all compatible mounts must validate.
+                  compatible.sort(key=lambda m: (len(PurePosixPath(m["root"]).parts), m["id"]))
+                  scopes, seen = [], set()
+                  visits = 0
+                  for mount in compatible:
+                      point, mount_root = (
+                          PurePosixPath(mount["point"]),
+                          PurePosixPath(mount["root"]),
+                      )
+                      path = point / membership.relative_to(mount_root)
+                      logical = membership
+                      while True:
+                          visits += 1
+                          if visits > max_scopes:
+                              raise TelemetryUnavailable("Visible scope visit budget exceeded")
+                          identity, row = _scope(fs, path, logical, mount)
+                          if identity not in seen:
+                              seen.add(identity)
+                              scopes.append(row)
+                          if path == point:
+                              break
+                          path, logical = path.parent, logical.parent
+                  if fs.read_text("/proc/self/cgroup", PROC_LIMIT) != membership_text:
+                      raise TelemetryUnavailable("Cgroup membership changed during sample")
+                  if fs.read_text("/proc/self/mountinfo", PROC_LIMIT) != mount_text:
+                      raise TelemetryUnavailable("Mount topology changed during sample")
+                  if not any(row["status"] == "observed" for row in scopes):
+                      raise TelemetryUnavailable("No visible memory-controller telemetry")
+                  return {
+                      "membership": str(membership),
+                      "mounts": compatible,
+                      "scopes": scopes,
+                      "scope_visits": visits,
+                      "visible_chain_complete": True,
+                      "hidden_ancestors": "unknown",
+                      "entire_hierarchy_known": False,
+                      "scope": "Visible ambient cgroups; usage can include siblings and runner services",
+                  }
+              except TelemetryUnavailable:
+                  raise
+              except (OSError, ValueError, KeyError, IndexError) as exc:
+                  raise TelemetryUnavailable("Cgroup telemetry unavailable: " + str(exc)) from exc
+
+
+          def _host_memory(fs):
+              values = {}
+              for line in fs.read_text("/proc/meminfo", PROC_LIMIT).splitlines():
+                  name, separator, rest = line.partition(":")
+                  if separator and name in {"MemTotal", "MemAvailable"}:
+                      parts = rest.split()
+                      if name in values or len(parts) != 2 or parts[1] != "kB":
+                          raise TelemetryUnavailable("Malformed or duplicate host memory field")
+                      values[name] = _uint(parts[0]) * 1024
+              if (
+                  set(values) != {"MemTotal", "MemAvailable"}
+                  or not 0 <= values["MemAvailable"] <= values["MemTotal"]
+                  or not values["MemTotal"]
+              ):
+                  raise TelemetryUnavailable("Missing or inconsistent host memory telemetry")
+              return values
+
+
+          def _margin(scope, limit, remaining):
+              return {
+                  "scope": scope,
+                  "limit_bytes": limit,
+                  "remaining_bytes": remaining,
+                  "reserve_bytes": max(MIN_RESERVE, (limit + 4) // 5),
+              }
+
+
+          def memory_sample(known, table, *, fs=None):
+              """Return a caller-actionable observation, without signaling any process.
+
+              Stop promptly when stop_required is true. False means only that this
+              sample observed no pressure/error; it is not launch approval or OOM safety.
+              """
+              fs = fs or LocalFS()
+              owned = [
+                  value
+                  for pid, value in table.items()
+                  if pid in known and value["start"] == known[pid]
+              ]
+              result = {
+                  "t": time.time(),
+                  "process_tree_rss_bytes": sum(value["rss"] for value in owned),
+                  "process_count": len(owned),
+                  "host_available_bytes": None,
+                  "visible_limit_bound_bytes": None,
+                  "headroom_bytes": None,
+                  "cgroup": None,
+                  "margins": [],
+                  "pressured_scopes": [],
+                  "stop_required": True,
+                  "rapid_stop_required": True,
+                  "stop_reason": "memory_telemetry_unavailable",
+                  "oom_prevention_guaranteed": False,
+              }
+              try:
+                  host = _host_memory(fs)
+                  result["host_available_bytes"] = host["MemAvailable"]
+                  result["margins"].append(
+                      _margin("host", host["MemTotal"], host["MemAvailable"])
+                  )
+                  result["cgroup"] = cgroup_memory(fs=fs)
+                  for scope in result["cgroup"]["scopes"]:
+                      maximum = scope["memory.max"]
+                      if scope["status"] == "observed" and maximum != "max":
+                          result["margins"].append(
+                              _margin(
+                                  scope["cgroup_path"], maximum, maximum - scope["memory.current"]
+                              )
+                          )
+                  result["headroom_bytes"] = min(
+                      row["remaining_bytes"] for row in result["margins"]
+                  )
+                  result["visible_limit_bound_bytes"] = min(
+                      row["limit_bytes"] for row in result["margins"]
+                  )
+                  result["pressured_scopes"] = [
+                      row
+                      for row in result["margins"]
+                      if row["remaining_bytes"] <= row["reserve_bytes"]
+                  ]
+                  result["stop_required"] = bool(result["pressured_scopes"])
+                  result["rapid_stop_required"] = result["stop_required"]
+                  result["stop_reason"] = "memory_pressure" if result["stop_required"] else None
+              except (OSError, ValueError, TelemetryUnavailable) as exc:
+                  result["telemetry_error"] = str(exc)
+                  result["pressured_scopes"] = [
+                      row
+                      for row in result["margins"]
+                      if row["remaining_bytes"] <= row["reserve_bytes"]
+                  ]
+              return result
+
+
+          def _event_snapshot(snapshot):
+              """Validate bounded event inputs independently of the sampling filesystem."""
+              if (
+                  not isinstance(snapshot, dict)
+                  or snapshot.get("visible_chain_complete") is not True
+              ):
+                  raise TelemetryUnavailable("Missing or incomplete event snapshot")
+              membership = str(_path(snapshot["membership"]))
+              mounts = snapshot["mounts"]
+              if not isinstance(mounts, list) or not 1 <= len(mounts) <= MAX_CGROUP_MOUNTS:
+                  raise TelemetryUnavailable("Invalid event mount snapshot")
+              topology = []
+              for mount in mounts:
+                  device = mount["device"]
+                  if (
+                      not isinstance(device, str)
+                      or len(device) > 64
+                      or not re.fullmatch(r"[0-9]+:[0-9]+", device)
+                  ):
+                      raise TelemetryUnavailable("Invalid event mount device")
+                  if type(mount["id"]) is not int or not 0 <= mount["id"] <= 2**64 - 1:
+                      raise TelemetryUnavailable("Invalid event mount identity")
+                  topology.append(
+                      (mount["id"], device, str(_path(mount["root"])), str(_path(mount["point"])))
+                  )
+              rows = snapshot["scopes"]
+              if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_SCOPES:
+                  raise TelemetryUnavailable("Invalid or over-budget event scope snapshot")
+              scopes = {}
+              for row in rows:
+                  path = str(_path(row["cgroup_path"]))
+                  identity = row["identity"]
+                  if not isinstance(identity, (list, tuple)) or len(identity) != 2:
+                      raise TelemetryUnavailable("Missing event scope identity")
+                  device, inode = identity
+                  if (
+                      not isinstance(device, str)
+                      or len(device) > 64
+                      or not re.fullmatch(r"[0-9]+:[0-9]+", device)
+                      or type(inode) is not int
+                      or not 0 <= inode <= 2**64 - 1
+                  ):
+                      raise TelemetryUnavailable("Invalid event scope identity")
+                  if path in scopes or row["status"] not in {
+                      "observed",
+                      "documented_global_root_exception",
+                  }:
+                      raise TelemetryUnavailable("Duplicate or unsupported event scope")
+                  counters = {}
+                  if row["status"] == "observed":
+                      values = row["memory.events.parsed"]
+                      if not isinstance(values, dict) or not 5 <= len(values) <= 128:
+                          raise TelemetryUnavailable("Missing or over-budget event counters")
+                      for name, value in values.items():
+                          if (
+                              not isinstance(name, str)
+                              or not re.fullmatch(r"[a-z_]{1,64}", name)
+                              or type(value) is not int
+                              or not 0 <= value <= 2**64 - 1
+                          ):
+                              raise TelemetryUnavailable("Invalid event counter")
+                          counters[name] = value
+                      if not {"low", "high", "max", "oom", "oom_kill"} <= set(counters):
+                          raise TelemetryUnavailable("Required event counters are absent")
+                  scopes[path] = {
+                      "identity": (device, inode),
+                      "status": row["status"],
+                      "counters": counters,
+                  }
+              if not any(row["status"] == "observed" for row in scopes.values()):
+                  raise TelemetryUnavailable("No observed event scopes")
+              return (membership, tuple(sorted(topology))), scopes
+
+
+          def cgroup_event_deltas(previous_cgroup, current_cgroup):
+              """Pure comparison. Caller retains baseline and sticky run inconclusiveness.
+
+              Any observed oom/oom_kill/oom_group_kill increase is inconclusive. Resets,
+              missing/added counters or scopes, changed identities/topology, and invalid
+              telemetry are inconclusive too. Unknown hidden ancestry alone is not.
+              """
+              result = {
+                  "inconclusive": False,
+                  "stop_required": False,
+                  "reason": None,
+                  "reasons": [],
+                  "oom_increases": [],
+                  "counter_deltas": [],
+                  "coverage": "Compared visible event counters only; hidden ancestors remain unknown",
+              }
+
+              def issue(reason):
+                  if reason not in result["reasons"]:
+                      result["reasons"].append(reason)
+
+              try:
+                  old_topology, old = _event_snapshot(previous_cgroup)
+                  new_topology, new = _event_snapshot(current_cgroup)
+                  if old_topology != new_topology:
+                      issue("event_topology_changed")
+                  if old.keys() - new.keys():
+                      issue("event_scope_disappeared")
+                  if new.keys() - old.keys():
+                      issue("event_scope_appeared")
+                  for path in sorted(old.keys() & new.keys()):
+                      before, after = old[path], new[path]
+                      if (
+                          before["identity"] != after["identity"]
+                          or before["status"] != after["status"]
+                      ):
+                          issue("event_scope_identity_changed")
+                          continue
+                      old_values, new_values = before["counters"], after["counters"]
+                      if old_values.keys() - new_values.keys():
+                          issue("event_counter_disappeared")
+                      if new_values.keys() - old_values.keys():
+                          issue("event_counter_appeared")
+                      deltas = {}
+                      for name in sorted(old_values.keys() & new_values.keys()):
+                          delta = new_values[name] - old_values[name]
+                          deltas[name] = delta
+                          if delta < 0:
+                              issue("event_counter_reset")
+                          if delta > 0 and name in {"oom", "oom_kill", "oom_group_kill"}:
+                              result["oom_increases"].append(
+                                  {
+                                      "scope": path,
+                                      "counter": name,
+                                      "delta": delta,
+                                      "identity": list(after["identity"]),
+                                  }
+                              )
+                              issue("oom_event_increase")
+                      if any(deltas.values()):
+                          result["counter_deltas"].append(
+                              {
+                                  "scope": path,
+                                  "identity": list(after["identity"]),
+                                  "counters": deltas,
+                              }
+                          )
+              except (TelemetryUnavailable, ValueError, TypeError, KeyError) as exc:
+                  issue("event_telemetry_unavailable")
+                  result["telemetry_error"] = str(exc)
+              result["inconclusive"] = bool(result["reasons"])
+              result["stop_required"] = result["inconclusive"]
+              result["reason"] = result["reasons"][0] if result["reasons"] else None
+              return result
+
+
+          def stop_owned(root, known, grace=20, *, owner, direct_child, deadline, rapid=False):
+              started = time.monotonic()
+              end = min(started + min(grace, 20), deadline)
+              stages = (
+                  [(signal.SIGKILL, min(started + 3, deadline))]
+                  if rapid
+                  else [(signal.SIGTERM, end), (signal.SIGKILL, min(started + 26, deadline))]
+              )
+              for sig, until in stages:
+                  while True:
+                      table = process_table()
+                      known.update(owner.collect(known, table))
+                      owner.reap_adopted(root)
+                      # Only Popen reaps its direct child, preserving the actual exit code.
+                      direct_child.poll()
+                      if not owner.has_children():
+                          return True
+                      live = {
+                          p: s
+                          for p, s in known.items()
+                          if p in table and table[p]["start"] == s and table[p]["state"] != "Z"
+                      }
+                      for pid, identity in live.items():
+                          owner.send(pid, identity, sig)
+                      if root not in live and direct_child.poll() is None:
+                          # This direct child cannot have a reused PID while still waitable.
+                          direct_child.send_signal(sig)
+                      if time.monotonic() >= until:
+                          break
+                      time.sleep(0.1)
+              return False
+
+
+          def directory_size(root):
+              return sum(
+                  p.stat().st_size
+                  for p in pathlib.Path(root).rglob("*")
+                  if p.is_file() and not p.is_symlink()
+              )
+
+
+          def run(
+              command, *, cwd, env, output, name, deadline, telemetry=True, event_baseline=None
+          ):
+              owner = SubreaperOwner()
+              previous = {}
+              interrupted = []
+              try:
+                  # Install before launching: a soft cancellation must not kill the owner
+                  # between Popen and the first process snapshot.
+                  for sig in [signal.SIGTERM, signal.SIGINT]:
+                      previous[sig] = signal.signal(
+                          sig, lambda received, _: interrupted.append(received)
+                      )
+                  return run_owned(
+                      command,
+                      cwd=cwd,
+                      env=env,
+                      output=output,
+                      name=name,
+                      deadline=deadline,
+                      telemetry=telemetry,
+                      owner=owner,
+                      interrupted=interrupted,
+                      event_baseline=event_baseline,
+                  )
+              finally:
+                  try:
+                      owner.release()
+                  finally:
+                      restore_error = None
+                      for sig, handler in previous.items():
+                          try:
+                              signal.signal(sig, handler)
+                          except BaseException as exc:
+                              restore_error = restore_error or exc
+                      if restore_error:
+                          raise restore_error
+
+
+          def run_owned(
+              command,
+              *,
+              cwd,
+              env,
+              output,
+              name,
+              deadline,
+              telemetry,
+              owner,
+              interrupted,
+              event_baseline,
+          ):
+              output = pathlib.Path(output)
+              started = time.monotonic()
+              known = {}
+              reason = None
+              log_bytes = 0
+              peak = 0
+              min_headroom = None
+              primary = None
+              quiesced = False
+              original_identity = None
+              selector = None
+              next_sample = 0
+              rapid_cleanup = False
+              event_comparison = None
+              if started >= deadline:
+                  raise ProbeFailure("Absolute work deadline reached before " + name)
+              if interrupted:
+                  raise ProbeFailure("Cancelled before launching " + name)
+              child = subprocess.Popen(
+                  command,
+                  cwd=cwd,
+                  env=env,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT,
+                  start_new_session=True,
+              )
+              try:
+                  # Every post-Popen acquisition is inside owned cleanup. Capture before
+                  # poll/wait can reap even an instant child and permit PID reuse.
+                  original_table = process_table()
+                  original_identity = original_table.get(child.pid)
+                  if original_identity is None:
+                      reason = "root_identity_unavailable"
+                      raise ProbeFailure("Cannot establish original child process identity")
+                  known[child.pid] = original_identity["start"]
+                  known.update(owner.collect(known, original_table))
+                  selector = selectors.DefaultSelector()
+                  selector.register(child.stdout, selectors.EVENT_READ)
+                  with (
+                      (output / (name + ".log")).open("wb") as log,
+                      (output / (name + ".memory.jsonl")).open("w") as memory,
+                  ):
+                      while child.poll() is None or selector.get_map():
+                          now = time.monotonic()
+                          table = process_table()
+                          known.update(owner.collect(known, table))
+                          owner.reap_adopted(child.pid)
+                          if interrupted:
+                              reason = "cancelled"
+                              break
+                          if now >= deadline:
+                              reason = "absolute_deadline"
+                              break
+                          if now >= next_sample:
+                              next_sample = now + 1
+                              if directory_size(output) > ARTIFACT_LIMIT:
+                                  reason = "artifact_cap"
+                                  break
+                              if shutil.disk_usage(output).free < 2 * GIB:
+                                  reason = "disk_headroom_below_2GiB"
+                                  break
+                              if telemetry:
+                                  try:
+                                      sample = memory_sample(known, table)
+                                  except BaseException:
+                                      rapid_cleanup = True
+                                      raise
+                                  memory.write(json.dumps(sample) + "\n")
+                                  memory.flush()
+                                  peak = max(peak, sample["process_tree_rss_bytes"])
+                                  if sample["headroom_bytes"] is not None:
+                                      min_headroom = min(
+                                          sample["headroom_bytes"],
+                                          min_headroom
+                                          if min_headroom is not None
+                                          else sample["headroom_bytes"],
+                                      )
+                                  if (
+                                      event_baseline is not None
+                                      and sample.get("cgroup") is not None
+                                  ):
+                                      event_comparison = cgroup_event_deltas(
+                                          event_baseline, sample["cgroup"]
+                                      )
+                                      if event_comparison["inconclusive"]:
+                                          reason = "cgroup_events: " + event_comparison["reason"]
+                                          rapid_cleanup = True
+                                          break
+                                  if sample["stop_required"]:
+                                      reason = sample.get("stop_reason", "memory_pressure")
+                                      rapid_cleanup = True
+                                      break
+                          for key, _ in selector.select(0.1):
+                              chunk = os.read(key.fileobj.fileno(), 65536)
+                              if not chunk:
+                                  selector.unregister(key.fileobj)
+                                  continue
+                              log_bytes += len(chunk)
+                              if log_bytes > LOG_LIMIT:
+                                  reason = "log_cap"
+                                  break
+                              log.write(chunk)
+                          if reason:
+                              break
+              except BaseException as exc:
+                  primary = exc
+                  if reason is None:
+                      reason = type(exc).__name__ + ": " + str(exc)
+              finally:
+                  cleanup_error = None
+                  cleanup_deadline = time.monotonic() + 30
+                  owner.cleanup_deadline = cleanup_deadline
+                  try:
+                      try:
+                          quiesced = stop_owned(
+                              child.pid,
+                              known,
+                              grace=3 if not reason else 20,
+                              owner=owner,
+                              direct_child=child,
+                              deadline=cleanup_deadline - 4,
+                              rapid=rapid_cleanup,
+                          )
+                      except BaseException as exc:
+                          cleanup_error = exc
+                      finally:
+                          # Reap even if telemetry, tracing, or tree termination failed.
+                          try:
+                              child.wait(timeout=2)
+                          except subprocess.TimeoutExpired:
+                              child.kill()
+                              child.wait(timeout=2)
+                              quiesced = False
+                          # An incomplete /proc snapshot is never enough to end cleanup.
+                          # Reparented children may only become visible after root wait.
+                          if owner.has_children() and time.monotonic() < cleanup_deadline:
+                              quiesced = stop_owned(
+                                  child.pid,
+                                  known,
+                                  owner=owner,
+                                  direct_child=child,
+                                  deadline=cleanup_deadline,
+                                  rapid=True,
+                              )
+                          quiesced = (
+                              quiesced
+                              and owner.drain_after_root_wait()
+                              and original_identity is not None
+                          )
+                  finally:
+                      if selector is not None:
+                          try:
+                              selector.close()
+                          except BaseException as exc:
+                              cleanup_error = cleanup_error or exc
+                      try:
+                          child.stdout.close()
+                      except BaseException as exc:
+                          cleanup_error = cleanup_error or exc
+                  if interrupted and reason is None:
+                      reason = "cancelled"
+                  if telemetry and event_baseline is not None:
+                      try:
+                          event_comparison = cgroup_event_deltas(event_baseline, cgroup_memory())
+                      except (OSError, ValueError, TelemetryUnavailable) as exc:
+                          event_comparison = {
+                              "inconclusive": True,
+                              "reason": "final_event_telemetry_unavailable",
+                              "error": str(exc),
+                          }
+                      if event_comparison["inconclusive"]:
+                          reason = reason or ("cgroup_events: " + event_comparison["reason"])
+                  final_table = process_table()
+                  atomic(
+                      output / (name + ".process.json"),
+                      {
+                          "command": command,
+                          "seconds": time.monotonic() - started,
+                          "exit_code": child.returncode,
+                          "failure": reason,
+                          "whole_tree_sampled_rss_peak_bytes": peak,
+                          "minimum_headroom_bytes": min_headroom,
+                          "original_pid": child.pid,
+                          "original_start": original_identity["start"]
+                          if original_identity
+                          else None,
+                          "cleanup_failure": str(cleanup_error) if cleanup_error else None,
+                          "owned_processes": len(known),
+                          "ownership_anchor": {"pid": owner.pid, "start": owner.start},
+                          "process_local_subreaper": True,
+                          "adopted_children_reaped": owner.reaped,
+                          "rapid_memory_pressure_cleanup": rapid_cleanup,
+                          "cgroup_event_comparison": event_comparison,
+                          "process_tree_quiesced": quiesced
+                          and not any(
+                              p in final_table
+                              and final_table[p]["start"] == s
+                              and final_table[p]["state"] != "Z"
+                              for p, s in known.items()
+                          ),
+                      },
+                  )
+              if primary is not None:
+                  raise primary
+              if cleanup_error is not None:
+                  raise cleanup_error
+              if reason or child.returncode or not quiesced:
+                  raise ProbeFailure(
+                      f"{name}: {reason or child.returncode or 'process tree remains live'}"
+                  )
+
+
+          def isolated_checker(work, source, pins):
+              archive = work / "checker.tgz"
+              with urllib.request.urlopen(pins["checker_tarball"], timeout=60) as response:
+                  raw = response.read(1024 * 1024 + 1)
+              if (
+                  len(raw) > 1024 * 1024
+                  or "sha512-" + base64.b64encode(hashlib.sha512(raw).digest()).decode()
+                  != pins["checker_integrity"]
+              ):
+                  raise ProbeFailure("Official checker integrity mismatch")
+              archive.write_bytes(raw)
+              root = work / "checker-deps/node_modules/@stryker-mutator/typescript-checker"
+              root.mkdir(parents=True)
+              with tarfile.open(archive, "r:gz") as tar:
+                  for member in tar.getmembers():
+                      parts = pathlib.PurePosixPath(member.name).parts
+                      if (
+                          not parts
+                          or parts[0] != "package"
+                          or ".." in parts
+                          or member.issym()
+                          or member.islnk()
+                          or not (member.isfile() or member.isdir())
+                      ):
+                          raise ProbeFailure("Unsafe checker archive")
+                      member.name = str(pathlib.PurePosixPath(*parts[1:]))
+                      tar.extract(member, root, filter="data")
+              package = json.loads((root / "package.json").read_text())
+              if (
+                  package["name"] != "@stryker-mutator/typescript-checker"
+                  or package["version"] != "10.0.0"
+              ):
+                  raise ProbeFailure("Unexpected checker package")
+              deps = source / "frontend/node_modules"
+              base = root.parent.parent
+              for name in [
+                  "typescript",
+                  "semver",
+                  "@stryker-mutator/api",
+                  "@stryker-mutator/util",
+                  "@stryker-mutator/core",
+              ]:
+                  link = base / name
+                  link.parent.mkdir(parents=True, exist_ok=True)
+                  link.symlink_to(deps / name, target_is_directory=True)
+              return root
+
+
+          def reporter_health(output):
+              """Only a clean, bounded reporter wrapUp can provide positive health proof."""
+              output = pathlib.Path(output)
+              for name in ["reporter.failure.json", "reporter.pending.json"]:
+                  if os.path.lexists(output / name):
+                      return {"healthy": False, "reason": name + " is present"}
+              try:
+                  marker = output / "reporter.healthy.json"
+                  if marker.is_symlink() or not marker.is_file() or marker.stat().st_size > 4096:
+                      raise ValueError("missing or invalid reporter healthy marker")
+                  health = json.loads(marker.read_text())
+                  if (
+                      not isinstance(health, dict)
+                      or health.get("schema") != 1
+                      or health.get("state") != "healthy"
+                      or health.get("report_ready") is not True
+                      or health.get("max_count") != 1460
+                      or health.get("max_bytes") != 64 * 1024 * 1024
+                      or type(health.get("count")) is not int
+                      or type(health.get("bytes")) is not int
+                      or not 0 <= health["count"] <= 1460
+                      or not 0 <= health["bytes"] <= 64 * 1024 * 1024
+                  ):
+                      raise ValueError("invalid or over-bound reporter healthy marker")
+                  raw = output / "mutants.raw.jsonl"
+                  if (
+                      raw.is_symlink()
+                      or not raw.is_file()
+                      or raw.stat().st_size != health["bytes"]
+                  ):
+                      raise ValueError("raw reporter size mismatch")
+                  digest = hashlib.sha256()
+                  count = 0
+                  with raw.open("rb") as stream:
+                      for chunk in iter(lambda: stream.read(65536), b""):
+                          digest.update(chunk)
+                          count += chunk.count(b"\n")
+                  if digest.hexdigest() != health.get("sha256") or count != health["count"]:
+                      raise ValueError("raw reporter digest or record count mismatch")
+                  return {"healthy": True, "count": count, "bytes": health["bytes"]}
+              except (OSError, ValueError, TypeError) as exc:
+                  return {"healthy": False, "reason": str(exc)}
+
+
+          def file_sha256(path):
+              """Hash evidence in bounded chunks, including during failure finalization."""
+              digest = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(65536), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+
+          def finalize(output, failure):
+              output = pathlib.Path(output)
+              result = {
+                  "schema": 1,
+                  "diagnostic_only": True,
+                  "release_eligible": False,
+                  "kill_credit": 0,
+                  "exclusion_credit": 0,
+                  "full_campaign_capacity_proven": False,
+                  "outcome": "inconclusive",
+                  "failure": failure,
+                  "upload_on_cancellation": "best effort; not guaranteed after hard kill/runner loss",
+              }
+              baseline_path = output / "resource-baseline.json"
+              if baseline_path.exists() or (output / "seed.json").exists():
+                  try:
+                      if (
+                          not baseline_path.is_file()
+                          or baseline_path.stat().st_size > 16 * 1024**2
+                      ):
+                          raise TelemetryUnavailable("Missing or over-bound resource baseline")
+                      baseline = json.loads(baseline_path.read_text())
+                      resource = cgroup_event_deltas(baseline, cgroup_memory())
+                  except (OSError, ValueError, TelemetryUnavailable) as exc:
+                      resource = {
+                          "inconclusive": True,
+                          "reason": "resource_event_telemetry_unavailable",
+                          "error": str(exc),
+                      }
+                  result["resource_events"] = resource
+                  result["resource_capacity_proven"] = False
+                  result["hidden_resource_constraints"] = "unknown"
+                  result["oom_prevention_guaranteed"] = False
+                  if resource["inconclusive"]:
+                      result["failure"] = result["failure"] or (
+                          "resource events inconclusive: " + resource["reason"]
+                      )
+              health = reporter_health(output)
+              result["reporter_health"] = health
+              if not health["healthy"]:
+                  result["failure"] = result["failure"] or (
+                      "reporter unhealthy: " + health["reason"]
+                  )
+              if (output / "assignment.json").exists() and not (
+                  output / "population.json"
+              ).exists():
+                  assignment = json.loads((output / "assignment.json").read_text())
+
+                  def canonical(value):
+                      return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+                  expected = {
+                      canonical(json.loads(value)): value
+                      for value in assignment["expected_signatures"]
+                  }
+                  observations = {}
+                  unmatched = []
+                  rawpath = output / "mutants.raw.jsonl"
+                  for line in rawpath.read_text().splitlines() if rawpath.exists() else []:
+                      try:
+                          event = json.loads(line)
+                          source = pathlib.Path(os.environ["PROBE_SOURCE"]) / "frontend"
+                          file = pathlib.Path(event["fileName"]).relative_to(source).as_posix()
+                          signature = {
+                              "sourcePath": file,
+                              "mutatorName": event["mutatorName"],
+                              "replacement": event["replacement"],
+                              "start": {
+                                  k: event["location"]["start"][k] - 1 for k in ["line", "column"]
+                              },
+                              "end": {
+                                  k: event["location"]["end"][k] - 1 for k in ["line", "column"]
+                              },
+                          }
+                          key = canonical(signature)
+                          if key not in expected:
+                              unmatched.append(event)
+                          else:
+                              observations.setdefault(key, []).append(
+                                  {
+                                      "id": event["id"],
+                                      "status": event["status"],
+                                      "statusReason": event.get("statusReason"),
+                                  }
+                              )
+                      except (ValueError, KeyError):
+                          unmatched.append({"unparsed_raw_line": line})
+                  atomic(
+                      output / "population.partial.json",
+                      {
+                          "complete": False,
+                          "expected": len(expected),
+                          "results": [
+                              {
+                                  "signature": signature,
+                                  "observations": observations.get(key, []),
+                                  "observed": key in observations,
+                              }
+                              for key, signature in expected.items()
+                          ],
+                          "unmatched_observations": unmatched,
+                          "unobserved_status": None,
+                          "note": "Missing results have no inferred status or kill/exclusion credit.",
+                      },
+                  )
+              try:
+                  population = json.loads((output / "population.json").read_text())
+                  plan = json.loads((output / "parity-plan.json").read_text())
+                  receipts = (
+                      [
+                          json.loads(line)
+                          for line in (output / "parity.raw.jsonl").read_text().splitlines()
+                      ]
+                      if (output / "parity.raw.jsonl").exists()
+                      else []
+                  )
+                  by_sig = {r["signature"]: r for r in receipts}
+                  expected = {r["signature"] for r in plan["mutants"]}
+                  parity_complete = (
+                      len(receipts) == len(by_sig) == len(expected) and set(by_sig) == expected
+                  )
+                  result.update(
+                      {
+                          "population_complete": population["complete"],
+                          "status_counts": population["counts"],
+                          "compile_errors": len(expected),
+                          "parity_observed": len(receipts),
+                          "parity_complete": parity_complete,
+                          "parity_missing": sorted(expected - set(by_sig)),
+                          "parity_disagreements": [
+                              r["signature"] for r in receipts if r["verdict"] != "matched"
+                          ],
+                          "observed_statuses_preserved": True,
+                      }
+                  )
+                  if (
+                      not result["failure"]
+                      and health["healthy"]
+                      and population["complete"]
+                      and population["hasTestedViableMutant"]
+                      and parity_complete
+                      and all(r["verdict"] == "matched" for r in receipts)
+                  ):
+                      result["outcome"] = "completed_this_assignment_with_parity"
+              except (OSError, ValueError, KeyError) as exc:
+                  result["analysis_incomplete"] = str(exc)
+              # Keep the raw report untouched. If an output bound was breached, omit entire files,
+              # record their hashes, and keep the run inconclusive rather than truncating evidence.
+              omitted = []
+              while directory_size(output) > ARTIFACT_LIMIT:
+                  candidates = [
+                      p
+                      for p in output.rglob("*")
+                      if p.is_file() and p.name not in ["receipt.json", "seed.json"]
+                  ]
+                  if not candidates:
+                      break
+                  item = max(candidates, key=lambda p: p.stat().st_size)
+                  omitted.append(
+                      {
+                          "file": str(item.relative_to(output)),
+                          "size": item.stat().st_size,
+                          "sha256": file_sha256(item),
+                      }
+                  )
+                  item.unlink()
+              if omitted:
+                  result.update({"outcome": "inconclusive", "omitted_oversize_evidence": omitted})
+              atomic(output / "receipt.json", result)
+              manifest = [
+                  {
+                      "path": str(p.relative_to(output)),
+                      "bytes": p.stat().st_size,
+                      "sha256": file_sha256(p),
+                  }
+                  for p in sorted(output.rglob("*"))
+                  if p.is_file() and p.name != "manifest.json"
+              ]
+              atomic(
+                  output / "manifest.json",
+                  {
+                      "files": manifest,
+                      "payload_bytes": sum(f["bytes"] for f in manifest),
+                      "max_artifact_bytes": GIB,
+                      "retention_days": 7,
+                  },
+              )
+              if directory_size(output) >= GIB:
+                  raise ProbeFailure("Upload payload exceeds 1GiB")
+              return result
+
+
+          def main():
+              env = os.environ.copy()
+              source = pathlib.Path(env["PROBE_SOURCE"]).resolve()
+              work = pathlib.Path(env["PROBE_WORK"]).resolve()
+              output = pathlib.Path(env["PROBE_OUTPUT"]).resolve()
+              harness = pathlib.Path(env["PROBE_HARNESS"]).resolve()
+              output.mkdir(parents=True, exist_ok=True)
+              work.mkdir(parents=True, exist_ok=True)
+              failure = None
+              hard = float(env["PROBE_ABSOLUTE_DEADLINE"])
+              work_deadline = hard - 630
+              resource_baseline = None
+
+              def interrupted(sig, _):
+                  raise ProbeFailure("Interrupted by signal " + str(sig))
+
+              for sig in [signal.SIGINT, signal.SIGTERM]:
+                  signal.signal(sig, interrupted)
+              pins = json.loads((harness / "pins.json").read_text())
+              env.update(
+                  {
+                      "CI": "true",
+                      "TZ": "UTC",
+                      "PROBE_SOURCE": str(source),
+                      "PROBE_OUTPUT": str(output),
+                      "PROBE_HARNESS": str(harness),
+                      "PROBE_WORK": str(work),
+                  }
+              )
+              for key in list(env):
+                  if any(x in key.upper() for x in ["TOKEN", "PASSWORD", "SECRET"]):
+                      env.pop(key)
+              env["NODE_OPTIONS"] = "--max-old-space-size=4096"
+
+              def phase(name, args, cwd=None, deadline=work_deadline):
+                  env["PROBE_PHASE_REMAINING_MS"] = str(
+                      max(0, int((deadline - time.monotonic()) * 1000) - 30000)
+                  )
+                  run(
+                      args,
+                      cwd=cwd or str(source / "frontend"),
+                      env=env,
+                      output=output,
+                      name=name,
+                      deadline=deadline,
+                      event_baseline=resource_baseline,
+                  )
+
+              try:
+                  resource_baseline = cgroup_memory()
+                  atomic(output / "resource-baseline.json", resource_baseline)
+                  atomic(
+                      output / "host.json",
+                      {
+                          "cpu_count": os.cpu_count(),
+                          "uname": list(os.uname()),
+                          "disk": dict(zip(["total", "used", "free"], shutil.disk_usage(work))),
+                          "runner_name": env.get("RUNNER_NAME"),
+                          "runner_arch": env.get("RUNNER_ARCH"),
+                          "image_os": env.get("ImageOS"),
+                          "image_version": env.get("ImageVersion"),
+                          "cgroup": resource_baseline,
+                      },
+                  )
+                  if (
+                      subprocess.check_output(
+                          ["git", "rev-parse", "HEAD"], cwd=source, text=True
+                      ).strip()
+                      != pins["source_sha"]
+                  ):
+                      raise ProbeFailure("Tested checkout is not exact source SHA")
+                  phase(
+                      "dependency-setup",
+                      [
+                          "npm",
+                          "ci",
+                          "--ignore-scripts",
+                          "--no-audit",
+                          "--no-fund",
+                          "--cache",
+                          str(work / "npm-cache"),
+                      ],
+                  )
+                  if time.monotonic() >= work_deadline:
+                      raise ProbeFailure("Setup consumed work deadline")
+                  phase(
+                      "checker-setup",
+                      [sys.executable, str(harness / "supervisor.py"), "checker-setup"],
+                  )
+                  env["PROBE_CHECKER"] = str(
+                      work / "checker-deps/node_modules/@stryker-mutator/typescript-checker"
+                  )
+                  versions = {}
+                  for name in [
+                      "@stryker-mutator/core",
+                      "@stryker-mutator/api",
+                      "@stryker-mutator/util",
+                      "@stryker-mutator/vitest-runner",
+                      "typescript",
+                      "@typescript/old",
+                      "@typescript/native",
+                      "semver",
+                  ]:
+                      versions[name] = json.loads(
+                          (source / "frontend/node_modules" / name / "package.json").read_text()
+                      )["version"]
+                  if versions != {k: v for k, v in pins["dependency_versions"].items()}:
+                      raise ProbeFailure("Installed toolchain differs from approved lock")
+                  atomic(
+                      output / "toolchain.json",
+                      {
+                          "versions": versions,
+                          "node": subprocess.check_output(
+                              ["node", "--version"], text=True
+                          ).strip(),
+                          "checker_integrity": pins["checker_integrity"],
+                      },
+                  )
+                  phase("prepare", ["node", str(harness / "probe-driver.mjs"), "prepare"])
+                  for compiler in ["ts6", "ts7"]:
+                      for mode in ["original", "equivalent"]:
+                          name = "baseline-" + compiler + "-" + mode
+                          phase(
+                              name,
+                              [
+                                  "node",
+                                  str(harness / "compiler-diagnostics.mjs"),
+                                  str(source / "frontend"),
+                                  str(source / "frontend/node_modules"),
+                                  compiler,
+                                  mode,
+                                  str(output / (name + ".json")),
+                              ],
+                          )
+                  producer_cutoff = (
+                      work_deadline - 3600
+                  )  # reserve up to one hour for exhaustive parity
+                  phase(
+                      "producer",
+                      ["node", str(harness / "probe-driver.mjs"), "producer"],
+                      deadline=producer_cutoff,
+                  )
+                  phase("analyze", ["node", str(harness / "probe-driver.mjs"), "analyze"])
+                  replay = work / "replay"
+                  replay.mkdir()
+                  env["PROBE_REPLAY"] = str(replay)
+                  for name in ["frontend", "quality"]:
+                      shutil.copytree(
+                          source / name,
+                          replay / name,
+                          ignore=shutil.ignore_patterns("node_modules", "reports", ".git"),
+                      )
+                  (replay / "frontend/node_modules").symlink_to(
+                      source / "frontend/node_modules", target_is_directory=True
+                  )
+                  phase("parity", ["node", str(harness / "probe-driver.mjs"), "parity"])
+              except BaseException as exc:
+                  failure = f"{type(exc).__name__}: {exc}"
+              finally:
+                  result = finalize(output, failure)
+                  print(json.dumps(result))
+              return 0 if result["outcome"] == "completed_this_assignment_with_parity" else 1
+
+
+          if __name__ == "__main__":
+              if len(sys.argv) > 1 and sys.argv[1] == "checker-setup":
+                  isolated_checker(
+                      pathlib.Path(os.environ["PROBE_WORK"]),
+                      pathlib.Path(os.environ["PROBE_SOURCE"]),
+                      json.loads(
+                          (pathlib.Path(os.environ["PROBE_HARNESS"]) / "pins.json").read_text()
+                      ),
+                  )
+              elif len(sys.argv) > 1 and sys.argv[1] == "finalize":
+                  output = pathlib.Path(os.environ["PROBE_OUTPUT"])
+                  if not (output / "receipt.json").exists():
+                      finalize(
+                          output,
+                          "workflow finalizer: "
+                          + os.environ.get("PROBE_STEP_OUTCOME", "unknown"),
+                      )
+                  if directory_size(output) >= GIB:
+                      raise ProbeFailure("Upload payload exceeds 1GiB")
+              else:
+                  sys.exit(main())
+          PROBE_FILE_supervisor_py
+          python3 - <<'HASH_PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+
+          root = pathlib.Path(os.environ['PROBE_BASE'])
+          expected = {
+              "bootstrap.py": "687c257baf18468d2e1f2acf271756bd956a8378805b44b2c474413350026aec",
+              "pins.json": "485fea15175013c8a790f2385befb616d01c6dcb60c4dbb1487c3b7513492cf0",
+              "probe-lib.mjs": "96064c8e8205480518114469c1223a13ae83905f665c793cf38ee12f200a9ec1",
+              "compiler-diagnostics.mjs": "ff01ebfd66d215c0d890a7b40a3d71a9db457f982b25db4adec9b83128238c93",
+              "stryker-child.mjs": "d0ffa73e072633b26ad1de155f39a2de014f04f452836d980ac414156ebcd429",
+              "partial-reporter.mjs": "9a6579c79400e46f0b4832f0049e1ba782e6b3a66e264778fedb9f61402baf11",
+              "probe-driver.mjs": "e92a1adf23db0a7af60256a8c2ed6aa4da9495cbb0510521a1ebcdea12d8e6ba",
+              "supervisor.py": "78814bd8638387df542eaef83da35a71d3655ea7ac9c80a5105ba9cb3985c727"
+          }
+          for name, digest in expected.items():
+              actual = hashlib.sha256((root / "harness" / name).read_bytes()).hexdigest()
+              if actual != digest:
+                  raise RuntimeError("Embedded harness digest mismatch: " + name)
+          (root / "output/harness-files.json").write_text(json.dumps(expected, indent=2) + "\n")
+          HASH_PY
+
+      - name: Checkout exact original source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 10
         with:
-          name: manual-performance-ws-hub-paired
-          path: ${{ steps.capture_ws_hub.outputs.artifact_root }}
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Remove immutable base worktree
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-ws-hub"
-          if [[ -d "$BASE_WORKTREE" ]]; then
-            git worktree remove --force "$BASE_WORKTREE" || true
-          fi
-
-  rust-native-regression:
-    name: Manual Performance Evidence / Rust Native Optimizer Regression Gate
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
+          ref: 2595c0ebc674edb69557f3c6edd0a184973d62e2
+          path: source
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          fetch-depth: 1
+      - name: Set up exact original Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 10
         with:
-          python-version: "3.14"
-
-      - name: Resolve immutable revisions and capture paired evidence
-        id: capture_rust_native
+          node-version: '24.15.0'
+          package-manager-cache: false
+      - name: Download immutable original preflight
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        timeout-minutes: 5
+        with:
+          artifact-ids: '11288907591'
+          run-id: '37164443034'
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/checker-2595-${{ github.run_id }}-${{ github.run_attempt }}/preflight
+          merge-multiple: true
+      - name: Run one bounded producer and exhaustive compile-error parity
+        id: probe
         shell: bash
-        env:
-          MANUAL_BASE_SHA: ${{ inputs.base_sha }}
-          MANUAL_CANDIDATE_SHA: ${{ github.sha }}
-          MANUAL_SOURCE_HEAD_SHA: ${{ github.sha }}
-          MANUAL_BASE_REF: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          BASE_SHA="$MANUAL_BASE_SHA"
-          CANDIDATE_SHA="$MANUAL_CANDIDATE_SHA"
-          SOURCE_HEAD_SHA="$MANUAL_SOURCE_HEAD_SHA"
-          BASE_REF="$MANUAL_BASE_REF"
-          ZERO_SHA="0000000000000000000000000000000000000000"
-          validate_sha() {
-            local value="$1"
-            local label="$2"
-            if [[ ! "$value" =~ ^[0-9a-fA-F]{40}$ ]]; then
-              echo "$label must be a full 40-hex commit SHA" >&2
-              exit 2
-            fi
-          }
-          validate_sha "$BASE_SHA" "base SHA"
-          validate_sha "$CANDIDATE_SHA" "candidate SHA"
-          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
-          if [[ -z "$BASE_REF" ]]; then
-            echo "Base ref must be non-empty" >&2
-            exit 2
-          fi
-          if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then
-            echo "Initial-push all-zero SHAs cannot be benchmarked" >&2
-            exit 2
-          fi
-          if [[ "$SOURCE_HEAD_SHA" == "$ZERO_SHA" ]]; then
-            echo "All-zero source head SHA cannot be benchmarked" >&2
-            exit 2
-          fi
-          if [[ "$SOURCE_HEAD_SHA" != "$CANDIDATE_SHA" ]]; then
-            echo "Manual source head must equal the tested candidate SHA" >&2
-            exit 2
-          fi
-          echo "source_head_sha=$SOURCE_HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
-          ARTIFACT_ROOT="${RUNNER_TEMP}/quality-performance-rust-native-${BASE_SHA}-${CANDIDATE_SHA}"
-          if [[ -e "$ARTIFACT_ROOT" ]]; then
-            echo "Performance artifact root must be fresh: $ARTIFACT_ROOT" >&2
-            exit 2
-          fi
-          echo "artifact_root=$ARTIFACT_ROOT" >> "$GITHUB_OUTPUT"
-
-          git fetch --no-tags origin "$BASE_SHA" "$CANDIDATE_SHA"
-          git cat-file -e "$SOURCE_HEAD_SHA^{commit}"
-          git cat-file -e "$BASE_SHA^{commit}"
-          git cat-file -e "$CANDIDATE_SHA^{commit}"
-          if [[ "$BASE_SHA" == "$CANDIDATE_SHA" ]]; then
-            echo "Base and candidate revisions must differ" >&2
-            exit 2
-          fi
-          if ! git merge-base --is-ancestor "$BASE_SHA" "$CANDIDATE_SHA"; then
-            echo "Base revision must be an ancestor of the candidate revision" >&2
-            exit 2
-          fi
-          if [[ "$(git rev-parse HEAD)" != "$CANDIDATE_SHA" ]]; then
-            echo "Checkout is not the immutable candidate SHA" >&2
-            exit 2
-          fi
-          PARENT_LINE="$(git rev-list --parents -n1 "$CANDIDATE_SHA")"
-          COMMIT_ID="${PARENT_LINE%% *}"
-          if [[ "$COMMIT_ID" != "$CANDIDATE_SHA" ]]; then
-            echo "Candidate parent record does not identify the candidate" >&2
-            exit 2
-          fi
-
-          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-rust-native"
-          if [[ -e "$BASE_WORKTREE" ]]; then
-            echo "Base worktree path must be fresh: $BASE_WORKTREE" >&2
-            exit 2
-          fi
-          git worktree add --detach "$BASE_WORKTREE" "$BASE_SHA"
-          BASE_CAPTURE_HELPER="$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py"
-          BASE_COMPARATOR="$BASE_WORKTREE/scripts/quality/compare_paired_benchmarks.py"
-          BASE_RUST_DOCKERFILE="$BASE_WORKTREE/containers/quality/Dockerfile.performance-rust"
-          if ! test -f "$BASE_CAPTURE_HELPER"; then
-            echo "Trusted base capture helper is absent: $BASE_CAPTURE_HELPER" >&2
-            exit 2
-          fi
-          if ! test -f "$BASE_COMPARATOR"; then
-            echo "Trusted base comparator is absent: $BASE_COMPARATOR" >&2
-            exit 2
-          fi
-          if ! test -f "$BASE_RUST_DOCKERFILE"; then
-            echo "Trusted base Rust Dockerfile is absent: $BASE_RUST_DOCKERFILE" >&2
-            exit 2
-          fi
-
-          PYTHON_BIN="$(command -v python)"
-          if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then
-            echo "Python interpreter must resolve to an absolute executable" >&2
-            exit 2
-          fi
-          BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk '{print $1}')"
-          if [[ ! "$BASE_COMPARATOR_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "Trusted base comparator hash is invalid" >&2
-            exit 2
-          fi
-
-          {
-            echo "base_sha=$BASE_SHA"
-            echo "candidate_sha=$CANDIDATE_SHA"
-            echo "base_worktree=$BASE_WORKTREE"
-            echo "base_comparator=$BASE_COMPARATOR"
-            echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"
-            echo "python_bin=$PYTHON_BIN"
-          } >> "$GITHUB_OUTPUT"
-
-          "$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER" \
-            --format rust \
-            --base-worktree "$BASE_WORKTREE" \
-            --candidate-worktree "$GITHUB_WORKSPACE" \
-            --artifact-root "$ARTIFACT_ROOT" \
-            --runner-temp "$RUNNER_TEMP" \
-            --base-revision "$BASE_SHA" \
-            --candidate-revision "$CANDIDATE_SHA" \
-            --rust-dockerfile "$BASE_RUST_DOCKERFILE"
-
-      - name: Record immutable benchmark provenance
-        shell: bash
-        env:
-          EVENT_NAME: workflow_dispatch
-          BASE_SHA: ${{ steps.capture_rust_native.outputs.base_sha }}
-          TESTED_COMMIT_SHA: ${{ steps.capture_rust_native.outputs.candidate_sha }}
-          SOURCE_HEAD_SHA: ${{ steps.capture_rust_native.outputs.source_head_sha }}
-          BASE_REF: ${{ steps.capture_rust_native.outputs.base_ref }}
-          ARTIFACT_ROOT: ${{ steps.capture_rust_native.outputs.artifact_root }}
-        run: |
-          set -euo pipefail
-          validate_sha() {
-            local value="$1"
-            local label="$2"
-            if [[ ! "$value" =~ ^[0-9a-fA-F]{40}$ ]]; then
-              echo "$label must be a full 40-hex commit SHA" >&2
-              exit 2
-            fi
-          }
-          validate_sha "$BASE_SHA" "base SHA"
-          validate_sha "$TESTED_COMMIT_SHA" "tested commit SHA"
-          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
-          if [[ -z "$BASE_REF" ]]; then
-            echo "Benchmark provenance base ref is missing" >&2
-            exit 2
-          fi
-          if [[ "$SOURCE_HEAD_SHA" != "$TESTED_COMMIT_SHA" ]]; then
-            echo "Manual source head must equal the tested commit" >&2
-            exit 2
-          fi
-          if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]; then
-            echo "Benchmark provenance run id is invalid" >&2
-            exit 2
-          fi
-          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
-            echo "Benchmark provenance identity is incomplete" >&2
-            exit 2
-          fi
-          if [[ ! -d "$ARTIFACT_ROOT" ]]; then
-            echo "Benchmark provenance artifact root is missing" >&2
-            exit 2
-          fi
-          if [[ "$(git rev-parse HEAD)" != "$TESTED_COMMIT_SHA" ]]; then
-            echo "Benchmark provenance target is not the captured immutable artifact" >&2
-            exit 2
-          fi
-          if ! command -v jq >/dev/null 2>&1; then
-            echo "jq is required to record benchmark provenance" >&2
-            exit 2
-          fi
-          PARENT_LINE="$(git rev-list --parents -n1 "$TESTED_COMMIT_SHA")"
-          COMMIT_ID="${PARENT_LINE%% *}"
-          if [[ "$COMMIT_ID" != "$TESTED_COMMIT_SHA" ]]; then
-            echo "Tested commit parent record is invalid" >&2
-            exit 2
-          fi
-          PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
-          PROVENANCE_TMP="$ARTIFACT_ROOT/provenance.json.tmp"
-          jq -n \
-            --arg schema_version "1" \
-            --arg repository "$GITHUB_REPOSITORY" \
-            --arg workflow "$GITHUB_WORKFLOW" \
-            --arg workflow_ref "$GITHUB_WORKFLOW_REF" \
-            --arg event "$EVENT_NAME" \
-            --arg run_id "$GITHUB_RUN_ID" \
-            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
-            --arg ref "$GITHUB_REF" \
-            --arg base_ref "$BASE_REF" \
-            --arg base_sha "$BASE_SHA" \
-            --arg source_head_sha "$SOURCE_HEAD_SHA" \
-            --arg tested_commit_sha "$TESTED_COMMIT_SHA" \
-            --argjson tested_commit_parents "$PARENTS_JSON" \
-            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{schema_version: ($schema_version|tonumber), repository: $repository, workflow: $workflow, workflow_ref: $workflow_ref, event: $event, run_id: ($run_id|tonumber), run_attempt: ($run_attempt|tonumber), ref: $ref, base_ref: $base_ref, base_sha: $base_sha, source_head_sha: $source_head_sha, tested_commit_sha: $tested_commit_sha, tested_commit_parents: $tested_commit_parents, timestamp: $timestamp}' \
-            > "$PROVENANCE_TMP"
-          mv -- "$PROVENANCE_TMP" "$ARTIFACT_ROOT/provenance.json"
-
-      - name: Compare paired benchmark evidence
-        shell: bash
-        env:
-          EVENT_NAME: workflow_dispatch
-          EXPECTED_SOURCE_HEAD_SHA: ${{ github.sha }}
-          EXPECTED_BASE_SHA: ${{ inputs.base_sha }}
-          EXPECTED_BASE_REF: ${{ github.ref_name }}
-          EXPECTED_RUN_ID: ${{ github.run_id }}
-          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
-          EXPECTED_TESTED_COMMIT_SHA: ${{ github.sha }}
-          ARTIFACT_ROOT: ${{ steps.capture_rust_native.outputs.artifact_root }}
-        run: |
-          set -euo pipefail
-          ARTIFACT_ROOT="${{ steps.capture_rust_native.outputs.artifact_root }}"
-          if [[ ! -f "$ARTIFACT_ROOT/provenance.json" ]]; then
-            echo "Benchmark provenance is missing" >&2
-            exit 2
-          fi
-          if [[ ! "$EXPECTED_RUN_ID" =~ ^[0-9]+$ ]]; then
-            echo "Expected workflow run id is invalid" >&2
-            exit 2
-          fi
-          if [[ ! "$EXPECTED_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
-            echo "Expected workflow run identity is invalid" >&2
-            exit 2
-          fi
-          if ! command -v jq >/dev/null 2>&1; then
-            echo "jq is required to verify benchmark provenance" >&2
-            exit 2
-          fi
-          PARENT_LINE="$(git rev-list --parents -n1 "$EXPECTED_TESTED_COMMIT_SHA")"
-          COMMIT_ID="${PARENT_LINE%% *}"
-          if [[ "$COMMIT_ID" != "$EXPECTED_TESTED_COMMIT_SHA" ]]; then
-            echo "Expected tested commit parent record is invalid" >&2
-            exit 2
-          fi
-          ACTUAL_PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
-          jq -e \
-            --arg event "$EVENT_NAME" \
-            --arg run_id "$EXPECTED_RUN_ID" \
-            --arg run_attempt "$EXPECTED_RUN_ATTEMPT" \
-            --arg ref "$GITHUB_REF" \
-            --arg base_ref "$EXPECTED_BASE_REF" \
-            --arg base_sha "$EXPECTED_BASE_SHA" \
-            --arg source_head_sha "$EXPECTED_SOURCE_HEAD_SHA" \
-            --arg tested_commit_sha "$EXPECTED_TESTED_COMMIT_SHA" \
-            --argjson expected_parents "$ACTUAL_PARENTS_JSON" \
-            '(.schema_version == 1 and .event == $event and (.run_id|tostring) == $run_id and (.run_attempt|tostring) == $run_attempt and .ref == $ref and .base_ref == $base_ref and .base_sha == $base_sha and .source_head_sha == $source_head_sha and .tested_commit_sha == $tested_commit_sha and .tested_commit_parents == $expected_parents and .source_head_sha == .tested_commit_sha)' \
-            "$ARTIFACT_ROOT/provenance.json" >/dev/null
-          BASE_COMPARATOR="${{ steps.capture_rust_native.outputs.base_comparator }}"
-          PYTHON_BIN="${{ steps.capture_rust_native.outputs.python_bin }}"
-          EXPECTED_COMPARATOR_SHA256="${{ steps.capture_rust_native.outputs.base_comparator_sha256 }}"
-          ARTIFACT_ROOT="${{ steps.capture_rust_native.outputs.artifact_root }}"
-          if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then
-            echo "Python interpreter must remain an absolute executable" >&2
-            exit 2
-          fi
-          if ! test -f "$BASE_COMPARATOR"; then
-            echo "Trusted base comparator is absent: $BASE_COMPARATOR" >&2
-            exit 2
-          fi
-          ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk '{print $1}')"
-          if [[ "$ACTUAL_COMPARATOR_SHA256" != "$EXPECTED_COMPARATOR_SHA256" ]]; then
-            echo "Trusted base comparator changed after capture" >&2
-            exit 2
-          fi
-          "$PYTHON_BIN" -I "$BASE_COMPARATOR" \
-            --format bencher \
-            --base-dir "$ARTIFACT_ROOT/base" \
-            --candidate-dir "$ARTIFACT_ROOT/candidate" \
-            --expected-pairs 12 \
-            --base-revision "${{ steps.capture_rust_native.outputs.base_sha }}" \
-            --candidate-revision "${{ steps.capture_rust_native.outputs.candidate_sha }}" \
-            --toolchain-json "$ARTIFACT_ROOT/toolchain.json" \
-            --output "$ARTIFACT_ROOT/comparison.json"
-
-      - name: Upload paired benchmark evidence
+        run: python3 "$PROBE_HARNESS/supervisor.py"
+      - name: Preserve failure receipt and enforce upload cap
+        id: finalize
         if: always()
+        shell: bash
+        timeout-minutes: 2
+        env:
+          PROBE_STEP_OUTCOME: ${{ steps.probe.outcome }}
+        run: |
+          set -euo pipefail
+          python3 "$PROBE_HARNESS/supervisor.py" finalize
+      - name: Upload bounded diagnostic evidence
+        if: always() && steps.finalize.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        timeout-minutes: 7
         with:
-          name: manual-performance-rust-native-paired
-          path: ${{ steps.capture_rust_native.outputs.artifact_root }}
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Remove immutable base worktree
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-rust-native"
-          if [[ -d "$BASE_WORKTREE" ]]; then
-            git worktree remove --force "$BASE_WORKTREE" || true
-          fi
+          name: diagnostic-checker-2595-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/checker-2595-${{ github.run_id }}-${{ github.run_attempt }}/output
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
