@@ -1,98 +1,118 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-04 UTC. Работа возобновлена. [Мастер-план](MVP_MASTER_PLAN.md)
-задаёт порядок приёмки, [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
+Срез на 2026-10-04 UTC. [Мастер-план](MVP_MASTER_PLAN.md) задаёт порядок
+приёмки, [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
 Текущий этап исправляет и полирует существующую реализацию; новые предметные
 функции не добавляются. Полная приёмка MVP и выпуск `v1.0.0` ещё не подтверждены.
 
 ## Проверяемый контекст
 
 - Активная ветка — `egorribun`, основной PR — [#1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Кодовый checkpoint этого обновления — `9bebdf7f080aab26deafd7d281b993989897576c`;
-  его дерево — `24c969e8f32bcf7ca7c86d74b5daefbb074d629a`. Происхождение локальных проверок и последующие
-  изменения packaging разделены ниже.
+  Проверенный кодовый checkpoint — `66ed540306b0929b8eb0ac02237e3bc70205382b`,
+  дерево — `ca742d2bc9532a86a24cafeec62ef16f93bb5e2b`.
+  Это обновление STATUS является последующей документационной дельтой.
 - В `main` интегрированы отдельные исправления trusted workflow и изоляции
   benchmark-процессов; проверенный base — `6fa133b57f62c554162876d4e6d8349f8060fce9`.
   Пороги и число performance-измерений сохранены.
-- Предыдущий опубликованный checkpoint `81db76d` имеет [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37141792594),
-  [owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37141792405)
-  и [performance](https://github.com/egorribun/university_ecosystem/actions/runs/37141792464).
-  Owned live прошёл 18 сценариев с двумя предусмотренными role skips;
-  Go/WS-Hub/Rust benchmark gates прошли. [Security Policy Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/37141790995)
-  также прошёл. Полный mutation gate не зелёный; старые результаты не выдаются за
-  итог нового exact-head CI.
+- Предыдущий опубликованный checkpoint `2595c0ebc674edb69557f3c6edd0a184973d62e2`
+  имеет [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37164443034),
+  [owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37164442808)
+  и [performance](https://github.com/egorribun/university_ecosystem/actions/runs/37164442867).
+  Все 367 check-runs завершены: 216 success, 20 skipped, 131 failure.
+  Обычные unit/coverage, browser/live, types/build, security scan, Pact,
+  Schemathesis и performance prerequisites прошли. Mutation gate не зелёный;
+  эти результаты не заменяют CI нового опубликованного SHA.
 - Исходники, локальные инструменты и evidence разделены. Секреты, пользовательские
-  данные, volumes, backups, история Git и Alembic сохраняются. Source freeze и
-  hashes фиксируются перед aggregate-проверками; тяжёлые локальные mutation jobs
-  запускаются последовательно.
+  данные, volumes, backups, история Git и Alembic сохраняются. После замены
+  облачной среды часть незапушенных правок восстановлена по совпадающим hashes,
+  часть заново реализована и проверена. Потерянные локальные receipts не
+  используются как доказательство нового candidate. Проверенные code checkpoints
+  теперь сохраняются в GitHub до длительных aggregate-прогонов.
 
 ## Подтверждённый прогресс
 
-- Полный локальный frontend unit/coverage-прогон на **Node 24.15.0** прошёл:
-  **706 файлов, 8 489 тестов**, **100%** statements (19 135/19 135), branches
-  (13 674/13 674), functions (4 562/4 562) и lines (17 116/17 116).
-  Состав и hashes всех 4 623 authored inputs не изменились во время прогона.
-  После него исправлен packaging диагностического адаптера: публичный digest
-  перенесён в явный `.sha256` record, два уже существовавших пакета объявлены
-  прямыми dev dependencies. Runtime source/tests и resolved package records
-  сохранились; tooling, input inventory и secret checks проверены отдельно.
-  Это локальное evidence, не полный hosted verdict окончательного commit.
-- Исправлены cooldown запросов signing key и владение их отложенными результатами,
+- Свежий полный frontend unit/coverage-прогон на **Node 24.15.0** прошёл:
+  **714 файлов, 8 594 теста**, без skips/failures, **100%** statements
+  (19 141/19 141), branches (13 682/13 682), functions (4 561/4 561)
+  и lines (17 123/17 123). Все **4 642 authored inputs** сохранили hashes во время
+  прогона. Это локальное evidence кодового checkpoint выше, не hosted verdict.
+- На том же замороженном candidate прошли **674 backend/quality теста в 41 файле**,
+  без skips/failures и изменений authored inputs. Это объединённый affected-прогон,
+  а не полный backend suite или PostgreSQL/RLS/SKIP LOCKED integration.
+- Исправлены границы выбранной ячейки расписания и владение Enter встроенными
+  кнопками/ссылками. Modal focus и закрытие подсказок Events используют существующий
+  focus trap. Button использует реально генерируемые theme utilities и блокирует
+  default navigation/chooser у disabled polymorphic controls; цвета Spotify
+  сохранены. DOM/SSR и emitted-CSS проверки не заменяют browser paint и visual acceptance.
+- В списке чатов сохранён UUID последнего сообщения и добавлена одна batch-загрузка
+  avatar данных только возвращаемых участников. Shared DTO contract не менялся;
+  проверены чистые, загруженные, deferred и detached ORM-состояния и постоянное
+  число запросов для одной и восьми бесед. Это не изменение avatar-проекции всех
+  прочих endpoint-путей.
+- Усилены проверки audit wire format через независимый HMAC и реальные DTO,
+  auth/MFA, causal outbox delivery, Redis/circuit lifecycle, upload ownership и
+  frontend session lifecycle. Тесты владеют отложенной работой и восстанавливают
+  Storage/auth state; одноразовые ответы login mocks сбрасываются между cases.
+  Повтор search pagination и раннее завершение worker приводят к ясной ошибке
+  теста с завершением owned tasks. Старые Timeout/Survived статусы не переписывались.
+- Четыре прежних локальных inventory receipts признаны недействительными:
+  command receipt перезаписал manifest, а checker принимал отсутствующий files
+  как пустой список. Теперь некорректный/пустой manifest отклоняется fail-closed.
+  Свежий manifest содержит **4 209 records**, включая все **4 208** применимых
+  Git-authored paths без пропусков/дубликатов; дополнительный `tests/queries.log`
+  классифицирован как utility. В hosted workflow такого совпадения выходных путей
+  не обнаружено. Ruff, frontend types/lint/format, Markdownlint, links,
+  detect-secrets и GitLeaks проходят; baseline изменён только в метаданных строк.
+- Ранее исправлены cooldown signing-key запросов и владение их результатами,
   отмена устаревшего поиска и принадлежность install prompt текущему аккаунту.
-  Регрессии проверяют реальные pending, retry, generation-change и cache-сценарии,
-  а также навигацию, расписание и RU/EN Activity labels. Убраны только проверенные
-  дубли guards/defaults; действующие quality-пороги и исключения сохранены.
-- Восстановлены необходимые inputs Python mutation workspace и изоляция
-  logging-тестов. Локальная генерация на дереве `f5fde98c` сохранила **54 410** идентичностей мутантов;
-  ограниченный настоящий stats-прогон прошёл **200 активных тестов** и отобразил
-  **134 функции**. Два ранее проблемных outbox-сценария завершились за 15,59 и
-  32,58 секунды при прежнем лимите 120 секунд. Это scoped evidence прежнего snapshot, не полный
-  backend mutation pass нового checkpoint.
-- CI на `367e97a` обнаружил orphan-классификацию новой subprocess-регрессии.
-  Checkpoint `6bc0680` делает её реальные logging imports видимыми статическому
-  inventory: выполняемый probe вынесен из строки в обычную приватную функцию.
-  Его тело совпадает по AST, проверки/набор случаев/изоляция сохранены. Focused
-  subprocess test, inventory, Ruff и secret checks проходят; allowlist не менялся.
-  Hosted Source/Test Inventory job `111247692803` на `6bc0680` также прошёл.
-- Обнаружена ошибка доказательности прежнего Stryker preload: замена глобального
-  `String` меняла преобразования объектов и подавляла native TypeError, в том
-  числе в реальном Vitest/jsdom. Затронутые исторические mutation outcomes имеют
-  статус **provisional, diagnostic-only** и не дают release/mutation credit.
-  Новый адаптер меняет только diagnostic fallback точно закреплённого Stryker
-  module; версия, полный source digest, checksum path и форма record проверяются
-  fail-closed. Native application semantics сохранены.
-- Настоящий локальный producer smoke нового адаптера на отдельном snapshot
-  прошёл 112 baseline tests и сохранил все 153 мутанта: 83 Killed, 64 Survived,
-  4 Ignored и 2 RuntimeError с исходными application diagnostics. Exit 1 и
-  отсутствие release marker ожидаемы; это проверка транспорта, не mutation closure.
-  На окончательном packaging проходят 203 adapter/evidence contracts,
-  Knip, staged detect-secrets и Gitleaks. Secret baseline/allowlist не расширялись.
-- Python mutation workspace получает существующий `config/nats.conf.template`;
-  восемь локальных copy/PowerShell contracts прошли. Hosted mutmut execution
-  нового SHA ещё должен подтвердить исправление. Локальные Docker Semgrep и
-  полный multiprocessing secret scan ограничены средой; их exact-head hosted
-  проверки остаются обязательными, не помечаются локально пройденными.
+  Реальные pending, retry, generation-change, cache, navigation и RU/EN Activity
+  контракты сохраняются. Убраны только проверенные дубли guards/defaults;
+  quality-пороги и исключения не расширялись.
+- Прежний Stryker preload заменял глобальный `String` и подавлял native TypeError.
+  Затронутые исторические outcomes остаются **provisional, diagnostic-only**.
+  Новый адаптер меняет только diagnostic fallback закреплённого Stryker module;
+  версия, полный публичный digest и checksum record проверяются fail-closed.
+  На packaging checkpoint `9bebdf7f` прошли 203 adapter/evidence contracts, Knip
+  и secret checks. Тогдашний настоящий producer smoke сохранил все 153 мутанта:
+  83 Killed, 64 Survived, 4 Ignored, 2 RuntimeError. Это проверка транспорта,
+  не mutation closure нового checkpoint.
+
+## Полный mutation inventory на 2595c0eb
+
+- Frontend: все **64** artifacts повторно скачаны и проверены; **42 897** signatures
+  представлены ровно по одному разу, без пропусков/дубликатов/чужих записей.
+  Итог: **36 771 Killed, 4 796 Survived, 11 NoCoverage, 44 Timeout,
+  33 RuntimeError, 0 CompileError, 1 242 Ignored**. Открытых raw outcomes — **4 884**
+  в 265 файлах. Aggregate корректно отклонил первый Survived; проверенный merged
+  artifact не был выпущен. Успешные producer jobs не означают mutation pass.
+- Backend: generation/stats прошли восемь частей и центральную проверку universe.
+  PR-selected execution содержит **4 524 IDs** из **54 410** generated identities.
+  127 завершённых групп дали **3 501 Killed, 969 подтверждённых Survived, 19 Timeout**.
+  Группа 47 не завершила full-map confirmation из-за QR clock-boundary baseline
+  failure; её 25 primary Killed и 10 unconfirmed primary Survived не приравниваются
+  к завершённой группе. Clock-регрессия исправлена в новом candidate, но для него
+  требуется свежий canonical execution.
+- Ни compile-invalid, ни equivalent residuals не получают ручной переклассификации.
+  Частичные локальные mutation-прогоны не заменяют полный exact-head gate.
 
 ## Ближайшие проверяемые результаты
 
-1. Довести exact-head CI нового опубликованного batch до конечного вердикта, особенно
-   Python mutation stats и последующее execution. Исправлять конкретные причины,
-   не переносить чужие или старые verdicts между SHA.
-2. Получить свежий полный mutation inventory с исправленным адаптером и продолжить
-   scoped closure существующих auth/profile, уведомлений и расписания. Сначала supported user-visible состояния и воспроизводимые баги;
-   для dead code — доказательство отсутствия потребителей. Неподтверждённые
+1. Получить конечный exact-head CI нового опубликованного batch. Исправлять
+   конкретные причины, не переносить старые verdicts между SHA.
+2. Продолжить semantic regression coverage по полному текущему mutation inventory.
+   Сначала supported user-visible состояния и воспроизводимые баги; для удаления
+   dead code требуется доказательство отсутствия потребителей. Неподтверждённые
    defensive/equivalent случаи остаются открытыми, без waivers и ручных статусов.
-3. Связать каждый применимый пункт ТЗ и все 63 audit IDs с актуальным evidence
-   или точным открытым ограничением. Product, visual и infrastructure acceptance
-   не считать выполненными по unit coverage или mocked E2E.
-4. Продолжить приёмку RU/EN на 360/390/768/1024/1440 px и предоставить небольшие
-   визуальные комплекты для пользовательского review. Измерить предусмотренные
-   master plan performance и memory критерии на указанной конфигурации.
-5. Получить независимые deployed evidence для непустых PostgreSQL/Alembic
-   upgrade/rollback, S3 paired backup/restore и DB URL reads, RPO/RTO, WS load,
-   Gateway API/kind TLS/WS/gRPC и failure recovery. В текущей облачной среде
-   отсутствует локальный Docker/live-стек. Браузерные инструменты доступны;
-   hosted PR smoke закрывает только свой явно перечисленный набор.
+3. Связать применимые пункты ТЗ и все 63 audit IDs с актуальным evidence или точным
+   открытым ограничением. Исторические 60/2/1 dispositions не являются новым аудитом.
+4. Продолжить приёмку RU/EN на 360/390/768/1024/1440 px и подготовить визуальные
+   комплекты для пользовательского review. Проверить предусмотренные master plan
+   performance и memory критерии на указанной конфигурации.
+5. Получить deployed evidence для непустых PostgreSQL/Alembic upgrade/rollback,
+   S3 paired backup/restore и DB URL reads, RPO/RTO, WS load, Gateway API/kind
+   TLS/WS/gRPC и failure recovery. В текущей облачной среде отсутствует локальный
+   Docker/live-стек. Браузерные инструменты доступны; локальный paint новых Button
+   состояний не проверен. Hosted PR smoke закрывает только свой перечисленный набор.
 
 ## Открытые release gates
 
@@ -107,5 +127,5 @@ notes. До этих доказательств MVP не считается се
 Административный bypass, force-push, изменение защиты ветки, удаление
 пользовательских данных и переписывание истории остаются запрещены. Внешнее
 production, реальные SMTP/push-провайдеры, физические устройства, CDC и field CWV
-не входят в MVP. Исторические checkpoint-результаты сохраняются в Git/evidence;
-машинные пути прежних сессий не являются предпосылкой продолжения.
+не входят в MVP. Исторические checkpoint-результаты сохраняются в Git;
+недоступные локальные evidence нельзя считать текущим подтверждением.
