@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.helpers.async_events import wait_for_task_event
+
 
 def _attempt(attempted_at: datetime) -> SimpleNamespace:
     return SimpleNamespace(attempted_at=attempted_at)
@@ -387,19 +389,20 @@ async def test_successful_clear_serializes_after_inflight_failed_attempt(
     clear_service._is_postgresql = True
     clear_service.repo = repository
 
-    failed_attempt = asyncio.create_task(
-        failed_service.register_failed_attempt("race@example.com", None)
-    )
-    await repository.insert_started.wait()
+    async with asyncio.TaskGroup() as tasks:
+        failed_attempt = tasks.create_task(
+            failed_service.register_failed_attempt("race@example.com", None)
+        )
+        try:
+            await wait_for_task_event(failed_attempt, repository.insert_started)
+            successful_clear = tasks.create_task(
+                clear_service.clear_failed_attempts("race@example.com")
+            )
+            await asyncio.sleep(0)
+            assert repository.clear_started.is_set() is False
+            assert successful_clear.done() is False
+        finally:
+            repository.allow_insert.set()
 
-    successful_clear = asyncio.create_task(
-        clear_service.clear_failed_attempts("race@example.com")
-    )
-    await asyncio.sleep(0)
-    assert repository.clear_started.is_set() is False
-    assert successful_clear.done() is False
-
-    repository.allow_insert.set()
-    await failed_attempt
-    assert await successful_clear == 1
+    assert successful_clear.result() == 1
     assert repository.rows == []

@@ -7,11 +7,13 @@ import gc
 import threading
 import weakref
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from weakref import WeakKeyDictionary
 
 import pytest
 
 from app.core.ratelimit.strategies import redis as redis_strategy
+from tests.helpers.async_events import wait_for_task_event
 
 
 @pytest.fixture
@@ -35,12 +37,15 @@ async def _load_with_same_loop_contention() -> weakref.ReferenceType[
         return "synthetic-script-sha"
 
     client = SimpleNamespace(script_load=script_load)
-    first = asyncio.create_task(redis_strategy._load_script_sha(client))
-    await started.wait()
-    second = asyncio.create_task(redis_strategy._load_script_sha(client))
-    await asyncio.sleep(0)
-    release.set()
-    assert await asyncio.gather(first, second) == [
+    async with asyncio.TaskGroup() as tasks:
+        first = tasks.create_task(redis_strategy._load_script_sha(client))
+        try:
+            await wait_for_task_event(first, started)
+            second = tasks.create_task(redis_strategy._load_script_sha(client))
+            await asyncio.sleep(0)
+        finally:
+            release.set()
+    assert [first.result(), second.result()] == [
         "synthetic-script-sha",
         "synthetic-script-sha",
     ]
@@ -71,28 +76,42 @@ def test_script_sha_lock_does_not_keep_closed_loop_alive(
 
 @pytest.mark.asyncio
 async def test_cancelled_script_load_releases_loop_lock(
-    isolated_sha_state: None,
+    isolated_sha_state: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     started = asyncio.Event()
     never_release = asyncio.Event()
+    load_count = 0
 
-    async def blocked_script_load(_script: str) -> str:
-        started.set()
-        await never_release.wait()
-        return "unreachable-sha"
-
-    blocked_client = SimpleNamespace(script_load=blocked_script_load)
-    loading = asyncio.create_task(redis_strategy._load_script_sha(blocked_client))
-    await started.wait()
-    loading.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await loading
-
-    async def recovered_script_load(_script: str) -> str:
+    async def script_load(_script: str) -> str:
+        nonlocal load_count
+        load_count += 1
+        if load_count == 1:
+            started.set()
+            await never_release.wait()
         return "recovered-sha"
 
-    recovered_client = SimpleNamespace(script_load=recovered_script_load)
-    assert await redis_strategy._load_script_sha(recovered_client) == "recovered-sha"
+    client = SimpleNamespace(
+        script_load=script_load, evalsha=AsyncMock(return_value=[1, 2, 0])
+    )
+    monkeypatch.setattr(
+        redis_strategy, "get_shared_client", AsyncMock(return_value=client)
+    )
+    strategy = redis_strategy.RedisSlidingWindowStrategy("redis://test")
+    async with asyncio.TaskGroup() as tasks:
+        loading = tasks.create_task(strategy.check("cancelled", 3, 60))
+        try:
+            await wait_for_task_event(loading, started)
+            loading.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await loading
+        finally:
+            never_release.set()
+
+    result = await strategy.check("recovered", 3, 60)
+    assert result.allowed is True
+    assert result.remaining == 2
+    assert result.retry_after == 0
+    assert load_count == 2
 
 
 def test_script_sha_cache_handles_concurrent_event_loops(

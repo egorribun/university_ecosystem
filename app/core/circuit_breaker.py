@@ -378,16 +378,15 @@ class CircuitBreaker:
             # Release only a HALF_OPEN slot owned by this context's task. Other
             # CLOSED calls may still be in flight after the breaker transitions.
             current_task = asyncio.current_task()
-            probe_owner = False
-            if (
+            probe_owner = (
                 current_task is not None
                 and current_task in self._internal_state.active_probe_owners
-            ):
+            )
+            if current_task is not None and probe_owner:
                 self._internal_state.active_probe_owners.remove(current_task)
                 self._internal_state.active_probe_count = len(
                     self._internal_state.active_probe_owners
                 )
-                probe_owner = True
             if exc_val is None:
                 self._record_success(probe_owner=probe_owner)
             elif isinstance(exc_val, Exception):

@@ -13,6 +13,7 @@ from app.core.circuit_breaker import (
     CircuitBreakerConfig,
     CircuitBreakerOpenError,
 )
+from tests.helpers.async_events import wait_for_task_event
 
 
 def test_contended_state_lock_wait_does_not_poll_with_timers(
@@ -213,17 +214,17 @@ def test_force_open_preserves_in_flight_probe_reservation() -> None:
                 probe_entered.set()
                 await release_probe.wait()
 
-        probe_task = asyncio.create_task(run_probe())
-        try:
-            await probe_entered.wait()
-            await breaker.force_open()
+        async with asyncio.TaskGroup() as tasks:
+            probe_task = tasks.create_task(run_probe())
+            try:
+                await wait_for_task_event(probe_task, probe_entered)
+                await breaker.force_open()
 
-            with pytest.raises(CircuitBreakerOpenError):
-                async with breaker:
-                    pass
-        finally:
-            release_probe.set()
-            await probe_task
+                with pytest.raises(CircuitBreakerOpenError):
+                    async with breaker:
+                        pass
+            finally:
+                release_probe.set()
 
     asyncio.run(verify_probe_ownership())
 
@@ -247,12 +248,16 @@ def test_cancelled_half_open_probe_releases_its_reservation() -> None:
                 entered.set()
                 await never_release.wait()
 
-        task = asyncio.create_task(run_probe())
-        await entered.wait()
-        assert breaker._internal_state.active_probe_count == 1
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        async with asyncio.TaskGroup() as tasks:
+            task = tasks.create_task(run_probe())
+            try:
+                await wait_for_task_event(task, entered)
+                assert breaker._internal_state.active_probe_count == 1
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            finally:
+                never_release.set()
 
         assert breaker._internal_state.active_probe_count == 0
         async with breaker:
@@ -280,22 +285,33 @@ def test_repeated_cancel_during_probe_exit_does_not_leak_its_reservation() -> No
                 entered.set()
                 await hold_body.wait()
 
-        probe_task = asyncio.create_task(run_probe())
-        await entered.wait()
-        await breaker._acquire_state_lock()
-        probe_task.cancel()
-        await asyncio.sleep(0)
-        assert len(breaker._state_waiters) == 1
+        async with asyncio.TaskGroup() as tasks:
+            probe_task = tasks.create_task(run_probe())
+            lock_held = False
+            try:
+                await wait_for_task_event(probe_task, entered)
+                await breaker._acquire_state_lock()
+                lock_held = True
+                probe_task.cancel()
+                await asyncio.sleep(0)
+                assert len(breaker._state_waiters) == 1
 
-        probe_task.cancel()
-        await asyncio.sleep(0)
-        # Release the held lock before awaiting the task. A correct __aexit__
-        # retries its canceled waiter so it can clean up before propagating.
-        breaker._release_state_lock()
-        with pytest.raises(asyncio.CancelledError):
-            await probe_task
+                probe_task.cancel()
+                await asyncio.sleep(0)
+                # Release before task drainage: __aexit__ must reacquire the
+                # state lock to relinquish its permit before propagating cancel.
+                breaker._release_state_lock()
+                lock_held = False
+                with pytest.raises(asyncio.CancelledError):
+                    await probe_task
+            finally:
+                hold_body.set()
+                if lock_held:
+                    breaker._release_state_lock()
 
         assert breaker._internal_state.active_probe_count == 0
         assert not breaker._internal_state.active_probe_owners
+        async with breaker:
+            pass
 
     asyncio.run(verify_cleanup())
