@@ -48,7 +48,7 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-async function queueInteraction(url: string, payload: unknown, method = "POST") {
+async function queueInteraction(url: string, payload: unknown, method: string) {
   const db = await openDatabase()
   try {
     const tx = db.transaction(NEWS_INTERACTION_STORE, "readwrite")
