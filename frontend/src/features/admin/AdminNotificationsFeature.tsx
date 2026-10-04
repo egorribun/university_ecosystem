@@ -48,10 +48,7 @@ const formatJobKind = (kind: string, t: ReturnType<typeof useTranslation>["t"]) 
   }
 }
 
-const normalizeTopicKey = (value: unknown): string => {
-  if (typeof value !== "string") return ""
-  return value.trim().toLowerCase()
-}
+const normalizeTopicKey = (value: string): string => value.trim().toLowerCase()
 
 /**
  * AdminNotificationsFeature — Wave 164 SW2 orchestrator.
@@ -86,12 +83,12 @@ export function AdminNotificationsFeature() {
   const [topicsBusy, setTopicsBusy] = useState(false)
 
   const buildTopicState = useCallback(
-    (allowed: readonly string[], selectedTopics?: readonly string[] | null) => {
+    (allowed: readonly string[], selectedTopics: readonly string[]) => {
       const normalizedAllowed = Array.from(
         new Set(allowed.map((topic) => normalizeTopicKey(topic)).filter(Boolean))
       )
       const selectedSet = new Set(
-        (selectedTopics ?? []).map((topic) => normalizeTopicKey(topic)).filter(Boolean)
+        selectedTopics.map((topic) => normalizeTopicKey(topic)).filter(Boolean)
       )
       const record: Record<string, boolean> = {}
       for (const topic of normalizedAllowed) {
@@ -103,6 +100,9 @@ export function AdminNotificationsFeature() {
   )
 
   const listQuery = useQuery(adminDeadLetterQueueQueryOptions())
+  const jobs = listQuery.data?.items ?? []
+  const currentJobIds = new Set(jobs.map((job) => job.id))
+  const selectedIds = Array.from(selected).filter((id) => currentJobIds.has(id))
 
   const resetSelection = () => setSelected(new Set())
 
@@ -154,7 +154,7 @@ export function AdminNotificationsFeature() {
   const handleSelectAll = () => {
     const items = listQuery.data!.items
     setSelected((previous) => {
-      if (previous.size === items.length) {
+      if (items.every((item) => previous.has(item.id))) {
         return new Set()
       }
       return new Set(items.map((item) => item.id))
@@ -223,22 +223,19 @@ export function AdminNotificationsFeature() {
   }, [buildTopicState, t, topicsData, topicsState])
 
   const handleRetrySelected = () => {
-    const ids = Array.from(selected)
-    retryMutation.mutate(ids)
+    retryMutation.mutate(selectedIds)
   }
 
   const handlePurgeSelected = () => {
-    const ids = Array.from(selected)
-    purgeMutation.mutate(ids)
+    purgeMutation.mutate(selectedIds)
   }
 
   const isLoading = listQuery.isLoading
   const hasError = listQuery.isError
-  const jobs = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
-  const allSelected = jobs.length > 0 && selected.size === jobs.length
 
-  const disableActions = selected.size === 0 || retryMutation.isPending || purgeMutation.isPending
+  const disableActions =
+    selectedIds.length === 0 || retryMutation.isPending || purgeMutation.isPending
 
   const renderContent = () => {
     if (isLoading) {
@@ -264,6 +261,8 @@ export function AdminNotificationsFeature() {
         </Alert>
       )
     }
+
+    const allSelected = jobs.every((job) => selected.has(job.id))
 
     return (
       <div className="mt-4 overflow-hidden rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">

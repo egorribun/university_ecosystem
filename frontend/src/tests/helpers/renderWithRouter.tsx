@@ -8,6 +8,7 @@ import {
   createRouter,
   Outlet,
   RouterProvider,
+  type AnyRouter,
 } from "@tanstack/react-router"
 import { LazyMotion, domAnimation } from "framer-motion"
 
@@ -95,6 +96,7 @@ export interface RenderWithRouterOptions {
 
 export interface RenderWithRouterResult extends RenderResult {
   queryClient: QueryClient
+  router: AnyRouter
 }
 
 export function createTestQueryClient(): QueryClient {
@@ -205,5 +207,5 @@ export async function renderWithRouter({
     </QueryClientProvider>
   )
 
-  return { ...result, queryClient: client }
+  return { ...result, queryClient: client, router }
 }

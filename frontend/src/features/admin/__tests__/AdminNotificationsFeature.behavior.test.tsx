@@ -337,6 +337,97 @@ describe("Admin notification topic changes", () => {
 })
 
 describe("Admin dead-letter queue actions", () => {
+  it("selects the refreshed rows when equally many previously selected jobs disappeared", async () => {
+    const { user, queryClient } = renderFeature()
+    await settleQueue(queryClient)
+    await user.click(screen.getByRole("checkbox", { name: "Select all jobs" }))
+    const refreshed: Queue = {
+      items: [
+        {
+          ...queue.items[0]!,
+          id: "33333333-3333-4333-8333-333333333333",
+          record_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          enqueued_at: "2026-10-03T13:00:00Z",
+        },
+        {
+          ...queue.items[1]!,
+          id: "44444444-4444-4444-8444-444444444444",
+          record_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          enqueued_at: "2026-10-03T12:00:00Z",
+        },
+      ],
+      total: 2,
+    }
+    vi.mocked(fetchDeadLetterQueue).mockResolvedValueOnce(refreshed)
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: adminDeadLetterQueueQueryKey })
+    })
+    await settleQueue(queryClient)
+    expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(2)
+
+    const all = screen.getByRole("checkbox", { name: "Select all jobs" })
+    for (const job of refreshed.items) {
+      expect(screen.getByRole("checkbox", { name: `Select job ${job.id}` })).not.toBeChecked()
+    }
+    expect(all).not.toBeChecked()
+    expect(screen.getByRole("button", { name: "Retry selected" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Delete selected" })).toBeDisabled()
+
+    await user.click(all)
+    expect(all).toBeChecked()
+    for (const job of refreshed.items) {
+      expect(screen.getByRole("checkbox", { name: `Select job ${job.id}` })).toBeChecked()
+    }
+    expect(screen.getByRole("button", { name: "Retry selected" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Delete selected" })).toBeEnabled()
+  })
+
+  it.each([
+    { label: "Retry selected", action: retryDeadLetterJobs },
+    { label: "Delete selected", action: purgeDeadLetterJobs },
+  ])(
+    "sends only selected jobs still present after a refetch for $label",
+    async ({ label, action }) => {
+      const pending = deferred<Awaited<ReturnType<typeof retryDeadLetterJobs>>>()
+      vi.mocked(action).mockReturnValueOnce(pending.promise)
+      const { user, queryClient } = renderFeature()
+      await settleQueue(queryClient)
+      await user.click(screen.getByRole("checkbox", { name: "Select all jobs" }))
+      const newlyArrived = {
+        ...queue.items[0]!,
+        id: "33333333-3333-4333-8333-333333333333",
+        record_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        enqueued_at: "2026-10-03T12:00:00Z",
+      }
+      vi.mocked(fetchDeadLetterQueue).mockResolvedValueOnce({
+        items: [newlyArrived, queue.items[0]!],
+        total: 2,
+      })
+      await act(async () => {
+        await queryClient.refetchQueries({ queryKey: adminDeadLetterQueueQueryKey })
+      })
+      await settleQueue(queryClient)
+      expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(2)
+      expect(
+        screen.getByRole("checkbox", { name: `Select job ${queue.items[0]!.id}` })
+      ).toBeChecked()
+      expect(
+        screen.getByRole("checkbox", { name: `Select job ${newlyArrived.id}` })
+      ).not.toBeChecked()
+
+      await user.click(screen.getByRole("button", { name: label }))
+      try {
+        expect(action).toHaveBeenCalledExactlyOnceWith([queue.items[0]!.id])
+      } finally {
+        vi.mocked(fetchDeadLetterQueue).mockResolvedValue({ items: [newlyArrived], total: 1 })
+        await act(async () => pending.resolve(queueActionResult([queue.items[0]!.id])))
+        await settleQueue(queryClient)
+      }
+      expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: label })).toBeDisabled()
+    }
+  )
+
   it.each([
     { label: "Retry selected", action: retryDeadLetterJobs },
     { label: "Delete selected", action: purgeDeadLetterJobs },
@@ -405,6 +496,34 @@ describe("Admin dead-letter queue actions", () => {
     expect(purge).toBeDisabled()
   })
 
+  it("highlights exactly the selected job and clears the highlight on deselection", async () => {
+    const { user, queryClient } = renderFeature()
+    await settleQueue(queryClient)
+    const table = within(screen.getByRole("table", { name: "Dead-letter queue" }))
+    const firstRow = table.getByRole("row", {
+      name: (name) => name.includes(queue.items[0]!.record_id),
+    })
+    const secondRow = table.getByRole("row", {
+      name: (name) => name.includes(queue.items[1]!.record_id),
+    })
+    const first = within(firstRow).getByRole("checkbox", {
+      name: `Select job ${queue.items[0]!.id}`,
+    })
+    const selectedBackground = "bg-brand/(--opacity-subtle)"
+    expect(firstRow).not.toHaveClass(selectedBackground)
+    expect(secondRow).not.toHaveClass(selectedBackground)
+
+    await user.click(first)
+    expect(first).toBeChecked()
+    expect(firstRow).toHaveClass(selectedBackground)
+    expect(secondRow).not.toHaveClass(selectedBackground)
+
+    await user.click(first)
+    expect(first).not.toBeChecked()
+    expect(firstRow).not.toHaveClass(selectedBackground)
+    expect(secondRow).not.toHaveClass(selectedBackground)
+  })
+
   it.each([
     { label: "Retry selected", action: retryDeadLetterJobs },
     { label: "Delete selected", action: purgeDeadLetterJobs },
@@ -427,7 +546,8 @@ describe("Admin dead-letter queue actions", () => {
       }
       expect(action).toHaveBeenCalledTimes(1)
 
-      vi.mocked(fetchDeadLetterQueue).mockResolvedValue({
+      const refreshed = deferred<Queue>()
+      const refreshedQueue: Queue = {
         items: [
           {
             ...queue.items[0]!,
@@ -438,10 +558,26 @@ describe("Admin dead-letter queue actions", () => {
           },
         ],
         total: 1,
-      })
+      }
+      vi.mocked(fetchDeadLetterQueue).mockReturnValueOnce(refreshed.promise)
       await act(async () => pending.resolve(queueActionResult(ids)))
-      await settleQueue(queryClient)
-      expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(2)
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+      await act(async () => {
+        await new Promise<void>((resolve) => notifyManager.schedule(resolve))
+      })
+      try {
+        expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(2)
+        expect(queryClient.isFetching({ queryKey: adminDeadLetterQueueQueryKey })).toBe(1)
+        for (const job of queue.items) {
+          expect(screen.getByRole("checkbox", { name: `Select job ${job.id}` })).not.toBeChecked()
+        }
+        expect(screen.getByRole("checkbox", { name: "Select all jobs" })).not.toBeChecked()
+        expect(screen.getByRole("button", { name: "Retry selected" })).toBeDisabled()
+        expect(screen.getByRole("button", { name: "Delete selected" })).toBeDisabled()
+      } finally {
+        await act(async () => refreshed.resolve(refreshedQueue))
+        await settleQueue(queryClient)
+      }
       expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
       expect(
         screen.getByRole("checkbox", { name: "Select job 33333333-3333-4333-8333-333333333333" })

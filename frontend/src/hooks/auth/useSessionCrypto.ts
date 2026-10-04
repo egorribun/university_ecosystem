@@ -217,9 +217,10 @@ const SIGNING_KEY_BACKOFF_BASE_MS = 5_000
  *    immediately on subsequent ``ensure()`` calls.
  *  - On the 3rd failure, the hook enters exponential backoff
  *    (``SIGNING_KEY_BACKOFF_BASE_MS = 5_000`` doubling, capped at
- *    60 s) and dispatches a ``"auth:session-crypto-failed"`` window
- *    event so ``SessionCryptoErrorBoundary`` can prompt
- *    re-authentication. ``signingKeyBackoffTimerRef`` is cleared on
+ *    60 s). Calls return null without fetching while the timer is pending.
+ *    A ``"auth:session-crypto-failed"`` window event reports the delay.
+ *    Successful or explicit key updates reset backoff.
+ *    ``signingKeyBackoffTimerRef`` is cleared on
  *    unmount so React 18 StrictMode double-mount doesn't leak a
  *    stale timer.
  *
@@ -333,7 +334,10 @@ export const useSessionCrypto = () => {
   )
 
   const updateSessionSigningKey = useCallback(
-    async (value: string | null) => {
+    async (
+      value: string | null,
+      onInstall?: (revision: number, generation: string | null) => void
+    ) => {
       if (value !== sessionSigningKeyRef.current) {
         if (
           sessionCacheHashRef.current &&
@@ -348,6 +352,13 @@ export const useSessionCrypto = () => {
       sessionSigningKeyPromiseRef.current = null
       sessionSigningKeyRef.current = value
       signingKeyRetryCountRef.current = 0 // reset circuit breaker on explicit update
+      signingKeyBackoffMsRef.current = SIGNING_KEY_BACKOFF_BASE_MS
+      if (signingKeyBackoffTimerRef.current !== null) {
+        clearTimeout(signingKeyBackoffTimerRef.current)
+        signingKeyBackoffTimerRef.current = null
+      }
+      // Hand off this installation before cache delivery or hashing can yield.
+      onInstall?.(sessionRevisionRef.current, getBrowserSessionGeneration())
       setSessionSigningKeyState(value)
       await sendSessionCacheUpdate(value, { purge: true })
     },
@@ -362,6 +373,9 @@ export const useSessionCrypto = () => {
     if (sessionSigningKeyPromiseRef.current) {
       return sessionSigningKeyPromiseRef.current
     }
+    if (signingKeyBackoffTimerRef.current !== null) {
+      return null
+    }
     const revision = sessionRevisionRef.current
     const generation = getBrowserSessionGeneration()
     const clearInFlightPromise = () => {
@@ -371,6 +385,8 @@ export const useSessionCrypto = () => {
         sessionSigningKeyPromiseRef.current = null
     }
     const promise = (async (): Promise<string | null> => {
+      let failureRevision = revision
+      let failureGeneration = generation
       try {
         const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
           skipRateLimitQueue: true,
@@ -380,12 +396,18 @@ export const useSessionCrypto = () => {
         // Success — reset circuit breaker and store key
         signingKeyRetryCountRef.current = 0
         const key = response.data.signing_key
-        await updateSessionSigningKey(key)
+        await updateSessionSigningKey(key, (installedRevision, installedGeneration) => {
+          failureRevision = installedRevision
+          failureGeneration = installedGeneration
+        })
         return sessionRevisionRef.current === revision + 1 ? key : null
       } catch (err) {
-        if (revision !== sessionRevisionRef.current && sessionSigningKeyRef.current === null)
+        if (
+          failureRevision !== sessionRevisionRef.current ||
+          failureGeneration !== getBrowserSessionGeneration()
+        )
           return null
-        // Increment failure counter; log once max retries reached then reset
+        // Increment failure counter; log when entering the next backoff window.
         signingKeyRetryCountRef.current += 1
         if (signingKeyRetryCountRef.current >= MAX_SIGNING_KEY_RETRIES) {
           if (import.meta.env.DEV) {
@@ -398,18 +420,14 @@ export const useSessionCrypto = () => {
           // degradation. Backoff: 5 s → 10 s → 20 s → … capped at 60 s.
           const backoffDelay = signingKeyBackoffMsRef.current
           signingKeyBackoffMsRef.current = Math.min(signingKeyBackoffMsRef.current * 2, 60_000)
-          // DEBT-FE-01: store timer ID so useEffect cleanup can cancel it on unmount.
-          if (signingKeyBackoffTimerRef.current !== null) {
-            clearTimeout(signingKeyBackoffTimerRef.current)
-          }
+          // Admission and request ownership guarantee no live timer here.
+          // Store the timer so explicit updates and unmount can cancel it.
           signingKeyBackoffTimerRef.current = setTimeout(() => {
             signingKeyRetryCountRef.current = 0
             signingKeyBackoffTimerRef.current = null
           }, backoffDelay)
 
-          // P-05 (audit 2026-03-08): Signal the UI layer so it can prompt the
-          // user to re-authenticate rather than silently swallowing the failure.
-          // The event is caught by the SessionCryptoErrorBoundary component.
+          // Publish the cooldown for consumers of the authentication failure event.
           window.dispatchEvent(
             new CustomEvent("auth:session-crypto-failed", {
               detail: { reason: "max_retries_exceeded", backoffMs: backoffDelay },
@@ -419,7 +437,10 @@ export const useSessionCrypto = () => {
         return null
       }
     })()
-    sessionSigningKeyPromiseRef.current = promise
+    // A synchronous failure event may already have started a replacement request.
+    if (revision === sessionRevisionRef.current && generation === getBrowserSessionGeneration()) {
+      sessionSigningKeyPromiseRef.current = promise
+    }
     // Register both settlement handlers before returning the promise. This
     // preserves the old finally semantics without a synthetic uncovered branch.
     void promise.then(clearInFlightPromise, clearInFlightPromise)

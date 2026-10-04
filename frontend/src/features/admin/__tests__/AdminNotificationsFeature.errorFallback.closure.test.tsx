@@ -237,28 +237,16 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       "notifications:topics.raw-topic"
     )
     translationOverrides.topicLabel = true
-    vi.mocked(fetchAdminUserTopics)
-      .mockResolvedValueOnce({
-        user_id: "44444444-4444-4444-4444-444444444444",
-        email: "experimental@example.com",
-        allowed_topics: ["experimental"],
-        topics: [],
-      })
-      .mockResolvedValueOnce({
-        user_id: "55555555-5555-5555-5555-555555555555",
-        email: "non-string@example.com",
-        allowed_topics: [42 as unknown as string, "raw-topic"],
-        topics: null as unknown as string[],
-      })
     server.use(
-      http.get("*/push/admin/topics/:userId", () =>
-        HttpResponse.json({
-          user_id: "44444444-4444-4444-4444-444444444444",
-          email: "experimental@example.com",
-          allowed_topics: ["experimental"],
+      http.get("*/push/admin/topics/:userId", ({ params }) => {
+        const isUnknownTopic = params.userId === "55555555-5555-5555-5555-555555555555"
+        return HttpResponse.json({
+          user_id: params.userId,
+          email: isUnknownTopic ? "unknown-topic@example.com" : "experimental@example.com",
+          allowed_topics: [isUnknownTopic ? "raw-topic" : "experimental"],
           topics: [],
         })
-      )
+      })
     )
 
     const queryClient = new QueryClient({
@@ -293,7 +281,7 @@ describe("AdminNotificationsFeature defensive error handling", () => {
     await settleTopicRequest(2)
     expect(
       screen.getByText(
-        "Topics loaded for non-string@example.com (ID 55555555-5555-5555-5555-555555555555)."
+        "Topics loaded for unknown-topic@example.com (ID 55555555-5555-5555-5555-555555555555)."
       )
     ).toBeInTheDocument()
     expect(screen.getByText("raw-topic")).toBeInTheDocument()

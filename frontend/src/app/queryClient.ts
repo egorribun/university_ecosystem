@@ -113,7 +113,7 @@ async function getIdbQuotaBytes(): Promise<number> {
   return _resolvedQuota
 }
 
-export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
+export function createIDBPersister(idbValidKey: IDBValidKey) {
   return {
     persistClient: async (client: PersistedClient) => {
       try {

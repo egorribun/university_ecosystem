@@ -1,12 +1,41 @@
-import { act, fireEvent, screen, within } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import MobileBottomNav from "@/components/layout/MobileBottomNav"
 import i18n from "@/i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { expectNoRouterNavigation } from "@/tests/helpers/expectNoRouterNavigation"
 
 const mainNavLabel = () => i18n.t("navigation:aria.mainNavigation")
 
 describe("MobileBottomNav", () => {
+  let originalViewport: PropertyDescriptor | undefined
+  let originalScrollTo: PropertyDescriptor | undefined
+  let originalScrollMarker: string | null
+  const inputFixtures = new Set<HTMLInputElement>()
+
+  beforeEach(() => {
+    originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo")
+    originalScrollMarker = window.sessionStorage.getItem("__scrollTopNext")
+  })
+
+  afterEach(() => {
+    try {
+      cleanup()
+    } finally {
+      for (const input of inputFixtures) input.remove()
+      inputFixtures.clear()
+      if (originalViewport) Object.defineProperty(window, "visualViewport", originalViewport)
+      else Reflect.deleteProperty(window, "visualViewport")
+      if (originalScrollTo)
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo)
+      else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo")
+      if (originalScrollMarker === null) window.sessionStorage.removeItem("__scrollTopNext")
+      else window.sessionStorage.setItem("__scrollTopNext", originalScrollMarker)
+      vi.restoreAllMocks()
+    }
+  })
+
   it("does not render on auth pages", async () => {
     for (const path of ["/login", "/register", "/forgot-password", "/reset-password"]) {
       const view = await renderWithRouter({
@@ -121,13 +150,15 @@ describe("MobileBottomNav", () => {
       value: scrollTo,
     })
 
-    await renderWithRouter({
+    const { router } = await renderWithRouter({
       ui: MobileBottomNav,
       path: "/dashboard",
       initialPath: "/dashboard",
     })
 
-    fireEvent.click(screen.getByRole("link", { name: /home/i }))
+    await expectNoRouterNavigation(router, () => {
+      fireEvent.click(screen.getByRole("link", { name: /home/i }))
+    })
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
   })
 
@@ -145,7 +176,10 @@ describe("MobileBottomNav", () => {
       extraRoutes: [{ path: "/news", Component: () => <div>News destination</div> }],
     })
 
-    fireEvent.click(screen.getByRole("link", { name: /news/i }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("link", { name: /news/i }))
+    })
+    expect(await screen.findByText("News destination")).toBeInTheDocument()
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
@@ -156,13 +190,15 @@ describe("MobileBottomNav", () => {
       value: scrollTo,
     })
 
-    await renderWithRouter({
+    const { router } = await renderWithRouter({
       ui: MobileBottomNav,
       path: "/dashboard",
       initialPath: "/dashboard/",
     })
 
-    fireEvent.click(screen.getByRole("link", { name: /home/i }))
+    await expectNoRouterNavigation(router, () => {
+      fireEvent.click(screen.getByRole("link", { name: /home/i }))
+    })
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
   })
 
@@ -292,6 +328,7 @@ describe("MobileBottomNav", () => {
 
     visualViewport.height = window.innerHeight - 200
     const input = document.createElement("input")
+    inputFixtures.add(input)
     document.body.appendChild(input)
     input.focus()
     act(() => listeners.forEach((listener) => listener(new Event("resize"))))
@@ -321,6 +358,7 @@ describe("MobileBottomNav", () => {
     }
     Object.defineProperty(window, "visualViewport", { configurable: true, value: visualViewport })
     const input = document.createElement("input")
+    inputFixtures.add(input)
     document.body.appendChild(input)
     input.focus()
 

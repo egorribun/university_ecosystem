@@ -1108,7 +1108,6 @@ export const useProfileSync = (
       if (signingKey) {
         const isCurrent = () =>
           active &&
-          mountedRef.current === true &&
           epoch === profileEpochRef.current &&
           generation === getBrowserSessionGeneration() &&
           revision === profileRevisionRef.current &&
@@ -1286,7 +1285,6 @@ export const useProfileSync = (
       const ownsSession = captureSessionEpoch()
       const isCurrent = () =>
         active &&
-        mountedRef.current === true &&
         ownsSession() &&
         revision === profileRevisionRef.current &&
         key === sessionSigningKeyRef.current
