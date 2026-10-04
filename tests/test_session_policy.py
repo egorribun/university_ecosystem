@@ -66,6 +66,22 @@ def test_expiry_handles_naive_and_aware_datetimes():
     )
 
 
+@pytest.mark.parametrize("naive_utc", [False, True], ids=["aware-utc", "naive-utc"])
+@pytest.mark.parametrize(
+    ("offset_microseconds", "expired"),
+    [(-1, True), (0, True), (1, False)],
+    ids=["before-now", "at-now", "after-now"],
+)
+def test_expiry_boundary_includes_current_instant(
+    naive_utc, offset_microseconds, expired
+):
+    expires_at = NOW + timedelta(microseconds=offset_microseconds)
+    if naive_utc:
+        expires_at = expires_at.replace(tzinfo=None)
+
+    assert session_is_expired(_session(expires_at=expires_at), NOW) is expired
+
+
 def test_expiry_defaults_to_current_time():
     assert session_is_expired(_session(expires_at=datetime(2000, 1, 1, tzinfo=UTC)))
 

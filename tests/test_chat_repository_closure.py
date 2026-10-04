@@ -221,6 +221,44 @@ async def test_message_lookup_requires_identity_for_postgresql() -> None:
     db.execute.assert_not_awaited()
 
 
+@pytest.mark.parametrize("message_exists", [True, False])
+@pytest.mark.parametrize("transaction_active", [True, False])
+async def test_message_exists_preserves_postgres_identity_and_result(
+    message_exists: bool, transaction_active: bool
+) -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.in_transaction.return_value = transaction_active
+
+    async def begin_transaction() -> None:
+        db.in_transaction.return_value = True
+
+    db.begin = AsyncMock(side_effect=begin_transaction)
+    db.execute.side_effect = [_result(), _result(scalar=message_exists)]
+
+    assert (
+        await repo.message_exists_in_chat(OTHER_ID, CHAT_ID, user_id=USER_ID)
+        is message_exists
+    )
+
+    assert db.execute.await_count == 2
+    assert db.execute.await_args_list[0].args[1] == {"uid": str(USER_ID)}
+    if transaction_active:
+        db.begin.assert_not_awaited()
+    else:
+        db.begin.assert_awaited_once()
+
+
+async def test_message_exists_requires_identity_for_postgresql() -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
+
+    with pytest.raises(ValueError):
+        await repo.message_exists_in_chat(OTHER_ID, CHAT_ID)
+
+    db.execute.assert_not_awaited()
+
+
 async def test_get_reactors_sets_rls_identity_and_joins_visible_message() -> None:
     repo, db = _repo()
     db.get_bind.return_value.dialect.name = "postgresql"
