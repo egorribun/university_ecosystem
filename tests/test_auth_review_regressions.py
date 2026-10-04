@@ -377,3 +377,42 @@ async def test_cache_free_validity_check_fails_closed_when_revocation_store_is_d
     ):
         with pytest.raises(OSError, match="revocation unavailable"):
             await backend.is_session_valid("session")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target_hash_is_current", [True, False])
+async def test_password_change_compare_and_swap_is_scoped_to_target_user(
+    db_session, user_factory, target_hash_is_current
+):
+    from app.auth.security import get_password_hash
+    from app.repositories.user_repository import UserRepository
+
+    shared_hash = await get_password_hash("Shared-test-password-123!")
+    replacement_hash = await get_password_hash("Replacement-test-password-456!")
+    target_hash = (
+        shared_hash
+        if target_hash_is_current
+        else await get_password_hash("Already-changed-test-password-789!")
+    )
+    target = await user_factory(
+        email="cas-target@example.com", hashed_password=target_hash, mfa_epoch=4
+    )
+    other = await user_factory(
+        email="cas-other@example.com", hashed_password=shared_hash, mfa_epoch=9
+    )
+    repository = UserRepository(db_session)
+
+    epoch = await repository.change_password_if_current(
+        target.id, expected_hash=shared_hash, new_hash=replacement_hash
+    )
+    await db_session.flush()
+    await db_session.refresh(target)
+    await db_session.refresh(other)
+
+    assert epoch == (5 if target_hash_is_current else None)
+    assert target.hashed_password == (
+        replacement_hash if target_hash_is_current else target_hash
+    )
+    assert target.mfa_epoch == (5 if target_hash_is_current else 4)
+    assert other.hashed_password == shared_hash
+    assert other.mfa_epoch == 9

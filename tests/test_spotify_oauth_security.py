@@ -197,3 +197,37 @@ async def test_oauth_nonce_collision_preserves_the_original_session_binding(
     assert await mock_global_redis.get(f"oauth:spotify:{nonce}") == (
         f"{user.id}:{request.state.active_session.id}"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_claim", ["sub", "sid", "jti", "exp", "iat", "nbf"])
+async def test_oauth_state_missing_required_claim_preserves_nonce(
+    missing_claim, mock_global_redis
+):
+    user = SimpleNamespace(id=uuid4())
+    request = _request(uuid4())
+    state_url = await spotify.spotify_auth_url(request=request, user=user)
+    original_state = parse_qs(urlsplit(state_url["url"]).query)["state"][0]
+    payload = spotify.jwt.decode(
+        original_state,
+        spotify.settings.spotify_oauth_state_secret,
+        algorithms=["HS256"],
+    )
+    nonce_key = f"oauth:spotify:{payload['jti']}"
+    identity = f"{user.id}:{request.state.active_session.id}"
+    del payload[missing_claim]
+    incomplete_state = spotify.jwt.encode(
+        payload, spotify.settings.spotify_oauth_state_secret, algorithm="HS256"
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await spotify._consume_oauth_state(
+            incomplete_state, request=request, user=user, locale="en"
+        )
+
+    assert error.value.status_code == 400
+    assert await mock_global_redis.get(nonce_key) == identity
+    await spotify._consume_oauth_state(
+        original_state, request=request, user=user, locale="en"
+    )
+    assert await mock_global_redis.get(nonce_key) is None

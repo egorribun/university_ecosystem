@@ -7,11 +7,12 @@ import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from starlette.requests import Request
 
+from app.schemas.dtos.audit import DataAccessLogDTO
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,
@@ -352,6 +353,49 @@ def test_secure_audit_compute_signature_is_deterministic():
     assert len(sig1.removeprefix("v2:")) == 64  # hex SHA-256
 
 
+def test_secure_audit_verifies_persisted_v2_format_with_nullable_ids() -> None:
+    """Optional IDs retain their established empty-string encoding in v2."""
+    # These None values are accepted by the DTO and are create_log's defaults.
+    # Sign the wire fixture independently so signer/verifier drift is observable.
+    canonical_payload = (
+        '{"action":"read","actor_user_id":"",'
+        '"context":{"detail":"original"},"created_at":"2026-09-22T12:34:56+00:00",'
+        '"id":"00000000-0000-0000-0000-000000000001","ip_address":"192.0.2.1",'
+        '"resource_id":"","resource_type":"user","subject_user_id":"",'
+        '"user_agent":"synthetic-agent","version":2}'
+    )
+    fixture_key = b"test-only-audit-v2-key"
+    signature = (
+        "v2:"
+        + hmac.new(
+            fixture_key, canonical_payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+    )
+    log = DataAccessLogDTO(
+        id=UUID(int=1),
+        actor_user_id=None,
+        subject_user_id=None,
+        resource_type="user",
+        resource_id=None,
+        action="read",
+        context={"detail": "original"},
+        ip_address="192.0.2.1",
+        user_agent="synthetic-agent",
+        created_at=datetime(2026, 9, 22, 12, 34, 56, tzinfo=UTC),
+        signature=signature,
+    )
+    service = SecureAuditService(signing_key=fixture_key)
+
+    assert service.verify_integrity(log) is True
+    for field, value in (
+        ("actor_user_id", UUID(int=2)),
+        ("subject_user_id", UUID(int=3)),
+        ("resource_id", "42"),
+    ):
+        tampered = log.model_copy(update={field: value})
+        assert service.verify_integrity(tampered) is False, field
+
+
 def test_secure_audit_verify_integrity_roundtrip_and_tamper():
     svc = SecureAuditService(signing_key=b"signing-key")
     log = _fake_log()
@@ -397,6 +441,41 @@ def test_secure_audit_verify_integrity_accepts_legacy_signature() -> None:
     ).hexdigest()
 
     assert svc.verify_integrity(log) is True
+
+
+def test_secure_audit_verify_integrity_accepts_independent_v2_fixture() -> None:
+    """Pin the persisted v2 format independently of the production serializer."""
+    fixture_key = b"test-only-audit-v2-key"
+    payload = (
+        '{"action":"read","actor_user_id":"00000000-0000-0000-0000-000000000002",'
+        '"context":{"detail":"original"},"created_at":"2026-09-22T12:34:56+00:00",'
+        '"id":"00000000-0000-0000-0000-000000000001","ip_address":"192.0.2.1",'
+        '"resource_id":"42","resource_type":"user",'
+        '"subject_user_id":"00000000-0000-0000-0000-000000000003",'
+        '"user_agent":"synthetic-agent","version":2}'
+    )
+    signature = hmac.new(
+        fixture_key, payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    log = DataAccessLogDTO(
+        id=UUID(int=1),
+        actor_user_id=UUID(int=2),
+        subject_user_id=UUID(int=3),
+        resource_type="user",
+        resource_id="42",
+        action="read",
+        context={"detail": "original"},
+        ip_address="192.0.2.1",
+        user_agent="synthetic-agent",
+        created_at=datetime(2026, 9, 22, 12, 34, 56, tzinfo=UTC),
+        signature=f"v2:{signature}",
+    )
+    service = SecureAuditService(signing_keys=[b"current-test-key", fixture_key])
+
+    assert service.verify_integrity(log) is True
+
+    tampered = log.model_copy(update={"actor_user_id": UUID(int=4)})
+    assert service.verify_integrity(tampered) is False
 
 
 def test_secure_audit_verify_integrity_unsigned_is_false():

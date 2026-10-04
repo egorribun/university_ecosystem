@@ -33,6 +33,7 @@ from app.services.webpush import (
     _prepare_actions,
     _resolve_ttl,
     _sanitize_vibrate,
+    coalesce_push_results,
     send_web_push,
 )
 
@@ -307,6 +308,10 @@ def test_send_web_push_returns_error_on_5xx() -> None:
         result = send_web_push(sub, {"title": "Hi"})
     assert result.status == "error"
     assert result.status_code == 503
+    assert result.subscription_id == sub.id
+    assert result.user_id == sub.user_id
+    assert result.endpoint == sub.endpoint
+    assert coalesce_push_results([result]) == [result]
 
 
 def test_send_web_push_does_not_trust_embedded_status_without_response() -> None:

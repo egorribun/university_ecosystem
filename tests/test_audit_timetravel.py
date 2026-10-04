@@ -137,6 +137,8 @@ async def test_grade_service_domain_events(db_session, user_factory):
     assert ev1 is not None
     assert ev1.payload["score"] == 90.0
     assert ev1.payload["subject"] == "Physics"
+    assert ev1.payload["assigned_by"] == str(teacher.id)
+    assert ev1.metadata_["actor_id"] == str(teacher.id)
 
     # Modify grade
     await grade_service.modify_grade(
@@ -158,6 +160,8 @@ async def test_grade_service_domain_events(db_session, user_factory):
     assert ev2 is not None
     assert ev2.payload["old_score"] == 90.0
     assert ev2.payload["new_score"] == 95.0
+    assert ev2.payload["modified_by"] == str(teacher.id)
+    assert ev2.metadata_["actor_id"] == str(teacher.id)
 
 
 async def test_reconstruct_state_time_travel(db_session):
