@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -163,6 +164,49 @@ def test_autogenerate_retains_tables_and_still_detects_actual_drift():
             for diff in drift
         )
     engine.dispose()
+
+
+@pytest.mark.parametrize("catalog_nullable", [False, True], ids=["unchanged", "drift"])
+def test_autogenerate_detects_retained_column_nullability_drift(
+    catalog_nullable: bool,
+) -> None:
+    from alembic.autogenerate import compare_metadata
+    from pgvector.sqlalchemy import Vector
+
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    target = build_migration_metadata(_runtime_metadata())
+    catalog = build_migration_metadata(_runtime_metadata())
+    catalog.tables["vector_chunks"].c.is_active.nullable = catalog_nullable
+    engine = sa.create_engine("sqlite://")
+    # Exercise real SQLite reflection/autogeneration, not PostgreSQL execution.
+    engine.dialect.ischema_names = {
+        **engine.dialect.ischema_names,
+        "VECTOR": Vector,
+        "UUID": sa.UUID,
+    }
+    try:
+        with engine.begin() as connection:
+            catalog.create_all(connection)
+            context = MigrationContext.configure(
+                connection, opts={"compare_type": True}
+            )
+            drift = compare_metadata(context, target)
+            if catalog_nullable:
+                assert len(drift) == 1
+                (column_changes,) = drift
+                (change,) = column_changes
+                assert (change[0], change[2], change[3], change[-2], change[-1]) == (
+                    "modify_nullable",
+                    "vector_chunks",
+                    "is_active",
+                    True,
+                    False,
+                )
+            else:
+                assert drift == []
+    finally:
+        engine.dispose()
 
 
 def test_offline_revision_has_no_schema_or_data_mutations():
