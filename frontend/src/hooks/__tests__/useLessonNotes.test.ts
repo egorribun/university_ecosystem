@@ -7,7 +7,7 @@
  * robust path). Happy paths use the map; error branches use mockRejectedValueOnce.
  * logError is mocked to assert the swallowed-error branches.
  */
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -56,16 +56,46 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+async function finishDeferredRead(
+  waitForRead: () => Promise<unknown>,
+  unmount: () => void,
+  settleRead: () => Promise<void>
+) {
+  const errors: unknown[] = []
+  try {
+    await waitForRead()
+  } catch (error) {
+    errors.push(error)
+  } finally {
+    // A failed entry assertion must still unmount and settle the owned read.
+    // Run both cleanups even if one fails, without hiding the original error.
+    for (const cleanup of [unmount, settleRead]) {
+      try {
+        await cleanup()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) throw new AggregateError(errors, "Deferred note read cleanup failed")
+}
+
+let previousAuthState: ReturnType<typeof useAuthStore.getState>
+
 beforeEach(() => {
   vi.useRealTimers()
+  previousAuthState = useAuthStore.getState()
   useAuthStore.setState({
     user: { id: "user-a" } as NonNullable<ReturnType<typeof useAuthStore.getState>["user"]>,
     loading: false,
   })
   idb.store.clear()
-  idb.get.mockClear()
-  idb.set.mockClear()
-  idb.del.mockClear()
+  // Restore the in-memory implementations as well as clearing call history and
+  // any one-shot results an interrupted load did not consume.
+  idb.get.mockReset()
+  idb.set.mockReset()
+  idb.del.mockReset()
   dbState.getDatabase.mockReset()
   dbState.getDatabase.mockImplementation(async () => {
     throw new Error("RxDB disabled in unit test")
@@ -73,8 +103,15 @@ beforeEach(() => {
   vi.mocked(logError).mockClear()
 })
 
-afterEach(() => {
-  vi.useRealTimers()
+afterEach(async () => {
+  try {
+    // Unmount while the test's timer implementation is still installed, then
+    // finish already-started storage continuations before resetting the mocks.
+    await act(async () => cleanup())
+  } finally {
+    useAuthStore.setState(previousAuthState, true)
+    vi.useRealTimers()
+  }
 })
 
 describe("useLessonNotes", () => {
@@ -367,24 +404,32 @@ describe("useLessonNotes", () => {
     idb.get.mockImplementationOnce(() => stored.promise)
 
     const first = renderHook(() => useLessonNotes("late-idb"))
-    first.unmount()
-    stored.resolve({ text: "late", updatedAt: 1 })
-    await act(async () => {
-      await stored.promise
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await finishDeferredRead(
+      () => waitFor(() => expect(idb.get).toHaveBeenCalledWith(KEY("late-idb"))),
+      first.unmount,
+      () =>
+        act(async () => {
+          stored.resolve({ text: "late", updatedAt: 1 })
+          await stored.promise
+        })
+    )
 
     const failed = deferred<LessonNote | undefined>()
     idb.get.mockImplementationOnce(() => failed.promise)
     const second = renderHook(() => useLessonNotes("late-idb-error"))
-    second.unmount()
-    failed.reject(new Error("late failure"))
-    await act(async () => {
-      await failed.promise.catch(() => undefined)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await finishDeferredRead(
+      () => waitFor(() => expect(idb.get).toHaveBeenCalledWith(KEY("late-idb-error"))),
+      second.unmount,
+      () =>
+        act(async () => {
+          const failure = new Error("late failure")
+          const settled = failed.promise.catch((error: unknown) => {
+            if (error !== failure) throw error
+          })
+          failed.reject(failure)
+          await settled
+        })
+    )
   })
 
   it("handles missing RxDB rows and IndexedDB deletion failures", async () => {
