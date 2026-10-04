@@ -58,8 +58,10 @@ vi.mock("react-i18next", () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.login.mockResolvedValue(null)
-  mocks.submitMfaChallenge.mockResolvedValue(undefined)
-  mocks.resendEmailMfaChallenge.mockResolvedValue({
+  // A case may queue both actions but exercise only one. Clear unused once
+  // responses as well as call history before installing the next defaults.
+  mocks.submitMfaChallenge.mockReset().mockResolvedValue(undefined)
+  mocks.resendEmailMfaChallenge.mockReset().mockResolvedValue({
     method: "email_otp",
     challenge_token: "ct-email-rotated",
     challenge_expires_at: "2026-08-25T16:00:00Z",

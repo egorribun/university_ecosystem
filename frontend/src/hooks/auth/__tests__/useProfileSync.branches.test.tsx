@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
+import { useAuthStore } from "@/stores/useAuthStore"
 import { testUser } from "@/tests/mocks/handlers"
 import {
   getStrictConsoleDiagnostics,
@@ -136,16 +137,33 @@ const renderProfileSyncWithPendingQuery = () => {
   return { ...view, resolveFetch }
 }
 
+let savedAuthState: ReturnType<typeof useAuthStore.getState>
+
 beforeEach(() => {
+  savedAuthState = useAuthStore.getState()
+  useAuthStore.setState(useAuthStore.getInitialState(), true)
   localStorage.clear()
   sessionStorage.clear()
 })
 
 afterEach(() => {
-  cleanup()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-  vi.unstubAllEnvs()
+  const failures: unknown[] = []
+  const attempt = (action: () => void) => {
+    try {
+      action()
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  try {
+    attempt(cleanup)
+  } finally {
+    attempt(() => vi.restoreAllMocks())
+    attempt(() => vi.unstubAllGlobals())
+    attempt(() => vi.unstubAllEnvs())
+    attempt(() => useAuthStore.setState(savedAuthState, true))
+  }
+  if (failures.length) throw new AggregateError(failures, "Profile branches cleanup failed")
 })
 
 // ---------------------------------------------------------------------------
