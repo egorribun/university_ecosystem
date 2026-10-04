@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import uuid
 from datetime import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -525,8 +526,19 @@ class TestSendPushAsync:
         """Push exceeding timeout returns error."""
         from app.services.webpush import _send_push_async
 
+        release_worker = asyncio.Event()
+        worker = None
+
         async def slow_push(*args, **kwargs):
-            await asyncio.sleep(100)
+            nonlocal worker
+            worker = asyncio.current_task()
+            await release_worker.wait()
+            return WebPushResult(
+                subscription_id=sub.id,
+                endpoint=sub.endpoint,
+                user_id=sub.user_id,
+                status="sent",
+            )
 
         sub = MagicMock()
         sub.id = uuid.uuid4()
@@ -540,9 +552,38 @@ class TestSendPushAsync:
             patch("app.services.webpush.asyncio.to_thread", side_effect=slow_push),
             patch("app.services.webpush._PUSH_CALL_TIMEOUT_SECONDS", 0.01),
         ):
-            result = await _send_push_async(sub, {"title": "Slow"})
-            assert result.status == "error"
-            assert "timed out" in (result.error or "").lower()
+            caller = asyncio.create_task(_send_push_async(sub, {"title": "Slow"}))
+            try:
+                # Observe without cancelling the caller: this deadline must not
+                # supply the production timeout that the test is checking.
+                done, _ = await asyncio.wait({caller}, timeout=1)
+                assert caller in done, "push caller did not honor its delivery timeout"
+                result = caller.result()
+                assert result.status == "error"
+                assert "timed out" in (result.error or "").lower()
+                assert worker is not None and not worker.done()
+            finally:
+                # A timed-out caller deliberately leaves its started worker
+                # running. Release and drain both, including on assertion failure.
+                release_worker.set()
+                tasks = [caller]
+                if worker is not None:
+                    tasks.append(worker)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                failures = {
+                    id(result): result
+                    for result in results
+                    if isinstance(result, BaseException)
+                }
+                if failures:
+                    # Keep the original assertion visible alongside cleanup
+                    # failures, and never report the same exception twice.
+                    if original := sys.exception():
+                        failures[id(original)] = original
+                    raise BaseExceptionGroup(
+                        "push caller or worker failed during cleanup",
+                        list(failures.values()),
+                    ) from None
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import sys
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock
@@ -340,6 +341,7 @@ def test_timed_out_waiting_push_cancels_worker_and_releases_slot(
             for label in ("first", "waiting", "replacement")
         ]
         first = asyncio.create_task(webpush._send_push_async(subscriptions[0], {}))
+        waiting = None
         try:
             started = await asyncio.wait_for(
                 asyncio.to_thread(first_worker_started.wait, 2), timeout=3
@@ -347,7 +349,14 @@ def test_timed_out_waiting_push_cancels_worker_and_releases_slot(
             assert started
 
             monkeypatch.setattr(webpush, "_PUSH_CALL_TIMEOUT_SECONDS", 0.02)
-            timed_out = await webpush._send_push_async(subscriptions[1], {})
+            waiting = asyncio.create_task(
+                webpush._send_push_async(subscriptions[1], {})
+            )
+            # Keep the provider blocked while independently observing the
+            # caller's deadline; an observer cancellation would mask this contract.
+            done, _ = await asyncio.wait({waiting}, timeout=1)
+            assert waiting in done, "waiting push did not honor its delivery timeout"
+            timed_out = waiting.result()
             assert timed_out.status == "error"
             assert timed_out.error == "push delivery timed out"
             assert calls == 1
@@ -362,7 +371,27 @@ def test_timed_out_waiting_push_cancels_worker_and_releases_slot(
             assert first_result.status == replacement.status == "sent"
             assert calls == 2
         finally:
-            release_first_worker.set()
-            await asyncio.gather(first, return_exceptions=True)
+            results = []
+            try:
+                if waiting is not None:
+                    cancelled = not waiting.done() and waiting.cancel()
+                    results = await asyncio.gather(waiting, return_exceptions=True)
+                    if cancelled and isinstance(results[0], asyncio.CancelledError):
+                        results.clear()
+            finally:
+                # Release the provider even if draining the waiter fails.
+                release_first_worker.set()
+                results.extend(await asyncio.gather(first, return_exceptions=True))
+            failures = {
+                id(result): result
+                for result in results
+                if isinstance(result, BaseException)
+            }
+            if failures:
+                if original := sys.exception():
+                    failures[id(original)] = original
+                raise BaseExceptionGroup(
+                    "push callers failed during cleanup", list(failures.values())
+                ) from None
 
     asyncio.run(exercise_timeout_while_waiting())
