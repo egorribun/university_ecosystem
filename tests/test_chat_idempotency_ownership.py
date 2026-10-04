@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 import pytest
+from fakeredis import _basefakesocket
 from fastapi import HTTPException
 
 from app.deps import cache as cache_module
@@ -85,6 +86,103 @@ async def redis(monkeypatch):
     )
     yield client
     await client.aclose()
+
+
+@pytest.fixture
+def redis_clock(monkeypatch):
+    clock = SimpleNamespace(now=1_000_000.0)
+    # Scope the clock to FakeRedis commands, leaving asyncio deadlines unchanged.
+    monkeypatch.setattr(
+        _basefakesocket, "time", SimpleNamespace(time=lambda: clock.now)
+    )
+    return clock
+
+
+async def test_completed_send_replays_until_24_hour_window_expires(redis, redis_clock):
+    user = SimpleNamespace(id=uuid.uuid4())
+    chat_id = uuid.uuid4()
+    created = []
+    sender = dispatcher(user, chat_id, created)
+    completed_at = redis_clock.now
+
+    committed = await sender.send_message(
+        chat_id, user, "hello", [], "en", idempotency_key="same"
+    )
+    # FakeRedis expires only after its deadline; straddle it by one millisecond.
+    redis_clock.now = completed_at + 24 * 60 * 60 - 0.001
+    replay = await sender.send_message(
+        chat_id, user, "hello", [], "en", idempotency_key="same"
+    )
+    assert replay.id == committed.id
+    assert len(created) == 1
+    sender.uow.commit.assert_awaited_once()
+
+    redis_clock.now = completed_at + 24 * 60 * 60 + 0.001
+    fresh = await sender.send_message(
+        chat_id, user, "hello", [], "en", idempotency_key="same"
+    )
+    assert fresh.id != committed.id
+    assert [message.id for message in created] == [committed.id, fresh.id]
+    assert sender.uow.commit.await_count == 2
+    fresh_replay = await sender.send_message(
+        chat_id, user, "hello", [], "en", idempotency_key="same"
+    )
+    assert fresh_replay.id == fresh.id
+    assert len(created) == 2
+
+
+async def test_upload_outliving_pending_lease_cannot_replace_completed_retry(
+    redis, redis_clock
+):
+    user = SimpleNamespace(id=uuid.uuid4())
+    chat_id = uuid.uuid4()
+    created = []
+    replacement = dispatcher(user, chat_id, created)
+    replacement_results = []
+    reserved_at = redis_clock.now
+
+    async def upload(*args, **kwargs):
+        redis_clock.now = reserved_at + 5 * 60 - 0.001
+        with pytest.raises(HTTPException) as exc:
+            await replacement.send_message(
+                chat_id, user, "hello", [], "en", idempotency_key="same"
+            )
+        assert exc.value.status_code == 409
+        replacement.repository.create_message.assert_not_awaited()
+
+        # Let the pending lease expire while this upload is still in progress.
+        redis_clock.now = reserved_at + 5 * 60 + 0.001
+        replacement_results.append(
+            await replacement.send_message(
+                chat_id, user, "hello", [], "en", idempotency_key="same"
+            )
+        )
+        return dict(url="/owned", file_type="text/plain", filename="a.txt", size=1)
+
+    owner = dispatcher(user, chat_id, created, upload=upload)
+    with pytest.raises(HTTPException) as exc:
+        await owner.send_message(
+            chat_id,
+            user,
+            "hello",
+            [SimpleNamespace(size=1)],
+            "en",
+            idempotency_key="same",
+        )
+    assert exc.value.status_code == 409
+    owner.repository.create_message.assert_not_awaited()
+    owner.uow.commit.assert_not_awaited()
+    owner.attachment_service.cleanup_files.assert_awaited_once_with(["/owned"])
+    replacement.uow.commit.assert_awaited_once()
+    assert [message.id for message in created] == [replacement_results[0].id]
+
+    replay = await owner.send_message(
+        chat_id, user, "hello", [], "en", idempotency_key="same"
+    )
+    assert replay.id == replacement_results[0].id
+    assert len(created) == 1
+    owner.repository.create_message.assert_not_awaited()
+    owner.uow.commit.assert_not_awaited()
 
 
 async def test_simultaneous_send_loser_cannot_insert_or_change_owner(redis):
