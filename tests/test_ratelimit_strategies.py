@@ -209,11 +209,39 @@ class TestSetRateLimitClientFactory:
         # Verify it was set (we reset in teardown)
         set_rate_limit_client_factory(None)
 
-    def test_none_resets_to_default(self):
-        """Passing None resets to _create_redis_pool."""
-        set_rate_limit_client_factory(lambda url: MagicMock())
-        set_rate_limit_client_factory(None)
-        # Should not raise — default factory is restored
+    @pytest.mark.asyncio
+    async def test_none_resets_to_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lookup after reset uses the default Redis constructor again."""
+        redis_url = "redis://factory-reset:6379/0"
+        injected_client = fakeredis.aioredis.FakeRedis()
+        default_client = fakeredis.aioredis.FakeRedis()
+
+        with monkeypatch.context() as isolated:
+            # Keep the surrounding suite's factory and clients intact, even
+            # when the reset or the subsequent client lookup fails.
+            isolated.setattr(rate_limit_base, "_shared_clients", {})
+            isolated.setattr(
+                rate_limit_base, "_redis_factory", rate_limit_base._redis_factory
+            )
+            isolated.setattr(
+                rate_limit_base.Redis,
+                "from_url",
+                lambda *_args, **_kwargs: default_client,
+            )
+            try:
+                set_rate_limit_client_factory(lambda _url: injected_client)
+                assert await get_shared_client(redis_url) is injected_client
+
+                set_rate_limit_client_factory(None)
+
+                assert await get_shared_client(redis_url) is default_client
+            finally:
+                try:
+                    await injected_client.aclose()
+                finally:
+                    await default_client.aclose()
 
 
 class TestCreateRedisPool:
