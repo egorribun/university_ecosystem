@@ -459,14 +459,18 @@ describe("EventCreateDialog", () => {
     }
   })
 
-  it("does not let a stale upload clear a newer upload's pending state", async () => {
+  it("does not let a stale upload clear a newer upload's pending state after reopening", async () => {
     let resolveFirst!: (url: string) => void
+    let resolveSecond!: (url: string) => void
     const firstUpload = new Promise<string>((resolve) => {
       resolveFirst = resolve
     })
+    const secondUpload = new Promise<string>((resolve) => {
+      resolveSecond = resolve
+    })
     uploadEventImage
       .mockImplementationOnce(() => firstUpload)
-      .mockImplementationOnce(() => new Promise<string>(() => undefined))
+      .mockImplementationOnce(() => secondUpload)
 
     const urlCtor = URL as unknown as {
       createObjectURL?: (obj: unknown) => string
@@ -479,23 +483,71 @@ describe("EventCreateDialog", () => {
       .mockReturnValueOnce("blob:first")
       .mockReturnValueOnce("blob:second")
     urlCtor.revokeObjectURL = vi.fn()
+    let view: ReturnType<typeof render> | undefined
 
     try {
       const user = userEvent.setup()
-      render(<EventCreateDialog {...baseProps} />)
-      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
-      await user.upload(input, new File(["a"], "first.png", { type: "image/png" }))
-      await user.upload(input, new File(["b"], "second.png", { type: "image/png" }))
-      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      view = render(<EventCreateDialog {...baseProps} />)
+      const firstInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      const firstFile = new File(["a"], "first.png", { type: "image/png" })
+      const secondFile = new File(["b"], "second.png", { type: "image/png" })
+      await user.upload(firstInput, firstFile)
+      expect(uploadEventImage).toHaveBeenCalledTimes(1)
+      expect(uploadEventImage).toHaveBeenNthCalledWith(1, firstFile)
+      expect(firstInput.closest("label")).toHaveAttribute("aria-disabled", "true")
 
-      resolveFirst("https://cdn.example.com/stale.png")
+      // The disabled chooser must not start another request in the same dialog.
+      await user.upload(firstInput, secondFile)
+      expect(uploadEventImage).toHaveBeenCalledTimes(1)
+      expect(firstInput.files?.[0]).toBe(firstFile)
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:first")
+
+      // A parent can close and reopen while the first request is still pending.
+      view.rerender(<EventCreateDialog {...baseProps} open={false} />)
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      view.rerender(<EventCreateDialog {...baseProps} open />)
+      const secondInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      expect(secondInput.closest("label")).not.toHaveAttribute("aria-disabled")
+      await user.upload(secondInput, secondFile)
+      expect(uploadEventImage).toHaveBeenCalledTimes(2)
+      expect(uploadEventImage).toHaveBeenNthCalledWith(2, secondFile)
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:second")
+
       await act(async () => {
+        resolveFirst("https://cdn.example.com/stale.png")
         await firstUpload
       })
       expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      expect(secondInput.closest("label")).toHaveAttribute("aria-disabled", "true")
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:second")
+
+      await act(async () => {
+        resolveSecond("https://cdn.example.com/second.png")
+        await secondUpload
+      })
+      expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+      expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument()
+      expect(secondInput.closest("label")).not.toHaveAttribute("aria-disabled")
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute(
+        "src",
+        "https://cdn.example.com/second.png"
+      )
     } finally {
-      urlCtor.createObjectURL = previousCreate
-      urlCtor.revokeObjectURL = previousRevoke
+      try {
+        try {
+          view?.unmount()
+        } finally {
+          await act(async () => {
+            resolveFirst("https://cdn.example.com/stale.png")
+            resolveSecond("https://cdn.example.com/second.png")
+            await Promise.all([firstUpload, secondUpload])
+          })
+        }
+      } finally {
+        urlCtor.createObjectURL = previousCreate
+        urlCtor.revokeObjectURL = previousRevoke
+      }
     }
   })
 

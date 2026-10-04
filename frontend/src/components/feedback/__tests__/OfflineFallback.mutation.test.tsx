@@ -151,7 +151,11 @@ describe("OfflineFallback mutation contracts", () => {
 
     const retry = screen.getByRole("button", { name: "offlineFallback.retry" })
     const backHome = screen.getByRole("button", { name: "offlineFallback.backHome" })
-    expect(retry).toHaveClass("bg-linear-brand", "shadow-surface", "ring-brand/(--opacity-dim)")
+    expect(retry).toHaveClass(
+      "bg-(image:--gradient-brand)",
+      "shadow-surface",
+      "ring-brand/(--opacity-dim)"
+    )
     expect(backHome).toHaveClass("border", "border-white/(--opacity-subtle)")
     expect(screen.getByTestId("offline-fallback-refresh")).toHaveAttribute("data-size", "18")
     expect(screen.getByTestId("offline-fallback-home")).toHaveAttribute("data-size", "18")

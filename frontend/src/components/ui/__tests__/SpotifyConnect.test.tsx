@@ -3,12 +3,14 @@ import userEvent from "@testing-library/user-event"
 import { createInstance } from "i18next"
 import { http, HttpResponse } from "msw"
 import { renderToStaticMarkup } from "react-dom/server"
+import postcss from "postcss"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import enCommon from "@/i18n/locales/en/common.json"
 import enSettings from "@/i18n/locales/en/settings.json"
 import ruCommon from "@/i18n/locales/ru/common.json"
 import ruSettings from "@/i18n/locales/ru/settings.json"
 import { server } from "@/tests/mocks/server"
+import compiledCss from "@/styles/tailwind.css?inline"
 
 const mockState = vi.hoisted(() => ({
   user: null as Record<string, unknown> | null,
@@ -163,6 +165,42 @@ describe("SpotifyConnect", () => {
     expect(
       screen.getByRole("button", { name: "settings:integrations.spotify.connect" })
     ).toBeEnabled()
+  })
+
+  it("preserves the existing Spotify colors without the shared brand background image", () => {
+    mockState.user = { id: "user-1", spotify_connected: false }
+    render(<SpotifyConnect />)
+    const button = screen.getByRole("button", { name: "settings:integrations.spotify.connect" })
+    expect(button).toBeEnabled()
+    expect(button).not.toHaveClass("bg-(image:--gradient-brand)")
+
+    const stylesheet = postcss.parse(compiledCss)
+    const expectUtility = (
+      className: string,
+      property: string,
+      value: string,
+      pseudoClass = ""
+    ) => {
+      expect(button).toHaveClass(className)
+      const declarations: string[] = []
+      stylesheet.walkRules((rule) => {
+        if (rule.selectors.includes(`.${CSS.escape(className)}${pseudoClass}`)) {
+          rule.walkDecls(property, (declaration) => {
+            declarations.push(declaration.value)
+          })
+        }
+      })
+      expect(declarations).toContain(value)
+    }
+
+    expectUtility("bg-none", "background-image", "none")
+    expectUtility("bg-(--color-spotify)", "background-color", "var(--color-spotify)")
+    expectUtility(
+      "hover:bg-(--color-spotify-hover)",
+      "background-color",
+      "var(--color-spotify-hover)",
+      ":hover"
+    )
   })
 
   it.each([false, true])(

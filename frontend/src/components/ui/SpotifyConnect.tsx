@@ -148,7 +148,7 @@ export default function SpotifyConnect() {
             onClick={connect}
             variant="solid"
             disabled={actionLoading}
-            className="w-full h-12 rounded-2xl bg-(--color-spotify) hover:bg-(--color-spotify-hover) text-white font-black shadow-lg shadow-(--color-spotify)/(--opacity-dim)"
+            className="w-full h-12 rounded-2xl bg-none bg-(--color-spotify) hover:bg-(--color-spotify-hover) text-white font-black shadow-lg shadow-(--color-spotify)/(--opacity-dim)"
             loading={actionLoading}
           >
             {t("settings:integrations.spotify.connect")}

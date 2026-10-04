@@ -74,7 +74,7 @@ describe("settings Form compatibility wrappers", () => {
     )
 
     const [contained, outlined, text] = screen.getAllByRole("button")
-    expect(contained).toHaveClass("bg-linear-brand", "min-h-11")
+    expect(contained).toHaveClass("bg-(image:--gradient-brand)", "min-h-11")
     expect(outlined).toHaveClass("border", "min-h-12")
     expect(text).toHaveClass("bg-transparent", "min-h-14")
     expect(screen.getByTestId("start")).toBeInTheDocument()
