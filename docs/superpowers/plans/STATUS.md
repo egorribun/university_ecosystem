@@ -1,6 +1,6 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-03 UTC. Работа возобновлена. [Мастер-план](MVP_MASTER_PLAN.md)
+Срез на 2026-10-04 UTC. Работа возобновлена. [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт порядок приёмки, [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
 Текущий этап исправляет и полирует существующую реализацию; новые предметные
 функции не добавляются. Полная приёмка MVP и выпуск `v1.0.0` ещё не подтверждены.
@@ -8,18 +8,19 @@
 ## Проверяемый контекст
 
 - Активная ветка — `egorribun`, основной PR — [#1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Кодовый checkpoint этого обновления — `2d41e90b2ed526ddd019fac5fb09f727b732a71f`;
-  его проверенное локально дерево — `889686da8b6b834c731775fbace1c2a0277511eb`.
+  Кодовый checkpoint этого обновления — `9bebdf7f080aab26deafd7d281b993989897576c`;
+  его дерево — `24c969e8f32bcf7ca7c86d74b5daefbb074d629a`. Происхождение локальных проверок и последующие
+  изменения packaging разделены ниже.
 - В `main` интегрированы отдельные исправления trusted workflow и изоляции
   benchmark-процессов; проверенный base — `6fa133b57f62c554162876d4e6d8349f8060fce9`.
   Пороги и число performance-измерений сохранены.
-- Для предшествующего hosted checkpoint `6bc0680` проверены [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37138408049),
-  [owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37138407594)
-  и [performance](https://github.com/egorribun/university_ecosystem/actions/runs/37138407678).
-  Четыре backend shard, frontend unit/browser checks, coverage policy, owned live
-  и performance прошли. Полный mutation verdict ещё отсутствует; новый exact-head
-  CI после текущего batch остаётся отдельным допуском. [Security Policy Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/37138406322)
-  для этого SHA прошёл. Старые результаты не выдаются за текущие.
+- Предыдущий опубликованный checkpoint `81db76d` имеет [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/37141792594),
+  [owned live acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/37141792405)
+  и [performance](https://github.com/egorribun/university_ecosystem/actions/runs/37141792464).
+  Owned live прошёл 18 сценариев с двумя предусмотренными role skips;
+  Go/WS-Hub/Rust benchmark gates прошли. [Security Policy Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/37141790995)
+  также прошёл. Полный mutation gate не зелёный; старые результаты не выдаются за
+  итог нового exact-head CI.
 - Исходники, локальные инструменты и evidence разделены. Секреты, пользовательские
   данные, volumes, backups, история Git и Alembic сохраняются. Source freeze и
   hashes фиксируются перед aggregate-проверками; тяжёлые локальные mutation jobs
@@ -27,18 +28,20 @@
 
 ## Подтверждённый прогресс
 
-- На frontend snapshot `2d41e90` полный локальный
-  `npm run test:unit-ci` прошёл: **698 файлов, 8 382 теста**, **100%** statements
-  (19 119/19 119), branches (13 672/13 672), functions (4 556/4 556) и lines
-  (17 106/17 106). Это Linux/Node 24.19.0 evidence, а не вердикт нового hosted CI.
-  Последующее изменение STATUS проверено отдельно как документация;
-  runtime source/test bytes после полного прогона не менялись.
-- Проверенные исправления сохраняют регистрацию/QR при восстановлении и
-  согласовании кэша, блокируют действия над ещё не сохранёнными комментариями,
-  предотвращают двойную offline-навигацию из push, исправляют существующие
-  локализованные admin labels. Дополнены реальные pending/retry/cancellation
-  сценарии профиля, stories, Spotify и уведомлений. Действующие quality-пороги,
-  исключения и timeout не ослаблены.
+- Полный локальный frontend unit/coverage-прогон на **Node 24.15.0** прошёл:
+  **706 файлов, 8 489 тестов**, **100%** statements (19 135/19 135), branches
+  (13 674/13 674), functions (4 562/4 562) и lines (17 116/17 116).
+  Состав и hashes всех 4 623 authored inputs не изменились во время прогона.
+  После него исправлен packaging диагностического адаптера: публичный digest
+  перенесён в явный `.sha256` record, два уже существовавших пакета объявлены
+  прямыми dev dependencies. Runtime source/tests и resolved package records
+  сохранились; tooling, input inventory и secret checks проверены отдельно.
+  Это локальное evidence, не полный hosted verdict окончательного commit.
+- Исправлены cooldown запросов signing key и владение их отложенными результатами,
+  отмена устаревшего поиска и принадлежность install prompt текущему аккаунту.
+  Регрессии проверяют реальные pending, retry, generation-change и cache-сценарии,
+  а также навигацию, расписание и RU/EN Activity labels. Убраны только проверенные
+  дубли guards/defaults; действующие quality-пороги и исключения сохранены.
 - Восстановлены необходимые inputs Python mutation workspace и изоляция
   logging-тестов. Локальная генерация на дереве `f5fde98c` сохранила **54 410** идентичностей мутантов;
   ограниченный настоящий stats-прогон прошёл **200 активных тестов** и отобразил
@@ -51,23 +54,32 @@
   Его тело совпадает по AST, проверки/набор случаев/изоляция сохранены. Focused
   subprocess test, inventory, Ruff и secret checks проходят; allowlist не менялся.
   Hosted Source/Test Inventory job `111247692803` на `6bc0680` также прошёл.
-- Последний [owned live run на `6bc0680`](https://github.com/egorribun/university_ecosystem/actions/runs/37138407594)
-  прошёл 18 сценариев с двумя предусмотренными role skips. Это ограниченный PR
-  smoke на прежнем SHA; он не закрывает полный live E2E, повторный запуск/restore
-  или resulting-main acceptance.
-- Частичный canonical frontend inventory на `46b08e9` проверен по provenance:
-  41/64 отчёта, 18 702/42 919 назначенных мутантов. В этом срезе остаются 1 069
-  Survived, 2 NoCoverage, 16 Timeout и 15 RuntimeError; 908 Ignored имеют действующее
-  основание. Срез неполный и не является score нового checkpoint. Producer success
-  не означает прохождение 100% viable gate.
+- Обнаружена ошибка доказательности прежнего Stryker preload: замена глобального
+  `String` меняла преобразования объектов и подавляла native TypeError, в том
+  числе в реальном Vitest/jsdom. Затронутые исторические mutation outcomes имеют
+  статус **provisional, diagnostic-only** и не дают release/mutation credit.
+  Новый адаптер меняет только diagnostic fallback точно закреплённого Stryker
+  module; версия, полный source digest, checksum path и форма record проверяются
+  fail-closed. Native application semantics сохранены.
+- Настоящий локальный producer smoke нового адаптера на отдельном snapshot
+  прошёл 112 baseline tests и сохранил все 153 мутанта: 83 Killed, 64 Survived,
+  4 Ignored и 2 RuntimeError с исходными application diagnostics. Exit 1 и
+  отсутствие release marker ожидаемы; это проверка транспорта, не mutation closure.
+  На окончательном packaging проходят 203 adapter/evidence contracts,
+  Knip, staged detect-secrets и Gitleaks. Secret baseline/allowlist не расширялись.
+- Python mutation workspace получает существующий `config/nats.conf.template`;
+  восемь локальных copy/PowerShell contracts прошли. Hosted mutmut execution
+  нового SHA ещё должен подтвердить исправление. Локальные Docker Semgrep и
+  полный multiprocessing secret scan ограничены средой; их exact-head hosted
+  проверки остаются обязательными, не помечаются локально пройденными.
 
 ## Ближайшие проверяемые результаты
 
 1. Довести exact-head CI нового опубликованного batch до конечного вердикта, особенно
    Python mutation stats и последующее execution. Исправлять конкретные причины,
    не переносить чужие или старые verdicts между SHA.
-2. Продолжить scoped mutation closure существующих auth/profile, уведомлений и
-   расписания. Сначала supported user-visible состояния и воспроизводимые баги;
+2. Получить свежий полный mutation inventory с исправленным адаптером и продолжить
+   scoped closure существующих auth/profile, уведомлений и расписания. Сначала supported user-visible состояния и воспроизводимые баги;
    для dead code — доказательство отсутствия потребителей. Неподтверждённые
    defensive/equivalent случаи остаются открытыми, без waivers и ручных статусов.
 3. Связать каждый применимый пункт ТЗ и все 63 audit IDs с актуальным evidence
