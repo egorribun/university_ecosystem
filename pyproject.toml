@@ -642,6 +642,9 @@ also_copy = [
     "Dockerfile.protogen",
     "backend.Dockerfile",
     "start-docker.ps1",
+    # The owned-live launcher fixture copies the authored NATS template.
+    # Copy its narrow parent so mutmut creates config/ in the isolated tree.
+    "config",
     # Docker resource-limit contract reads every supported Compose variant in
     # the isolated mutmut tree. Keep these authored assets alongside the full
     # stack so the baseline/stats pass cannot fail on a missing input path.

@@ -22,6 +22,7 @@ REQUIRED_ALSO_COPY = {
     "alembic.ini",
     "schema.zed",
     "charts/revocation-store",
+    "config",
     "frontend/openapi.json",
     "frontend/package-lock.json",
     "frontend/playwright.config.ts",
