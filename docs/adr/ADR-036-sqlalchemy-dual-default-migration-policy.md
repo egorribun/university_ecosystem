@@ -356,4 +356,4 @@ this online revision.
 - [`scripts/quality/audit_model_defaults.py`](../../scripts/quality/audit_model_defaults.py)
 - [`tests/test_model_default_policy.py`](../../tests/test_model_default_policy.py)
 - `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding BE-02 (user-owned audit
-  artifact; remains untracked and is not a release certificate)
+  artifact; tracked historical ledger, not a release certificate)

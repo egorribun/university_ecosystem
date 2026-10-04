@@ -164,4 +164,5 @@ green hermetic tests do not substitute for the integration gates above.
 - [ADR-004: Notification System](ADR-004-notification-system.md)
 - [ADR-022: Go Services Integration Testing with Testcontainers](ADR-022-go-services-integration-testing-with-testcontainers.md)
 - [`AUDIT_BE_DEFAULTS_CDC_2026-09-08.md`](../audits/AUDIT_BE_DEFAULTS_CDC_2026-09-08.md)
-- `AUDIT_PLATFORM_FULL.md`, Finding BE-08 (user-owned untracked audit)
+- `AUDIT_PLATFORM_FULL.md`, Finding BE-08 (user-owned audit artifact;
+  tracked historical ledger, not a release certificate)

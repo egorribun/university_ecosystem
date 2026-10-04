@@ -134,4 +134,4 @@ installation, vulnerability, SBOM and provenance gates.
 - [`tests/test_dependency_resolution_policy.py`](../../tests/test_dependency_resolution_policy.py)
 - [`docs/DEPENDENCY_COOLDOWN_EMERGENCY.md`](../DEPENDENCY_COOLDOWN_EMERGENCY.md)
 - `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding SEC-09 (user-owned audit
-  artifact; remains untracked and is not a release certificate)
+  artifact; tracked historical ledger, not a release certificate)
