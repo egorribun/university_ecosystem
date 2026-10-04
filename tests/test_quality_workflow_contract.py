@@ -424,7 +424,13 @@ def downloaded_coverage_shape(tmp_path: Path) -> str:
 def _run_coverage_shape_checks(
     script: str, root: Path
 ) -> subprocess.CompletedProcess[str]:
-    bash = which("bash")
+    candidates = [
+        Path("C:/Program Files/Git/bin/bash.exe"),
+        Path(which("bash") or ""),
+    ]
+    bash = next(
+        (str(candidate) for candidate in candidates if candidate.is_file()), None
+    )
     assert bash is not None, "the workflow's Bash shell is required"
     return subprocess.run(  # noqa: S603 -- execute the repository-owned workflow step
         [bash, "-e", "-o", "pipefail", "-c", script],
@@ -461,7 +467,12 @@ def test_downloaded_coverage_shape_rejects_invalid_required_rust_diagnostics(
         report.rename(replacement)
 
     result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    output = result.stdout + result.stderr
     assert result.returncode != 0, "invalid required Rust diagnostic was accepted"
+    assert (
+        f"::error::Missing or empty required Rust Codecov report: "
+        f"artifacts/coverage/rust/{component}/codecov.json"
+    ) in output
 
 
 @pytest.mark.parametrize("extra_directory", ["unexpected", "rust-native/nested"])
@@ -473,6 +484,10 @@ def test_downloaded_coverage_shape_rejects_extra_rust_diagnostics(
     extra.write_text("unexpected report\n", encoding="utf-8")
 
     result = _run_coverage_shape_checks(downloaded_coverage_shape, tmp_path)
+    assert (
+        "::error::Rust Codecov report inventory does not match the required components"
+        in result.stdout + result.stderr
+    )
     assert result.returncode != 0, "extra Rust diagnostic was accepted"
 
 
