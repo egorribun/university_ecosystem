@@ -287,3 +287,29 @@ async def test_unused_embedding_provider_never_resolves_dns(mock_db, enabled, ke
                 == [0.0] * settings.embedding_dimensions
             )
             service._client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_embedding_request_passes_finite_deadlines_to_http_transport(monkeypatch):
+    requests = []
+    real_client = httpx.AsyncClient
+
+    def provider(request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": [{"embedding": [0.25, 0.75]}]})
+
+    def client_factory(**kwargs):
+        return real_client(transport=httpx.MockTransport(provider), **kwargs)
+
+    monkeypatch.setattr(settings, "embedding_api_base", "https://93.184.216.34")
+    monkeypatch.setattr(settings, "embedding_api_key", "test-provider-key")
+    monkeypatch.setattr(settings, "semantic_search_enabled", True)
+    monkeypatch.setattr("app.services.vector_service.httpx.AsyncClient", client_factory)
+    async with VectorService(AsyncMock()) as service:
+        assert await service.get_embedding("research seminar") == [0.25, 0.75]
+
+    assert len(requests) == 1
+    deadlines = requests[0].extensions["timeout"]
+    for operation in ("connect", "read", "write", "pool"):
+        assert deadlines[operation] is not None
+        assert 0 < deadlines[operation] <= 10.0

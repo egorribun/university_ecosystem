@@ -4,6 +4,8 @@ SQLite UDFs supply precomputed relevance/distance; real SQL performs filtering,
 ordering and LIMIT. This tests continuation, not PostgreSQL FTS/vector scoring.
 """
 
+import math
+import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -230,7 +232,7 @@ def test_ranked_cursor_never_encodes_nonfinite_score(score):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["event", "news"])
-async def test_native_query_normalizes_pgvector_nan(monkeypatch, kind):
+async def test_native_query_binds_pgvector_nan_as_postgresql_float(monkeypatch, kind):
     from unittest.mock import MagicMock
 
     from app.repositories.event_repository import EventRepository
@@ -245,4 +247,11 @@ async def test_native_query_normalizes_pgvector_nan(monkeypatch, kind):
     fetch = repo.search_events if kind == "event" else repo.list_news
     await fetch(search_query="query", query_embedding=[1.0] * 1536)
     statement = db.execute.call_args.args[0]
-    assert "nullif" in str(statement).lower()
+    from sqlalchemy.dialects.postgresql import asyncpg
+
+    # SQLite collapses NaN and None to NULL; this checks the PostgreSQL wire binding.
+    compiled = statement.compile(dialect=asyncpg.dialect())
+    normalization = re.search(r"nullif\([^,]+, \$(\d+)::FLOAT\)", str(compiled))
+    assert normalization is not None, str(compiled)
+    parameter_name = compiled.positiontup[int(normalization.group(1)) - 1]
+    assert math.isnan(compiled.params[parameter_name])

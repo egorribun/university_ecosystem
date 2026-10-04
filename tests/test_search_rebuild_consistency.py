@@ -8,6 +8,7 @@ import pytest
 from app.models import Event, News
 from app.services import search_indexer
 from app.services.search import SearchService
+from tests.helpers.search_rebuild import RebuildProgress
 
 
 class SearchCluster:
@@ -42,6 +43,28 @@ class SearchCluster:
         assert all(name in self.documents for name in index.split(","))
 
     async def update_aliases(self, *, actions):
+        # Singular transfers are modelled below; names follow the full ES 8.19 API.
+        # https://www.elastic.co/guide/en/elasticsearch/reference/8.19/indices-aliases.html
+        allowed_fields = {
+            "add": {
+                "index",
+                "indices",
+                "alias",
+                "aliases",
+                "filter",
+                "index_routing",
+                "is_hidden",
+                "is_write_index",
+                "routing",
+                "search_routing",
+            },
+            "remove": {"index", "indices", "alias", "aliases", "must_exist"},
+            "remove_index": {"index", "indices"},
+        }
+        for action in actions:
+            operation, options = next(iter(action.items()))
+            if set(options) - allowed_fields[operation]:
+                raise ValueError("Unknown alias action field")
         for action in actions:
             if "remove_index" in action:
                 name = action["remove_index"]["index"]
@@ -58,6 +81,9 @@ class SearchCluster:
     async def delete(self, *, index, ignore_unavailable=False):
         self.documents.pop(index, None)
         self.mappings.pop(index, None)
+
+    async def index(self, *, index, id, body):
+        self.documents[self.target(index)][id] = body
 
     async def bulk(self, index, docs):
         if self.failed_bulk:
@@ -100,7 +126,7 @@ async def test_empty_rebuild_removes_stale_documents_and_old_mappings(cluster):
 
 @pytest.mark.asyncio
 async def test_rebuild_excludes_inactive_and_deleted_documents(
-    cluster, db_session, user_factory
+    cluster, db_session, user_factory, monkeypatch
 ):
     user = await user_factory()
     now = datetime.now(UTC)
@@ -120,7 +146,19 @@ async def test_rebuild_excludes_inactive_and_deleted_documents(
     )
     db_session.add_all([news, active, inactive])
     await db_session.commit()
-    assert await search_indexer.reindex_all(batch_size=1) == {"news": 1, "events": 1}
+    progress = RebuildProgress()
+    service = search_indexer.build_search_service()
+    bulk_index = service.bulk_index
+
+    async def index_page(index, documents):
+        await progress.record(index, documents)
+        return await bulk_index(index, documents)
+
+    monkeypatch.setattr(service, "bulk_index", index_page)
+    assert await progress.complete(search_indexer.reindex_all(batch_size=1)) == {
+        "news": 1,
+        "events": 1,
+    }
     assert set(cluster.documents[cluster.target("news")]) == {str(news.id)}
     assert set(cluster.documents[cluster.target("events")]) == {str(active.id)}
 
@@ -257,3 +295,14 @@ async def test_rebuild_preserves_indices_owned_by_other_alias_consumers(cluster)
         assert cluster.mappings[f"curated-{name}-v1"] == {"obsolete": True}
         assert cluster.target(name).startswith(f"{name}-rebuild-")
         assert cluster.documents[cluster.target(name)] == {}
+
+
+@pytest.mark.asyncio
+async def test_rebuilt_public_names_accept_incremental_content_writes(cluster):
+    await search_indexer.reindex_all()
+    service = SearchService()
+    service._client = cluster
+    for name in ("news", "events"):
+        document = {"id": f"new-{name}", "title": "Published after rebuild"}
+        await service.index_document(name, document["id"], document)
+        assert cluster.documents[cluster.target(name)] == {document["id"]: document}

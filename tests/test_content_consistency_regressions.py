@@ -101,7 +101,10 @@ async def test_content_service_writes_reach_outbox_and_search(
         now = datetime.now(UTC)
         record = await service.create_event(
             schemas.EventCreate(
-                title="Original", starts_at=now, ends_at=now + timedelta(hours=1)
+                title="Original",
+                title_en="Open research seminar",
+                starts_at=now,
+                ends_at=now + timedelta(hours=1),
             ),
             user.id,
         )
@@ -126,9 +129,21 @@ async def test_content_service_writes_reach_outbox_and_search(
     assert [row.event_type for row in rows] == [f"{kind}.created", f"{kind}.updated"]
     assert all(row.status == "pending" for row in rows)
 
-    for row in rows:
-        await outbox.OutboxWorker()._dispatch_event(row)
+    created = rows[0]
+    assert created.payload["title"] == "Original"
+    entity_key = "event_id_entity" if kind == "event" else "news_id"
+    assert created.payload[entity_key] == str(record.id)
+    if kind == "event":
+        assert created.payload["organizer_id"] == str(user.id)
     index = "events" if kind == "event" else "news"
+    await outbox.OutboxWorker()._dispatch_event(created)
+    assert (index, str(record.id)) in projection_io.documents
+    if kind == "event":
+        assert (
+            projection_io.documents[(index, str(record.id))]["title_en"]
+            == "Open research seminar"
+        )
+    await outbox.OutboxWorker()._dispatch_event(rows[1])
     assert projection_io.documents[(index, str(record.id))]["title"] == "Updated"
     model = Event if kind == "event" else News
     embedding = await db_session.scalar(

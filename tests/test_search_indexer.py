@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 import app.models as models
 from app.cli import search as search_cli
 from app.services import event_handlers, search_indexer
+from tests.helpers.search_rebuild import RebuildProgress
 
 
 def _fake_service() -> MagicMock:
@@ -201,13 +202,21 @@ async def test_unexpected_errors_are_not_swallowed(session, service):
 @pytest.mark.asyncio
 async def test_reindex_all_pages_through_active_rows(session, service, user_factory):
     user = await user_factory()
-    for _ in range(3):
-        await _news(session, user)
-    await _event(session, user)
-    await _event(session, user, title="Второй")
+    news = [await _news(session, user) for _ in range(3)]
+    events = [
+        await _event(session, user),
+        await _event(session, user, title="Второй"),
+    ]
     await _event(session, user, active=False, title="Скрытый")
+    progress = RebuildProgress()
 
-    counts = await search_indexer.reindex_all(batch_size=2)
+    async def index_page(index, documents):
+        await progress.record(index, documents)
+        return len(documents), 0
+
+    service.bulk_index.side_effect = index_page
+
+    counts = await progress.complete(search_indexer.reindex_all(batch_size=2))
 
     assert counts == {"news": 3, "events": 2}
     replacements = service.publish_rebuilt_indices.await_args.args[0]
@@ -217,6 +226,10 @@ async def test_reindex_all_pages_through_active_rows(session, service, user_fact
     ]
     assert replacements["news"].startswith("news-rebuild-")
     assert replacements["events"].startswith("events-rebuild-")
+    assert progress.deliveries == {
+        replacements["news"]: sorted(str(row.id) for row in news),
+        replacements["events"]: sorted(str(row.id) for row in events),
+    }
     assert service.bulk_index.await_count == 3  # news pages of 2+1, one event page
     service.close.assert_awaited_once()
 
