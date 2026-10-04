@@ -106,6 +106,14 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
   format и focused-contract lanes passed. Это не единый новый 9/9 report.
 - Изменения production/tests прошли независимое scoped review; Git-операции root.
   Проверки относятся к base `01ffea1b5` с рабочим diff; hosted verdict не подменяются.
+- Live build на `e150f009` остановлен RSS watchdog: frontend при SSR start
+  достиг 2052,5 MiB при лимите 2048 MiB. Приёмка браузером не запускалась.
+  Owned stop прошёл, running containers нет. Лимит не ослабляется;
+  на `23550c18` native workers по умолчанию ограничены четырьмя; Docker GREEN
+  ещё не подтверждён. Root: 14 build/telemetry tests и changed-file hooks passed.
+- `405cd32a`: retained expired/revoked MFA regression; агент 26 tests passed,
+  root persisted case passed; scoped review approved. Нового mutation verdict нет.
+
 ## Среда и ближайшие действия
 
 - Эта сессия работает на Windows: Node 24.21.0, uv 0.11.28;
