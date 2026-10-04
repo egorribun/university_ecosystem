@@ -149,6 +149,8 @@ describe("useScheduleTime", () => {
   })
 
   it("returns empty values when hasToday is false", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 9, 30))
+
     const { result } = renderHook(() => useScheduleTime(mockLessons, false))
     expect(result.current.currentLesson).toBeNull()
     expect(result.current.nextLesson).toBeNull()
