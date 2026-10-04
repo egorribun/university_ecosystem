@@ -1,122 +1,71 @@
 /*
- * Stryker/Vitest child compatibility preload.
+ * Stryker 10 / Vitest 4 error-transport compatibility preload.
  *
- * Vitest serializes unhandled errors for worker transport as null-prototype
- * records.  Stryker 9.6 calls String(error) while formatting those records;
- * the native conversion throws because the record has no Object.prototype.
- * This module is loaded only in Stryker shard children through NODE_OPTIONS.
+ * Patch only the pinned Stryker diagnostic formatter as Node loads that module.
+ * Application/test String coercion, Error objects, and mutation statuses retain
+ * their native behavior. A dependency update must explicitly revalidate this
+ * adapter; unsupported versions or source changes stop the shard before tests.
  */
+import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
+import { registerHooks } from "node:module"
 
-const nativeString = globalThis.String
-
-function hasNullPrototype(value) {
-  if (value === null || typeof value !== "object") return false
-  try {
-    return Object.getPrototypeOf(value) === null
-  } catch {
-    return false
-  }
+const expectedVersion = "10.0.0"
+// Keep the public integrity digest as an auditable sha256sum record, following
+// the repository's vendored-artifact checksum convention.
+const checksumRecord = readFileSync(
+  new URL("./stryker-util-errors.sha256", import.meta.url),
+  "utf8"
+)
+const checksumMatch = /^([a-f0-9]{64}) {2}dist\/src\/errors\.js\n$/u.exec(checksumRecord)
+if (!checksumMatch) {
+  throw new Error("Stryker error formatter checksum record is malformed; revalidate the adapter")
 }
+const expectedSourceHash = checksumMatch[1]
 
-function readStringProperty(value, key) {
-  try {
-    const property = Reflect.get(value, key)
-    return typeof property === "string" ? property : ""
-  } catch {
-    return ""
+export function rewriteStrykerErrorFormatter(source, metadata) {
+  if (metadata.name !== "@stryker-mutator/util" || metadata.version !== expectedVersion) {
+    throw new Error(
+      "Stryker error adapter requires @stryker-mutator/util 10.0.0; revalidate the adapter"
+    )
   }
-}
-
-/**
- * Convert Vitest's serialized error record into a useful diagnostic without
- * invoking the record's missing prototype conversion hooks.
- */
-export function formatSerializedError(value) {
-  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
-    return nativeString(value)
+  if (createHash("sha256").update(source).digest("hex") !== expectedSourceHash) {
+    throw new Error("Stryker error formatter source changed; revalidate the adapter")
   }
-
-  const stack = readStringProperty(value, "stack")
-  if (stack) return stack
-
-  const name = readStringProperty(value, "name")
-  const message = readStringProperty(value, "message")
-  if (name && message) return `${name}: ${message}`
-  if (message) return message
-  if (name) return name
-
-  // Preserve native String semantics for ordinary objects.  Only the
-  // conversion failure handled by safeStringValue reaches this branch for a
-  // non-null-prototype object, where a diagnostic placeholder is safer than
-  // rethrowing the serializer crash.
-  if (!hasNullPrototype(value)) {
-    try {
-      return nativeString(value)
-    } catch {
-      return "<unserializable error object>"
-    }
-  }
-  return "<unserializable error object>"
-}
-
-function safeStringValue(value) {
-  try {
-    return nativeString(value)
-  } catch (error) {
-    // Vitest may materialize the native TypeError in a worker/VM realm, so
-    // `instanceof TypeError` is not reliable across the transport boundary.
-    // Restrict the fallback to the exact null-prototype record shape that
-    // causes the Stryker serializer crash; ordinary conversion errors must
-    // retain their native behavior.
-    const errorName =
-      error !== null && typeof error === "object" ? readStringProperty(error, "name") : ""
-    const errorMessage = readStringProperty(error, "message")
-    const isPrimitiveConversionError =
-      (error instanceof TypeError || errorName === "TypeError") &&
-      errorMessage.includes("Cannot convert object to primitive value")
-    if (isPrimitiveConversionError) {
-      return formatSerializedError(value)
-    }
-    throw error
-  }
-}
-
-/**
- * A String-compatible callable/constructor.  All ordinary conversions are
- * delegated to the native implementation; only null-prototype conversion
- * failures receive the Vitest error-record fallback.
- */
-export function safeString(value) {
-  if (new.target) {
-    const converted = arguments.length === 0 ? nativeString() : safeStringValue(value)
-    return Reflect.construct(nativeString, [converted], new.target)
-  }
-  return arguments.length === 0 ? nativeString() : safeStringValue(value)
-}
-
-Object.setPrototypeOf(safeString, nativeString)
-safeString.prototype = nativeString.prototype
-Object.defineProperty(safeString, "name", {
-  configurable: true,
-  value: "String",
-})
-for (const key of Reflect.ownKeys(nativeString)) {
-  if (key === "length" || key === "name" || key === "prototype") continue
-  const descriptor = Object.getOwnPropertyDescriptor(nativeString, key)
-  if (descriptor) Object.defineProperty(safeString, key, descriptor)
-}
-Object.defineProperty(safeString, "prototype", { writable: false })
-
-export function installSafeString() {
-  const current = Object.getOwnPropertyDescriptor(globalThis, "String")
-  if (!current || current.configurable !== true || current.writable !== true) return false
-  Object.defineProperty(globalThis, "String", {
-    ...current,
-    value: safeString,
-  })
-  return true
+  return (
+    source.replace("return String(error);", "return formatStrykerErrorValue(error);") +
+    `\nimport { formatStrykerErrorValue } from ${JSON.stringify(new URL("./stryker-error-formatter.mjs", import.meta.url).href)};\n`
+  )
 }
 
 if (process.env.STRYKER_SHARD_RUN === "1") {
-  installSafeString()
+  const packageUrl = import.meta.resolve("@stryker-mutator/util/package.json")
+  const metadata = JSON.parse(readFileSync(new URL(packageUrl), "utf8"))
+  const targetUrl = new URL("./dist/src/errors.js", packageUrl).href
+  rewriteStrykerErrorFormatter(readFileSync(new URL(targetUrl), "utf8"), metadata)
+  let adapted = false
+  registerHooks({
+    load(url, context, nextLoad) {
+      const loaded = nextLoad(url, context)
+      if (url !== targetUrl) return loaded
+      if (loaded.format !== "module") {
+        throw new Error("Stryker error formatter module format changed; revalidate the adapter")
+      }
+      const source =
+        typeof loaded.source === "string"
+          ? loaded.source
+          : Buffer.from(loaded.source).toString("utf8")
+      const rewritten = rewriteStrykerErrorFormatter(source, metadata)
+      adapted = true
+      return { ...loaded, source: rewritten }
+    },
+  })
+  // Ensure a prior NODE_OPTIONS preload did not cache the unadapted formatter.
+  // errors.js has no imports or top-level effects in the pinned source.
+  await import(targetUrl)
+  if (!adapted) {
+    throw new Error(
+      "Stryker error formatter was loaded before its adapter; check NODE_OPTIONS order"
+    )
+  }
 }

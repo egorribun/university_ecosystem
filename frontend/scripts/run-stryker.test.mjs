@@ -841,76 +841,297 @@ test("actual Stryker configuration opts in only exact 1 while preserving release
     }
 })
 
-test("formats Vitest null-prototype errors without weakening native String", async () => {
-  const safeStringModuleUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
-  const { formatSerializedError, safeString } = await import(safeStringModuleUrl)
-  const serialized = Object.create(null)
-  serialized.name = "TypeError"
-  serialized.message = "mutant callback failed"
-  serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
+const adapterUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
+const utilUrl = import.meta.resolve("@stryker-mutator/util")
+const errorUrl = new URL("./errors.js", utilUrl).href
+const serializerUrl = import.meta.resolve("@vitest/utils/error")
+const strykerApiUrl = import.meta.resolve("@stryker-mutator/api/test-runner")
+const vitestRunnerUrl = new URL(
+  "./vitest-test-runner.js",
+  import.meta.resolve("@stryker-mutator/vitest-runner")
+).href
+const reporterUrl = new URL(
+  "./reporters/mutation-test-report-helper.js",
+  import.meta.resolve("@stryker-mutator/core")
+).href
 
-  assert.equal(
-    formatSerializedError(serialized),
-    "TypeError: mutant callback failed\n    at mutant-test"
-  )
-  assert.equal(safeString(serialized), "TypeError: mutant callback failed\n    at mutant-test")
-  assert.equal(String(42), "42")
-  assert.equal(String(Symbol("native")), "Symbol(native)")
-  assert.equal(new safeString(42).valueOf(), "42")
-  assert.equal(new safeString(42) instanceof String, true)
-  assert.equal(safeString.raw({ raw: ["left", "right"] }, "-"), "left-right")
-
-  const throwingPrimitive = {
-    [Symbol.toPrimitive]() {
-      throw new Error("native conversion failure")
+async function runChild(source, { enabled = "1", preload = adapterUrl, extraArgs = [] } = {}) {
+  return execFileAsync(process.execPath, [...extraArgs, "--input-type=module", "-e", source], {
+    env: {
+      ...process.env,
+      NODE_OPTIONS: preload ? `--import=${preload.href}` : "",
+      STRYKER_SHARD_RUN: enabled,
     },
-  }
-  assert.throws(() => String(throwingPrimitive), /native conversion failure/u)
+    encoding: "utf8",
+    timeout: 10_000,
+  })
+}
 
-  const throwingTypeErrorPrimitive = {
-    [Symbol.toPrimitive]() {
-      throw new TypeError("ordinary conversion failure")
-    },
+const applicationProbe = String.raw`
+  const results = []
+  const sentinel = new TypeError("Cannot convert object to primitive value")
+  const cases = [undefined, null, false, 0, 42, 42n, Symbol("native"), {}, [], new String("boxed")]
+  for (const value of cases) results.push(String(value))
+  for (const kind of ["badPrimitive", "matchingTypeError", "throwingGetter", "badMethods", "proxy"]) {
+    const events = []
+    let value
+    if (kind === "badPrimitive") value = { [Symbol.toPrimitive](hint) { events.push(hint); return {} } }
+    if (kind === "matchingTypeError") value = { [Symbol.toPrimitive](hint) { events.push(hint); throw sentinel } }
+    if (kind === "throwingGetter") value = { get [Symbol.toPrimitive]() { events.push("getter"); throw sentinel } }
+    if (kind === "badMethods") value = { toString() { events.push("toString"); return {} }, valueOf() { events.push("valueOf"); return {} } }
+    if (kind === "proxy") value = new Proxy({ [Symbol.toPrimitive]() { events.push("coerce"); return {} } }, { get(target, key, receiver) { events.push(typeof key === "symbol" ? key.description : key); return Reflect.get(target, key, receiver) } })
+    try { results.push({ kind, returned: String(value), events }) }
+    catch (error) { results.push({ kind, error: error.message, sentinel: error === sentinel, events }) }
   }
-  assert.throws(() => safeString(throwingTypeErrorPrimitive), /ordinary conversion failure/u)
+  try { results.push({ constructorSymbol: new String(Symbol("constructor")).valueOf() }) }
+  catch (error) { results.push({ constructorSymbolError: error.message }) }
+  const record = Object.assign(Object.create(null), { message: "ordinary object" })
+  try { results.push({ record: String(record) }) }
+  catch (error) { results.push({ recordError: error.message }) }
+  class StringSubclass extends String {}
+  const boxed = new StringSubclass(42)
+  results.push({ native: String === "".constructor, constructor: String.prototype.constructor === String, boxed: boxed.valueOf(), subclass: boxed instanceof StringSubclass, string: boxed instanceof String, raw: String.raw({raw:["a", "b"]}, "-"), noArgument: String(), explicitUndefined: new String(undefined).valueOf() })
+  process.stdout.write(JSON.stringify(results))
+`
+
+test("Stryker diagnostic preload preserves all native application String conversions", async () => {
+  const native = await runChild(applicationProbe, { preload: null })
+  const adapted = await runChild(applicationProbe)
+  assert.equal(adapted.stdout, native.stdout)
 })
 
-test("Stryker preload safely formats the child error object through NODE_OPTIONS", async () => {
-  const safeStringModulePath = fileURLToPath(
-    new URL("./stryker-safe-error-string.mjs", import.meta.url)
-  )
-  const preloadOption = `--import=${pathToFileURL(safeStringModulePath).href}`
-  const childScript = String.raw`
-    const serialized = Object.create(null)
-    serialized.name = "TypeError"
-    serialized.message = "mutant callback failed"
-    serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
-    process.stdout.write(JSON.stringify({
-      formatted: String(serialized),
-      ordinary: String(42),
-      symbol: String(Symbol("native")),
-    }))
-  `
+test("Stryker diagnostic preload is inactive without the producer flag", async () => {
+  for (const enabled of ["", "0", "true"]) {
+    const result = await runChild(
+      `
+      import { errorToString } from ${JSON.stringify(utilUrl)}
+      import { serializeError } from ${JSON.stringify(serializerUrl)}
+      let threw = false
+      try { errorToString(serializeError(new Error("unadapted"))) } catch { threw = true }
+      process.stdout.write(JSON.stringify({ native: String === "".constructor, threw }))
+    `,
+      { enabled }
+    )
+    assert.deepEqual(JSON.parse(result.stdout), { native: true, threw: true })
+  }
+})
 
-  const { stdout } = await execFileAsync(
-    process.execPath,
-    ["--input-type=module", "-e", childScript],
+test("Stryker diagnostics preserve actual Vitest errors through structured cloning", async () => {
+  const result = await runChild(`
+    import assert from "node:assert/strict"
+    import { errorToString } from ${JSON.stringify(utilUrl)}
+    import { serializeError } from ${JSON.stringify(serializerUrl)}
+    const error = new TypeError("mutant callback failed")
+    error.stack = "TypeError: mutant callback failed\\n    at mutant-test"
+    const record = serializeError(error)
+    const plain = structuredClone(record)
+    assert.equal(Object.getPrototypeOf(record), null)
+    assert.equal(Object.getPrototypeOf(plain), Object.prototype)
+    assert.equal(typeof plain.toString, "string")
+    assert.equal(errorToString(record), error.stack)
+    assert.equal(errorToString(plain), error.stack)
+    assert.throws(() => String(record), TypeError)
+    assert.throws(() => String(plain), TypeError)
+    const normal = [undefined, null, false, 0, "", "failure", 42, Symbol("failure"), {}, error]
+    process.stdout.write(JSON.stringify(normal.map(errorToString)))
+  `)
+  const native = await runChild(
+    `
+    import { errorToString } from ${JSON.stringify(utilUrl)}
+    const error = new TypeError("mutant callback failed")
+    error.stack = "TypeError: mutant callback failed\\n    at mutant-test"
+    process.stdout.write(JSON.stringify([undefined, null, false, 0, "", "failure", 42, Symbol("failure"), {}, error].map(errorToString)))
+  `,
+    { preload: null }
+  )
+  assert.equal(result.stdout, native.stdout)
+})
+
+test("Stryker diagnostic fallback reads data without retrying coercion or invoking accessors", async () => {
+  const { formatStrykerErrorValue } = await import("./stryker-error-formatter.mjs")
+  let coercions = 0
+  let getters = 0
+  const value = {
+    [Symbol.toPrimitive]() {
+      coercions++
+      return {}
+    },
+    get stack() {
+      getters++
+      throw new Error("must not invoke stack getter")
+    },
+    name: "TypeError",
+    message: "original diagnostic",
+  }
+  assert.equal(formatStrykerErrorValue(value), "TypeError: original diagnostic")
+  assert.equal(coercions, 1)
+  assert.equal(getters, 0)
+  for (const [properties, expected] of [
+    [{ stack: "original stack", name: "Error", message: "message" }, "original stack"],
+    [{ message: "message" }, "message"],
+    [{ name: "Error" }, "Error"],
+    [{}, "<unserializable error object>"],
+  ])
+    assert.equal(formatStrykerErrorValue(Object.assign(Object.create(null), properties)), expected)
+  const events = []
+  const proxy = new Proxy(
+    {},
     {
-      cwd: path.dirname(safeStringModulePath),
-      env: {
-        ...process.env,
-        NODE_OPTIONS: preloadOption,
-        STRYKER_SHARD_RUN: "1",
+      get() {
+        events.push("get")
+        throw new Error("proxy coercion")
       },
-      encoding: "utf8",
+      getOwnPropertyDescriptor() {
+        events.push("descriptor")
+        throw new Error("must not inspect")
+      },
     }
   )
+  assert.equal(formatStrykerErrorValue(proxy), "<unserializable error object>")
+  assert.deepEqual(events, ["get"])
+})
 
-  assert.deepEqual(JSON.parse(stdout), {
-    formatted: "TypeError: mutant callback failed\n    at mutant-test",
-    ordinary: "42",
-    symbol: "Symbol(native)",
-  })
+test("Stryker diagnostic repair retains the real runner and RuntimeError report classification", async () => {
+  const result = await runChild(`
+    import assert from "node:assert/strict"
+    import { serializeError } from ${JSON.stringify(serializerUrl)}
+    import { VitestTestRunner } from ${JSON.stringify(vitestRunnerUrl)}
+    import { toMutantRunResult } from ${JSON.stringify(strykerApiUrl)}
+    import { MutationTestReportHelper } from ${JSON.stringify(reporterUrl)}
+    const error = new TypeError("actual unhandled error")
+    error.stack = "TypeError: actual unhandled error\\n    at mutation-fixture"
+    const runner = Object.create(VitestTestRunner.prototype)
+    runner.options = { vitest: { related: false } }
+    runner.ctx = {
+      config: {}, projects: [], start: async () => {},
+      state: { filesMap: new Map(), errorsSet: new Set([structuredClone(serializeError(error))]), getFiles: () => [] },
+    }
+    const dryRun = await runner.run()
+    assert.equal(dryRun.status, "error")
+    assert.match(dryRun.errorMessage, /actual unhandled error/)
+    const mutantRun = toMutantRunResult(dryRun)
+    const helper = Object.create(MutationTestReportHelper.prototype)
+    helper.partialResults = []
+    helper.reporter = { onMutantTested() {} }
+    const report = helper.reportMutantRunResult({ id: "1", location: { start: { line: 0, column: 0 }, end: { line: 0, column: 1 } } }, mutantRun)
+    assert.equal(report.status, "RuntimeError")
+    assert.equal(report.statusReason, dryRun.errorMessage)
+    process.stdout.write(JSON.stringify(report))
+  `)
+  assert.equal(JSON.parse(result.stdout).status, "RuntimeError")
+})
+
+test("Stryker diagnostic preload reaches inherited workers and nested processes", async () => {
+  const probe = `
+    import { errorToString } from ${JSON.stringify(utilUrl)}
+    import { serializeError } from ${JSON.stringify(serializerUrl)}
+    export const result = { native: String === "".constructor, formatted: errorToString(serializeError(new Error("inherited transport error"))) }
+  `
+  const result = await runChild(`
+    import { Worker } from "node:worker_threads"
+    import { once } from "node:events"
+    import { execFileSync } from "node:child_process"
+    const workerCode = ${JSON.stringify(probe)} + ';import {parentPort} from "node:worker_threads";parentPort.postMessage(result)'
+    const worker = new Worker(new URL('data:text/javascript,' + encodeURIComponent(workerCode)))
+    const [thread] = await once(worker, "message")
+    const processCode = ${JSON.stringify(probe)} + ';process.stdout.write(JSON.stringify(result))'
+    const child = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", processCode], {encoding:"utf8"}))
+    process.stdout.write(JSON.stringify({ thread, child }))
+  `)
+  for (const value of Object.values(JSON.parse(result.stdout))) {
+    assert.equal(value.native, true)
+    assert.match(value.formatted, /inherited transport error/)
+  }
+})
+
+test("Stryker diagnostic adapter rejects source and package drift", async () => {
+  const { rewriteStrykerErrorFormatter } = await import(adapterUrl)
+  const source = await readFile(new URL(errorUrl), "utf8")
+  assert.throws(
+    () => rewriteStrykerErrorFormatter(source, { name: "wrong", version: "10.0.0" }),
+    /requires/
+  )
+  assert.throws(
+    () =>
+      rewriteStrykerErrorFormatter(source, { name: "@stryker-mutator/util", version: "10.0.1" }),
+    /requires/
+  )
+  assert.throws(
+    () =>
+      rewriteStrykerErrorFormatter(`${source}\n`, {
+        name: "@stryker-mutator/util",
+        version: "10.0.0",
+      }),
+    /source changed/
+  )
+})
+
+test("Stryker diagnostic adapter rejects missing or malformed checksum records", async () => {
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-checksum-contract-"))
+  const fixtureAdapter = pathToFileURL(path.join(fixtureRoot, "stryker-safe-error-string.mjs"))
+  const fixtureChecksum = path.join(fixtureRoot, "stryker-util-errors.sha256")
+  const checksum = await readFile(new URL("./stryker-util-errors.sha256", import.meta.url), "utf8")
+  try {
+    await writeFile(fixtureAdapter, await readFile(adapterUrl, "utf8"))
+    await assert.rejects(
+      runChild("", { enabled: "0", preload: fixtureAdapter }),
+      /ENOENT.*stryker-util-errors\.sha256/su
+    )
+    for (const malformed of [
+      "",
+      checksum.slice(1),
+      checksum.toUpperCase(),
+      checksum.replace("  ", " "),
+      checksum.replace("dist/src/errors.js", "dist/src/other.js"),
+      checksum.replace("dist/src/errors.js", "../dist/src/errors.js"),
+      checksum + checksum,
+      checksum + "unexpected trailing data\n",
+    ]) {
+      await writeFile(fixtureChecksum, malformed)
+      await assert.rejects(
+        runChild("", { enabled: "0", preload: fixtureAdapter }),
+        /checksum record is malformed/u
+      )
+    }
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true })
+  }
+})
+
+test("Stryker diagnostic adapter refuses a formatter cached by an earlier preload", async () => {
+  await assert.rejects(
+    runChild(
+      `
+    await import(${JSON.stringify(errorUrl)})
+    await import(${JSON.stringify(adapterUrl.href)})
+  `,
+      { preload: null }
+    ),
+    /loaded before its adapter/
+  )
+})
+
+test("Stryker diagnostic adapter refuses load hooks that change the guarded module", async () => {
+  for (const change of [
+    'return { ...loaded, source: String(loaded.source) + "\\n" }',
+    'return { ...loaded, format: "commonjs" }',
+  ]) {
+    await assert.rejects(
+      runChild(
+        `
+      import { registerHooks } from "node:module"
+      registerHooks({ load(url, context, nextLoad) {
+        const loaded = nextLoad(url, context)
+        if (url !== ${JSON.stringify(errorUrl)}) return loaded
+        ${change}
+      } })
+      await import(${JSON.stringify(adapterUrl.href)})
+    `,
+        { preload: null }
+      ),
+      /source changed|module format changed/
+    )
+  }
 })
 
 test("Stryker child environment preserves NODE_OPTIONS and appends the trusted preload", async () => {
