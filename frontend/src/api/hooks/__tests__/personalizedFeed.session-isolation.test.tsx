@@ -290,6 +290,19 @@ describe("personalized list cache isolation", () => {
     }
   )
 
+  it("does not adopt a persisted news page from the unresolved account namespace", () => {
+    setIdentity(null)
+    window.localStorage.setItem("news:list:account:null:en", JSON.stringify([newsItem(true)]))
+
+    const { result } = renderHook(
+      () => useNewsListQuery({ language: "en" }, { enabled: false }),
+      createWrapper()
+    )
+
+    expect(result.current.news).toEqual([])
+    expect(requests.news).not.toHaveBeenCalled()
+  })
+
   it("discards a delayed account-A network result after switching to account B", async () => {
     const delayed = deferred<ReturnType<typeof page<NewsItem>>>()
     requests.news
