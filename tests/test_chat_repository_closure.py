@@ -12,6 +12,7 @@ import pytest
 import app.repositories.chat_repository as chat_module
 from app.models import User
 from app.repositories.chat_repository import ChatRepository
+from app.schemas.dtos.chat import ChatDTO
 
 CHAT_ID = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df79")
 USER_ID = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7a")
@@ -112,7 +113,11 @@ async def test_get_by_id_refreshes_identity_map_for_authorized_message_load() ->
 
 async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() -> None:
     repo, db = _repo()
-    repo._to_dto = MagicMock(side_effect=lambda value: f"dto:{value.id}")  # type: ignore[method-assign]
+    repo._to_dto = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda value: ChatDTO(
+            id=value.id, created_at=NOW, updated_at=value.updated_at
+        )
+    )
     chat_a = SimpleNamespace(id=CHAT_ID, updated_at=NOW)
     chat_b = SimpleNamespace(id=OTHER_ID, updated_at=NOW)
     db.execute.return_value = _result(
@@ -128,9 +133,9 @@ async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() ->
     ) as encode:
         items, has_more, next_cursor = await repo.get_chats_for_user(USER_ID, None, 2)
 
-    assert items == [
-        ("dto:" + str(CHAT_ID), 1, None),
-        ("dto:" + str(OTHER_ID), 2, str(uuid.UUID(int=4))),
+    assert [(chat.id, unread, message_id) for chat, unread, message_id in items] == [
+        (CHAT_ID, 1, None),
+        (OTHER_ID, 2, uuid.UUID(int=4)),
     ]
     assert has_more is True
     assert next_cursor == "next"

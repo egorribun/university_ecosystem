@@ -116,7 +116,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
 
     async def get_chats_for_user(
         self, user_id: uuid.UUID, cursor: str | None, limit: int
-    ) -> tuple[list[tuple[ChatDTO, int, str | None]], bool, str | None]:
+    ) -> tuple[list[tuple[ChatDTO, int, uuid.UUID | None]], bool, str | None]:
         """
         Fetch chats for a user with pagination and metadata.
 
@@ -142,7 +142,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         user_id: uuid.UUID,
         cursor: str | None,
         limit: int,
-    ) -> tuple[list[tuple[ChatDTO, int, str | None]], bool, str | None]:
+    ) -> tuple[list[tuple[ChatDTO, int, uuid.UUID | None]], bool, str | None]:
         # CTE-1: aggregate message stats per chat in a single table scan.
         msg_stats_cte = (
             select(
@@ -272,15 +272,25 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             last_chat = chat_items[-1][0]
             next_cursor = encode_datetime_cursor(last_chat.updated_at, last_chat.id)
 
+        projected_rows = [(self._to_dto(row[0]), row[1], row[2]) for row in chat_items]
+        participant_ids = {
+            participant.id
+            for chat, _, _ in projected_rows
+            for participant in chat.participants
+        }
+        if participant_ids:
+            avatar_rows = await self.db.execute(
+                select(UserProfile.user_id, UserProfile.avatar_url).where(
+                    UserProfile.user_id.in_(participant_ids)
+                )
+            )
+            avatars = {user_id: avatar_url for user_id, avatar_url in avatar_rows.all()}
+            for chat, _, _ in projected_rows:
+                for participant in chat.participants:
+                    participant.avatar_url = avatars.get(participant.id)
+
         trace.get_current_span().set_attribute("chat.result_count", len(chat_items))
-        return (
-            [
-                (self._to_dto(row[0]), row[1], str(row[2]) if row[2] else None)
-                for row in chat_items
-            ],
-            has_more,
-            next_cursor,
-        )
+        return projected_rows, has_more, next_cursor
 
     async def get_last_messages(
         self,
