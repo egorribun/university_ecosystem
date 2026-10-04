@@ -396,6 +396,43 @@ def test_secure_audit_verifies_persisted_v2_format_with_nullable_ids() -> None:
         assert service.verify_integrity(tampered) is False, field
 
 
+def test_secure_audit_verifies_persisted_v2_format_with_empty_action() -> None:
+    """An accepted empty action retains its persisted v2 wire representation."""
+    canonical_payload = (
+        '{"action":"","actor_user_id":"",'
+        '"context":{"detail":"original"},"created_at":"2026-09-22T12:34:56+00:00",'
+        '"id":"00000000-0000-0000-0000-000000000001","ip_address":"192.0.2.1",'
+        '"resource_id":"","resource_type":"user","subject_user_id":"",'
+        '"user_agent":"synthetic-agent","version":2}'
+    )
+    fixture_key = b"test-only-audit-v2-key"
+    # Independent wire fixture: do not sign with the service under test.
+    signature = (
+        "v2:"
+        + hmac.new(
+            fixture_key, canonical_payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+    )
+    log = DataAccessLogDTO(
+        id=UUID(int=1),
+        actor_user_id=None,
+        subject_user_id=None,
+        resource_type="user",
+        resource_id=None,
+        action="",
+        context={"detail": "original"},
+        ip_address="192.0.2.1",
+        user_agent="synthetic-agent",
+        created_at=datetime(2026, 9, 22, 12, 34, 56, tzinfo=UTC),
+        signature=signature,
+    )
+    service = SecureAuditService(signing_key=fixture_key)
+
+    assert service.verify_integrity(log) is True
+    tampered = DataAccessLogDTO.model_validate({**log.model_dump(), "action": "read"})
+    assert service.verify_integrity(tampered) is False
+
+
 def test_secure_audit_verify_integrity_roundtrip_and_tamper():
     svc = SecureAuditService(signing_key=b"signing-key")
     log = _fake_log()

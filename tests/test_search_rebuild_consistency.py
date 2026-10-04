@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from elasticsearch import AsyncElasticsearch
 
 from app.models import Event, News
 from app.services import search_indexer
@@ -109,6 +110,75 @@ def cluster(db_session, monkeypatch):
     monkeypatch.setattr(search_indexer, "async_session", session)
     monkeypatch.setattr(search_indexer, "build_search_service", lambda: service)
     return cluster
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("public_state", "removal_actions"),
+    [
+        (
+            "alias",
+            [
+                {
+                    "remove": {
+                        "index": "curated-news-v1",
+                        "alias": "news",
+                        "must_exist": True,
+                    }
+                }
+            ],
+        ),
+        ("concrete", [{"remove_index": {"index": "news"}}]),
+        ("absent", []),
+    ],
+    ids=["existing-alias", "legacy-concrete-index", "missing-public-name"],
+)
+async def test_publish_rebuilt_indices_uses_valid_elasticsearch_requests(
+    monkeypatch, public_state, removal_actions
+):
+    client = AsyncElasticsearch("http://localhost:9200")
+    service = SearchService()
+    service._client = client
+    requests = []
+    responses = {
+        ("HEAD", "/_alias/news"): public_state == "alias",
+        ("GET", "/_alias/news"): {"curated-news-v1": {"aliases": {"news": {}}}},
+        ("HEAD", "/news"): public_state == "concrete",
+        ("POST", "/news-rebuild-ready/_refresh"): {},
+        ("POST", "/_aliases"): {"acknowledged": True, "errors": False},
+    }
+
+    async def perform_request(method, path, **kwargs):
+        requests.append((method, path, kwargs.get("body")))
+        return responses[method, path]
+
+    # Keep the installed endpoint methods and their argument validation real.
+    # The request boundary is local; this does not exercise an ES server.
+    monkeypatch.setattr(client.indices, "perform_request", perform_request)
+    try:
+        await service.publish_rebuilt_indices({"news": "news-rebuild-ready"})
+    finally:
+        await client.close()
+
+    assert requests[-2:] == [
+        ("POST", "/news-rebuild-ready/_refresh", None),
+        (
+            "POST",
+            "/_aliases",
+            {
+                "actions": [
+                    *removal_actions,
+                    {
+                        "add": {
+                            "index": "news-rebuild-ready",
+                            "alias": "news",
+                            "is_write_index": True,
+                        }
+                    },
+                ]
+            },
+        ),
+    ]
 
 
 @pytest.mark.asyncio

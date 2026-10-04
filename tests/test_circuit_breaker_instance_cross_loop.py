@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import threading
 
 import pytest
@@ -90,6 +91,96 @@ def _state_lock_wakes_queued_waiters_and_tolerates_cancel_during_wakeup() -> Non
         assert len(acquired) == len(tasks) - 1
 
     asyncio.run(verify_waiters())
+
+
+def test_cancelled_waiting_request_preserves_other_queued_requests() -> None:
+    assert_circuit_scenario_completes(
+        _cancelled_waiting_request_preserves_other_queued_requests
+    )
+    _cancelled_waiting_request_preserves_other_queued_requests()
+
+
+def _cancelled_waiting_request_preserves_other_queued_requests() -> None:
+    breaker = CircuitBreaker("cancelled-queued-request")
+
+    async def verify_cancellation() -> None:
+        entered: list[int] = []
+
+        async def request(index: int) -> int:
+            async with breaker:
+                entered.append(index)
+                return index
+
+        # A different loop may own the state lock while callers queue to enter.
+        assert breaker._lock.acquire()
+        lock_held = True
+        tasks = [asyncio.create_task(request(index)) for index in range(3)]
+        handled_cancellations: set[asyncio.Task[int]] = set()
+        try:
+            marker = asyncio.get_running_loop().create_future()
+            asyncio.get_running_loop().call_soon(marker.set_result, None)
+            await marker
+            assert all(not task.done() for task in tasks)
+            assert entered == []
+
+            # Finish cancellation before release: other callers still need their
+            # queued notifications, unlike cancellation during an existing wakeup.
+            tasks[1].cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await tasks[1]
+            handled_cancellations.add(tasks[1])
+            breaker._release_state_lock()
+            lock_held = False
+
+            remaining = (tasks[0], tasks[2])
+            done, _ = await asyncio.wait(remaining, timeout=1)
+            assert len(done) == len(remaining), "uncancelled requests did not finish"
+            results = []
+            for task in remaining:
+                try:
+                    results.append(task.result())
+                except asyncio.CancelledError:
+                    handled_cancellations.add(task)
+                    raise
+            assert results == [0, 2]
+            assert sorted(entered) == [0, 2]
+            assert breaker.metrics.successful_calls == 2
+            assert breaker.metrics.failed_calls == 0
+        finally:
+            original = sys.exception()
+            failures: dict[int, BaseException] = {}
+            try:
+                if lock_held:
+                    breaker._release_state_lock()
+            except BaseException as error:
+                failures[id(error)] = error
+            finally:
+                # Draining all owned requests must still run if release fails.
+                for task in tasks:
+                    if not task.done() and task.cancel():
+                        handled_cancellations.add(task)
+                outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+                for task, outcome in zip(tasks, outcomes, strict=True):
+                    if isinstance(outcome, BaseException) and not (
+                        task in handled_cancellations
+                        and isinstance(outcome, asyncio.CancelledError)
+                    ):
+                        failures[id(outcome)] = outcome
+            # A task's primary failure can also appear in its drained result.
+            failures.pop(id(original), None)
+            if failures:
+                if original is not None:
+                    failures[id(original)] = original
+                raise BaseExceptionGroup(
+                    "queued circuit requests failed during cleanup",
+                    list(failures.values()),
+                ) from None
+
+        assert all(task.done() for task in tasks)
+        async with breaker:
+            pass
+
+    asyncio.run(verify_cancellation())
 
 
 def test_registered_breaker_lock_survives_contention_across_event_loops(
