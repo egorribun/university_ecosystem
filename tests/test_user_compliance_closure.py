@@ -314,6 +314,13 @@ async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
     enrollment_secret = "test-only-enrollment-secret"  # pragma: allowlist secret
     other_enrollment_secret = secrets.token_urlsafe(24)
     enrollment_id = uuid4()
+    revoked_enrollment_id = uuid4()
+    revoked_enrollment_secret = secrets.token_urlsafe(24)
+    revoked_enrollment_created_at = now - timedelta(days=2)
+    revoked_enrollment_revoked_at = now - timedelta(days=1)
+    expired_token_digest = secrets.token_hex(32)
+    expired_otp_digest = secrets.token_hex(32)
+    expired_recipient_digest = secrets.token_hex(32)
     token_digest = "a" * 64
     otp_digest = "b" * 64
     recipient_digest = "r" * 64
@@ -328,6 +335,16 @@ async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
                 confirmed_at=now,
                 created_at=now,
             ),
+            models.MfaTotpEnrollment(
+                id=revoked_enrollment_id,
+                user_id=user_id,
+                secret=revoked_enrollment_secret,
+                label="retired phone",
+                is_active=False,
+                confirmed_at=revoked_enrollment_created_at,
+                revoked_at=revoked_enrollment_revoked_at,
+                created_at=revoked_enrollment_created_at,
+            ),
             models.MfaChallenge(
                 user_id=user_id,
                 challenge_type="email_otp",
@@ -341,6 +358,22 @@ async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
                 otp_digest=otp_digest,
                 otp_key_id="test-key",
                 expires_at=now + timedelta(minutes=5),
+            ),
+            # Recently expired records remain exportable during the retention window.
+            models.MfaChallenge(
+                user_id=user_id,
+                challenge_type="email_otp",
+                flow="login",
+                session_identifier="expired-export-fixture",
+                client_fingerprint="h" * 64,
+                method="email_otp",
+                token_digest=expired_token_digest,
+                token_key_id="test-key",
+                recipient_digest=expired_recipient_digest,
+                otp_digest=expired_otp_digest,
+                otp_key_id="test-key",
+                created_at=now - timedelta(days=2),
+                expires_at=now - timedelta(days=1),
             ),
             models.MfaTotpEnrollment(
                 user_id=other_user.id,
@@ -376,8 +409,16 @@ async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
 
     result = await service.export_user_data(SimpleNamespace(id=user_id), request)
 
-    assert result.mfa_challenge_count == 1
+    assert result.mfa_challenge_count == 2
     assert result.mfa_enrollments == [
+        {
+            "id": revoked_enrollment_id,
+            "label": "retired phone",
+            "is_active": False,
+            "confirmed_at": revoked_enrollment_created_at.replace(tzinfo=None),
+            "revoked_at": revoked_enrollment_revoked_at.replace(tzinfo=None),
+            "created_at": revoked_enrollment_created_at.replace(tzinfo=None),
+        },
         {
             "id": enrollment_id,
             "label": "phone",
@@ -385,13 +426,17 @@ async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
             "confirmed_at": now.replace(tzinfo=None),
             "revoked_at": None,
             "created_at": now.replace(tzinfo=None),
-        }
+        },
     ]
     exported_json = result.model_dump_json()
     assert enrollment_secret not in exported_json
     assert token_digest not in exported_json
     assert otp_digest not in exported_json
     assert recipient_digest not in exported_json
+    assert revoked_enrollment_secret not in exported_json
+    assert expired_token_digest not in exported_json
+    assert expired_otp_digest not in exported_json
+    assert expired_recipient_digest not in exported_json
     assert other_enrollment_secret not in exported_json
     assert '"secret"' not in exported_json
     assert '"token_digest"' not in exported_json
