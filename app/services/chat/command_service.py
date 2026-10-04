@@ -611,7 +611,10 @@ class ChatMessageDispatcher:
             await self.repository.update_timestamp_by_id(dest_chat_id, now)
             async with self.uow:
                 await self.uow.commit()
-        except (Exception, asyncio.CancelledError):
+        except (
+            Exception,
+            asyncio.CancelledError,
+        ):  # RZ-22-01-JUSTIFIED: attempt transaction and copied-file rollback before re-raising failure or cancellation
             try:
                 await self.uow.rollback()
             except Exception:  # RZ-22-01-JUSTIFIED: preserve original failure and continue storage rollback
