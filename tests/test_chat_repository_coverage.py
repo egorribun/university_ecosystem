@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.events import register_event_listeners
 from app.models.chat import (
@@ -185,6 +186,51 @@ async def test_edit_message_non_author_is_noop(db_session, user_factory):
         msg.id, u2.id, "hijack", chat_id=chat.id
     )
 
+    assert affected == 0
+    assert edited_at is None
+
+
+@pytest.mark.asyncio
+async def test_edit_message_preserves_committed_tombstone(db_session, user_factory):
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "deleted text")
+    message.edited_at = _NOW
+    message.read_status = True
+    message.read_at = _NOW
+    message_id, chat_id, author_id = message.id, chat.id, author.id
+
+    deleted_at, deleted = await repo.soft_delete_message(
+        message_id, author_id, chat_id=chat_id
+    )
+    assert deleted == 1
+    assert deleted_at is not None
+    await db_session.commit()
+
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    stored_row = select(Message.__table__).where(Message.id == message_id)
+    # Both calls use the real author and chat. SQLite proves the deleted_at
+    # predicate here; PostgreSQL RLS still requires its integration tier.
+    async with sessions.begin() as edit_session:
+        edit_repo = ChatRepository(edit_session)
+        await edit_repo.set_message_rls_user(author_id)
+        before = dict((await edit_session.execute(stored_row)).mappings().one())
+        assert before["content"] == ""
+        assert before["deleted_at"] is not None
+        assert before["edited_at"] is not None
+        assert before["read_status"] is True
+        assert before["read_at"] is not None
+
+        edited_at, affected = await edit_repo.edit_message(
+            message_id, author_id, "resurrected text", chat_id=chat_id
+        )
+
+    # Read every persisted column after commit in another session, so an ORM
+    # identity-map value cannot hide resurrected content or changed metadata.
+    async with sessions.begin() as read_session:
+        await ChatRepository(read_session).set_message_rls_user(author_id)
+        after = dict((await read_session.execute(stored_row)).mappings().one())
+
+    assert after == before
     assert affected == 0
     assert edited_at is None
 
