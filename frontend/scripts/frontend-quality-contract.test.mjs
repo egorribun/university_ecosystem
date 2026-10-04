@@ -1,10 +1,11 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { readFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
+import { tmpdir } from "node:os"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
-import { resolve } from "node:path"
+import { join, resolve } from "node:path"
 
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
@@ -267,6 +268,97 @@ test("LHCI binary setup skips Unix symlink operations on Windows only", async ()
 
   await runSetupForPlatform("linux", async () => invoked.push("linux"))
   assert.deepEqual(invoked, ["linux"])
+})
+
+async function runLhciSetupWithFilesystemFailure(code, targetKind) {
+  const temporary = await mkdtemp(join(tmpdir(), "lhci-setup-contract-"))
+  try {
+    const preload = join(temporary, "filesystem-fixture.cjs")
+    // Exercise the real CLI entry point while replacing every filesystem write
+    // in its child process. This never attempts to change system wrapper paths.
+    await writeFile(
+      preload,
+      `const fs = require("node:fs/promises")
+const calls = []
+const failure = (code) => Object.assign(new Error(code), { code })
+Object.defineProperty(process, "platform", { value: "linux" })
+fs.chmod = async () => {}
+fs.mkdir = async () => {}
+fs.access = async () => {}
+fs.readlink = async () => { throw failure("ENOENT") }
+fs.lstat = async () => { throw failure("ENOENT") }
+fs.symlink = async (source, destination) => {
+  calls.push({ source, destination })
+  const global = destination.startsWith("/usr/bin/")
+  if (global === ${JSON.stringify(targetKind === "global")}) {
+    throw failure(${JSON.stringify(code)})
+  }
+}
+process.on("exit", () => process.stdout.write(JSON.stringify(calls)))
+`,
+      "utf8"
+    )
+    const result = spawnSync(
+      process.execPath,
+      ["--require", preload, fileURLToPath(new URL("./setup-lhci-binaries.cjs", import.meta.url))],
+      { encoding: "utf8", timeout: 10_000 }
+    )
+    assert.equal(result.error, undefined)
+    assert.equal(result.signal, null)
+    return { ...result, calls: JSON.parse(result.stdout) }
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+}
+
+for (const code of ["EEXIST", "EACCES", "EPERM", "EROFS"]) {
+  test(`LHCI setup continues after optional global wrapper failure ${code}`, async () => {
+    const result = await runLhciSetupWithFilesystemFailure(code, "global")
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stderr, "")
+    assert.deepEqual(
+      result.calls
+        .filter(({ destination }) => destination.startsWith("/usr/bin/"))
+        .map(({ destination }) => destination),
+      [
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+      ]
+    )
+    for (const name of ["google-chrome-stable", "google-chrome", "chromium", "chromium-browser"]) {
+      assert.ok(
+        result.calls.some(
+          ({ destination }) =>
+            destination === resolve(fileURLToPath(frontendRoot), "node_modules", ".bin", name)
+        )
+      )
+    }
+    assert.ok(
+      result.calls.some(
+        ({ destination }) =>
+          destination ===
+          resolve(fileURLToPath(frontendRoot), "node_modules", "@lhci", "utils", ".lighthouserc.js")
+      )
+    )
+  })
+}
+
+test("LHCI setup still fails for an unexpected global filesystem error", async () => {
+  const result = await runLhciSetupWithFilesystemFailure("EIO", "global")
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /EIO/u)
+})
+
+test("LHCI setup still requires writable local wrapper links", async () => {
+  const result = await runLhciSetupWithFilesystemFailure("EROFS", "local")
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /EROFS/u)
+  assert.equal(
+    result.calls.some(({ destination }) => destination.startsWith("/usr/bin/")),
+    false
+  )
 })
 
 test("Knip analyzes frontend tests as export consumers", async () => {
