@@ -344,6 +344,42 @@ async def test_password_repository_rejects_stale_hash_and_rehash_preserves_epoch
 
 
 @pytest.mark.asyncio
+async def test_password_rehash_is_scoped_to_target_with_shared_hash(user_factory):
+    from sqlalchemy import select
+
+    from app.core.database import async_session
+    from app.models import User
+    from app.repositories.user_repository import UserRepository
+
+    target = await user_factory(mfa_epoch=4)
+    shared_hash = target.hashed_password
+    other = await user_factory(hashed_password=shared_hash, mfa_epoch=9)
+    target_id, other_id = target.id, other.id
+    upgraded_hash = uuid4().hex
+
+    async with async_session() as writer:
+        repo = UserRepository(writer)
+        assert (
+            await repo.rehash_password_if_current(
+                target_id, expected_hash=shared_hash, new_hash=upgraded_hash
+            )
+            is True
+        )
+        await writer.commit()
+
+    async with async_session() as reader:
+        rows = await reader.execute(
+            select(User.id, User.hashed_password, User.mfa_epoch).where(
+                User.id.in_((target_id, other_id))
+            )
+        )
+        assert {row.id: (row.hashed_password, row.mfa_epoch) for row in rows} == {
+            target_id: (upgraded_hash, 4),
+            other_id: (shared_hash, 9),
+        }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("cache_mode", ["disabled", "unavailable"])
 async def test_optional_metadata_invalidation_does_not_require_cache(cache_mode):
     from app.services.auth.redis_session import RedisSessionService
