@@ -14,9 +14,19 @@ from app.core.circuit_breaker import (
     CircuitBreakerOpenError,
 )
 from tests.helpers.async_events import wait_for_task_event
+from tests.helpers.circuit_process import assert_circuit_scenario_completes
 
 
 def test_contended_state_lock_wait_does_not_poll_with_timers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert_circuit_scenario_completes(
+        _contended_state_lock_wait_does_not_poll_with_timers, with_monkeypatch=True
+    )
+    _contended_state_lock_wait_does_not_poll_with_timers(monkeypatch)
+
+
+def _contended_state_lock_wait_does_not_poll_with_timers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     breaker = CircuitBreaker("non-polling-lock")
@@ -46,6 +56,13 @@ def test_contended_state_lock_wait_does_not_poll_with_timers(
 
 
 def test_state_lock_wakes_queued_waiters_and_tolerates_cancel_during_wakeup() -> None:
+    assert_circuit_scenario_completes(
+        _state_lock_wakes_queued_waiters_and_tolerates_cancel_during_wakeup
+    )
+    _state_lock_wakes_queued_waiters_and_tolerates_cancel_during_wakeup()
+
+
+def _state_lock_wakes_queued_waiters_and_tolerates_cancel_during_wakeup() -> None:
     breaker = CircuitBreaker("queued-lock-wakeup")
     assert breaker._lock.acquire()
 
@@ -76,6 +93,16 @@ def test_state_lock_wakes_queued_waiters_and_tolerates_cancel_during_wakeup() ->
 
 
 def test_registered_breaker_lock_survives_contention_across_event_loops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert_circuit_scenario_completes(
+        _registered_breaker_lock_survives_contention_across_event_loops,
+        with_monkeypatch=True,
+    )
+    _registered_breaker_lock_survives_contention_across_event_loops(monkeypatch)
+
+
+def _registered_breaker_lock_survives_contention_across_event_loops(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(circuit_module, "_registry_lock", threading.Lock())
@@ -267,6 +294,13 @@ def test_cancelled_half_open_probe_releases_its_reservation() -> None:
 
 
 def test_repeated_cancel_during_probe_exit_does_not_leak_its_reservation() -> None:
+    assert_circuit_scenario_completes(
+        _repeated_cancel_during_probe_exit_does_not_leak_its_reservation
+    )
+    _repeated_cancel_during_probe_exit_does_not_leak_its_reservation()
+
+
+def _repeated_cancel_during_probe_exit_does_not_leak_its_reservation() -> None:
     breaker = CircuitBreaker(
         "repeated-cancelled-probe-owner",
         config=CircuitBreakerConfig(

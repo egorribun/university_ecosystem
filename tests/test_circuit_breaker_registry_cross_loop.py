@@ -9,9 +9,19 @@ import pytest
 
 import app.core.circuit_breaker as circuit_module
 from app.core.circuit_breaker import CircuitBreakerState
+from tests.helpers.circuit_process import assert_circuit_scenario_completes
 
 
 def test_registry_contention_does_not_bind_to_a_closed_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert_circuit_scenario_completes(
+        _registry_contention_does_not_bind_to_a_closed_event_loop, with_monkeypatch=True
+    )
+    _registry_contention_does_not_bind_to_a_closed_event_loop(monkeypatch)
+
+
+def _registry_contention_does_not_bind_to_a_closed_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(circuit_module, "_registry_lock", threading.Lock())
@@ -55,6 +65,13 @@ def test_registry_contention_does_not_bind_to_a_closed_event_loop(
 
 
 def test_cancelled_reset_keeps_registry_usable(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert_circuit_scenario_completes(
+        _cancelled_reset_keeps_registry_usable, with_monkeypatch=True
+    )
+    _cancelled_reset_keeps_registry_usable(monkeypatch)
+
+
+def _cancelled_reset_keeps_registry_usable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(circuit_module, "_registry_lock", threading.Lock())
     monkeypatch.setattr(circuit_module, "_circuit_breakers", {})
 
