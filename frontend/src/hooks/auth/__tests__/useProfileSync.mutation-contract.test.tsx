@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { startTransition, Suspense, type MutableRefObject, type PropsWithChildren } from "react"
 import { renderToString } from "react-dom/server"
-import { QueryClientProvider } from "@tanstack/react-query"
+import { isCancelledError, QueryClientProvider } from "@tanstack/react-query"
 import { hmac } from "@noble/hashes/hmac.js"
 import { sha256 } from "@noble/hashes/sha2.js"
 import { utf8ToBytes } from "@noble/hashes/utils.js"
@@ -18,6 +18,7 @@ import * as etagCache from "@/api/interceptors/etagCache"
 import * as legacyTokenCleanup from "@/hooks/auth/legacyTokenCleanup"
 import { testUser } from "@/tests/mocks/handlers"
 import { withExpectedConsole } from "@/tests/strictConsole"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 import type { UserState } from "@/types/Auth"
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
@@ -147,6 +148,41 @@ const deferred = <T,>() => {
   return { promise, resolve }
 }
 
+const createLifecycleWork = () => {
+  const operations: Array<Promise<PromiseSettledResult<unknown>>> = []
+  const releases: Array<() => void> = []
+  const disposers: Array<() => Promise<void>> = []
+  const track = <T,>(promise: Promise<T>): Promise<T> => {
+    operations.push(
+      promise.then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason })
+      )
+    )
+    return promise
+  }
+  return { operations, releases, disposers, track }
+}
+let lifecycleWork: ReturnType<typeof createLifecycleWork> | undefined
+
+const trackLifecycleCrypto = (work: ReturnType<typeof createLifecycleWork>) => {
+  const subtle = window.crypto.subtle
+  const importKey = subtle.importKey.bind(subtle)
+  const deriveKey = subtle.deriveKey.bind(subtle)
+  const encrypt = subtle.encrypt.bind(subtle)
+  const decrypt = subtle.decrypt.bind(subtle)
+  const verify = subtle.verify.bind(subtle)
+  // Include derivation/import work: an operation started by the previous test
+  // must not arrive late and consume the next test's one-shot primitive gate.
+  vi.spyOn(subtle, "importKey").mockImplementation((...args) =>
+    work.track(Reflect.apply(importKey, subtle, args) as Promise<CryptoKey>)
+  )
+  vi.spyOn(subtle, "deriveKey").mockImplementation((...args) => work.track(deriveKey(...args)))
+  vi.spyOn(subtle, "encrypt").mockImplementation((...args) => work.track(encrypt(...args)))
+  vi.spyOn(subtle, "decrypt").mockImplementation((...args) => work.track(decrypt(...args)))
+  vi.spyOn(subtle, "verify").mockImplementation((...args) => work.track(verify(...args)))
+}
+
 // Let the browser primitive finish, then hold its result at the async boundary.
 // This preserves real encryption/decryption while controlling completion order.
 const pauseNextCryptoResult = (method: "encrypt" | "decrypt") => {
@@ -154,6 +190,8 @@ const pauseNextCryptoResult = (method: "encrypt" | "decrypt") => {
   const operation = subtle[method].bind(subtle)
   const started = deferred<void>()
   const release = deferred<void>()
+  const owner = lifecycleWork
+  owner?.releases.push(release.resolve)
   let completion!: Promise<ArrayBuffer>
   vi.spyOn(subtle, method).mockImplementationOnce((...args) => {
     completion = (async () => {
@@ -162,6 +200,7 @@ const pauseNextCryptoResult = (method: "encrypt" | "decrypt") => {
       await release.promise
       return value
     })()
+    owner?.track(completion)
     return completion
   })
   onTestFinished(async () => {
@@ -204,17 +243,44 @@ const renderProfileLifecycle = () => {
       ),
     { initialProps: props, wrapper }
   )
-  let disposed = false
-  const dispose = async () => {
-    if (disposed) return
-    disposed = true
-    view.unmount()
-    await act(async () => {
-      response.resolve({ data: testUser })
-      await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
-    })
-    queryClient.clear()
+  let disposal: Promise<void> | undefined
+  const dispose = () => {
+    disposal ??= (async () => {
+      const failures: unknown[] = []
+      try {
+        view.unmount()
+      } catch (error) {
+        failures.push(error)
+      } finally {
+        try {
+          await act(async () => {
+            response.resolve({ data: testUser })
+            const outcomes = await Promise.allSettled(
+              fetchQuery.mock.results.map((result) => result.value)
+            )
+            for (const outcome of outcomes) {
+              // Identity changes intentionally cancel this fixture's held
+              // bootstrap query. Other request failures remain test failures.
+              if (outcome.status === "rejected" && !isCancelledError(outcome.reason)) {
+                failures.push(outcome.reason)
+              }
+            }
+          })
+        } catch (error) {
+          failures.push(error)
+        } finally {
+          try {
+            queryClient.clear()
+          } catch (error) {
+            failures.push(error)
+          }
+        }
+      }
+      if (failures.length) throw new AggregateError(failures, "Profile lifecycle disposal failed")
+    })()
+    return disposal
   }
+  lifecycleWork?.disposers.push(dispose)
   onTestFinished(dispose)
   return {
     ...view,
@@ -2572,14 +2638,48 @@ describe("profile effect lifecycle ownership", () => {
     localStorage.clear()
     sessionStorage.clear()
     acceptBrowserSessionGeneration()
+    lifecycleWork = createLifecycleWork()
+    trackLifecycleCrypto(lifecycleWork)
   })
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
-    localStorage.clear()
-    sessionStorage.clear()
-    acceptBrowserSessionGeneration()
+  afterEach(async () => {
+    const work = lifecycleWork!
+    const failures: unknown[] = []
+    const attempt = (action: () => void) => {
+      try {
+        action()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    try {
+      for (const dispose of work.disposers) {
+        try {
+          await dispose()
+        } catch (error) {
+          failures.push(error)
+        }
+      }
+      for (const release of work.releases) attempt(release)
+      await act(async () => {
+        let drained = 0
+        while (drained < work.operations.length) {
+          const batch = work.operations.slice(drained)
+          drained = work.operations.length
+          for (const outcome of await Promise.all(batch)) {
+            if (outcome.status === "rejected") failures.push(outcome.reason)
+          }
+        }
+      })
+    } finally {
+      lifecycleWork = undefined
+      attempt(() => vi.restoreAllMocks())
+      attempt(() => vi.unstubAllGlobals())
+      attempt(() => localStorage.clear())
+      attempt(() => sessionStorage.clear())
+      attempt(acceptBrowserSessionGeneration)
+    }
+    if (failures.length) throw new AggregateError(failures, "Profile lifecycle cleanup failed")
   })
 
   it("keeps the replacement initializer's profile when the previous effect finishes later", async () => {
@@ -2820,30 +2920,36 @@ describe("profile effect lifecycle ownership", () => {
 
   it("applies a completed storage read while its subscription still owns the profile", async () => {
     const view = renderProfileLifecycle()
-    const persistence = pauseNextCryptoResult("encrypt")
     act(() => view.result.current.setUser({ ...testUser, full_name: "Current profile" }))
-    await act(async () => {
-      await persistence.started
+    // Observe this profile's complete signed publication before introducing a
+    // remote envelope; finishing one encryption primitive is not that boundary.
+    await waitFor(async () => {
+      expect(await readCachedUserAsync(signingKey)).toMatchObject({
+        id: testUser.id,
+        full_name: "Current profile",
+      })
     })
-    await act(persistence.finish)
     await writeEncryptedEnvelope({ ...snapshot(testUser.id), full_name: "Updated in another tab" })
     const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    const paused = pauseNextCryptoResult("decrypt")
     act(() => {
-      window.dispatchEvent(
-        new StorageEvent("storage", { key: PROFILE_CACHE_STORAGE_KEY, storageArea: localStorage })
-      )
+      expect(
+        collectWindowErrors(() => {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: PROFILE_CACHE_STORAGE_KEY,
+              storageArea: localStorage,
+            })
+          )
+        })
+      ).toEqual([])
     })
-    await act(async () => {
-      await paused.started
-    })
-    await act(paused.finish)
-
-    expect(view.result.current.user).toMatchObject({
-      id: testUser.id,
-      full_name: "Updated in another tab",
-      email: testUser.email,
-      role: testUser.role,
+    await waitFor(() => {
+      expect(view.result.current.user).toMatchObject({
+        id: testUser.id,
+        full_name: "Updated in another tab",
+        email: testUser.email,
+        role: testUser.role,
+      })
     })
     expect(useAuthStore.getState().user).toEqual(view.result.current.user)
     expect(view.queryClient.getQueryData(currentUserQueryKey)).toEqual(view.result.current.user)
