@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 const shortcuts = [
   { key: "J", action: "keyboard.next" },
@@ -13,41 +14,48 @@ const shortcuts = [
 export function EventsShortcutsOverlay() {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation(["events"])
-  const triggerRef = useRef<Element | null>(null)
+  const titleId = useId()
+  const descriptionId = useId()
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    // Keep Escape subject to the same editing and unrelated-dialog guards
+    // as the help shortcut. The trap owns focus movement and restoration.
+    escapeDeactivates: false,
+  })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
         return
-      if (target.closest("dialog, [role='dialog']")) return
+      const targetDialog = target.closest("dialog, [role='dialog']")
+      if (targetDialog && targetDialog !== dialogRef.current) return
 
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
-        if (!open) triggerRef.current = document.activeElement
         setOpen((v) => !v)
       }
       if (e.key === "Escape" && open) {
         e.preventDefault()
         setOpen(false)
-        // Return focus to trigger element (WCAG 2.4.3)
-        setTimeout(() => (triggerRef.current as HTMLElement)?.focus?.(), 0)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open])
+  }, [dialogRef, open])
 
   if (!open) return null
 
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events -- backdrop overlay, keyboard handled via window listener
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-overlay flex items-center justify-center bg-black/(--opacity-strong) backdrop-blur-sm"
       onClick={() => setOpen(false)}
       role="dialog"
       aria-modal="true"
-      aria-label={t("events:keyboard.overlayTitle")}
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
       tabIndex={-1}
     >
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events -- stopPropagation on content panel */}
@@ -56,7 +64,7 @@ export function EventsShortcutsOverlay() {
         role="document"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-bold text-text-primary mb-4">
+        <h2 id={titleId} className="text-lg font-bold text-text-primary mb-4">
           {t("events:keyboard.overlayTitle")}
         </h2>
         <dl className="space-y-2.5">
@@ -71,7 +79,10 @@ export function EventsShortcutsOverlay() {
             </div>
           ))}
         </dl>
-        <p className="mt-4 text-[11px] text-(--text-secondary)/(--opacity-medium)">
+        <p
+          id={descriptionId}
+          className="mt-4 text-[11px] text-(--text-secondary)/(--opacity-medium)"
+        >
           {t("events:keyboard.pressToClose")}
         </p>
       </div>
