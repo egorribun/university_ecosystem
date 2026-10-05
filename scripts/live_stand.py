@@ -2360,7 +2360,7 @@ def _mark_live_e2e_output_directory(
 
     marker_path = config_root / LIVE_E2E_OUTPUT_OWNER_MARKER
     try:
-        with marker_path.open("x", encoding="utf-8") as marker_file:
+        with marker_path.open("x", encoding="utf-8", newline="\n") as marker_file:
             marker_file.write(LIVE_E2E_OUTPUT_OWNER_MARKER_CONTENT)
     except OSError as error:
         raise StandError(

@@ -623,8 +623,8 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         owner_marker = output_path.parent / live_stand.LIVE_E2E_OUTPUT_OWNER_MARKER
         if (
             not owner_marker.is_file()
-            or owner_marker.read_text(encoding="utf-8")
-            != live_stand.LIVE_E2E_OUTPUT_OWNER_MARKER_CONTENT
+            or owner_marker.read_bytes()
+            != live_stand.LIVE_E2E_OUTPUT_OWNER_MARKER_CONTENT.encode("utf-8")
         ):
             pytest.fail("Playwright output must have a temporary ownership marker")
         owner_marker_paths.append(owner_marker)
