@@ -788,6 +788,41 @@ async def test_change_password_same_password(auth_service, request_mock, monkeyp
     assert exc.value.status_code == 400
 
 
+@pytest.mark.asyncio
+async def test_change_password_rejects_same_runtime_argon2_password_without_writes(
+    auth_service, request_mock, monkeypatch
+):
+    password = f"Q7!{uuid.uuid4().hex}z"
+    hashed_password = await security_module.get_password_hash(password)
+    user = SimpleNamespace(id=uuid.uuid4(), hashed_password=hashed_password)
+    payload = schemas.UserPasswordChangeIn(
+        current_password=password, new_password=password
+    )
+    request_mock.state.active_session = None
+    request_mock.headers = {"Accept-Language": "en"}
+    monkeypatch.setattr(auth_module, "validate_password_hibp", AsyncMock())
+    monkeypatch.setattr(
+        auth_module,
+        "get_password_hash",
+        AsyncMock(return_value="replacement-hash"),
+    )
+    monkeypatch.setattr(csrf_module, "signal_csrf_rotation", MagicMock())
+    auth_service.session_repo.revoke_all_for_user = AsyncMock(return_value=0)
+
+    denied = None
+    try:
+        await auth_service.change_password(user, payload, request_mock)
+    except HTTPException as exc:
+        denied = (exc.status_code, exc.detail)
+
+    assert denied == (
+        400,
+        "Choose a new password that's different from the current one",
+    )
+    auth_service.user_repo.change_password_if_current.assert_not_awaited()
+    auth_service.uow.commit.assert_not_awaited()
+
+
 async def test_change_password_hibp_rejection(auth_service, request_mock, monkeypatch):
     """ValueError from the HIBP check maps to a 400 bad_request (L396-397)."""
     user = MagicMock()

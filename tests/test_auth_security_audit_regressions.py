@@ -140,6 +140,37 @@ async def test_factor_change_requires_tombstones_before_commit(failure):
 
 
 @pytest.mark.asyncio
+async def test_factor_change_publishes_jti_tombstone_before_commit():
+    from app.api.auth import mfa as mfa_api
+    from app.auth.mfa.lifecycle import MfaSessionRevocation
+
+    jti = uuid4().hex
+    expires_at = datetime.now(UTC) + timedelta(hours=1)
+    pending = [MfaSessionRevocation(jti=jti, expires_at=expires_at)]
+    events = []
+
+    async def revoke_session(actual_jti, *, expires_at):
+        events.append("tombstone")
+
+    backend = SimpleNamespace(revoke_session=AsyncMock(side_effect=revoke_session))
+    db = AsyncMock()
+
+    async def commit():
+        events.append("commit")
+
+    db.commit.side_effect = commit
+    with patch(
+        "app.services.auth.redis_session.RedisSessionService",
+        return_value=backend,
+    ):
+        await mfa_api._commit_and_publish_mfa_revocations(db, pending)
+
+    assert events == ["tombstone", "commit"]
+    backend.revoke_session.assert_awaited_once_with(jti, expires_at=expires_at)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_revocation_publication_failure_is_never_swallowed():
     from app.auth.mfa.lifecycle import (
         MfaSessionRevocation,
