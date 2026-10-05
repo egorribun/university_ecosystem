@@ -35,7 +35,7 @@
   полную продуктовую, визуальную и disaster-recovery приёмку не заменяет.
 - На `38e8c6d`: [Matrix 37263603990](https://github.com/egorribun/university_ecosystem/actions/runs/37263603990)
   completed/failure: 140 success / 26 skipped / 3 failure; один audit false positive исправлен без baseline waiver.
-  На `78182847` [Matrix 37268095391](https://github.com/egorribun/university_ecosystem/actions/runs/37268095391) ещё идёт; security/hooks GREEN, owned live smoke GREEN; полный допуск открыт.
+  На `78182847` [Matrix 37268095391](https://github.com/egorribun/university_ecosystem/actions/runs/37268095391) идёт; security/smoke GREEN, mutmut stats shard 0 RED; полный допуск открыт.
 - На предыдущем `f39d5421341d84dd5e316fe9e88e2b4399758d0e`
   [matrix 37213691132](https://github.com/egorribun/university_ecosystem/actions/runs/37213691132)
   завершён: **367 checks, 216 success / 20 skipped / 131 failure**.
@@ -100,7 +100,7 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - Cache: root 25 passed, `shard-026:359` local RED; rateLimit: root 80/static 4/4 GREEN; focused216=212 Killed/2 Survived/2 Timeout, waiter{} Killed, local only.
 - `600e18111` + bounded admin hydration protocol: root live contracts 143/143, CLI 1092/1092 + 5 domain negatives GREEN; replay открыт.
 - `7b8dbbd91`: root 3 lockout/push + 2 MFA + 12 sessions tests/Ruff/hooks GREEN; 42/45 и group56:6 local RED, без canonical credit.
-- `38e8c6d`: root preflight 9/9, hooks/pre-push GREEN; live CLI 1 020 pytest + 8 Node GREEN.
+- `f9469d40`: root preflight 9/9, live contracts 143/143, types/lint/format/hooks GREEN; backend deletion/MFA epoch-0 modules 32/32, root new cases 3/3.
 - `1faa3be4c` test-only password reuse/MFA tombstone: root 45/45 в двух модулях, Ruff/hooks GREEN;
   baseline GREEN / exact generated-AST RED проверены отдельно, canonical credit не выдаётся.
 - Chat reply-preview/search: root 44/44; RLS identity 27/27; password-change 21/21, webpush 59/59 GREEN;
@@ -114,10 +114,10 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
   Повторный защищённый smoke после seed: 18 passed / 2 project-scoped skips, exit 0.
   `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
-- Owned live `78182847`: up GREEN; admin 6 failed, API 200/valid empty queue, table false/alert true; React #418 на dashboard обоих проектов.
-  Activity 2 failed после reload: URL/radio/geometry прошли, ожидаемый summary response отсутствует; прежняя geometry failure ещё не закрыта.
-  Owned stop/teardown GREEN; 175 containers/94 volumes сохранены, 45 owned image tags удалены без force.
-  Private receipts source-bound: admin `722EBA1A`, Activity `FC88982C`; полный live допуск открыт.
+- Owned live `f9469d40`: up GREEN; Activity 2/2 desktop/mobile, real API metrics, reload и geometry GREEN.
+  Admin 2 passed / 4 failed; smoke 14 passed / 4 failed / 2 project-scoped skips; non-admin redirect на dashboard вызывает pageerrors React #418.
+  Owned stop/teardown GREEN; 175 containers/94 volumes сохранены, всего 54 owned image tags удалены без force.
+  Private source-bound receipts: admin `9C807872`, Activity `E6FACE74`; SSR/cache diagnosis и полный live допуск открыты.
 
 ## Среда и ближайшие действия
 
@@ -127,7 +127,7 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - Live запуск: чистый checkout и отдельный private run-owned state root;
   source freeze после commit, без ослабления guards; тяжёлые jobs по одному.
 - Runtime `38e8c6d` подтвердил cap 50, TTL 30 минут и login 60/minute; причина 111 failures не доказана.
-  Проверить numeric Activity geometry, queue API/render state и SSR hydration; session cleanup только после RED/review.
+  Разобрать SSR redirect и ownership/hydration query cache; не ослаблять pageerror/RBAC assertions; session cleanup только после RED/review.
 - Продолжить блоки 4/5: traceability ТЗ, RU/EN, light/dark, ширины
   360/390/768/1024/1440; small visual packages и пользовательское утверждение baseline.
   Полный live stack, повторный stop/start и данные требуют отдельного evidence.
