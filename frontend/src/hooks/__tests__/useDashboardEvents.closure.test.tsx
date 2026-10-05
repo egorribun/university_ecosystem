@@ -10,14 +10,31 @@ import {
   createDashboardEventsQueryOptions,
   dashboardEventsQueryKey,
   prefetchDashboardEvents,
+  projectDashboardEventsSnapshot,
 } from "../useDashboardEvents"
 
-const event = (id: string, starts_at?: string) =>
-  ({
-    id,
-    starts_at,
-    title: id,
-  }) as unknown as Event
+const event = (
+  id: string,
+  starts_at = "2026-01-15T10:00:00.000Z",
+  location?: string | null
+): Event => ({
+  created_at: "2026-01-01T00:00:00.000Z",
+  created_by: "event-owner-private-sentinel",
+  ends_at: "2026-01-15T11:00:00.000Z",
+  is_active: true,
+  is_registered: true,
+  my_qr_token: "attendance-private-sentinel",
+  ...(location === undefined ? {} : { location }),
+  id,
+  starts_at,
+  title: id,
+})
+const dashboardEvent = (id: string, starts_at: string, location?: string | null) => ({
+  id,
+  title: id,
+  starts_at,
+  ...(location === undefined ? {} : { location }),
+})
 
 const context = (client: QueryClient, signal?: AbortSignal) => ({
   client,
@@ -33,7 +50,12 @@ describe("useDashboardEvents closure", () => {
     mockGet.mockResolvedValueOnce({
       status: 200,
       data: {
-        items: [event("late", "2026-02-02"), null, event("missing"), event("early", "2026-01-01")],
+        items: [
+          event("late", "2026-02-02"),
+          null,
+          { ...event("missing"), starts_at: undefined } as unknown as Event,
+          event("early", "2026-01-01"),
+        ],
       },
     })
 
@@ -80,11 +102,83 @@ describe("useDashboardEvents closure", () => {
     client.setQueryData(dashboardEventsQueryKey, previous)
 
     mockGet.mockResolvedValueOnce({ status: 304, data: undefined })
-    await expect(options.queryFn(context(client))).resolves.toEqual(previous)
+    await expect(options.queryFn(context(client))).resolves.toEqual({
+      items: [dashboardEvent("cached", "2026-01-01")],
+    })
 
     client.removeQueries({ queryKey: dashboardEventsQueryKey })
     mockGet.mockResolvedValueOnce({ status: 304, data: undefined })
     await expect(options.queryFn(context(client))).resolves.toEqual({ items: [] })
+
+    mockGet.mockResolvedValueOnce({
+      status: 304,
+      data: { items: [event("304-body", "2026-02-01", null)] },
+    })
+    await expect(options.queryFn(context(client))).resolves.toEqual({
+      items: [
+        {
+          id: "304-body",
+          title: "304-body",
+          starts_at: "2026-02-01",
+          location: null,
+        },
+      ],
+    })
+  })
+
+  it("projects valid display fields and rejects malformed cached snapshots", () => {
+    expect(
+      projectDashboardEventsSnapshot({
+        items: [event("projected", "2026-03-01", null)],
+      })
+    ).toEqual({
+      items: [
+        {
+          id: "projected",
+          title: "projected",
+          starts_at: "2026-03-01",
+          location: null,
+        },
+      ],
+    })
+    expect(
+      projectDashboardEventsSnapshot({
+        items: [{ id: "missing-title", starts_at: "2026-03-01" }],
+      })
+    ).toBeUndefined()
+    expect(
+      projectDashboardEventsSnapshot({
+        items: [{ id: "bad-location", title: "Bad", starts_at: "2026-03-01", location: 7 }],
+      })
+    ).toBeUndefined()
+
+    expect(projectDashboardEventsSnapshot({ items: [event("no-location")] })).toEqual({
+      items: [dashboardEvent("no-location", "2026-01-15T10:00:00.000Z")],
+    })
+    expect(
+      projectDashboardEventsSnapshot({ items: [event("string-location", "2026-03-01", "Hall A")] })
+    ).toEqual({
+      items: [dashboardEvent("string-location", "2026-03-01", "Hall A")],
+    })
+
+    const validEvent = event("valid")
+    const invalidSnapshots: unknown[] = [
+      null,
+      [],
+      {},
+      { items: undefined },
+      { items: { invalid: true } },
+      { items: [null] },
+      { items: ["not-an-event"] },
+      { items: [{ ...validEvent, id: 7 }] },
+      { items: [{ ...validEvent, title: null }] },
+      { items: [{ ...validEvent, starts_at: 7 }] },
+      { items: [{ ...validEvent, location: false }] },
+      { items: [validEvent, { ...validEvent, title: 7 }] },
+    ]
+    for (const invalidSnapshot of invalidSnapshots) {
+      expect(projectDashboardEventsSnapshot(invalidSnapshot)).toBeUndefined()
+    }
   })
 
   it("rejects malformed item collections and prefetches through the canonical options", async () => {
@@ -100,7 +194,7 @@ describe("useDashboardEvents closure", () => {
     })
     await expect(prefetchDashboardEvents(client)).resolves.toBeUndefined()
     expect(client.getQueryData(dashboardEventsQueryKey)).toEqual({
-      items: [event("prefetched", "2026-03-01")],
+      items: [dashboardEvent("prefetched", "2026-03-01")],
     })
   })
 
@@ -110,7 +204,9 @@ describe("useDashboardEvents closure", () => {
     const fallback = { items: [event("fallback", "2026-01-01")] }
     client.setQueryData(dashboardEventsQueryKey, fallback)
     mockGet.mockRejectedValueOnce(new Error("temporary"))
-    await expect(options.queryFn(context(client))).resolves.toEqual(fallback)
+    await expect(options.queryFn(context(client))).resolves.toEqual({
+      items: [dashboardEvent("fallback", "2026-01-01")],
+    })
 
     client.removeQueries({ queryKey: dashboardEventsQueryKey })
     const aborted = new Error("aborted")

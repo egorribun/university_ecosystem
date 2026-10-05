@@ -7,7 +7,7 @@ import { cn } from "@/utils/cn"
 import { Button, type ButtonProps } from "@/components/ui/Button"
 import { ProgressBar } from "@/components/ui/ProgressBar"
 import SmartImage from "@/components/media/SmartImage"
-import type { StoryItem } from "@/types/Story"
+import type { DashboardStory } from "@/hooks/useDashboardStories"
 import { useSwipe } from "@/hooks/useSwipe"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -16,7 +16,7 @@ import { useAppShell } from "@/contexts/AppShellContext"
 const STORY_VIEWER_OVERLAY_ID = "story-viewer"
 
 interface StoryViewerProps {
-  stories: StoryItem[]
+  stories: DashboardStory[]
   activeStoryIndex: number | null
   progress: number
   onClose: () => void

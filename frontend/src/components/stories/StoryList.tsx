@@ -4,7 +4,7 @@ import { cn } from "@/utils/cn"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { StoryCircle } from "@/components/ui/StoryCircle"
 import SmartImage from "@/components/media/SmartImage"
-import type { StoryItem } from "@/types/Story"
+import type { DashboardStory } from "@/hooks/useDashboardStories"
 
 const SKELETON_COUNT = 8
 const STORY_CIRCLE_DIAMETER = "var(--size-story-md)"
@@ -16,10 +16,10 @@ const DRAG_THRESHOLD = 5
 type ScrollEdge = "start" | "middle" | "end" | "none"
 
 interface StoryListProps {
-  stories: StoryItem[]
+  stories: DashboardStory[]
   loading?: boolean
   onPrefetch?: () => void
-  onOpenStory: (story: StoryItem, index: number) => void
+  onOpenStory: (story: DashboardStory, index: number) => void
   activeStoryId?: string
 }
 
@@ -144,7 +144,7 @@ export const StoryList = memo(function StoryList({
   }, [])
 
   const handleStoryClick = useCallback(
-    (story: StoryItem, index: number) => {
+    (story: DashboardStory, index: number) => {
       if (hasDragged.current) {
         hasDragged.current = false
         return

@@ -1,7 +1,24 @@
 import { createElement } from "react"
 import { createRouter } from "@tanstack/react-router"
-import { QueryClient } from "@tanstack/react-query"
-import { createQueryClient } from "./app/queryClient"
+import {
+  dehydrate as dehydrateQueryClient,
+  hashKey,
+  hydrate as hydrateQueryClient,
+  type DehydratedState,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query"
+import { createQueryClient, queryClient as browserQueryClient } from "./app/queryClient"
+import {
+  dashboardEventsQueryKey,
+  projectDashboardEventsSnapshot,
+  type DashboardEventsSnapshot,
+} from "./hooks/useDashboardEvents"
+import {
+  dashboardStoriesQueryKey,
+  projectDashboardStories,
+  type DashboardStory,
+} from "./hooks/useDashboardStories"
 import { configureRouterViewTransitions } from "./app/routerViewTransitions"
 import { routeTree } from "./routeTree.gen"
 
@@ -67,21 +84,139 @@ const DEFAULT_AUTH: RouterContext["auth"] = {
   loading: false,
 }
 
+const dashboardQueryKeys: readonly QueryKey[] = [dashboardEventsQueryKey, dashboardStoriesQueryKey]
+
+const isDashboardQueryKey = (queryKey: QueryKey) =>
+  dashboardQueryKeys.some(
+    (allowedKey) =>
+      allowedKey.length === queryKey.length &&
+      allowedKey.every((segment, index) => segment === queryKey[index])
+  )
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+type DashboardQueryKey = typeof dashboardEventsQueryKey | typeof dashboardStoriesQueryKey
+type DashboardQueryData = DashboardEventsSnapshot | DashboardStory[]
+type DashboardDehydratedQuery = {
+  dehydratedAt: number
+  queryHash: string
+  queryKey: DashboardQueryKey
+  state: {
+    data: DashboardQueryData
+    dataUpdateCount: number
+    dataUpdatedAt: number
+    error: null
+    errorUpdateCount: number
+    errorUpdatedAt: number
+    fetchFailureCount: number
+    fetchFailureReason: null
+    fetchMeta: null
+    isInvalidated: boolean
+    status: "success"
+    fetchStatus: "idle"
+  }
+}
+type DashboardDehydratedState = {
+  mutations: []
+  queries: DashboardDehydratedQuery[]
+}
+
+const projectDehydratedQuery = (value: unknown): DashboardDehydratedQuery | undefined => {
+  if (!isRecord(value) || !isRecord(value.state)) return undefined
+  const candidateQueryKey = value.queryKey
+  if (!Array.isArray(candidateQueryKey)) return undefined
+  const queryState = value.state
+  if (
+    queryState.status !== "success" ||
+    typeof value.queryHash !== "string" ||
+    typeof value.dehydratedAt !== "number" ||
+    typeof queryState.dataUpdateCount !== "number" ||
+    typeof queryState.dataUpdatedAt !== "number" ||
+    typeof queryState.isInvalidated !== "boolean"
+  ) {
+    return undefined
+  }
+
+  let queryKey: DashboardQueryKey
+  let data: DashboardQueryData | undefined
+  if (
+    candidateQueryKey.length === dashboardEventsQueryKey.length &&
+    dashboardEventsQueryKey.every((segment, index) => segment === candidateQueryKey[index])
+  ) {
+    queryKey = dashboardEventsQueryKey
+    data = projectDashboardEventsSnapshot(queryState.data)
+  } else if (
+    candidateQueryKey.length === dashboardStoriesQueryKey.length &&
+    dashboardStoriesQueryKey.every((segment, index) => segment === candidateQueryKey[index])
+  ) {
+    queryKey = dashboardStoriesQueryKey
+    data = projectDashboardStories(queryState.data)
+  } else {
+    return undefined
+  }
+
+  if (data === undefined) return undefined
+  const queryHash = hashKey(queryKey)
+  if (value.queryHash !== queryHash) return undefined
+
+  return {
+    dehydratedAt: value.dehydratedAt,
+    queryHash,
+    queryKey,
+    state: {
+      data,
+      dataUpdateCount: queryState.dataUpdateCount,
+      dataUpdatedAt: queryState.dataUpdatedAt,
+      error: null,
+      errorUpdateCount: 0,
+      errorUpdatedAt: 0,
+      fetchFailureCount: 0,
+      fetchFailureReason: null,
+      fetchMeta: null,
+      isInvalidated: queryState.isInvalidated,
+      status: "success",
+      fetchStatus: "idle",
+    },
+  }
+}
+
+const filterDashboardDehydratedState = (state: DehydratedState): DashboardDehydratedState => ({
+  mutations: [],
+  queries: state.queries.flatMap((query) => {
+    const projected = projectDehydratedQuery(query)
+    return projected ? [projected] : []
+  }),
+})
+
 const createAppRouter = () => {
   // Read SSR-injected auth state if running under server.ts; falls through to
   // DEFAULT_AUTH on the client where the value is unused (client-side route
   // guards read Zustand directly per Wave 174 SW1).
   const ssrAuth = globalThis.__ssrAuthGetter__?.()
+  // SSR gets an isolated cache per request; browser loaders and the persisted
+  // root provider share the same owner-aware application client.
+  const routerQueryClient = import.meta.env.SSR ? createQueryClient() : browserQueryClient
 
   const router = createRouter({
     routeTree,
     context: {
       auth: ssrAuth ?? DEFAULT_AUTH,
-      // Per-call QueryClient instance — SSR + client never share cache state,
-      // while both still use the same offline/retry/cache policy.  Constructing
-      // a bare QueryClient here silently diverges from the provider's defaults
-      // during SSR loader resolution and causes redundant refetches.
-      queryClient: createQueryClient(),
+      queryClient: routerQueryClient,
+    },
+    // Transfer only successful dashboard data. Auth/session queries and
+    // mutations remain request-local and are never part of router hydration.
+    dehydrate: () =>
+      filterDashboardDehydratedState(
+        dehydrateQueryClient(routerQueryClient, {
+          shouldDehydrateQuery: (query) =>
+            query.state.status === "success" && isDashboardQueryKey(query.queryKey),
+          shouldDehydrateMutation: () => false,
+        })
+      ),
+    hydrate: (state) => {
+      if (!state || !Array.isArray(state.queries)) return
+      hydrateQueryClient(routerQueryClient, filterDashboardDehydratedState(state))
     },
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,

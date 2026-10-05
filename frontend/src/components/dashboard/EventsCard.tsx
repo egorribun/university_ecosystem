@@ -12,10 +12,10 @@ import { Skeleton } from "@/components/ui/Skeleton"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
 import { useDashboardEvents, prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
+import type { DashboardEvent } from "@/hooks/useDashboardEvents"
 import { prefetchEventsListQuery, EVENTS_PAGE_SIZE } from "@/api/hooks/events"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useQueryClient } from "@tanstack/react-query"
-import type { Event } from "@/types/Event"
 import { formatDate, toDate } from "@/utils/date"
 import { DateBullet } from "./DateBullet"
 
@@ -48,7 +48,7 @@ export const EventsCard = memo(function EventsCard({
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
   const dashboardEventsQuery = useDashboardEvents()
-  const events: Event[] = useMemo(
+  const events: DashboardEvent[] = useMemo(
     () => dashboardEventsQuery.data ?? [],
     [dashboardEventsQuery.data]
   )
