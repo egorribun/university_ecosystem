@@ -7,21 +7,22 @@
 ## Контекст и источник доказательств
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Hosted-кампания проверяет `4903a0f04340a42a91a53e4c82e65dae25288d91`;
-  последующие code checkpoints проверяются отдельно, приёмка описана ниже.
+  Опубликованный checkpoint `41a93b056dfb3383d1402e4627f7999f7b762ee2`;
+  HEAD, origin и PR head совпали; checkout чист на момент запуска приёмки.
 - После контрольной точки `2e78ce97d0daccd9d9ea74606ae07974a42ab555`:
-  **155 коммитов, 929 изменённых файлов** на `4903a0f04`. Актуальный `main`
+  **167 коммитов, 945 изменённых файлов** на `41a93b056`. Последний проверенный `main`
   `6fa133b57f62c554162876d4e6d8349f8060fce9` входит в историю ветки.
-- Пользователь подтвердил включение [AUDIT_PROMPT.md](AUDIT_PROMPT.md) в Git.
-  Исходные bytes сохранены в `cf9f5609`; инструкции шаблона не заменяют поручение пользователя.
-- Root координирует три GPT-6 Luna Max: backend, frontend, CI/инфраструктура.
-  Владельцы пишут в непересекающиеся файлы; Git-операции выполняет root.
+- [AUDIT_PROMPT.md](AUDIT_PROMPT.md) включён по поручению пользователя в `cf9f5609`; шаблон не заменяет поручение.
+- Root координирует три GPT-6 Luna Max: backend, frontend, CI/инфраструктура; Git выполняет root.
 - Полные исторические receipts, population, ограничения и сравнения сохранены
   в [предыдущем STATUS](https://github.com/egorribun/university_ecosystem/blob/01ffea1b5d0eca52f0b76e44d83aac3cb5890b71/docs/superpowers/plans/STATUS.md).
   Старые результаты и отсутствующее локальное evidence не подтверждают новый SHA.
 
 ## Актуальная hosted-проверка опубликованного source
 
+- `41a93b056`: [Matrix 37300244745](https://github.com/egorribun/university_ecosystem/actions/runs/37300244745), attempt 1, queued;
+  snapshot 183 observed jobs: 99 success / 0 failure / 12 skipped / 72 без результата; full aggregate открыт.
+  [Owned live 37300244368](https://github.com/egorribun/university_ecosystem/actions/runs/37300244368) success на exact SHA; это PR smoke scope.
 - [Matrix 37236971603](https://github.com/egorribun/university_ecosystem/actions/runs/37236971603),
   attempt 1, PR head `01ffea1b5`, producer merge `95b8ba18`: одинаковое дерево `286c57c1`.
   128/128 backend groups validated: 4 540 selected, canonical 3 770 Killed / 770 Survived;
@@ -35,7 +36,7 @@
 - На `38e8c6d`: [Matrix 37263603990](https://github.com/egorribun/university_ecosystem/actions/runs/37263603990)
   completed/failure: 140 success / 26 skipped / 3 failure; один audit false positive исправлен без baseline waiver.
   На `78182847` [Matrix 37268095391](https://github.com/egorribun/university_ecosystem/actions/runs/37268095391): security/smoke GREEN, mutmut stats shard 0 RED; snapshot сохранён перед supersession.
-  На `4903a0f04` [Matrix 37280637000](https://github.com/egorribun/university_ecosystem/actions/runs/37280637000) pending; немутационных failures в snapshot нет.
+  На `4903a0f04` [Matrix 37280637000](https://github.com/egorribun/university_ecosystem/actions/runs/37280637000): исторический partial snapshot, немутационных failures в нём нет.
   Stats 8/8 GREEN; shard-0 metadata/tree/hash проверены. 20 failed groups: 720 selected/completed,
   601 Killed / 119 Survived, без runtime statuses; это частичные proofs, не aggregate score.
 - На предыдущем `f39d5421341d84dd5e316fe9e88e2b4399758d0e`
@@ -67,8 +68,7 @@
 
 ## Исторические mutation-диагностики
 
-Полный inventory `f39d5421` и прежние populations сохранены в Git-срезах выше;
-актуальнее полный run `01ffea1b5`. Разные populations не сравниваются вычитанием counts.
+Inventory `f39d5421` сохранён в Git; актуальнее полный run `01ffea1b5`. Populations не сравниваются вычитанием counts.
 
 - Из 32 frontend Timeout у 22 указан hit-counter limit; у 10 reason отсутствует.
   Отсутствие reason не доказывает wall-clock timeout. Локальные native controls
@@ -99,43 +99,43 @@
 - `b92b888c5`: exact WS expiry, Argon2 dummy input, RU admin denial и MFA typing;
   root 37/37, Ruff/format/hooks GREEN; email-OTP module mypy 1→0, остальной typing debt открыт.
   Exact-AST controls локальные; новым тестам canonical kill credit не присваивается.
-- `1faa3be4c` test-only password reuse/MFA tombstone: root 45/45 в двух модулях, Ruff/hooks GREEN;
-  baseline GREEN / exact generated-AST RED проверены отдельно, canonical credit не выдаётся.
+- `1faa3be4c` password reuse/MFA tombstone root 45/45; positive RBAC grace exact TTL root module 5/5;
+  Ruff GREEN и baseline GREEN / exact generated-AST RED; canonical credit не выдаётся.
 - Chat reply-preview/search: root 44/44; RLS identity 27/27; password-change 21/21, webpush 59/59 GREEN;
   baseline GREEN / exact generated-AST RED повторены root, canonical statuses не изменены.
-- RSS build guard сохранён: workers=4; три следующих build/up passed;
-  max samples 1914,1/1942,1/2010,8 MiB <2048, не continuous peak; root 14 tests passed.
-  Owned-state bridge/LF marker: Windows RED/GREEN, signed probe exit 0; exact 57-spec diagnostics проверены локально.
+- `41a93b056`: Docker Rolldown workers=2, RSS cap 2048/heap 1536 MiB сохранены;
+  actual client/SSR build GREEN, max из 12 phase samples 1851,3 MiB, не continuous peak.
+  Root build contracts 9/9, WASM Docker contracts 6/6, hooks и preflight 9/9 GREEN.
   Детальные receipts промежуточных checkpoints сохранены в
   [STATUS на 38e8c6d](https://github.com/egorribun/university_ecosystem/blob/38e8c6d0268674f0cd975ecce8aeea1525741b06/docs/superpowers/plans/STATUS.md).
 - `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
   Повторный защищённый smoke после seed: 18 passed / 2 project-scoped skips, exit 0.
   `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
-- Owned live `f9a2d7c1c`: up GREEN; Activity 2/2 desktop/mobile, real API metrics, reload и geometry GREEN.
-  Admin 2 passed / 4 failed; smoke 14 passed / 4 failed / 2 project-scoped skips; non-admin redirect на dashboard вызывает pageerrors React #418.
-  Owned stop/teardown GREEN; 175 containers/94 volumes сохранены, всего 63 owned image tags удалены без force.
-  Private receipts: admin `6AED2919`, Activity `8F8CE708`; uninstrumented pair подтвердил #418
-  с обоими cascade keys, при RU/admin marker parity и наличии events/stories SSR payload.
+- Owned live `41a93b056`: up/readiness GREEN; Activity 2/2, real API/reload/geometry;
+  smoke 18 passed / 2 project-scoped skips. Admin cold 5/6, warm 6/6, после stop/start снова 5/6:
+  desktop React #418 открыт; первые RED receipts сохранены, warm GREEN не закрывает дефект.
+  Uninstrumented admin/student/teacher diagnostics: 0 pageerrors; тайминг отличается от fixture.
+  Stop/start сохранил counts/ID digests users/news/events; full row/S3 integrity этим не проверена.
+  Owned teardown GREEN: 175 containers/94 volumes сохранены, 0 running; всего 80 owned image tags удалены без force.
 
 ## Среда и ближайшие действия
 
 - Windows: Node 24.21.0, uv 0.11.28, Docker CLI/Engine доступны; «Docker отсутствует»
   не переносится на эту машину. RAM/порты/ресурсы и принадлежность стенда проверяются
   перед запуском. Пользовательские `.env`, volumes, backups и evidence сохраняются.
-- Live запуск: чистый checkout и отдельный private run-owned state root;
-  source freeze после commit, без ослабления guards; тяжёлые jobs по одному.
-- `71c88b8d6` News pending/restoring: реальный Dashboard/news hook и SSR/browser providers,
-  RED → GREEN, root 27/27; `c298c23e4` MFA IP buckets: persistent challenges, root 5/5; live replay открыт.
+- Live: чистый checkout, private run-owned state, source freeze после commit; тяжёлые jobs по одному.
+- `71c88b8d6` News restoring: actual Dashboard/providers RED → GREEN, root 27/27;
+  `c298c23e4` MFA IP buckets root 5/5; `bfa1dbb62` scoped Redis invalidation root 14/14.
 - Продолжить блоки 4/5: traceability ТЗ, RU/EN, light/dark, ширины
   360/390/768/1024/1440; small visual packages и пользовательское утверждение baseline.
-  Полный live stack, повторный stop/start и данные требуют отдельного evidence.
+  Полная приёмка stack и DB/S3 данных требует отдельного evidence.
 - Закрывать mutation debt по поведению, без waivers/exclusions, ручных Killed,
   timeout inflation или переноса локального verdict в canonical report.
 - Подтвердить deployed PostgreSQL/Alembic upgrade/rollback и BE-02, paired S3/DB
   restore с чтением URL, RPO/RTO, WS load, Envoy Gateway/kind и failure recovery.
   Historical audit dispositions 60/2/1 не заменяют review всех 63 IDs.
-- Python backup уже использует aioboto3; исторического `mc` нет. Для paired restore нужны
-  изолированный runner с PG17 clients, отдельные DB/S3 targets и измеренное RPO/RTO evidence.
+- Python backup использует aioboto3; paired restore требует PG17 runner, отдельных DB/S3 targets и RPO/RTO evidence.
+  Private runner/executor проходит независимое review; реального restore/RPO/RTO результата нет.
 
 ## Открытые релизные допуски
 
