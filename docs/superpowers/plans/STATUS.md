@@ -8,7 +8,7 @@ Goal активен. Полная приёмка и выпуск `v1.0.0` не �
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
   Проверенный опубликованный source — `01ffea1b5d0eca52f0b76e44d83aac3cb5890b71`;
-  до изменений этой сессии HEAD, remote и PR head совпали; новые checkpoints локальные.
+  Checkpoints локальные; push отложен, чтобы сохранить незавершённую CI-кампанию.
 - После контрольной точки `2e78ce97d0daccd9d9ea74606ae07974a42ab555`:
   **123 коммита, 908 изменённых файлов**. Актуальный `main`
   `6fa133b57f62c554162876d4e6d8349f8060fce9` входит в историю ветки.
@@ -24,10 +24,10 @@ Goal активен. Полная приёмка и выпуск `v1.0.0` не �
 ## Актуальная hosted-проверка опубликованного source
 
 - [Matrix 37236971603](https://github.com/egorribun/university_ecosystem/actions/runs/37236971603),
-  attempt 1, source `01ffea1b5`: кампания ещё выполняется; окончательный verdict неизвестен.
-  Четыре failed backend groups (1/4/6/8) имеют complete source-bound proofs:
-  суммарно 143 selected, 126 Killed / 17 Survived. Это score-gate failures,
-  а не полный inventory или runtime/provenance failures.
+  attempt 1, source `01ffea1b5`: snapshot 312 jobs — 238 completed (82 failure),
+  16 active, 58 queued; позднее mutation groups 105 completed / 10 active / 13 queued.
+  Terminal verdict неизвестен; harvest partial. Groups 1/4/6/8 complete proofs:
+  143 selected, 126 Killed / 17 Survived; score-gate failures, не полный inventory.
 - [Owned live acceptance 37236971288](https://github.com/egorribun/university_ecosystem/actions/runs/37236971288)
   завершился success на том же SHA. Он подтверждает только перечисленный PR smoke;
   полную продуктовую, визуальную и disaster-recovery приёмку не заменяет.
@@ -46,17 +46,14 @@ Goal активен. Полная приёмка и выпуск `v1.0.0` не �
   lines 17 123/17 123. Shuffle seed 1306006 также прошёл 8 642/8 642;
   обе популяции совпали, 4 655 authored inputs не изменились. Это unit scope.
 - Affected backend/workflow/tooling на `5edca1efafacfee272507cf407db6c4d9ee1f4be`:
-  **1 646 уникальных tests / 102 файла**, setup/call/teardown без пропусков,
-  дублей, skips/errors. До `40bec3868` весь backend/tooling побайтно совпал;
-  новый backend run не заявляется. Это affected union, а не полный backend suite
-  или PostgreSQL/RLS/NATS/Elasticsearch live integration.
+  **1 646 уникальных tests / 102 файла**, полный setup/call/teardown без skips/errors/дублей.
+  До `40bec3868` backend/tooling побайтно совпал; нового run нет. Это affected union,
+  не полный backend suite или PostgreSQL/RLS/NATS/Elasticsearch live integration.
 - Regression controls покрывают session expiry/MFA, audit HMAC wire format,
-  chat replay/attachments, search publication, SSR cache/session isolation,
-  circuit waiter cancellation, timer ownership и deterministic schedule clock.
+  chat replay/attachments, search, SSR/session isolation, cancellation, timers/schedule clock.
   Они не изменяют raw mutation outcomes и не являются release certification.
 - Visual wrappers закреплены на Playwright 1.63.0 и official OCI digest;
-  PowerShell сохраняет Docker exit code. Шесть stub-Docker cases passed;
-  настоящий container/browser paint этим не подтверждён.
+  PowerShell сохраняет exit code; шесть stub-Docker passed, настоящий paint не подтверждён.
 - Timing analyzer сохраняет carried-forward timestamps partial rerun и строгие
   provenance checks. Rust/WASM parity, security и coverage оцениваются по
   соответствующему source-bound run, а не по наличию изменений в Git.
@@ -92,36 +89,39 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - Локальные checkpoints `cf9f5609`–`d3d13d8`: документ, MFA export/history,
   cache regression, Bash contract и ограничение native workers. Push отложен
   до terminal текущей canonical кампании, чтобы сохранить её inventory.
-- Node fixture scanner RED сохранён; runtime UUID fix без suppressions/baseline
-  entries: все применимые hooks повторно прошли, commit `ba8a236b5` создан.
+- Node fixture scanner RED сохранён; UUID fix без suppressions/baseline entries;
+  hooks прошли. Bridge `ba8a236b5`, status checkpoint `75d233e8`.
 - Исправлен экспорт MFA: public DTO не содержит отношения; отдельная проекция
   возвращает сохранённый count и безопасные enrollment metadata с изоляцией владельца.
   Root: 26 целевых backend tests passed; это не полный coverage/mutation допуск.
 - Frontend: регрессия account-null cache isolation; root 25 tests passed.
   Native RED на историческом `shard-026:359` не даёт canonical Killed credit.
-- Windows contract fixture выбирает Git Bash; отрицательные cases проверяют
-  ожидаемую причину отказа workflow. Root focused contract lane прошёл.
+- Windows contract: Git Bash и точная причина отказа в negative cases; root focused lane passed.
 - Первый preflight 7/9 сохранён; новый полный root preflight diff: 9/9, workers=1.
 - Scoped review и локальные проверки base `01ffea1b5` с diff не заменяют hosted verdict.
 - Live build на `e150f009` остановлен RSS watchdog: frontend при SSR start
   достиг 2052,5 MiB при лимите 2048 MiB. Приёмка браузером не запускалась.
-  Owned stop прошёл, running containers нет. Лимит не ослабляется;
-  на `23550c18` native workers ограничены четырьмя; `d3d13d8` build/up прошёл.
-  12 telemetry samples: max 1914,1 MiB <2048 (не continuous peak); root 14 tests passed.
-- `405cd32a`: retained expired/revoked MFA regression; агент 26 tests passed,
-  root persisted case passed; scoped review approved. Нового mutation verdict нет.
-- Полный E2E на `d3d13d8` завершился exit 1 без test counts: global setup
-  отвергает in-place checkout/не передаёт state-dir. Owned teardown прошёл;
-  proof сохранён. Удалены только 35 созданных контейнеров и owned volumes;
-  исходные 175 остановленных контейнеров сохранены, running 0.
+  Лимит неизменен; `23550c18`: workers=4; `d3d13d8` и `75d233e8` build/up прошли.
+  12 samples/run: max 1914,1 / 1942,1 MiB <2048 (не continuous peak); root 14 tests passed.
+- `405cd32a`: retained MFA regression; агент 26/root 1 passed, review approved; mutation открыт.
+- Full E2E `d3d13d8`: in-place global setup отказал; `75d233e8`: отказ защиты
+  output-directory до test counts. Signed verifier и настоящий global setup отдельно
+  passed. Safe replay сохранил только fixed category, raw child output не записан.
+  Оба owned teardown прошли: созданные контейнеры/volumes удалены, исходные 175
+  остановленных контейнеров сохранены, running 0. Windows marker CRLF/LF RED подтверждён.
 - `ba8a236b5`: Python → Node → signed verifier передача owned state root исправлена:
   RED/GREEN success/failure; root Python 1003/1003, Node 41/41, harness 27/27 passed.
   Это рабочий diff без skips/errors; новый full live verdict ещё не получен.
+- `6dc9356e8`: LF-only marker; native Windows byte RED 2/GREEN 2;
+  root Python 1003/1003, hooks GREEN; настоящий Python → Node probe exit 0, LF bytes matched.
+- `0585e3eb1`: exact 57-spec diagnostics; RED/GREEN, root 1005/1005, review/hooks GREEN.
+- `3e42d841d`: live early email-OTP resend: 429 без Retry-After, затем исходный Mailpit OTP.
+  Review, root Node 41/41, typecheck и final preflight 9/9 GREEN; live ещё не выполнен.
+- Docker cleanup: 18 owned image tags удалены без force; 175 containers/94 volumes сохранены.
 
 ## Среда и ближайшие действия
 
-- Эта сессия работает на Windows: Node 24.21.0, uv 0.11.28;
-  Docker CLI/Engine доступны. Прежнее облачное ограничение «Docker отсутствует»
+- Windows: Node 24.21.0, uv 0.11.28, Docker CLI/Engine доступны; «Docker отсутствует»
   не переносится на эту машину. RAM/порты/ресурсы и принадлежность стенда проверяются
   перед запуском. Пользовательские `.env`, volumes, backups и evidence сохраняются.
 - Live запуск: чистый checkout и отдельный private run-owned state root;
