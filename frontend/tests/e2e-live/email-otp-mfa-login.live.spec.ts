@@ -208,7 +208,11 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     const loginResponse = await loginResponsePromise
     expect(loginResponse.status()).toBe(202)
     const pendingChallenge = (await loginResponse.json()) as {
-      methods?: Array<{ method?: unknown }>
+      methods?: Array<{
+        method?: unknown
+        challenge_token?: unknown
+        resend_available_at?: unknown
+      }>
     }
     if (
       !Array.isArray(pendingChallenge.methods) ||
@@ -216,10 +220,50 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     ) {
       throw new Error("Login did not offer the enabled email OTP factor")
     }
+    const emailLoginChallenge = pendingChallenge.methods.find(
+      (method) => method.method === "email_otp"
+    )
+    if (
+      !emailLoginChallenge ||
+      typeof emailLoginChallenge.challenge_token !== "string" ||
+      typeof emailLoginChallenge.resend_available_at !== "string"
+    ) {
+      throw new Error("Login did not return the email OTP resend challenge fields")
+    }
     await expect(login.page.locator(OTP_INPUTS)).toHaveCount(6)
     await expect(
       login.page.getByRole("heading", { name: /Код из письма|Email code/iu })
     ).toBeVisible()
+
+    const resendAvailableAt = Date.parse(emailLoginChallenge.resend_available_at)
+    if (!Number.isFinite(resendAvailableAt) || resendAvailableAt <= Date.now()) {
+      throw new Error("The email OTP resend cooldown was not active for the fresh challenge")
+    }
+    const earlyResendResponsePromise = login.page.waitForResponse(
+      isApiResponse("/auth/mfa/email/resend")
+    )
+    await login.page.evaluate(async (challengeToken) => {
+      const csrfCookie = document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("csrf_token="))
+      if (!csrfCookie) throw new Error("CSRF cookie was unavailable for the resend request")
+
+      await fetch("/api/v1/auth/mfa/email/resend", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": decodeURIComponent(csrfCookie.slice("csrf_token=".length)),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ challenge_token: challengeToken }),
+      })
+    }, emailLoginChallenge.challenge_token)
+    const earlyResendResponse = await earlyResendResponsePromise
+    expect(earlyResendResponse.status()).toBe(429)
+    expect(earlyResendResponse.headers()["retry-after"]).toBeUndefined()
 
     const loginCode = await awaitNewCode(email, priorLoginMessages)
     const loginVerificationPromise = login.page.waitForResponse(isApiResponse("/auth/mfa/verify"))
