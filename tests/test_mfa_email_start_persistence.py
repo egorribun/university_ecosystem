@@ -100,6 +100,7 @@ async def test_email_verification_start_commits_bound_challenge_delivery_and_out
         )
         assert challenge.payload == {"mfa_epoch": 3}
         assert challenge.state == ChallengeState.PENDING
+        assert challenge.consumed_at is None
         assert challenge.attempt_count == 0
         assert delivery.status == "pending"
         assert delivery.locale == event.payload["locale"] == locale

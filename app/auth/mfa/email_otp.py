@@ -532,7 +532,6 @@ class EmailOtpService:
             otp_key_id=self._active_hmac_key_id,
             expires_at=expires_at,
             resend_available_at=resend_available_at,
-            consumed_at=None,
             locked_at=None,
             created_at=issued_at,
             payload={"mfa_epoch": current_epoch},

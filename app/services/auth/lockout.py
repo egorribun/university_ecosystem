@@ -28,12 +28,13 @@ class LockoutService:
         self._rules: list[tuple[int, int]] = self._parse_lockout_rules()
         # RZ-1: Detect PostgreSQL dialect from the database URL at construction time.
         # AsyncSession.bind was removed in SQLAlchemy 2.0; we must not access it.
-        _db_url: str = str(app.core.config.settings.database_url or "")
+        database_url = str(app.core.config.settings.database_url or "")
         try:
-            database_backend = make_url(_db_url).get_backend_name()
+            self._is_postgresql = (
+                make_url(database_url).get_backend_name() == "postgresql"
+            )
         except ArgumentError:
-            database_backend = ""
-        self._is_postgresql = database_backend == "postgresql"
+            self._is_postgresql = False
 
     def _parse_lockout_rules(self) -> list[tuple[int, int]]:
         """Parse lockout thresholds from settings."""

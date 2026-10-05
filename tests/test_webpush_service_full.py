@@ -522,7 +522,7 @@ class TestSendWebPush:
 
 class TestSendPushAsync:
     @pytest.mark.asyncio
-    async def test_timeout(self, mock_pywebpush):
+    async def test_timeout(self, mock_pywebpush, caplog):
         """Push exceeding timeout returns error."""
         from app.services.webpush import _send_push_async
 
@@ -549,7 +549,9 @@ class TestSendPushAsync:
         sub.user = None
 
         with (
-            patch("app.services.webpush.asyncio.to_thread", side_effect=slow_push),
+            patch(
+                "app.services.webpush.asyncio.to_thread", side_effect=slow_push
+            ) as to_thread_mock,
             patch("app.services.webpush._PUSH_CALL_TIMEOUT_SECONDS", 0.01),
         ):
             caller = asyncio.create_task(_send_push_async(sub, {"title": "Slow"}))
@@ -559,9 +561,32 @@ class TestSendPushAsync:
                 done, _ = await asyncio.wait({caller}, timeout=1)
                 assert caller in done, "push caller did not honor its delivery timeout"
                 result = caller.result()
+                to_thread_mock.assert_called_once_with(
+                    send_web_push, sub, {"title": "Slow"}
+                )
+                assert result.subscription_id == sub.id
                 assert result.status == "error"
                 assert "timed out" in (result.error or "").lower()
                 assert worker is not None and not worker.done()
+                timeout_events: list[dict[str, object]] = []
+                for record in caplog.records:
+                    if record.name != "app.services.webpush":
+                        continue
+                    event_dict = record.msg
+                    if not isinstance(event_dict, dict):
+                        continue
+                    fields = event_dict.get("extra")
+                    if not isinstance(fields, dict):
+                        continue
+                    if (
+                        event_dict.get("message") == "webpush.send"
+                        and fields.get("event") == "send"
+                        and fields.get("error") == "push_timeout"
+                    ):
+                        timeout_events.append(fields)
+
+                assert len(timeout_events) == 1
+                assert timeout_events[0].get("status") == result.status
             finally:
                 # A timed-out caller deliberately leaves its started worker
                 # running. Release and drain both, including on assertion failure.

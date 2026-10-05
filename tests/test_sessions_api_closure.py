@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api import sessions
+from app.core.localization import translate
 from app.models.enums import UserRole
 from tests.conftest import call_injected
 
@@ -113,6 +114,7 @@ async def test_resolve_target_user_returns_admin_target():
 async def test_resolve_target_user_rejects_non_admin_even_with_admin_role_column():
     stale_admin = SimpleNamespace(id=uuid.uuid4(), role=UserRole.ADMIN)
     repo = SimpleNamespace(get=AsyncMock())
+    request = _request(headers=[(b"accept-language", b"ru")])
 
     with pytest.raises(HTTPException) as exc:
         await sessions._resolve_target_user(
@@ -120,11 +122,12 @@ async def test_resolve_target_user_rejects_non_admin_even_with_admin_role_column
             current_user=stale_admin,
             requested_user_id=uuid.uuid4(),
             checker=_checker(is_admin=False),
-            request=_request(),
+            request=request,
             locale="en",
         )
 
     assert exc.value.status_code == 403
+    assert exc.value.detail == translate("errors.forbidden", locale="ru")
     repo.get.assert_not_awaited()
 
 
