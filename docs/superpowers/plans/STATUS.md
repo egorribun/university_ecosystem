@@ -7,10 +7,10 @@
 ## Контекст и источник доказательств
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Опубликованный checkpoint `41a93b056dfb3383d1402e4627f7999f7b762ee2`;
+  Опубликованный live checkpoint `605fed24029c607d2ddfdd30ab48d776d65a4a02`;
   HEAD, origin и PR head совпали; checkout чист на момент запуска приёмки.
 - После контрольной точки `2e78ce97d0daccd9d9ea74606ae07974a42ab555`:
-  **167 коммитов, 945 изменённых файлов** на `41a93b056`. Последний проверенный `main`
+  **170 коммитов, 949 изменённых файлов** на `605fed240`. Последний проверенный `main`
   `6fa133b57f62c554162876d4e6d8349f8060fce9` входит в историю ветки.
 - [AUDIT_PROMPT.md](AUDIT_PROMPT.md) включён по поручению пользователя в `cf9f5609`; шаблон не заменяет поручение.
 - Root координирует три GPT-6 Luna Max: backend, frontend, CI/инфраструктура; Git выполняет root.
@@ -20,9 +20,9 @@
 
 ## Актуальная hosted-проверка опубликованного source
 
-- `41a93b056`: [Matrix 37300244745](https://github.com/egorribun/university_ecosystem/actions/runs/37300244745), attempt 1, queued;
-  snapshot 183 observed jobs: 99 success / 0 failure / 12 skipped / 72 без результата; full aggregate открыт.
-  [Owned live 37300244368](https://github.com/egorribun/university_ecosystem/actions/runs/37300244368) success на exact SHA; это PR smoke scope.
+- `605fed240`: [Matrix 37310173142](https://github.com/egorribun/university_ecosystem/actions/runs/37310173142), attempt 1, in progress;
+  partial snapshot 105 jobs: 92 success / 11 skipped / 1 failure / 1 active; aggregate открыт.
+  Chromium shard 1: profile-update `getByText(newBio).toBeVisible` RED; source/attempt-bound report сохранён.
 - [Matrix 37236971603](https://github.com/egorribun/university_ecosystem/actions/runs/37236971603),
   attempt 1, PR head `01ffea1b5`, producer merge `95b8ba18`: одинаковое дерево `286c57c1`.
   128/128 backend groups validated: 4 540 selected, canonical 3 770 Killed / 770 Survived;
@@ -39,12 +39,8 @@
   На `4903a0f04` [Matrix 37280637000](https://github.com/egorribun/university_ecosystem/actions/runs/37280637000): исторический partial snapshot, немутационных failures в нём нет.
   Stats 8/8 GREEN; shard-0 metadata/tree/hash проверены. 20 failed groups: 720 selected/completed,
   601 Killed / 119 Survived, без runtime statuses; это частичные proofs, не aggregate score.
-- На предыдущем `f39d5421341d84dd5e316fe9e88e2b4399758d0e`
-  [matrix 37213691132](https://github.com/egorribun/university_ecosystem/actions/runs/37213691132)
-  завершён: **367 checks, 216 success / 20 skipped / 131 failure**.
-  Обычные unit/coverage, types, security, browser/live и performance prerequisites
-  прошли; failures — 128 backend mutation groups и три aggregate/required contexts.
-  Тестируемый merge `d1ae8fba7311fc196b555823e94d93dc7dc53740` имел то же дерево.
+- Historical `f39d5421`: [Matrix 37213691132](https://github.com/egorribun/university_ecosystem/actions/runs/37213691132)
+  completed/failure: 216 success / 20 skipped / 131 failure; подробности сохранены в истории STATUS.
 
 ## Проверенные локальные checkpoints до этой сессии
 
@@ -111,12 +107,16 @@ Inventory `f39d5421` сохранён в Git; актуальнее полный 
 - `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
   Повторный защищённый smoke после seed: 18 passed / 2 project-scoped skips, exit 0.
   `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
-- Owned live `41a93b056`: up/readiness GREEN; Activity 2/2, real API/reload/geometry;
-  smoke 18 passed / 2 project-scoped skips. Admin cold 5/6, warm 6/6, после stop/start снова 5/6:
-  desktop React #418 открыт; первые RED receipts сохранены, warm GREEN не закрывает дефект.
-  Uninstrumented admin/student/teacher diagnostics: 0 pageerrors; тайминг отличается от fixture.
+- `605fed240`: events restoring skeleton — root affected 42/42, types/lint/hooks/preflight 9/9 GREEN.
+  RBAC exact grace boundary root 5/5; local generated-AST RED, canonical credit не выдаётся.
+- Следующий batch: persisted password/session tests root 18/18 и subject-bound admin serializer 12/12 GREEN;
+  Ruff/format GREEN; mypy baseline/candidate 20/20 и 13/13, новых diagnostics нет; local AST controls 10+2 RED.
+- Owned live `605fed240`: up/readiness GREEN; Activity 2/2, real API/reload/geometry;
+  smoke 18 passed / 2 project-scoped skips; первый cold admin 5/6, desktop React #418 открыт.
+  V5 cold diagnostic: student #418 после admin redirect и retry, teacher 0; SSR body unavailable.
+  V4 diagnostic содержит ошибку helper, не подтверждает поведение; оба receipts сохранены.
   Stop/start сохранил counts/ID digests users/news/events; full row/S3 integrity этим не проверена.
-  Owned teardown GREEN: 175 containers/94 volumes сохранены, 0 running; всего 80 owned image tags удалены без force.
+  Owned teardown GREEN: 175 containers/94 volumes сохранены, 0 running; всего 89 owned image tags удалены без force.
 
 ## Среда и ближайшие действия
 
@@ -134,8 +134,8 @@ Inventory `f39d5421` сохранён в Git; актуальнее полный 
 - Подтвердить deployed PostgreSQL/Alembic upgrade/rollback и BE-02, paired S3/DB
   restore с чтением URL, RPO/RTO, WS load, Envoy Gateway/kind и failure recovery.
   Historical audit dispositions 60/2/1 не заменяют review всех 63 IDs.
-- Python backup использует aioboto3; paired restore требует PG17 runner, отдельных DB/S3 targets и RPO/RTO evidence.
-  Private runner/executor проходит независимое review; реального restore/RPO/RTO результата нет.
+- DR runner/executor review и root 16 mock tests GREEN; avatar helper 9/9, PNG decode GREEN; actual restore открыт.
+  `605fed240` backend фактически использует default static storage; live S3 configuration требует исправления до paired DR.
 
 ## Открытые релизные допуски
 
