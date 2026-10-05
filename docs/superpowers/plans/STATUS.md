@@ -7,8 +7,8 @@
 ## Контекст и источник доказательств
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Опубликованный checkpoint — `4903a0f04340a42a91a53e4c82e65dae25288d91`;
-  десять новых коммитов отправлены обычным push; remote и PR head совпали, дерево чистое.
+  Hosted-кампания проверяет `4903a0f04340a42a91a53e4c82e65dae25288d91`;
+  последующие code checkpoints проверяются отдельно, приёмка описана ниже.
 - После контрольной точки `2e78ce97d0daccd9d9ea74606ae07974a42ab555`:
   **155 коммитов, 929 изменённых файлов** на `4903a0f04`. Актуальный `main`
   `6fa133b57f62c554162876d4e6d8349f8060fce9` входит в историю ветки.
@@ -35,7 +35,9 @@
 - На `38e8c6d`: [Matrix 37263603990](https://github.com/egorribun/university_ecosystem/actions/runs/37263603990)
   completed/failure: 140 success / 26 skipped / 3 failure; один audit false positive исправлен без baseline waiver.
   На `78182847` [Matrix 37268095391](https://github.com/egorribun/university_ecosystem/actions/runs/37268095391): security/smoke GREEN, mutmut stats shard 0 RED; snapshot сохранён перед supersession.
-  На `4903a0f04` [Matrix 37280637000](https://github.com/egorribun/university_ecosystem/actions/runs/37280637000) pending; Gitleaks GREEN; полный допуск открыт.
+  На `4903a0f04` [Matrix 37280637000](https://github.com/egorribun/university_ecosystem/actions/runs/37280637000) pending; немутационных failures в snapshot нет.
+  Stats 8/8 GREEN; shard-0 metadata/tree/hash проверены. 20 failed groups: 720 selected/completed,
+  601 Killed / 119 Survived, без runtime statuses; это частичные proofs, не aggregate score.
 - На предыдущем `f39d5421341d84dd5e316fe9e88e2b4399758d0e`
   [matrix 37213691132](https://github.com/egorribun/university_ecosystem/actions/runs/37213691132)
   завершён: **367 checks, 216 success / 20 skipped / 131 failure**.
@@ -63,21 +65,10 @@
   provenance checks. Rust/WASM parity, security и coverage оцениваются по
   соответствующему source-bound run, а не по наличию изменений в Git.
 
-## Последний полный исторический mutation inventory
+## Исторические mutation-диагностики
 
-Кампания `f39d5421`, run 37213691132 / attempt 1, завершена 2026-10-04 UTC.
-
-| Область | Полнота | Raw outcomes и предел доказательства |
-| --- | --- | --- |
-| Frontend | 64/64 reports; 42 913 identities, без пропусков/дублей | 36 938 Killed; 4 669 Survived; 1 NoCoverage; 32 Timeout; 31 RuntimeError; 0 CompileError; 1 242 Ignored |
-| Backend | 128/128 complete proofs; 4 540 selected IDs; 138 archives | 3 764 Killed; 776 подтверждённых Survived; остальные native statuses 0 |
-| Backend generation | 54 418 identities | 49 878 unselected не имеют execution evidence; им не присваивается статус |
-
-Frontend aggregate отклонил `shard-026:269`; validated artifact отсутствует.
-Backend full-map confirmation убила ещё 104 из 880 primary survivors.
-Это полный inventory выбранной кампании, **не 100% viable mutation score**.
-Предыдущие b6/2595 populations и mixed producer attempts сохранены по Git-ссылке;
-разные populations нельзя сравнивать простым вычитанием counts.
+Полный inventory `f39d5421` и прежние populations сохранены в Git-срезах выше;
+актуальнее полный run `01ffea1b5`. Разные populations не сравниваются вычитанием counts.
 
 - Из 32 frontend Timeout у 22 указан hit-counter limit; у 10 reason отсутствует.
   Отсутствие reason не доказывает wall-clock timeout. Локальные native controls
@@ -102,6 +93,12 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - `7b8dbbd91`: root 3 lockout/push + 2 MFA + 12 sessions tests/Ruff/hooks GREEN; 42/45 и group56:6 local RED, без canonical credit.
 - `f9469d40`: root preflight 9/9, live contracts 143/143, types/lint/format/hooks GREEN; backend deletion/MFA epoch-0 modules 32/32, root new cases 3/3.
 - `4903a0f04`: persisted chat/attachment/MFA locale regressions 59/59; Ruff/hooks GREEN; mypy 81→53 без новых diagnostics, старый debt открыт; root preflight 9/9.
+- `f9a2d7c1c`: scoped events/stories cache transfer; core 89/89, cache isolation 59/59,
+  focused V8 56/56 и четыре метрики 100% на router + двух hooks; root 26/26, preflight 9/9.
+  Серверные authenticated responses private/no-store; server entrypoint 10/10. Полный live остаётся RED.
+- `b92b888c5`: exact WS expiry, Argon2 dummy input, RU admin denial и MFA typing;
+  root 37/37, Ruff/format/hooks GREEN; email-OTP module mypy 1→0, остальной typing debt открыт.
+  Exact-AST controls локальные; новым тестам canonical kill credit не присваивается.
 - `1faa3be4c` test-only password reuse/MFA tombstone: root 45/45 в двух модулях, Ruff/hooks GREEN;
   baseline GREEN / exact generated-AST RED проверены отдельно, canonical credit не выдаётся.
 - Chat reply-preview/search: root 44/44; RLS identity 27/27; password-change 21/21, webpush 59/59 GREEN;
@@ -114,10 +111,11 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
   Повторный защищённый smoke после seed: 18 passed / 2 project-scoped skips, exit 0.
   `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
-- Owned live `f9469d40`: up GREEN; Activity 2/2 desktop/mobile, real API metrics, reload и geometry GREEN.
+- Owned live `f9a2d7c1c`: up GREEN; Activity 2/2 desktop/mobile, real API metrics, reload и geometry GREEN.
   Admin 2 passed / 4 failed; smoke 14 passed / 4 failed / 2 project-scoped skips; non-admin redirect на dashboard вызывает pageerrors React #418.
-  Owned stop/teardown GREEN; 175 containers/94 volumes сохранены, всего 54 owned image tags удалены без force.
-  Private source-bound receipts: admin `9C807872`, Activity `E6FACE74`; SSR/cache diagnosis и полный live допуск открыты.
+  Owned stop/teardown GREEN; 175 containers/94 volumes сохранены, всего 63 owned image tags удалены без force.
+  Private receipts: admin `6AED2919`, Activity `8F8CE708`; uninstrumented pair подтвердил #418
+  с обоими cascade keys, при RU/admin marker parity и наличии events/stories SSR payload.
 
 ## Среда и ближайшие действия
 
@@ -126,8 +124,8 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
   перед запуском. Пользовательские `.env`, volumes, backups и evidence сохраняются.
 - Live запуск: чистый checkout и отдельный private run-owned state root;
   source freeze после commit, без ослабления guards; тяжёлые jobs по одному.
-- Runtime `38e8c6d` подтвердил cap 50, TTL 30 минут и login 60/minute; причина 111 failures не доказана.
-  Разобрать SSR redirect и ownership/hydration query cache; не ослаблять pageerror/RBAC assertions; session cleanup только после RED/review.
+- `71c88b8d6` News pending/restoring: реальный Dashboard/news hook и SSR/browser providers,
+  RED → GREEN, root 27/27; `c298c23e4` MFA IP buckets: persistent challenges, root 5/5; live replay открыт.
 - Продолжить блоки 4/5: traceability ТЗ, RU/EN, light/dark, ширины
   360/390/768/1024/1440; small visual packages и пользовательское утверждение baseline.
   Полный live stack, повторный stop/start и данные требуют отдельного evidence.
@@ -136,6 +134,8 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - Подтвердить deployed PostgreSQL/Alembic upgrade/rollback и BE-02, paired S3/DB
   restore с чтением URL, RPO/RTO, WS load, Envoy Gateway/kind и failure recovery.
   Historical audit dispositions 60/2/1 не заменяют review всех 63 IDs.
+- Python backup уже использует aioboto3; исторического `mc` нет. Для paired restore нужны
+  изолированный runner с PG17 clients, отдельные DB/S3 targets и измеренное RPO/RTO evidence.
 
 ## Открытые релизные допуски
 
