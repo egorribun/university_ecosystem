@@ -109,7 +109,7 @@ Inventory `f39d5421` сохранён в Git; актуальнее полный 
   `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
 - `605fed240`: events restoring skeleton — root affected 42/42, types/lint/hooks/preflight 9/9 GREEN.
   RBAC exact grace boundary root 5/5; local generated-AST RED, canonical credit не выдаётся.
-- Следующий batch: persisted password/session tests root 18/18 и subject-bound admin serializer 12/12 GREEN;
+- `1e61d7d76`: persisted password/session tests root 18/18 и subject-bound admin serializer 12/12 GREEN;
   Ruff/format GREEN; mypy baseline/candidate 20/20 и 13/13, новых diagnostics нет; local AST controls 10+2 RED.
 - Owned live `605fed240`: up/readiness GREEN; Activity 2/2, real API/reload/geometry;
   smoke 18 passed / 2 project-scoped skips; первый cold admin 5/6, desktop React #418 открыт.
@@ -134,8 +134,8 @@ Inventory `f39d5421` сохранён в Git; актуальнее полный 
 - Подтвердить deployed PostgreSQL/Alembic upgrade/rollback и BE-02, paired S3/DB
   restore с чтением URL, RPO/RTO, WS load, Envoy Gateway/kind и failure recovery.
   Historical audit dispositions 60/2/1 не заменяют review всех 63 IDs.
-- DR runner/executor review и root 16 mock tests GREEN; avatar helper 9/9, PNG decode GREEN; actual restore открыт.
-  `605fed240` backend фактически использует default static storage; live S3 configuration требует исправления до paired DR.
+- `d5eb3cbbf`: events observer loop root RED→GREEN, affected 48/48, types/lint/format/hooks GREEN; cold #418 открыт.
+- `f00a84263`: live S3 config root RED→3/3 GREEN, mypy/hooks GREEN; affected 93 passed / 60 skips, actual S3/restore открыт.
 
 ## Открытые релизные допуски
 
