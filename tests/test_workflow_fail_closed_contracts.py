@@ -339,7 +339,7 @@ def test_precommit_split_preserves_every_nonmanual_hook_and_fails_closed() -> No
         for hook in repo.get("hooks", [])
         if hook["id"] == "detect-secrets"
     )
-    assert detect_secrets["entry"] == "python scripts/run_detect_secrets.py"
+    assert detect_secrets["entry"] == "python -X utf8 scripts/run_detect_secrets.py"
     assert detect_secrets["args"] == ["--baseline", ".secrets.baseline"]
     mypy_hook = next(
         hook

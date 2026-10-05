@@ -25,7 +25,7 @@ repos:
     hooks:
       - id: detect-secrets
         name: detect-secrets scan
-        entry: python scripts/run_detect_secrets.py
+        entry: python -X utf8 scripts/run_detect_secrets.py
         args: ["--baseline", ".secrets.baseline"]
         require_serial: true
         # Generated WASM provenance contains SHA-256 digests rather than
