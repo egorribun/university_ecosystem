@@ -3,16 +3,18 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Literal, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 from fastapi import BackgroundTasks, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.mfa.email_otp import EmailOtpService, MfaOtpRejected
+from app.auth.mfa.email_otp import EmailOtpService, IssuedEmailOtp, MfaOtpRejected
 from app.auth.schemas import PendingMfaResponse
 from app.auth.security import get_password_hash
-from app.models import RecoveryCode, User
+from app.models import MfaChallenge, RecoveryCode, User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.unit_of_work import UnitOfWork, uow_from_session
 from app.repositories.user_repository import UserRepository
@@ -27,7 +29,16 @@ IP = "203.0.113.8"
 SESSION = "verified-password-nonce"
 
 
-def _request():
+class _ChallengeBinding(TypedDict):
+    challenge_token: str
+    user_id: UUID
+    flow: str
+    session_identifier: str
+    client_fingerprint: str
+    client_ip: str
+
+
+def _request() -> Request:
     request = Request(
         {
             "type": "http",
@@ -70,7 +81,7 @@ async def prepared(
     return service, auth, uow
 
 
-async def _change_password(auth, user):
+async def _change_password(auth: AuthService, user: User) -> None:
     with patch("app.services.auth_service.validate_password_hibp", AsyncMock()):
         await auth.change_password(
             user,
@@ -85,8 +96,12 @@ async def _change_password(auth, user):
 @pytest.mark.parametrize("operation", ["verify", "opaque", "recovery", "resend"])
 @pytest.mark.parametrize("change_password", [False, True])
 async def test_email_challenge_cannot_survive_password_epoch_change(
-    db_session, test_user, prepared, operation, change_password
-):
+    db_session: AsyncSession,
+    test_user: User,
+    prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
+    operation: Literal["verify", "opaque", "recovery", "resend"],
+    change_password: bool,
+) -> None:
     service, auth, _ = prepared
     issued = await service.issue(
         db_session,
@@ -108,7 +123,7 @@ async def test_email_challenge_cannot_survive_password_epoch_change(
     if change_password:
         await _change_password(auth, test_user)
 
-    async def consume():
+    async def consume() -> MfaChallenge | IssuedEmailOtp:
         if operation == "opaque":
             return await service.verify_opaque(
                 db_session,
@@ -128,14 +143,14 @@ async def test_email_challenge_cannot_survive_password_epoch_change(
                 login_session_identifier=SESSION,
                 active_session_identifier=None,
             )
-        binding = dict(
-            challenge_token=issued.challenge_token,
-            user_id=test_user.id,
-            flow="login",
-            session_identifier=SESSION,
-            client_fingerprint=FINGERPRINT,
-            client_ip=IP,
-        )
+        binding: _ChallengeBinding = {
+            "challenge_token": issued.challenge_token,
+            "user_id": test_user.id,
+            "flow": "login",
+            "session_identifier": SESSION,
+            "client_fingerprint": FINGERPRINT,
+            "client_ip": IP,
+        }
         if operation == "resend":
             return await service.resend(
                 db_session,
