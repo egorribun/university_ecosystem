@@ -19,6 +19,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 import yaml
@@ -1734,6 +1735,9 @@ def test_live_playwright_emits_only_validated_failure_locations(
         "live E2E failure project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=1 kind=frame",
         "live E2E failure project=mobile source=tests/e2e-live/fixtures.ts line=2 kind=frame",
         "live E2E failure project=mobile source=tests/e2e-live/fixtures.ts line=3 kind=frame",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 category=unknown matcher=none locator=none",
+        "live E2E diagnostic project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=3 category=unknown matcher=none locator=none",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 category=unknown matcher=none locator=none",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
@@ -1823,9 +1827,149 @@ def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
         "live E2E failure project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=2 kind=declaration",
         "live E2E failure project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=3 kind=frame",
         "live E2E failure project=desktop source=tests/e2e-live/fixtures.ts line=2 kind=frame",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=2 category=unknown matcher=none locator=none",
         "live E2E outcome=failed exit_code=1",
     ]
     assert private_details not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_emits_fixed_failure_categories_without_reporter_values(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    marker = f"case_marker_{uuid4().hex}"
+    source_name = "tests/e2e-live/activity-dashboard.live.spec.ts"
+    source_path = tmp_path / source_name
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("// public source\n" * 12, encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(),
+        1,
+        stdout=(
+            f"  1) [desktop] › {source_name}:1:1 › title-{marker}\n"
+            "\n"
+            "    Error: expect(locator).toBeVisible() failed\n"
+            "    Expected: visible\n"
+            f"    Received: expected-{marker} getByText('{marker}')\n"
+            "    Call log:\n"
+            f"      - waiting for getByRole('button', {{name: '{marker}'}})\n"
+            f"  2) [mobile] › {source_name}:2:1 › second-title-{marker}\n"
+            "\n"
+            "    Error: locator.fill: Timeout 5000ms exceeded.\n"
+            "    Call log:\n"
+            f"      - waiting for getByLabel('{marker}')\n"
+            f"  3) [desktop] › {source_name}:3:1 › third-title-{marker}\n"
+            "\n"
+            "    Error: expect(received).not.toBe(expected)\n"
+            f"    Expected: not expected-{marker}\n"
+            f"    Received: received-{marker}\n"
+            f"  4) [desktop] › {source_name}:4:1 › timeout-title-{marker}\n"
+            "\n"
+            "    Test timeout of 20000ms exceeded.\n"
+            f"  5) [mobile] › {source_name}:5:1 › fixture-setup-title-{marker}\n"
+            "\n"
+            f'    Test timeout of 30000ms exceeded while setting up "fixture-{marker}".\n'
+            f"  6) [desktop] › {source_name}:6:1 › fixture-teardown-title-{marker}\n"
+            "\n"
+            f'    Tearing down "fixture-{marker}" exceeded the test timeout of 30000ms.\n'
+            f"  7) [mobile] › {source_name}:7:1 › hook-title-{marker}\n"
+            "\n"
+            '    Test timeout of 30000ms exceeded while running "beforeEach" hook.\n'
+            f"  8) [desktop] › {source_name}:8:1 › before-all-title-{marker}\n"
+            "\n"
+            '    "beforeAll" hook timeout of 30000ms exceeded.\n'
+            f"  9) [mobile] › {source_name}:9:1 › worker-teardown-title-{marker}\n"
+            "\n"
+            f'    Worker teardown timeout of 30000ms exceeded while tearing down "fixture-{marker}".\n'
+            f"  10) [desktop] › {source_name}:10:1 › modifier-title-{marker}\n"
+            "\n"
+            '    "fixme" modifier timeout of 30000ms exceeded.\n'
+            f"  11) [mobile] › {source_name}:11:1 › fixture-slot-title-{marker}\n"
+            "\n"
+            f'    Fixture "fixture-{marker}" timeout of 30000ms exceeded during setup.\n'
+            f"  12) [desktop] › {source_name}:12:1 › runtime-title-{marker}\n"
+            "\n"
+            f"    TypeError: runtime-{marker}\n"
+            "12 failed\n"
+        ).encode(),
+        # A reporter error without a header in this stream must not inherit
+        # the stdout failure's project or source.
+        stderr=(
+            b"    Error: expect(locator).toHaveText() failed\n"
+            + f"    Received: {marker}\n".encode()
+        ),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
+
+    printed = capsys.readouterr()
+    assert "live E2E counts failed=12" in printed.out.splitlines()
+    assert [line for line in printed.out.splitlines() if "diagnostic" in line] == [
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=1 category=assertion matcher=toBeVisible locator=role",
+        "live E2E diagnostic project=mobile source=tests/e2e-live/activity-dashboard.live.spec.ts line=2 category=timeout matcher=none locator=label",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=3 category=assertion matcher=not.toBe locator=none",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=4 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=mobile source=tests/e2e-live/activity-dashboard.live.spec.ts line=5 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=6 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=mobile source=tests/e2e-live/activity-dashboard.live.spec.ts line=7 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=8 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=mobile source=tests/e2e-live/activity-dashboard.live.spec.ts line=9 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=10 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=mobile source=tests/e2e-live/activity-dashboard.live.spec.ts line=11 category=timeout matcher=none locator=none",
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=12 category=runtime matcher=none locator=none",
+    ]
+    assert marker not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_lines(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    marker = f"case_marker_{uuid4().hex}"
+    source_name = "tests/e2e-live/activity-dashboard.live.spec.ts"
+    source_path = tmp_path / source_name
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("// public source\n// public source\n", encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(),
+        1,
+        stdout=(
+            f"  1) [desktop] › {source_name}:1:1 › title-{marker}\n"
+            "\x1b[31m Error: expect(locator).toBeVisible() failed\n"
+            f"    Error: expect(locator).toBeVisible() failed {marker}\n"
+            f"  2) [mobile] › {source_name}:2:1 › second-title-{marker}\n"
+            + ("x" * 4097)
+            + "\n"
+            f"    Error: locator.click: Timeout 5000ms exceeded {marker}\n"
+            f"  3) [unknown-project] › tests/e2e-live/unknown.live.spec.ts:1:1 › invalid-{marker}\n"
+            f"    Error: expect(locator).toBeVisible() failed {marker}\n"
+            "3 failed\n"
+        ).encode(),
+        stderr=b"",
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
+
+    printed = capsys.readouterr()
+    assert [line for line in printed.out.splitlines() if "diagnostic" in line] == [
+        "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=1 category=unknown matcher=none locator=none",
+        "live E2E diagnostic project=mobile source=tests/e2e-live/activity-dashboard.live.spec.ts line=2 category=unknown matcher=none locator=none",
+    ]
+    assert marker not in printed.out + printed.err
     assert printed.err == ""
     assert completed.stdout == completed.stderr == b""
 
@@ -2015,6 +2159,7 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
         "+ " + " ".join(live_stand._live_e2e_command()),
         "live E2E counts failed=1",
         f"live E2E failure project=desktop source={source_name} line=1 kind=declaration",
+        f"live E2E diagnostic project=desktop source={source_name} line=1 category=unknown matcher=none locator=none",
         "live E2E outcome=failed exit_code=23",
     ]
     assert printed.err == ""
@@ -2196,6 +2341,247 @@ def test_live_e2e_command_handles_windows_npm_shim_without_secret_interpolation(
         "npm run test:e2e:live",
     ):
         pytest.fail("Windows must use the static cmd.exe launcher for npm.cmd")
+
+
+def test_live_e2e_focused_command_uses_only_canonical_reviewed_specs() -> None:
+    sources = live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+    selected = (sources[-1], sources[0])
+    canonical = (sources[0], sources[-1])
+
+    assert live_stand._live_e2e_command(mode="full", platform="posix") == (
+        live_stand.LIVE_E2E_COMMAND
+    )
+    assert live_stand._live_e2e_command(mode="smoke", platform="posix") == (
+        *live_stand.LIVE_E2E_COMMAND,
+        "--",
+        *live_stand.LIVE_E2E_SMOKE_FILES,
+    )
+    assert live_stand._live_e2e_command(
+        mode="full", platform="posix", specs=selected
+    ) == (
+        *live_stand.LIVE_E2E_COMMAND,
+        "--",
+        *canonical,
+    )
+    windows = live_stand.LIVE_E2E_WINDOWS_COMMAND
+    assert live_stand._live_e2e_command(mode="full", platform="nt", specs=selected) == (
+        *windows[:-1],
+        f"{windows[-1]} -- {' '.join(canonical)}",
+    )
+    with pytest.raises(
+        live_stand.StandError, match="invalid live E2E focused selection"
+    ):
+        live_stand._live_e2e_command(mode="smoke", specs=(sources[0],))
+    with pytest.raises(
+        live_stand.StandError, match="invalid live E2E focused selection"
+    ):
+        live_stand._live_e2e_command(mode="full", specs=(sources[0], sources[0]))
+    with pytest.raises(
+        live_stand.StandError, match="invalid live E2E focused selection"
+    ):
+        live_stand._live_e2e_command(
+            mode="full", specs=("tests/e2e-live/../unlisted-spec",)
+        )
+
+
+@pytest.mark.parametrize(
+    ("arguments", "rejected_value"),
+    [
+        (
+            [
+                "e2e",
+                "--mode",
+                "smoke",
+                "--spec",
+                "tests/e2e-live/auth-roles.live.spec.ts",
+            ],
+            "tests/e2e-live/auth-roles.live.spec.ts",
+        ),
+        (
+            [
+                "e2e",
+                "--spec",
+                "tests/e2e-live/auth-roles.live.spec.ts",
+                "--spec",
+                "tests/e2e-live/auth-roles.live.spec.ts",
+            ],
+            "tests/e2e-live/auth-roles.live.spec.ts",
+        ),
+        (
+            ["e2e", "--spec", "tests/e2e-live/../unlisted-spec"],
+            "unlisted-spec",
+        ),
+        (
+            ["e2e", "--spec", "C:\\unlisted\\auth-roles.live.spec.ts"],
+            "C:\\unlisted\\auth-roles.live.spec.ts",
+        ),
+        (
+            ["e2e", "--spec", "tests\\e2e-live\\auth-roles.live.spec.ts"],
+            "tests\\e2e-live\\auth-roles.live.spec.ts",
+        ),
+        (
+            ["e2e", "--spec", "tests/e2e-live/*.live.spec.ts"],
+            "tests/e2e-live/*.live.spec.ts",
+        ),
+        (
+            ["e2e", "--spec", "tests/e2e-live/auth-roles.live.spec.ts\x1b"],
+            "auth-roles.live.spec.ts\x1b",
+        ),
+        (
+            ["e2e", "--spec", "tests/e2e-live/áuth-roles.live.spec.ts"],
+            "áuth-roles.live.spec.ts",
+        ),
+    ],
+)
+def test_e2e_cli_rejects_unsafe_focus_before_state_or_seed_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+    rejected_value: str,
+) -> None:
+    side_effects: list[str] = []
+    monkeypatch.setattr(
+        live_stand,
+        "_configure_state_mode",
+        lambda _args: side_effects.append("state"),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "e2e",
+        lambda *_args, **_kwargs: side_effects.append("e2e"),
+    )
+
+    assert live_stand.main(arguments) == 2
+
+    captured = capsys.readouterr()
+    assert captured.err == "live_stand: invalid live E2E focused selection\n"
+    assert rejected_value not in captured.out + captured.err
+    assert side_effects == []
+
+
+def test_e2e_direct_call_rejects_focus_before_lock_or_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    side_effects: list[str] = []
+    monkeypatch.setattr(
+        live_stand,
+        "stand_lifecycle_lock",
+        lambda: side_effects.append("lock"),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "load_or_create_stand_admin_password",
+        lambda *_args: side_effects.append("password"),
+    )
+
+    with pytest.raises(
+        live_stand.StandError, match="invalid live E2E focused selection"
+    ):
+        live_stand.e2e("smoke", specs=("tests/e2e-live/auth-roles.live.spec.ts",))
+
+    assert side_effects == []
+
+
+def test_e2e_cli_propagates_valid_focus_in_canonical_order_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    side_effects: list[str] = []
+    observed: list[tuple[str, tuple[str, ...]]] = []
+    selected = (
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+    )
+    expected = (
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_configure_state_mode",
+        lambda _args: side_effects.append("state"),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "e2e",
+        lambda mode, specs=(): observed.append((mode, tuple(specs))),
+    )
+
+    assert live_stand.main(["e2e", "--spec", selected[0], "--spec", selected[1]]) == 0
+
+    assert side_effects == ["state"]
+    assert observed == [("full", expected)]
+
+
+def test_e2e_direct_call_propagates_valid_focus_before_password_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from contextlib import nullcontext
+
+    observed: list[tuple[str, str, tuple[str, ...]]] = []
+    selected = (
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+    )
+    expected = (
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+    )
+    password_marker = uuid4().hex
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: object())
+    monkeypatch.setattr(
+        live_stand,
+        "load_or_create_stand_admin_password",
+        lambda _path, _owner: password_marker,
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_e2e_locked",
+        lambda password, *, mode, specs=(): observed.append(
+            (password, mode, tuple(specs))
+        ),
+    )
+
+    live_stand.e2e("full", specs=selected)
+
+    assert observed == [(password_marker, "full", expected)]
+
+
+def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    selected = (
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+    )
+    expected = (
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+    )
+    expected_command = live_stand._live_e2e_command(mode="full", specs=expected)
+    completed = subprocess.CompletedProcess((), 0, stdout=b"", stderr=b"")
+    observed: list[tuple[str, ...]] = []
+
+    def fake_run(command, **_kwargs):
+        observed.append(tuple(command))
+        completed.args = command
+        return completed
+
+    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
+
+    live_stand._run_live_playwright(
+        cwd=tmp_path, environment={}, mode="full", specs=selected
+    )
+
+    assert observed == [expected_command]
+    assert capsys.readouterr().out.splitlines() == [
+        "live E2E scope=focused diagnostic_only=true",
+        "+ " + " ".join(expected_command),
+        "live E2E outcome=passed exit_code=0",
+    ]
+    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(

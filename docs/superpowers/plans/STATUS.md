@@ -24,10 +24,10 @@ Goal активен. Полная приёмка и выпуск `v1.0.0` не �
 ## Актуальная hosted-проверка опубликованного source
 
 - [Matrix 37236971603](https://github.com/egorribun/university_ecosystem/actions/runs/37236971603),
-  attempt 1, source `01ffea1b5`: snapshot 312 jobs — 238 completed (82 failure),
-  16 active, 58 queued; позднее mutation groups 105 completed / 10 active / 13 queued.
-  Terminal verdict неизвестен; harvest partial. Groups 1/4/6/8 complete proofs:
-  143 selected, 126 Killed / 17 Survived; score-gate failures, не полный inventory.
+  attempt 1, PR head `01ffea1b5`, producer merge `95b8ba18`: одинаковое дерево `286c57c1`.
+  128/128 backend groups validated: 4 540 selected, canonical 3 770 Killed / 770 Survived;
+  primary 3 684 Killed / 856 Survived отдельно. 0 proof errors; run completed/failure 03:39 UTC, FE64 validation pending.
+  Central manifest/selection validated; новые локальные исправления этим run не проверены.
 - [Owned live acceptance 37236971288](https://github.com/egorribun/university_ecosystem/actions/runs/37236971288)
   завершился success на том же SHA. Он подтверждает только перечисленный PR smoke;
   полную продуктовую, визуальную и disaster-recovery приёмку не заменяет.
@@ -89,35 +89,35 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - Локальные checkpoints `cf9f5609`–`d3d13d8`: документ, MFA export/history,
   cache regression, Bash contract и ограничение native workers. Push отложен
   до terminal текущей canonical кампании, чтобы сохранить её inventory.
-- Node fixture scanner RED сохранён; UUID fix без suppressions/baseline entries;
-  hooks прошли. Bridge `ba8a236b5`, status checkpoint `75d233e8`.
+- Scanner RED сохранён; UUID fix без suppressions; hooks GREEN, bridge `ba8a236b5`.
 - Исправлен экспорт MFA: public DTO не содержит отношения; отдельная проекция
   возвращает сохранённый count и безопасные enrollment metadata с изоляцией владельца.
   Root: 26 целевых backend tests passed; это не полный coverage/mutation допуск.
-- Frontend: регрессия account-null cache isolation; root 25 tests passed.
-  Native RED на историческом `shard-026:359` не даёт canonical Killed credit.
+- Cache: root 25 passed, `shard-026:359` local RED; rateLimit: root 80/static 4/4 GREEN; focused216=212 Killed/2 Survived/2 Timeout, waiter{} Killed, local only.
 - Windows contract: Git Bash и точная причина отказа в negative cases; root focused lane passed.
-- Первый preflight 7/9 сохранён; новый полный root preflight diff: 9/9, workers=1.
-- Scoped review и локальные проверки base `01ffea1b5` с diff не заменяют hosted verdict.
+- `7b8dbbd91`: root 3 lockout/push + 2 MFA + 12 sessions tests/Ruff/hooks GREEN; 42/45 и group56:6 local RED, без canonical credit.
+- Pending live CLI: root 1 020 pytest + 8 Node GREEN; selector/enum diagnostics, full product RED.
 - Live build на `e150f009` остановлен RSS watchdog: frontend при SSR start
   достиг 2052,5 MiB при лимите 2048 MiB. Приёмка браузером не запускалась.
-  Лимит неизменен; `23550c18`: workers=4; `d3d13d8` и `75d233e8` build/up прошли.
-  12 samples/run: max 1914,1 / 1942,1 MiB <2048 (не continuous peak); root 14 tests passed.
+  `23550c18`: workers=4; три следующих build/up passed; max samples 1914,1/1942,1/2010,8
+  MiB <2048 (не continuous peak); root 14 tests passed; лимит не ослаблен.
 - `405cd32a`: retained MFA regression; агент 26/root 1 passed, review approved; mutation открыт.
 - Full E2E `d3d13d8`: in-place global setup отказал; `75d233e8`: отказ защиты
   output-directory до test counts. Signed verifier и настоящий global setup отдельно
   passed. Safe replay сохранил только fixed category, raw child output не записан.
-  Оба owned teardown прошли: созданные контейнеры/volumes удалены, исходные 175
-  остановленных контейнеров сохранены, running 0. Windows marker CRLF/LF RED подтверждён.
+  Owned teardown прошли; Windows marker CRLF/LF RED подтверждён, ресурсы пользователя сохранены.
 - `ba8a236b5`: Python → Node → signed verifier передача owned state root исправлена:
   RED/GREEN success/failure; root Python 1003/1003, Node 41/41, harness 27/27 passed.
-  Это рабочий diff без skips/errors; новый full live verdict ещё не получен.
 - `6dc9356e8`: LF-only marker; native Windows byte RED 2/GREEN 2;
   root Python 1003/1003, hooks GREEN; настоящий Python → Node probe exit 0, LF bytes matched.
 - `0585e3eb1`: exact 57-spec diagnostics; RED/GREEN, root 1005/1005, review/hooks GREEN.
 - `3e42d841d`: live early email-OTP resend: 429 без Retry-After, затем исходный Mailpit OTP.
-  Review, root Node 41/41, typecheck и final preflight 9/9 GREEN; live ещё не выполнен.
-- Docker cleanup: 18 owned image tags удалены без force; 175 containers/94 volumes сохранены.
+  Review, root Node 41/41, typecheck и final preflight 9/9 GREEN; live acceptance не подтверждена.
+- `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
+  Повторный защищённый smoke после seed: 18 passed / 2 project-scoped skips, exit 0.
+  `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
+- Все owned teardown прошли; Docker 0 running, исходные 175 containers/94 volumes сохранены.
+  Удалены 18 прежних + 9 новых owned image tags без force; evidence/configs сохранены private.
 
 ## Среда и ближайшие действия
 
@@ -126,8 +126,8 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
   перед запуском. Пользовательские `.env`, volumes, backups и evidence сохраняются.
 - Live запуск: чистый checkout и отдельный private run-owned state root;
   source freeze после commit, без ослабления guards; тяжёлые jobs по одному.
-- Проверить exact-head CI и свежий mutation inventory. Исправления получают
-  RED/GREEN, независимое review и scoped проверки до root commit/push.
+- Подтвердить runtime session/rate limits: full Compose задаёт cap 50, TTL 30 минут; причина 111 failures не доказана.
+  Воспроизвести ранние failed specs с новой диагностикой; session cleanup менять только после RED/review.
 - Продолжить блоки 4/5: traceability ТЗ, RU/EN, light/dark, ширины
   360/390/768/1024/1440; small visual packages и пользовательское утверждение baseline.
   Полный live stack, повторный stop/start и данные требуют отдельного evidence.

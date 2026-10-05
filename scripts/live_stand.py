@@ -2419,13 +2419,46 @@ def _playwright_browser_cache_path(
     )
 
 
-def _live_e2e_command(
-    *, mode: str = "full", platform: str | None = None
+def _validated_live_e2e_specs(
+    specs: Sequence[str] | None, *, mode: str
 ) -> tuple[str, ...]:
-    """Return a fixed, secret-free launcher for the requested live suite."""
+    """Return only distinct, canonical full-suite paths from the reviewed list."""
     if mode not in {"smoke", "full"}:
         raise StandError("live E2E mode must be smoke or full")
-    selected_files = LIVE_E2E_SMOKE_FILES if mode == "smoke" else ()
+    if specs is None:
+        return ()
+    if isinstance(specs, str) or not isinstance(specs, Sequence):
+        raise StandError("invalid live E2E focused selection")
+    if not specs:
+        return ()
+    if mode != "full" or len(specs) > len(_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES):
+        raise StandError("invalid live E2E focused selection")
+    if any(
+        type(spec) is not str
+        or not spec.isascii()
+        or spec not in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+        for spec in specs
+    ):
+        raise StandError("invalid live E2E focused selection")
+    if len(set(specs)) != len(specs):
+        raise StandError("invalid live E2E focused selection")
+    selected = set(specs)
+    return tuple(
+        source
+        for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+        if source in selected
+    )
+
+
+def _live_e2e_command(
+    *,
+    mode: str = "full",
+    platform: str | None = None,
+    specs: Sequence[str] | None = None,
+) -> tuple[str, ...]:
+    """Return a fixed, secret-free launcher for the requested live suite."""
+    selected_specs = _validated_live_e2e_specs(specs, mode=mode)
+    selected_files = LIVE_E2E_SMOKE_FILES if mode == "smoke" else selected_specs
     if (platform or os.name) == "nt":
         if not selected_files:
             return LIVE_E2E_WINDOWS_COMMAND
@@ -2866,11 +2899,178 @@ def _live_playwright_failure_locations(
     return locations
 
 
+_PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT = 256
+_PLAYWRIGHT_FAILURE_EXPECT_LINE = re.compile(r"^ {4}Error: expect\(")
+_PLAYWRIGHT_FAILURE_MATCHER_HEADER = re.compile(
+    r"^ {4}Error: expect\((?:locator|page|received)\)\."
+    r"(?P<negated>not\.)?(?P<matcher>toBe|toEqual|toStrictEqual|toContain|toMatch|"
+    r"toBeVisible|toBeHidden|toBeEnabled|toBeDisabled|toBeChecked|"
+    r"toBeFocused|toBeEditable|toBeEmpty|toBeAttached|toBeInViewport|toHaveText|"
+    r"toContainText|toHaveValue|toHaveAttribute|toHaveClass|toHaveCount|toHaveCSS|"
+    r"toHaveJSProperty|toHaveTitle|toHaveURL|toHaveId|toHaveRole|"
+    r"toHaveAccessibleName|toHaveAccessibleDescription|toMatchAriaSnapshot|toPass)\s*\("
+)
+_PLAYWRIGHT_FAILURE_TIMEOUT_LINE = re.compile(
+    r"^ {4}(?:"
+    r"Error: (?:(?:locator|page)\.[A-Za-z]+: )?"
+    r"Timeout [0-9]{1,6}(?:\.[0-9]{1,3})?(?:ms|s) exceeded\."
+    r"|Test timeout of [0-9]{1,6}ms exceeded\."
+    r"|Test timeout of [0-9]{1,6}ms exceeded while setting up "
+    r'"[^"\r\n]{0,256}"\.'
+    r'|Tearing down "[^"\r\n]{0,256}" exceeded the test timeout of '
+    r"[0-9]{1,6}ms\."
+    r'|Test timeout of [0-9]{1,6}ms exceeded while running "(?:beforeEach|afterEach)" hook\.'
+    r'|"(?:beforeAll|afterAll)" hook timeout of [0-9]{1,6}ms exceeded\.'
+    r"|Worker teardown timeout of [0-9]{1,6}ms exceeded"
+    r'(?: while (?:setting up|tearing down) "[^"\r\n]{0,256}")?\.'
+    r'|"(?:skip|slow|fixme|fail)" modifier timeout of [0-9]{1,6}ms exceeded\.'
+    r'|Fixture "[^"\r\n]{0,256}" timeout of [0-9]{1,6}ms exceeded during (?:setup|teardown)\.'
+    r")$"
+)
+_PLAYWRIGHT_FAILURE_NAVIGATION_LINE = re.compile(
+    r"^ {4}Error: page\.(?:goto|waitForURL)\b"
+)
+_PLAYWRIGHT_FAILURE_LOCATOR_LINE = re.compile(r"^ {4}Error: locator\.[A-Za-z]+\b")
+_PLAYWRIGHT_FAILURE_RUNTIME_LINE = re.compile(
+    r"^ {4}(?:Error: )?(?:TypeError|ReferenceError|SyntaxError|RangeError|EvalError|"
+    r"URIError|AggregateError|AbortError|SecurityError|InvalidStateError):"
+)
+_PLAYWRIGHT_FAILURE_LOCATOR_CALL = re.compile(
+    r"^ {6}- waiting for (?:(?:page|locator)\.)?"
+    r"(?P<method>getByRole|getByLabel|getByPlaceholder|getByText|getByTestId|"
+    r"getByAltText|getByTitle|locator)\s*\("
+)
+_PLAYWRIGHT_FAILURE_CALL_LOG_START = re.compile(r"^ {4}Call log:$")
+_PLAYWRIGHT_FAILURE_LOCATOR_CATEGORIES = {
+    "getByRole": "role",
+    "getByLabel": "label",
+    "getByPlaceholder": "placeholder",
+    "getByText": "text",
+    "getByTestId": "test_id",
+    "getByAltText": "alt_text",
+    "getByTitle": "title",
+    "locator": "locator",
+}
+
+
+def _live_playwright_failure_diagnostics(
+    output: str, *, cwd: Path
+) -> list[tuple[str, str, int, str, str, str]]:
+    """Classify validated failure headers using fixed public enums only."""
+    diagnostics: list[tuple[str, str, int, str, str, str]] = []
+    source_lines: dict[str, list[str]] = {}
+    current: dict[str, str | int] | None = None
+
+    def finish() -> None:
+        nonlocal current
+        if current is None or len(diagnostics) >= _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT:
+            current = None
+            return
+        diagnostics.append(
+            (
+                str(current["project"]),
+                str(current["source"]),
+                int(current["line"]),
+                str(current["category"]),
+                str(current["matcher"]),
+                str(current["locator"]),
+            )
+        )
+        current = None
+
+    for reporter_line in output.split("\n"):
+        if reporter_line and not reporter_line.startswith("    "):
+            finish()
+        if len(reporter_line) > 4096 or (
+            reporter_line and not reporter_line.isprintable()
+        ):
+            current = None
+            continue
+        if len(diagnostics) >= _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT:
+            break
+
+        header = _PLAYWRIGHT_FAILURE_HEADER.match(reporter_line)
+        if header is not None:
+            source = _PLAYWRIGHT_FAILURE_SOURCES.get(header["source"])
+            project = _PLAYWRIGHT_FAILURE_PROJECTS.get(header["project"])
+            if source is None or project is None:
+                current = None
+                continue
+            if source not in source_lines:
+                try:
+                    source_lines[source] = (
+                        (cwd / source).read_text(encoding="utf-8").splitlines()
+                    )
+                except (OSError, UnicodeError):
+                    source_lines[source] = []
+            lines = source_lines[source]
+            line_number = int(header["line"])
+            column = int(header["column"])
+            if line_number > len(lines) or column > len(lines[line_number - 1]) + 1:
+                current = None
+                continue
+            current = {
+                "project": project,
+                "source": source,
+                "line": line_number,
+                "category": "unknown",
+                "matcher": "none",
+                "locator": "none",
+                "in_call_log": False,
+            }
+            continue
+        if current is None:
+            continue
+
+        if _PLAYWRIGHT_FAILURE_CALL_LOG_START.fullmatch(reporter_line):
+            current["in_call_log"] = True
+            continue
+        if current["in_call_log"]:
+            locator = _PLAYWRIGHT_FAILURE_LOCATOR_CALL.match(reporter_line)
+            if locator is not None and current["locator"] == "none":
+                current["locator"] = _PLAYWRIGHT_FAILURE_LOCATOR_CATEGORIES[
+                    locator["method"]
+                ]
+            elif not reporter_line.startswith("      "):
+                current["in_call_log"] = False
+
+        if current["category"] != "unknown":
+            continue
+        if _PLAYWRIGHT_FAILURE_TIMEOUT_LINE.fullmatch(reporter_line):
+            current["category"] = "timeout"
+        elif _PLAYWRIGHT_FAILURE_EXPECT_LINE.match(reporter_line):
+            current["category"] = "assertion"
+            matcher = _PLAYWRIGHT_FAILURE_MATCHER_HEADER.match(reporter_line)
+            if matcher is None:
+                current["matcher"] = "other"
+            else:
+                matcher_name = matcher["matcher"]
+                current["matcher"] = (
+                    f"not.{matcher_name}" if matcher["negated"] else matcher_name
+                )
+        elif _PLAYWRIGHT_FAILURE_NAVIGATION_LINE.match(reporter_line):
+            current["category"] = "navigation"
+        elif _PLAYWRIGHT_FAILURE_LOCATOR_LINE.match(reporter_line):
+            current["category"] = "locator"
+        elif _PLAYWRIGHT_FAILURE_RUNTIME_LINE.match(reporter_line):
+            current["category"] = "runtime"
+
+    finish()
+    return diagnostics
+
+
 def _run_live_playwright(
-    *, cwd: Path, environment: dict[str, str], mode: str = "full"
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    mode: str = "full",
+    specs: Sequence[str] | None = None,
 ) -> None:
     """Expose bounded public diagnostics and exit status; discard raw output."""
-    command = _live_e2e_command(mode=mode)
+    selected_specs = _validated_live_e2e_specs(specs, mode=mode)
+    command = _live_e2e_command(mode=mode, specs=selected_specs)
+    if selected_specs:
+        print("live E2E scope=focused diagnostic_only=true", flush=True)
     print("+", " ".join(command), flush=True)
     try:
         completed = subprocess.run(  # noqa: S603 - fixed platform-specific argv
@@ -2903,6 +3103,13 @@ def _run_live_playwright(
             )
         )
     )
+    failure_diagnostics = [
+        diagnostic
+        for stream in (stdout, stderr)
+        for diagnostic in _live_playwright_failure_diagnostics(
+            stream.replace("\r\n", "\n"), cwd=cwd
+        )
+    ][:_PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT]
     del output, stdout, stderr
     completed.stdout = b""
     completed.stderr = b""
@@ -2926,6 +3133,12 @@ def _run_live_playwright(
             f"live E2E failure project={project} source={source} line={line_number} kind={kind}",
             flush=True,
         )
+    for project, source, line_number, category, matcher, locator in failure_diagnostics:
+        print(
+            f"live E2E diagnostic project={project} source={source} line={line_number} "
+            f"category={category} matcher={matcher} locator={locator}",
+            flush=True,
+        )
     for project, check, status in http_statuses:
         print(
             f"live E2E HTTP project={project} check={check} status={status}",
@@ -2943,7 +3156,13 @@ def _run_live_playwright(
         raise StandError(f"live Playwright E2E failed with exit code {return_code}")
 
 
-def _e2e_locked(admin_password: str, *, mode: str = "full") -> None:
+def _e2e_locked(
+    admin_password: str,
+    *,
+    mode: str = "full",
+    specs: Sequence[str] | None = None,
+) -> None:
+    selected_specs = _validated_live_e2e_specs(specs, mode=mode)
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
     _seed_locked(admin_password, owner=owner)
@@ -2982,11 +3201,19 @@ def _e2e_locked(admin_password: str, *, mode: str = "full") -> None:
                 )
             _verify_stand_owner_compose_resources(WORKTREE, owner)
             _require_owned_docker_daemon(owner)
-            _run_live_playwright(
-                cwd=frontend,
-                environment=playwright_environment,
-                mode=mode,
-            )
+            if selected_specs:
+                _run_live_playwright(
+                    cwd=frontend,
+                    environment=playwright_environment,
+                    mode=mode,
+                    specs=selected_specs,
+                )
+            else:
+                _run_live_playwright(
+                    cwd=frontend,
+                    environment=playwright_environment,
+                    mode=mode,
+                )
         finally:
             playwright_environment.pop("TEST_PASSWORD", None)
             playwright_environment.pop("LIVE_BASE_URL", None)
@@ -2999,16 +3226,18 @@ def _e2e_locked(admin_password: str, *, mode: str = "full") -> None:
             environment.pop("PLAYWRIGHT_TEST_OUTPUT_DIR", None)
 
 
-def e2e(mode: str = "full") -> None:
+def e2e(mode: str = "full", *, specs: Sequence[str] | None = None) -> None:
     """Seed owned roles and use the same protected account across stand reruns."""
-    if mode not in {"smoke", "full"}:
-        raise StandError("live E2E mode must be smoke or full")
+    selected_specs = _validated_live_e2e_specs(specs, mode=mode)
     admin_password = ""
     try:
         with stand_lifecycle_lock():
             owner = load_stand_owner(WORKTREE)
             admin_password = load_or_create_stand_admin_password(WORKTREE, owner)
-            _e2e_locked(admin_password, mode=mode)
+            if selected_specs:
+                _e2e_locked(admin_password, mode=mode, specs=selected_specs)
+            else:
+                _e2e_locked(admin_password, mode=mode)
     finally:
         admin_password = ""
 
@@ -3119,11 +3348,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     e2e_parser = commands.add_parser("e2e")
     add_state_options(e2e_parser)
     e2e_parser.add_argument("--mode", choices=("smoke", "full"), default="full")
+    e2e_parser.add_argument(
+        "--spec",
+        action="append",
+        dest="specs",
+        metavar="TRACKED_SPEC",
+        help="diagnostic-only rerun; serial full-suite specs may depend on earlier cases",
+    )
     for command_name in ("status", "stop", "down", "teardown"):
         command_parser = commands.add_parser(command_name)
         add_state_options(command_parser)
     args = parser.parse_args(argv)
     try:
+        selected_specs = (
+            _validated_live_e2e_specs(args.specs, mode=args.mode)
+            if args.command == "e2e"
+            else ()
+        )
         _configure_state_mode(args)
         if args.command == "up":
             up(args.ref)
@@ -3133,7 +3374,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "seed":
             seed()
         elif args.command == "e2e":
-            e2e(args.mode)
+            if selected_specs:
+                e2e(args.mode, specs=selected_specs)
+            else:
+                e2e(args.mode)
         elif args.command == "status":
             status()
         elif args.command in {"stop", "down"}:

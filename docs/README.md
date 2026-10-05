@@ -45,6 +45,7 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
+- [Project audit prompt (Russian)](superpowers/plans/AUDIT_PROMPT.md) — review template.
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
 Legacy audit and plan archives have been reconciled against the master plan,

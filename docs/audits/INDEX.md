@@ -69,6 +69,8 @@ not invent replacement links for files that are not present.
   decisions, sequence, and acceptance criteria.
 - [Active closure status](../superpowers/plans/STATUS.md) — current state and
   next actions.
+- [Project audit prompt (Russian)](../superpowers/plans/AUDIT_PROMPT.md) —
+  reusable input for a scoped review.
 - [Machine-enforced quality contract](../../quality/quality-contract.json) —
   mandatory quality gates.
 
