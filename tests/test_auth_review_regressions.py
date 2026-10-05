@@ -1,12 +1,23 @@
 """Independent-review regressions for cache-free revocation and login races."""
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from fastapi import Request
+from fastapi import HTTPException, Request
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models import ActiveSession, User
+    from app.repositories.active_session_repository import ActiveSessionRepository
+    from app.schemas.dtos import ActiveSessionDTO
+    from app.services.auth_service import AuthService
 
 
 @pytest.mark.asyncio
@@ -452,3 +463,184 @@ async def test_password_change_compare_and_swap_is_scoped_to_target_user(
     assert target.mfa_epoch == (5 if target_hash_is_current else 4)
     assert other.hashed_password == shared_hash
     assert other.mfa_epoch == 9
+
+
+def _request_with_active_session(active_session: ActiveSession) -> Request:
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/auth/password/change",
+            "query_string": b"",
+            "headers": [(b"accept-language", b"ru")],
+        }
+    )
+    request.state.active_session = active_session
+    return request
+
+
+async def _create_active_session(
+    repository: ActiveSessionRepository, *, user_id: UUID, jti: str, now: datetime
+) -> ActiveSessionDTO:
+    return await repository.create(
+        {
+            "user_id": user_id,
+            "jti": jti,
+            "created_at": now,
+            "expires_at": now + timedelta(hours=1),
+            "last_seen_at": now,
+            "ip_address": "192.0.2.10",
+            "user_agent": "pytest",
+            "mfa_epoch": 0,
+        }
+    )
+
+
+def _password_change_service(db_session: AsyncSession) -> AuthService:
+    from app.repositories.auth_repository import AuthRepository
+    from app.repositories.unit_of_work import uow_from_session
+    from app.repositories.user_repository import UserRepository
+    from app.services.auth_service import AuthService
+
+    uow = uow_from_session(db_session)
+    return AuthService(
+        audit=MagicMock(),
+        auth_repo=AuthRepository(db_session),
+        user_repo=UserRepository(db_session),
+        session_repo=uow.sessions,
+        uow=uow,
+    )
+
+
+@pytest.mark.asyncio
+async def test_password_change_persists_current_epoch_and_revokes_only_owned_sibling(
+    db_session: AsyncSession,
+    test_user: User,
+    user_factory: Callable[..., Awaitable[User]],
+    mock_global_redis: Redis[str],
+) -> None:
+    from app.auth.security import get_password_hash, verify_password
+    from app.core.database import async_session
+    from app.models import ActiveSession, User
+    from app.repositories.unit_of_work import uow_from_session
+    from app.schemas.schemas import UserPasswordChangeIn
+
+    now = datetime.now(UTC)
+    current_password = f"Old!{uuid4().hex}aA9"
+    replacement_password = f"New!{uuid4().hex}bB8"
+    user_id = test_user.id
+    test_user.hashed_password = await get_password_hash(current_password)
+    test_user.mfa_epoch = 0
+    foreign_user = await user_factory()
+    await db_session.commit()
+
+    uow = uow_from_session(db_session)
+    current_dto = await _create_active_session(
+        uow.sessions, user_id=user_id, jti=f"current-{uuid4().hex}", now=now
+    )
+    sibling_dto = await _create_active_session(
+        uow.sessions, user_id=user_id, jti=f"sibling-{uuid4().hex}", now=now
+    )
+    foreign_dto = await _create_active_session(
+        uow.sessions, user_id=foreign_user.id, jti=f"foreign-{uuid4().hex}", now=now
+    )
+    await db_session.commit()
+    current = await db_session.get(ActiveSession, current_dto.id)
+    assert current is not None
+
+    request = _request_with_active_session(current)
+    service = _password_change_service(db_session)
+    with patch("app.services.auth_service.validate_password_hibp", AsyncMock()):
+        result = await service.change_password(
+            test_user,
+            UserPasswordChangeIn(
+                current_password=current_password, new_password=replacement_password
+            ),
+            request,
+        )
+
+    assert result == (True, 1)
+    async with async_session() as reader:
+        current_row = await reader.get(ActiveSession, current_dto.id)
+        sibling_row = await reader.get(ActiveSession, sibling_dto.id)
+        foreign_row = await reader.get(ActiveSession, foreign_dto.id)
+        persisted_user = await reader.get(User, user_id)
+
+    assert current_row is not None
+    assert current_row.mfa_epoch == 1
+    assert current_row.revoked_at is None
+    assert sibling_row is not None
+    assert sibling_row.revoked_at is not None
+    assert foreign_row is not None
+    assert foreign_row.revoked_at is None
+    assert persisted_user is not None
+    assert await verify_password(replacement_password, persisted_user.hashed_password)
+    assert not await verify_password(current_password, persisted_user.hashed_password)
+
+
+@pytest.mark.asyncio
+async def test_password_change_stale_compare_and_swap_keeps_winner_and_sessions(
+    db_session: AsyncSession, test_user: User, mock_global_redis: Redis[str]
+) -> None:
+    from app.auth.security import get_password_hash, verify_password
+    from app.core.database import async_session
+    from app.core.localization import translate
+    from app.models import ActiveSession, User
+    from app.repositories.unit_of_work import uow_from_session
+    from app.schemas.dtos import UserAuthDTO
+    from app.schemas.schemas import UserPasswordChangeIn
+
+    now = datetime.now(UTC)
+    current_password = f"Old!{uuid4().hex}cC7"
+    winner_password = f"Winner!{uuid4().hex}dD6"
+    losing_password = f"Loser!{uuid4().hex}eE5"
+    user_id = test_user.id
+    test_user.hashed_password = await get_password_hash(current_password)
+    test_user.mfa_epoch = 0
+    await db_session.commit()
+
+    uow = uow_from_session(db_session)
+    current_dto = await _create_active_session(
+        uow.sessions, user_id=user_id, jti=f"current-{uuid4().hex}", now=now
+    )
+    await db_session.commit()
+    current = await db_session.get(ActiveSession, current_dto.id)
+    assert current is not None
+    request = _request_with_active_session(current)
+    service = _password_change_service(db_session)
+    stale_user = UserAuthDTO.model_validate(test_user)
+
+    with patch("app.services.auth_service.validate_password_hibp", AsyncMock()):
+        winner_result = await service.change_password(
+            test_user,
+            UserPasswordChangeIn(
+                current_password=current_password, new_password=winner_password
+            ),
+            request,
+        )
+    assert winner_result == (True, 0)
+
+    with patch("app.services.auth_service.validate_password_hibp", AsyncMock()):
+        with pytest.raises(HTTPException) as rejected:
+            await service.change_password(
+                stale_user,
+                UserPasswordChangeIn(
+                    current_password=current_password, new_password=losing_password
+                ),
+                request,
+            )
+
+    assert rejected.value.status_code == 401
+    assert rejected.value.detail == translate(
+        "errors.auth.credentials_invalid", locale="ru"
+    )
+    async with async_session() as reader:
+        persisted_user = await reader.get(User, user_id)
+        persisted_session = await reader.get(ActiveSession, current_dto.id)
+    assert persisted_user is not None
+    assert await verify_password(winner_password, persisted_user.hashed_password)
+    assert not await verify_password(losing_password, persisted_user.hashed_password)
+    assert persisted_user.mfa_epoch == 1
+    assert persisted_session is not None
+    assert persisted_session.mfa_epoch == 1
+    assert persisted_session.revoked_at is None

@@ -509,3 +509,70 @@ async def test_get_groups_maps_service_results() -> None:
     result = await call_injected(api.get_groups, provides={"GroupService": service})
     assert result[0].id == group.id
     assert result[0].name == "Group"
+
+
+@pytest.mark.asyncio
+async def test_admin_user_list_uses_the_authenticated_subject_for_full_profiles() -> (
+    None
+):
+    from fastapi import BackgroundTasks, Request
+
+    from app.schemas.dtos.user import UserDTO
+
+    def make_user(*, role: UserRole, email: str) -> UserDTO:
+        return UserDTO(
+            id=uuid4(),
+            email=email,
+            role=role,
+            group_id=None,
+            is_active=True,
+            mfa_required=False,
+            mfa_default_method=None,
+            mfa_last_verified_at=None,
+            created_at=datetime.now(UTC),
+        )
+
+    class IdentityBoundChecker:
+        def __init__(self, granted_subject: str) -> None:
+            self.granted_subject = granted_subject
+
+        async def check_admin(
+            self, user_id: str | None, *, user: object | None = None
+        ) -> bool:
+            return user_id == self.granted_subject
+
+    class UserListService:
+        def __init__(self, users: list[UserDTO]) -> None:
+            self.users = users
+
+        async def get_users(
+            self,
+            request: Request,
+            current_user: UserDTO | None = None,
+            filters: schemas.UserSearchFilter | None = None,
+        ) -> list[UserDTO]:
+            return self.users
+
+    admin = make_user(role=UserRole.ADMIN, email="admin@example.com")
+    listed_user = make_user(role=UserRole.STUDENT, email="student@example.com")
+    checker = IdentityBoundChecker(str(admin.id))
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users", "headers": []}
+    )
+
+    result = await call_injected(
+        api.get_users,
+        checker=checker,
+        bg=BackgroundTasks(),
+        request=request,
+        filters=schemas.UserSearchFilter(),
+        current_user=admin,
+        provides={
+            "UserProfileService": UserListService([listed_user]),
+            "AsyncDatabaseSession": AsyncMock(),
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], schemas.UserOut)
+    assert result[0].email == listed_user.email
