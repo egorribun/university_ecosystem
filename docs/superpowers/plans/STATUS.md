@@ -2,15 +2,15 @@
 
 Срез на 2026-10-05 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Goal активен. Полная приёмка и выпуск `v1.0.0` не подтверждены.
+Работа возобновлена по поручению пользователя. Приёмка и выпуск `v1.0.0` не подтверждены.
 
 ## Контекст и источник доказательств
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Проверенный опубликованный source — `01ffea1b5d0eca52f0b76e44d83aac3cb5890b71`;
-  Checkpoints локальные; push отложен, чтобы сохранить незавершённую CI-кампанию.
+  Опубликованный checkpoint — `38e8c6d0268674f0cd975ecce8aeea1525741b06`;
+  16 checkpoints отправлены обычным push после сохранения terminal CI evidence; новые тесты локальные.
 - После контрольной точки `2e78ce97d0daccd9d9ea74606ae07974a42ab555`:
-  **123 коммита, 908 изменённых файлов**. Актуальный `main`
+  **139 коммитов, 915 изменённых файлов** на `38e8c6d`. Актуальный `main`
   `6fa133b57f62c554162876d4e6d8349f8060fce9` входит в историю ветки.
 - Пользователь подтвердил включение [AUDIT_PROMPT.md](AUDIT_PROMPT.md) в Git.
   Исходные bytes сохранены в `cf9f5609`; инструкции шаблона не заменяют поручение пользователя.
@@ -26,11 +26,16 @@ Goal активен. Полная приёмка и выпуск `v1.0.0` не �
 - [Matrix 37236971603](https://github.com/egorribun/university_ecosystem/actions/runs/37236971603),
   attempt 1, PR head `01ffea1b5`, producer merge `95b8ba18`: одинаковое дерево `286c57c1`.
   128/128 backend groups validated: 4 540 selected, canonical 3 770 Killed / 770 Survived;
-  primary 3 684 Killed / 856 Survived отдельно. 0 proof errors; run completed/failure 03:39 UTC, FE64 validation pending.
+  primary 3 684 Killed / 856 Survived отдельно. 0 proof errors; run completed/failure 03:39 UTC.
+  FE 64/64 identities/hashes/source validated: 42 913 assigned, inventory gate отклонил
+  4 666 Survived / 30 Timeout / 31 RuntimeError / 1 NoCoverage; exact reject `shard-026:269`.
   Central manifest/selection validated; новые локальные исправления этим run не проверены.
 - [Owned live acceptance 37236971288](https://github.com/egorribun/university_ecosystem/actions/runs/37236971288)
   завершился success на том же SHA. Он подтверждает только перечисленный PR smoke;
   полную продуктовую, визуальную и disaster-recovery приёмку не заменяет.
+- На `38e8c6d`: [Matrix 37263603990](https://github.com/egorribun/university_ecosystem/actions/runs/37263603990)
+  completed/failure: 140 success / 26 skipped / 3 failure; audit checklist false positive воспроизведён UTF-8 hook, исправлен локально.
+  [Live smoke 37263603695](https://github.com/egorribun/university_ecosystem/actions/runs/37263603695) completed/success; scope только PR smoke.
 - На предыдущем `f39d5421341d84dd5e316fe9e88e2b4399758d0e`
   [matrix 37213691132](https://github.com/egorribun/university_ecosystem/actions/runs/37213691132)
   завершён: **367 checks, 216 success / 20 skipped / 131 failure**.
@@ -86,38 +91,33 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 
 ## Проверки текущего checkpoint
 
-- Локальные checkpoints `cf9f5609`–`d3d13d8`: документ, MFA export/history,
-  cache regression, Bash contract и ограничение native workers. Push отложен
-  до terminal текущей canonical кампании, чтобы сохранить её inventory.
+- Checkpoints `cf9f5609`–`38e8c6d` опубликованы: документ, MFA export/history,
+  cache regression, Bash contract, workers=4, owned-state bridge/LF marker и live diagnostics.
 - Scanner RED сохранён; UUID fix без suppressions; hooks GREEN, bridge `ba8a236b5`.
 - Исправлен экспорт MFA: public DTO не содержит отношения; отдельная проекция
   возвращает сохранённый count и безопасные enrollment metadata с изоляцией владельца.
   Root: 26 целевых backend tests passed; это не полный coverage/mutation допуск.
 - Cache: root 25 passed, `shard-026:359` local RED; rateLimit: root 80/static 4/4 GREEN; focused216=212 Killed/2 Survived/2 Timeout, waiter{} Killed, local only.
-- Windows contract: Git Bash и точная причина отказа в negative cases; root focused lane passed.
+- `600e18111` + bounded admin hydration protocol: root live contracts 143/143, CLI 1092/1092 + 5 domain negatives GREEN; replay открыт.
 - `7b8dbbd91`: root 3 lockout/push + 2 MFA + 12 sessions tests/Ruff/hooks GREEN; 42/45 и group56:6 local RED, без canonical credit.
-- Pending live CLI: root 1 020 pytest + 8 Node GREEN; selector/enum diagnostics, full product RED.
-- Live build на `e150f009` остановлен RSS watchdog: frontend при SSR start
-  достиг 2052,5 MiB при лимите 2048 MiB. Приёмка браузером не запускалась.
-  `23550c18`: workers=4; три следующих build/up passed; max samples 1914,1/1942,1/2010,8
-  MiB <2048 (не continuous peak); root 14 tests passed; лимит не ослаблен.
-- `405cd32a`: retained MFA regression; агент 26/root 1 passed, review approved; mutation открыт.
-- Full E2E `d3d13d8`: in-place global setup отказал; `75d233e8`: отказ защиты
-  output-directory до test counts. Signed verifier и настоящий global setup отдельно
-  passed. Safe replay сохранил только fixed category, raw child output не записан.
-  Owned teardown прошли; Windows marker CRLF/LF RED подтверждён, ресурсы пользователя сохранены.
-- `ba8a236b5`: Python → Node → signed verifier передача owned state root исправлена:
-  RED/GREEN success/failure; root Python 1003/1003, Node 41/41, harness 27/27 passed.
-- `6dc9356e8`: LF-only marker; native Windows byte RED 2/GREEN 2;
-  root Python 1003/1003, hooks GREEN; настоящий Python → Node probe exit 0, LF bytes matched.
-- `0585e3eb1`: exact 57-spec diagnostics; RED/GREEN, root 1005/1005, review/hooks GREEN.
-- `3e42d841d`: live early email-OTP resend: 429 без Retry-After, затем исходный Mailpit OTP.
-  Review, root Node 41/41, typecheck и final preflight 9/9 GREEN; live acceptance не подтверждена.
+- `38e8c6d`: root preflight 9/9, hooks/pre-push GREEN; live CLI 1 020 pytest + 8 Node GREEN.
+- `1faa3be4c` test-only password reuse/MFA tombstone: root 45/45 в двух модулях, Ruff/hooks GREEN;
+  baseline GREEN / exact generated-AST RED проверены отдельно, canonical credit не выдаётся.
+- Chat reply-preview/search description: root 44/44; RLS identity module 27/27; password-change 19/19 GREEN;
+  baseline GREEN / exact generated-AST RED повторены root, canonical statuses не изменены.
+- RSS build guard сохранён: workers=4; три следующих build/up passed;
+  max samples 1914,1/1942,1/2010,8 MiB <2048, не continuous peak; root 14 tests passed.
+- Owned-state bridge и LF marker прошли Windows RED/GREEN; настоящий signed probe exit 0.
+  Exact 57-spec diagnostics и retained MFA/email-OTP regressions проверены локально.
+  Детальные receipts промежуточных checkpoints сохранены в
+  [STATUS на 38e8c6d](https://github.com/egorribun/university_ecosystem/blob/38e8c6d0268674f0cd975ecce8aeea1525741b06/docs/superpowers/plans/STATUS.md).
 - `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
   Повторный защищённый smoke после seed: 18 passed / 2 project-scoped skips, exit 0.
   `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
-- Все owned teardown прошли; Docker 0 running, исходные 175 containers/94 volumes сохранены.
-  Удалены 18 прежних + 9 новых owned image tags без force; evidence/configs сохранены private.
+- Новая owned live-приёмка `38e8c6d`: up exit 0; focused 8 failed, отдельный admin replay 6 failed.
+  Activity indicator/table/page errors повторились; bounded stdout содержит React #418, без test attribution.
+  Owned stop/teardown exit 0; синтетические ресурсы удалены, исходные 175 containers/94 volumes сохранены.
+  Удалены 18 + 9 + 9 owned image tags без force; evidence/configs сохранены private.
 
 ## Среда и ближайшие действия
 
@@ -126,8 +126,8 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
   перед запуском. Пользовательские `.env`, volumes, backups и evidence сохраняются.
 - Live запуск: чистый checkout и отдельный private run-owned state root;
   source freeze после commit, без ослабления guards; тяжёлые jobs по одному.
-- Подтвердить runtime session/rate limits: full Compose задаёт cap 50, TTL 30 минут; причина 111 failures не доказана.
-  Воспроизвести ранние failed specs с новой диагностикой; session cleanup менять только после RED/review.
+- Runtime `38e8c6d` подтвердил cap 50, TTL 30 минут и login 60/minute; причина 111 failures не доказана.
+  Проверить numeric Activity geometry, queue API/render state и SSR hydration; session cleanup только после RED/review.
 - Продолжить блоки 4/5: traceability ТЗ, RU/EN, light/dark, ширины
   360/390/768/1024/1440; small visual packages и пользовательское утверждение baseline.
   Полный live stack, повторный stop/start и данные требуют отдельного evidence.
