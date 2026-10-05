@@ -162,7 +162,7 @@ jobs:
 
       - name: Setup Rust toolchain
         # Pin the compiler used for tracked WASM package generation.
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # pinned action
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # pinned action
         with:
           toolchain: 1.97.1
           targets: wasm32-unknown-unknown
@@ -188,7 +188,7 @@ jobs:
 
       - name: Publish to Chromatic
         # SHA-pinned per RZ-22-03 convention (no mutable @v tags).
-        uses: chromaui/action@bb3b582719a93c1828c5e520e62992b2937d7889 # v18.9.4
+        uses: chromaui/action@db3ceb5efb0cd7447d63c2d8cce7da732ce89322 # v18.10.1
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
