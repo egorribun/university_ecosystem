@@ -7,14 +7,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import BackgroundTasks, Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.mfa.email_otp import EmailOtpService, MfaOtpRejected
+from app.auth.schemas import PendingMfaResponse
 from app.auth.security import get_password_hash
-from app.models import RecoveryCode
+from app.models import RecoveryCode, User
 from app.repositories.auth_repository import AuthRepository
-from app.repositories.unit_of_work import uow_from_session
+from app.repositories.unit_of_work import UnitOfWork, uow_from_session
 from app.repositories.user_repository import UserRepository
 from app.schemas.schemas import UserPasswordChangeIn
+from app.services.auth.login_service import LoginService
 from app.services.auth_service import AuthService
 
 OLD_PASSWORD = "Old-email-mfa-password-11!"  # pragma: allowlist secret
@@ -39,7 +42,9 @@ def _request():
 
 
 @pytest.fixture
-async def prepared(db_session, test_user):
+async def prepared(
+    db_session: AsyncSession, test_user: User
+) -> tuple[EmailOtpService, AuthService, UnitOfWork]:
     test_user.hashed_password = await get_password_hash(OLD_PASSWORD)
     test_user.email_verified_at = datetime.now(UTC)
     test_user.email_mfa_enabled_at = datetime.now(UTC)
@@ -148,9 +153,11 @@ async def test_email_challenge_cannot_survive_password_epoch_change(
         assert await consume() is not None
 
 
-def _build_login_service(db_session, prepared):
+def _build_login_service(
+    db_session: AsyncSession,
+    prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
+) -> LoginService:
     from app.services.auth.credential_validator import CredentialValidator
-    from app.services.auth.login_service import LoginService
     from app.services.auth.mfa_coordinator import MfaCoordinator
 
     service, _, uow = prepared
@@ -172,7 +179,7 @@ def _build_login_service(db_session, prepared):
 
 @pytest.mark.asyncio
 async def test_delayed_email_issuance_rejects_stale_validated_password_dto(
-    db_session, test_user, prepared
+    db_session, test_user, prepared, monkeypatch: pytest.MonkeyPatch
 ):
     _, auth, _ = prepared
     login = _build_login_service(db_session, prepared)
@@ -186,7 +193,7 @@ async def test_delayed_email_issuance_rejects_stale_validated_password_dto(
         await resume.wait()
         return await original_collect(*args, **kwargs)
 
-    coordinator._collect_mfa_challenges = paused_collect
+    monkeypatch.setattr(coordinator, "_collect_mfa_challenges", paused_collect)
     request = _request()
     with (
         patch(
@@ -209,6 +216,8 @@ async def test_delayed_email_issuance_rejects_stale_validated_password_dto(
         result = await login.perform_login(
             test_user.email, NEW_PASSWORD, request, Response(), BackgroundTasks()
         )
+    assert result is not None
+    assert isinstance(result, PendingMfaResponse)
     assert [method.method for method in result.methods] == ["email_otp"]
 
 
@@ -216,7 +225,7 @@ async def test_delayed_email_issuance_rejects_stale_validated_password_dto(
 @pytest.mark.parametrize("route", ["form", "json"])
 @pytest.mark.parametrize("change_password", [False, True])
 async def test_http_login_maps_stale_email_issuance_to_auth_rejection(
-    db_session, test_user, prepared, route, change_password
+    db_session, test_user, prepared, route, change_password, monkeypatch
 ):
     from dishka import Provider, Scope, make_async_container
     from dishka.integrations.fastapi import setup_dishka
@@ -248,7 +257,7 @@ async def test_http_login_maps_stale_email_issuance_to_auth_rejection(
         await resume.wait()
         return await original_collect(*args, **kwargs)
 
-    login.mfa_coord._collect_mfa_challenges = paused_collect
+    monkeypatch.setattr(login.mfa_coord, "_collect_mfa_challenges", paused_collect)
     path = "/login" if route == "form" else "/login/json"
     body = (
         {"data": {"username": email, "password": OLD_PASSWORD}}
@@ -360,3 +369,74 @@ async def test_issuance_requires_current_canonical_credential_epoch(
             client_ip=IP,
             locale="en",
         )
+
+
+@pytest.mark.asyncio
+async def test_public_login_persists_requested_locale_with_email_challenge(
+    db_session: AsyncSession,
+    test_user: User,
+    prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
+) -> None:
+    from dishka import Provider, Scope, make_async_container
+    from dishka.integrations.fastapi import setup_dishka
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import select
+
+    from app.api.auth import login as login_api
+    from app.core import database
+    from app.core.protocols import AsyncDatabaseSession
+    from app.models import ChallengeState, MfaChallenge, MfaEmailDelivery, StoredEvent
+    from app.services.auth.login_service import LoginService
+
+    login = _build_login_service(db_session, prepared)
+    provider = Provider(scope=Scope.REQUEST)
+    provider.provide(lambda: login, provides=LoginService)
+    provider.provide(lambda: db_session, provides=AsyncDatabaseSession)
+    container = make_async_container(provider)
+    test_app = FastAPI()
+    test_app.include_router(login_api.router)
+    setup_dishka(container, test_app)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=test_app, raise_app_exceptions=False),
+        base_url="http://testserver",
+        headers={"Accept-Language": "ru"},
+    ) as client:
+        response = await client.post(
+            "/login/json",
+            json={"email": test_user.email, "password": OLD_PASSWORD},
+        )
+    await container.close()
+
+    assert response.status_code == 202
+    assert [method["method"] for method in response.json()["methods"]] == ["email_otp"]
+    async with database.async_session() as reader:
+        challenge = (
+            await reader.execute(
+                select(MfaChallenge).where(MfaChallenge.user_id == test_user.id)
+            )
+        ).scalar_one()
+        delivery = (
+            await reader.execute(
+                select(MfaEmailDelivery).where(
+                    MfaEmailDelivery.challenge_id == challenge.id
+                )
+            )
+        ).scalar_one()
+        event = (
+            await reader.execute(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == "auth.mfa_email.requested",
+                    StoredEvent.aggregate_id_uuid == challenge.id,
+                )
+            )
+        ).scalar_one()
+        assert challenge.flow == "login"
+        assert challenge.payload == {"mfa_epoch": 0}
+        assert challenge.state == ChallengeState.PENDING
+        assert challenge.consumed_at is None
+        assert delivery.status == "pending"
+        assert delivery.locale == "ru"
+        assert event.payload["locale"] == "ru"
+        assert event.payload["delivery_id"] == str(delivery.id)

@@ -23,11 +23,13 @@ in an existing partition on the CI PostgreSQL integration tier.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.events import register_event_listeners
 from app.models.chat import (
@@ -35,12 +37,16 @@ from app.models.chat import (
     MessageReaction,
 )
 from app.models.domain_events import StoredEvent
+from app.models.users import User
 from app.repositories.chat_repository import ChatRepository
+from app.schemas.dtos.chat import ChatDTO
 
 _NOW = datetime.now(UTC)
 
 
-async def _make_dm(db_session, user_factory):
+async def _make_dm(
+    db_session: AsyncSession, user_factory: Callable[..., Awaitable[User]]
+) -> tuple[ChatRepository, ChatDTO, User, User]:
     """Create a 2-participant DM chat and return (repo, chat_dto, u1, u2)."""
     u1 = await user_factory()
     u2 = await user_factory()
@@ -51,8 +57,8 @@ async def _make_dm(db_session, user_factory):
 
 async def _add_message(
     repo: ChatRepository,
-    chat_id,
-    sender_id,
+    chat_id: UUID,
+    sender_id: UUID,
     content: str = "hi",
     *,
     offset_seconds: int = 0,
@@ -615,3 +621,137 @@ async def test_soft_delete_message_rejects_unknown_message_id(db_session, user_f
     )
     assert persisted["content"] == "requested message"
     assert persisted["deleted_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_edit_message_targets_one_persisted_row_and_stamps_timestamp(
+    db_session: AsyncSession, user_factory: Callable[..., Awaitable[User]]
+) -> None:
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    target = await _add_message(repo, chat.id, author.id, "target-before")
+    untouched = await _add_message(repo, chat.id, author.id, "other-message")
+    target_id, untouched_id = target.id, untouched.id
+
+    edited_at, affected = await repo.edit_message(
+        target_id, author.id, "target-after", chat_id=chat.id
+    )
+
+    assert affected == 1
+    assert edited_at is not None
+    await db_session.commit()
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    async with sessions() as reader:
+        rows = (
+            (
+                await reader.execute(
+                    select(Message.__table__).where(
+                        Message.id.in_([target_id, untouched_id])
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    persisted = {row["id"]: row for row in rows}
+    assert persisted[target_id]["content"] == "target-after"
+    assert persisted[target_id]["edited_at"] is not None
+    assert persisted[untouched_id]["content"] == "other-message"
+    assert persisted[untouched_id]["edited_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_reactors_returns_users_by_persisted_reaction_time(
+    db_session: AsyncSession, user_factory: Callable[..., Awaitable[User]]
+) -> None:
+    repo, chat, earlier_user, later_user = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, earlier_user.id)
+    db_session.add_all(
+        [
+            MessageReaction(
+                message_id=message.id,
+                user_id=earlier_user.id,
+                emoji="❤️",
+                created_at=_NOW - timedelta(seconds=10),
+            ),
+            MessageReaction(
+                message_id=message.id,
+                user_id=later_user.id,
+                emoji="❤️",
+                created_at=_NOW - timedelta(seconds=20),
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    reactors = await repo.get_reactors(message.id, "❤️", user_id=earlier_user.id)
+
+    assert [reactor.id for reactor in reactors] == [later_user.id, earlier_user.id]
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_commits_attachment_cleanup_for_persisted_attachments(
+    db_session: AsyncSession,
+    user_factory: Callable[..., Awaitable[User]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.core.events import AttachmentCleanupRequested
+    from app.models.chat import Attachment, Chat
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.chat.attachment_service import ChatAttachmentService
+    from app.services.chat.command_service import ChatMaintenanceService
+
+    admin = await user_factory(role="admin")
+    repo, chat, sender, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(
+        repo, chat.id, sender.id, "retained only until deletion"
+    )
+    chat_id, message_id = chat.id, message.id
+    attachment_url = "https://files.example.test/chat/cleanup-target.png"
+    db_session.add(
+        Attachment(
+            message_id=message_id,
+            url=attachment_url,
+            file_type="image",
+            filename="cleanup-target.png",
+            size=12,
+        )
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.chat.command_service.invalidate_chat_participants_cache",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.chat.command_service.invalidate_presence_audience_cache",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", AsyncMock()
+    )
+    service = ChatMaintenanceService(
+        uow_from_session(db_session), ChatAttachmentService()
+    )
+
+    result = await service.delete_chat(chat_id, admin, "en")
+
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    async with sessions() as reader:
+        cleanup = (
+            await reader.execute(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == AttachmentCleanupRequested.EVENT_TYPE,
+                    StoredEvent.aggregate_type == "Chat",
+                    StoredEvent.aggregate_id == str(chat_id),
+                )
+            )
+        ).scalar_one_or_none()
+        assert cleanup is not None
+        assert cleanup.payload["attachment_urls"] == [attachment_url]
+        assert await reader.get(Chat, chat_id) is None
+        assert await reader.get(Message, message_id) is None
+    assert result.deleted_messages == 1
+    assert result.deleted_attachments == 1
