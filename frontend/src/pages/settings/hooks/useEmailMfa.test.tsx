@@ -147,6 +147,39 @@ describe("useEmailMfa", () => {
     expect(mocks.disableEmailMfa).toHaveBeenCalledOnce()
   })
 
+  it("ignores a duplicate resend while challenge rotation is pending", async () => {
+    const { result } = renderHook(() =>
+      useEmailMfa({ setSnackbar: vi.fn(), openStepUpFor: vi.fn() })
+    )
+    await act(() => result.current.handleStartEmailMfa())
+    const issuedChallenge = result.current.emailChallenge
+    const pending = deferred<typeof challenge>()
+    const rotatedChallenge = {
+      ...challenge,
+      challenge_token: "rotated-token-id904",
+    }
+    mocks.resendEmailMfaChallenge.mockReturnValueOnce(pending.promise)
+
+    let firstResend!: Promise<void>
+    await act(async () => {
+      firstResend = result.current.handleResendEmailMfa()
+    })
+
+    try {
+      await act(() => result.current.handleResendEmailMfa())
+      expect(mocks.resendEmailMfaChallenge).toHaveBeenCalledOnce()
+      expect(result.current.emailChallenge).toEqual(issuedChallenge)
+      expect(result.current.emailMfaBusy).toBe(true)
+    } finally {
+      await act(async () => {
+        pending.resolve(rotatedChallenge)
+        await firstResend
+      })
+    }
+
+    expect(result.current.emailChallenge).toEqual(rotatedChallenge)
+    expect(result.current.emailMfaBusy).toBe(false)
+  })
   it("retries a step-up-protected enablement without recursing into another step-up", async () => {
     let retry: (() => Promise<void>) | undefined
     const openStepUpFor = vi.fn((action: () => Promise<void>) => {

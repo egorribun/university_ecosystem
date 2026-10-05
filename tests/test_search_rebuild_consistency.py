@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from elasticsearch import AsyncElasticsearch
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Event, News
 from app.services import search_indexer
@@ -376,3 +377,37 @@ async def test_rebuilt_public_names_accept_incremental_content_writes(cluster):
         document = {"id": f"new-{name}", "title": "Published after rebuild"}
         await service.index_document(name, document["id"], document)
         assert cluster.documents[cluster.target(name)] == {document["id"]: document}
+
+
+@pytest.mark.asyncio
+async def test_reindex_rejects_partial_bulk_counts_without_reported_failures(
+    cluster: SearchCluster,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_session.add(News(title="Current", content="Body"))
+    await db_session.commit()
+
+    service = search_indexer.build_search_service()
+
+    async def incomplete_success(
+        _index: str, documents: list[dict[str, object]]
+    ) -> tuple[int, int]:
+        assert documents
+        return 0, 0
+
+    monkeypatch.setattr(service, "bulk_index", incomplete_success)
+
+    with pytest.raises(RuntimeError, match="bulk"):
+        await search_indexer.reindex_all()
+
+    assert cluster.documents == {
+        "news": {"deleted": {"title": "Stale"}},
+        "events": {"inactive": {"title": "Stale"}},
+    }
+    assert cluster.mappings == {
+        "news": {"obsolete": True},
+        "events": {"obsolete": True},
+    }
+    assert cluster.aliases == {}
+    assert cluster.switches == 0

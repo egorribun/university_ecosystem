@@ -227,18 +227,14 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_read_file(self):
-        from contextlib import asynccontextmanager
-
         from app.services.storage import S3Storage
 
-        @asynccontextmanager
-        async def _mock_stream():
-            stream = AsyncMock()
-            stream.read = AsyncMock(return_value=b"file-content")
-            yield stream
-
         mock_client = AsyncMock()
-        mock_client.get_object = AsyncMock(return_value={"Body": _mock_stream()})
+        body = AsyncMock()
+        body.read = AsyncMock(return_value=b"file-content")
+        body.__aenter__.return_value = body
+        body.__aexit__.return_value = None
+        mock_client.get_object = AsyncMock(return_value={"Body": body})
         s3 = S3Storage(bucket="test", client=mock_client)
 
         data = await s3.read_file("path/file.txt")
@@ -539,18 +535,14 @@ class TestS3StorageMissingBranches:
     @pytest.mark.asyncio
     async def test_read_file_with_raw_key(self):
         """A raw key remains a valid input to read_file()."""
-        from contextlib import asynccontextmanager
-
         from app.services.storage import S3Storage
 
-        @asynccontextmanager
-        async def _mock_stream():
-            stream = AsyncMock()
-            stream.read = AsyncMock(return_value=b"data")
-            yield stream
-
         mock_client = AsyncMock()
-        mock_client.get_object = AsyncMock(return_value={"Body": _mock_stream()})
+        body = AsyncMock()
+        body.read = AsyncMock(return_value=b"data")
+        body.__aenter__.return_value = body
+        body.__aexit__.return_value = None
+        mock_client.get_object = AsyncMock(return_value={"Body": body})
         s3 = S3Storage(bucket="test", client=mock_client)
 
         data = await s3.read_file("raw/path/file.txt")
