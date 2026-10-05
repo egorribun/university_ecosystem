@@ -467,6 +467,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Не указан собеседник",
         "en": "A participant is required",
     },
+    "errors.chat.not_found": {
+        "ru": "Чат не найден",
+        "en": "Chat not found",
+    },
     "errors.chat.not_participant": {
         "ru": "Вы не участник этого чата",
         "en": "You are not a participant of this chat",

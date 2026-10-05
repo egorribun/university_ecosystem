@@ -550,6 +550,40 @@ class TestClearHistory:
         uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        (("ru", "Чат не найден"), ("en", "Chat not found")),
+    )
+    async def test_scoped_reload_race_returns_localized_not_found(
+        self, locale: str, expected_detail: str
+    ) -> None:
+        from fastapi import HTTPException
+
+        uow = _mock_uow()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(admin.id)
+        uow.chats.get_by_id = AsyncMock(side_effect=[chat, None])
+        uow.chats.delete_messages = AsyncMock()
+        attachment_svc = _mock_attachment_service()
+        service = ChatMaintenanceService(uow, attachment_svc)
+
+        with pytest.raises(HTTPException) as raised:
+            await service.clear_history(chat.id, admin, locale)
+
+        assert raised.value.status_code == 404
+        assert raised.value.detail == expected_detail
+        assert uow.chats.get_by_id.await_count == 2
+        uow.chats.get_by_id.assert_has_awaits(
+            [
+                call(chat.id),
+                call(chat.id, load_messages=True, user_id=admin.id),
+            ]
+        )
+        uow.chats.delete_messages.assert_not_awaited()
+        uow.commit.assert_not_awaited()
+        attachment_svc.collect_urls.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_non_admin_forbidden(self):
         uow = _mock_uow()
         user = _mock_user(role="student")
