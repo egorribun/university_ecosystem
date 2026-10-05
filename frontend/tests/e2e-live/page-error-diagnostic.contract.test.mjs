@@ -13,6 +13,8 @@ const fixtureUrl = new URL("./fixtures.ts", import.meta.url)
 const specUrl = new URL("./password-reset.live.spec.ts", import.meta.url)
 const resetTitle =
   "a student resets with the Mailpit link without retaining tokens or following hostile redirects"
+const adminNotificationsPath =
+  "/workspace/frontend/tests/e2e-live/admin-notifications-rbac.live.spec.ts"
 function freshPassword() {
   return `Aa1!${randomUUID()}`
 }
@@ -40,7 +42,7 @@ function reportInChild(calls) {
       `import { createLivePageErrorDiagnostics } from ${JSON.stringify(helperUrl.href)};
       function reportLivePageErrors(project, check, errors, pathname = "/reset-password") {
         const diagnostics = createLivePageErrorDiagnostics();
-        for (const error of errors) diagnostics.record(error, pathname);
+        for (const error of errors) diagnostics.record(error, pathname, check);
         diagnostics.report(project, check);
       }
       ${calls}`,
@@ -66,6 +68,74 @@ test("page error diagnostics classify exact standard names and emit counts only"
     }
   }
   assert.equal(reportInChild(calls.join("\n")), expected.join(""))
+})
+
+test("admin notification page errors emit only a bounded React 418 category", () => {
+  const output = reportInChild(
+    [
+      'reportLivePageErrors("desktop", "admin-notifications", [new Error("Minified React error #418; private-token"), new Error("Hydration failed because the server rendered HTML didn\'t match the client. private-token"), new Error("private-message mentions React error #418 but is not the React signature"), { name: "Error", get message() { throw new Error("private-message-getter") } }], "/admin/notifications");',
+      'reportLivePageErrors("mobile", "admin-notifications", [new TypeError("private-message")], "/dashboard");',
+    ].join("\n")
+  )
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=admin-notifications page=admin-notifications type=react-418 count=2\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=admin-notifications page=admin-notifications type=error count=2\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=mobile check=admin-notifications page=dashboard type=type-error count=1\n",
+    ].join("")
+  )
+  assert.doesNotMatch(output, /private-token|private-message/u)
+})
+
+test("React hydration classification is limited to admin notification diagnostics", () => {
+  const output = reportInChild(
+    [
+      'reportLivePageErrors("desktop", "password-reset", [new Error("Minified React error #418; private-token")]);',
+      'reportLivePageErrors("desktop", "admin-notifications", [new Error("Minified React error #418; private-token")], "/admin/notifications");',
+    ].join("\n")
+  )
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=admin-notifications page=admin-notifications type=react-418 count=1\n",
+    ].join("")
+  )
+})
+
+test("admin notification diagnostics require exact desktop/mobile file and test titles", () => {
+  const childSource =
+    "import { isLiveAdminNotificationsScenario } from " +
+    JSON.stringify(helperUrl.href) +
+    ";\n" +
+    "console.log(JSON.stringify([" +
+    'isLiveAdminNotificationsScenario("desktop", ' +
+    JSON.stringify(adminNotificationsPath) +
+    ', "admin can read the seeded notification queue without changing it"),' +
+    'isLiveAdminNotificationsScenario("mobile", ' +
+    JSON.stringify(adminNotificationsPath) +
+    ', "student cannot view or mutate notification queue data"),' +
+    'isLiveAdminNotificationsScenario("desktop", ' +
+    JSON.stringify(adminNotificationsPath) +
+    ', "teacher cannot view or mutate notification queue data"),' +
+    'isLiveAdminNotificationsScenario("private-project", ' +
+    JSON.stringify(adminNotificationsPath) +
+    ', "admin can read the seeded notification queue without changing it"),' +
+    'isLiveAdminNotificationsScenario("desktop", ' +
+    JSON.stringify(adminNotificationsPath + ".backup") +
+    ', "admin can read the seeded notification queue without changing it"),' +
+    'isLiveAdminNotificationsScenario("desktop", ' +
+    JSON.stringify(adminNotificationsPath) +
+    ', "admin can read the seeded notification queue without changing it private-title"),' +
+    'isLiveAdminNotificationsScenario("desktop", { toString() { throw Error("private-file") } }, "admin can read the seeded notification queue without changing it")' +
+    "]));"
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], {
+    encoding: "utf8",
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stderr, "")
+  assert.equal(result.stdout, "[true,true,true,false,false,false,false]\n")
 })
 
 test("page error diagnostics never coerce private names and unknown values count as other", () => {
@@ -123,7 +193,7 @@ test("page error diagnostics reject unrelated labels without output", () => {
       for (const project of ["", "Desktop", "private-project", "desktop\\n", "desktop\\r", null, undefined, 1, privateValue]) {
         reportLivePageErrors(project, "password-reset", [new Error("private-message")]);
       }
-      for (const check of ["", "private-check", "password-reset\\n", null, undefined, 1, privateValue]) {
+      for (const check of ["", "private-check", "password-reset\\n", "admin-notifications\\n", null, undefined, 1, privateValue]) {
         reportLivePageErrors("desktop", check, [new Error("private-message")]);
       }
       reportLivePageErrors("desktop", "password-reset", []);
@@ -142,15 +212,34 @@ test("page error diagnostics saturate counts and deduplicate bounded worker outp
   )
   assert.equal(
     reportInChild(`
-      for (let count = 1; count < 200; count += 1) {
+      for (let count = 1; count < 400; count += 1) {
         reportLivePageErrors("desktop", "password-reset", Array.from({ length: count }, () => new Error("private-message")));
       }
     `),
     Array.from(
-      { length: 144 },
+      { length: 248 },
       (_, i) =>
         `UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=${i + 1}\n`
     ).join("")
+  )
+})
+
+test("page classification adds only exact admin notification and dashboard paths", () => {
+  assert.equal(
+    reportInChild(
+      [
+        "const diagnostics = createLivePageErrorDiagnostics();",
+        'diagnostics.record(new Error("private-message"), "/admin/notifications", "admin-notifications");',
+        'diagnostics.record(new Error("private-message"), "/dashboard", "admin-notifications");',
+        'diagnostics.record(new Error("private-message"), "/admin/notifications?private-token", "admin-notifications");',
+        'diagnostics.report("desktop", "admin-notifications");',
+      ].join("\n")
+    ),
+    [
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=admin-notifications page=admin-notifications type=error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=admin-notifications page=dashboard type=error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=admin-notifications page=other type=error count=1\n",
+    ].join("")
   )
 })
 
@@ -158,7 +247,12 @@ test("page error diagnostics have no browser, private error field, or artifact a
   const source = await readFile(helperUrl, "utf8")
   assert.doesNotMatch(
     source,
-    /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\.(?:message|stack|code)\b|\b(?:page|browser|context|response|request)\.|\bURL\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
+    /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\.(?:stack|code)\b|\b(?:page|browser|context|response|request)\.|\bURL\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
+  )
+  assert.equal(
+    (source.match(/\.message\b/gu) ?? []).length,
+    1,
+    "the only private-message read is the fixed React 418 classifier"
   )
   assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
 })

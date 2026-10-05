@@ -2789,13 +2789,13 @@ def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
 
 _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
     r"UE_LIVE_PAGE_ERROR_V1 project=(?P<project>desktop|mobile) "
-    r"check=password-reset "
-    r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|other) "
+    r"check=(?P<check>password-reset|admin-notifications) "
+    r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|admin-notifications|other) "
     r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
-    r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|other) "
+    r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
     r"count=(?P<count>[1-9][0-9]{0,2})"
 )
-_PLAYWRIGHT_PAGE_ERROR_LIMIT = 144
+_PLAYWRIGHT_PAGE_ERROR_LIMIT = 248
 
 
 def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, int]]:
@@ -2803,14 +2803,24 @@ def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, 
     records: list[tuple[str, str, str, str, int]] = []
     for line in output.split("\n")[:-1]:
         line = line.removesuffix("\r")
-        if len(line) > 128 or not line.isprintable():
+        if len(line) > 160 or not line.isprintable():
             continue
         match = _PLAYWRIGHT_PAGE_ERROR_LINE.fullmatch(line)
         if match is None:
             continue
+        if match["check"] == "admin-notifications":
+            if match["page"] not in {
+                "login",
+                "dashboard",
+                "admin-notifications",
+                "other",
+            }:
+                continue
+        elif match["page"] == "admin-notifications" or match["type"] == "react-418":
+            continue
         record = (
             _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            "password-reset",
+            match["check"],
             match["page"],
             match["type"],
             int(match["count"]),

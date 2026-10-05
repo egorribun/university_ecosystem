@@ -5,6 +5,7 @@ import { URL } from "node:url"
 
 const specUrl = new URL("./admin-notifications-rbac.live.spec.ts", import.meta.url)
 const fixtureUrl = new URL("./fixtures.ts", import.meta.url)
+const pageErrorDiagnosticUrl = new URL("./page-error-diagnostic.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const adminRouteUrl = new URL("../../src/routes/_admin/admin.notifications.tsx", import.meta.url)
 const adminLayoutUrl = new URL("../../src/routes/_admin.tsx", import.meta.url)
@@ -24,6 +25,7 @@ const standUrl = new URL("../../../scripts/live_stand.py", import.meta.url)
 const [
   spec,
   fixtures,
+  pageErrorDiagnostic,
   config,
   adminRoute,
   adminLayout,
@@ -39,6 +41,7 @@ const [
 ] = await Promise.all([
   readFile(specUrl, "utf8"),
   readFile(fixtureUrl, "utf8"),
+  readFile(pageErrorDiagnosticUrl, "utf8"),
   readFile(configUrl, "utf8"),
   readFile(adminRouteUrl, "utf8"),
   readFile(adminLayoutUrl, "utf8"),
@@ -135,6 +138,50 @@ test("live notification queue RBAC exercises the seeded admin and both non-admin
     [...spec.matchAll(/page\.request\.post\(/gu)].length,
     1,
     "the only POSTs are the synthetic unauthorized retry/purge checks above"
+  )
+})
+
+test("admin page-error diagnostics are scoped to these exact scenarios and preserve hard failures", () => {
+  assert.ok(
+    fixtures.includes("isLiveAdminNotificationsScenario("),
+    "fixture scopes the diagnostic to the selected scenario"
+  )
+  assert.ok(
+    pageErrorDiagnostic.includes(
+      "admin can read the seeded notification queue without changing it"
+    ),
+    "admin read title is an explicit allowed case"
+  )
+  assert.ok(
+    pageErrorDiagnostic.includes("student cannot view or mutate notification queue data"),
+    "student denial title is an explicit allowed case"
+  )
+  assert.ok(
+    pageErrorDiagnostic.includes("teacher cannot view or mutate notification queue data"),
+    "teacher denial title is an explicit allowed case"
+  )
+  assert.ok(
+    pageErrorDiagnostic.includes('type DiagnosticCheck = "password-reset" | "admin-notifications"'),
+    "the emitted check label is a finite union"
+  )
+  assert.ok(
+    pageErrorDiagnostic.includes('case "/admin/notifications":'),
+    "the admin page is classified by its exact pathname"
+  )
+  assert.ok(
+    pageErrorDiagnostic.includes('return "react-418"'),
+    "React hydration 418 is classified as a fixed label"
+  )
+  assert.ok(
+    fixtures.includes("const diagnosticCheck = isResetScenario") &&
+      fixtures.includes("pageErrorDiagnostics.report(testInfo.project.name, diagnosticCheck)"),
+    "only the whitelisted admin cases emit the fixed check label"
+  )
+  assert.ok(
+    fixtures.includes(
+      'expect(errors, errors.map((error) => error.message).join("\\n")).toEqual([])'
+    ),
+    "diagnostics leave the original hard page-error assertion intact"
   )
 })
 

@@ -1,5 +1,8 @@
 import { expect, test as base, type Page } from "@playwright/test"
-import { createLivePageErrorDiagnostics } from "./page-error-diagnostic"
+import {
+  createLivePageErrorDiagnostics,
+  isLiveAdminNotificationsScenario,
+} from "./page-error-diagnostic"
 import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
 
 /**
@@ -143,20 +146,30 @@ export const test = base.extend<{ pageErrors: Error[] }>({
         testInfo.file.replace(/\\/g, "/").endsWith("/tests/e2e-live/password-reset.live.spec.ts") &&
         testInfo.title ===
           "a student resets with the Mailpit link without retaining tokens or following hostile redirects"
+      const isAdminNotificationsScenario = isLiveAdminNotificationsScenario(
+        testInfo.project.name,
+        testInfo.file,
+        testInfo.title
+      )
+      const diagnosticCheck = isResetScenario
+        ? "password-reset"
+        : isAdminNotificationsScenario
+          ? "admin-notifications"
+          : null
       const pageErrorDiagnostics = createLivePageErrorDiagnostics()
       page.on("pageerror", (error) => {
         errors.push(error)
-        if (!isResetScenario) return
+        if (!diagnosticCheck) return
         let pathname = ""
         try {
           pathname = new URL(page.url()).pathname
         } catch {
           // An unavailable current URL is classified as other, never a new failure.
         }
-        pageErrorDiagnostics.record(error, pathname)
+        pageErrorDiagnostics.record(error, pathname, diagnosticCheck)
       })
       await use(errors)
-      if (isResetScenario) pageErrorDiagnostics.report(testInfo.project.name, "password-reset")
+      if (diagnosticCheck) pageErrorDiagnostics.report(testInfo.project.name, diagnosticCheck)
       expect(errors, errors.map((error) => error.message).join("\n")).toEqual([])
     },
     { auto: true },

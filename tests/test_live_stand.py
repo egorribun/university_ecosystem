@@ -1535,6 +1535,43 @@ def test_live_playwright_page_errors_accept_only_fixed_domains(
     ]
 
 
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("page", ["admin-notifications", "dashboard", "login"])
+@pytest.mark.parametrize("kind", ["react-418", "invalid-state-error", "other"])
+@pytest.mark.parametrize("count", [1, 999])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_page_errors_accept_admin_hydration_domains(
+    project: str, page: str, kind: str, count: int, newline: str
+) -> None:
+    sentinel = (
+        f"UE_LIVE_PAGE_ERROR_V1 project={project} check=admin-notifications "
+        f"page={page} type={kind} count={count}{newline}"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == [
+        (project, "admin-notifications", page, kind, count)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("check", "page", "kind"),
+    [
+        ("password-reset", "admin-notifications", "error"),
+        ("password-reset", "login", "react-418"),
+        ("admin-notifications", "register", "error"),
+        ("admin-notifications", "forgot-password", "error"),
+        ("admin-notifications", "reset-password", "error"),
+    ],
+)
+def test_live_playwright_page_errors_reject_cross_scenario_domains(
+    check: str, page: str, kind: str
+) -> None:
+    sentinel = (
+        f"UE_LIVE_PAGE_ERROR_V1 project=desktop check={check} "
+        f"page={page} type={kind} count=1\n"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == []
+
+
 @pytest.mark.parametrize(
     "replacement",
     [
@@ -1582,7 +1619,7 @@ def test_live_playwright_page_errors_deduplicate_and_bound_records() -> None:
     )
     assert live_stand._live_playwright_page_errors(output) == [
         ("desktop", "password-reset", "reset-password", "other", count)
-        for count in range(1, 145)
+        for count in range(1, 249)
     ]
 
 
