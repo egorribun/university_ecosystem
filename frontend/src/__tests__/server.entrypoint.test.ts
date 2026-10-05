@@ -112,7 +112,8 @@ describe("server entrypoint", () => {
     })
     const response = await serverEntry.fetch(request)
 
-    expect(response).toBe(upstream)
+    expect(response.status).toBe(201)
+    await expect(response.text()).resolves.toBe("dashboard")
     expect(mocks.extractThemeFromRequest).toHaveBeenCalledWith(request)
     expect(mocks.extractLangFromRequest).toHaveBeenCalledWith(request)
     expect(globals.__ssrAuthGetter__?.()).toBeUndefined()
@@ -136,6 +137,53 @@ describe("server entrypoint", () => {
     await expect(response.text()).resolves.toBe("public")
   })
 
+  it.each(["/dashboard", "/settings/security"])(
+    "marks authenticated SSR route %s private and preserves its response",
+    async (path) => {
+      mocks.extractAuthFromRequest.mockResolvedValue({
+        isAuth: true,
+        user: { role: "student" },
+        loading: false,
+      })
+      const upstream = new Response("private dashboard payload", {
+        status: 203,
+        statusText: "Non-Authoritative Information",
+        headers: {
+          "cache-control": "public, max-age=600",
+          "content-type": "text/html; charset=utf-8",
+          vary: "Accept-Encoding, Origin",
+        },
+      })
+      mocks.handlerFetch.mockResolvedValue(upstream)
+
+      const response = await serverEntry.fetch(new Request(`https://app.example${path}`))
+
+      expect(response.status).toBe(203)
+      expect(response.statusText).toBe("Non-Authoritative Information")
+      expect(response.headers.get("cache-control")).toBe("no-store, private, max-age=0")
+      expect(response.headers.get("vary")).toBe("Accept-Encoding, Origin, Cookie")
+      expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8")
+      await expect(response.text()).resolves.toBe("private dashboard payload")
+    }
+  )
+
+  it("leaves unauthenticated public response headers and identity unchanged", async () => {
+    const upstream = new Response("public page", {
+      headers: {
+        "cache-control": "public, max-age=60",
+        "content-type": "text/html; charset=utf-8",
+        vary: "Accept-Encoding",
+      },
+    })
+    mocks.handlerFetch.mockResolvedValue(upstream)
+
+    const response = await serverEntry.fetch(new Request("https://app.example/news"))
+
+    expect(response).toBe(upstream)
+    expect(response.headers.get("cache-control")).toBe("public, max-age=60")
+    expect(response.headers.get("vary")).toBe("Accept-Encoding")
+    await expect(response.text()).resolves.toBe("public page")
+  })
   it("adds private cache headers and Cookie variance to messenger responses", async () => {
     mocks.handlerFetch.mockResolvedValue(
       new Response("chat", {
@@ -168,6 +216,19 @@ describe("server entrypoint", () => {
     const response = await serverEntry.fetch(new Request("https://app.example/messenger"))
 
     expect(response.headers.get("vary")).toBe("Accept-Encoding, cOoKiE")
+    expect(response.headers.get("cache-control")).toBe("no-store, private, max-age=0")
+  })
+
+  it("preserves an existing wildcard Vary value without appending Cookie", async () => {
+    mocks.handlerFetch.mockResolvedValue(
+      new Response("chat", {
+        headers: { vary: "*" },
+      })
+    )
+
+    const response = await serverEntry.fetch(new Request("https://app.example/messenger"))
+
+    expect(response.headers.get("vary")).toBe("*")
     expect(response.headers.get("cache-control")).toBe("no-store, private, max-age=0")
   })
 
