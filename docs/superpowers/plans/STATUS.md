@@ -19,8 +19,7 @@ Goal активен. Полная приёмка и выпуск `v1.0.0` не �
   Владельцы пишут в непересекающиеся файлы; Git-операции выполняет root.
 - Полные исторические receipts, population, ограничения и сравнения сохранены
   в [предыдущем STATUS](https://github.com/egorribun/university_ecosystem/blob/01ffea1b5d0eca52f0b76e44d83aac3cb5890b71/docs/superpowers/plans/STATUS.md).
-  Старые результаты не переименовывать в проверки нового SHA; отсутствующее
-  локальное evidence не считается доступным доказательством.
+  Старые результаты и отсутствующее локальное evidence не подтверждают новый SHA.
 
 ## Актуальная hosted-проверка опубликованного source
 
@@ -29,7 +28,6 @@ Goal активен. Полная приёмка и выпуск `v1.0.0` не �
   Четыре failed backend groups (1/4/6/8) имеют complete source-bound proofs:
   суммарно 143 selected, 126 Killed / 17 Survived. Это score-gate failures,
   а не полный inventory или runtime/provenance failures.
-  Наличие успешных prerequisites не означает полного CI pass.
 - [Owned live acceptance 37236971288](https://github.com/egorribun/university_ecosystem/actions/runs/37236971288)
   завершился success на том же SHA. Он подтверждает только перечисленный PR smoke;
   полную продуктовую, визуальную и disaster-recovery приёмку не заменяет.
@@ -91,10 +89,11 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 
 ## Проверки текущего checkpoint
 
-- Локальные commits: `5e2de259` (MFA export), `db329110` (cache regression),
-  `8d84b200` (Bash contract). Push отложен до terminal текущей canonical кампании.
-- Все применимые changed-file pre-commit hooks прошли. Synthetic fixture
-  генерируется в runtime; новых suppressions/baseline entries нет.
+- Локальные checkpoints `cf9f5609`–`d3d13d8`: документ, MFA export/history,
+  cache regression, Bash contract и ограничение native workers. Push отложен
+  до terminal текущей canonical кампании, чтобы сохранить её inventory.
+- Node fixture scanner RED сохранён; runtime UUID fix без suppressions/baseline
+  entries: все применимые hooks повторно прошли, commit `ba8a236b5` создан.
 - Исправлен экспорт MFA: public DTO не содержит отношения; отдельная проекция
   возвращает сохранённый count и безопасные enrollment metadata с изоляцией владельца.
   Root: 26 целевых backend tests passed; это не полный coverage/mutation допуск.
@@ -102,17 +101,22 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
   Native RED на историческом `shard-026:359` не даёт canonical Killed credit.
 - Windows contract fixture выбирает Git Bash; отрицательные cases проверяют
   ожидаемую причину отказа workflow. Root focused contract lane прошёл.
-- Первый preflight: 7/9 passed. Два failures устранены; отдельные повторные
-  format и focused-contract lanes passed. Это не единый новый 9/9 report.
-- Изменения production/tests прошли независимое scoped review; Git-операции root.
-  Проверки относятся к base `01ffea1b5` с рабочим diff; hosted verdict не подменяются.
+- Первый preflight 7/9 сохранён; новый полный root preflight diff: 9/9, workers=1.
+- Scoped review и локальные проверки base `01ffea1b5` с diff не заменяют hosted verdict.
 - Live build на `e150f009` остановлен RSS watchdog: frontend при SSR start
   достиг 2052,5 MiB при лимите 2048 MiB. Приёмка браузером не запускалась.
   Owned stop прошёл, running containers нет. Лимит не ослабляется;
-  на `23550c18` native workers по умолчанию ограничены четырьмя; Docker GREEN
-  ещё не подтверждён. Root: 14 build/telemetry tests и changed-file hooks passed.
+  на `23550c18` native workers ограничены четырьмя; `d3d13d8` build/up прошёл.
+  12 telemetry samples: max 1914,1 MiB <2048 (не continuous peak); root 14 tests passed.
 - `405cd32a`: retained expired/revoked MFA regression; агент 26 tests passed,
   root persisted case passed; scoped review approved. Нового mutation verdict нет.
+- Полный E2E на `d3d13d8` завершился exit 1 без test counts: global setup
+  отвергает in-place checkout/не передаёт state-dir. Owned teardown прошёл;
+  proof сохранён. Удалены только 35 созданных контейнеров и owned volumes;
+  исходные 175 остановленных контейнеров сохранены, running 0.
+- `ba8a236b5`: Python → Node → signed verifier передача owned state root исправлена:
+  RED/GREEN success/failure; root Python 1003/1003, Node 41/41, harness 27/27 passed.
+  Это рабочий diff без skips/errors; новый full live verdict ещё не получен.
 
 ## Среда и ближайшие действия
 
@@ -120,12 +124,10 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
   Docker CLI/Engine доступны. Прежнее облачное ограничение «Docker отсутствует»
   не переносится на эту машину. RAM/порты/ресурсы и принадлежность стенда проверяются
   перед запуском. Пользовательские `.env`, volumes, backups и evidence сохраняются.
-- Для source-bound live запуска нужен чистый source checkout и отдельный private
-  run-owned state root; код и утверждённый документ закоммичены; source freeze
-  начинается после финального status checkpoint. Guard не ослабляется. Тяжёлые jobs выполняются по одному.
-- Проверить конечный exact-head CI и свежий mutation inventory; независимо разобрать
-  backend auth/security/data, frontend session/realtime и CI/инфраструктурные изменения.
-  Исправления получают RED/GREEN, review и scoped проверки до root commit/push.
+- Live запуск: чистый checkout и отдельный private run-owned state root;
+  source freeze после commit, без ослабления guards; тяжёлые jobs по одному.
+- Проверить exact-head CI и свежий mutation inventory. Исправления получают
+  RED/GREEN, независимое review и scoped проверки до root commit/push.
 - Продолжить блоки 4/5: traceability ТЗ, RU/EN, light/dark, ширины
   360/390/768/1024/1440; small visual packages и пользовательское утверждение baseline.
   Полный live stack, повторный stop/start и данные требуют отдельного evidence.
