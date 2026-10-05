@@ -166,7 +166,7 @@ export default function Dashboard() {
   const newsQuery = useDashboardNews(language)
   const eventsQuery = useDashboardEvents()
   const scheduleLoaded = !scheduleQuery.isLoading
-  const newsLoaded = !newsQuery.isLoading
+  const newsLoaded = !newsQuery.isPending
   const eventsLoaded = !eventsQuery.isLoading
 
   const dashboardStoriesQuery = useDashboardStories()
