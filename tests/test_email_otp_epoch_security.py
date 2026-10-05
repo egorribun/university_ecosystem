@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Literal, TypedDict
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 from uuid import UUID
 
 import pytest
@@ -180,18 +180,24 @@ def _build_login_service(
     prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
 ) -> LoginService:
     from app.services.auth.credential_validator import CredentialValidator
+    from app.services.auth.lockout import LockoutService
     from app.services.auth.mfa_coordinator import MfaCoordinator
+    from app.services.user.profile_service import UserProfileService
 
     service, _, uow = prepared
     repo = UserRepository(db_session)
+    profile_service = create_autospec(UserProfileService, instance=True, spec_set=True)
+    profile_service.get_auth_user_by_email = AsyncMock(
+        side_effect=repo.get_auth_by_email
+    )
+    lockout_service = create_autospec(LockoutService, instance=True, spec_set=True)
+    lockout_service.get_active_lockout = AsyncMock(return_value=None)
+    lockout_service.clear_failed_attempts = AsyncMock(return_value=0)
     validator = CredentialValidator(
         uow,
         repo,
-        SimpleNamespace(get_auth_user_by_email=repo.get_auth_by_email),
-        SimpleNamespace(
-            get_active_lockout=AsyncMock(return_value=None),
-            clear_failed_attempts=AsyncMock(return_value=0),
-        ),
+        profile_service,
+        lockout_service,
         MagicMock(),
         MagicMock(),
     )

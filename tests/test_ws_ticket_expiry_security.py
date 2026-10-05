@@ -1,7 +1,8 @@
 """Cross-service OTT expiry must be immutable, explicit and fail closed."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from types import SimpleNamespace
+from typing import Self
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -55,6 +56,38 @@ async def test_ticket_consumer_accepts_unexpired_three_field_contract(as_bytes):
     ):
         assert await auth.get_user_from_ticket("a" * 64) == (user, "session-jti")
     resolve.assert_awaited_once_with(user_id, "session-jti")
+
+
+@pytest.mark.asyncio
+async def test_ticket_expiry_at_current_second_is_rejected_before_session_lookup() -> (
+    None
+):
+    expired_at = datetime(2030, 1, 1, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> Self:
+            fixed = cls(2030, 1, 1, tzinfo=UTC)
+            return fixed if tz is None else fixed.astimezone(tz)
+
+    user_id = str(uuid4())
+    cache = SimpleNamespace(
+        getdel=AsyncMock(
+            return_value=f"{user_id}:session-jti:{int(expired_at.timestamp())}"
+        )
+    )
+    resolve = AsyncMock(return_value=(object(), "session-jti"))
+
+    with (
+        patch.object(auth, "datetime", FrozenDateTime),
+        patch("app.deps.cache.get_cache_client", AsyncMock(return_value=cache)),
+        patch.object(auth, "_resolve_user_from_ids", resolve),
+    ):
+        result = await auth.get_user_from_ticket("d" * 64)
+
+    assert result == (None, None)
+    cache.getdel.assert_awaited_once()
+    resolve.assert_not_awaited()
 
 
 @pytest.mark.asyncio
