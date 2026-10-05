@@ -302,7 +302,7 @@ export default function Dashboard() {
               >
                 <WidgetErrorBoundary widgetName="EventsCard" showFallback>
                   <SkeletonMorph loaded={eventsLoaded} skeleton={<EventsCardSkeleton />}>
-                    <EventsCard />
+                    <EventsCard queryResult={eventsQuery} />
                   </SkeletonMorph>
                 </WidgetErrorBoundary>
               </div>

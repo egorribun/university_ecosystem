@@ -300,4 +300,79 @@ describe("Dashboard events during persisted-query hydration", () => {
       client.clear()
     }
   })
+
+  it("settles the full Dashboard error view after persisted restore and query retries", async () => {
+    let finishRestore: (value: undefined) => void = () => undefined
+    const restorePromise = new Promise<undefined>((resolve) => {
+      finishRestore = resolve
+    })
+    const persister: Persister = {
+      persistClient: async () => undefined,
+      restoreClient: () => restorePromise,
+      removeClient: async () => undefined,
+    }
+    const container = document.createElement("div")
+    const root = createRoot(container)
+    state.apiGet.mockReset().mockRejectedValue(new Error("controlled dashboard events failure"))
+
+    try {
+      await act(async () => {
+        root.render(
+          <PersistQueryClientProvider
+            client={browserQueryClient}
+            persistOptions={{ persister, maxAge: 60_000, buster: "dashboard-events-error" }}
+          >
+            <Dashboard />
+          </PersistQueryClientProvider>
+        )
+      })
+      const initial = visibleState(container.innerHTML)
+      expect(initial.eventsBusy).toBe("true")
+      expect(initial.eventsSkeleton).toBe(true)
+      expect(initial.eventsCard).toBe(false)
+      expect(browserQueryClient.getQueryState(dashboardEventsQueryKey)).toMatchObject({
+        status: "pending",
+        fetchStatus: "idle",
+      })
+      expect(state.apiGet).not.toHaveBeenCalled()
+
+      await act(async () => {
+        finishRestore(undefined)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await vi.waitFor(() => expect(state.apiGet).toHaveBeenCalled())
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000)
+      })
+
+      const visible = visibleState(container.innerHTML)
+      expect(state.apiGet).toHaveBeenCalledTimes(2)
+      expect(browserQueryClient.getQueryState(dashboardEventsQueryKey)).toMatchObject({
+        status: "error",
+        fetchStatus: "idle",
+      })
+      expect(visible).toMatchObject({
+        eventsBusy: "false",
+        eventsSkeleton: false,
+        eventsCard: true,
+        eventsEmpty: true,
+      })
+
+      const requestCountAtSettle = state.apiGet.mock.calls.length
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000)
+      })
+      expect(state.apiGet).toHaveBeenCalledTimes(requestCountAtSettle)
+      expect(browserQueryClient.getQueryState(dashboardEventsQueryKey)).toMatchObject({
+        status: "error",
+        fetchStatus: "idle",
+      })
+    } finally {
+      finishRestore(undefined)
+      await act(async () => root.unmount())
+      container.remove()
+      browserQueryClient.clear()
+    }
+  })
 })

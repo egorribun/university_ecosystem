@@ -24,6 +24,7 @@ interface EventsCardProps {
   style?: CSSProperties
   "data-fade"?: string
   "data-pop"?: string
+  queryResult?: ReturnType<typeof useDashboardEvents>
 }
 
 export function prepareOnKey(event: { key: string }, callback: () => void) {
@@ -32,11 +33,29 @@ export function prepareOnKey(event: { key: string }, callback: () => void) {
   }
 }
 
-export const EventsCard = memo(function EventsCard({
+type EventsCardPresentationProps = Omit<EventsCardProps, "queryResult"> & {
+  queryResult: ReturnType<typeof useDashboardEvents>
+}
+
+function EventsCardWithQuery(props: Omit<EventsCardProps, "queryResult">) {
+  const queryResult = useDashboardEvents()
+  return <EventsCardContent {...props} queryResult={queryResult} />
+}
+
+export const EventsCard = memo(function EventsCard(props: EventsCardProps) {
+  const { queryResult, ...presentationProps } = props
+  if (queryResult) {
+    return <EventsCardContent {...presentationProps} queryResult={queryResult} />
+  }
+  return <EventsCardWithQuery {...presentationProps} />
+})
+
+const EventsCardContent = memo(function EventsCardContent({
   className,
   style,
+  queryResult: dashboardEventsQuery,
   ...props
-}: EventsCardProps) {
+}: EventsCardPresentationProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
   const { language } = useLanguage()
@@ -47,7 +66,6 @@ export const EventsCard = memo(function EventsCard({
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
-  const dashboardEventsQuery = useDashboardEvents()
   const events: DashboardEvent[] = useMemo(
     () => dashboardEventsQuery.data ?? [],
     [dashboardEventsQuery.data]
