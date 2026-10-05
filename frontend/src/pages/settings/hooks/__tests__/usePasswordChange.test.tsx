@@ -410,4 +410,68 @@ describe("usePasswordChange", () => {
     expect(openStepUpFor).not.toHaveBeenCalled()
     expect(result.current.passwordError).toBe("Server unavailable")
   })
+  it("handles an Axios network error without a response as an ordinary failure", async () => {
+    const error = new AxiosError("network error")
+    mocks.post.mockRejectedValue(error)
+    const openStepUpFor = vi.fn()
+    const { result, setSnackbar } = renderPasswordChange(openStepUpFor)
+    setValidPasswords(result)
+
+    await act(async () => {
+      await expect(result.current.handlePasswordSubmit()).resolves.toBeUndefined()
+    })
+
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(result.current.passwordError).toBe("settings:security.password.failed")
+    expect(result.current.passwordBusy).toBe(false)
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.password.failed",
+      severity: "error",
+    })
+  })
+
+  it("keeps the active account busy when a stale account request settles", async () => {
+    let resolveFirst!: (value: unknown) => void
+    let resolveSecond!: (value: unknown) => void
+    mocks.post
+      .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)))
+      .mockReturnValueOnce(new Promise((resolve) => (resolveSecond = resolve)))
+    const { result, rerender, setSnackbar } = renderPasswordChange()
+    setValidPasswords(result)
+
+    let firstOperation!: Promise<void>
+    act(() => {
+      firstOperation = result.current.handlePasswordSubmit()
+    })
+    await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1))
+
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    setValidPasswords(result)
+
+    let secondOperation!: Promise<void>
+    act(() => {
+      secondOperation = result.current.handlePasswordSubmit()
+    })
+    await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2))
+    expect(result.current.passwordBusy).toBe(true)
+
+    await act(async () => {
+      resolveFirst({ data: { ok: false, revoked_sessions: 0 } })
+      await firstOperation
+    })
+
+    expect(result.current.passwordBusy).toBe(true)
+    expect(setSnackbar).not.toHaveBeenCalled()
+    expect(mocks.invalidateQueries).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveSecond({ data: { ok: false, revoked_sessions: 0 } })
+      await secondOperation
+    })
+
+    expect(result.current.passwordBusy).toBe(false)
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: sessionsQueryKey })
+  })
 })

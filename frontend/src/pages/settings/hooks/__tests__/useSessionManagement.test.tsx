@@ -464,3 +464,54 @@ it("suppresses revoke-all completion after account change during invalidation", 
   })
   expect(setSnackbar).not.toHaveBeenCalled()
 })
+
+it.each(["single", "all"] as const)(
+  "does not reopen step-up when a resumed %s revocation is still unauthorized",
+  async (kind) => {
+    let resume: (() => Promise<void>) | undefined
+    const openStepUpFor = vi.fn((action: () => Promise<void>) => {
+      resume = action
+    })
+    const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+    const stepUpError = { isAxiosError: true, response: { status: 428 } }
+    request.mockRejectedValueOnce(stepUpError).mockRejectedValueOnce(stepUpError)
+    const { result, setSnackbar } = renderSessionHook({ openStepUpFor })
+
+    await act(async () => {
+      if (kind === "single") await result.current.handleRevokeSession("session-1")
+      else await result.current.handleRevokeAllSessions()
+    })
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      await resume?.()
+    })
+
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+    expect(setSnackbar).toHaveBeenLastCalledWith(expect.objectContaining({ severity: "error" }))
+  }
+)
+
+it.each(["single", "all"] as const)(
+  "reports an ordinary %s revocation denial without opening step-up",
+  async (kind) => {
+    const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+    const error = new AxiosError("denied")
+    error.response = {
+      status: 403,
+      data: { detail: "Forbidden" },
+    } as AxiosError["response"]
+    request.mockRejectedValueOnce(error)
+    const openStepUpFor = vi.fn()
+    const { result, setSnackbar } = renderSessionHook({ openStepUpFor })
+
+    await act(async () => {
+      if (kind === "single") await result.current.handleRevokeSession("session-1")
+      else await result.current.handleRevokeAllSessions()
+    })
+
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenCalledWith({ text: "Forbidden", severity: "error" })
+  }
+)

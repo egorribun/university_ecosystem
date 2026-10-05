@@ -872,3 +872,49 @@ class TestWebPushResult:
         )
         assert r.status == "error"
         assert r.status_code == 500
+
+
+def test_send_failure_retains_structured_send_event(monkeypatch, caplog):
+    import logging
+
+    import app.services.webpush as webpush_module
+
+    subscription = MagicMock()
+    subscription.id = uuid.uuid4()
+    subscription.endpoint = "https://push.example.test/synthetic-path"
+    subscription.user_id = uuid.uuid4()
+    subscription.p256dh = "synthetic-key"
+    subscription.auth = "synthetic-auth"
+    subscription.user = None
+
+    def fail_resolution(_endpoint):
+        raise OSError("synthetic resolver failure")
+
+    monkeypatch.setattr(webpush_module, "validate_and_resolve", fail_resolution)
+    delivery_call = MagicMock()
+    monkeypatch.setattr(webpush_module, "webpush", delivery_call)
+
+    with caplog.at_level(logging.ERROR, logger="app.services.webpush"):
+        result = webpush_module.send_web_push(
+            subscription, {"title": "Synthetic failure"}
+        )
+
+    delivery_call.assert_not_called()
+    assert result.status == "error"
+    send_events = []
+    for record in caplog.records:
+        if record.name != "app.services.webpush" or not isinstance(record.msg, dict):
+            continue
+        event = record.msg
+        fields = event.get("extra")
+        if not isinstance(fields, dict):
+            continue
+        if (
+            event.get("message") == "webpush.send"
+            and fields.get("event") == "send"
+            and fields.get("status") == result.status
+            and fields.get("error_type") == "OSError"
+        ):
+            send_events.append(fields)
+
+    assert len(send_events) == 1
