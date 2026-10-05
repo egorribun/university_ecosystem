@@ -1,6 +1,7 @@
 """Email MFA preserves the security epoch of password/session validation."""
 
 import asyncio
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Literal, TypedDict
@@ -12,12 +13,13 @@ from fastapi import BackgroundTasks, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.mfa.email_otp import EmailOtpService, IssuedEmailOtp, MfaOtpRejected
-from app.auth.schemas import PendingMfaResponse
+from app.auth.schemas import MfaMethodChallengeOut, PendingMfaResponse
 from app.auth.security import get_password_hash
-from app.models import MfaChallenge, RecoveryCode, User
+from app.models import ActiveSession, MfaChallenge, RecoveryCode, User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.unit_of_work import UnitOfWork, uow_from_session
 from app.repositories.user_repository import UserRepository
+from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.schemas.schemas import UserPasswordChangeIn
 from app.services.auth.login_service import LoginService
 from app.services.auth_service import AuthService
@@ -27,6 +29,11 @@ NEW_PASSWORD = "New-email-mfa-password-22!"  # pragma: allowlist secret
 FINGERPRINT = "f" * 64
 IP = "203.0.113.8"
 SESSION = "verified-password-nonce"
+
+
+class _LoginRequestOptions(TypedDict, total=False):
+    data: dict[str, str]
+    json: dict[str, str]
 
 
 class _ChallengeBinding(TypedDict):
@@ -194,8 +201,11 @@ def _build_login_service(
 
 @pytest.mark.asyncio
 async def test_delayed_email_issuance_rejects_stale_validated_password_dto(
-    db_session, test_user, prepared, monkeypatch: pytest.MonkeyPatch
-):
+    db_session: AsyncSession,
+    test_user: User,
+    prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _, auth, _ = prepared
     login = _build_login_service(db_session, prepared)
     coordinator = login.mfa_coord
@@ -203,10 +213,28 @@ async def test_delayed_email_issuance_rejects_stale_validated_password_dto(
     validated = asyncio.Event()
     resume = asyncio.Event()
 
-    async def paused_collect(*args, **kwargs):
+    async def paused_collect(
+        user: User | UserAuthDTO | UserDTO,
+        locale: str,
+        capabilities: Mapping[str, bool],
+        session: ActiveSession | None = None,
+        request: Request | None = None,
+        flow: Literal["login", "step_up"] = "login",
+        trust_device: bool = False,
+        session_identifier: str | None = None,
+    ) -> list[MfaMethodChallengeOut]:
         validated.set()
         await resume.wait()
-        return await original_collect(*args, **kwargs)
+        return await original_collect(
+            user,
+            locale,
+            capabilities,
+            session,
+            request,
+            flow,
+            trust_device,
+            session_identifier,
+        )
 
     monkeypatch.setattr(coordinator, "_collect_mfa_challenges", paused_collect)
     request = _request()
@@ -240,8 +268,13 @@ async def test_delayed_email_issuance_rejects_stale_validated_password_dto(
 @pytest.mark.parametrize("route", ["form", "json"])
 @pytest.mark.parametrize("change_password", [False, True])
 async def test_http_login_maps_stale_email_issuance_to_auth_rejection(
-    db_session, test_user, prepared, route, change_password, monkeypatch
-):
+    db_session: AsyncSession,
+    test_user: User,
+    prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
+    route: Literal["form", "json"],
+    change_password: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from dishka import Provider, Scope, make_async_container
     from dishka.integrations.fastapi import setup_dishka
     from fastapi import FastAPI
@@ -267,18 +300,36 @@ async def test_http_login_maps_stale_email_issuance_to_auth_rejection(
     resume = asyncio.Event()
     original_collect = login.mfa_coord._collect_mfa_challenges
 
-    async def paused_collect(*args, **kwargs):
+    async def paused_collect(
+        user: User | UserAuthDTO | UserDTO,
+        locale: str,
+        capabilities: Mapping[str, bool],
+        session: ActiveSession | None = None,
+        request: Request | None = None,
+        flow: Literal["login", "step_up"] = "login",
+        trust_device: bool = False,
+        session_identifier: str | None = None,
+    ) -> list[MfaMethodChallengeOut]:
         validated.set()
         await resume.wait()
-        return await original_collect(*args, **kwargs)
+        return await original_collect(
+            user,
+            locale,
+            capabilities,
+            session,
+            request,
+            flow,
+            trust_device,
+            session_identifier,
+        )
 
     monkeypatch.setattr(login.mfa_coord, "_collect_mfa_challenges", paused_collect)
     path = "/login" if route == "form" else "/login/json"
-    body = (
-        {"data": {"username": email, "password": OLD_PASSWORD}}
-        if route == "form"
-        else {"json": {"email": email, "password": OLD_PASSWORD}}
-    )
+    body: _LoginRequestOptions
+    if route == "form":
+        body = {"data": {"username": email, "password": OLD_PASSWORD}}
+    else:
+        body = {"json": {"email": email, "password": OLD_PASSWORD}}
     async with AsyncClient(
         transport=ASGITransport(app=test_app, raise_app_exceptions=False),
         base_url="http://testserver",
@@ -332,8 +383,11 @@ async def test_http_login_maps_stale_email_issuance_to_auth_rejection(
     ],
 )
 async def test_unbound_or_noncanonical_challenge_epoch_is_rejected(
-    db_session, test_user, prepared, payload
-):
+    db_session: AsyncSession,
+    test_user: User,
+    prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
+    payload: dict[str, int | float | str | bool] | None,
+) -> None:
     from app.models import MfaChallenge
 
     service, _, _ = prepared
@@ -348,6 +402,7 @@ async def test_unbound_or_noncanonical_challenge_epoch_is_rejected(
         locale="en",
     )
     challenge = await db_session.get(MfaChallenge, issued.challenge_id)
+    assert challenge is not None
     challenge.payload = payload
     # Python considers 0 == 0.0; force the malformed JSON representation to
     # storage instead of allowing ORM equality tracking to retain integer zero.
