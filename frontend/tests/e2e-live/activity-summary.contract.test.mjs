@@ -58,8 +58,13 @@ test("Activity live acceptance uses the seeded student and real read-only summar
   assert.match(spec, /async function expectPeriodIndicatorToMatchRadio\(/u)
   assert.match(spec, /indicator\.boundingBox\(\)/u)
   assert.match(spec, /selectedRadio\.boundingBox\(\)/u)
-  assert.match(spec, /expectPeriodIndicatorToMatchRadio\(periodIndicator,\s*period90Days/u)
-  assert.match(spec, /expectPeriodIndicatorToMatchRadio\(periodIndicator,\s*period30Days/u)
+  assert.match(spec, /Math\.abs\(indicatorBox\.x - radioBox\.x\) <= 1/u)
+  assert.match(
+    spec,
+    /catch \(error\) \{[\s\S]*?reportLiveActivityGeometry\([\s\S]*?periodLabel,[\s\S]*?throw error/u
+  )
+  assert.match(spec, /expectPeriodIndicatorToMatchRadio\(\s*periodIndicator,\s*period90Days/u)
+  assert.match(spec, /expectPeriodIndicatorToMatchRadio\(\s*periodIndicator,\s*period30Days/u)
   assert.match(spec, /const reloadSummaryResponsePromise = page\.waitForResponse/u)
   assert.match(spec, /await page\.reload\(\)/u)
   assert.match(spec, /const reloadSummaryResponse = await reloadSummaryResponsePromise/u)

@@ -70,10 +70,17 @@ test("live notification queue RBAC exercises the seeded admin and both non-admin
     /GET \/api\/v1\/notifications\/admin\/dead-letter should be allowed[\s\S]*?\.toBe\(200\)/u,
     "admin reads the live dead-letter list endpoint"
   )
+  requireMatch(spec, /itemCount,[\s\S]*?\.toBeGreaterThan\(0\)/u, "seeded queue data is visible")
+  const queueRead = spec.indexOf("page.request.get(DEAD_LETTER_ENDPOINT)")
+  const tableAssertion = spec.indexOf("await expect(queueTable).toBeVisible()")
+  assert.ok(
+    queueRead >= 0 && tableAssertion > queueRead,
+    "API state is checked before the UI assertion"
+  )
   requireMatch(
     spec,
-    /body\.items\.length,[\s\S]*?\.toBeGreaterThan\(0\)/u,
-    "seeded queue data is visible"
+    /reportLiveAdminQueueState\([\s\S]*?tableVisible,[\s\S]*?progressbarVisible,[\s\S]*?alertVisible,[\s\S]*?rowCount[\s\S]*?\)\s*throw error/u,
+    "the failing UI assertion retains only fixed API and rendered-state diagnostics"
   )
   requireMatch(
     spec,

@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto"
 import { expect, loginAs, test } from "./fixtures"
+import { reportLiveAdminQueueState } from "./live-ui-diagnostic"
 
 const DEAD_LETTER_ENDPOINT = "/api/v1/notifications/admin/dead-letter?limit=20&offset=0"
 
-test("admin can read the seeded notification queue without changing it", async ({ page }) => {
+test("admin can read the seeded notification queue without changing it", async ({
+  page,
+}, testInfo) => {
   await loginAs(page, "admin")
 
   await page.goto("/admin/notifications")
@@ -14,20 +17,56 @@ test("admin can read the seeded notification queue without changing it", async (
       name: /Notification queue|Очередь уведомлений/u,
     })
   ).toBeVisible()
-  await expect(
-    page.getByRole("table", { name: /Dead-letter queue|Отложенные уведомления/u })
-  ).toBeVisible()
 
-  const response = await page.request.get(DEAD_LETTER_ENDPOINT)
-  expect(
-    response.status(),
-    "admin GET /api/v1/notifications/admin/dead-letter should be allowed"
-  ).toBe(200)
-  const body = (await response.json()) as { items: unknown[]; total: number }
-  expect(Array.isArray(body.items), "queue response includes items").toBe(true)
-  expect(body.items.length, "the seeded read-only queue has visible records").toBeGreaterThan(0)
-  expect(Number.isInteger(body.total), "queue response includes a total").toBe(true)
-  expect(body.items.length).toBeLessThanOrEqual(body.total)
+  const queueTable = page.getByRole("table", { name: /Dead-letter queue|Отложенные уведомления/u })
+  let status = 0
+  let itemsAreArray = false
+  let itemCount = 0
+  let totalIsInteger = false
+  try {
+    const response = await page.request.get(DEAD_LETTER_ENDPOINT)
+    status = response.status()
+    const body = (await response.json()) as { items: unknown[]; total: number }
+    itemsAreArray = Array.isArray(body.items)
+    itemCount = itemsAreArray ? body.items.length : 0
+    totalIsInteger = Number.isInteger(body.total)
+
+    expect(status, "admin GET /api/v1/notifications/admin/dead-letter should be allowed").toBe(200)
+    expect(itemsAreArray, "queue response includes items").toBe(true)
+    expect(itemCount, "the seeded read-only queue has visible records").toBeGreaterThan(0)
+    expect(totalIsInteger, "queue response includes a total").toBe(true)
+    expect(itemCount).toBeLessThanOrEqual(body.total)
+    await expect(queueTable).toBeVisible()
+  } catch (error) {
+    const [tableVisible, progressbarVisible, alertVisible, rowCount] = await Promise.all([
+      queueTable.isVisible().catch(() => false),
+      page
+        .getByRole("progressbar")
+        .isVisible()
+        .catch(() => false),
+      page
+        .getByRole("alert")
+        .first()
+        .isVisible()
+        .catch(() => false),
+      queueTable
+        .getByRole("row")
+        .count()
+        .catch(() => 0),
+    ])
+    reportLiveAdminQueueState(
+      testInfo.project.name,
+      status,
+      itemsAreArray,
+      itemCount,
+      totalIsInteger,
+      tableVisible,
+      progressbarVisible,
+      alertVisible,
+      rowCount
+    )
+    throw error
+  }
 })
 
 for (const role of ["student", "teacher"] as const) {

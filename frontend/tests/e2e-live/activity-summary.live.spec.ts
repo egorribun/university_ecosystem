@@ -1,35 +1,63 @@
 import type { Locator } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
+import { reportLiveActivityGeometry } from "./live-ui-diagnostic"
 
 async function expectPeriodIndicatorToMatchRadio(
   indicator: Locator,
   selectedRadio: Locator,
-  periodLabel: string
+  periodLabel: "30-day" | "90-day",
+  project: string
 ) {
-  await expect
-    .poll(
-      async () => {
-        const [indicatorBox, radioBox] = await Promise.all([
-          indicator.boundingBox(),
-          selectedRadio.boundingBox(),
-        ])
-        if (!indicatorBox || !radioBox) return false
+  try {
+    await expect
+      .poll(
+        async () => {
+          const [indicatorBox, radioBox] = await Promise.all([
+            indicator.boundingBox(),
+            selectedRadio.boundingBox(),
+          ])
+          if (!indicatorBox || !radioBox) return false
 
-        return (
-          Math.abs(indicatorBox.x - radioBox.x) <= 1 &&
-          Math.abs(indicatorBox.y - radioBox.y) <= 1 &&
-          Math.abs(indicatorBox.width - radioBox.width) <= 1 &&
-          Math.abs(indicatorBox.height - radioBox.height) <= 1
-        )
-      },
-      { message: `${periodLabel} indicator should match the selected period control bounds` }
+          return (
+            Math.abs(indicatorBox.x - radioBox.x) <= 1 &&
+            Math.abs(indicatorBox.y - radioBox.y) <= 1 &&
+            Math.abs(indicatorBox.width - radioBox.width) <= 1 &&
+            Math.abs(indicatorBox.height - radioBox.height) <= 1
+          )
+        },
+        { message: `${periodLabel} indicator should match the selected period control bounds` }
+      )
+      .toBe(true)
+  } catch (error) {
+    const [indicatorBox, radioBox] = await Promise.all([
+      indicator.boundingBox().catch(() => null),
+      selectedRadio.boundingBox().catch(() => null),
+    ])
+    const deltaMilliPixels = (
+      indicatorValue: number | undefined,
+      radioValue: number | undefined
+    ) =>
+      indicatorValue === undefined || radioValue === undefined
+        ? 0
+        : Math.round((indicatorValue - radioValue) * 1000)
+
+    reportLiveActivityGeometry(
+      project,
+      periodLabel,
+      indicatorBox !== null,
+      radioBox !== null,
+      deltaMilliPixels(indicatorBox?.x, radioBox?.x),
+      deltaMilliPixels(indicatorBox?.y, radioBox?.y),
+      deltaMilliPixels(indicatorBox?.width, radioBox?.width),
+      deltaMilliPixels(indicatorBox?.height, radioBox?.height)
     )
-    .toBe(true)
+    throw error
+  }
 }
 
 test("seeded student can view Activity summaries, change the period, and restore it after reload", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await loginAs(page, "student")
   await page.goto("/activity")
@@ -53,7 +81,12 @@ test("seeded student can view Activity summaries, change the period, and restore
     page.getByRole("group", { name: /Статистика участия|Participation statistics/u })
   ).toBeVisible()
   await expect(period90Days).toHaveAttribute("aria-checked", "true")
-  await expectPeriodIndicatorToMatchRadio(periodIndicator, period90Days, "90-day")
+  await expectPeriodIndicatorToMatchRadio(
+    periodIndicator,
+    period90Days,
+    "90-day",
+    testInfo.project.name
+  )
 
   const summaryResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url())
@@ -67,7 +100,12 @@ test("seeded student can view Activity summaries, change the period, and restore
 
   await expect(period30Days).toHaveAttribute("aria-checked", "true")
   await expect(page).toHaveURL(/(?:\?|&)p=30d(?:&|$)/u)
-  await expectPeriodIndicatorToMatchRadio(periodIndicator, period30Days, "30-day")
+  await expectPeriodIndicatorToMatchRadio(
+    periodIndicator,
+    period30Days,
+    "30-day",
+    testInfo.project.name
+  )
   const summaryResponse = await summaryResponsePromise
   expect(summaryResponse.ok()).toBe(true)
 
