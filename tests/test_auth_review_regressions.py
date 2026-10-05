@@ -2,7 +2,6 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -26,9 +25,14 @@ if TYPE_CHECKING:
     ["backend", "cleanup", "single", "others", "compliance", "password_reset"],
 )
 async def test_cache_free_security_revocation_always_writes_tombstones(
-    db_session, test_user, mock_global_redis, monkeypatch, operation
-):
+    db_session: AsyncSession,
+    test_user: User,
+    mock_global_redis: Redis[str],
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
     from app.auth import redis_session
+    from app.core.config import settings
     from app.models import ActiveSession, PasswordResetToken
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.unit_of_work import uow_from_session
@@ -37,7 +41,7 @@ async def test_cache_free_security_revocation_always_writes_tombstones(
     from app.services.session_cleanup import revoke_sessions_matching
     from app.services.session_service import SessionService
 
-    monkeypatch.setattr(redis_session.settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
     session = ActiveSession(
         user_id=test_user.id,
         jti=f"memory-{operation}",
@@ -105,10 +109,13 @@ async def test_cache_free_security_revocation_always_writes_tombstones(
 
 
 @pytest.mark.asyncio
-async def test_cache_free_revocation_propagates_security_store_failure(monkeypatch):
+async def test_cache_free_revocation_propagates_security_store_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from app.auth import redis_session
+    from app.core.config import settings
 
-    monkeypatch.setattr(redis_session.settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
     backend = await redis_session.get_session_backend()
     with patch(
         "app.services.auth.redis_session.RedisSessionService.revoke_session",
@@ -120,24 +127,30 @@ async def test_cache_free_revocation_propagates_security_store_failure(monkeypat
 
 @pytest.mark.asyncio
 async def test_login_paused_after_old_password_validation_cannot_mint_after_change(
-    db_session, test_user, mock_global_redis
-):
+    db_session: AsyncSession, test_user: User, mock_global_redis: Redis[str]
+) -> None:
     import asyncio
 
     from fastapi import BackgroundTasks, HTTPException, Response
 
+    from app.auth.schemas import PendingMfaResponse
     from app.auth.security import get_password_hash
+    from app.core.protocols import AsyncDatabaseSession
     from app.models import ActiveSession
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.unit_of_work import uow_from_session
     from app.repositories.user_repository import UserRepository
-    from app.schemas.schemas import UserPasswordChangeIn
+    from app.schemas.dtos import UserAuthDTO, UserDTO
+    from app.schemas.schemas import TokenWithProfile, UserPasswordChangeIn
     from app.services.auth.credential_validator import CredentialValidator
+    from app.services.auth.lockout import LockoutService
     from app.services.auth.login_service import LoginService
     from app.services.auth.login_session_manager import LoginSessionManager
+    from app.services.auth.mfa_coordinator import MfaCoordinator
     from app.services.auth.redis_session import RedisSessionService
     from app.services.auth_service import AuthService
     from app.services.session_service import SessionService
+    from app.services.user.profile_service import UserProfileService
 
     old_password = "Old-test-password-883!"  # pragma: allowlist secret
     new_password = "New-test-password-992!"  # pragma: allowlist secret
@@ -155,6 +168,24 @@ async def test_login_paused_after_old_password_validation_cannot_mint_after_chan
     await db_session.commit()
     uow = uow_from_session(db_session)
     repo = UserRepository(db_session)
+
+    class _RepositoryProfileService(UserProfileService):
+        def __init__(self, user_repository: UserRepository) -> None:
+            self._user_repository = user_repository
+
+        async def get_auth_user_by_email(self, email: str) -> UserAuthDTO | None:
+            return await self._user_repository.get_auth_by_email(email)
+
+    class _NoLockoutService(LockoutService):
+        def __init__(self, session: AsyncDatabaseSession) -> None:
+            self.db = session
+
+        async def get_active_lockout(self, email: str) -> datetime | None:
+            return None
+
+        async def clear_failed_attempts(self, email: str) -> int:
+            return 0
+
     redis_service = RedisSessionService()
     manager = LoginSessionManager(
         SessionService(uow), redis_service, MagicMock(), MagicMock()
@@ -162,25 +193,47 @@ async def test_login_paused_after_old_password_validation_cannot_mint_after_chan
     validator = CredentialValidator(
         uow,
         repo,
-        SimpleNamespace(get_auth_user_by_email=repo.get_auth_by_email),
-        SimpleNamespace(
-            get_active_lockout=AsyncMock(return_value=None),
-            clear_failed_attempts=AsyncMock(return_value=0),
-        ),
+        _RepositoryProfileService(repo),
+        _NoLockoutService(db_session),
         MagicMock(),
         manager,
     )
     credentials_verified = asyncio.Event()
     resume_login = asyncio.Event()
 
-    async def pause_after_validation(**_kwargs):
+    async def pause_after_validation(**_kwargs: object) -> None:
         credentials_verified.set()
         await resume_login.wait()
         return None
 
-    coordinator = SimpleNamespace(
-        repo=AuthRepository(db_session),
-        check_and_issue_challenges=pause_after_validation,
+    class _PausingMfaCoordinator(MfaCoordinator):
+        def __init__(
+            self,
+            auth_repository: AuthRepository,
+            pause: Callable[..., Awaitable[None]],
+        ) -> None:
+            self.repo = auth_repository
+            self._pause = pause
+
+        async def check_and_issue_challenges(
+            self,
+            user: User | UserAuthDTO | UserDTO,
+            request: Request,
+            response: Response,
+            locale: str,
+            trust_device: bool = False,
+        ) -> PendingMfaResponse | None:
+            await self._pause(
+                user=user,
+                request=request,
+                response=response,
+                locale=locale,
+                trust_device=trust_device,
+            )
+            return None
+
+    coordinator = _PausingMfaCoordinator(
+        AuthRepository(db_session), pause_after_validation
     )
     login = LoginService(validator, coordinator, manager, db_session)
     request = Request(
@@ -228,24 +281,29 @@ async def test_login_paused_after_old_password_validation_cannot_mint_after_chan
     result = await login.perform_login(
         test_user.email, new_password, request, Response(), BackgroundTasks()
     )
+    assert isinstance(result, TokenWithProfile)
     assert result.user.id == test_user.id
 
 
 @pytest.mark.asyncio
 async def test_late_password_rehash_cannot_restore_prechange_password(
-    db_session, test_user
-):
+    db_session: AsyncSession, test_user: User
+) -> None:
     import asyncio
 
     from fastapi import BackgroundTasks, HTTPException
 
     from app.auth.security import get_password_hash, verify_password
+    from app.core.protocols import AsyncDatabaseSession
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.unit_of_work import uow_from_session
     from app.repositories.user_repository import UserRepository
+    from app.schemas.dtos import UserAuthDTO
     from app.schemas.schemas import UserPasswordChangeIn
     from app.services.auth.credential_validator import CredentialValidator
+    from app.services.auth.lockout import LockoutService
     from app.services.auth_service import AuthService
+    from app.services.user.profile_service import UserProfileService
 
     old_password = "Old-rehash-password-11!"  # pragma: allowlist secret
     new_password = "New-rehash-password-22!"  # pragma: allowlist secret
@@ -254,14 +312,29 @@ async def test_late_password_rehash_cannot_restore_prechange_password(
     await db_session.commit()
     uow = uow_from_session(db_session)
     repo = UserRepository(db_session)
+
+    class _RepositoryProfileService(UserProfileService):
+        def __init__(self, user_repository: UserRepository) -> None:
+            self._user_repository = user_repository
+
+        async def get_auth_user_by_email(self, email: str) -> UserAuthDTO | None:
+            return await self._user_repository.get_auth_by_email(email)
+
+    class _NoLockoutService(LockoutService):
+        def __init__(self, session: AsyncDatabaseSession) -> None:
+            self.db = session
+
+        async def get_active_lockout(self, email: str) -> datetime | None:
+            return None
+
+        async def clear_failed_attempts(self, email: str) -> int:
+            return 0
+
     validator = CredentialValidator(
         uow,
         repo,
-        SimpleNamespace(get_auth_user_by_email=repo.get_auth_by_email),
-        SimpleNamespace(
-            get_active_lockout=AsyncMock(return_value=None),
-            clear_failed_attempts=AsyncMock(return_value=0),
-        ),
+        _RepositoryProfileService(repo),
+        _NoLockoutService(db_session),
         MagicMock(),
         MagicMock(),
     )
@@ -278,7 +351,7 @@ async def test_late_password_rehash_cannot_restore_prechange_password(
     credentials_verified = asyncio.Event()
     resume_rehash = asyncio.Event()
 
-    async def verify_then_pause(password, encoded):
+    async def verify_then_pause(password: str, encoded: str) -> tuple[bool, str]:
         assert await verify_password(password, encoded)
         upgraded = await get_password_hash(password)
         credentials_verified.set()
@@ -320,8 +393,8 @@ async def test_late_password_rehash_cannot_restore_prechange_password(
 
 @pytest.mark.asyncio
 async def test_password_repository_rejects_stale_hash_and_rehash_preserves_epoch(
-    db_session, test_user
-):
+    db_session: AsyncSession, test_user: User
+) -> None:
     from app.repositories.user_repository import UserRepository
 
     old_hash = test_user.hashed_password
@@ -355,7 +428,9 @@ async def test_password_repository_rejects_stale_hash_and_rehash_preserves_epoch
 
 
 @pytest.mark.asyncio
-async def test_password_rehash_is_scoped_to_target_with_shared_hash(user_factory):
+async def test_password_rehash_is_scoped_to_target_with_shared_hash(
+    user_factory: Callable[..., Awaitable[User]],
+) -> None:
     from sqlalchemy import select
 
     from app.core.database import async_session
@@ -392,7 +467,9 @@ async def test_password_rehash_is_scoped_to_target_with_shared_hash(user_factory
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cache_mode", ["disabled", "unavailable"])
-async def test_optional_metadata_invalidation_does_not_require_cache(cache_mode):
+async def test_optional_metadata_invalidation_does_not_require_cache(
+    cache_mode: str,
+) -> None:
     from app.services.auth.redis_session import RedisSessionService
 
     service = RedisSessionService()
@@ -411,11 +488,12 @@ async def test_optional_metadata_invalidation_does_not_require_cache(cache_mode)
 
 @pytest.mark.asyncio
 async def test_cache_free_validity_check_fails_closed_when_revocation_store_is_down(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from app.auth import redis_session
+    from app.core.config import settings
 
-    monkeypatch.setattr(redis_session.settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
     backend = await redis_session.get_session_backend()
     with patch.object(
         redis_session,
@@ -429,8 +507,10 @@ async def test_cache_free_validity_check_fails_closed_when_revocation_store_is_d
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_hash_is_current", [True, False])
 async def test_password_change_compare_and_swap_is_scoped_to_target_user(
-    db_session, user_factory, target_hash_is_current
-):
+    db_session: AsyncSession,
+    user_factory: Callable[..., Awaitable[User]],
+    target_hash_is_current: bool,
+) -> None:
     from app.auth.security import get_password_hash
     from app.repositories.user_repository import UserRepository
 

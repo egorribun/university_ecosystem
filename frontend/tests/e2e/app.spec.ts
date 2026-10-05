@@ -279,10 +279,23 @@ test.describe("University ecosystem app", () => {
     const aboutInput = page.getByRole("textbox", { name: /О себе|About/i })
     const newBio = `Updated bio ${Date.now()}`
     await aboutInput.fill(newBio)
+    const saveResponsePromise = page.waitForResponse((response) => {
+      const request = response.request()
+      const url = new URL(response.url())
+      return request.method() === "PUT" && url.pathname === "/api/v1/users/me"
+    })
     await saveBtn.click()
 
-    await expect(page.getByText(newBio)).toBeVisible()
+    const saveResponse = await saveResponsePromise
+    expect(saveResponse.status()).toBe(200)
+    const savedProfile = await saveResponse.json()
+    expect(savedProfile).toMatchObject({
+      id: mock.state.profile.id,
+      profile_detail: { about: newBio },
+    })
+    await expect(aboutInput).toBeHidden()
+    await expect(page.getByText(newBio, { exact: true })).toBeVisible()
     await page.reload()
-    await expect(page.getByText(newBio)).toBeVisible()
+    await expect(page.getByText(newBio, { exact: true })).toBeVisible()
   })
 })

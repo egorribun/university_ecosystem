@@ -4,13 +4,16 @@ import base64
 import hashlib
 import hmac
 import json
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+from starlette.datastructures import State
+from starlette.types import Scope
 
 from app.api import users as api
 from app.models.enums import UserRole
@@ -18,11 +21,26 @@ from app.schemas import schemas
 from tests.conftest import call_injected
 
 
-def _request(headers: dict[str, str] | None = None) -> SimpleNamespace:
-    return SimpleNamespace(
-        headers=headers or {},
-        state=SimpleNamespace(active_session=SimpleNamespace(signing_key="secret")),
-    )
+def _request(headers: dict[str, str] | None = None) -> Request[State]:
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (key.lower().encode("latin-1"), value.encode("latin-1"))
+            for key, value in (headers or {}).items()
+        ],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "state": {"active_session": SimpleNamespace(signing_key="secret")},
+    }
+    return Request(scope)
 
 
 def _user(*, role: UserRole = UserRole.STUDENT) -> SimpleNamespace:
@@ -45,8 +63,8 @@ def _signed_envelope(
     )
 
 
-def _patch_user_out(value: object):
-    return patch.object(api.schemas.UserOut, "model_validate", return_value=value)
+def _patch_user_out(value: object) -> AbstractContextManager[object]:
+    return patch.object(schemas.UserOut, "model_validate", return_value=value)
 
 
 def test_profile_cache_integrity_environment_and_validation_paths() -> None:
@@ -314,7 +332,7 @@ async def test_create_and_list_users_roles() -> None:
     bg = MagicMock()
     db = AsyncMock()
     public = object()
-    with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
+    with patch.object(schemas.UserPublicOut, "model_validate", return_value=public):
         result = await call_injected(
             api.get_users,
             checker=_checker(),
@@ -364,7 +382,7 @@ async def test_get_users_ignores_stale_admin_role_without_spicedb_admin(
     service.get_users = AsyncMock(return_value=[SimpleNamespace(id=uuid4())])
     public = object()
 
-    with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
+    with patch.object(schemas.UserPublicOut, "model_validate", return_value=public):
         result = await call_injected(
             api.get_users,
             checker=checker,
@@ -391,7 +409,7 @@ async def test_get_users_route_normalizes_legacy_search_before_service_query() -
     filters = schemas.UserSearchFilter(search="  Teacher  ")
     public = object()
 
-    with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
+    with patch.object(schemas.UserPublicOut, "model_validate", return_value=public):
         result = await call_injected(
             api.get_users,
             checker=_checker(),

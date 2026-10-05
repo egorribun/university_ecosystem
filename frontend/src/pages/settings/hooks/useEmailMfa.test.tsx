@@ -84,6 +84,22 @@ beforeEach(() => {
 })
 
 describe("useEmailMfa", () => {
+  it("keeps the challenge when the refreshed profile belongs to a different user", async () => {
+    const setSnackbar = vi.fn()
+    mocks.fetchQuery.mockResolvedValueOnce({ ...mocks.user, id: "different-user" })
+    const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor: vi.fn() }))
+
+    await act(() => result.current.handleStartEmailMfa())
+    expect(result.current.emailChallenge).toEqual(challenge)
+
+    await act(() => result.current.handleConfirmEmailMfa("135790"))
+
+    expect(mocks.verifyMfaChallenge).toHaveBeenCalledOnce()
+    expect(result.current.emailChallenge).toEqual(challenge)
+    expect(result.current.emailMfaBusy).toBe(false)
+    expect(mocks.setUser).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  })
   it("starts enablement for a verified email and verifies the issued challenge", async () => {
     const setSnackbar = vi.fn()
     const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor: vi.fn() }))
@@ -268,6 +284,28 @@ describe("useEmailMfa", () => {
     expect(result.current.emailMfaError).toBeNull()
   })
 
+  it("does not report disable success when the refreshed profile belongs to another user", async () => {
+    mocks.user.email_mfa_enabled_at = "2026-01-01T00:00:00Z"
+    const setSnackbar = vi.fn()
+    let stepUpAction: (() => Promise<void>) | undefined
+    const openStepUpFor = vi.fn((action: () => Promise<void>) => {
+      stepUpAction = action
+    })
+    mocks.fetchQuery.mockResolvedValueOnce({ ...mocks.user, id: "other-user-id" })
+    const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor }))
+
+    act(() => result.current.handleDisableEmailMfa())
+
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+    expect(stepUpAction).toBeDefined()
+    await act(async () => {
+      await stepUpAction?.()
+    })
+
+    expect(mocks.disableEmailMfa).toHaveBeenCalledOnce()
+    expect(mocks.setUser).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  })
   it("reports a step-up disable failure without clearing the current user", async () => {
     const setSnackbar = vi.fn()
     const openStepUpFor = vi.fn((action: () => Promise<void>) => void action())

@@ -65,9 +65,7 @@ def test_live_backend_and_delivery_workers_use_owned_s3_configuration() -> None:
     assert backend["STORAGE_S3_BUCKET"] == "uploads"
     assert backend["STORAGE_S3_REGION"] == "us-east-1"
     assert backend["STORAGE_S3_ENDPOINT_URL"] == "http://minio:9000"
-    assert (
-        backend["STORAGE_S3_BASE_URL"] == "${LIVE_BASE_URL:?required}/storage/uploads"
-    )
+    assert backend["STORAGE_S3_BASE_URL"] == "${LIVE_BASE_URL:?required}/api/v1/img"
 
     base_compose = _compose(ROOT / "docker-compose.full.yml")
     base_services = _mapping(base_compose["services"])
@@ -96,7 +94,16 @@ def test_live_storage_settings_map_public_object_urls_without_network(
     monkeypatch.setenv("STORAGE_S3_ACCESS_KEY_ID", uuid4().hex)
     monkeypatch.setenv("STORAGE_S3_SECRET_ACCESS_KEY", uuid4().hex)
     monkeypatch.setenv("STORAGE_S3_ENDPOINT_URL", "http://minio:9000")
-    monkeypatch.setenv("STORAGE_S3_BASE_URL", f"{public_origin}/storage/uploads")
+    live_services = _mapping(_live_overlay()["services"])
+    live_backend = _mapping(_mapping(live_services["backend"])["environment"])
+    base_url_template = live_backend["STORAGE_S3_BASE_URL"]
+    assert isinstance(base_url_template, str)
+    public_origin_variable = "${LIVE_BASE_URL:?required}"
+    assert base_url_template.startswith(public_origin_variable)
+    live_public_base_url = base_url_template.replace(
+        public_origin_variable, public_origin, 1
+    )
+    monkeypatch.setenv("STORAGE_S3_BASE_URL", live_public_base_url)
 
     settings = Settings(
         _allow_missing=True,
@@ -112,9 +119,11 @@ def test_live_storage_settings_map_public_object_urls_without_network(
     assert settings.storage_s3_access_key_id
     assert settings.storage_s3_secret_access_key
     assert storage.bucket == "uploads"
-    assert storage.base_url == f"{public_origin}/storage/uploads"
+    assert storage.base_url == f"{public_origin}/api/v1/img"
     object_key = f"avatars/{uuid4().hex}.png"
     assert storage._extract_key(f"{storage.base_url}/{object_key}") == object_key
+    legacy_url = f"{public_origin}/storage/uploads/{object_key}"
+    assert storage._extract_key(legacy_url) is None
 
 
 def test_standalone_storage_settings_keep_static_default(
