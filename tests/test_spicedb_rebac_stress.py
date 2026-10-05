@@ -191,3 +191,35 @@ async def test_spicedb_lru_cache_max_capacity():
             last_key = ("user1", "res", "id-9", "view", "", "")
             assert first_key not in rbac._permission_cache
             assert last_key in rbac._permission_cache
+
+
+@pytest.mark.asyncio
+async def test_permission_grace_allows_at_exact_positive_ttl() -> None:
+    checker = PermissionChecker(MagicMock())
+    monotonic = MagicMock(side_effect=[100.0, 145.0])
+    fake_clock = MagicMock()
+    fake_clock.monotonic = monotonic
+    live_check = AsyncMock(
+        return_value=CheckPermissionResponse(
+            permissionship=CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+        )
+    )
+    unavailable_check = AsyncMock(side_effect=RuntimeError("dependency unavailable"))
+
+    with patch.object(rbac, "time", fake_clock):
+        with patch("authzed.api.v1.PermissionsServiceStub") as stub_factory:
+            stub = stub_factory.return_value
+            stub.CheckPermission = live_check
+            assert (
+                await checker.check_permission("document", "doc-1", "read", "user-1")
+                is True
+            )
+
+            stub.CheckPermission = unavailable_check
+            assert (
+                await checker.check_permission("document", "doc-1", "read", "user-1")
+                is True
+            )
+
+    assert live_check.await_count == 1
+    assert unavailable_check.await_count == 1
