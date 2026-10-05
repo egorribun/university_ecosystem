@@ -14,7 +14,12 @@ const {
   reducedMotion,
 } = vi.hoisted(() => ({
   eventsState: {
-    current: { data: [] as unknown[] | undefined, isLoading: false, isFetching: false },
+    current: {
+      data: [] as unknown[] | undefined,
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+    },
   },
   mockNavigate: vi.fn(),
   mockPrefetchDashboardEvents: vi.fn(),
@@ -108,7 +113,12 @@ function renderCard() {
 
 describe("EventsCard", () => {
   beforeEach(() => {
-    eventsState.current = { data: EVENTS, isLoading: false, isFetching: false }
+    eventsState.current = {
+      data: EVENTS,
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+    }
     mockNavigate.mockReset()
     mockPrefetchDashboardEvents.mockReset()
     mockPrefetchEventsListQuery.mockReset()
@@ -158,14 +168,24 @@ describe("EventsCard", () => {
   })
 
   it("shows the empty state when no events match the scope", () => {
-    eventsState.current = { data: [], isLoading: false, isFetching: false }
+    eventsState.current = {
+      data: [],
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+    }
     renderCard()
     expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
     expect(screen.queryByRole("list")).not.toBeInTheDocument()
   })
 
   it("marks the card aria-busy while events load", () => {
-    eventsState.current = { data: undefined, isLoading: true, isFetching: false }
+    eventsState.current = {
+      data: undefined,
+      isPending: true,
+      isLoading: true,
+      isFetching: false,
+    }
     renderCard()
     expect(screen.getByText("dashboard:events.heading").closest("[aria-busy]")).toHaveAttribute(
       "aria-busy",
@@ -186,7 +206,12 @@ describe("EventsCard", () => {
   })
 
   it("keeps stale events visible while the query is still loading", () => {
-    eventsState.current = { data: EVENTS, isLoading: true, isFetching: true }
+    eventsState.current = {
+      data: EVENTS,
+      isPending: true,
+      isLoading: true,
+      isFetching: true,
+    }
     renderCard()
     fireEvent.click(screen.getByRole("button", { name: "dashboard:scope.week" }))
     const card = screen.getByText("dashboard:events.heading").closest("[aria-busy]")
@@ -249,6 +274,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -340,6 +366,7 @@ describe("EventsCard", () => {
         { id: 3, title: "Invalid event", starts_at: "not-a-date", location: "Room" },
         { id: 4, title: "No date", starts_at: null, location: "Room" },
       ],
+      isPending: false,
       isLoading: false,
       isFetching: true,
     }
@@ -376,7 +403,12 @@ describe("EventsCard", () => {
           location: "",
         }
       )
-      eventsState.current = { data: events, isLoading: false, isFetching: false }
+      eventsState.current = {
+        data: events,
+        isPending: false,
+        isLoading: false,
+        isFetching: false,
+      }
 
       renderCard()
       const todayList = screen.getByRole("list", { name: "dashboard:aria.eventsToday" })
@@ -416,6 +448,7 @@ describe("EventsCard", () => {
           { id: 30, title: "Week end", starts_at: weekEnd, location: "" },
           { id: 31, title: "Outside week", starts_at: outsideWeek, location: "" },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -433,6 +466,7 @@ describe("EventsCard", () => {
 
       eventsState.current = {
         data: [{ id: 32, title: "Updated week event", starts_at: weekEnd, location: "" }],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -468,6 +502,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -496,6 +531,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -512,6 +548,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -553,6 +590,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -638,6 +676,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -682,6 +721,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }

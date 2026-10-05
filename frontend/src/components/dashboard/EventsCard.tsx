@@ -52,7 +52,7 @@ export const EventsCard = memo(function EventsCard({
     () => dashboardEventsQuery.data ?? [],
     [dashboardEventsQuery.data]
   )
-  const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
+  const loadingEvents = dashboardEventsQuery.isPending && events.length === 0
 
   const prefetchEventsList = () => {
     void prefetchDashboardEvents(queryClient)

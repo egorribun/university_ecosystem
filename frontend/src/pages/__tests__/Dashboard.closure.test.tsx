@@ -16,8 +16,8 @@ const state = vi.hoisted(() => ({
   storiesLoading: false,
   weatherAnimation: undefined as string | undefined,
   scheduleQuery: { isLoading: false },
-  newsQuery: { isLoading: false },
-  eventsQuery: { isLoading: false },
+  newsQuery: { isPending: false, isLoading: false },
+  eventsQuery: { isPending: false, isLoading: false },
   queryClient: { id: "dashboard-test-client" },
   prefetch: vi.fn(),
 }))
@@ -248,8 +248,8 @@ beforeEach(() => {
   state.storiesLoading = false
   state.weatherAnimation = undefined
   state.scheduleQuery = { isLoading: false }
-  state.newsQuery = { isLoading: false }
-  state.eventsQuery = { isLoading: false }
+  state.newsQuery = { isPending: false, isLoading: false }
+  state.eventsQuery = { isPending: false, isLoading: false }
   state.prefetch.mockClear()
   window.sessionStorage.clear()
   vi.useRealTimers()
@@ -293,8 +293,8 @@ describe("Dashboard closure behavior", () => {
   it("renders an honest stories loading state, stable widgets, and a restrained cascade reveal", () => {
     vi.useFakeTimers()
     state.scheduleQuery = { isLoading: true }
-    state.newsQuery = { isLoading: true }
-    state.eventsQuery = { isLoading: true }
+    state.newsQuery = { isPending: true, isLoading: true }
+    state.eventsQuery = { isPending: true, isLoading: true }
     state.storiesLoading = true
     state.weatherAnimation = "drizzle"
 

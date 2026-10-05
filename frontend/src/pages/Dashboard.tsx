@@ -167,7 +167,7 @@ export default function Dashboard() {
   const eventsQuery = useDashboardEvents()
   const scheduleLoaded = !scheduleQuery.isLoading
   const newsLoaded = !newsQuery.isPending
-  const eventsLoaded = !eventsQuery.isLoading
+  const eventsLoaded = !eventsQuery.isPending
 
   const dashboardStoriesQuery = useDashboardStories()
   const stories = dashboardStoriesQuery.data ?? []
