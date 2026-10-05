@@ -1084,7 +1084,8 @@ def test_source_storage_settings_require_s3_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.core.config.storage.StorageSettings",
+        backup_db,
+        "_backup_storage_environment_settings",
         lambda: SimpleNamespace(
             storage_backend="filesystem",
             storage_s3_endpoint_url="https://objects.example.test",
@@ -1119,7 +1120,8 @@ def test_application_s3_settings_use_the_canonical_configured_fields(
 ) -> None:
     marker = "synthetic-storage-secret-marker"
     monkeypatch.setattr(
-        "app.core.config.storage.StorageSettings",
+        backup_db,
+        "_backup_storage_environment_settings",
         lambda: SimpleNamespace(
             storage_backend=backend,
             storage_s3_endpoint_url="https://objects.example.test",

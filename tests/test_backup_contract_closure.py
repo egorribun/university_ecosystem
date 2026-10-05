@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import builtins
 import json
 import os
 import runpy
+import secrets
 import sys
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -11,6 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from scripts import backup_db
 
@@ -1051,11 +1054,185 @@ def _configured_storage_settings(**changes: Any) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
+def _write_storage_env_file(path: Path, *, bucket: str) -> None:
+    access_key = secrets.token_urlsafe(16)
+    secret_key = secrets.token_urlsafe(24)
+    path.write_text(
+        "\n".join(
+            (
+                "STORAGE_BACKEND=minio",
+                f"STORAGE_S3_BUCKET={bucket}",
+                "STORAGE_S3_REGION=eu-test-1",
+                f"STORAGE_S3_ACCESS_KEY_ID={access_key}",
+                f"STORAGE_S3_SECRET_ACCESS_KEY={secret_key}",
+                "STORAGE_S3_ENDPOINT_URL=https://objects.example.test",
+                "STORAGE_S3_BASE_URL=https://cdn.example.test/api/v1/img",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_storage_cli_reader_uses_project_dotenv_and_environment_precedence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    scripts_dir = project_root / "scripts"
+    scripts_dir.mkdir(parents=True)
+    monkeypatch.setattr(backup_db, "__file__", str(scripts_dir / "backup_db.py"))
+    _write_storage_env_file(project_root / ".env", bucket="project-bucket")
+    _write_storage_env_file(project_root / ".env.local", bucket="local-bucket")
+    for name in (
+        "STORAGE_BACKEND",
+        "STORAGE_S3_BUCKET",
+        "STORAGE_S3_REGION",
+        "STORAGE_S3_ACCESS_KEY_ID",
+        "STORAGE_S3_SECRET_ACCESS_KEY",
+        "STORAGE_S3_ENDPOINT_URL",
+        "STORAGE_S3_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("ENV_FILE_PATH", raising=False)
+    monkeypatch.setenv("STORAGE_S3_BUCKET", "process-bucket")
+
+    original_import = builtins.__import__
+
+    def reject_application_config(
+        name: str,
+        globals: dict[str, Any] | None = None,
+        locals: dict[str, Any] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> Any:
+        if name == "app.core.config" or name.startswith("app.core.config."):
+            raise AssertionError("storage CLI must not import global app settings")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", reject_application_config)
+    settings = backup_db.storage_s3_settings_from_environment()
+
+    assert settings.bucket == "process-bucket"
+    assert settings.region == "eu-test-1"
+    assert settings.endpoint_url == "https://objects.example.test"
+    assert settings.public_base_url == "https://cdn.example.test/api/v1/img"
+    assert settings.access_key_id is not None
+    assert settings.secret_access_key is not None
+
+
+def test_storage_cli_reader_honors_explicit_env_file_and_empty_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    scripts_dir = project_root / "scripts"
+    scripts_dir.mkdir(parents=True)
+    monkeypatch.setattr(backup_db, "__file__", str(scripts_dir / "backup_db.py"))
+    _write_storage_env_file(project_root / ".env", bucket="project-bucket")
+    selected_file = tmp_path / "selected.env"
+    _write_storage_env_file(selected_file, bucket="selected-bucket")
+    for name in (
+        "STORAGE_BACKEND",
+        "STORAGE_S3_BUCKET",
+        "STORAGE_S3_REGION",
+        "STORAGE_S3_ACCESS_KEY_ID",
+        "STORAGE_S3_SECRET_ACCESS_KEY",
+        "STORAGE_S3_ENDPOINT_URL",
+        "STORAGE_S3_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    monkeypatch.setenv("ENV_FILE_PATH", str(selected_file))
+    assert backup_db.storage_s3_settings_from_environment().bucket == "selected-bucket"
+
+    monkeypatch.setenv("ENV_FILE_PATH", "")
+    with pytest.raises(backup_db.BackupArtifactError, match="S3 storage backend"):
+        backup_db.storage_s3_settings_from_environment()
+
+
+def test_storage_cli_reader_falls_back_to_project_env_local(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    scripts_dir = project_root / "scripts"
+    scripts_dir.mkdir(parents=True)
+    monkeypatch.setattr(backup_db, "__file__", str(scripts_dir / "backup_db.py"))
+    _write_storage_env_file(project_root / ".env.local", bucket="local-only-bucket")
+    for name in (
+        "STORAGE_BACKEND",
+        "STORAGE_S3_BUCKET",
+        "STORAGE_S3_REGION",
+        "STORAGE_S3_ACCESS_KEY_ID",
+        "STORAGE_S3_SECRET_ACCESS_KEY",
+        "STORAGE_S3_ENDPOINT_URL",
+        "STORAGE_S3_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("ENV_FILE_PATH", raising=False)
+
+    settings = backup_db.storage_s3_settings_from_environment()
+
+    assert settings.bucket == "local-only-bucket"
+    assert settings.region == "eu-test-1"
+
+
+def test_storage_cli_reader_does_not_fallback_for_missing_explicit_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    scripts_dir = project_root / "scripts"
+    scripts_dir.mkdir(parents=True)
+    monkeypatch.setattr(backup_db, "__file__", str(scripts_dir / "backup_db.py"))
+    _write_storage_env_file(project_root / ".env", bucket="project-bucket")
+    missing_file = tmp_path / "missing.env"
+    for name in (
+        "STORAGE_BACKEND",
+        "STORAGE_S3_BUCKET",
+        "STORAGE_S3_REGION",
+        "STORAGE_S3_ACCESS_KEY_ID",
+        "STORAGE_S3_SECRET_ACCESS_KEY",
+        "STORAGE_S3_ENDPOINT_URL",
+        "STORAGE_S3_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ENV_FILE_PATH", str(missing_file))
+
+    with pytest.raises(backup_db.BackupArtifactError, match="S3 storage backend"):
+        backup_db.storage_s3_settings_from_environment()
+
+
+def test_storage_cli_reader_normalizes_backend_like_application_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENV_FILE_PATH", "")
+    monkeypatch.setenv("STORAGE_BACKEND", " MiNiO ")
+    monkeypatch.setenv("STORAGE_S3_BUCKET", "normalized-bucket")
+    monkeypatch.setenv("STORAGE_S3_REGION", "eu-test-1")
+    monkeypatch.setenv("STORAGE_S3_ACCESS_KEY_ID", secrets.token_urlsafe(16))
+    monkeypatch.setenv("STORAGE_S3_SECRET_ACCESS_KEY", secrets.token_urlsafe(24))
+    monkeypatch.setenv("STORAGE_S3_ENDPOINT_URL", "https://objects.example.test")
+    monkeypatch.setenv("STORAGE_S3_BASE_URL", "https://cdn.example.test/api/v1/img")
+
+    settings = backup_db.storage_s3_settings_from_environment()
+
+    assert settings.bucket == "normalized-bucket"
+    assert settings.endpoint_url == "https://objects.example.test"
+
+
+def test_storage_cli_reader_preserves_backend_enum_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENV_FILE_PATH", "")
+    monkeypatch.setenv("STORAGE_BACKEND", "unsupported-backend")
+
+    with pytest.raises(ValidationError, match="STORAGE_BACKEND must be one of"):
+        backup_db.storage_s3_settings_from_environment()
+
+
 def test_application_s3_settings_reject_unpaired_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.core.config.storage.StorageSettings",
+        backup_db,
+        "_backup_storage_environment_settings",
         lambda: _configured_storage_settings(storage_s3_access_key_id="synthetic-id"),
     )
 
@@ -1067,7 +1244,8 @@ def test_application_s3_settings_default_optional_endpoint_and_region(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.core.config.storage.StorageSettings",
+        backup_db,
+        "_backup_storage_environment_settings",
         lambda: _configured_storage_settings(
             storage_s3_endpoint_url=" ", storage_s3_region=" "
         ),
@@ -1094,7 +1272,8 @@ def test_application_s3_settings_reject_unsafe_endpoints(
     message: str,
 ) -> None:
     monkeypatch.setattr(
-        "app.core.config.storage.StorageSettings",
+        backup_db,
+        "_backup_storage_environment_settings",
         lambda: _configured_storage_settings(storage_s3_endpoint_url=endpoint),
     )
     monkeypatch.setenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", allow_http)
@@ -1107,7 +1286,8 @@ def test_application_s3_settings_allow_explicit_local_http(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.core.config.storage.StorageSettings",
+        backup_db,
+        "_backup_storage_environment_settings",
         lambda: _configured_storage_settings(
             storage_s3_endpoint_url="http://127.0.0.1:9000"
         ),

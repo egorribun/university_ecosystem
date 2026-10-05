@@ -86,6 +86,7 @@ async def test_teacher_assigns_grade_and_student_is_notified(
     )
     assert len(notifications) == 1
     assert "Physics" in notifications[0].title
+    assert notifications[0].title_en == "New grade: Physics"
     assert notifications[0].body_en == "4.5"
     assert invalidate.await_args.kwargs["kinds"] == ("grades",)
 

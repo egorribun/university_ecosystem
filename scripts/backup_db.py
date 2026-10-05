@@ -29,6 +29,8 @@ from urllib.parse import urlsplit
 
 import aioboto3
 import psycopg
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -1352,11 +1354,58 @@ def s3_settings_from_environment() -> S3Settings:
     )
 
 
+class _BackupStorageEnvironmentSettings(BaseSettings):
+    """Read only the storage settings needed by this standalone CLI."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        case_sensitive=False,
+        env_file_encoding="utf-8",
+    )
+
+    storage_backend: str = "static"
+    storage_s3_bucket: str = ""
+    storage_s3_region: str = ""
+    storage_s3_access_key_id: str = ""
+    storage_s3_secret_access_key: str = ""
+    storage_s3_endpoint_url: str = ""
+    storage_s3_base_url: str = ""
+
+    @field_validator("storage_backend")
+    @classmethod
+    def _validate_storage_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"static", "filesystem", "local", "s3", "minio"}:
+            raise ValueError(
+                "STORAGE_BACKEND must be one of static, filesystem, local, s3, or minio"
+            )
+        return normalized
+
+
+def _backup_storage_env_file() -> Path | None:
+    """Match the app config's explicit and project dotenv file selection."""
+    env_override = os.environ.get("ENV_FILE_PATH")
+    if env_override is not None:
+        if not env_override:
+            return None
+        candidate = Path(env_override)
+        return candidate if candidate.is_file() else None
+
+    project_root = Path(__file__).resolve().parents[1]
+    for name in (".env", ".env.local"):
+        candidate = project_root / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _backup_storage_environment_settings() -> _BackupStorageEnvironmentSettings:
+    return _BackupStorageEnvironmentSettings(_env_file=_backup_storage_env_file())
+
+
 def storage_s3_settings_from_environment() -> S3Settings:
     """Read application object-storage settings without exposing credentials."""
-    from app.core.config.storage import StorageSettings
-
-    storage = StorageSettings()
+    storage = _backup_storage_environment_settings()
     if storage.storage_backend not in {"s3", "minio"}:
         raise BackupArtifactError(
             "Paired snapshots require the configured S3 storage backend"

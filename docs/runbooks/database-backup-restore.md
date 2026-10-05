@@ -93,6 +93,13 @@ uses the SDK's configured AWS endpoint; empty region defaults to `us-east-1`.
 Credentials can come from the configured environment, application `.env` or
 the AWS SDK credential provider chain. Never put credentials in arguments.
 
+The standalone CLI reads these storage fields without initializing application
+authentication settings. Process environment values override dotenv values.
+`ENV_FILE_PATH` selects a specific file; an empty value or a nonexistent explicit
+path disables dotenv loading. Without an override, the first existing project
+root `.env` or `.env.local` is used, in that order. Authentication secrets are
+not required merely to read the object-storage configuration.
+
 The source object bucket and `BACKUP_S3_BUCKET` must differ. The snapshot
 inventory includes every current object returned by paginated `ListObjectsV2`;
 each read is pinned to the listed ETag and records a source VersionId when the

@@ -306,6 +306,60 @@ describe("useEmailMfa", () => {
     expect(mocks.setUser).not.toHaveBeenCalled()
     expect(setSnackbar).not.toHaveBeenCalled()
   })
+  it("keeps a new operation busy when an older session request settles", async () => {
+    const firstRequest = deferred<typeof challenge>()
+    const secondRequest = deferred<typeof challenge>()
+    mocks.startEmailMfaEnablement
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+    const originalUser = mocks.user
+    const { result, rerender } = renderHook(() =>
+      useEmailMfa({ setSnackbar: vi.fn(), openStepUpFor: vi.fn() })
+    )
+    let firstCompletion: Promise<void> | undefined
+    let secondCompletion: Promise<void> | undefined
+
+    try {
+      act(() => {
+        firstCompletion = result.current.handleStartEmailMfa()
+      })
+      expect(result.current.emailMfaBusy).toBe(true)
+
+      mocks.user = { ...originalUser, id: "different-session-user" }
+      rerender()
+      expect(result.current.emailMfaBusy).toBe(false)
+
+      act(() => {
+        secondCompletion = result.current.handleStartEmailMfa()
+      })
+      expect(result.current.emailMfaBusy).toBe(true)
+
+      await act(async () => {
+        firstRequest.resolve(challenge)
+        await firstCompletion
+      })
+      expect(result.current.emailMfaBusy).toBe(true)
+      expect(result.current.emailChallenge).toBeNull()
+
+      await act(async () => {
+        secondRequest.resolve(challenge)
+        await secondCompletion
+      })
+      expect(result.current.emailMfaBusy).toBe(false)
+    } finally {
+      firstRequest.resolve(challenge)
+      secondRequest.resolve(challenge)
+      const pending = [firstCompletion, secondCompletion].filter(
+        (promise): promise is Promise<void> => promise !== undefined
+      )
+      if (pending.length > 0) {
+        await act(async () => {
+          await Promise.all(pending)
+        })
+      }
+      mocks.user = originalUser
+    }
+  })
   it("reports a step-up disable failure without clearing the current user", async () => {
     const setSnackbar = vi.fn()
     const openStepUpFor = vi.fn((action: () => Promise<void>) => void action())
