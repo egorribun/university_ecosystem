@@ -7,10 +7,10 @@
 ## Контекст и источник доказательств
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Опубликованный checkpoint — `38e8c6d0268674f0cd975ecce8aeea1525741b06`;
-  16 checkpoints отправлены обычным push после сохранения terminal CI evidence; новые тесты локальные.
+  Опубликованный checkpoint — `78182847d7a8e65f80915cc0a80914e342a7aff8`;
+  ещё шесть checkpoints отправлены обычным push; следующие поведенческие исправления пока локальные.
 - После контрольной точки `2e78ce97d0daccd9d9ea74606ae07974a42ab555`:
-  **139 коммитов, 915 изменённых файлов** на `38e8c6d`. Актуальный `main`
+  **145 коммитов, 920 изменённых файлов** на `78182847`. Актуальный `main`
   `6fa133b57f62c554162876d4e6d8349f8060fce9` входит в историю ветки.
 - Пользователь подтвердил включение [AUDIT_PROMPT.md](AUDIT_PROMPT.md) в Git.
   Исходные bytes сохранены в `cf9f5609`; инструкции шаблона не заменяют поручение пользователя.
@@ -34,8 +34,8 @@
   завершился success на том же SHA. Он подтверждает только перечисленный PR smoke;
   полную продуктовую, визуальную и disaster-recovery приёмку не заменяет.
 - На `38e8c6d`: [Matrix 37263603990](https://github.com/egorribun/university_ecosystem/actions/runs/37263603990)
-  completed/failure: 140 success / 26 skipped / 3 failure; audit checklist false positive воспроизведён UTF-8 hook, исправлен локально.
-  [Live smoke 37263603695](https://github.com/egorribun/university_ecosystem/actions/runs/37263603695) completed/success; scope только PR smoke.
+  completed/failure: 140 success / 26 skipped / 3 failure; один audit false positive исправлен без baseline waiver.
+  На `78182847` [Matrix 37268095391](https://github.com/egorribun/university_ecosystem/actions/runs/37268095391) ещё идёт; security/hooks GREEN, owned live smoke GREEN; полный допуск открыт.
 - На предыдущем `f39d5421341d84dd5e316fe9e88e2b4399758d0e`
   [matrix 37213691132](https://github.com/egorribun/university_ecosystem/actions/runs/37213691132)
   завершён: **367 checks, 216 success / 20 skipped / 131 failure**.
@@ -94,16 +94,16 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - Checkpoints `cf9f5609`–`38e8c6d` опубликованы: документ, MFA export/history,
   cache regression, Bash contract, workers=4, owned-state bridge/LF marker и live diagnostics.
 - Scanner RED сохранён; UUID fix без suppressions; hooks GREEN, bridge `ba8a236b5`.
-- Исправлен экспорт MFA: public DTO не содержит отношения; отдельная проекция
-  возвращает сохранённый count и безопасные enrollment metadata с изоляцией владельца.
-  Root: 26 целевых backend tests passed; это не полный coverage/mutation допуск.
+- MFA export/history: DTO без отношений, безопасная owner-scoped проекция; root 26 passed, полный допуск открыт.
+- SSR auth/admin guards: 4 actual-route RED → 14/14 GREEN, relevant suite 60/60, types/lint и независимое review GREEN; live открыт.
+- Chat scoped-reload 404 RU/EN: 2 RED → GREEN, relevant suite 100/100, Ruff/mypy и local exact-AST RED; canonical credit не выдаётся.
 - Cache: root 25 passed, `shard-026:359` local RED; rateLimit: root 80/static 4/4 GREEN; focused216=212 Killed/2 Survived/2 Timeout, waiter{} Killed, local only.
 - `600e18111` + bounded admin hydration protocol: root live contracts 143/143, CLI 1092/1092 + 5 domain negatives GREEN; replay открыт.
 - `7b8dbbd91`: root 3 lockout/push + 2 MFA + 12 sessions tests/Ruff/hooks GREEN; 42/45 и group56:6 local RED, без canonical credit.
 - `38e8c6d`: root preflight 9/9, hooks/pre-push GREEN; live CLI 1 020 pytest + 8 Node GREEN.
 - `1faa3be4c` test-only password reuse/MFA tombstone: root 45/45 в двух модулях, Ruff/hooks GREEN;
   baseline GREEN / exact generated-AST RED проверены отдельно, canonical credit не выдаётся.
-- Chat reply-preview/search description: root 44/44; RLS identity module 27/27; password-change 19/19 GREEN;
+- Chat reply-preview/search: root 44/44; RLS identity 27/27; password-change 21/21, webpush 59/59 GREEN;
   baseline GREEN / exact generated-AST RED повторены root, canonical statuses не изменены.
 - RSS build guard сохранён: workers=4; три следующих build/up passed;
   max samples 1914,1/1942,1/2010,8 MiB <2048, не continuous peak; root 14 tests passed.
@@ -114,10 +114,10 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
   Повторный защищённый smoke после seed: 18 passed / 2 project-scoped skips, exit 0.
   `status` exit 0: bytes/population generated state до/после совпали; stop/start ещё открыт.
-- Новая owned live-приёмка `38e8c6d`: up exit 0; focused 8 failed, отдельный admin replay 6 failed.
-  Activity indicator/table/page errors повторились; bounded stdout содержит React #418, без test attribution.
-  Owned stop/teardown exit 0; синтетические ресурсы удалены, исходные 175 containers/94 volumes сохранены.
-  Удалены 18 + 9 + 9 owned image tags без force; evidence/configs сохранены private.
+- Owned live `78182847`: up GREEN; admin 6 failed, API 200/valid empty queue, table false/alert true; React #418 на dashboard обоих проектов.
+  Activity 2 failed после reload: URL/radio/geometry прошли, ожидаемый summary response отсутствует; прежняя geometry failure ещё не закрыта.
+  Owned stop/teardown GREEN; 175 containers/94 volumes сохранены, 45 owned image tags удалены без force.
+  Private receipts source-bound: admin `722EBA1A`, Activity `FC88982C`; полный live допуск открыт.
 
 ## Среда и ближайшие действия
 
