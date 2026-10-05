@@ -52,6 +52,27 @@ def _initialize_git_repository(git_executable: str, repository: Path) -> None:
     )
 
 
+def _tracked_frontend_live_files(
+    git_executable: str, *, working_directory: Path
+) -> list[str]:
+    repository_root = subprocess.run(  # noqa: S603 - validated Git executable and fixed argv
+        [git_executable, "rev-parse", "--show-toplevel"],
+        cwd=working_directory,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+    return subprocess.run(  # noqa: S603 - validated Git executable and fixed argv
+        [git_executable, "ls-files", "--", "frontend/tests/e2e-live"],
+        cwd=repository_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.splitlines()
+
+
 def _unb64url(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
@@ -1784,14 +1805,7 @@ def test_live_playwright_emits_only_validated_failure_locations(
 def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
     git_executable: str,
 ) -> None:
-    tracked = subprocess.run(  # noqa: S603 - validated Git executable and fixed argv
-        [git_executable, "ls-files", "--", "frontend/tests/e2e-live"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    ).stdout.splitlines()
+    tracked = _tracked_frontend_live_files(git_executable, working_directory=ROOT)
     tracked_sources = tuple(
         path.removeprefix("frontend/")
         for path in tracked
@@ -1817,6 +1831,33 @@ def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
     )
     assert live_stand._PLAYWRIGHT_FAILURE_SOURCES == expected_sources
     assert live_stand._PLAYWRIGHT_FAILURE_FRAME_SOURCES == expected_frame_sources
+
+
+def test_frontend_live_source_inventory_uses_git_root_from_mutants_copy(
+    git_executable: str, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    mutants_root = repository / "mutants"
+    mutants_root.mkdir(parents=True)
+    tracked_sources = (
+        "frontend/tests/e2e-live/auth-roles.live.spec.ts",
+        "frontend/tests/e2e-live/password-reset.live.spec.ts",
+    )
+    for source in tracked_sources:
+        path = repository / source
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("// isolated tracked fixture\n", encoding="utf-8")
+    _initialize_git_repository(git_executable, repository)
+    subprocess.run(  # noqa: S603 - validated Git executable and fixed argv
+        [git_executable, "add", "--", *tracked_sources],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+
+    assert _tracked_frontend_live_files(
+        git_executable, working_directory=mutants_root
+    ) == list(tracked_sources)
 
 
 def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
