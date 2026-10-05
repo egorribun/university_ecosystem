@@ -7,14 +7,13 @@
 ## Контекст и источник доказательств
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Опубликованный checkpoint — `78182847d7a8e65f80915cc0a80914e342a7aff8`;
-  ещё шесть checkpoints отправлены обычным push; следующие поведенческие исправления пока локальные.
+  Опубликованный checkpoint — `4903a0f04340a42a91a53e4c82e65dae25288d91`;
+  десять новых коммитов отправлены обычным push; remote и PR head совпали, дерево чистое.
 - После контрольной точки `2e78ce97d0daccd9d9ea74606ae07974a42ab555`:
-  **145 коммитов, 920 изменённых файлов** на `78182847`. Актуальный `main`
+  **155 коммитов, 929 изменённых файлов** на `4903a0f04`. Актуальный `main`
   `6fa133b57f62c554162876d4e6d8349f8060fce9` входит в историю ветки.
 - Пользователь подтвердил включение [AUDIT_PROMPT.md](AUDIT_PROMPT.md) в Git.
   Исходные bytes сохранены в `cf9f5609`; инструкции шаблона не заменяют поручение пользователя.
-  Tracked tree до этой сессии был чист.
 - Root координирует три GPT-6 Luna Max: backend, frontend, CI/инфраструктура.
   Владельцы пишут в непересекающиеся файлы; Git-операции выполняет root.
 - Полные исторические receipts, population, ограничения и сравнения сохранены
@@ -35,7 +34,8 @@
   полную продуктовую, визуальную и disaster-recovery приёмку не заменяет.
 - На `38e8c6d`: [Matrix 37263603990](https://github.com/egorribun/university_ecosystem/actions/runs/37263603990)
   completed/failure: 140 success / 26 skipped / 3 failure; один audit false positive исправлен без baseline waiver.
-  На `78182847` [Matrix 37268095391](https://github.com/egorribun/university_ecosystem/actions/runs/37268095391) идёт; security/smoke GREEN, mutmut stats shard 0 RED; полный допуск открыт.
+  На `78182847` [Matrix 37268095391](https://github.com/egorribun/university_ecosystem/actions/runs/37268095391): security/smoke GREEN, mutmut stats shard 0 RED; snapshot сохранён перед supersession.
+  На `4903a0f04` [Matrix 37280637000](https://github.com/egorribun/university_ecosystem/actions/runs/37280637000) pending; Gitleaks GREEN; полный допуск открыт.
 - На предыдущем `f39d5421341d84dd5e316fe9e88e2b4399758d0e`
   [matrix 37213691132](https://github.com/egorribun/university_ecosystem/actions/runs/37213691132)
   завершён: **367 checks, 216 success / 20 skipped / 131 failure**.
@@ -93,7 +93,7 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 
 - Checkpoints `cf9f5609`–`38e8c6d` опубликованы: документ, MFA export/history,
   cache regression, Bash contract, workers=4, owned-state bridge/LF marker и live diagnostics.
-- Scanner RED сохранён; UUID fix без suppressions; hooks GREEN, bridge `ba8a236b5`.
+- `eecaba51e`: mutmut stats inventory учитывает Git root при запуске из mutants; nested RED/GREEN, module 1098/1098, Ruff/hooks GREEN.
 - MFA export/history: DTO без отношений, безопасная owner-scoped проекция; root 26 passed, полный допуск открыт.
 - SSR auth/admin guards: 4 actual-route RED → 14/14 GREEN, relevant suite 60/60, types/lint и независимое review GREEN; live открыт.
 - Chat scoped-reload 404 RU/EN: 2 RED → GREEN, relevant suite 100/100, Ruff/mypy и local exact-AST RED; canonical credit не выдаётся.
@@ -101,14 +101,14 @@ Backend full-map confirmation убила ещё 104 из 880 primary survivors.
 - `600e18111` + bounded admin hydration protocol: root live contracts 143/143, CLI 1092/1092 + 5 domain negatives GREEN; replay открыт.
 - `7b8dbbd91`: root 3 lockout/push + 2 MFA + 12 sessions tests/Ruff/hooks GREEN; 42/45 и group56:6 local RED, без canonical credit.
 - `f9469d40`: root preflight 9/9, live contracts 143/143, types/lint/format/hooks GREEN; backend deletion/MFA epoch-0 modules 32/32, root new cases 3/3.
+- `4903a0f04`: persisted chat/attachment/MFA locale regressions 59/59; Ruff/hooks GREEN; mypy 81→53 без новых diagnostics, старый debt открыт; root preflight 9/9.
 - `1faa3be4c` test-only password reuse/MFA tombstone: root 45/45 в двух модулях, Ruff/hooks GREEN;
   baseline GREEN / exact generated-AST RED проверены отдельно, canonical credit не выдаётся.
 - Chat reply-preview/search: root 44/44; RLS identity 27/27; password-change 21/21, webpush 59/59 GREEN;
   baseline GREEN / exact generated-AST RED повторены root, canonical statuses не изменены.
 - RSS build guard сохранён: workers=4; три следующих build/up passed;
   max samples 1914,1/1942,1/2010,8 MiB <2048, не continuous peak; root 14 tests passed.
-- Owned-state bridge и LF marker прошли Windows RED/GREEN; настоящий signed probe exit 0.
-  Exact 57-spec diagnostics и retained MFA/email-OTP regressions проверены локально.
+  Owned-state bridge/LF marker: Windows RED/GREEN, signed probe exit 0; exact 57-spec diagnostics проверены локально.
   Детальные receipts промежуточных checkpoints сохранены в
   [STATUS на 38e8c6d](https://github.com/egorribun/university_ecosystem/blob/38e8c6d0268674f0cd975ecce8aeea1525741b06/docs/superpowers/plans/STATUS.md).
 - `6f96234f4`: полный live RED — 63 passed / 111 failed / 8 project-scoped skips.
