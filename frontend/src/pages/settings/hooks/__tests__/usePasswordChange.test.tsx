@@ -392,4 +392,22 @@ describe("usePasswordChange", () => {
       expect(mocks.invalidateQueries).not.toHaveBeenCalled()
     }
   )
+  it("does not open step-up for an ordinary server failure", async () => {
+    const error = new AxiosError("server error")
+    error.response = {
+      status: 500,
+      data: { detail: "Server unavailable" },
+    } as AxiosError["response"]
+    mocks.post.mockRejectedValue(error)
+    const openStepUpFor = vi.fn()
+    const { result } = renderPasswordChange(openStepUpFor)
+    setValidPasswords(result)
+
+    await act(async () => {
+      await result.current.handlePasswordSubmit()
+    })
+
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(result.current.passwordError).toBe("Server unavailable")
+  })
 })

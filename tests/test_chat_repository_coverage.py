@@ -527,3 +527,32 @@ async def test_get_message_by_id_roundtrip_and_miss(db_session, user_factory):
     assert found.content == "findme"
 
     assert await repo.get_message_by_id(uuid.uuid4(), user_id=u1.id) is None
+
+
+@pytest.mark.asyncio
+async def test_get_last_message_preserves_postgres_rls_identity(
+    db_session, user_factory, monkeypatch
+):
+    repo, chat, owner, _other = await _make_dm(db_session, user_factory)
+    await _add_message(repo, chat.id, owner.id, "latest visible message")
+
+    dialect = repo.db.get_bind().dialect
+    monkeypatch.setattr(dialect, "name", "postgresql")
+    execute = repo.db.execute
+    observed_identity = None
+
+    async def execute_with_local_rls_setting(statement, *args, **kwargs):
+        nonlocal observed_identity
+        if str(statement).startswith("SELECT set_config('app.current_user_id'"):
+            parameters = args[0] if args else kwargs.get("params", {})
+            observed_identity = parameters.get("uid")
+            return None
+        return await execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(repo.db, "execute", execute_with_local_rls_setting)
+
+    latest = await repo.get_last_message(chat.id, user_id=owner.id)
+
+    assert observed_identity == str(owner.id)
+    assert latest is not None
+    assert latest.content == "latest visible message"
