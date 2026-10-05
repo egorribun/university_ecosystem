@@ -1740,6 +1740,96 @@ def test_live_playwright_emits_only_validated_failure_locations(
     assert completed.stdout == completed.stderr == b""
 
 
+def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
+    git_executable: str,
+) -> None:
+    tracked = subprocess.run(  # noqa: S603 - validated Git executable and fixed argv
+        [git_executable, "ls-files", "--", "frontend/tests/e2e-live"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.splitlines()
+    tracked_sources = tuple(
+        path.removeprefix("frontend/")
+        for path in tracked
+        if path.startswith("frontend/tests/e2e-live/")
+        and path.endswith(".live.spec.ts")
+    )
+    expected_sources = {source: source for source in tracked_sources}
+    expected_sources.update(
+        {source.replace("/", "\\"): source for source in tracked_sources}
+    )
+    expected_frame_sources = {
+        **expected_sources,
+        "tests/e2e-live/fixtures.ts": "tests/e2e-live/fixtures.ts",
+        r"tests\e2e-live\fixtures.ts": "tests/e2e-live/fixtures.ts",
+    }
+
+    assert tracked_sources
+    assert len(live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES) == len(
+        tracked_sources
+    )
+    assert len(set(live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES)) == len(
+        tracked_sources
+    )
+    assert live_stand._PLAYWRIGHT_FAILURE_SOURCES == expected_sources
+    assert live_stand._PLAYWRIGHT_FAILURE_FRAME_SOURCES == expected_frame_sources
+
+
+def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    source_name = "tests/e2e-live/activity-dashboard.live.spec.ts"
+    source_path = tmp_path / source_name
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "// public source\nexport const dashboard = true;\n// source frame\n",
+        encoding="utf-8",
+    )
+    fixture_name = "tests/e2e-live/fixtures.ts"
+    fixture_path = tmp_path / fixture_name
+    fixture_path.write_text(
+        "// public fixture\nexport function fixtureHelper() {}\n",
+        encoding="utf-8",
+    )
+    private_details = "private title and assertion sentinel"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(),
+        1,
+        stdout=(
+            f"  1) [desktop] › {source_name}:2:1 › {private_details}\n"
+            f"\n    Error: {private_details}\n\n"
+            f"        at sourceHelper ({source_path}:3:1)\n"
+            f"        at fixtureHelper ({fixture_path}:2:1)\n"
+            "1 failed\n"
+        ).encode(),
+        stderr=b"",
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command()),
+        "live E2E counts failed=1",
+        "live E2E failure project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=2 kind=declaration",
+        "live E2E failure project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=3 kind=frame",
+        "live E2E failure project=desktop source=tests/e2e-live/fixtures.ts line=2 kind=frame",
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private_details not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
 @pytest.mark.parametrize(
     "frame",
     [
