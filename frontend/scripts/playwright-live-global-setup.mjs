@@ -50,7 +50,18 @@ function processEnvironment(environment) {
   )
 }
 
-function getPrimaryRepositoryRoot(environment) {
+function getInPlaceStateRoot(environment) {
+  const value = environment.LIVE_STAND_STATE_ROOT
+  if (value === undefined) {
+    return undefined
+  }
+  if (typeof value !== "string" || value.trim() === "" || !isAbsolute(value)) {
+    throw new Error("LIVE_STAND_STATE_ROOT must be an absolute in-place state directory")
+  }
+  return resolve(value)
+}
+
+function getPrimaryRepositoryRoot(environment, inPlaceStateRoot) {
   const value = environment.LIVE_PRIMARY_REPOSITORY_ROOT
   if (typeof value !== "string" || !isAbsolute(value)) {
     throw new Error("LIVE_PRIMARY_REPOSITORY_ROOT must be an absolute primary checkout path")
@@ -63,8 +74,14 @@ function getPrimaryRepositoryRoot(environment) {
     process.platform === "win32"
       ? resolve(liveWorktreeRoot).toLowerCase()
       : resolve(liveWorktreeRoot)
-  if (normalizedPrimaryRoot === normalizedWorktreeRoot) {
+  const isFrontendCheckout = normalizedPrimaryRoot === normalizedWorktreeRoot
+  if (inPlaceStateRoot === undefined && isFrontendCheckout) {
     throw new Error("LIVE_PRIMARY_REPOSITORY_ROOT must point to the primary checkout")
+  }
+  if (inPlaceStateRoot !== undefined && !isFrontendCheckout) {
+    throw new Error(
+      "LIVE_PRIMARY_REPOSITORY_ROOT must match the frontend checkout for an in-place stand"
+    )
   }
   return primaryRoot
 }
@@ -77,30 +94,31 @@ export function createLiveStandSetup({
   return async function validateLiveStandEnvironment() {
     const baseUrl = getEndpoint(environment, "LIVE_BASE_URL", "localhost")
     const mailpitUrl = getEndpoint(environment, "LIVE_MAILPIT_URL", "127.0.0.1")
-    const primaryRepositoryRoot = getPrimaryRepositoryRoot(environment)
-    const result = runner(
-      "uv",
-      [
-        "run",
-        "--frozen",
-        "--no-sync",
-        "python",
-        "scripts/live_stand.py",
-        "verify-endpoints",
-        "--base-url",
-        baseUrl,
-        "--mailpit-url",
-        mailpitUrl,
-      ],
-      {
-        cwd: primaryRepositoryRoot,
-        env: processEnvironment(runtimeEnvironment),
-        shell: false,
-        stdio: "ignore",
-        timeout: 30_000,
-        windowsHide: true,
-      }
-    )
+    const inPlaceStateRoot = getInPlaceStateRoot(environment)
+    const primaryRepositoryRoot = getPrimaryRepositoryRoot(environment, inPlaceStateRoot)
+    const verifierArguments = [
+      "run",
+      "--frozen",
+      "--no-sync",
+      "python",
+      "scripts/live_stand.py",
+      "verify-endpoints",
+      "--base-url",
+      baseUrl,
+      "--mailpit-url",
+      mailpitUrl,
+    ]
+    if (inPlaceStateRoot !== undefined) {
+      verifierArguments.push("--in-place", "--state-dir", inPlaceStateRoot)
+    }
+    const result = runner("uv", verifierArguments, {
+      cwd: primaryRepositoryRoot,
+      env: processEnvironment(runtimeEnvironment),
+      shell: false,
+      stdio: "ignore",
+      timeout: 30_000,
+      windowsHide: true,
+    })
 
     if (result.error || result.status !== 0) {
       throw new Error("live stand endpoint ownership verification failed")

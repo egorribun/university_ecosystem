@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { randomUUID } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
@@ -474,6 +475,127 @@ test("live Playwright global setup verifies endpoints against the signed owner m
   )
   assert.equal(Object.hasOwn(options.env, "LIVE_PRIMARY_REPOSITORY_ROOT"), false)
   assert.equal(Object.hasOwn(options.env, "TEST_PASSWORD"), false)
+})
+
+test("live Playwright setup verifies an in-place stand from the primary checkout", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const calls = []
+  const baseUrl = "http://localhost:24123"
+  const mailpitUrl = "http://127.0.0.1:24124"
+  const primaryRepositoryPath = resolve(fileURLToPath(repositoryRoot))
+  const stateRoot = resolve(tmpdir(), "ue-live-stand-contract-state")
+  const envValueA = randomUUID()
+  const envValueB = randomUUID()
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: baseUrl,
+      LIVE_MAILPIT_URL: mailpitUrl,
+      LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
+      LIVE_STAND_STATE_ROOT: stateRoot,
+    },
+    runtimeEnvironment: {
+      PATH: process.env.PATH,
+      HOME: "C:/test/live-setup-home",
+      LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
+      LIVE_STAND_STATE_ROOT: stateRoot,
+      TEST_PASSWORD: envValueA,
+      CHROMATIC_PROJECT_TOKEN: envValueB,
+    },
+    runner: (...args) => {
+      calls.push(args)
+      return { error: null, status: 0 }
+    },
+  })
+
+  await setup()
+
+  assert.equal(calls.length, 1)
+  const [command, args, options] = calls[0]
+  assert.equal(command, "uv")
+  assert.deepEqual(args, [
+    "run",
+    "--frozen",
+    "--no-sync",
+    "python",
+    "scripts/live_stand.py",
+    "verify-endpoints",
+    "--base-url",
+    baseUrl,
+    "--mailpit-url",
+    mailpitUrl,
+    "--in-place",
+    "--state-dir",
+    stateRoot,
+  ])
+  assert.equal(options.cwd, primaryRepositoryPath)
+  assert.equal(options.shell, false)
+  assert.equal(options.stdio, "ignore")
+  assert.deepEqual(options.env, {
+    PATH: process.env.PATH,
+    HOME: "C:/test/live-setup-home",
+  })
+  const serializedCall = JSON.stringify(calls[0])
+  assert.doesNotMatch(
+    serializedCall,
+    /TEST_PASSWORD|CHROMATIC_PROJECT_TOKEN|LIVE_PRIMARY_REPOSITORY_ROOT|LIVE_STAND_STATE_ROOT/u
+  )
+  assert.equal(serializedCall.includes(envValueA), false)
+  assert.equal(serializedCall.includes(envValueB), false)
+  assert.equal(Object.hasOwn(options.env, "LIVE_PRIMARY_REPOSITORY_ROOT"), false)
+  assert.equal(Object.hasOwn(options.env, "LIVE_STAND_STATE_ROOT"), false)
+  assert.equal(Object.hasOwn(options.env, "TEST_PASSWORD"), false)
+  assert.equal(Object.hasOwn(options.env, "CHROMATIC_PROJECT_TOKEN"), false)
+})
+
+test("live Playwright setup rejects blank or relative in-place state roots before spawning", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const spawned = []
+  const primaryRepositoryPath = resolve(fileURLToPath(repositoryRoot))
+  const common = {
+    LIVE_BASE_URL: "http://localhost:24123",
+    LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
+  }
+
+  for (const stateRoot of ["", "   ", "relative/state-root"]) {
+    const setup = createLiveStandSetup({
+      environment: { ...common, LIVE_STAND_STATE_ROOT: stateRoot },
+      runtimeEnvironment: { PATH: process.env.PATH },
+      runner: (...args) => {
+        spawned.push(args)
+        return { error: null, status: 0 }
+      },
+    })
+
+    await assert.rejects(setup(), /LIVE_STAND_STATE_ROOT/u)
+  }
+
+  assert.deepEqual(spawned, [])
+})
+
+test("live Playwright setup rejects an in-place state root with a different primary checkout", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const spawned = []
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+      LIVE_PRIMARY_REPOSITORY_ROOT: resolve(
+        fileURLToPath(repositoryRoot),
+        "..",
+        "other-primary-checkout"
+      ),
+      LIVE_STAND_STATE_ROOT: resolve(tmpdir(), "ue-live-stand-contract-state"),
+    },
+    runtimeEnvironment: { PATH: process.env.PATH },
+    runner: (...args) => {
+      spawned.push(args)
+      return { error: null, status: 0 }
+    },
+  })
+
+  await assert.rejects(setup(), /LIVE_(?:PRIMARY_REPOSITORY_ROOT|STAND_STATE_ROOT)/u)
+  assert.deepEqual(spawned, [])
 })
 
 test("live Playwright setup requires an absolute primary repository path before spawning", async () => {

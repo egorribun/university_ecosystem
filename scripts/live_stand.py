@@ -2915,6 +2915,10 @@ def _e2e_locked(admin_password: str, *, mode: str = "full") -> None:
                     "TEST_PASSWORD": admin_password,
                 }
             )
+            if IN_PLACE_MODE:
+                playwright_environment["LIVE_STAND_STATE_ROOT"] = str(
+                    WORKTREE.resolve(strict=True)
+                )
             _verify_stand_owner_compose_resources(WORKTREE, owner)
             _require_owned_docker_daemon(owner)
             _run_live_playwright(
@@ -2927,6 +2931,7 @@ def _e2e_locked(admin_password: str, *, mode: str = "full") -> None:
             playwright_environment.pop("LIVE_BASE_URL", None)
             playwright_environment.pop("LIVE_MAILPIT_URL", None)
             playwright_environment.pop(LIVE_PRIMARY_REPOSITORY_ROOT_ENV, None)
+            playwright_environment.pop("LIVE_STAND_STATE_ROOT", None)
             playwright_environment.pop("LIVE_E2E_OUTPUT_DIR", None)
             playwright_environment.pop("PLAYWRIGHT_TEST_OUTPUT_DIR", None)
             environment.pop("LIVE_E2E_OUTPUT_DIR", None)

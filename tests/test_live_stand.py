@@ -518,25 +518,38 @@ def test_seed_refuses_ownership_metadata_changed_after_it_was_loaded(
         live_stand._seed_locked("", owner=owner)
 
 
+@pytest.mark.parametrize("in_place_mode", [False, True], ids=["legacy", "in-place"])
 def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
+    in_place_mode: bool,
 ) -> None:
     from contextlib import nullcontext
 
-    worktree = tmp_path / "ue-live"
-    worktree.mkdir()
+    if in_place_mode:
+        monkeypatch.setattr(live_stand.tempfile, "gettempdir", lambda: str(tmp_path))
+        worktree = tmp_path / live_stand.IN_PLACE_STATE_PARENT / "run-e2e-case"
+        worktree.mkdir(parents=True)
+    else:
+        worktree = tmp_path / "ue-live"
+        worktree.mkdir()
     port_map = _port_map()
     owner = live_stand.StandOwner(
         repository=str(ROOT),
         worktree=str(worktree),
         project_name="ue-live-0123456789abcdef",
         published_ports=tuple(port_map.items()),
-        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+        schema_version=(
+            live_stand.IN_PLACE_OWNER_SCHEMA_VERSION
+            if in_place_mode
+            else live_stand.OWNER_SCHEMA_VERSION
+        ),
     )
     runs: list[tuple[list[str], Path, dict[str, str]]] = []
     playwright_runs: list[tuple[Path, dict[str, str], str, bool, bool]] = []
+    playwright_environment_objects: list[dict[str, str]] = []
+    playwright_failures_remaining = 0
     dependency_runs: list[tuple[Path, dict[str, str]]] = []
     owner_marker_paths: list[Path] = []
     event_order: list[str] = []
@@ -563,6 +576,7 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         "NPM_CONFIG_REGISTRY",
     )
     caller_repository_root = "C:/caller-controlled-primary-root"
+    caller_state_root = "C:/caller-controlled-state-root"
     forwarded_secret_values = {
         name: f"caller-sentinel-{index}"
         for index, name in enumerate(forwarded_secret_names)
@@ -596,10 +610,12 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     def capture_playwright(
         *, cwd: Path, environment: dict[str, str], mode: str = "full"
     ) -> None:
+        nonlocal playwright_failures_remaining
         if mode != "full":
             pytest.fail("the default E2E mode must continue to run the full suite")
         print("+", " ".join(live_stand._live_e2e_command(mode=mode)))
         event_order.append("playwright")
+        playwright_environment_objects.append(environment)
         output_directory = environment.get("LIVE_E2E_OUTPUT_DIR", "")
         output_path = Path(output_directory)
         if environment.get("PLAYWRIGHT_TEST_OUTPUT_DIR") != output_directory:
@@ -632,10 +648,15 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
                 configs_are_empty,
             )
         )
+        if playwright_failures_remaining:
+            playwright_failures_remaining -= 1
+            raise live_stand.StandError("synthetic live Playwright failure")
 
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", in_place_mode)
     monkeypatch.setenv("TEST_PASSWORD", ambient_password)
     monkeypatch.setenv("LIVE_PRIMARY_REPOSITORY_ROOT", caller_repository_root)
+    monkeypatch.setenv("LIVE_STAND_STATE_ROOT", caller_state_root)
     for name, value in forwarded_secret_values.items():
         monkeypatch.setenv(name, value)
     for name, value in inherited_npm_config_values.items():
@@ -671,10 +692,14 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     )
     monkeypatch.setattr(live_stand, "_run_live_playwright", capture_playwright)
 
+    e2e_arguments = ["e2e"]
+    if in_place_mode:
+        e2e_arguments.extend(("--in-place", "--state-dir", str(worktree)))
+
     try:
-        if live_stand.main(["e2e"]) != 0:
+        if live_stand.main(e2e_arguments) != 0:
             pytest.fail("the E2E orchestration command should complete successfully")
-        if live_stand.main(["e2e"]) != 0:
+        if live_stand.main(e2e_arguments) != 0:
             pytest.fail("a second E2E run against the preserved stand should succeed")
 
         if (
@@ -703,6 +728,11 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             pytest.fail(
                 "the output ownership marker must be removed with its temp root"
             )
+        if any(
+            "LIVE_STAND_STATE_ROOT" in environment
+            for environment in playwright_environment_objects
+        ):
+            pytest.fail("the in-place state root must be removed after Playwright")
 
         demo_command, _demo_cwd, demo_env = runs[0]
         admin_command, _admin_cwd, admin_env = runs[1]
@@ -759,10 +789,11 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             pytest.fail(
                 "the E2E command must invoke the repository live Playwright script"
             )
-        if e2e_cwd != worktree / "frontend":
-            pytest.fail("Playwright must run from the owned worktree frontend")
-        if dependency_frontend != worktree / "frontend":
-            pytest.fail("dependency bootstrap must use the owned worktree frontend")
+        expected_frontend = (ROOT if in_place_mode else worktree) / "frontend"
+        if e2e_cwd != expected_frontend:
+            pytest.fail("Playwright must run from the selected frontend checkout")
+        if dependency_frontend != expected_frontend:
+            pytest.fail("dependency bootstrap must use the selected frontend checkout")
         if "TEST_PASSWORD" in dependency_environment:
             pytest.fail("npm bootstrap must not receive the generated admin password")
         if any(
@@ -787,6 +818,15 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             )
         if caller_repository_root in e2e_env.values():
             pytest.fail("caller-controlled repository paths must not reach Playwright")
+        if in_place_mode:
+            if e2e_env.get("LIVE_STAND_STATE_ROOT") != str(
+                worktree.resolve(strict=True)
+            ):
+                pytest.fail("in-place Playwright must receive its owned state root")
+        elif (
+            "LIVE_STAND_STATE_ROOT" in e2e_env or caller_state_root in e2e_env.values()
+        ):
+            pytest.fail("legacy Playwright must not receive a caller state root")
         if any(
             key.startswith(("LIVE_VAPID_", "LIVE_HOST_PORT_", "COMPOSE_"))
             for key in e2e_env
@@ -837,6 +877,40 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             pytest.fail("the E2E command must not print the generated password")
         if os.environ.get("TEST_PASSWORD") != ambient_password:
             pytest.fail("the E2E command must not mutate the caller's environment")
+
+        playwright_failures_remaining = 1
+        if live_stand.main(e2e_arguments) != 2:
+            pytest.fail("a Playwright failure must use the stand error exit code")
+        if len(runs) != 9 or len(dependency_runs) != 3 or len(playwright_runs) != 3:
+            pytest.fail("the failure-path E2E run must reach Playwright after seeding")
+        failure_environment = playwright_runs[-1][1]
+        if in_place_mode:
+            if failure_environment.get("LIVE_STAND_STATE_ROOT") != str(
+                worktree.resolve(strict=True)
+            ):
+                pytest.fail("the failing in-place child must receive its owned root")
+        elif (
+            "LIVE_STAND_STATE_ROOT" in failure_environment
+            or caller_state_root in failure_environment.values()
+        ):
+            pytest.fail("the failing legacy child must not receive a caller root")
+        if any(
+            "LIVE_STAND_STATE_ROOT" in environment
+            for environment in playwright_environment_objects
+        ):
+            pytest.fail("the in-place state root must be removed after failure")
+        if any(marker.exists() for marker in owner_marker_paths):
+            pytest.fail("the failing Playwright output marker must be cleaned up")
+        if Path(failure_environment["LIVE_E2E_OUTPUT_DIR"]).exists():
+            pytest.fail("the failing Playwright output directory must be cleaned up")
+        failure_output = capsys.readouterr()
+        if "live_stand: synthetic live Playwright failure" not in failure_output.err:
+            pytest.fail("the failure path must report the expected stand error")
+        if (
+            generated_password in failure_output.out
+            or generated_password in failure_output.err
+        ):
+            pytest.fail("the failure path must not print the generated password")
     finally:
         for _command, _cwd, environment in runs:
             environment.pop("TEST_PASSWORD", None)
