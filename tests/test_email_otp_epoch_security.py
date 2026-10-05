@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, cast
 from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 from uuid import UUID
 
@@ -431,14 +431,18 @@ async def test_unbound_or_noncanonical_challenge_epoch_is_rejected(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("epoch", [None, True, "0", 0.0, -1, 1])
 async def test_issuance_requires_current_canonical_credential_epoch(
-    db_session, test_user, prepared, epoch
-):
+    db_session: AsyncSession,
+    test_user: User,
+    prepared: tuple[EmailOtpService, AuthService, UnitOfWork],
+    epoch: object,
+) -> None:
     service, _, _ = prepared
     with pytest.raises(MfaOtpRejected):
         await service.issue(
             db_session,
             user_id=test_user.id,
-            expected_mfa_epoch=epoch,
+            # Keep malformed values at runtime so service validation is exercised.
+            expected_mfa_epoch=cast(int, epoch),
             flow="login",
             session_identifier=SESSION,
             client_fingerprint=FINGERPRINT,

@@ -203,3 +203,44 @@ async def test_validate_credentials_success_no_new_hash(mock_verify, validator, 
     assert res_user == user
     mocks["user_repo"].update.assert_not_awaited()
     mocks["uow"].commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unknown_account_dummy_argon2_check_uses_submitted_password(
+    validator: CredentialValidator, mocks: dict[str, AsyncMock | MagicMock]
+) -> None:
+    from uuid import uuid4
+
+    from app.auth import security
+
+    attempted = uuid4().hex
+    mocks["lockout_service"].get_active_lockout.return_value = None
+    mocks["profile_service"].get_auth_user_by_email.return_value = None
+    mocks["lockout_service"].register_failed_attempt.return_value = (None, False, 1)
+    mocks["session_manager"].extract_client_info.return_value = (
+        "127.0.0.1",
+        "test-agent",
+    )
+
+    with (
+        patch.object(security, "_dummy_password_hash", None),
+        patch.object(
+            security,
+            "verify_password_sync",
+            wraps=security.verify_password_sync,
+        ) as verify,
+        pytest.raises(HTTPException) as rejected,
+    ):
+        await validator.validate_credentials(
+            "missing@example.invalid",
+            attempted,
+            mocks["request"],
+            "en",
+            mocks["bg_tasks"],
+        )
+
+    assert rejected.value.status_code == 401
+    verify.assert_called_once()
+    verification = verify.call_args
+    assert verification is not None
+    assert verification.args[0] == attempted
