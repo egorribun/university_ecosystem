@@ -516,7 +516,7 @@ jobs:
       - name: Set up Rust (canonical 1.97.1)
         # Same compiler as the WASM producer (reusable-e2e-wasm-build.yml);
         # a floating channel would lint and measure different code paths.
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:
           toolchain: 1.97.1
           components: rustfmt, clippy
@@ -2412,7 +2412,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         if: always() && hashFiles('trivy-results.sarif') != ''
         continue-on-error: true
         with:
@@ -2938,7 +2938,7 @@ jobs:
           python-version: "3.14"
 
       - name: Set up Rust (canonical 1.97.1 + wasm32 target + llvm-tools)
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:
           toolchain: 1.97.1
           targets: wasm32-unknown-unknown
