@@ -77,7 +77,7 @@ test("feature-flag diagnostics remain admin-only and read-only across UI and API
   assert.match(adminRoute, /createFileRoute\("\/_admin\/admin\/feature-flags"\)/u)
   assert.match(
     adminLayout,
-    /beforeLoad:\s*\(\)\s*=>\s*evaluateAdminGuard\(useAuthStore\.getState\(\)\)/u
+    /beforeLoad:\s*\(\{\s*context\s*\}\)\s*=>\s*evaluateAdminGuard\(\s*import\.meta\.env\.SSR\s*\?\s*\{\s*user:\s*context\.auth\.isAuth\s*\?\s*context\.auth\.user\s*:\s*null,\s*loading:\s*context\.auth\.loading,\s*\}\s*:\s*useAuthStore\.getState\(\)\s*\)/u
   )
   assert.match(adminGuard, /return state\.user\.role === "admin" \? null : "\/dashboard"/u)
   assert.match(featureFlagHook, /api\.get<FeatureFlag\[\]>\("\/admin\/feature-flags"/u)

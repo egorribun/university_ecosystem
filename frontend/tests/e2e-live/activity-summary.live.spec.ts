@@ -1,4 +1,4 @@
-import type { Locator } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
 import { reportLiveActivityGeometry } from "./live-ui-diagnostic"
 
@@ -55,6 +55,94 @@ async function expectPeriodIndicatorToMatchRadio(
   }
 }
 
+type ActivitySummaryMetrics = {
+  attendancePercent: number
+  gradeAverage: number
+  gradeScale: "5" | "100"
+  participationEvents: number
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function readRequiredMetric(section: unknown, metricName: string): number | undefined {
+  if (!isRecord(section) || !Object.prototype.hasOwnProperty.call(section, metricName)) {
+    return undefined
+  }
+
+  const value = section[metricName]
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function readActivitySummaryMetrics(payload: unknown): ActivitySummaryMetrics | undefined {
+  if (!isRecord(payload)) return undefined
+  if (
+    !Object.prototype.hasOwnProperty.call(payload, "attendance") ||
+    !Object.prototype.hasOwnProperty.call(payload, "grades") ||
+    !Object.prototype.hasOwnProperty.call(payload, "participation")
+  ) {
+    return undefined
+  }
+
+  const attendance = payload.attendance
+  const grades = payload.grades
+  const participation = payload.participation
+  if (!isRecord(attendance) || !isRecord(grades) || !isRecord(participation)) return undefined
+
+  const attendancePercent = readRequiredMetric(attendance, "percent")
+  const gradeAverage = readRequiredMetric(grades, "average")
+  const participationEvents = readRequiredMetric(participation, "events")
+  const gradeScale = grades.scale
+  if (
+    attendancePercent === undefined ||
+    gradeAverage === undefined ||
+    participationEvents === undefined ||
+    !Number.isInteger(participationEvents) ||
+    participationEvents < 0 ||
+    (gradeScale !== "5" && gradeScale !== "100")
+  ) {
+    return undefined
+  }
+
+  return { attendancePercent, gradeAverage, gradeScale, participationEvents }
+}
+
+async function readActivityRingLabels(page: Page): Promise<Array<string | null>> {
+  const cards = [
+    page.getByRole("group", { name: /Статистика посещаемости|Attendance statistics/u }),
+    page.getByRole("group", { name: /Статистика оценок|Grade statistics/u }),
+    page.getByRole("group", { name: /Статистика участия|Participation statistics/u }),
+  ]
+  return Promise.all(cards.map((card) => card.getByRole("img").getAttribute("aria-label")))
+}
+
+function ringLabelsMatchSummary(
+  labels: Array<string | null>,
+  metrics: ActivitySummaryMetrics
+): boolean {
+  const gradeMax = metrics.gradeScale === "100" ? 100 : 5
+  const attendanceValue = Math.round(metrics.attendancePercent)
+  const gradeValue = metrics.gradeAverage.toFixed(1)
+  const participationValue = String(metrics.participationEvents)
+  const expected = [
+    [`Attendance ring showing ${attendanceValue}%`, `Кольцо посещаемости: ${attendanceValue}%`],
+    [
+      `Grade gauge showing ${gradeValue} out of ${gradeMax}`,
+      `Шкала оценок: ${gradeValue} из ${gradeMax}`,
+    ],
+    [
+      `Participation count showing ${participationValue} events`,
+      `Счётчик участия: ${participationValue} событий`,
+    ],
+  ]
+
+  return (
+    labels.length === expected.length &&
+    labels.every((label, index) => typeof label === "string" && expected[index]?.includes(label))
+  )
+}
+
 test("seeded student can view Activity summaries, change the period, and restore it after reload", async ({
   page,
 }, testInfo) => {
@@ -88,11 +176,13 @@ test("seeded student can view Activity summaries, change the period, and restore
     testInfo.project.name
   )
 
+  const expectedOrigin = new URL(page.url()).origin
   const summaryResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return (
       response.request().method() === "GET" &&
-      url.pathname.endsWith("/api/v1/stats/summary") &&
+      url.origin === expectedOrigin &&
+      url.pathname === "/api/v1/stats/summary" &&
       url.searchParams.get("period") === "30d"
     )
   })
@@ -108,15 +198,19 @@ test("seeded student can view Activity summaries, change the period, and restore
   )
   const summaryResponse = await summaryResponsePromise
   expect(summaryResponse.ok()).toBe(true)
+  const summaryPayload: unknown = await summaryResponse.json()
+  const summaryMetrics = readActivitySummaryMetrics(summaryPayload)
+  expect(
+    summaryMetrics,
+    "successful summary response must include every backend metric"
+  ).toBeDefined()
+  if (!summaryMetrics) throw new Error("successful summary response is missing backend metrics")
 
-  const reloadSummaryResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url())
-    return (
-      response.request().method() === "GET" &&
-      url.pathname.endsWith("/api/v1/stats/summary") &&
-      url.searchParams.get("period") === "30d"
-    )
-  })
+  await expect
+    .poll(async () => ringLabelsMatchSummary(await readActivityRingLabels(page), summaryMetrics))
+    .toBe(true)
+  const labelsBeforeReload = await readActivityRingLabels(page)
+
   await page.reload()
 
   await expect(page).toHaveURL(/(?:\?|&)p=30d(?:&|$)/u)
@@ -126,7 +220,15 @@ test("seeded student can view Activity summaries, change the period, and restore
   await expect(
     reloadedPeriodSelector.getByRole("radio", { name: /30 дней|30 days/u })
   ).toHaveAttribute("aria-checked", "true")
-
-  const reloadSummaryResponse = await reloadSummaryResponsePromise
-  expect(reloadSummaryResponse.ok()).toBe(true)
+  await expect
+    .poll(async () => {
+      const labelsAfterReload = await readActivityRingLabels(page)
+      return (
+        ringLabelsMatchSummary(labelsAfterReload, summaryMetrics) &&
+        labelsAfterReload.every(
+          (label, index) => label !== null && label === labelsBeforeReload[index]
+        )
+      )
+    })
+    .toBe(true)
 })

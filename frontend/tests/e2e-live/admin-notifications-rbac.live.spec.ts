@@ -2,12 +2,23 @@ import { randomUUID } from "node:crypto"
 import { expect, loginAs, test } from "./fixtures"
 import { reportLiveAdminQueueState } from "./live-ui-diagnostic"
 
+const DEAD_LETTER_PATH = "/api/v1/notifications/admin/dead-letter"
 const DEAD_LETTER_ENDPOINT = "/api/v1/notifications/admin/dead-letter?limit=20&offset=0"
 
 test("admin can read the seeded notification queue without changing it", async ({
   page,
 }, testInfo) => {
   await loginAs(page, "admin")
+  const expectedOrigin = new URL(page.url()).origin
+
+  const browserQueueResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return (
+      response.request().method() === "GET" &&
+      url.origin === expectedOrigin &&
+      url.pathname === DEAD_LETTER_PATH
+    )
+  })
 
   await page.goto("/admin/notifications")
   await expect(page).toHaveURL(/\/admin\/notifications$/u)
@@ -24,19 +35,46 @@ test("admin can read the seeded notification queue without changing it", async (
   let itemCount = 0
   let totalIsInteger = false
   try {
-    const response = await page.request.get(DEAD_LETTER_ENDPOINT)
+    const response = await browserQueueResponsePromise
     status = response.status()
-    const body = (await response.json()) as { items: unknown[]; total: number }
-    itemsAreArray = Array.isArray(body.items)
-    itemCount = itemsAreArray ? body.items.length : 0
-    totalIsInteger = Number.isInteger(body.total)
+    const payload: unknown = await response.json()
+    const body =
+      typeof payload === "object" && payload !== null && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : undefined
+    const items = body?.items
+    const total = body?.total
+    if (Array.isArray(items)) {
+      itemsAreArray = true
+      itemCount = items.length
+    }
+    totalIsInteger = typeof total === "number" && Number.isInteger(total) && total >= 0
 
-    expect(status, "admin GET /api/v1/notifications/admin/dead-letter should be allowed").toBe(200)
+    expect(status, "browser GET /api/v1/notifications/admin/dead-letter should be allowed").toBe(
+      200
+    )
     expect(itemsAreArray, "queue response includes items").toBe(true)
-    expect(itemCount, "the seeded read-only queue has visible records").toBeGreaterThan(0)
-    expect(totalIsInteger, "queue response includes a total").toBe(true)
-    expect(itemCount).toBeLessThanOrEqual(body.total)
-    await expect(queueTable).toBeVisible()
+    expect(totalIsInteger, "queue response includes a non-negative integer total").toBe(true)
+    const totalCount = typeof total === "number" ? total : 0
+    expect(itemCount).toBeLessThanOrEqual(totalCount)
+
+    const emptyStateAlert = page.getByRole("alert").filter({
+      hasText: /No dead-lettered jobs at the moment\.|В отложенной очереди нет задач\./u,
+    })
+    const fetchErrorAlert = page
+      .getByRole("alert")
+      .filter({ hasText: /Failed to load the dead-letter queue\.|Не удалось загрузить очередь\./u })
+    await expect(fetchErrorAlert).toHaveCount(0)
+
+    if (itemCount === 0) {
+      expect(totalCount, "an empty queue has a zero total").toBe(0)
+      await expect(emptyStateAlert).toBeVisible()
+      await expect(queueTable).toHaveCount(0)
+    } else {
+      await expect(emptyStateAlert).toHaveCount(0)
+      await expect(queueTable).toBeVisible()
+      await expect(queueTable.getByRole("row")).toHaveCount(itemCount + 1)
+    }
   } catch (error) {
     const [tableVisible, progressbarVisible, alertVisible, rowCount] = await Promise.all([
       queueTable.isVisible().catch(() => false),

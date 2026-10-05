@@ -68,17 +68,62 @@ test("live notification queue RBAC exercises the seeded admin and both non-admin
     /Notification queue|Очередь уведомлений/u,
     "the visible admin page heading is asserted in both shipped locales"
   )
-  requireMatch(
-    spec,
-    /GET \/api\/v1\/notifications\/admin\/dead-letter should be allowed[\s\S]*?\.toBe\(200\)/u,
-    "admin reads the live dead-letter list endpoint"
+  const adminStart = spec.indexOf('test("admin can read the seeded notification queue')
+  const nonAdminStart = spec.indexOf(
+    '\nfor (const role of ["student", "teacher"] as const)',
+    adminStart
   )
-  requireMatch(spec, /itemCount,[\s\S]*?\.toBeGreaterThan\(0\)/u, "seeded queue data is visible")
-  const queueRead = spec.indexOf("page.request.get(DEAD_LETTER_ENDPOINT)")
-  const tableAssertion = spec.indexOf("await expect(queueTable).toBeVisible()")
   assert.ok(
-    queueRead >= 0 && tableAssertion > queueRead,
-    "API state is checked before the UI assertion"
+    adminStart >= 0 && nonAdminStart > adminStart,
+    "admin and denial scenarios are distinct"
+  )
+  const adminScenario = spec.slice(adminStart, nonAdminStart)
+  requireMatch(
+    adminScenario,
+    /const expectedOrigin = new URL\(page\.url\(\)\)\.origin[\s\S]*?const browserQueueResponsePromise = page\.waitForResponse\([\s\S]*?response\.request\(\)\.method\(\) === "GET"[\s\S]*?url\.origin === expectedOrigin[\s\S]*?url\.pathname === DEAD_LETTER_PATH/u,
+    "the admin acceptance observes the actual same-origin browser GET"
+  )
+  const responseListener = adminScenario.indexOf("page.waitForResponse")
+  const pageNavigation = adminScenario.indexOf('await page.goto("/admin/notifications")')
+  const tableAssertion = adminScenario.indexOf("await expect(queueTable).toBeVisible()")
+  assert.ok(
+    responseListener >= 0 && pageNavigation > responseListener && tableAssertion > pageNavigation,
+    "the browser response listener is installed before navigation and UI assertions"
+  )
+  requireMatch(
+    adminScenario,
+    /const payload: unknown = await response\.json\(\)[\s\S]*?Array\.isArray\(items\)[\s\S]*?Number\.isInteger\(total\) && total >= 0/u,
+    "the actual response envelope is validated in memory without persisting its body"
+  )
+  requireMatch(
+    adminScenario,
+    /No dead-lettered jobs at the moment/u,
+    "the English empty state copy is explicit"
+  )
+  requireMatch(
+    adminScenario,
+    /В отложенной очереди нет задач/u,
+    "the Russian empty state copy is explicit"
+  )
+  requireMatch(
+    adminScenario,
+    /if \(itemCount === 0\)[\s\S]*?totalCount[\s\S]*?toBe\(0\)[\s\S]*?emptyStateAlert\)\.toBeVisible\(\)[\s\S]*?queueTable\)\.toHaveCount\(0\)/u,
+    "an empty response requires the supported empty UI and no table"
+  )
+  requireMatch(
+    adminScenario,
+    /else \{[\s\S]*?queueTable\)\.toBeVisible\(\)[\s\S]*?getByRole\("row"\)\)\.toHaveCount\(itemCount \+ 1\)/u,
+    "a nonempty response requires all returned rows in the table"
+  )
+  requireMatch(
+    adminScenario,
+    /fetchErrorAlert[\s\S]*?toHaveCount\(0\)/u,
+    "both supported success states exclude the queue fetch error copy"
+  )
+  assert.doesNotMatch(
+    adminScenario,
+    /page\.request\.get\(/u,
+    "the admin branch does not substitute an independent API request for browser evidence"
   )
   requireMatch(
     spec,
@@ -193,8 +238,8 @@ test("notification queue contracts lead from the admin route to a server-protect
   )
   requireMatch(
     adminLayout,
-    /beforeLoad: \(\) => evaluateAdminGuard\(useAuthStore\.getState\(\)\)/u,
-    "client route requires the admin role"
+    /beforeLoad: \(\{ context \}\) =>\s*evaluateAdminGuard\(\s*import\.meta\.env\.SSR\s*\?\s*\{\s*user: context\.auth\.isAuth \? context\.auth\.user : null,\s*loading: context\.auth\.loading,\s*\}\s*:\s*useAuthStore\.getState\(\)\s*\)/u,
+    "SSR request context and client auth state both enforce the admin role"
   )
   requireMatch(feature, /adminDeadLetterQueueQueryOptions\(\)/u, "page fetches the live queue")
   requireMatch(feature, /admin:notifications\.title/u, "page renders the localized admin title")

@@ -72,7 +72,7 @@ test("admin story management is denied to both non-admin live roles", async () =
   assert.match(adminRoute, /createFileRoute\("\/_admin\/admin\/stories"\)/u)
   assert.match(
     adminLayout,
-    /beforeLoad:\s*\(\)\s*=>\s*evaluateAdminGuard\(useAuthStore\.getState\(\)\)/u
+    /beforeLoad:\s*\(\{\s*context\s*\}\)\s*=>\s*evaluateAdminGuard\(\s*import\.meta\.env\.SSR\s*\?\s*\{\s*user:\s*context\.auth\.isAuth\s*\?\s*context\.auth\.user\s*:\s*null,\s*loading:\s*context\.auth\.loading,\s*\}\s*:\s*useAuthStore\.getState\(\)\s*\)/u
   )
   const routes = storyApi.split(/(?=^@router\.)/mu)
   for (const [routePattern, handler] of [
