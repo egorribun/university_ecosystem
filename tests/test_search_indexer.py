@@ -131,6 +131,16 @@ async def test_index_news_ignores_missing_ids(session, service):
 
 
 @pytest.mark.asyncio
+async def test_index_event_preserves_description_field(session, service, user_factory):
+    event = await _event(session, await user_factory())
+
+    await search_indexer.index_event(event.id)
+
+    _, _, document = service.index_document.await_args.args
+    assert document["description"] == event.description
+
+
+@pytest.mark.asyncio
 async def test_index_event_writes_active_event(session, service, user_factory):
     event = await _event(session, await user_factory())
 

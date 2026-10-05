@@ -492,6 +492,30 @@ async def test_get_chat_type_none_for_missing_chat(db_session):
 
 
 @pytest.mark.asyncio
+async def test_get_message_by_id_loads_reply_preview(db_session, user_factory):
+    repo, chat, original_author, reply_author = await _make_dm(db_session, user_factory)
+    original = await _add_message(repo, chat.id, original_author.id, "quoted content")
+    reply = Message(
+        chat_id=chat.id,
+        sender_id=reply_author.id,
+        content="reply",
+        reply_to_message_id=original.id,
+        created_at=_NOW + timedelta(seconds=1),
+    )
+    db_session.add(reply)
+    await db_session.flush()
+
+    found = await repo.get_message_by_id(
+        reply.id, user_id=reply_author.id, chat_id=chat.id
+    )
+
+    assert found is not None
+    assert found.replied_to is not None
+    assert found.replied_to.id == original.id
+    assert found.replied_to.content == "quoted content"
+
+
+@pytest.mark.asyncio
 async def test_get_message_by_id_roundtrip_and_miss(db_session, user_factory):
     import uuid
 
