@@ -556,3 +556,62 @@ async def test_get_last_message_preserves_postgres_rls_identity(
     assert observed_identity == str(owner.id)
     assert latest is not None
     assert latest.content == "latest visible message"
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_message_rejects_non_author_in_same_chat(
+    db_session, user_factory
+):
+    repo, chat, author, requester = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "author-owned content")
+    message_id = message.id
+
+    assert await repo.check_participant(chat.id, requester.id) is True
+    deleted_at, affected = await repo.soft_delete_message(
+        message_id, requester.id, chat_id=chat.id
+    )
+
+    assert affected == 0
+    assert deleted_at is None
+    await db_session.flush()
+    persisted = (
+        (
+            await db_session.execute(
+                select(Message.__table__).where(Message.id == message_id)
+            )
+        )
+        .mappings()
+        .one()
+    )
+    assert persisted["content"] == "author-owned content"
+    assert persisted["deleted_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_message_rejects_unknown_message_id(db_session, user_factory):
+    import uuid
+
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "requested message")
+    message_id = message.id
+    unknown_id = uuid.uuid4()
+    assert unknown_id != message_id
+
+    deleted_at, affected = await repo.soft_delete_message(
+        unknown_id, author.id, chat_id=chat.id
+    )
+
+    assert affected == 0
+    assert deleted_at is None
+    await db_session.flush()
+    persisted = (
+        (
+            await db_session.execute(
+                select(Message.__table__).where(Message.id == message_id)
+            )
+        )
+        .mappings()
+        .one()
+    )
+    assert persisted["content"] == "requested message"
+    assert persisted["deleted_at"] is None

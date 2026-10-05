@@ -115,3 +115,60 @@ async def test_email_verification_start_commits_bound_challenge_delivery_and_out
         ("issue", f"user:{user_id}"),
         ("issue", "ip:203.0.113.10"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_email_verification_start_persists_zero_mfa_epoch(
+    db_session, user_factory
+) -> None:
+    import secrets
+
+    user = await user_factory(mfa_epoch=0)
+    user_id = user.id
+    session = ActiveSession(
+        user_id=user_id,
+        jti=str(uuid4()),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    db_session.add(session)
+    await db_session.flush()
+    session_id = str(session.id)
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/mfa/email/verification/start",
+            "query_string": b"",
+            "headers": [
+                (b"user-agent", b"mfa-zero-epoch-test"),
+                (b"accept-language", b"en"),
+            ],
+            "client": ("203.0.113.10", 12345),
+        }
+    )
+    request.state.active_session = session
+    service = EmailOtpService(
+        hmac_keys={"active": secrets.token_bytes(32)},
+        active_hmac_key_id="active",
+        delivery_keks={"active": secrets.token_bytes(32)},
+        active_kek_id="active",
+        rate_limiter=RecordingLimiter(),
+    )
+    login_service = SimpleNamespace(get_email_otp_service=lambda: service)
+
+    response = await mfa_api.start_email_verification.__dishka_orig_func__(
+        request=request, db=db_session, login_service=login_service, user=user
+    )
+
+    async with database.async_session() as reader:
+        challenge = (
+            await reader.execute(
+                select(MfaChallenge).where(MfaChallenge.user_id == user_id)
+            )
+        ).scalar_one()
+        assert challenge.flow == "email_verification"
+        assert challenge.session_identifier == session_id
+        assert challenge.payload == {"mfa_epoch": 0}
+        assert challenge.state == ChallengeState.PENDING
+    assert response.method == "email_otp"
+    assert response.challenge_token
