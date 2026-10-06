@@ -12,6 +12,7 @@ import json
 import sys
 import uuid
 from datetime import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -272,25 +273,79 @@ class TestSendWebPush:
             "data": {},
         }
 
-    def test_send_success_without_transport_still_returns_sent(
+    def test_send_uses_dns_pinned_adapter_for_provider_request(
         self, mock_pywebpush, monkeypatch
-    ):
-        """The cleanup guard also covers a transport factory returning None."""
+    ) -> None:
+        """Provider I/O uses the just-validated IP without default DNS transport."""
         import app.services.webpush as webpush_module
 
+        endpoint = "https://push.example.test/endpoint"
+        pinned_ip = "93.184.216.37"
+        observed: list[
+            tuple[
+                type[requests.adapters.HTTPAdapter], str | None, str | None, bool, bool
+            ]
+        ] = []
+
+        def capture_send(
+            session: requests.Session,
+            request: requests.PreparedRequest,
+            **kwargs: Any,
+        ) -> requests.Response:
+            adapter = session.get_adapter(request.url or "")
+            if isinstance(adapter, webpush_module._PinnedHTTPSAdapter):
+                host_params, pool_kwargs = adapter.build_connection_pool_key_attributes(
+                    request, verify=kwargs.get("verify", True)
+                )
+                socket_host = str(host_params["host"])
+                tls_hostname = str(pool_kwargs.get("server_hostname"))
+            else:
+                socket_host = None
+                tls_hostname = None
+            observed.append(
+                (
+                    type(adapter),
+                    socket_host,
+                    tls_hostname,
+                    bool(session.trust_env),
+                    bool(kwargs.get("allow_redirects", True)),
+                )
+            )
+            response = requests.Response()
+            response.status_code = 201
+            response.url = request.url
+            response._content = b""
+            return response
+
+        monkeypatch.setattr(requests.Session, "send", capture_send)
         monkeypatch.setattr(
             webpush_module,
             "validate_and_resolve",
-            lambda _: [("93.184.216.34", 443)],
-        )
-        monkeypatch.setattr(
-            webpush_module, "_create_pinned_webpush_session", lambda *_args: None
+            lambda _: [(pinned_ip, 443)],
         )
 
-        result = send_web_push(self._make_sub(), {"title": "Hello"})
+        def dispatch_like_provider(**kwargs: Any) -> requests.Response:
+            transport = kwargs["requests_session"]
+            dispatcher = requests if transport is None else transport
+            return dispatcher.post(
+                kwargs["subscription_info"]["endpoint"],
+                data=b"fixture-payload",
+                timeout=kwargs["timeout"],
+            )
+
+        mock_pywebpush.side_effect = dispatch_like_provider
+        result = send_web_push(self._make_sub(endpoint), {"title": "Pinned"})
 
         assert result.status == "sent"
-        assert mock_pywebpush.call_args.kwargs["requests_session"] is None
+        assert observed == [
+            (
+                webpush_module._PinnedHTTPSAdapter,
+                pinned_ip,
+                "push.example.test",
+                False,
+                False,
+            )
+        ]
 
     def test_pinned_session_disables_redirects(self):
         """A provider redirect must be returned, never followed."""

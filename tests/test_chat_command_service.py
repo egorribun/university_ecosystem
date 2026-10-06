@@ -1014,3 +1014,81 @@ class TestGroupMemberManagement:
 
         uow.chats.rename_chat.assert_awaited_once_with(chat.id, "Renamed Group")
         uow.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_remove_participant_refreshes_other_members_cached_presence_audience(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from collections import OrderedDict
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
+    from app.api.ws import presence
+    from app.deps.cache import MemoryCache
+
+    owner = _mock_user()
+    removed = _mock_user()
+    observer = _mock_user()
+    chat = _mock_chat(
+        owner.id, removed.id, observer.id, chat_type="group", created_by=owner.id
+    )
+    cache = MemoryCache(default_ttl=120)
+    monkeypatch.setattr(presence, "get_cache", lambda: cache)
+    # A second API worker shares the cache backend but has an independent local L1.
+    monkeypatch.setattr(presence, "_PRESENCE_DB_CACHE", OrderedDict())
+
+    current_audiences = {
+        owner.id: {removed.id, observer.id},
+        removed.id: {owner.id, observer.id},
+        observer.id: {owner.id, removed.id},
+    }
+
+    class AudienceRepository:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        async def get_presence_audience(self, user_id: uuid.UUID) -> set[uuid.UUID]:
+            return current_audiences[user_id]
+
+    @asynccontextmanager
+    async def open_session() -> AsyncIterator[object]:
+        yield object()
+
+    monkeypatch.setattr(presence, "ChatRepository", AudienceRepository)
+    monkeypatch.setattr(presence, "async_session", open_session)
+
+    for user_id, audience in current_audiences.items():
+        assert await presence._get_presence_audience(user_id) == audience
+
+    uow = MagicMock()
+    uow.chats = MagicMock()
+    uow.session = AsyncMock()
+    uow.commit = AsyncMock()
+    uow.rollback = AsyncMock()
+    uow.__aenter__ = AsyncMock(return_value=uow)
+    uow.__aexit__ = AsyncMock(return_value=False)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.remove_participant = AsyncMock(return_value=1)
+    service = ChatMaintenanceService(uow, MagicMock())
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", AsyncMock()
+    )
+
+    await service.remove_participant(chat.id, owner, removed.id, "en")
+
+    # Removing a member changes the audience cached for every pre-change member.
+    # Drop only this worker's L1 entries to observe the shared-cache contract as
+    # another worker would after the database commit.
+    current_audiences = {
+        owner.id: {observer.id},
+        removed.id: {owner.id, observer.id},
+        observer.id: {owner.id},
+    }
+    presence._PRESENCE_DB_CACHE.clear()
+    owner_audience = await presence._get_presence_audience(owner.id)
+    if owner_audience != {observer.id}:
+        raise AssertionError("remaining_member_audience_refresh_contract")
+    observer_audience = await presence._get_presence_audience(observer.id)
+    if observer_audience != {owner.id}:
+        raise AssertionError("remaining_member_audience_refresh_contract")

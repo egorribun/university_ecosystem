@@ -648,3 +648,19 @@ def test_verify_integrity_accepts_rotated_legacy_signature_on_rust_fast_path() -
         assert service.verify_integrity(log) is True
 
     rust.verify_audit_signature.assert_called_once()
+
+
+def test_secure_audit_verify_integrity_accepts_legacy_signature_in_python_fallback() -> (
+    None
+):
+    service = SecureAuditService(signing_keys=[b"old", b"new"])
+    log = _audit_log_stub()
+    log.signature = service._compute_legacy_signature(log, key=b"new")
+    rust = MagicMock()
+    rust.verify_audit_signature.side_effect = RuntimeError("ffi unavailable")
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert service.verify_integrity(log) is True
+
+    assert service.signature_covers_metadata(log) is False
+    rust.verify_audit_signature.assert_called_once()

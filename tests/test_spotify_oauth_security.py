@@ -170,6 +170,42 @@ async def test_oauth_nonce_must_be_present_and_match_bound_identity(stored_ident
     assert error.value.status_code == 400
 
 
+@pytest.mark.asyncio
+async def test_wrong_stored_oauth_binding_has_generic_localized_error_without_exchange() -> (
+    None
+):
+    user = SimpleNamespace(id=uuid4(), preferred_locale="ru")
+    request = _request(uuid4())
+    state_url = await spotify.spotify_auth_url(request=request, user=user)
+    state = parse_qs(urlsplit(state_url["url"]).query)["state"][0]
+    payload = spotify.jwt.decode(
+        state,
+        spotify.settings.spotify_oauth_state_secret,
+        algorithms=["HS256"],
+    )
+    nonce_key = f"oauth:spotify:{payload['jti']}"
+    client = await spotify.get_revocation_redis_client()
+    await client.set(nonce_key, f"{uuid4()}:{uuid4()}", ex=600)
+
+    with patch.object(spotify._spotify_http_client, "post", AsyncMock()) as exchange:
+        with pytest.raises(HTTPException) as error:
+            await spotify.spotify_callback.__dishka_orig_func__(
+                request,
+                AsyncMock(),
+                code="code",
+                state=state,
+                user=user,
+            )
+
+    locale = spotify.resolve_locale(request=request, user=user)
+    assert error.value.status_code == 400
+    assert error.value.detail == spotify.translate(
+        "errors.spotify.invalid_state", locale=locale
+    )
+    assert await client.get(nonce_key) is None
+    exchange.assert_not_awaited()
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_spotify_callback_requires_app_authentication(async_client):
     with patch.object(spotify._spotify_http_client, "post", AsyncMock()) as exchange:
