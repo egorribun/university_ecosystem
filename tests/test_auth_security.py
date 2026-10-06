@@ -1,4 +1,7 @@
+import sys
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -17,6 +20,32 @@ from app.auth.security import (
     verify_password,
 )
 from app.core.config import settings
+
+_MISSING_PACKAGE_SECURITY = object()
+
+
+@contextmanager
+def _fresh_security_module() -> Iterator[None]:
+    """Restore both import registries after isolated security-module imports."""
+    package = sys.modules["app.auth"]
+    module_name = "app.auth.security"
+    original_module_present = module_name in sys.modules
+    original_module = sys.modules.get(module_name)
+    original_package_attribute = package.__dict__.get(
+        "security", _MISSING_PACKAGE_SECURITY
+    )
+    sys.modules.pop(module_name, None)
+    try:
+        yield
+    finally:
+        if original_module_present:
+            sys.modules[module_name] = original_module
+        else:
+            sys.modules.pop(module_name, None)
+        if original_package_attribute is _MISSING_PACKAGE_SECURITY:
+            package.__dict__.pop("security", None)
+        else:
+            package.__dict__["security"] = original_package_attribute
 
 
 def _rsa_private_pem() -> str:
@@ -367,33 +396,21 @@ async def test_admin_update_normalizes_email(async_client, user_factory, db_sess
 
 def test_container_cpu_count_with_sched_getaffinity():
     """Verify _container_cpu_count handles sched_getaffinity correctly when present."""
-    import sys
     from unittest.mock import MagicMock, patch
 
-    orig = sys.modules.get("app.auth.security")
-    try:
-        if "app.auth.security" in sys.modules:
-            del sys.modules["app.auth.security"]
-
+    with _fresh_security_module():
         mock_sched = MagicMock(return_value=[1, 2, 3])
         with patch("os.sched_getaffinity", mock_sched, create=True):
             import app.auth.security as sec
 
             assert sec._AUTH_EXECUTOR_WORKERS >= 2
-    finally:
-        if orig is not None:
-            sys.modules["app.auth.security"] = orig
 
 
 def test_container_cpu_count_with_cgroups_v1():
     """Verify _container_cpu_count parses cpu.cfs_quota_us/cfs_period_us properly."""
-    import sys
     from unittest.mock import mock_open, patch
 
-    orig = sys.modules.get("app.auth.security")
-    try:
-        if "app.auth.security" in sys.modules:
-            del sys.modules["app.auth.security"]
+    with _fresh_security_module():
 
         def mock_open_side_effect(path, *args, **kwargs):
             if "cpu.cfs_quota_us" in str(path):
@@ -413,20 +430,13 @@ def test_container_cpu_count_with_cgroups_v1():
             # quota // period = 8 // 2 = 4
             # Since _AUTH_EXECUTOR_WORKERS is set to max(2, _container_cpu_count()), it will be at least 4
             assert sec._AUTH_EXECUTOR_WORKERS >= 4
-    finally:
-        if orig is not None:
-            sys.modules["app.auth.security"] = orig
 
 
 def test_container_cpu_count_cgroups_v1_capped():
     """Verify _container_cpu_count caps the quota-based CPU count to 32."""
-    import sys
     from unittest.mock import mock_open, patch
 
-    orig = sys.modules.get("app.auth.security")
-    try:
-        if "app.auth.security" in sys.modules:
-            del sys.modules["app.auth.security"]
+    with _fresh_security_module():
 
         def mock_open_side_effect(path, *args, **kwargs):
             if "cpu.cfs_quota_us" in str(path):
@@ -445,6 +455,3 @@ def test_container_cpu_count_cgroups_v1_capped():
 
             # 100 // 2 = 50, capped at 32
             assert sec._AUTH_EXECUTOR_WORKERS <= 32
-    finally:
-        if orig is not None:
-            sys.modules["app.auth.security"] = orig

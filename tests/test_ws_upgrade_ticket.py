@@ -15,8 +15,12 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.ws import auth
 from app.api.ws.ticket import TICKET_KEY_PREFIX, WsTicketResponse
+from app.models.auth import ActiveSession
+from app.models.users import User
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -447,3 +451,92 @@ class TestWsAuthenticatorTicketPath:
         assert user is None, (
             "Sec-WebSocket-Protocol JWT must be ignored after RZ-W14-01 fix"
         )
+
+
+@pytest.mark.asyncio
+async def test_empty_jti_ticket_is_rejected_even_with_matching_stored_session(
+    test_user: User,
+    db_session: AsyncSession,
+) -> None:
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    db_session.add(
+        ActiveSession(
+            user_id=test_user.id,
+            jti="",
+            expires_at=expires_at,
+            mfa_epoch=0,
+        )
+    )
+    await db_session.commit()
+
+    ticket = "c" * 64
+    payload = f"{test_user.id}::{int(expires_at.timestamp())}"
+    cache = AsyncMock()
+    cache.getdel = AsyncMock(return_value=payload)
+    revocation_cache = AsyncMock()
+    revocation_cache.exists = AsyncMock(return_value=0)
+
+    with (
+        patch("app.deps.cache.get_cache_client", new=AsyncMock(return_value=cache)),
+        patch.object(
+            auth,
+            "get_revocation_redis_client",
+            new=AsyncMock(return_value=revocation_cache),
+        ),
+    ):
+        result = await auth.get_user_from_ticket(ticket)
+
+    if result != (None, None):
+        raise AssertionError("empty_jti_ticket_rejection_contract")
+    cache.getdel.assert_awaited_once_with(f"{TICKET_KEY_PREFIX}{ticket}")
+
+
+@pytest.mark.asyncio
+async def test_signed_int64_max_expiry_boundary_is_enforced(
+    test_user: User,
+    db_session: AsyncSession,
+) -> None:
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    jti = str(uuid.uuid4())
+    db_session.add(
+        ActiveSession(
+            user_id=test_user.id,
+            jti=jti,
+            expires_at=expires_at,
+            mfa_epoch=0,
+        )
+    )
+    await db_session.commit()
+
+    maximum = 2**63 - 1
+    ticket = "d" * 64
+    overflow_ticket = "e" * 64
+    cache = AsyncMock()
+    cache.getdel = AsyncMock(
+        side_effect=[
+            f"{test_user.id}:{jti}:{maximum}",
+            f"{test_user.id}:{jti}:{maximum + 1}",
+        ]
+    )
+    revocation_cache = AsyncMock()
+    revocation_cache.exists = AsyncMock(return_value=0)
+
+    with (
+        patch("app.deps.cache.get_cache_client", new=AsyncMock(return_value=cache)),
+        patch.object(
+            auth,
+            "get_revocation_redis_client",
+            new=AsyncMock(return_value=revocation_cache),
+        ),
+    ):
+        maximum_result = await auth.get_user_from_ticket(ticket)
+        overflow_result = await auth.get_user_from_ticket(overflow_ticket)
+
+    if (
+        maximum_result[0] is None
+        or maximum_result[0].id != test_user.id
+        or maximum_result[1] != jti
+    ):
+        raise AssertionError("signed_int64_max_expiry_acceptance_contract")
+    if overflow_result != (None, None):
+        raise AssertionError("signed_int64_expiry_overflow_rejection_contract")

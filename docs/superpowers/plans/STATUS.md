@@ -7,9 +7,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Последний проверенный source: `76cd4026dbe241f9a57b7f98488f54856f6b37d9`;
-  tree `17e06f9eb374ffe90950830540e8240155158b96`.
-  Следующий checkpoint добавляет шесть test-only regressions; новое CI ещё нужно.
+  База текущего checkpoint: `7fe9b621af3091ad88701c08c0f6441deecf8c26`;
+  tree `61ede2e86b3ed6904333b803c6d56f7e1e1d120f`.
+  Этот checkpoint исправляет test isolation и добавляет WS parser regressions.
 - Root — единственный tracked writer, владелец Git и runtime. Три GPT-6 Luna Max
   готовят приватные пакеты; root проверяет код, происхождение и результаты.
 - В source интегрированы SmartImage fallback, audit/news event regressions,
@@ -23,13 +23,19 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 ## Hosted CI и мутации
 
+- [Matrix 37434709908](https://github.com/egorribun/university_ecosystem/actions/runs/37434709908)
+  на `7fe9…` завершён: 137 checks passed, 30 skipped; backend unit shard1 и
+  зависимый CI Success failed. Shard1: 3864 passed, 24 skipped, один failure.
+  Root воспроизвёл порядок CPU-import test → dummy Argon2 test: RED 1/2.
+  Исправление восстанавливает и sys.modules, и parent package attribute;
+  исходная Argon2 assertion сохранена. Ordered GREEN 4/4; affected modules 25/25.
 - [Matrix 37403597748](https://github.com/egorribun/university_ecosystem/actions/runs/37403597748),
   attempt1: source `76cd…`, PR producer `40b5a90e312d0bfc318665078ca833b704c03290`.
   Родители и совпадение tree проверены root. Coverage Policy, Node audit
   и Performance Gate — success. Снимок 08:05 UTC: 312 jobs,
   62/64 frontend mutation jobs success, два active, queued нет;
   127 failures относятся к backend mutmut, немутационных failures нет.
-  Это исторический неполный снимок, полного зелёного Matrix нет.
+  Run отменён после push; это исторический неполный снимок, полного зелёного Matrix нет.
 - Root проверил quality manifest: valid, missing/errors отсутствуют;
   все применимые метрики 100%. Frontend statements 19228/19228,
   branches 13785/13785, functions 4583/4583, lines 17190/17190;
@@ -51,12 +57,20 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Независимое review потребовало сохранить прежний transport-None сценарий
   отдельно от DNS-pinning regression; он восстановлен, Web Push module 60/60 PASS.
   До нового canonical producer mutation credit не присваивается.
+- WS ticket parser: добавлены persisted-session regressions для пустого JTI
+  и signed-int64 expiry boundary. Root baseline 2/2, exact controls 36/83/88
+  завершаются ожидаемыми call-phase AssertionError. Это локальная обратная связь,
+  score credit требует нового canonical execution.
 - PG `UserRepository.get` mutant9 — shard37. Regular mutation selector исключает
-  integration. Private supplemental Linux PG lane V4: root offline29/29,
-  actual installed SQLAlchemy/asyncpg translation и JUnit boundary проверены.
+  integration. V4 actual input guards выявили ошибочный digest и неверную форму
+  stats envelope. Отдельный V5 исправляет их и связывает execution source `7fe9…`
+  с canonical mutation artifact `76cd…`; root offline36/36 + 36 subtests PASS.
+  SQLAlchemy/asyncpg translation и JUnit boundary проверены.
   PostgreSQL/native runtime ещё не выполнен; regular/global score не изменены.
 - Private reusable full-backend workflow готовится для source-bound полного
   execution. Default incremental manual mode и main-only nightly сохраняются.
+  V3 offline13/13; integration ждёт canonical actionlint без schema ignores
+  и существующие workflow contracts после extraction.
 
 ## Live-приёмка
 
@@ -64,6 +78,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   один non-admin page-exception failure, два intentional cross-project skips.
   Root warm denial student/teacher × desktop/mobile: 4/4, workers1/retries0,
   page errors0. Исходная cold ошибка остаётся открытой.
+- Cold auth-role diagnostics: root private Python809/809 и Node16/16 PASS;
+  corrected V7 provenance pins проверены. Пакет ещё не integrated/live-tested.
 - Avatar diagnostics опровергли naturalWidth oracle: density-corrected 1×1
   может иметь natural dimensions0 при успешном IMG.decode(). Negative control
   проверен. Resource oracle строгий: origin/path/hash/query сохраняются,
@@ -88,7 +104,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Paired snapshot создан. Executor failed на `source_snapshot_gate`,
   `runner_step_failed`; restore_started_at_utc отсутствует, target restore
   не начат. Read-only gate diagnostic: `source_snapshot_gate_failed`;
-  точная причина ещё устанавливается. Ledger помечен failed, RPO/RTO не подтверждены.
+  Read-only V4 probe: `BackupArtifactError`, outer `manifest_s3_read`.
+  Внутренняя причина ещё устанавливается: старые classifier line ranges
+  не соответствуют pinned helper. Ledger failed, RPO/RTO не подтверждены.
 - Исходные 27 остановленных containers возобновлены; три health-probe потребовали
   отдельного запуска после namespace dependencies. Protected receipts сохраняют
   частичную ошибку и reconciliation. Root health: 29 running, health PASS,
@@ -102,8 +120,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 ## Следующие результаты
 
-- Проверить и отправить текущие test-only regressions; получить новый canonical
-  evidence. Завершить source snapshot gate RCA и пересмотреть DR chain.
+- Отправить проверенный test-isolation/WS checkpoint; получить новый canonical
+  evidence. Завершить bounded source snapshot gate RCA и пересмотреть DR chain.
 - Завершить mobile no-POST диагностику, native PG mutation lane и полный backend
   execution route. Блоки4/5: live traceability ТЗ, RU/EN, light/dark, responsive,
   SSR/PWA, performance и пользовательское visual approval остаются открыты.
