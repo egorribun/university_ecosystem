@@ -127,6 +127,28 @@ const expectImageDecoded = async (image: Locator, description: string): Promise<
   ).toBe(true)
 }
 
+const expectAvatarSourceMatchesProfile = async (
+  page: Page,
+  image: Locator,
+  profileAvatarUrl: string | null
+): Promise<void> => {
+  const mediaOrigin = process.env.VITE_BACKEND_ORIGIN ?? ""
+  const resolvedProfileUrl = resolveMediaUrl(profileAvatarUrl ?? undefined, mediaOrigin)
+  const expectedRenderedSrc = addVersionParam(
+    resolveProxyImageUrl(resolvedProfileUrl, undefined, mediaOrigin),
+    "saved-profile"
+  )
+  await expect
+    .poll(async () =>
+      renderedAvatarResourceMatches(
+        expectedRenderedSrc,
+        await image.getAttribute("src"),
+        page.url()
+      )
+    )
+    .toBe(true)
+}
+
 const expectSavedAvatarSourceReady = async (
   page: Page,
   image: Locator,
@@ -137,19 +159,7 @@ const expectSavedAvatarSourceReady = async (
     .getByRole("tabpanel")
     .getByRole("button", { name: /Сменить|Change/u })
   await expect(changeAvatarButton).toBeEnabled()
-
-  const baseUrl = page.url()
-  const mediaOrigin = process.env.VITE_BACKEND_ORIGIN ?? ""
-  const resolvedProfileUrl = resolveMediaUrl(profileAvatarUrl ?? undefined, mediaOrigin)
-  const expectedRenderedSrc = addVersionParam(
-    resolveProxyImageUrl(resolvedProfileUrl, undefined, mediaOrigin),
-    "saved-profile"
-  )
-  const actualRenderedSrc = await image.getAttribute("src")
-  expect(
-    renderedAvatarResourceMatches(expectedRenderedSrc, actualRenderedSrc, baseUrl),
-    "the rendered avatar resolves to the saved profile resource under the configured backend origin"
-  ).toBe(true)
+  await expectAvatarSourceMatchesProfile(page, image, profileAvatarUrl)
 }
 test("avatar upload persists across reload and rolls back server-rejected content", async ({
   page,
@@ -245,6 +255,7 @@ test("avatar upload persists across reload and rolls back server-rejected conten
     const reloadedAvatar = page.getByRole("tabpanel").getByRole("img", { name: fullName })
     await expect(reloadedAvatar).toBeVisible()
     await expect(reloadedAvatar).not.toHaveAttribute("src", /gravatar\.com/u)
+    await expectAvatarSourceMatchesProfile(page, reloadedAvatar, reloadedProfile.avatar_url)
     await expectImageDecoded(
       reloadedAvatar,
       "the persisted avatar decodes on its existing image element after reload"

@@ -101,10 +101,16 @@ jobs:
           PR_CANDIDATE_SHA: ${{ github.sha }}
           PR_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER_VALUE: ${{ github.event.pull_request.number }}
+          PR_HEAD_REPOSITORY_VALUE: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_REF_VALUE: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF_VALUE: ${{ github.event.pull_request.base.ref }}
+          REPOSITORY_NAME_VALUE: ${{ github.repository }}
           PUSH_BASE_SHA: ${{ github.event.before }}
           PUSH_CANDIDATE_SHA: ${{ github.sha }}
           PUSH_SOURCE_HEAD_SHA: ${{ github.sha }}
           PUSH_BASE_REF: ${{ github.ref_name }}
+          PUSH_REF_VALUE: ${{ github.ref }}
         run: |
           set -euo pipefail
 
@@ -233,16 +239,47 @@ jobs:
             exit 2
           fi
 
+          CAPTURE_HELPER_SELECTOR="$GITHUB_WORKSPACE/scripts/quality/benchmark_capture_activation.py"
+          if ! test -f "$CAPTURE_HELPER_SELECTOR"; then
+            echo "Capture helper selector is absent" >&2
+            exit 2
+          fi
+          CAPTURE_HELPER="$(
+            EVENT_NAME="$EVENT_NAME" \
+            REPOSITORY_NAME="$REPOSITORY_NAME_VALUE" \
+            PR_NUMBER="$PR_NUMBER_VALUE" \
+            PR_HEAD_REPOSITORY="$PR_HEAD_REPOSITORY_VALUE" \
+            PR_HEAD_REF="$PR_HEAD_REF_VALUE" \
+            PR_BASE_REF="$PR_BASE_REF_VALUE" \
+            PUSH_REF="$PUSH_REF_VALUE" \
+            PUSH_BASE_REF="$PUSH_BASE_REF" \
+            BASE_SHA="$BASE_SHA" \
+            SOURCE_HEAD_SHA="$SOURCE_HEAD_SHA" \
+            CANDIDATE_SHA="$CANDIDATE_SHA" \
+            BASE_WORKTREE="$BASE_WORKTREE" \
+            BASE_CAPTURE_HELPER="$BASE_CAPTURE_HELPER" \
+            "$PYTHON_BIN" -I "$CAPTURE_HELPER_SELECTOR"
+          )"
+          if [[ -z "$CAPTURE_HELPER" ]]; then
+            echo "Selected capture helper is unavailable" >&2
+            exit 2
+          fi
+          if ! test -f "$CAPTURE_HELPER"; then
+            echo "Selected capture helper is unavailable" >&2
+            exit 2
+          fi
+
           {
             echo "base_sha=$BASE_SHA"
             echo "candidate_sha=$CANDIDATE_SHA"
             echo "base_worktree=$BASE_WORKTREE"
             echo "base_comparator=$BASE_COMPARATOR"
             echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"
+            echo "selected_capture_helper=$CAPTURE_HELPER"
             echo "python_bin=$PYTHON_BIN"
           } >> "$GITHUB_OUTPUT"
 
-          "$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER" \
+          "$PYTHON_BIN" -I "$CAPTURE_HELPER" \
             --format go \
             --base-worktree "$BASE_WORKTREE" \
             --candidate-worktree "$GITHUB_WORKSPACE" \
@@ -250,6 +287,50 @@ jobs:
             --runner-temp "$RUNNER_TEMP" \
             --base-revision "$BASE_SHA" \
             --candidate-revision "$CANDIDATE_SHA"
+
+      - name: Record immutable capture helper provenance
+        shell: bash
+        env:
+          ARTIFACT_ROOT: ${{ steps.capture_ws_hub.outputs.artifact_root }}
+          HELPER_ORIGIN: ${{ steps.capture_ws_hub.outputs.capture_helper_origin }}
+          HELPER_COMMIT: ${{ steps.capture_ws_hub.outputs.capture_helper_commit }}
+          HELPER_PARENT: ${{ steps.capture_ws_hub.outputs.capture_helper_parent }}
+          HELPER_TREE: ${{ steps.capture_ws_hub.outputs.capture_helper_tree }}
+          HELPER_SOURCE_PATH: ${{ steps.capture_ws_hub.outputs.capture_helper_source_path }}
+          HELPER_BLOB: ${{ steps.capture_ws_hub.outputs.capture_helper_blob }}
+          HELPER_SHA256: ${{ steps.capture_ws_hub.outputs.capture_helper_sha256 }}
+          HELPER_SIZE_BYTES: ${{ steps.capture_ws_hub.outputs.capture_helper_size_bytes }}
+        run: |
+          set -euo pipefail
+          if [[ "$HELPER_ORIGIN" != "immutable-base" && "$HELPER_ORIGIN" != "reviewed-immutable-candidate" ]]; then
+            echo "Capture helper provenance origin is invalid" >&2
+            exit 2
+          fi
+          if [[ "$HELPER_SOURCE_PATH" != "scripts/quality/capture_isolated_benchmarks.py" ]]; then
+            echo "Capture helper provenance path is invalid" >&2
+            exit 2
+          fi
+          if [[ ! "$HELPER_COMMIT" =~ ^[0-9a-f]{40}$ || ! "$HELPER_PARENT" =~ ^([0-9a-f]{40}|none)$ || ! "$HELPER_TREE" =~ ^[0-9a-f]{40}$ || ! "$HELPER_BLOB" =~ ^[0-9a-f]{40}$ || ! "$HELPER_SHA256" =~ ^[0-9a-f]{64}$ || ! "$HELPER_SIZE_BYTES" =~ ^[1-9][0-9]{0,8}$ ]]; then
+            echo "Capture helper provenance pin is invalid" >&2
+            exit 2
+          fi
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required to record capture helper provenance" >&2
+            exit 2
+          fi
+          PROVENANCE_TMP="$ARTIFACT_ROOT/capture-helper-provenance.json.tmp"
+          jq -n \
+            --arg origin "$HELPER_ORIGIN" \
+            --arg commit "$HELPER_COMMIT" \
+            --arg parent "$HELPER_PARENT" \
+            --arg tree "$HELPER_TREE" \
+            --arg path "$HELPER_SOURCE_PATH" \
+            --arg blob "$HELPER_BLOB" \
+            --arg sha256 "$HELPER_SHA256" \
+            --arg size "$HELPER_SIZE_BYTES" \
+            '{schema_version: 1, origin: $origin, commit: $commit, parent: $parent, tree: $tree, path: $path, blob: $blob, sha256: $sha256, size_bytes: ($size|tonumber)}' \
+            > "$PROVENANCE_TMP"
+          mv -- "$PROVENANCE_TMP" "$ARTIFACT_ROOT/capture-helper-provenance.json"
 
       - name: Record immutable benchmark provenance
         shell: bash
@@ -338,6 +419,15 @@ jobs:
           EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
           EXPECTED_TESTED_COMMIT_SHA: ${{ github.sha }}
           ARTIFACT_ROOT: ${{ steps.capture_ws_hub.outputs.artifact_root }}
+          CAPTURE_HELPER_PATH: ${{ steps.capture_ws_hub.outputs.selected_capture_helper }}
+          HELPER_ORIGIN: ${{ steps.capture_ws_hub.outputs.capture_helper_origin }}
+          HELPER_COMMIT: ${{ steps.capture_ws_hub.outputs.capture_helper_commit }}
+          HELPER_PARENT: ${{ steps.capture_ws_hub.outputs.capture_helper_parent }}
+          HELPER_TREE: ${{ steps.capture_ws_hub.outputs.capture_helper_tree }}
+          HELPER_SOURCE_PATH: ${{ steps.capture_ws_hub.outputs.capture_helper_source_path }}
+          HELPER_BLOB: ${{ steps.capture_ws_hub.outputs.capture_helper_blob }}
+          HELPER_SHA256: ${{ steps.capture_ws_hub.outputs.capture_helper_sha256 }}
+          HELPER_SIZE_BYTES: ${{ steps.capture_ws_hub.outputs.capture_helper_size_bytes }}
         run: |
           set -euo pipefail
           ARTIFACT_ROOT="${{ steps.capture_ws_hub.outputs.artifact_root }}"
@@ -361,6 +451,33 @@ jobs:
             echo "Benchmark provenance is missing" >&2
             exit 2
           fi
+          if ! test -f "$ARTIFACT_ROOT/capture-helper-provenance.json"; then
+            echo "Capture helper provenance is missing" >&2
+            exit 2
+          fi
+          if ! test -f "$CAPTURE_HELPER_PATH"; then
+            echo "Capture helper provenance or selected file is missing" >&2
+            exit 2
+          fi
+          if [[ "$(sha256sum "$CAPTURE_HELPER_PATH" | awk '{print $1}')" != "$HELPER_SHA256" ]]; then
+            echo "Selected capture helper changed after measurement" >&2
+            exit 2
+          fi
+          if [[ "$(stat --format='%s' "$CAPTURE_HELPER_PATH")" != "$HELPER_SIZE_BYTES" ]]; then
+            echo "Selected capture helper changed after measurement" >&2
+            exit 2
+          fi
+          jq -e \
+            --arg origin "$HELPER_ORIGIN" \
+            --arg commit "$HELPER_COMMIT" \
+            --arg parent "$HELPER_PARENT" \
+            --arg tree "$HELPER_TREE" \
+            --arg path "$HELPER_SOURCE_PATH" \
+            --arg blob "$HELPER_BLOB" \
+            --arg sha256 "$HELPER_SHA256" \
+            --arg size "$HELPER_SIZE_BYTES" \
+            '(.schema_version == 1 and .origin == $origin and .commit == $commit and .parent == $parent and .tree == $tree and .path == $path and .blob == $blob and .sha256 == $sha256 and (.size_bytes|tostring) == $size)' \
+            "$ARTIFACT_ROOT/capture-helper-provenance.json" >/dev/null
           if [[ ! "$EXPECTED_RUN_ID" =~ ^[0-9]+$ ]]; then
             echo "Expected workflow run id is invalid" >&2
             exit 2

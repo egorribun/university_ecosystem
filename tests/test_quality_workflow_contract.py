@@ -5945,12 +5945,22 @@ def _assert_no_shell_indirection_or_option_control(script: str) -> None:
 
 def _expected_capture_critical_execution_segment(
     capture_format: str,
+    *,
+    candidate_capture_helper: bool = False,
 ) -> tuple[str, ...]:
     """Return the narrow trusted capture tail for one benchmark format."""
 
     assert capture_format in {"go", "rust"}
     rust_dockerfile_argument = (
         ' --rust-dockerfile "$BASE_RUST_DOCKERFILE"' if capture_format == "rust" else ""
+    )
+    capture_helper_variable = (
+        "CAPTURE_HELPER" if candidate_capture_helper else "BASE_CAPTURE_HELPER"
+    )
+    selected_helper_output = (
+        '  echo "selected_capture_helper=$CAPTURE_HELPER"\n'
+        if candidate_capture_helper
+        else ""
     )
     return _canonical_shell_lines(
         'BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"\n'
@@ -5965,10 +5975,11 @@ def _expected_capture_critical_execution_segment(
         '  echo "base_worktree=$BASE_WORKTREE"\n'
         '  echo "base_comparator=$BASE_COMPARATOR"\n'
         '  echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"\n'
-        '  echo "python_bin=$PYTHON_BIN"\n'
-        '} >> "$GITHUB_OUTPUT"\n'
-        "\n"
-        '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER" '
+        + selected_helper_output
+        + '  echo "python_bin=$PYTHON_BIN"\n'
+        + '} >> "$GITHUB_OUTPUT"\n'
+        + "\n"
+        f'"$PYTHON_BIN" -I "${capture_helper_variable}" '
         f"--format {capture_format} "
         '--base-worktree "$BASE_WORKTREE" '
         '--candidate-worktree "$GITHUB_WORKSPACE" '
@@ -5976,6 +5987,42 @@ def _expected_capture_critical_execution_segment(
         '--runner-temp "$RUNNER_TEMP" '
         '--base-revision "$BASE_SHA" '
         '--candidate-revision "$CANDIDATE_SHA"' + rust_dockerfile_argument
+    )
+
+
+def _expected_candidate_helper_selection_segment() -> tuple[str, ...]:
+    """Keep helper activation tied to the explicit PR and main-push context."""
+
+    return _canonical_shell_lines(
+        'CAPTURE_HELPER_SELECTOR="$GITHUB_WORKSPACE/scripts/quality/benchmark_capture_activation.py"\n'
+        'if ! test -f "$CAPTURE_HELPER_SELECTOR"; then\n'
+        '  echo "Capture helper selector is absent" >&2\n'
+        "  exit 2\n"
+        "fi\n"
+        'CAPTURE_HELPER="$(\n'
+        '  EVENT_NAME="$EVENT_NAME" \\\n'
+        '  REPOSITORY_NAME="$REPOSITORY_NAME_VALUE" \\\n'
+        '  PR_NUMBER="$PR_NUMBER_VALUE" \\\n'
+        '  PR_HEAD_REPOSITORY="$PR_HEAD_REPOSITORY_VALUE" \\\n'
+        '  PR_HEAD_REF="$PR_HEAD_REF_VALUE" \\\n'
+        '  PR_BASE_REF="$PR_BASE_REF_VALUE" \\\n'
+        '  PUSH_REF="$PUSH_REF_VALUE" \\\n'
+        '  PUSH_BASE_REF="$PUSH_BASE_REF" \\\n'
+        '  BASE_SHA="$BASE_SHA" \\\n'
+        '  SOURCE_HEAD_SHA="$SOURCE_HEAD_SHA" \\\n'
+        '  CANDIDATE_SHA="$CANDIDATE_SHA" \\\n'
+        '  BASE_WORKTREE="$BASE_WORKTREE" \\\n'
+        '  BASE_CAPTURE_HELPER="$BASE_CAPTURE_HELPER" \\\n'
+        '  "$PYTHON_BIN" -I "$CAPTURE_HELPER_SELECTOR"\n'
+        ')"\n'
+        'if [[ -z "$CAPTURE_HELPER" ]]; then\n'
+        '  echo "Selected capture helper is unavailable" >&2\n'
+        "  exit 2\n"
+        "fi\n"
+        'if ! test -f "$CAPTURE_HELPER"; then\n'
+        '  echo "Selected capture helper is unavailable" >&2\n'
+        "  exit 2\n"
+        "fi"
     )
 
 
@@ -6034,30 +6081,43 @@ def _assert_paired_gate_variant(
 
     is_manual = workflow_path == MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH
     is_rust = job_id == "rust-native-regression"
+    revision_environment = (
+        {
+            "MANUAL_BASE_SHA": "${{ inputs.base_sha }}",
+            "MANUAL_CANDIDATE_SHA": "${{ github.sha }}",
+            "MANUAL_SOURCE_HEAD_SHA": "${{ github.sha }}",
+            "MANUAL_BASE_REF": "${{ github.ref_name }}",
+        }
+        if is_manual
+        else {
+            "EVENT_NAME": "${{ github.event_name }}",
+            "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+            "PR_CANDIDATE_SHA": "${{ github.sha }}",
+            "PR_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+            "PR_BASE_REF": "${{ github.event.pull_request.base.ref }}",
+            "PUSH_BASE_SHA": "${{ github.event.before }}",
+            "PUSH_CANDIDATE_SHA": "${{ github.sha }}",
+            "PUSH_SOURCE_HEAD_SHA": "${{ github.sha }}",
+            "PUSH_BASE_REF": "${{ github.ref_name }}",
+        }
+    )
+    if not is_manual and not is_rust:
+        revision_environment.update(
+            {
+                "PR_NUMBER_VALUE": "${{ github.event.pull_request.number }}",
+                "PR_HEAD_REPOSITORY_VALUE": "${{ github.event.pull_request.head.repo.full_name }}",
+                "PR_HEAD_REF_VALUE": "${{ github.event.pull_request.head.ref }}",
+                "PR_BASE_REF_VALUE": "${{ github.event.pull_request.base.ref }}",
+                "REPOSITORY_NAME_VALUE": "${{ github.repository }}",
+            }
+        )
+        revision_environment["PUSH_REF_VALUE"] = "${{ github.ref }}"
     _assert_paired_capture_contract(
         job,
         capture_format="rust" if is_rust else "go",
         comparator_format="bencher" if is_rust else "go",
-        revision_environment=(
-            {
-                "MANUAL_BASE_SHA": "${{ inputs.base_sha }}",
-                "MANUAL_CANDIDATE_SHA": "${{ github.sha }}",
-                "MANUAL_SOURCE_HEAD_SHA": "${{ github.sha }}",
-                "MANUAL_BASE_REF": "${{ github.ref_name }}",
-            }
-            if is_manual
-            else {
-                "EVENT_NAME": "${{ github.event_name }}",
-                "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
-                "PR_CANDIDATE_SHA": "${{ github.sha }}",
-                "PR_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
-                "PR_BASE_REF": "${{ github.event.pull_request.base.ref }}",
-                "PUSH_BASE_SHA": "${{ github.event.before }}",
-                "PUSH_CANDIDATE_SHA": "${{ github.sha }}",
-                "PUSH_SOURCE_HEAD_SHA": "${{ github.sha }}",
-                "PUSH_BASE_REF": "${{ github.ref_name }}",
-            }
-        ),
+        revision_environment=revision_environment,
+        candidate_capture_helper=not is_manual and not is_rust,
         base_worktree_leaf=(
             "manual-performance-base-rust-native"
             if is_manual and is_rust
@@ -6165,6 +6225,11 @@ def _mutate_paired_gate(job: dict[str, object], mutation: str) -> None:
         job, "Resolve immutable revisions and capture paired evidence"
     )
     comparator = _step_named(job, "Compare paired benchmark evidence")
+    capture_helper = (
+        '"$PYTHON_BIN" -I "$CAPTURE_HELPER"'
+        if "CAPTURE_HELPER_SELECTOR=" in str(capture["run"])
+        else '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
+    )
 
     if mutation == "job-continue-on-error":
         job["continue-on-error"] = True
@@ -6186,7 +6251,7 @@ def _mutate_paired_gate(job: dict[str, object], mutation: str) -> None:
         comparator["run"] = f"{comparator['run']}\nfalse |\\\n| true\n"
     elif mutation == "capture-conditional-wrapper":
         capture["run"] = _wrap_standalone_invocation_in_if(
-            str(capture["run"]), '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
+            str(capture["run"]), capture_helper
         )
     elif mutation == "comparison-conditional-wrapper":
         comparator["run"] = _wrap_standalone_invocation_in_if(
@@ -6194,16 +6259,16 @@ def _mutate_paired_gate(job: dict[str, object], mutation: str) -> None:
         )
     elif mutation == "capture-substitution-wrapper":
         capture["run"] = _wrap_standalone_invocation_in_substitution(
-            str(capture["run"]), '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
+            str(capture["run"]), capture_helper
         )
     elif mutation == "capture-backtick-wrapper":
         capture["run"] = _wrap_standalone_invocation_in_backticks(
-            str(capture["run"]), '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
+            str(capture["run"]), capture_helper
         )
     elif mutation.startswith("capture-outer-"):
         capture["run"] = _wrap_standalone_invocation_in_outer_context(
             str(capture["run"]),
-            '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"',
+            capture_helper,
             mutation.removeprefix("capture-outer-").removesuffix("-wrapper"),
         )
     elif mutation.startswith("comparison-outer-"):
@@ -6659,6 +6724,7 @@ def _assert_paired_capture_contract(
     revision_environment: dict[str, str],
     base_worktree_leaf: str,
     timeout_minutes: int,
+    candidate_capture_helper: bool = False,
 ) -> None:
     """Assert the observable workflow contract for a fail-closed paired gate."""
 
@@ -6729,10 +6795,28 @@ def _assert_paired_capture_contract(
         capture_text, CAPTURE_ALLOWED_CONDITIONAL_ORS
     )
     _assert_no_shell_indirection_or_option_control(capture_text)
+    execution_contract_text = capture_text
+    if candidate_capture_helper:
+        selection_start = capture_text.index("CAPTURE_HELPER_SELECTOR=")
+        selection_end = capture_text.index("\n\n{", selection_start)
+        selection_segment = capture_text[selection_start:selection_end]
+        assert _canonical_shell_lines(selection_segment) == (
+            _expected_candidate_helper_selection_segment()
+        )
+        execution_contract_text = (
+            capture_text[:selection_start] + capture_text[selection_end:]
+        )
     _assert_critical_execution_segment(
-        capture_text,
+        execution_contract_text,
         anchor='BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"',
-        expected=_expected_capture_critical_execution_segment(capture_format),
+        expected=_expected_capture_critical_execution_segment(
+            capture_format, candidate_capture_helper=candidate_capture_helper
+        ),
+    )
+    capture_helper_command = (
+        '"$PYTHON_BIN" -I "$CAPTURE_HELPER"'
+        if candidate_capture_helper
+        else '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
     )
     for required_fragment in (
         "0000000000000000000000000000000000000000",
@@ -6759,7 +6843,7 @@ def _assert_paired_capture_contract(
         'echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"',
         'echo "artifact_root=$ARTIFACT_ROOT"',
         'echo "python_bin=$PYTHON_BIN"',
-        '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"',
+        capture_helper_command,
         f"--format {capture_format}",
         '--base-worktree "$BASE_WORKTREE"',
         '--candidate-worktree "$GITHUB_WORKSPACE"',
@@ -6782,6 +6866,17 @@ def _assert_paired_capture_contract(
         assert '--rust-dockerfile "$BASE_RUST_DOCKERFILE"' in normalized_capture_text
     else:
         assert "--rust-dockerfile" not in capture_text
+    if candidate_capture_helper:
+        assert (
+            'CAPTURE_HELPER_SELECTOR="$GITHUB_WORKSPACE/scripts/quality/benchmark_capture_activation.py"'
+            in normalized_capture_text
+        )
+        assert 'PUSH_REF="$PUSH_REF_VALUE"' in normalized_capture_text
+        assert 'PUSH_BASE_REF="$PUSH_BASE_REF"' in normalized_capture_text
+        assert '"$PYTHON_BIN" -I "$CAPTURE_HELPER_SELECTOR"' in normalized_capture_text
+        assert 'if [[ -z "$CAPTURE_HELPER" ]]; then' in normalized_capture_text
+        assert 'if ! test -f "$CAPTURE_HELPER"; then' in normalized_capture_text
+        assert '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"' not in normalized_capture_text
     candidate_commit_validation = normalized_capture_text.index(
         'git cat-file -e "$CANDIDATE_SHA^{commit}"'
     )
@@ -6799,13 +6894,13 @@ def _assert_paired_capture_contract(
     ) < capture_text.index('git fetch --no-tags origin "$BASE_SHA" "$CANDIDATE_SHA"')
     assert capture_text.index(
         'echo "artifact_root=$ARTIFACT_ROOT"'
-    ) < capture_text.index('"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"')
+    ) < capture_text.index(capture_helper_command)
     assert (
         capture_text.index(
             'BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"'
         )
         < capture_text.index('echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"')
-        < capture_text.index('"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"')
+        < capture_text.index(capture_helper_command)
     )
     if "EVENT_NAME" in revision_environment:
         for required_fragment in (
@@ -6989,7 +7084,18 @@ def _assert_paired_provenance_contract(
     assert normalized_comparator_text.index("jq -e") < normalized_comparator_text.index(
         'ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR"'
     )
-    assert comparator_text.count("jq -e") == 1
+    expected_jq_checks = (
+        2 if capture_id == "capture_ws_hub" and is_pull_request_workflow else 1
+    )
+    assert comparator_text.count("jq -e") == expected_jq_checks
+    if expected_jq_checks == 2:
+        for required_fragment in (
+            '"$ARTIFACT_ROOT/capture-helper-provenance.json" >/dev/null',
+            '--arg origin "$HELPER_ORIGIN"',
+            '--arg sha256 "$HELPER_SHA256"',
+            '"$ARTIFACT_ROOT/provenance.json" >/dev/null',
+        ):
+            assert required_fragment in normalized_comparator_text
 
     capture = _step_named(
         job, "Resolve immutable revisions and capture paired evidence"
@@ -7061,13 +7167,23 @@ def test_performance_workflow_uses_same_run_immutable_paired_gates() -> None:
         "PUSH_SOURCE_HEAD_SHA": "${{ github.sha }}",
         "PUSH_BASE_REF": "${{ github.ref_name }}",
     }
+    ws_revision_environment = {
+        **shared_revision_environment,
+        "PR_NUMBER_VALUE": "${{ github.event.pull_request.number }}",
+        "PR_HEAD_REPOSITORY_VALUE": "${{ github.event.pull_request.head.repo.full_name }}",
+        "PR_HEAD_REF_VALUE": "${{ github.event.pull_request.head.ref }}",
+        "PR_BASE_REF_VALUE": "${{ github.event.pull_request.base.ref }}",
+        "REPOSITORY_NAME_VALUE": "${{ github.repository }}",
+        "PUSH_REF_VALUE": "${{ github.ref }}",
+    }
     _assert_paired_capture_contract(
         jobs["ws-hub-regression"],
         capture_format="go",
         comparator_format="go",
-        revision_environment=shared_revision_environment,
+        revision_environment=ws_revision_environment,
         base_worktree_leaf="performance-base-ws-hub",
         timeout_minutes=20,
+        candidate_capture_helper=True,
     )
     _assert_paired_capture_contract(
         jobs["rust-native-regression"],

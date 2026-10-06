@@ -67,7 +67,7 @@ test("deleted message tombstones keep authorized history visible without reactio
   )
   assert.notEqual(tombstoneStart, -1, "the tombstone scenario must remain explicit")
   const nextScenario = spec.indexOf(
-    'test("two direct-message deliveries keep sequence order',
+    'test("direct-message replay stays ordered and exactly once across receiver reconnect',
     tombstoneStart
   )
   assert.notEqual(nextScenario, -1, "the tombstone scenario boundary must remain explicit")
@@ -128,7 +128,7 @@ test("removing a reaction is delivered over WebSocket and clears both members' s
 test("ordered live deliveries remain exactly once across reconnect and history refresh", () => {
   assert.match(
     spec,
-    /two direct-message deliveries keep sequence order and deduplicate after reconnect/u
+    /direct-message replay stays ordered and exactly once across receiver reconnect/u
   )
   assert.match(spec, /const messageIds = \[first\.id, second\.id\]/u)
   assert.match(
@@ -139,11 +139,24 @@ test("ordered live deliveries remain exactly once across reconnect and history r
   assert.match(spec, /await receiverContext\.setOffline\(true\)/u)
   assert.match(spec, /await receiverContext\.setOffline\(false\)/u)
   assert.match(spec, /historyRefetchPromise/u)
-  assert.match(spec, /deliveriesForMessages\(\)\)\.toHaveLength\(2\)/u)
+  assert.match(spec, /expect\(allTestDeliveries\)\.toHaveLength\(expectedMessageIds\.length\)/u)
   assert.match(
     spec,
     /receiverLog\.getByText\(message\.content, \{ exact: true \}\)\)\.toHaveCount\(1\)/u
   )
+  assert.match(spec, /const missedWhileOffline = await sendLiveMessage/u)
+  assert.match(
+    spec,
+    /receiverContext\.setOffline\(true\)[\s\S]*?missedWhileOffline[\s\S]*?receiverContext\.setOffline\(false\)/u
+  )
+  assert.match(spec, /expect\(missedDelivery\.replayed\)\.toBe\(true\)/u)
+  assert.match(spec, /expect\(secondSequence\)\.toBeLessThan\(missedSequence\)/u)
+  assert.match(spec, /expect\(missedSequence\)\.toBeLessThan\(afterReconnectSequence\)/u)
+  assert.match(
+    spec,
+    /expectedMessageIds = \[first\.id, second\.id, missedWhileOffline\.id, afterReconnect\.id\]/u
+  )
+  assert.match(spec, /expect\(allTestDeliveries\)\.toHaveLength\(expectedMessageIds\.length\)/u)
 })
 
 test("reply and forward live events retain their server-owned relationship metadata", () => {

@@ -31,6 +31,7 @@ function hasRoomJoin(value: unknown, room: string): boolean {
 type ReceivedMessageFrame = {
   chatId: unknown
   sequence: number | null
+  replayed: boolean
   message: {
     id: unknown
     chatId: unknown
@@ -82,6 +83,7 @@ function findNewMessageFrames(value: unknown): ReceivedMessageFrame[] {
       {
         chatId: payload.chat_id,
         sequence: typeof value.seq === "number" ? value.seq : null,
+        replayed: value.replayed === true,
         message: {
           id: payload.message.id,
           chatId: payload.message.chat_id,
@@ -508,7 +510,7 @@ test.describe("live messenger delivery", () => {
     }
   })
 
-  test("two direct-message deliveries keep sequence order and deduplicate after reconnect", async ({
+  test("direct-message replay stays ordered and exactly once across receiver reconnect", async ({
     browser,
     page,
   }, testInfo) => {
@@ -622,6 +624,21 @@ test.describe("live messenger delivery", () => {
       await expect.poll(() => activeSession?.closed ?? false).toBe(true)
       await expect.poll(() => receiverPage.evaluate(() => navigator.onLine)).toBe(false)
 
+      const missedWhileOffline = await sendLiveMessage(
+        page,
+        chatIdFromRoute,
+        `live-dm-reconnect-missed-${crypto.randomUUID()}`
+      )
+      createdMessages.push(missedWhileOffline)
+      const missedDeliveries = () =>
+        receiverMessages.filter(
+          (frame) => frame.chatId === chatIdFromRoute && frame.message.id === missedWhileOffline.id
+        )
+      expect(missedDeliveries()).toEqual([])
+      await expect(receiverLog.getByText(missedWhileOffline.content, { exact: true })).toHaveCount(
+        0
+      )
+
       const historyRefetchPromise = receiverPage.waitForResponse((response) => {
         const request = response.request()
         return (
@@ -638,8 +655,45 @@ test.describe("live messenger delivery", () => {
       const historyRefetch = await historyRefetchPromise
       expect(historyRefetch.ok()).toBe(true)
 
-      expect(deliveriesForMessages().map((frame) => frame.message.id)).toEqual(messageIds)
-      expect(deliveriesForMessages()).toHaveLength(2)
+      await expect.poll(() => missedDeliveries().length).toBe(1)
+      const missedDelivery = missedDeliveries()[0]!
+      expect(missedDelivery.replayed).toBe(true)
+      const missedSequence = missedDelivery.sequence
+      if (typeof missedSequence !== "number") {
+        throw new Error("Replayed direct message delivery sequence was missing")
+      }
+      expect(secondSequence).toBeLessThan(missedSequence)
+      await expect(receiverLog.getByText(missedWhileOffline.content, { exact: true })).toHaveCount(
+        1
+      )
+
+      const afterReconnect = await sendLiveMessage(
+        page,
+        chatIdFromRoute,
+        `live-dm-reconnect-after-${crypto.randomUUID()}`
+      )
+      createdMessages.push(afterReconnect)
+      const afterReconnectDeliveries = () =>
+        receiverMessages.filter(
+          (frame) => frame.chatId === chatIdFromRoute && frame.message.id === afterReconnect.id
+        )
+      await expect.poll(() => afterReconnectDeliveries().length).toBe(1)
+      const afterReconnectDelivery = afterReconnectDeliveries()[0]!
+      expect(afterReconnectDelivery.replayed).toBe(false)
+      const afterReconnectSequence = afterReconnectDelivery.sequence
+      if (typeof afterReconnectSequence !== "number") {
+        throw new Error("Post-reconnect direct message delivery sequence was missing")
+      }
+      expect(missedSequence).toBeLessThan(afterReconnectSequence)
+
+      const expectedMessageIds = [first.id, second.id, missedWhileOffline.id, afterReconnect.id]
+      const allTestDeliveries = receiverMessages.filter(
+        (frame) =>
+          frame.chatId === chatIdFromRoute && expectedMessageIds.includes(String(frame.message.id))
+      )
+      expect(allTestDeliveries.map((frame) => frame.message.id)).toEqual(expectedMessageIds)
+      expect(allTestDeliveries).toHaveLength(expectedMessageIds.length)
+
       for (const message of createdMessages) {
         await expect(receiverLog.getByText(message.content, { exact: true })).toHaveCount(1)
       }

@@ -7,9 +7,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База интегрируемого checkpoint: `6a1d1a78a5a78e793b0df32fc6dea1f192b0732f`;
-  tree `9040080eb32793c6abf8964814e1bab3514593a8`.
-  Этот checkpoint исправляет test isolation и добавляет WS parser regressions.
+  Проверенный checkpoint: `03f8e81085972dd5131c7bfbfc310972c7f37642`;
+  tree `07b9670798c398df862d2065eb8e8393d68e2e4d`.
+  Он сохраняет full mutation contracts, avatar oracle и WebKit focus regression.
 - Root — единственный tracked writer, владелец Git и runtime. Три GPT-6 Luna Max
   готовят приватные пакеты; root проверяет код, происхождение и результаты.
 - В source интегрированы SmartImage fallback, audit/news event regressions,
@@ -52,8 +52,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Текущий execution plan — incremental 4589 selected в 128 groups.
   Selection digest `2aa5ddd40da6245b1f0865a344f549a53524eeb83ff339b41bf2eb57f88d6581`;
   universe digest `d15e06c97f7e8d286081277b9137efdbbd6948596c5a19004503d57619a6c351`.
-  Root validated 55 groups: 1972 selected, 1697 Killed, 275 Survived;
-  no-tests/skips/timeouts/runtime faults — 0. Stats не являются execution evidence.
+  Свежие groups1/6/8 на `6a1d…`: root проверил ZIP/digests/completeness,
+  108 selected: 94 Killed, 14 Survived. Это частичный execution; global score открыт.
 - Интегрированы шесть проверенных регрессий: Spotify identity100, durable chat
   event37, pinned Web Push88, legacy audit fallback58, NATS strict publish26,
   remaining-member presence invalidation69. Root baseline PASS и exact mutant
@@ -77,7 +77,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Hosted execution ещё не выполнен; minimum score100 сохранён.
   Benchmark common-harness V2: root complete module55/55 PASS на Windows/Go1.27.1.
   Это не pinned Linux/paired performance evidence; threshold1.10 сохранён.
-  PR исполняет capture helper из BASE; его trusted activation ещё готовится.
+  Immutable activation интегрирована: root28/28; PR1306 и первый main transition.
+  Далее снова BASE helper; hosted paired rerun открыт, comparator не изменён.
   WebKit focus candidate: root exact baseline RED, candidate news53/53 PASS;
   native browser proof ещё отсутствует, исходная scroll assertion сохранена.
 
@@ -92,20 +93,19 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Tracked avatar oracle использует decode(); root Node3/3 и Vitest3/3 PASS.
   Density-corrected 1×1 может иметь natural dimensions0; negative control
   проверен. Resource oracle строгий: origin/path/hash/query сохраняются,
-  разрешено различие только cache-version `_v`; cross-mount сравнения исправлены.
+  Различие разрешено только в `_v`; после reload source сверяется с profile URL.
 - V7r2 desktop: 1/1 PASS, retries0; upload/reload, реальный415 rollback и
   rejected-upload reload проверены. Mobile failed до первого POST; RCA открыт.
 - V8 mobile вновь failed до POST: chooser/setFiles/native change наблюдались,
   input оставался connected, выбран один PNG within limit, button enabled,
   avatarPostCount0. Это не доказывает вызов React handler или auth-ref readiness.
-  V9 offline: root Python20/20, Node6/6; seals/overlay hashes verified.
-  Desktop launcher rejected stand before browser: Docker short/full ID mismatch.
   V10: root launcher21/21; desktop/mobile1/1 каждый, retries0, trace19.
   Upload/reload/415 rollback PASS на diagnostic image6a; ordinary image proof открыт.
   Historical no-POST в этом диагностическом запуске не воспроизведён.
   Owned diagnostic stand `ue-live-d48472bbe1362c47` на `6a1d…`: exact-image resume,
   29 services readiness PASS; шесть успешных init jobs сохранены.
   Demo seed exit0, frontend/Mailpit HTTP200; после диагностики stand stopped.
+  DM follow-up: Node8/8, desktop/mobile discovery, TS7.0.2 PASS; live runtime открыт.
 - State: `C:/Temp/ue-live-acceptance/run-orchestrator-76cd4026d-20261006-e27723ac7de24e31a02870ffc409506c`.
   Project `ue-live-2bec0462a275fd36`; env, seed и evidence сохраняются.
 

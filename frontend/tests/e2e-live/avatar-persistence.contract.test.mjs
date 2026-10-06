@@ -130,6 +130,11 @@ test("avatar UI validation matches the image API and live acceptance stays owner
     /await expectSavedAvatarSourceReady\(page, avatar, savedProfile\.avatar_url\)[\s\S]*?await expectImageDecoded\(avatar/u,
     "successful profile refresh and enabled UI state precede the same-mount decode check"
   )
+  assert.match(
+    spec,
+    /expect\(reloadedProfile\.avatar_url\)\.toBe\(savedProfile\.avatar_url\)[\s\S]*?await expectAvatarSourceMatchesProfile\(page, reloadedAvatar, reloadedProfile\.avatar_url\)[\s\S]*?await expectImageDecoded\(\s*reloadedAvatar/u,
+    "the successfully reloaded image resource matches the persisted profile before decode"
+  )
   assert.match(spec, /await removeOwnerAvatar\(page\)/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)
   assert.match(spec, /headers:\s*\{\s*"X-CSRF-Token": csrfToken\s*\}/u)
