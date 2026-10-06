@@ -7,8 +7,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База текущего checkpoint: `7fe9b621af3091ad88701c08c0f6441deecf8c26`;
-  tree `61ede2e86b3ed6904333b803c6d56f7e1e1d120f`.
+  База интегрируемого checkpoint: `6a1d1a78a5a78e793b0df32fc6dea1f192b0732f`;
+  tree `9040080eb32793c6abf8964814e1bab3514593a8`.
   Этот checkpoint исправляет test isolation и добавляет WS parser regressions.
 - Root — единственный tracked writer, владелец Git и runtime. Три GPT-6 Luna Max
   готовят приватные пакеты; root проверяет код, происхождение и результаты.
@@ -18,11 +18,15 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   SQLite ranking UDF не подтверждает PostgreSQL ranking.
 - `source-map-js` обновлён 1.2.1 → 1.2.2 для GHSA-68fv-2mgg-jv7q;
   frozen install/audit/build пройдены. Четыре npm deprecation warnings открыты.
-  Текущий checkpoint: preflight 9/9, harness в его составе, pre-commit PASS;
+  Базовый checkpoint: preflight 9/9, harness в его составе, pre-commit PASS;
   оба режима link checker, Markdownlint и CSpell reviewed docs 9/9 пройдены.
 
 ## Hosted CI и мутации
 
+- [Matrix 37442767803](https://github.com/egorribun/university_ecosystem/actions/runs/37442767803)
+  на `6a1d…`: backend unit/integration и frontend unit/build success.
+  Run ещё не завершён; WebKit scroll assertion и mutmut groups failed.
+  Отдельный Go benchmark выявил несопоставимые harness; paired rerun ещё не выполнен.
 - [Matrix 37434709908](https://github.com/egorribun/university_ecosystem/actions/runs/37434709908)
   на `7fe9…` завершён: 137 checks passed, 30 skipped; backend unit shard1 и
   зависимый CI Success failed. Shard1: 3864 passed, 24 skipped, один failure.
@@ -63,14 +67,19 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   score credit требует нового canonical execution.
 - PG `UserRepository.get` mutant9 — shard37. Regular mutation selector исключает
   integration. V4 actual input guards выявили ошибочный digest и неверную форму
-  stats envelope. Отдельный V5 исправляет их и связывает execution source `7fe9…`
-  с canonical mutation artifact `76cd…`; root offline36/36 + 36 subtests PASS.
+  stats envelope. Отдельный V6 связывает execution source `6a1d…`
+  с canonical mutation artifact `76cd…`; root offline43/43 PASS.
   SQLAlchemy/asyncpg translation и JUnit boundary проверены.
   PostgreSQL/native runtime ещё не выполнен; regular/global score не изменены.
-- Private reusable full-backend workflow готовится для source-bound полного
+- Reviewed reusable full-backend workflow интегрирован для source-bound полного
   execution. Default incremental manual mode и main-only nightly сохраняются.
-  V3 offline13/13; integration ждёт canonical actionlint без schema ignores
-  и существующие workflow contracts после extraction.
+  V6: root complete workflow/catalog replay330/330 и pinned actionlint PASS.
+  Hosted execution ещё не выполнен; minimum score100 сохранён.
+  Benchmark common-harness V2: root complete module55/55 PASS на Windows/Go1.27.1.
+  Это не pinned Linux/paired performance evidence; threshold1.10 сохранён.
+  PR исполняет capture helper из BASE; его trusted activation ещё готовится.
+  WebKit focus candidate: root exact baseline RED, candidate news53/53 PASS;
+  native browser proof ещё отсутствует, исходная scroll assertion сохранена.
 
 ## Live-приёмка
 
@@ -80,8 +89,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   page errors0. Исходная cold ошибка остаётся открытой.
 - Cold auth-role diagnostics: root private Python809/809 и Node16/16 PASS;
   corrected V7 provenance pins проверены. Пакет ещё не integrated/live-tested.
-- Avatar diagnostics опровергли naturalWidth oracle: density-corrected 1×1
-  может иметь natural dimensions0 при успешном IMG.decode(). Negative control
+- Tracked avatar oracle использует decode(); root Node3/3 и Vitest3/3 PASS.
+  Density-corrected 1×1 может иметь natural dimensions0; negative control
   проверен. Resource oracle строгий: origin/path/hash/query сохраняются,
   разрешено различие только cache-version `_v`; cross-mount сравнения исправлены.
 - V7r2 desktop: 1/1 PASS, retries0; upload/reload, реальный415 rollback и
@@ -89,7 +98,14 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - V8 mobile вновь failed до POST: chooser/setFiles/native change наблюдались,
   input оставался connected, выбран один PNG within limit, button enabled,
   avatarPostCount0. Это не доказывает вызов React handler или auth-ref readiness.
-  Private V9 actual handler/guard instrumentation готовится без изменения поведения.
+  V9 offline: root Python20/20, Node6/6; seals/overlay hashes verified.
+  Desktop launcher rejected stand before browser: Docker short/full ID mismatch.
+  V10: root launcher21/21; desktop/mobile1/1 каждый, retries0, trace19.
+  Upload/reload/415 rollback PASS на diagnostic image6a; ordinary image proof открыт.
+  Historical no-POST в этом диагностическом запуске не воспроизведён.
+  Owned diagnostic stand `ue-live-d48472bbe1362c47` на `6a1d…`: exact-image resume,
+  29 services readiness PASS; шесть успешных init jobs сохранены.
+  Demo seed exit0, frontend/Mailpit HTTP200; после диагностики stand stopped.
 - State: `C:/Temp/ue-live-acceptance/run-orchestrator-76cd4026d-20261006-e27723ac7de24e31a02870ffc409506c`.
   Project `ue-live-2bec0462a275fd36`; env, seed и evidence сохраняются.
 
@@ -107,10 +123,10 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Read-only V4 probe: `BackupArtifactError`, outer `manifest_s3_read`.
   Внутренняя причина ещё устанавливается: старые classifier line ranges
   не соответствуют pinned helper. Ledger failed, RPO/RTO не подтверждены.
-- Исходные 27 остановленных containers возобновлены; три health-probe потребовали
-  отдельного запуска после namespace dependencies. Protected receipts сохраняют
-  частичную ошибку и reconciliation. Root health: 29 running, health PASS,
-  frontend HTTP200. PG/S3/env не пересозданы, данные не удалены.
+- Исторический DR stand остановлен для освобождения ОЗУ; PG/S3/env сохранены.
+  Diagnostic stand `6a1d…` также stopped; данные/env/evidence сохранены.
+  Новый heavy workload: RAM ≤75%, free ≥8GiB, один heavy job.
+  Все315 containers stopped; teardown с volumes запрещён.
 - Только основной worktree. 80b stand очищен по владельцу; остальные retained
   data/volumes и private backups сохраняются до проверки уникальности.
   Global prune, чужие stop/delete и распространение rescue bundle запрещены.
@@ -120,9 +136,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 ## Следующие результаты
 
-- Отправить проверенный test-isolation/WS checkpoint; получить новый canonical
-  evidence. Завершить bounded source snapshot gate RCA и пересмотреть DR chain.
-- Завершить mobile no-POST диагностику, native PG mutation lane и полный backend
+- Закоммитить reviewed workflow/benchmark/WebKit checkpoint; привязать trusted
+  helper activation к actual commit/tree; push и новый canonical evidence.
+- Подтвердить avatar на ordinary image, native PG mutation lane и полный backend
   execution route. Блоки4/5: live traceability ТЗ, RU/EN, light/dark, responsive,
   SSR/PWA, performance и пользовательское visual approval остаются открыты.
 - Открыты 100% viable score, три полных зелёных CI, migrations/rollback/BE-02,

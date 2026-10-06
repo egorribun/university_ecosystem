@@ -33,6 +33,14 @@ CONTAINER_CPUS = "2.0"
 CONTAINER_PIDS_LIMIT = "512"
 CACHE_VOLUME_SIZE = "2g"
 RUST_TOOLCHAIN = "1.94.1"
+TRUSTED_GO_BENCHMARK_COMMIT = "6a1d1a78a5a78e793b0df32fc6dea1f192b0732f"  # pragma: allowlist secret -- public immutable Git/SHA-256 provenance
+TRUSTED_GO_BENCHMARK_PARENT = "7fe9b621af3091ad88701c08c0f6441deecf8c26"  # pragma: allowlist secret -- public immutable Git/SHA-256 provenance
+TRUSTED_GO_BENCHMARK_TREE = "9040080eb32793c6abf8964814e1bab3514593a8"  # pragma: allowlist secret -- public immutable Git/SHA-256 provenance
+TRUSTED_GO_BENCHMARK_PATH = "services/ws-hub/pkg/hub/hub_bench_test.go"
+TRUSTED_GO_BENCHMARK_BLOB = "02659ee9e5b86c832f9afda1e938e9e10da3d613"  # pragma: allowlist secret -- public immutable Git/SHA-256 provenance
+TRUSTED_GO_BENCHMARK_SHA256 = "a3f340ebaad4ac8248f52e8a0989a2e97e2616c3481e9f7785ac9c90ceaf1018"  # pragma: allowlist secret -- public immutable Git/SHA-256 provenance
+TRUSTED_GO_BENCHMARK_MAX_BYTES = 256 * 1024
+TRUSTED_GO_BENCHMARK_CONTAINER_PATH = "/src/services/ws-hub/pkg/hub/hub_bench_test.go"
 CONTAINER_LOG_ARGUMENTS = (
     "--log-driver",
     "local",
@@ -79,6 +87,19 @@ class CaptureArguments:
     base_revision: str
     candidate_revision: str
     rust_dockerfile: Path | None
+
+
+@dataclass(frozen=True)
+class TrustedGoBenchmarkOverlay:
+    """Pinned, host-owned benchmark source mounted identically on both sides."""
+
+    path: Path
+    commit: str
+    parent: str
+    tree: str
+    blob: str
+    sha256: str
+    size_bytes: int
 
 
 def _validate_sha(value: str, label: str) -> str:
@@ -135,6 +156,160 @@ def _validate_worktree_revisions(
         raise CaptureError("Git HEAD does not match declared candidate revision")
 
 
+def _prepare_trusted_go_benchmark_overlay(
+    *, repo_worktree: Path, runner_temp: Path
+) -> TrustedGoBenchmarkOverlay:
+    """Materialize only the reviewed 6a benchmark blob for both Go sides."""
+
+    repo = _resolve_existing_directory(repo_worktree, "trusted benchmark object repo")
+    trusted_commit = (
+        _run_checked(
+            (
+                "git",
+                "-C",
+                str(repo),
+                "rev-parse",
+                "--verify",
+                f"{TRUSTED_GO_BENCHMARK_COMMIT}^{{commit}}",
+            ),
+            "resolve trusted benchmark commit",
+        )
+        .stdout.strip()
+        .lower()
+    )
+    if trusted_commit != TRUSTED_GO_BENCHMARK_COMMIT:
+        raise CaptureError("Trusted Go benchmark commit does not match its pin")
+
+    parents = _run_checked(
+        (
+            "git",
+            "-C",
+            str(repo),
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            TRUSTED_GO_BENCHMARK_COMMIT,
+        ),
+        "verify trusted benchmark commit parent",
+    ).stdout.split()
+    if parents != [TRUSTED_GO_BENCHMARK_COMMIT, TRUSTED_GO_BENCHMARK_PARENT]:
+        raise CaptureError("Trusted Go benchmark commit parent does not match its pin")
+
+    trusted_tree = (
+        _run_checked(
+            (
+                "git",
+                "-C",
+                str(repo),
+                "rev-parse",
+                "--verify",
+                f"{TRUSTED_GO_BENCHMARK_COMMIT}^{{tree}}",
+            ),
+            "verify trusted benchmark commit tree",
+        )
+        .stdout.strip()
+        .lower()
+    )
+    if trusted_tree != TRUSTED_GO_BENCHMARK_TREE:
+        raise CaptureError("Trusted Go benchmark commit tree does not match its pin")
+
+    benchmark_blob = (
+        _run_checked(
+            (
+                "git",
+                "-C",
+                str(repo),
+                "rev-parse",
+                "--verify",
+                f"{TRUSTED_GO_BENCHMARK_COMMIT}:{TRUSTED_GO_BENCHMARK_PATH}",
+            ),
+            "resolve trusted benchmark source blob",
+        )
+        .stdout.strip()
+        .lower()
+    )
+    if benchmark_blob != TRUSTED_GO_BENCHMARK_BLOB:
+        raise CaptureError("Trusted Go benchmark blob does not match its pin")
+
+    blob_size_text = _run_checked(
+        ("git", "-C", str(repo), "cat-file", "-s", benchmark_blob),
+        "check trusted benchmark source size",
+    ).stdout.strip()
+    if not blob_size_text.isdecimal():
+        raise CaptureError("Trusted Go benchmark source size is invalid")
+    blob_size = int(blob_size_text)
+    if blob_size <= 0 or blob_size > TRUSTED_GO_BENCHMARK_MAX_BYTES:
+        raise CaptureError("Trusted Go benchmark source exceeds its size bound")
+
+    benchmark_text = _run_checked(
+        ("git", "-C", str(repo), "cat-file", "blob", benchmark_blob),
+        "read trusted benchmark source blob",
+    ).stdout
+    benchmark_bytes = benchmark_text.encode("utf-8")
+    if len(benchmark_bytes) != blob_size:
+        raise CaptureError("Trusted Go benchmark source size changed while reading")
+    benchmark_sha256 = hashlib.sha256(benchmark_bytes).hexdigest()
+    if benchmark_sha256 != TRUSTED_GO_BENCHMARK_SHA256:
+        raise CaptureError("Trusted Go benchmark source digest does not match its pin")
+
+    trusted_temp = _resolve_existing_directory(runner_temp, "runner temp")
+    overlay_directory = Path(
+        tempfile.mkdtemp(prefix="quality-trusted-go-benchmark-", dir=trusted_temp)
+    )
+    try:
+        resolved_overlay_directory = overlay_directory.resolve(strict=True)
+        if not _is_within(resolved_overlay_directory, trusted_temp):
+            raise CaptureError("Trusted benchmark overlay escaped runner temp")
+        overlay_path = resolved_overlay_directory / "hub_bench_test.go"
+        with overlay_path.open("xb") as overlay_file:
+            overlay_file.write(benchmark_bytes)
+        overlay_path.chmod(0o444)
+        if overlay_path.is_symlink() or not overlay_path.is_file():
+            raise CaptureError("Trusted benchmark overlay is not a regular file")
+        return TrustedGoBenchmarkOverlay(
+            path=overlay_path,
+            commit=trusted_commit,
+            parent=TRUSTED_GO_BENCHMARK_PARENT,
+            tree=trusted_tree,
+            blob=benchmark_blob,
+            sha256=benchmark_sha256,
+            size_bytes=blob_size,
+        )
+    except OSError as exc:
+        shutil.rmtree(overlay_directory, ignore_errors=True)
+        raise CaptureError("Unable to materialize trusted benchmark overlay") from exc
+    except Exception:
+        shutil.rmtree(overlay_directory, ignore_errors=True)
+        raise
+
+
+def _remove_trusted_go_benchmark_overlay(
+    overlay: TrustedGoBenchmarkOverlay, runner_temp: Path
+) -> None:
+    """Remove only the fresh pinned overlay directory beneath runner temp."""
+
+    trusted_temp = _resolve_existing_directory(runner_temp, "runner temp")
+    overlay_directory = overlay.path.parent
+    try:
+        resolved_directory = overlay_directory.resolve(strict=True)
+        resolved_path = overlay.path.resolve(strict=True)
+    except OSError as exc:
+        raise CaptureError(
+            "Trusted benchmark overlay disappeared before cleanup"
+        ) from exc
+    if (
+        not _is_within(resolved_directory, trusted_temp)
+        or resolved_directory == trusted_temp
+        or overlay_directory.is_symlink()
+        or resolved_path != resolved_directory / "hub_bench_test.go"
+        or overlay.path.is_symlink()
+    ):
+        raise CaptureError("Refusing to remove an unowned benchmark overlay path")
+    overlay.path.chmod(0o600)
+    shutil.rmtree(resolved_directory)
+
+
 def _validate_image_content_id(value: str) -> str:
     """Accept only Docker's immutable content-addressed image identifier."""
 
@@ -168,6 +343,30 @@ def _is_within(path: Path, parent: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _is_symlink_or_junction(path: Path) -> bool:
+    """Reject filesystem redirection in every component of the mount target."""
+
+    return path.is_symlink() or path.is_junction()
+
+
+def _validate_trusted_go_benchmark_target(source_worktree: Path) -> Path:
+    """Require an existing regular in-tree Go benchmark file before capture."""
+
+    source = _resolve_existing_directory(source_worktree, "source worktree")
+    target = source
+    for component in Path(TRUSTED_GO_BENCHMARK_PATH).parts:
+        target /= component
+        if _is_symlink_or_junction(target):
+            raise CaptureError("Go benchmark overlay target must not be redirected")
+    try:
+        resolved_target = target.resolve(strict=True)
+    except OSError as exc:
+        raise CaptureError("Go benchmark overlay target is missing") from exc
+    if not resolved_target.is_file() or not _is_within(resolved_target, source):
+        raise CaptureError("Go benchmark overlay target is not a source file")
+    return resolved_target
 
 
 def prepare_artifact_root(artifact_root: Path, runner_temp: Path) -> Path:
@@ -266,6 +465,7 @@ def build_container_command(
     network: str,
     environment: Mapping[str, str],
     program: Sequence[str],
+    trusted_go_benchmark: Path | None = None,
 ) -> list[str]:
     """Build one explicit Docker invocation without host environment inheritance."""
 
@@ -280,6 +480,23 @@ def build_container_command(
     # paths remain constrained below that read-only source mount.
     if workdir != "/src" and not workdir.startswith("/src/"):
         raise CaptureError("Container workdir must stay below the read-only /src mount")
+    trusted_benchmark_source: Path | None = None
+    if trusted_go_benchmark is not None:
+        if workdir != "/src/services/ws-hub":
+            raise CaptureError(
+                "Trusted Go benchmark overlay is valid only for Go capture"
+            )
+        if trusted_go_benchmark.is_symlink():
+            raise CaptureError("Trusted Go benchmark overlay must not be a symlink")
+        try:
+            trusted_benchmark_source = trusted_go_benchmark.resolve(strict=True)
+        except OSError as exc:
+            raise CaptureError("Trusted Go benchmark overlay is unavailable") from exc
+        if not trusted_benchmark_source.is_file():
+            raise CaptureError("Trusted Go benchmark overlay must be a regular file")
+        if "," in str(trusted_benchmark_source):
+            raise CaptureError("Trusted Go benchmark overlay path is invalid")
+        _validate_trusted_go_benchmark_target(source)
     if not program or any(not token or "\x00" in token for token in program):
         raise CaptureError("Container program is invalid")
     _validate_environment(environment)
@@ -297,6 +514,17 @@ def build_container_command(
             workdir,
         )
     )
+    if trusted_benchmark_source is not None:
+        command.extend(
+            (
+                "--mount",
+                "type=bind,src="
+                + str(trusted_benchmark_source)
+                + ",dst="
+                + TRUSTED_GO_BENCHMARK_CONTAINER_PATH
+                + ",readonly",
+            )
+        )
     if cache_holder is None:
         command.extend(("--mount", f"type=volume,src={cache_volume},dst=/cache"))
     else:
@@ -852,6 +1080,7 @@ def _capture_pair(
     output_path: Path,
     description: str,
     emit_markers: bool = True,
+    trusted_go_benchmark: Path | None = None,
 ) -> None:
     container_name = _new_container_name()
     _safe_capture(
@@ -865,6 +1094,7 @@ def _capture_pair(
             network="none",
             environment=environment,
             program=program,
+            trusted_go_benchmark=trusted_go_benchmark,
         ),
         output_path,
         description=description,
@@ -883,6 +1113,7 @@ def _capture_pair_sides_concurrently(
     program: Sequence[str],
     artifact_root: Path,
     pair: int,
+    trusted_go_benchmark: Path | None = None,
 ) -> None:
     """Capture one base/candidate pair concurrently with bounded workers.
 
@@ -926,6 +1157,7 @@ def _capture_pair_sides_concurrently(
                         output_path=artifact_root / side / f"pair-{pair:02d}.txt",
                         description=f"capture {side} benchmark pair {pair:02d}",
                         emit_markers=False,
+                        trusted_go_benchmark=trusted_go_benchmark,
                     )
                 )
             for future in futures:
@@ -978,6 +1210,7 @@ def _write_toolchain(
     image: str,
     base_revision: str,
     rust_dockerfile: Path | None,
+    trusted_go_benchmark: TrustedGoBenchmarkOverlay | None = None,
 ) -> None:
     tool_name = "go" if format_name == "go" else "rustc"
     version_program = (
@@ -1019,6 +1252,18 @@ def _write_toolchain(
     if rust_dockerfile is not None:
         payload["trusted_dockerfile_sha256"] = _file_sha256(rust_dockerfile)
         payload["trusted_dockerfile_base_revision"] = base_revision
+    if trusted_go_benchmark is not None:
+        payload["trusted_go_benchmark_harness"] = {
+            "applied_sides": ["base", "candidate"],
+            "commit": trusted_go_benchmark.commit,
+            "parent": trusted_go_benchmark.parent,
+            "tree": trusted_go_benchmark.tree,
+            "path": TRUSTED_GO_BENCHMARK_PATH,
+            "blob": trusted_go_benchmark.blob,
+            "sha256": trusted_go_benchmark.sha256,
+            "size_bytes": trusted_go_benchmark.size_bytes,
+            "mount": "read-only overlay for warm and measurement containers",
+        }
     (artifact_root / "toolchain.json").write_text(
         json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -1052,6 +1297,9 @@ def capture(arguments: CaptureArguments) -> None:
         candidate_revision=candidate_revision,
     )
     runner_temp = _resolve_existing_directory(arguments.runner_temp, "runner temp")
+    if arguments.format_name == "go":
+        _validate_trusted_go_benchmark_target(base_worktree)
+        _validate_trusted_go_benchmark_target(candidate_worktree)
     artifact_root = prepare_artifact_root(arguments.artifact_root, runner_temp)
     (artifact_root / "base").mkdir()
     (artifact_root / "candidate").mkdir()
@@ -1059,10 +1307,15 @@ def capture(arguments: CaptureArguments) -> None:
     image: str | None = None
     base_volume: str | None = None
     candidate_volume: str | None = None
+    trusted_go_benchmark: TrustedGoBenchmarkOverlay | None = None
     try:
         if arguments.format_name == "go":
             image = GO_IMAGE
             workdir = "/src/services/ws-hub"
+            trusted_go_benchmark = _prepare_trusted_go_benchmark_overlay(
+                repo_worktree=candidate_worktree,
+                runner_temp=runner_temp,
+            )
             prefetch_program = ("sh", "-ec", "go mod download && go mod verify")
             prefetch_environment = _go_prefetch_environment()
             measurement_environment = _go_environment(offline=True)
@@ -1112,6 +1365,11 @@ def capture(arguments: CaptureArguments) -> None:
                 workdir=workdir,
                 environment=measurement_environment,
                 program=warm_program,
+                trusted_go_benchmark=(
+                    trusted_go_benchmark.path
+                    if trusted_go_benchmark is not None
+                    else None
+                ),
                 output_path=artifact_root / f"warm-{side}.log",
                 description=f"warm {side} benchmark build",
             )
@@ -1122,6 +1380,7 @@ def capture(arguments: CaptureArguments) -> None:
             image=image,
             base_revision=base_revision,
             rust_dockerfile=arguments.rust_dockerfile,
+            trusted_go_benchmark=trusted_go_benchmark,
         )
         for pair in range(1, PAIR_COUNT + 1):
             ordered_sides = (
@@ -1143,6 +1402,11 @@ def capture(arguments: CaptureArguments) -> None:
                 program=measurement_program,
                 artifact_root=artifact_root,
                 pair=pair,
+                trusted_go_benchmark=(
+                    trusted_go_benchmark.path
+                    if trusted_go_benchmark is not None
+                    else None
+                ),
             )
     finally:
         if base_volume is not None:
@@ -1151,6 +1415,8 @@ def capture(arguments: CaptureArguments) -> None:
             _remove_volume(candidate_volume)
         if arguments.format_name == "rust" and image is not None:
             _remove_image(image)
+        if trusted_go_benchmark is not None:
+            _remove_trusted_go_benchmark_overlay(trusted_go_benchmark, runner_temp)
 
 
 def _parse_arguments(argv: Sequence[str] | None = None) -> CaptureArguments:

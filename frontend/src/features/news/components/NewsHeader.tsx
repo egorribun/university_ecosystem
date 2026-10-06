@@ -1,12 +1,18 @@
 import { Newspaper, Plus, Search, X, ArrowUpDown, Bookmark as BookmarkIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, type MouseEvent } from "react"
 import FadeSection from "@/components/motion/FadeSection"
 import { Button } from "@/components/ui/Button"
 import { ALL_CATEGORIES, type NewsCategory } from "@/features/news/categories"
 import { cn } from "@/utils/cn"
 import type { SortMode } from "@/features/news/NewsFeature"
 import { useVisualViewportStickyOffset } from "@/hooks/ui/useVisualViewportStickyOffset"
+
+const focusCategoryWithoutScrolling = (event: MouseEvent<HTMLButtonElement>) => {
+  if (event.button !== 0) return
+  event.preventDefault()
+  event.currentTarget.focus({ preventScroll: true })
+}
 
 interface NewsHeaderProps {
   onAddClick: () => void
@@ -167,6 +173,7 @@ export const NewsHeader = ({
           {/* "All" pill */}
           <button
             type="button"
+            onMouseDown={focusCategoryWithoutScrolling}
             onClick={() => onCategoryChange("all")}
             aria-current={activeCategory === "all" ? "page" : undefined}
             className={cn(
@@ -184,6 +191,7 @@ export const NewsHeader = ({
             <button
               key={cat.id}
               type="button"
+              onMouseDown={focusCategoryWithoutScrolling}
               onClick={() => onCategoryChange(cat.id)}
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
@@ -207,6 +215,7 @@ export const NewsHeader = ({
           {bookmarkCount > 0 && (
             <button
               type="button"
+              onMouseDown={focusCategoryWithoutScrolling}
               onClick={() => onCategoryChange("saved")}
               aria-current={activeCategory === "saved" ? "page" : undefined}
               className={cn(

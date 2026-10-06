@@ -1,0 +1,169 @@
+name: Reusable Verified Helm Dependencies
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Full source commit selected by the trusted caller.
+        required: true
+        type: string
+    outputs:
+      artifact_name:
+        description: Exact verified Helm artifact emitted by this run and attempt.
+        value: ${{ jobs.produce.outputs.artifact_name }}
+permissions:
+  contents: read
+jobs:
+  produce:
+    name: Produce verified Helm dependency artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      artifact_name: ${{ steps.verify.outputs.artifact_name }}
+    steps:
+      - name: Verify Helm producer caller and source provenance
+        id: verify
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+          GITHUB_REF_VALUE: ${{ github.ref }}
+          GITHUB_EVENT_NAME_VALUE: ${{ github.event_name }}
+          GITHUB_REPOSITORY_VALUE: ${{ github.repository }}
+          GITHUB_WORKFLOW_REF_VALUE: ${{ github.workflow_ref }}
+          GITHUB_WORKFLOW_SHA_VALUE: ${{ github.workflow_sha }}
+          JOB_CONTEXT_JSON: ${{ toJSON(job) }}
+          RUN_ID_VALUE: ${{ github.run_id }}
+          RUN_ATTEMPT_VALUE: ${{ github.run_attempt }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          def reject():
+              print("::error::Helm producer workflow provenance validation failed.", file=sys.stderr)
+              raise SystemExit(1)
+
+          def required_env(name):
+              value = os.environ.get(name)
+              if not value:
+                  reject()
+              return value
+
+          try:
+              job_context = json.loads(required_env("JOB_CONTEXT_JSON"))
+          except (json.JSONDecodeError, TypeError):
+              reject()
+          if not isinstance(job_context, dict):
+              reject()
+          job_workflow_ref = job_context.get("workflow_ref")
+          job_workflow_sha = job_context.get("workflow_sha")
+          job_workflow_file_path = job_context.get("workflow_file_path")
+          if any(not isinstance(value, str) or not value for value in (
+              job_workflow_ref, job_workflow_sha, job_workflow_file_path
+          )):
+              reject()
+
+          source_sha = required_env("SOURCE_SHA")
+          github_sha = required_env("GITHUB_SHA_VALUE")
+          github_ref = required_env("GITHUB_REF_VALUE")
+          event_name = required_env("GITHUB_EVENT_NAME_VALUE")
+          repository = required_env("GITHUB_REPOSITORY_VALUE")
+          if repository != "egorribun/university_ecosystem":
+              reject()
+          github_workflow_ref = required_env("GITHUB_WORKFLOW_REF_VALUE")
+          github_workflow_sha = required_env("GITHUB_WORKFLOW_SHA_VALUE")
+          run_id = required_env("RUN_ID_VALUE")
+          run_attempt = required_env("RUN_ATTEMPT_VALUE")
+          if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+              reject()
+          if source_sha != github_sha or source_sha != github_workflow_sha:
+              reject()
+          if source_sha != job_workflow_sha:
+              reject()
+          reusable_path = ".github/workflows/reusable-helm-dependencies.yml"
+          if job_workflow_file_path != reusable_path:
+              reject()
+          if job_workflow_ref != f"{repository}/{reusable_path}@{github_ref}":
+              reject()
+          if not re.fullmatch(r"[1-9][0-9]*", run_id):
+              reject()
+          if not re.fullmatch(r"[1-9][0-9]{0,8}", run_attempt):
+              reject()
+
+          if github_workflow_ref == f"{repository}/.github/workflows/nightly-full-gate.yml@refs/heads/main":
+              if github_ref != "refs/heads/main" or event_name not in ("schedule", "repository_dispatch"):
+                  reject()
+              artifact_prefix = "nightly-helm-dependencies-"
+              workflow_path = ".github/workflows/nightly-full-gate.yml"
+          elif github_workflow_ref == f"{repository}/.github/workflows/manual-mutation-evidence.yml@refs/heads/egorribun":
+              if github_ref != "refs/heads/egorribun" or event_name != "workflow_dispatch":
+                  reject()
+              artifact_prefix = "manual-full-helm-dependencies-"
+              workflow_path = ".github/workflows/manual-mutation-evidence.yml"
+          else:
+              reject()
+
+          artifact_name = f"{artifact_prefix}{run_id}-{run_attempt}"
+          output_path = required_env("GITHUB_OUTPUT")
+          with open(output_path, "a", encoding="utf-8") as output:
+              output.write(f"artifact_name={artifact_name}\n")
+              output.write(f"artifact_prefix={artifact_prefix}\n")
+              output.write(f"workflow_path={workflow_path}\n")
+          PY
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Verify checked out source SHA
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        shell: bash
+        run: |
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
+
+      - name: Stage verified Helm dependency artifact
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ inputs.source_sha }}
+          WORKFLOW: ${{ steps.verify.outputs.workflow_path }}
+        run: |
+          set -euo pipefail
+          rm -rf helm-dependencies
+          mkdir -p helm-dependencies/charts
+          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+            test -s "charts/university-ecosystem/charts/$archive"
+            cp --no-preserve=mode,ownership "charts/university-ecosystem/charts/$archive" \
+              "helm-dependencies/charts/$archive"
+          done
+          python3 scripts/ci/helm_dependency_artifact.py create \
+            helm-dependencies helm-dependencies.json \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW"
+
+      - name: Upload verified Helm dependency artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.verify.outputs.artifact_name }}
+          path: helm-dependencies/
+          if-no-files-found: error

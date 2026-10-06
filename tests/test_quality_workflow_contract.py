@@ -105,6 +105,9 @@ QUALITY_HISTORY_WORKFLOW_PATH = (
 NIGHTLY_FULL_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
 )
+FULL_BACKEND_MUTATION_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-full-backend-mutation.yml"
+)
 SBOM_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sbom.yml"
 DEPENDENCY_AUDIT_VALIDATOR_PATH = (
     REPOSITORY_ROOT / "scripts" / "check_dependency_audit_report.py"
@@ -2981,19 +2984,46 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
     assert set(_workflow_triggers(workflow)) == {"workflow_dispatch"}
     dispatch = _workflow_triggers(workflow)["workflow_dispatch"]
     assert isinstance(dispatch, dict)
-    assert dispatch["inputs"]["mutation_base_sha"] == {
-        "description": "Full strict-ancestor commit SHA used to scope manual mutation evidence",
+    assert dispatch["inputs"]["backend_scope"] == {
+        "description": "Choose the default incremental backend evidence or full backend evidence.",
         "required": True,
+        "type": "choice",
+        "default": "incremental",
+        "options": ["incremental", "full"],
+    }
+    assert dispatch["inputs"]["mutation_base_sha"] == {
+        "description": "Required strict-ancestor SHA for incremental backend evidence; ignored in full mode.",
+        "required": False,
         "type": "string",
     }
+    assert (
+        jobs["manual-mutation-stats"]["if"]
+        == "${{ inputs.backend_scope == 'incremental' }}"
+    )
+    assert (
+        jobs["manual-mutation-tests"]["if"]
+        == "${{ inputs.backend_scope == 'incremental' }}"
+    )
+    full_call = jobs["manual-full-backend-mutation"]
+    assert full_call["if"] == "${{ inputs.backend_scope == 'full' }}"
+    assert full_call["uses"] == "./.github/workflows/reusable-full-backend-mutation.yml"
+    assert full_call["with"]["source_sha"] == "${{ github.sha }}"
+    assert full_call["with"]["helm_artifact_name"] == (
+        "${{ needs.manual-full-helm-dependencies.outputs.artifact_name }}"
+    )
+    assert jobs["manual-full-helm-dependencies"]["uses"] == (
+        "./.github/workflows/reusable-helm-dependencies.yml"
+    )
+    assert jobs["manual-full-backend-scope-guard"]["if"] == (
+        "${{ inputs.backend_scope == 'full' }}"
+    )
     assert workflow["permissions"] == {"contents": "read"}
     assert workflow["concurrency"]["group"] == (
         "manual-mutation-evidence-${{ github.ref }}"
     )
     assert workflow["concurrency"]["cancel-in-progress"] is False
     assert all(
-        isinstance(job.get("name"), str)
-        and job["name"].startswith("Manual Mutation Evidence")
+        isinstance(job.get("name"), str) and job["name"].startswith("Manual ")
         for job in jobs.values()
     )
     assert {job["name"] for job in jobs.values()}.isdisjoint(REQUIRED_CI_CONTEXTS)
@@ -3400,7 +3430,7 @@ def test_full_map_survivor_confirmation_degrades_only_the_watchdog_it_must() -> 
             "Run incremental mutmut (blocking, stats-derived budget)",
         ),
         (
-            NIGHTLY_FULL_WORKFLOW_PATH,
+            FULL_BACKEND_MUTATION_WORKFLOW_PATH,
             "mutation-tests-full",
             "Plan and run exact full mutation shard",
         ),
@@ -4214,25 +4244,45 @@ def test_weekly_duration_refresh_uses_bounded_complete_junit_shards() -> None:
 
 
 def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
-    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
-    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
     triggers = _workflow_triggers(workflow)
     assert triggers["schedule"][0]["cron"] == "0 1 * * *"
     jobs = workflow["jobs"]
+
+    # Nightly remains a main-only caller. The mutation implementation is
+    # shared with the explicitly scoped manual full-evidence route.
+    helm_call = jobs["nightly-helm-dependencies"]
+    assert (
+        helm_call["if"]
+        == "${{ github.repository == 'egorribun/university_ecosystem' && github.ref == 'refs/heads/main' }}"
+    )
+    assert helm_call["uses"] == "./.github/workflows/reusable-helm-dependencies.yml"
+    assert helm_call["with"]["source_sha"] == "${{ github.sha }}"
+    mutation_call = jobs["mutation-tests-full"]
+    assert (
+        mutation_call["if"]
+        == "${{ github.repository == 'egorribun/university_ecosystem' && github.ref == 'refs/heads/main' }}"
+    )
+    assert mutation_call["needs"] == "nightly-helm-dependencies"
+    assert mutation_call["uses"] == (
+        "./.github/workflows/reusable-full-backend-mutation.yml"
+    )
+    assert mutation_call["with"]["source_sha"] == "${{ github.sha }}"
+    assert mutation_call["with"]["helm_artifact_name"] == (
+        "${{ needs.nightly-helm-dependencies.outputs.artifact_name }}"
+    )
+    full_workflow = yaml.safe_load(
+        FULL_BACKEND_MUTATION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    full_jobs = full_workflow["jobs"]
     assert {
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-stats",
+        "mutation-tests-full-plan",
         "mutation-tests-full",
         "mutation-tests-full-aggregate",
-        "frontend-mutation-tests-full",
-        "backend-full",
-        "go-integration",
-        "browser-matrix",
-        "load-and-chaos",
-        "kyverno-test",
-        "miri",
-        "notify-failure",
-        "container-integration-cells",
-    } <= set(jobs)
-    mutation_steps = jobs["mutation-tests-full-aggregate"]["steps"]
+    } <= set(full_jobs)
+    mutation_steps = full_jobs["mutation-tests-full-aggregate"]["steps"]
     export_step = next(
         step
         for step in mutation_steps
@@ -4242,6 +4292,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert "--expected-shards 128" in export_step["run"]
     assert "scripts/check_mutation_score.py --min-score 100" in export_step["run"]
     assert "mutmut export-cicd-stats" not in export_step["run"]
+
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
         "services/gateway",
         "services/ws-hub",
@@ -4274,8 +4325,9 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "mobile-webkit",
     ]
     assert "always()" in jobs["notify-failure"]["if"]
-    assert "mutation-tests-full-stats" in jobs["notify-failure"]["needs"]
-    assert "mutation-tests-full-plan" in jobs["notify-failure"]["needs"]
+    assert "mutation-tests-full" in jobs["notify-failure"]["needs"]
+    assert "mutation-tests-full-stats" not in jobs["notify-failure"]["needs"]
+    assert "mutation-tests-full-plan" not in jobs["notify-failure"]["needs"]
     assert "frontend-mutation-tests-full" in jobs["notify-failure"]["needs"]
     assert workflow["permissions"] == {"contents": "read"}
     assert jobs["notify-failure"]["permissions"] == {
@@ -4635,10 +4687,10 @@ def test_blocking_mutation_jobs_are_not_mislabeled_as_advisory() -> None:
 
 
 def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
-    nightly_workflow = yaml.safe_load(
-        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    full_workflow = yaml.safe_load(
+        FULL_BACKEND_MUTATION_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    mutation_job = nightly_workflow["jobs"]["mutation-tests-full-aggregate"]
+    mutation_job = full_workflow["jobs"]["mutation-tests-full-aggregate"]
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
@@ -4654,24 +4706,25 @@ def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
 def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> None:
     """Keep sharded stats isolated and the clean baseline fresh."""
 
-    nightly_workflow = yaml.safe_load(
-        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    full_workflow = yaml.safe_load(
+        FULL_BACKEND_MUTATION_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    stats_job = nightly_workflow["jobs"]["mutation-tests-full-stats"]
-    plan_job = nightly_workflow["jobs"]["mutation-tests-full-plan"]
+    jobs = full_workflow["jobs"]
+    stats_job = jobs["mutation-tests-full-stats"]
+    plan_job = jobs["mutation-tests-full-plan"]
     plan_steps = plan_job["steps"]
-    mutation_steps = nightly_workflow["jobs"]["mutation-tests-full"]["steps"]
-    assert nightly_workflow["jobs"]["mutation-tests-full"]["needs"] == [
+    mutation_job = jobs["mutation-tests-full"]
+    mutation_steps = mutation_job["steps"]
+    assert mutation_job["needs"] == [
+        "verify-full-mutation-provenance",
         "mutation-tests-full-plan",
-        "nightly-helm-dependencies",
     ]
-    assert plan_job["needs"] == "mutation-tests-full-stats"
-    assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
-        "shard"
-    ] == list(range(1, 129))
-    assert (
-        nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["max-parallel"] == 8
-    )
+    assert plan_job["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-stats",
+    ]
+    assert mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert jobs["mutation-tests-full"]["strategy"]["max-parallel"] == 8
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
     stats_helm = next(step for step in stats_steps if step.get("name") == "Set up Helm")
@@ -4741,11 +4794,11 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert "--num-shards 8" in stats_script
     assert "--max-children 2" in stats_script
     assert upload_step["with"]["name"] == (
-        "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
         "${{ matrix.stats_shard }}"
     )
     assert download_step["with"]["pattern"] == (
-        "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
     )
     assert "if-no-artifact-found" not in download_step["with"]
     require_stats = next(
@@ -4762,7 +4815,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         if step.get("name") == "Upload preflighted full mutation plan"
     )
     assert plan_upload["with"]["name"] == (
-        "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     plan_download = next(
         step
@@ -4770,7 +4823,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         if step.get("name") == "Download preflighted full mutation plan"
     )
     assert plan_download["with"]["name"] == (
-        "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     assert "if-no-artifact-found" not in plan_download["with"]
     shard_upload = next(
@@ -4779,7 +4832,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         if step.get("name") == "Upload full mutation shard evidence"
     )
     assert shard_upload["with"]["name"] == (
-        "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-"
         "${{ matrix.shard }}"
     )
     assert "scripts/merge_mutmut_stats.py" in merge_step["run"]
@@ -4794,8 +4847,11 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
     assert "uv run mutmut run" not in run_script
     assert "scripts/mutmut_stats_shard.py" not in run_script
-    aggregate_job = nightly_workflow["jobs"]["mutation-tests-full-aggregate"]
-    assert aggregate_job["needs"] == "mutation-tests-full"
+    aggregate_job = jobs["mutation-tests-full-aggregate"]
+    assert aggregate_job["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full",
+    ]
     aggregate_text = "\n".join(
         step.get("run", "") for step in aggregate_job["steps"] if isinstance(step, dict)
     )
@@ -4805,7 +4861,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         if step.get("name") == "Download full mutation shard evidence"
     )
     assert aggregate_download["with"]["pattern"] == (
-        "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-*"
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-*"
     )
     assert "if-no-artifact-found" not in aggregate_download["with"]
     require_shards = next(
@@ -4819,13 +4875,18 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         in require_shards["run"]
     )
     assert "seq 1 128" in require_shards["run"]
+    assert (
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}"
+        in require_shards["run"]
+    )
+    assert "${RUN_ID}-${RUN_ATTEMPT}-${shard}" in require_shards["run"]
     aggregate_upload = next(
         step
         for step in aggregate_job["steps"]
         if step.get("name") == "Upload aggregate mutation evidence"
     )
     assert aggregate_upload["with"]["name"] == (
-        "nightly-mutmut-${{ github.run_id }}-${{ github.run_attempt }}"
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     assert "scripts/merge_mutmut_cicd_stats.py" in aggregate_text
     assert "--expected-shards 128" in aggregate_text

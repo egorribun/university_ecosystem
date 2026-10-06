@@ -2,6 +2,10 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
 import test from "node:test"
+import {
+  comparePersistedAvatarIdentity,
+  renderedAvatarResourceMatches,
+} from "./avatar-resource-identity.mjs"
 
 const rootUrl = new URL("../../../", import.meta.url)
 const fixtureUrl = new URL("./fixtures.ts", import.meta.url)
@@ -104,8 +108,27 @@ test("avatar UI validation matches the image API and live acceptance stays owner
         /expect\(await reloadedAvatar\.getAttribute\("src"\)\)\.toBe\(persistedAvatarSrc\)/gu
       ) ?? []
     ).length,
-    3,
-    "server-rejected content and client-rejected files preserve the displayed persisted avatar"
+    1,
+    "same-mount server rejection preserves the exact displayed resource"
+  )
+  assert.equal(
+    (
+      spec.match(
+        /expect\(await reloadedAvatar\.getAttribute\("src"\)\)\.toBe\(rejectedReloadedAvatarSrc\)/gu
+      ) ?? []
+    ).length,
+    2,
+    "client-side rejections preserve the post-reload rendered resource and its cache version"
+  )
+  assert.match(
+    spec,
+    /const mediaOrigin = process\.env\.VITE_BACKEND_ORIGIN \?\? ""/u,
+    "profile URL resolution uses the explicitly configured origin, including relative-path mode"
+  )
+  assert.match(
+    spec,
+    /await expectSavedAvatarSourceReady\(page, avatar, savedProfile\.avatar_url\)[\s\S]*?await expectImageDecoded\(avatar/u,
+    "successful profile refresh and enabled UI state precede the same-mount decode check"
   )
   assert.match(spec, /await removeOwnerAvatar\(page\)/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)
@@ -120,4 +143,62 @@ test("avatar UI validation matches the image API and live acceptance stays owner
     "the live avatar flow only intercepts its third-party password-range lookup"
   )
   assert.match(fixtures, /await page\.route\("https:\/\/api\.pwnedpasswords\.com\/\*\*"/u)
+})
+
+test("profile-backed avatar readiness allows only the regenerated cache token", () => {
+  const baseUrl = "https://app.example.test/settings/profile"
+  const renderedFromProfile = "/api/v1/img/avatars/saved.png?_v=profile-check"
+  const currentRender = "https://app.example.test/api/v1/img/avatars/saved.png?_v=live-render"
+  assert.equal(renderedAvatarResourceMatches(renderedFromProfile, currentRender, baseUrl), true)
+  assert.deepEqual(
+    comparePersistedAvatarIdentity({
+      savedProfileAvatarUrl: "/static/avatars/saved.png",
+      reloadedProfileAvatarUrl: "/static/avatars/saved.png",
+      savedRenderedSrc: renderedFromProfile,
+      reloadedRenderedSrc: currentRender,
+      baseUrl,
+    }),
+    { profileValueMatches: true, renderedSourceMatches: true }
+  )
+})
+
+test("profile-backed avatar readiness rejects optimistic or changed resources", () => {
+  const baseUrl = "https://app.example.test/settings/profile"
+  const saved = "/api/v1/img/avatars/saved.png?_v=profile-check"
+  const withUserInfo = new URL(saved, baseUrl)
+  withUserInfo.username = String.fromCodePoint(97)
+  withUserInfo.password = String.fromCodePoint(98)
+  const withDuplicateVersion = new URL(saved, baseUrl)
+  withDuplicateVersion.searchParams.append("_v", String(2))
+  const savedWithOptions = "/api/v1/img/avatars/saved.png?format=webp&width=96&_v=profile-check"
+  const changedQueryValue = "/api/v1/img/avatars/saved.png?format=webp&width=128&_v=live-render"
+  const reorderedQuery = "/api/v1/img/avatars/saved.png?width=96&format=webp&_v=live-render"
+
+  for (const current of [
+    "blob:https://app.example.test/local-preview",
+    "data:image/png;base64,AA==",
+    "/api/v1/img/avatars/other.png?_v=live-render",
+    "https://cdn.example.test/api/v1/img/avatars/saved.png?_v=live-render",
+    "https://gravatar.com/avatar/default?_v=live-render",
+    "/api/v1/img/avatars/saved.png",
+    withDuplicateVersion.toString(),
+    withUserInfo.toString(),
+    "/api/v1/img/avatars/saved.png?quality=80&_v=live-render",
+    "/api/v1/img/avatars/saved.png?_v=live-render#different",
+  ]) {
+    assert.equal(renderedAvatarResourceMatches(saved, current, baseUrl), false)
+  }
+  assert.equal(renderedAvatarResourceMatches(savedWithOptions, changedQueryValue, baseUrl), false)
+  assert.equal(renderedAvatarResourceMatches(savedWithOptions, reorderedQuery, baseUrl), false)
+
+  assert.deepEqual(
+    comparePersistedAvatarIdentity({
+      savedProfileAvatarUrl: "/static/avatars/saved.png",
+      reloadedProfileAvatarUrl: "/static/avatars/changed.png",
+      savedRenderedSrc: saved,
+      reloadedRenderedSrc: saved,
+      baseUrl,
+    }),
+    { profileValueMatches: false, renderedSourceMatches: true }
+  )
 })

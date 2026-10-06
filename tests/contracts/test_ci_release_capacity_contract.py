@@ -145,18 +145,38 @@ def test_high_fanout_lanes_are_bounded_without_reducing_matrix_cardinality() -> 
     assert len(frontend_jobs["lighthouse-shards"]["strategy"]["matrix"]["include"]) == 4
 
     nightly_jobs = _workflow(NIGHTLY)["jobs"]
-    for job_name, cap in {
+    full_backend_call = nightly_jobs["mutation-tests-full"]
+    assert full_backend_call["uses"] == (
+        "./.github/workflows/reusable-full-backend-mutation.yml"
+    )
+    reusable_backend_jobs = _workflow(WORKFLOWS / "reusable-full-backend-mutation.yml")[
+        "jobs"
+    ]
+    reusable_caps = {
         "mutation-tests-full-stats": 4,
         "mutation-tests-full": 8,
+    }
+    for job_name, cap in {
+        **reusable_caps,
         "frontend-mutation-shards": 8,
         "backend-full": 2,
         "backend-integration": 2,
         "go-integration": 2,
         "browser-matrix": 2,
     }.items():
-        strategy = nightly_jobs[job_name]["strategy"]
+        jobs = reusable_backend_jobs if job_name in reusable_caps else nightly_jobs
+        strategy = jobs[job_name]["strategy"]
         assert strategy["fail-fast"] is False
         assert strategy["max-parallel"] == cap
+
+    stats_matrix = reusable_backend_jobs["mutation-tests-full-stats"]["strategy"][
+        "matrix"
+    ]
+    execution_matrix = reusable_backend_jobs["mutation-tests-full"]["strategy"][
+        "matrix"
+    ]
+    assert stats_matrix["stats_shard"] == list(range(8))
+    assert execution_matrix["shard"] == list(range(1, 129))
 
 
 def test_manual_and_active_scan_workflows_serialize_duplicate_dispatches() -> None:

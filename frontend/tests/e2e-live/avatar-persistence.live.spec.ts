@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
 import {
   expect,
   freshPassword,
@@ -7,6 +7,12 @@ import {
   stubBreachedPasswordLookup,
   test,
 } from "./fixtures"
+import { decodeExistingImage } from "./avatar-image-readiness"
+import {
+  comparePersistedAvatarIdentity,
+  renderedAvatarResourceMatches,
+} from "./avatar-resource-identity.mjs"
+import { addVersionParam, resolveMediaUrl, resolveProxyImageUrl } from "../../src/utils/media"
 
 interface OwnerAvatarProfile {
   id: string
@@ -99,6 +105,52 @@ const chooseAvatarFile = async (
   await fileChooser.setFiles(file)
 }
 
+const expectImageDecoded = async (image: Locator, description: string): Promise<void> => {
+  const sourceBeforeDecode = await image.getAttribute("src")
+  const hasNonDefaultSource = (source: string | null): boolean =>
+    source !== null && source.length > 0 && !/gravatar\.com/iu.test(source)
+
+  expect(hasNonDefaultSource(sourceBeforeDecode), `${description} has a saved avatar source`).toBe(
+    true
+  )
+  await expect
+    .poll(async () => {
+      const result = await image.evaluate(decodeExistingImage, 1500)
+      return result.outcome === "resolved"
+    })
+    .toBe(true)
+
+  const sourceAfterDecode = await image.getAttribute("src")
+  expect(
+    hasNonDefaultSource(sourceAfterDecode) && sourceAfterDecode === sourceBeforeDecode,
+    `${description} keeps the saved avatar source after decoding`
+  ).toBe(true)
+}
+
+const expectSavedAvatarSourceReady = async (
+  page: Page,
+  image: Locator,
+  profileAvatarUrl: string | null
+): Promise<void> => {
+  await expect(page.getByText(/Аватар обновлён|Avatar updated/u)).toBeVisible()
+  const changeAvatarButton = page
+    .getByRole("tabpanel")
+    .getByRole("button", { name: /Сменить|Change/u })
+  await expect(changeAvatarButton).toBeEnabled()
+
+  const baseUrl = page.url()
+  const mediaOrigin = process.env.VITE_BACKEND_ORIGIN ?? ""
+  const resolvedProfileUrl = resolveMediaUrl(profileAvatarUrl ?? undefined, mediaOrigin)
+  const expectedRenderedSrc = addVersionParam(
+    resolveProxyImageUrl(resolvedProfileUrl, undefined, mediaOrigin),
+    "saved-profile"
+  )
+  const actualRenderedSrc = await image.getAttribute("src")
+  expect(
+    renderedAvatarResourceMatches(expectedRenderedSrc, actualRenderedSrc, baseUrl),
+    "the rendered avatar resolves to the saved profile resource under the configured backend origin"
+  ).toBe(true)
+}
 test("avatar upload persists across reload and rolls back server-rejected content", async ({
   page,
   browser,
@@ -180,9 +232,8 @@ test("avatar upload persists across reload and rolls back server-rejected conten
     const avatar = page.getByRole("tabpanel").getByRole("img", { name: fullName })
     await expect(avatar).toBeVisible()
     await expect(avatar).not.toHaveAttribute("src", /gravatar\.com/u)
-    await expect
-      .poll(() => avatar.evaluate((image) => (image as HTMLImageElement).naturalWidth))
-      .toBeGreaterThan(0)
+    await expectSavedAvatarSourceReady(page, avatar, savedProfile.avatar_url)
+    await expectImageDecoded(avatar, "the uploaded avatar decodes on its existing image element")
 
     await page.reload()
     const reloadedProfile = await readOwnerProfile(page)
@@ -194,9 +245,10 @@ test("avatar upload persists across reload and rolls back server-rejected conten
     const reloadedAvatar = page.getByRole("tabpanel").getByRole("img", { name: fullName })
     await expect(reloadedAvatar).toBeVisible()
     await expect(reloadedAvatar).not.toHaveAttribute("src", /gravatar\.com/u)
-    await expect
-      .poll(() => reloadedAvatar.evaluate((image) => (image as HTMLImageElement).naturalWidth))
-      .toBeGreaterThan(0)
+    await expectImageDecoded(
+      reloadedAvatar,
+      "the persisted avatar decodes on its existing image element after reload"
+    )
     const persistedAvatarSrc = await reloadedAvatar.getAttribute("src")
 
     // The browser accepts this declared PNG MIME, but the server rejects the
@@ -223,6 +275,10 @@ test("avatar upload persists across reload and rolls back server-rejected conten
     ).toBeVisible()
     expect((await readOwnerProfile(page)).avatar_url).toBe(savedProfile.avatar_url)
     expect(await reloadedAvatar.getAttribute("src")).toBe(persistedAvatarSrc)
+    await expectImageDecoded(
+      reloadedAvatar,
+      "the persisted avatar decodes after the server rejects an optimistic replacement"
+    )
 
     await page.reload()
     const rejectedReloadedProfile = await readOwnerProfile(page)
@@ -234,13 +290,23 @@ test("avatar upload persists across reload and rolls back server-rejected conten
     }
     const rejectedReloadedAvatar = page.getByRole("tabpanel").getByRole("img", { name: fullName })
     const rejectedReloadedAvatarSrc = await rejectedReloadedAvatar.getAttribute("src")
-    const savedAvatarRestoredAfterRejectedReload =
-      rejectedReloadedProfile.avatar_url === savedProfile.avatar_url &&
-      rejectedReloadedAvatarSrc === persistedAvatarSrc
+    const { profileValueMatches, renderedSourceMatches } = comparePersistedAvatarIdentity({
+      savedProfileAvatarUrl: savedProfile.avatar_url,
+      reloadedProfileAvatarUrl: rejectedReloadedProfile.avatar_url,
+      savedRenderedSrc: persistedAvatarSrc,
+      reloadedRenderedSrc: rejectedReloadedAvatarSrc,
+      baseUrl: page.url(),
+    })
+    const savedAvatarRestoredAfterRejectedReload = profileValueMatches && renderedSourceMatches
     expect(
       savedAvatarRestoredAfterRejectedReload,
       "the previous owner avatar remains saved and displayed after rejected upload and reload"
     ).toBe(true)
+    await expect(rejectedReloadedAvatar).toBeVisible()
+    await expectImageDecoded(
+      rejectedReloadedAvatar,
+      "the restored persisted avatar decodes after rejected upload and reload"
+    )
 
     const postsBeforeInvalidFiles = avatarPostCount
     await chooseAvatarFile(page, {
@@ -255,7 +321,7 @@ test("avatar upload persists across reload and rolls back server-rejected conten
       postsBeforeInvalidFiles
     )
     expect((await readOwnerProfile(page)).avatar_url).toBe(savedProfile.avatar_url)
-    expect(await reloadedAvatar.getAttribute("src")).toBe(persistedAvatarSrc)
+    expect(await reloadedAvatar.getAttribute("src")).toBe(rejectedReloadedAvatarSrc)
 
     await chooseAvatarFile(page, {
       name: "oversized-avatar.png",
@@ -267,7 +333,7 @@ test("avatar upload persists across reload and rolls back server-rejected conten
       postsBeforeInvalidFiles
     )
     expect((await readOwnerProfile(page)).avatar_url).toBe(savedProfile.avatar_url)
-    expect(await reloadedAvatar.getAttribute("src")).toBe(persistedAvatarSrc)
+    expect(await reloadedAvatar.getAttribute("src")).toBe(rejectedReloadedAvatarSrc)
     expect(reloadedProfile.id).toMatch(/^[0-9a-f-]{36}$/iu)
   } finally {
     try {
