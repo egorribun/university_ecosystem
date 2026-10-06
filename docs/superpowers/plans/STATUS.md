@@ -7,9 +7,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Родитель текущего checkpoint — `7aa105a85df546d73554266ddb58bbcfd86d059e`.
+  Родитель текущего checkpoint — `1ab04757ea131d11b8e6acadd03c9a3d5c0b06fa`.
   В `6d8` перенесены RuntimeFeatureOverrides, в `7be1` — auth/audit/session
-  regressions; `107845` обновил sharp/libvips. Текущий checkpoint — RLS regression.
+  regressions; `107845` обновил sharp/libvips; `1ab` — RLS. Сейчас — cache/session regressions.
   Production-код, exclusions и пороги не изменены. Root — единственный tracked writer и владелец runtime;
   три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
 - В checkpoint вошли full-backend mutation workflow, immutable benchmark
@@ -37,7 +37,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Для source7ac локальные затронутые contracts359/359 и Helm retry29/29 PASS;
   CodeQL/Chromium исправления имеют hosted proof. Для переноса тестов canonical
   lifespan + новый модуль39/39, preflight9/9 и test-file pre-commit PASS.
-  Manual full run 37512795410/a1 на 7aa queued; hosted proof ещё требуется.
+  Manual full run 37512795410/a1 на 7aa выполняется; полный hosted proof ещё требуется.
 - Historical backend generation54,457/344 и incremental selection4,589/128
   не подменяют свежий inventory. Принятый перенос сохраняет None/default,
   явные True/False, disable из True и None, reset и неизвестные флаги.
@@ -58,11 +58,13 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Replay #723/#735/#827: baseline40/40, каждый exact mutant39 PASS/1 call failure.
   RLS reload #255: root baseline PASS/exact call-phase ValueError; typed fixture,
   canonical chat80/80 и strict targeted mypy PASS, без реальной PostgreSQL.
-  Canonical suites: frontend123/123 и audit67/67 PASS; это локальные
-  regressions, а не новый canonical mutation score.
+  Canonical suites: frontend123/123, новый session/WS/persistence набор81/81 и audit67/67 PASS.
+  Root подтвердил exact WS4, session382/390 и persistence1037 RED/GREEN; global credit отсутствует.
+  Focused useAuthApi на1ab:366 mutants =318 Killed/48 Survived,0 Timeout/RuntimeError/NoCoverage;
+  86.8852%, gate FAILED. Dry-run1670 PASS; immutable local report d59264c6 сохранён.
   Preflight9/9 и последующие frontend delta checks3/3, pre-commit,
   links в обоих режимах, Markdownlint и configured CSpell PASS.
-- Matrix `37506190354/a1` на `6d8` выполняется; Node Dependency Audit FAILED.
+- Historical Matrix `37506190354/a1` на `6d8`: Node Dependency Audit FAILED.
   Локальный audit подтвердил GHSA-wq5f-xc86-pv6w: sharp0.35.4→0.35.5,
   librsvg2.63.2. Frozen install, SVG→PNG smoke и pinned-artifact build PASS;
   npm audit:0 advisories. Hosted Node Audit112439174423 на 7aa SUCCESS (run37512735806/a1).
@@ -78,15 +80,13 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Live-приёмка
 
 - Обычный Compose stand `7ac` был поднят с 29 healthy services, seed прошёл.
-  После диагностического запуска root остановил stand штатно; данные и
-  evidence сохранены.
+  Stand штатно остановлен; данные и evidence сохранены.
 - Desktop avatar diagnostic R3 завершился без принятых маркеров: counts
   invalid, child exit 1, cleanup verified. Mobile run — NOT RUN / HOLD. Это
   диагностический результат, не pass/fail продукта и не полная live-приёмка.
   Причина неизвестна: child output не сохранён в outer log. До нового runtime
   закрыть descendant lineage и ограниченную классификацию child output.
-- Ранний desktop запуск до seed не учитывается: защищённый synthetic admin
-  credential отсутствовал. Canonical demo seed затем завершился PASS; это
+- Ранний desktop до seed не учитывается: synthetic admin credential отсутствовал. Demo seed затем PASS; это
   устранило только prerequisite, но не закрыло R3.
 - Полная traceability требований, RU/EN, light/dark, responsive, SSR/PWA,
   accessibility/performance и пользовательское visual approval остаются
@@ -123,7 +123,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Последний root snapshot: running Docker0, RAM38.4%,free19.6GiB.
+  Последний root snapshot: running Docker0, RAM40.8%,free18.81GiB.
   Удалены только три доказанно пустые retired networks; global prune не применялся.
 - Только основной worktree. Не удалять уникальные env/data/volumes/backups.
   Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.

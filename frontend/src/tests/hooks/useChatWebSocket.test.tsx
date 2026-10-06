@@ -446,7 +446,17 @@ describe("useChatWebSocket", () => {
       ])
     )
     queryClient.setQueryData<ChatsListResponse>(["chats"], {
-      items: [makeChat({ last_message: makeMessage({ content: "doomed" }), unread_count: 2 })],
+      items: [
+        makeChat({ last_message: makeMessage({ content: "doomed" }), unread_count: 2 }),
+        makeChat({
+          id: OTHER_CHAT_ID,
+          last_message: makeMessage({
+            id: OTHER_MSG_ID,
+            chat_id: OTHER_CHAT_ID,
+            content: "other chat preview",
+          }),
+        }),
+      ],
       has_more: false,
       next_cursor: null,
     })
@@ -464,14 +474,71 @@ describe("useChatWebSocket", () => {
     expect(cached?.items[0]?.deleted_at).toBe("2026-01-15T12:30:00Z")
     expect(cached?.items[1]?.content).toBe("untouched")
     expect(cached?.items[0]?.reactions).toEqual([{ emoji: "💙", count: 2, reacted_by_me: true }])
-    expect(
-      queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.last_message
-    ).toBeUndefined()
+    const chats = queryClient.getQueryData<ChatsListResponse>(["chats"])
+    expect(chats?.items[0]?.last_message).toBeUndefined()
+    expect(chats?.items[1]?.last_message).toMatchObject({
+      id: OTHER_MSG_ID,
+      content: "other chat preview",
+    })
     expect(queryClient.getQueryState(["chats"])?.isInvalidated).toBe(true)
     expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.unread_count).toBe(2)
     unmount()
   })
 
+  it("keeps a newer sidebar preview when an older message is deleted", async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage()]))
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        makeChat({
+          last_message: makeMessage({
+            id: OTHER_MSG_ID,
+            content: "newer preview",
+          }),
+        }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
+    act(() => {
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        deleted_at: "2026-01-15T12:30:00Z",
+      })
+    })
+    expect(
+      queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.last_message
+    ).toMatchObject({ id: OTHER_MSG_ID, content: "newer preview" })
+    unmount()
+  })
+  it("still invalidates the sidebar when the target chat has no preview", async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage()]))
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [makeChat({ last_message: undefined })],
+      has_more: false,
+      next_cursor: null,
+    })
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+    const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
+    invalidateQueries.mockClear()
+    act(() => {
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        deleted_at: "2026-01-15T12:30:00Z",
+      })
+    })
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+    unmount()
+  })
   it("does not let a delayed edit resurrect a deleted message or its preview", async () => {
     const queryClient = new QueryClient()
     queryClient.setQueryData(
@@ -1262,6 +1329,7 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1))
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        created_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
         content: "",
         read_status: false,
         read_at: null,

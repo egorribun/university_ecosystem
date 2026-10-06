@@ -515,3 +515,30 @@ it.each(["single", "all"] as const)(
     expect(setSnackbar).toHaveBeenCalledWith({ text: "Forbidden", severity: "error" })
   }
 )
+
+it.each(["single", "all"] as const)(
+  "reports response-less Axios transport errors during %s session revocation",
+  async (kind) => {
+    const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+    const openStepUpFor = vi.fn()
+    request.mockRejectedValueOnce(new AxiosError("network unavailable"))
+    const { result, setSnackbar } = renderSessionHook({ openStepUpFor })
+
+    let actionFailure: unknown
+    await act(async () => {
+      try {
+        if (kind === "single") await result.current.handleRevokeSession("session-1")
+        else await result.current.handleRevokeAllSessions()
+      } catch (error) {
+        actionFailure = error
+      }
+    })
+
+    expect(actionFailure).toBeUndefined()
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "network unavailable",
+      severity: "error",
+    })
+  }
+)
