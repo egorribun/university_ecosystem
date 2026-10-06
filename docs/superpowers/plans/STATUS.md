@@ -2,81 +2,92 @@
 
 Срез на 2026-10-06 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Goal активен. Приёмка и выпуск `v1.0.0` не подтверждены.
+Работа приостановлена по поручению пользователя. Выпуск `v1.0.0` не подтверждён.
 
-## Последний проверенный runtime source
+## Контрольная точка
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Последний source с runtime-проверками — `e2ba2c3bc77369c7a18e4f0efb40fe7b0705c99d`. Это не утверждение о
-  текущем HEAD. Подробная история сохранена в [неизменяемом checkpoint](https://github.com/egorribun/university_ecosystem/blob/18a86a90038ef7ce25e73b678223e04eebbf5e9e/docs/superpowers/plans/STATUS.md);
-  исторические результаты не подтверждают другой SHA.
-- Root выполняет Git и остаётся единственным tracked writer; три GPT-6 Luna Max
-  ведут backend, frontend и CI/инфраструктуру. `AUDIT_PROMPT.md`
-  включён по поручению пользователя; он не заменяет текущее поручение.
+  Последний source с runtime-проверками — `9f0208621f47b04883b488cc62dcf64eb055e70c`.
+  Эти результаты не подтверждают автоматически следующий HEAD.
+- Root — единственный tracked writer и владелец Git. Три GPT-6 Luna Max
+  завершили текущие операции; незавершённые приватные материалы сохранены.
+- Интегрированы SmartImage source-keyed fallback и versioned srcset,
+  регрессии rotated legacy audit signature и persisted `NewsUpdated` payload.
+  Root независимо проверил RED/GREEN до интеграции. После интеграции canonical
+  affected frontend tests: 76/76; backend audit/news tests: 38/38.
+  Это не canonical mutation credit и не release certification.
 
-## Hosted CI для e2ba
+## Hosted CI для 9f0208621
 
-- [Matrix 37358382479](https://github.com/egorribun/university_ecosystem/actions/runs/37358382479),
-  attempt 1: point-in-time снимок около 2026-10-05 21:03 UTC — 178 jobs:
-  108 success, 15 cancelled, 15 skipped, 3 in progress, 37 queued. У отменённых
-  jobs не было runner или выполненных steps; Actions API не сообщает причину.
-  Результат неполный, не all-green и не завершённый mutation gate. Слепых
-  повторов и ослабления timeout/quality gates не было.
-- [Owned Live 37358381991](https://github.com/egorribun/university_ecosystem/actions/runs/37358381991)
-  завершился success. [Unauthenticated Routes Smoke 37358381722](https://github.com/egorribun/university_ecosystem/actions/runs/37358381722)
-  прошёл на attempt 2 после ошибки передачи артефакта на attempt 1. Это только
-  результаты этих двух ограниченных сценариев.
+- [Matrix 37376193756](https://github.com/egorribun/university_ecosystem/actions/runs/37376193756),
+  attempt 1: снимок 2026-10-05 23:47:20 UTC — 312 jobs: 135 success,
+  31 failure, 16 in progress, 118 queued, 12 skipped. Все 31 failures в этом
+  снимке — backend incremental mutation groups. Полный результат не получен.
+- Producer PR-merge SHA `458de86f458283aa9fa16c7aa8b0697025a6070d`
+  отличается от source HEAD; tree совпадает:
+  `ac46399765c0ce504cc7fbe570a77089a7254164`. Обе привязки сохранены.
+- [Owned Live 37376192633](https://github.com/egorribun/university_ecosystem/actions/runs/37376192633)
+  и [Unauthenticated Routes Smoke 37376192623](https://github.com/egorribun/university_ecosystem/actions/runs/37376192623)
+  завершились success. Это ограниченные сценарии, не полная приёмка ТЗ.
+- Свежая backend universe — 54 457. Root независимо валидировал canonical
+  evidence групп 1–21: 749 selected, 608 killed, 141 survived. Агент отдельно
+  валидировал 33 группы: 1181 selected, 970 killed, 211 survived; root replay
+  расширенного набора ещё нужен. Все числа частичные, не global score.
+- Group 4: 31 killed, 4 survived, без timeout/no-tests. Audit49 и News12
+  закрыты локальными regression controls; нужен новый producer. Redis15
+  type-cast и NATS80 server-default equivalence требуют разбора по контракту,
+  без ручного Killed или произвольных exclusions.
+- Coverage artifact содержит 100% применимых показателей; integrity checks
+  пройдены. Полный локальный validator ограничен отсутствием Git/inventory
+  в artifact-only каталоге. Frontend shard 0: 20 killed; global gate открыт.
 
-## Live и DR для e2ba
+## Live и диагностика
 
-- Owned source был запущен и seeded. Synthetic avatar API upload и профиль
-  подтвердили сохранённую ссылку; исходное изображение — WebP, 96 bytes. Source
-  HTTP и S3 Head/Get совпали по длине, MIME и SHA-256:
-  `0e309491348e6f30381cd0f83790651a09b3351b632cd2b449021727c336cf29`.
-- Avatar UI: V8 desktop upload вернул HTTP 200, но изображение не отобразилось;
-  mobile не отправил POST. Попытка Service Worker bypass была некорректна и не
-  считается объяснением. В V9 обнаружен старый V8 launcher; V9 не запускался
-  как исправленная цепочка. V9.1 готовится для нового clean source.
-- Для RunId `5384eb7a3b8b43db98458d194527c34a` созданы paired DB/S3 snapshot и
-  восстановленная целевая БД/корзина. Read-only target S3 Head/Get совпал с
-  исходным WebP. Обычная проверка обнаружила production `TypeError` в
-  `S3Storage.read_file`: bounded read вызывал `read(size)` у aiohttp response,
-  возвращённого `StreamingBody.__aenter__`. Повторного restore поверх цели не было.
-- После этого root запустил verifier на той же цели и pinned runner с read-only
-  overlay кандидата `app/services/storage.py`. Overlay-проверка прошла: одна
-  migration head, одна восстановленная ссылка и bounded read на 2 bytes. Это
-  диагностическая проверка исправленного кандидата; она не подтверждает
-  исходный production runtime, полноценную app-level готовность или RPO/RTO.
-- Следовательно, физическое восстановление DB/S3 выполнено, но production
-  verifier на новом source, отдельный app runtime и полное измерение RTO
-  остаются незакрытыми. Перед очисткой старого owned стенда требуется
-  проверенный приватный экспорт paired snapshot.
+- Owned 9f source запущен и seeded. Первый локальный smoke: 17 passed,
+  1 failed, 2 skipped; desktop admin denial вызвал page error. Повторный
+  диагностический auth-roles набор на прогретом стенде: 16 passed, 2 skipped.
+  Исходная ошибка не воспроизведена; причина и исправление не подтверждены.
+- Avatar V9.3: desktop/mobile POST вернули HTTP 200, page errors — 0.
+  Default и корректный CDP SW-bypass получили HTTP 200 и AVIF image signature;
+  UI assertion naturalWidth всё ещё failed. Причина не установлена.
+  Viewport/lazy loading остаётся гипотезой. SmartImage defects независимо
+  воспроизведены; их связь с этим live failure не доказана.
+- V9.4 в `C:/Temp/ue-avatar-ui-diagnostic-e2ba-20261005/v9.4` — незавершённая
+  unsealed копия со старыми manifest/seal. Не запускать. После возобновления
+  завершить schema, hashes, offline contracts и listing, затем использовать
+  runtime на фактическом clean source.
+- Owned stand state:
+  `C:/Temp/ue-live-acceptance/run-orchestrator-9f0208621-20261006-de281e7d9ff54f07a4a49b5e22d6359e`.
+  Для паузы используется `stop`, сохраняющий volumes, env и evidence.
+  После смены source нельзя приписывать этому стенду новый HEAD.
 
-## Исправления и оставшиеся gates
+## Восстановление и сохранность
 
-- Исправление сохраняет `StreamingBody` при чтении, ограничения размера,
-  timeout и проверку целостности. RED воспроизведён на прежнем коде;
-  регрессии используют установленный реальный `StreamingBody`, включая
-  truncated-object `IncompleteReadError` и закрытие response.
-- После интеграции локальный canonical набор S3/storage, search rebuild
-  и private attachments прошёл 262/262; Ruff check и format прошли.
-  Добавлена typed `reindex48` регрессия неполного bulk rebuild с сохранением
-  прежнего индекса. Свежий canonical mutation credit ещё не получен.
-- MFA duplicate-resend regression для исторического frontend ID 904
-  интегрирована; canonical module прошёл 15/15. Точное историческое изменение
-  воспроизводило RED; это не заменяет новый Stryker inventory.
-- Required preflight прошёл 9/9 (типы, lint, format, i18n, contracts, harness);
-  применимые staged pre-commit checks прошли. Это локальные проверки,
-  не release evidence и не подтверждение нового runtime source.
-- Далее нужны новый clean source и CI, проверки целевой БД/S3/app runtime, avatar UI V9.1 и
-  объяснение runnerless CI cancellations по доступным фактам, без blind retry.
-- Блоки 4/5: RU/EN, light/dark, responsive widths, live traceability ТЗ,
-  cold SSR/PWA, visual review и утверждённые baselines.
-- Блок 6 и release gates открыты: 100% применимого coverage и 100% viable
-  mutation score, три
-  полных зелёных CI, migrations/rollback, BE-02, WS load, полный backup RPO/RTO,
-  Envoy Gateway/kind, recovery, независимый review 63 audit IDs, шесть certified
-  GHCR digests, kind acceptance и выпуск `v1.0.0`.
+- Старый e2ba paired DB/S3 snapshot экспортирован приватно; root проверил
+  hashes и ACL. Owned teardown старого стенда завершён: его containers,
+  volumes и networks удалены, env/secrets/backups/evidence сохранены.
+- Новый DR RunId `6751bb0189fa45c2a6a2c6820e79b922` — private plan:
+  clock не начат, runtime не создан. Target launcher и bounded profile/image
+  probe прошли offline проверки. Source quiescence и resource snapshot
+  helpers требуют актуальной привязки.
+- App-level restore, RPO/RTO, SpiceDB graph и search parity не подтверждены.
+  После нового HEAD нужен новый source-bound DR run, без старого clock.
+- Приватные receipts и патчи сохранены в
+  `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157` и доменных bundles.
+  Release требует канонических переносимых artifacts. Приватные scratch
+  каталоги сохранены после отклонения удаления проверкой безопасности.
+
+## После явного возобновления
+
+- Проверить Git/PR/CI на фактическом HEAD, получить новые canonical mutation
+  результаты для интегрированных тестов и продолжить приоритетные survivors.
+- Завершить avatar V9.4, воспроизвести cold admin error, выполнить source-bound
+  app restore и измерить RPO/RTO.
+- Блоки 4/5 открыты: полная live traceability ТЗ, RU/EN, light/dark,
+  responsive widths, SSR/PWA, performance и visual approval.
+- Открыты 100% viable mutation score, три полных зелёных CI,
+  migrations/rollback, BE-02, WS load, Envoy Gateway/kind, review 63 audit IDs,
+  шесть certified GHCR digests и выпуск `v1.0.0`.
 
 ## Ограничения
 

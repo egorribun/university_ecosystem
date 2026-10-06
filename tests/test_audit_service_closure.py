@@ -635,3 +635,16 @@ def test_secure_audit_service_handles_race_inside_lock():
             assert audit_module.get_secure_audit_service() is instance
     finally:
         audit_module._secure_audit_service = original
+
+
+def test_verify_integrity_accepts_rotated_legacy_signature_on_rust_fast_path() -> None:
+    service = SecureAuditService(signing_keys=[b"old", b"new"])
+    log = _audit_log_stub()
+    log.signature = service._compute_legacy_signature(log, key=b"new")
+    rust = MagicMock()
+    rust.verify_audit_signature.return_value = True
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert service.verify_integrity(log) is True
+
+    rust.verify_audit_signature.assert_called_once()

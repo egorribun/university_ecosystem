@@ -12,7 +12,7 @@ export type SmartImageProps = {
   responsiveWidths?: readonly number[]
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 
-function buildSrcSet(rawUrl: string, widths: readonly number[]): string {
+function buildSrcSet(rawUrl: string, widths: readonly number[], cacheV?: string | number): string {
   if (!sanitizeUrl(rawUrl)) return ""
   const uniqueWidths = Array.from(
     new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
@@ -21,7 +21,8 @@ function buildSrcSet(rawUrl: string, widths: readonly number[]): string {
   return uniqueWidths
     .map((width) => {
       const proxyUrl = resolveProxyImageUrl(rawUrl, width)
-      return proxyUrl ? `${proxyUrl} ${width}w` : null
+      const versionedProxyUrl = proxyUrl ? addVersionParam(proxyUrl, cacheV) : ""
+      return versionedProxyUrl ? `${versionedProxyUrl} ${width}w` : null
     })
     .filter((src): src is string => src !== null)
     .join(", ")
@@ -60,14 +61,15 @@ export default function SmartImage({
     return addVersionParam(resolved, cacheV)
   }, [srcRaw, cacheV, isBlobUrl])
 
-  const [useFallback, setUseFallback] = useState(false)
-
-  const finalSrc = useFallback || !computed ? fallback : computed
+  const [failedSource, setFailedSource] = useState<string | null>(null)
+  const useFallback = !computed || failedSource === computed
+  const finalSrc = useFallback ? fallback : computed
   const srcSet = useMemo(() => {
-    // Don't add srcSet for blob URLs — query params break them
-    if (!srcRaw || isBlobUrl) return ""
-    return buildSrcSet(srcRaw, responsiveWidths)
-  }, [srcRaw, responsiveWidths, isBlobUrl])
+    // Keep fallback URLs independent from responsive candidates. Don't add
+    // srcSet for blob URLs because query parameters break them.
+    if (!srcRaw || isBlobUrl || useFallback) return ""
+    return buildSrcSet(srcRaw, responsiveWidths, cacheV)
+  }, [srcRaw, responsiveWidths, isBlobUrl, useFallback, cacheV])
 
   const mergedStyle: CSSProperties = { objectFit: "cover", ...(style ?? {}) }
 
@@ -89,10 +91,9 @@ export default function SmartImage({
         onLoad(event)
       }}
       onError={(event) => {
-        // React bails out when the fallback state is already true, so repeated
-        // errors from a broken fallback image remain idempotent without an
-        // extra branch that can drift from the rendered source.
-        setUseFallback(true)
+        // Tie failure to this versioned source so a new URL or cacheV can retry
+        // immediately without an effect-driven frame of stale fallback UI.
+        if (computed) setFailedSource(computed)
         onError(event)
       }}
     />
