@@ -7,10 +7,10 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Родитель текущего checkpoint — `1ab04757ea131d11b8e6acadd03c9a3d5c0b06fa`.
+  Исходный checkpoint — `c421c0e5128339f9ab519846086c0a56138304b7`.
   В `6d8` перенесены RuntimeFeatureOverrides, в `7be1` — auth/audit/session
-  regressions; `107845` обновил sharp/libvips; `1ab` — RLS. Сейчас — cache/session regressions.
-  Production-код, exclusions и пороги не изменены. Root — единственный tracked writer и владелец runtime;
+  regressions; `107845` обновил sharp/libvips; `1ab` — RLS; `c421` — cache/session.
+  Сейчас — MFA/profile/get regressions и эквивалентное UTF-8 упрощение; exclusions/пороги сохранены.
   три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
 - В checkpoint вошли full-backend mutation workflow, immutable benchmark
   activation, WebKit focus fix, строгая avatar resource identity и DM
@@ -58,7 +58,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Replay #723/#735/#827: baseline40/40, каждый exact mutant39 PASS/1 call failure.
   RLS reload #255: root baseline PASS/exact call-phase ValueError; typed fixture,
   canonical chat80/80 и strict targeted mypy PASS, без реальной PostgreSQL.
-  Canonical suites: frontend123/123, новый session/WS/persistence набор81/81 и audit67/67 PASS.
+  Canonical suites: frontend123/123, session/WS/persistence81/81, MFA/profile260/260 и audit67/67 PASS.
   Root подтвердил exact WS4, session382/390 и persistence1037 RED/GREEN; global credit отсутствует.
   Focused useAuthApi на1ab:366 mutants =318 Killed/48 Survived,0 Timeout/RuntimeError/NoCoverage;
   86.8852%, gate FAILED. Dry-run1670 PASS; immutable local report d59264c6 сохранён.
@@ -69,9 +69,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   librsvg2.63.2. Frozen install, SVG→PNG smoke и pinned-artifact build PASS;
   npm audit:0 advisories. Hosted Node Audit112439174423 на 7aa SUCCESS (run37512735806/a1).
 - Historical UserRepository.get9 Survived: run37403597748/a1, source76cd.
-  Current7ac module bytes совпадают; это основание для focused regression,
-  не перенос старого mutation status на новый run. Applicable coverage100%
-  подтверждалась для historical76cd, текущий source требует своего evidence.
+  Root get9: baseline2 PASS/exact1 PASS+1 assertion FAIL; canonical get9/9 PASS.
+  PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
+  Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
 - Paired benchmark workflow сохранил immutable BASE comparator, threshold 1.10,
   33 Go и 4 Rust metrics по 12 парам. Root проверял BASE/candidate archive и
   сравнение на предыдущем source97a; это не нагрузочная или release
@@ -123,7 +123,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Последний root snapshot: running Docker0, RAM40.8%,free18.81GiB.
+  Последний root snapshot: running Docker0, RAM38.5%; основной worktree один.
   Удалены только три доказанно пустые retired networks; global prune не применялся.
 - Только основной worktree. Не удалять уникальные env/data/volumes/backups.
   Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
@@ -143,7 +143,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
   WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,
   resulting-main evidence и выпуск `v1.0.0`.
-  Три сопоставимых зелёных полных CI-наблюдения ещё требуются.
+  Три полных зелёных CI ещё требуются; GitHub PR/webhook incident задерживает PR HEAD обновление.
 
 Сохранять env, volumes, backups и Git history. Не применять admin bypass,
 force-push или менять branch protection. Внешний production, реальные SMTP/push,

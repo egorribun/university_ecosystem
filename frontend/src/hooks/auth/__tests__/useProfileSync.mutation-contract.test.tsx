@@ -8,6 +8,7 @@ import { sha256 } from "@noble/hashes/sha2.js"
 import { utf8ToBytes } from "@noble/hashes/utils.js"
 import { AxiosError } from "axios"
 
+import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID } from "@/stores/authIdentity"
 import { acceptBrowserSessionGeneration, rotateBrowserSession } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 import api from "@/api/client"
@@ -2995,6 +2996,45 @@ describe("profile effect lifecycle ownership", () => {
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
     expect(view.result.current.user).toEqual(testUser)
     expect(view.queryClient.getQueryData(currentUserQueryKey)).toEqual(testUser)
+    await view.dispose()
+  })
+
+  it("clears cached query data when another tab removes an encrypted profile placeholder", async () => {
+    await writeEncryptedEnvelope(snapshot("cross-tab-cache-owner"))
+    const restoration = pauseNextCryptoResult("decrypt")
+    const view = renderProfileLifecycle()
+
+    await act(async () => {
+      await restoration.started
+    })
+    expect(view.result.current.user?.id).toBe(ENCRYPTED_CACHE_PLACEHOLDER_USER_ID)
+    await waitFor(() =>
+      expect(useAuthStore.getState().user?.id).toBe(ENCRYPTED_CACHE_PLACEHOLDER_USER_ID)
+    )
+
+    const privateQueryKey = ["events", "saved"] as const
+    view.queryClient.setQueryData(privateQueryKey, [{ id: "saved-event" }])
+    expect(view.queryClient.getQueryData(privateQueryKey)).toEqual([{ id: "saved-event" }])
+
+    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: null,
+          storageArea: localStorage,
+        })
+      )
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(view.result.current.user).toBeNull())
+    expect(view.queryClient.getQueryData(privateQueryKey)).toBeUndefined()
+    expect(view.queryClient.getQueryData(currentUserQueryKey)).toBeNull()
+
+    await act(restoration.finish)
+    expect(view.result.current.user).toBeNull()
+    expect(view.queryClient.getQueryData(privateQueryKey)).toBeUndefined()
     await view.dispose()
   })
 })

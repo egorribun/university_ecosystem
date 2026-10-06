@@ -1043,6 +1043,62 @@ describe("late authentication responses", () => {
   })
 })
 
+describe("login MFA browser-session boundary", () => {
+  it("rotates the browser session at the login MFA boundary", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 202,
+      data: { status: "mfa_required", user_id: "u-1", methods: [] },
+    })
+    const { result, rerender } = renderApi(w)
+    let challenge: PendingMfaState | null = null
+    await act(async () => {
+      challenge = await result.current.login("a@b.dev", "pw")
+    })
+    expect(challenge).toMatchObject({ reason: "login" })
+    if (challenge === null) throw new Error("Expected a login MFA challenge")
+
+    w.pendingMfa = challenge
+    rerender()
+    const challengeSessionWork = captureSessionEpoch()
+    expect(challengeSessionWork()).toBe(true)
+
+    let resolveVerification!: (value: {
+      status: number
+      data: { user: User; session: { signing_key: string } }
+    }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveVerification = resolve
+        })
+    )
+    let verification!: Promise<void>
+    act(() => {
+      verification = result.current.submitMfaChallenge({
+        method: "totp",
+        code: "123456",
+        challengeToken: "ct-login",
+      })
+    })
+
+    try {
+      expect(challengeSessionWork()).toBe(false)
+    } finally {
+      await act(async () => {
+        resolveVerification({
+          status: 200,
+          data: { user: fullUser(), session: { signing_key: "sk-login" } },
+        })
+        await verification
+      })
+    }
+
+    expect(w.updateSessionSigningKey).toHaveBeenCalledWith("sk-login")
+    expect(w.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: "u-1" }))
+  })
+})
+
 describe("authenticated MFA step-up", () => {
   it("preserves the same account's captured retry lifetime and signing key", async () => {
     const currentUser = fullUser()
