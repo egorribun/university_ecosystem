@@ -7,11 +7,10 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Родитель текущего checkpoint — `10784509323218cbc45c80f74f45a943ff9b16a5`.
+  Родитель текущего checkpoint — `7aa105a85df546d73554266ddb58bbcfd86d059e`.
   В `6d8` перенесены RuntimeFeatureOverrides, в `7be1` — auth/audit/session
-  regressions; `107845` обновил sharp/libvips. Текущий checkpoint — messenger tests.
-  Production-код, exclusions и пороги
-  не изменены. Root — единственный tracked writer и владелец runtime;
+  regressions; `107845` обновил sharp/libvips. Текущий checkpoint — RLS regression.
+  Production-код, exclusions и пороги не изменены. Root — единственный tracked writer и владелец runtime;
   три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
 - В checkpoint вошли full-backend mutation workflow, immutable benchmark
   activation, WebKit focus fix, строгая avatar resource identity и DM
@@ -38,7 +37,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Для source7ac локальные затронутые contracts359/359 и Helm retry29/29 PASS;
   CodeQL/Chromium исправления имеют hosted proof. Для переноса тестов canonical
   lifespan + новый модуль39/39, preflight9/9 и test-file pre-commit PASS.
-  Проверка нового checkpoint в hosted CI ещё требуется.
+  Manual full run 37512795410/a1 на 7aa queued; hosted proof ещё требуется.
 - Historical backend generation54,457/344 и incremental selection4,589/128
   не подменяют свежий inventory. Принятый перенос сохраняет None/default,
   явные True/False, disable из True и None, reset и неизвестные флаги.
@@ -57,6 +56,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   1 call failure; HMAC missing-IP #48: baseline PASS/exact call failure.
   Session ownership #417: baseline18/18, exact mutant17 PASS/1 call failure.
   Replay #723/#735/#827: baseline40/40, каждый exact mutant39 PASS/1 call failure.
+  RLS reload #255: root baseline PASS/exact call-phase ValueError; typed fixture,
+  canonical chat80/80 и strict targeted mypy PASS, без реальной PostgreSQL.
   Canonical suites: frontend123/123 и audit67/67 PASS; это локальные
   regressions, а не новый canonical mutation score.
   Preflight9/9 и последующие frontend delta checks3/3, pre-commit,
@@ -64,7 +65,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Matrix `37506190354/a1` на `6d8` выполняется; Node Dependency Audit FAILED.
   Локальный audit подтвердил GHSA-wq5f-xc86-pv6w: sharp0.35.4→0.35.5,
   librsvg2.63.2. Frozen install, SVG→PNG smoke и pinned-artifact build PASS;
-  npm audit:0 advisories. Hosted proof нового источника ещё требуется.
+  npm audit:0 advisories. Hosted Node Audit112439174423 на 7aa SUCCESS (run37512735806/a1).
 - Historical UserRepository.get9 Survived: run37403597748/a1, source76cd.
   Current7ac module bytes совпадают; это основание для focused regression,
   не перенос старого mutation status на новый run. Applicable coverage100%
@@ -122,8 +123,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Последний root snapshot после диагностики: running Docker0;
-  во время запуска RAM48.2%,free16.49GiB.
+  Последний root snapshot: running Docker0, RAM38.4%,free19.6GiB.
   Удалены только три доказанно пустые retired networks; global prune не применялся.
 - Только основной worktree. Не удалять уникальные env/data/volumes/backups.
   Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
