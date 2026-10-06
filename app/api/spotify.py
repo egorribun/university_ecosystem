@@ -127,7 +127,7 @@ async def _consume_oauth_state(
     except (RuntimeError, RedisError, OSError):
         raise_http_error(503, "errors.spotify.service_unavailable", locale)
     if isinstance(bound_identity, bytes):
-        bound_identity = bound_identity.decode("utf-8", errors="replace")
+        bound_identity = bound_identity.decode(errors="replace")
     if bound_identity != f"{user.id}:{session.id}":
         raise_validation_error("errors.spotify.invalid_state", locale)
 
