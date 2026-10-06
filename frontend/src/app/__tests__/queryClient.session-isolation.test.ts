@@ -194,6 +194,27 @@ describe("mutation callback session ownership", () => {
     }
   )
 
+  it("runs an optimistic callback while its creating session still owns the mutation", async () => {
+    account("A")
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(["chats"], ["private A"])
+    const onMutate = vi.fn(async () => {
+      queryClient.setQueryData(["chats"], ["optimistic A"])
+    })
+    const mutationFn = vi.fn(async () => "saved")
+    const observer = new MutationObserver(queryClient, { mutationFn, onMutate })
+    const unsubscribe = observer.subscribe(() => undefined)
+
+    try {
+      await expect(observer.mutate(undefined)).resolves.toBe("saved")
+      expect(onMutate).toHaveBeenCalledTimes(1)
+      expect(mutationFn).toHaveBeenCalledTimes(1)
+      expect(queryClient.getQueryData(["chats"])).toEqual(["optimistic A"])
+    } finally {
+      unsubscribe()
+      queryClient.clear()
+    }
+  })
   it("stops an optimistic callback suspended in cancelQueries across account switch", async () => {
     account("A")
     const queryClient = createQueryClient()

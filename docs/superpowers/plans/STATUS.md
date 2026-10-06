@@ -7,9 +7,10 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  CI/runtime evidence ниже относится к `7ac88320e0728d67e7af3354b9490ed8a38dd4f5`.
-  Следующий checkpoint переносит RuntimeFeatureOverrides из исключённого
-  lifespan-модуля в обычный тестовый модуль. Production-код, exclusions и пороги
+  Родитель текущего checkpoint — `6d8e7d412ea281cb9cb206b8f7cd1fa5e6dc5f9f`.
+  Он перенёс RuntimeFeatureOverrides из исключённого lifespan-модуля в обычный
+  тестовый модуль; текущий checkpoint добавляет auth/audit/session regressions.
+  Production-код, exclusions и пороги
   не изменены. Root — единственный tracked writer и владелец runtime;
   три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
 - В checkpoint вошли full-backend mutation workflow, immutable benchmark
@@ -24,8 +25,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 - CodeQL check `112329936293` и CodeQL Advanced run `37481003467` для `7ac`
   завершились SUCCESS. Check сообщал: “No new alerts in code changed by PR”.
-- Matrix run `37481003822/a1` относится к `7ac`. Проверенные source-bound
-  backend groups 1/2 дали соответственно 29 Killed / 7 Survived и 32 Killed /
+- Matrix run `37481003822/a1`: event source `7ac`; artifact producer —
+  PR merge `a43b6b471b6d964093b994eb9c08b436be6015ad`.
+  Проверенные backend groups 1/2 дали соответственно 29 Killed / 7 Survived и 32 Killed /
   4 Survived. Это реальные survivors, а не runner failure; остальные группы
   и полный inventory ещё не закрыты. Полный viable score не установлен.
 - Manual full run `37481732603/a1`: frontend shard jobs завершились 64/64
@@ -45,10 +47,21 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   V7 matrix22 не перенесён на изменённый V8; global score не установлен.
 - Frontend preflight source7ac: 43,200 mutants / 565 files / 64 shards;
   digest `e0c3083e3defb06169c8f59897b61c3a46a4dee65c6ae66c9963168ffad66c29`.
-  Все 64 archive digests проверены, полный planned/report join ещё не принят.
-  Aggregate log содержит Survived; точный состав требует проверки reports.
+  Root и независимый reviewer приняли полный exact planned/report join:
+  Killed37,221, Survived4,672, Timeout33, RuntimeError31, NoCoverage1, Ignored1,242.
+  Missing/extra/duplicate signatures0; source/input hashes проверены.
+  Диагностический viable score88.7101%; обязательный gate FAILED.
   Root независимо подтвердил fresh shard30: 487/487 Killed,10 regions/6 files,
   source/run/attempt/preflight/report hashes. Это только shard-local proof.
+- Root повторил auth signing-key #62: baseline65/65, exact mutant64 PASS/
+  1 call failure; HMAC missing-IP #48: baseline PASS/exact call failure.
+  Session ownership #417: baseline18/18, exact mutant17 PASS/1 call failure.
+  Canonical suites: auth/session83/83 и audit67/67 PASS; это локальные
+  regressions, а не новый canonical mutation score.
+  Preflight9/9 и последующие frontend delta checks3/3, pre-commit,
+  links в обоих режимах, Markdownlint и configured CSpell PASS.
+- Matrix `37506190354/a1` на `6d8` выполняется; Node Dependency Audit FAILED.
+  Advisory и исправление разбираются без исключений или ослабления gate.
 - Historical UserRepository.get9 Survived: run37403597748/a1, source76cd.
   Current7ac module bytes совпадают; это основание для focused regression,
   не перенос старого mutation status на новый run. Applicable coverage100%
@@ -98,11 +111,16 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Docker-events проверка не дала событий из-за команды с exit 64. Причина
   исчезновения не установлена; acceptance/RCA credit отсутствует. Не было
   backup/restore retry, source snapshot retry или clock reset.
+- Root-reviewed V9/controllerV4 прошли39/39 и23/23 offline tests. Один V4
+  runtime проверил probe identity, но inner cleanup остался неподтверждённым;
+  outer source cleanup PASS, running Docker0. Exact probe ID затем отсутствовал.
+  Receipt сохраняет failure; причина отсутствия ещё не установлена.
 
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Последний root snapshot: running Docker0, RAM47.2%,free16.8GiB.
+  Последний root snapshot после диагностики: running Docker0;
+  во время запуска RAM48.2%,free16.49GiB.
   Удалены только три доказанно пустые retired networks; global prune не применялся.
 - Только основной worktree. Не удалять уникальные env/data/volumes/backups.
   Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.

@@ -932,6 +932,13 @@ describe("useAuthApi — residual defensive branches", () => {
     expect(extractSigningKey(undefined)).toBeNull()
   })
 
+  it("returns no key when a response has no usable session signing key", () => {
+    expect(extractSigningKey({})).toBeNull()
+    expect(extractSigningKey({ session: null })).toBeNull()
+    expect(extractSigningKey({ session: { signing_key: "" } })).toBeNull()
+    expect(extractSigningKey({ session: { signing_key: "valid-key" } })).toBe("valid-key")
+  })
+
   it("rejects a null token response as invalid", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: null } as never)
