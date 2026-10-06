@@ -7,9 +7,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Родитель текущего checkpoint — `7be1fe5f6eb30b6717563aef1b1a21518b4b5a92`.
+  Родитель текущего checkpoint — `10784509323218cbc45c80f74f45a943ff9b16a5`.
   В `6d8` перенесены RuntimeFeatureOverrides, в `7be1` — auth/audit/session
-  regressions; текущий checkpoint обновляет только sharp/libvips.
+  regressions; `107845` обновил sharp/libvips. Текущий checkpoint — messenger tests.
   Production-код, exclusions и пороги
   не изменены. Root — единственный tracked writer и владелец runtime;
   три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
@@ -56,7 +56,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Root повторил auth signing-key #62: baseline65/65, exact mutant64 PASS/
   1 call failure; HMAC missing-IP #48: baseline PASS/exact call failure.
   Session ownership #417: baseline18/18, exact mutant17 PASS/1 call failure.
-  Canonical suites: auth/session83/83 и audit67/67 PASS; это локальные
+  Replay #723/#735/#827: baseline40/40, каждый exact mutant39 PASS/1 call failure.
+  Canonical suites: frontend123/123 и audit67/67 PASS; это локальные
   regressions, а не новый canonical mutation score.
   Preflight9/9 и последующие frontend delta checks3/3, pre-commit,
   links в обоих режимах, Markdownlint и configured CSpell PASS.

@@ -86,6 +86,7 @@ describe("loading persisted checkpoints", () => {
     ["an entry with too few fields", ["room", 1]],
     ["an entry with too many fields", ["room", 1, "token", "extra"]],
     ["a non-string room", [7, 1, "token"]],
+    ["a room object with a length field", [{ length: 1 }, 1, "token"]],
     ["an empty room", ["", 1, "token"]],
     ["an overlong room", ["r".repeat(513), 1, "token"]],
     ["a non-numeric sequence", ["room", "1", "token"]],
@@ -93,6 +94,7 @@ describe("loading persisted checkpoints", () => {
     ["an unsafe sequence", ["room", Number.MAX_SAFE_INTEGER + 1, "token"]],
     ["a zero sequence", ["room", 0, "token"]],
     ["a non-string token", ["room", 1, 7]],
+    ["a token object with a length field", ["room", 1, { length: 1 }]],
     ["an empty token", ["room", 1, ""]],
     ["an overlong token", ["room", 1, "t".repeat(4097)]],
   ])("discards the whole registry for %s", (_label, entry) => {
@@ -284,6 +286,7 @@ describe("room checkpoints", () => {
     store.writeReplayCheckpoint(USER, "b", 2, "t2", null)
 
     store.removeReplayCheckpoint(USER, "a")
+    expect(storedEntries()).toStrictEqual([["b", 2, "t2"]])
     store.removeReplayCheckpoint(USER, "missing")
 
     expect(store.peekReplayCheckpoint(USER, "a")).toBeUndefined()
