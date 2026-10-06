@@ -273,6 +273,26 @@ class TestSendWebPush:
             "data": {},
         }
 
+    def test_send_success_without_transport_still_returns_sent(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """The cleanup guard also covers a transport factory returning None."""
+        import app.services.webpush as webpush_module
+
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            lambda _: [("93.184.216.34", 443)],
+        )
+        monkeypatch.setattr(
+            webpush_module, "_create_pinned_webpush_session", lambda *_args: None
+        )
+
+        result = send_web_push(self._make_sub(), {"title": "Hello"})
+
+        assert result.status == "sent"
+        assert mock_pywebpush.call_args.kwargs["requests_session"] is None
+
     def test_send_uses_dns_pinned_adapter_for_provider_request(
         self, mock_pywebpush, monkeypatch
     ) -> None:

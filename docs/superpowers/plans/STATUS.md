@@ -48,6 +48,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   event37, pinned Web Push88, legacy audit fallback58, NATS strict publish26,
   remaining-member presence invalidation69. Root baseline PASS и exact mutant
   RED подтверждены. Canonical affected modules: 168/168 PASS, Ruff PASS.
+  Независимое review потребовало сохранить прежний transport-None сценарий
+  отдельно от DNS-pinning regression; он восстановлен, Web Push module 60/60 PASS.
   До нового canonical producer mutation credit не присваивается.
 - PG `UserRepository.get` mutant9 — shard37. Regular mutation selector исключает
   integration. Private supplemental Linux PG lane V4: root offline29/29,
