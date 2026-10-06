@@ -7,9 +7,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Родитель текущего checkpoint — `6d8e7d412ea281cb9cb206b8f7cd1fa5e6dc5f9f`.
-  Он перенёс RuntimeFeatureOverrides из исключённого lifespan-модуля в обычный
-  тестовый модуль; текущий checkpoint добавляет auth/audit/session regressions.
+  Родитель текущего checkpoint — `7be1fe5f6eb30b6717563aef1b1a21518b4b5a92`.
+  В `6d8` перенесены RuntimeFeatureOverrides, в `7be1` — auth/audit/session
+  regressions; текущий checkpoint обновляет только sharp/libvips.
   Production-код, exclusions и пороги
   не изменены. Root — единственный tracked writer и владелец runtime;
   три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
@@ -61,7 +61,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Preflight9/9 и последующие frontend delta checks3/3, pre-commit,
   links в обоих режимах, Markdownlint и configured CSpell PASS.
 - Matrix `37506190354/a1` на `6d8` выполняется; Node Dependency Audit FAILED.
-  Advisory и исправление разбираются без исключений или ослабления gate.
+  Локальный audit подтвердил GHSA-wq5f-xc86-pv6w: sharp0.35.4→0.35.5,
+  librsvg2.63.2. Frozen install, SVG→PNG smoke и pinned-artifact build PASS;
+  npm audit:0 advisories. Hosted proof нового источника ещё требуется.
 - Historical UserRepository.get9 Survived: run37403597748/a1, source76cd.
   Current7ac module bytes совпадают; это основание для focused regression,
   не перенос старого mutation status на новый run. Applicable coverage100%
