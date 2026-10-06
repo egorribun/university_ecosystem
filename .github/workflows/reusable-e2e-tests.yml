@@ -99,6 +99,7 @@ jobs:
       # hosted runner while the SSR bundle is emitted. Keep the orchestrator's
       # finite RSS watchdog enabled with CI headroom; the V8 heap cap remains
       # 1536 MiB, so this does not turn an unbounded build into a pass.
+      ROLLDOWN_WORKER_THREADS: "2"
       FRONTEND_BUILD_MAX_RSS_MB: "2048"
       FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
       # The artifact mode consumes the caller's immutable same-run producer.

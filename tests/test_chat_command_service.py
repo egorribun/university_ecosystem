@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from fastapi import HTTPException
 
 from app.services.chat.command_service import (
     ChatMaintenanceService,
@@ -722,6 +723,39 @@ class TestDeleteChat:
 
         with pytest.raises(Exception):  # noqa: B017
             await svc.delete_chat(uuid.uuid4(), admin, "en")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        [
+            ("en", "You are not a participant of this chat"),
+            ("ru", "Вы не участник этого чата"),
+        ],
+    )
+    async def test_admin_deleting_empty_chat_returns_localized_forbidden_detail(
+        self, locale: str, expected_detail: str
+    ) -> None:
+        uow = _mock_uow()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(admin.id)
+        chat.participants = []
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with pytest.raises(HTTPException) as exc_info:
+            await svc.delete_chat(chat.id, admin, locale)
+
+        assert exc_info.value.status_code == 403
+        uow.chats.get_by_id.assert_awaited_once_with(chat.id)
+        uow.chats.delete_chat.assert_not_called()
+        uow.chats.add.assert_not_called()
+        svc.attachment_service.collect_urls.assert_not_awaited()
+        uow.commit.assert_not_awaited()
+        if exc_info.value.detail == "errors.chat.not_participant":
+            raise AssertionError("raw_forbidden_key_not_translated")
+        if exc_info.value.detail != expected_detail:
+            raise AssertionError("localized_forbidden_detail_mismatch")
 
     @pytest.mark.asyncio
     async def test_non_participant_non_admin(self):

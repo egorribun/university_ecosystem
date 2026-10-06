@@ -116,12 +116,13 @@ def _base_environment(
     reusable_path: str,
     *,
     source_sha: str = "a" * 40,
+    github_sha: str | None = None,
     repository: str = "egorribun/university_ecosystem",
 ) -> dict[str, str]:
     caller_path = ".github/workflows/manual-mutation-evidence.yml"
     return {
         "SOURCE_SHA": source_sha,
-        "GITHUB_SHA_VALUE": source_sha,
+        "GITHUB_SHA_VALUE": source_sha if github_sha is None else github_sha,
         "GITHUB_REF_VALUE": "refs/heads/egorribun",
         "GITHUB_EVENT_NAME_VALUE": "workflow_dispatch",
         "GITHUB_REPOSITORY_VALUE": repository,
@@ -140,6 +141,8 @@ def _base_environment(
 def _run_provenance_guard(
     helm_artifact_name: str,
     *,
+    source_sha: str = "a" * 40,
+    github_sha: str | None = None,
     run_id: str = "777001",
     run_attempt: str = "2",
     job_context_json: str | None = None,
@@ -152,6 +155,8 @@ def _run_provenance_guard(
     )
     environment = _base_environment(
         ".github/workflows/reusable-full-backend-mutation.yml",
+        source_sha=source_sha,
+        github_sha=github_sha,
         repository=repository,
     )
     environment["HELM_ARTIFACT_NAME"] = helm_artifact_name
@@ -166,6 +171,8 @@ def _run_provenance_guard(
 
 def _run_helm_provenance_guard(
     *,
+    source_sha: str = "a" * 40,
+    github_sha: str | None = None,
     job_context_json: str | None = None,
     omit_job_context: bool = False,
     repository: str = "egorribun/university_ecosystem",
@@ -176,6 +183,8 @@ def _run_helm_provenance_guard(
     )
     environment = _base_environment(
         ".github/workflows/reusable-helm-dependencies.yml",
+        source_sha=source_sha,
+        github_sha=github_sha,
         repository=repository,
     )
     environment["GITHUB_EVENT_NAME_VALUE"] = "workflow_dispatch"
@@ -264,7 +273,7 @@ def test_full_backend_is_a_trusted_reusable_workflow_with_same_run_artifacts() -
     for job in (stats, plan, execute, aggregate):
         for step in _steps(job):
             if step.get("uses", "").startswith("actions/checkout@"):
-                assert step["with"]["ref"] == "${{ inputs.source_sha }}"
+                assert step["with"]["ref"] == "${{ github.sha }}"
 
     stats_upload = _step(stats, "Upload full mutmut stats shard")["with"]["name"]
     stats_download = _step(plan, "Download full mutmut stats shards")["with"]["pattern"]
@@ -297,6 +306,25 @@ def test_full_backend_is_a_trusted_reusable_workflow_with_same_run_artifacts() -
     assert "if-no-artifact-found" not in str(
         _step(aggregate, "Download full mutation shard evidence")["with"]
     )
+
+
+def test_full_backend_guard_rejects_input_sha_that_differs_from_event_sha() -> None:
+    result, output = _run_provenance_guard(
+        "manual-full-helm-dependencies-777001-1",
+        source_sha="a" * 40,
+        github_sha="b" * 40,
+    )
+    assert result.returncode != 0
+    assert output == ""
+
+
+def test_helm_guard_rejects_input_sha_that_differs_from_event_sha() -> None:
+    result, output = _run_helm_provenance_guard(
+        source_sha="a" * 40,
+        github_sha="b" * 40,
+    )
+    assert result.returncode != 0
+    assert output == ""
 
 
 def test_provenance_guard_accepts_prior_helm_attempt_from_same_run() -> None:
@@ -610,7 +638,7 @@ def test_helm_dependency_reusable_has_fixed_callers_and_exact_run_attempt_artifa
         for step in _steps(producer)
         if step.get("uses", "").startswith("actions/checkout@")
     )
-    assert checkout["with"]["ref"] == "${{ inputs.source_sha }}"
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
 
 
 def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_frontend() -> (

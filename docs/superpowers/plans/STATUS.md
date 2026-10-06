@@ -7,143 +7,121 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Контрольная точка
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Проверенный checkpoint: `03f8e81085972dd5131c7bfbfc310972c7f37642`;
-  tree `07b9670798c398df862d2065eb8e8393d68e2e4d`.
-  Он сохраняет full mutation contracts, avatar oracle и WebKit focus regression.
-- Root — единственный tracked writer, владелец Git и runtime. Три GPT-6 Luna Max
-  готовят приватные пакеты; root проверяет код, происхождение и результаты.
-- В source интегрированы SmartImage fallback, audit/news event regressions,
-  CAS rejection, MFA export-order и persisted ranked-news tie/cursor regression.
-  Ranked-модуль 24/24; exact mutant114 — call-phase AssertionError.
-  SQLite ranking UDF не подтверждает PostgreSQL ranking.
-- `source-map-js` обновлён 1.2.1 → 1.2.2 для GHSA-68fv-2mgg-jv7q;
-  frozen install/audit/build пройдены. Четыре npm deprecation warnings открыты.
-  Базовый checkpoint: preflight 9/9, harness в его составе, pre-commit PASS;
-  оба режима link checker, Markdownlint и CSpell reviewed docs 9/9 пройдены.
+  Проверяемый runtime/CI source: `97a8415959bfebd3cc6ccfc565a3f50051ef6e22`.
+  Checkpoint отправлен обычным push; preflight9/9, focused contracts370/370,
+  normal pre-commit PASS. Root — единственный tracked writer и владелец runtime.
+  Три GPT-6 Luna Max готовят приватные пакеты с отдельной проверкой root.
+- Source включает full mutation contracts, immutable benchmark activation,
+  WebKit focus fix, строгую avatar resource identity и DM reconnect/replay oracle.
+  Unit/contracts не заменяют живую приёмку.
+- `source-map-js` 1.2.2 закрывает GHSA-68fv-2mgg-jv7q; frozen install/audit/build
+  проверены на предыдущем checkpoint. На lock97a audit findings0;
+  четыре transitive npm deprecation warnings остаются открыты.
 
 ## Hosted CI и мутации
 
-- [Matrix 37442767803](https://github.com/egorribun/university_ecosystem/actions/runs/37442767803)
-  на `6a1d…`: backend unit/integration и frontend unit/build success.
-  Run ещё не завершён; WebKit scroll assertion и mutmut groups failed.
-  Отдельный Go benchmark выявил несопоставимые harness; paired rerun ещё не выполнен.
-- [Matrix 37434709908](https://github.com/egorribun/university_ecosystem/actions/runs/37434709908)
-  на `7fe9…` завершён: 137 checks passed, 30 skipped; backend unit shard1 и
-  зависимый CI Success failed. Shard1: 3864 passed, 24 skipped, один failure.
-  Root воспроизвёл порядок CPU-import test → dummy Argon2 test: RED 1/2.
-  Исправление восстанавливает и sys.modules, и parent package attribute;
-  исходная Argon2 assertion сохранена. Ordered GREEN 4/4; affected modules 25/25.
-- [Matrix 37403597748](https://github.com/egorribun/university_ecosystem/actions/runs/37403597748),
-  attempt1: source `76cd…`, PR producer `40b5a90e312d0bfc318665078ca833b704c03290`.
-  Родители и совпадение tree проверены root. Coverage Policy, Node audit
-  и Performance Gate — success. Снимок 08:05 UTC: 312 jobs,
-  62/64 frontend mutation jobs success, два active, queued нет;
-  127 failures относятся к backend mutmut, немутационных failures нет.
-  Run отменён после push; это исторический неполный снимок, полного зелёного Matrix нет.
-- Root проверил quality manifest: valid, missing/errors отсутствуют;
-  все применимые метрики 100%. Frontend statements 19228/19228,
-  branches 13785/13785, functions 4583/4583, lines 17190/17190;
-  Python lines/statements 29822/29822, branches 7376/7376.
-  Python function metric unsupported по контракту; Go/Rust applicable — 100%.
-- Frontend preflight: 43193 mutants, 565 files, 64 shards; provenance/population
-  проверены. Первые 11 disjoint artifacts: 676 Killed, без открытых результатов.
-  Неполный набор не устанавливает global score.
-- Backend universe: 54457 mutants, 344 files, mutmut3.8.0; artifacts validated.
-  Текущий execution plan — incremental 4589 selected в 128 groups.
-  Selection digest `2aa5ddd40da6245b1f0865a344f549a53524eeb83ff339b41bf2eb57f88d6581`;
-  universe digest `d15e06c97f7e8d286081277b9137efdbbd6948596c5a19004503d57619a6c351`.
-  Свежие groups1/6/8 на `6a1d…`: root проверил ZIP/digests/completeness,
-  108 selected: 94 Killed, 14 Survived. Это частичный execution; global score открыт.
-- Интегрированы шесть проверенных регрессий: Spotify identity100, durable chat
-  event37, pinned Web Push88, legacy audit fallback58, NATS strict publish26,
-  remaining-member presence invalidation69. Root baseline PASS и exact mutant
-  RED подтверждены. Canonical affected modules: 168/168 PASS, Ruff PASS.
-  Независимое review потребовало сохранить прежний transport-None сценарий
-  отдельно от DNS-pinning regression; он восстановлен, Web Push module 60/60 PASS.
-  До нового canonical producer mutation credit не присваивается.
-- WS ticket parser: добавлены persisted-session regressions для пустого JTI
-  и signed-int64 expiry boundary. Root baseline 2/2, exact controls 36/83/88
-  завершаются ожидаемыми call-phase AssertionError. Это локальная обратная связь,
-  score credit требует нового canonical execution.
-- PG `UserRepository.get` mutant9 — shard37. Regular mutation selector исключает
-  integration. V4 actual input guards выявили ошибочный digest и неверную форму
-  stats envelope. Отдельный V6 связывает execution source `6a1d…`
-  с canonical mutation artifact `76cd…`; root offline43/43 PASS.
-  SQLAlchemy/asyncpg translation и JUnit boundary проверены.
-  PostgreSQL/native runtime ещё не выполнен; regular/global score не изменены.
-- Reviewed reusable full-backend workflow интегрирован для source-bound полного
-  execution. Default incremental manual mode и main-only nightly сохраняются.
-  V6: root complete workflow/catalog replay330/330 и pinned actionlint PASS.
-  Hosted execution ещё не выполнен; minimum score100 сохранён.
-  Benchmark common-harness V2: root complete module55/55 PASS на Windows/Go1.27.1.
-  Это не pinned Linux/paired performance evidence; threshold1.10 сохранён.
-  Immutable activation интегрирована: root28/28; PR1306 и первый main transition.
-  Далее снова BASE helper; hosted paired rerun открыт, comparator не изменён.
-  WebKit focus candidate: root exact baseline RED, candidate news53/53 PASS;
-  native browser proof ещё отсутствует, исходная scroll assertion сохранена.
+- [Matrix37469190278](https://github.com/egorribun/university_ecosystem/actions/runs/37469190278)
+  source97a, PR merge `ce2122c8f329a2fd36ec201b119db35d2d640e79`.
+  Backend shard1: 3797 passed,26 skipped,1 failed — Helm retry consumer contract
+  для nightly, делегирующего reusable producer. Требуется проверка всей цепочки.
+  Chromium authenticated a11y subcommand: webServer exit1, tests не собраны;
+  предыдущие Chromium subcommands прошли. Vite RSS2071.3MiB превысил watchdog2048;
+  reviewed fix ограничивает Rolldown двумя workers, сохраняя heap1536 и timeout.
+  Root Windows URL_STATE coverage build PASS20.676s; tracked frontend неизменен;
+  это не замена Linux hosted CI proof.
+- CodeQL check112288877701: шесть high cache-poisoning alerts в двух reusable
+  workflows. Guards уже сверяют source/event/workflow SHA; reviewed fix выбирает
+  checkout напрямую по trusted event SHA. Hosted подтверждение ещё отсутствует.
+- [Paired benchmarks37469189921/a1](https://github.com/egorribun/university_ecosystem/actions/runs/37469189921):
+  оба обязательных gate success. BASE `6fa133b57f62c554162876d4e6d8349f8060fce9`,
+  candidate — merge `ce2122…`, source97a. Root проверил archive/API digests,
+  merge parents, helper/harness Git pins и повторил immutable BASE comparator:
+  по12 пар,33 Go и4 Rust metrics, результаты полностью совпали с CI.
+  Threshold1.10 сохранён; это microbenchmarks, не WS load/release certification.
+- Исторический quality manifest source76cd valid: applicable coverage100%.
+  Это не подтверждение coverage текущего source97a.
+- Frontend generation:43193 mutants/565 files/64 shards; partial artifacts
+  не устанавливают global score. Свежий shard30 на6a:487 Killed/10 files,
+  Survived/NoCoverage0; aggregate полного execution отсутствует.
+- Backend generation:54457 mutants/344 files/mutmut3.8.0; incremental selection
+  4589 в128 groups, universe digest
+  `d15e06c97f7e8d286081277b9137efdbbd6948596c5a19004503d57619a6c351`.
+  Root проверил свежие groups1/6/8 на6a:108 selected,94 Killed,14 Survived.
+  Неполный execution не устанавливает viable score.
+- Интегрированные auth/events/push/audit/NATS/presence/WS-ticket regressions
+  имеют локальные baseline/exact-mutant controls; новый canonical producer
+  требуется для mutation credit. Unsupported метрики трактуются по контракту.
+- Интегрированы reviewed regressions: localized empty-chat403 (EN/RU), concurrent
+  idempotency409 detail, internal MessageEdited metadata. Root exact controls
+  baseline PASS/expected mutant FAIL; affected private modules40/40,12/12,11/11.
+  Canonical affected modules и workflow contracts359/359 PASS, Helm retry29/29;
+  actionlint трёх изменённых workflows PASS. Global mutation credit ещё отсутствует.
+- PG UserRepository.get mutant9: historical generation source76cd отдельно
+  от execution97a. Root проверил ten fixture pins на97a/6a/76cd и семь input
+  hashes плюс historical receipt; inner38 tests PASS, outer Windows32 PASS/2
+  platform skips и WSL34/34 PASS. V5 native execution удержан: Windows timeout
+  не доказывает завершение owned WSL scope; новый cancellation contract в работе.
+  Regular mutation selector исключает integration; supplemental credit не
+  добавляется автоматически к regular/global score.
+- Full-backend reusable workflow подготовлен для полного source-bound execution;
+  default incremental/manual и main-only nightly сохранены. Hosted full run,
+  canonical global score100 и три сопоставимых зелёных CI ещё открыты.
 
 ## Live-приёмка
 
-- Owned full stand на `76cd…`: readiness/seed PASS. Cold smoke: 17 passed,
-  один non-admin page-exception failure, два intentional cross-project skips.
-  Root warm denial student/teacher × desktop/mobile: 4/4, workers1/retries0,
-  page errors0. Исходная cold ошибка остаётся открытой.
-- Cold auth-role diagnostics: root private Python809/809 и Node16/16 PASS;
-  corrected V7 provenance pins проверены. Пакет ещё не integrated/live-tested.
-- Tracked avatar oracle использует decode(); root Node3/3 и Vitest3/3 PASS.
-  Density-corrected 1×1 может иметь natural dimensions0; negative control
-  проверен. Resource oracle строгий: origin/path/hash/query сохраняются,
-  Различие разрешено только в `_v`; после reload source сверяется с profile URL.
-- V7r2 desktop: 1/1 PASS, retries0; upload/reload, реальный415 rollback и
-  rejected-upload reload проверены. Mobile failed до первого POST; RCA открыт.
-- V8 mobile вновь failed до POST: chooser/setFiles/native change наблюдались,
-  input оставался connected, выбран один PNG within limit, button enabled,
-  avatarPostCount0. Это не доказывает вызов React handler или auth-ref readiness.
-  V10: root launcher21/21; desktop/mobile1/1 каждый, retries0, trace19.
-  Upload/reload/415 rollback PASS на diagnostic image6a; ordinary image proof открыт.
-  Historical no-POST в этом диагностическом запуске не воспроизведён.
-  Owned diagnostic stand `ue-live-d48472bbe1362c47` на `6a1d…`: exact-image resume,
-  29 services readiness PASS; шесть успешных init jobs сохранены.
-  Demo seed exit0, frontend/Mailpit HTTP200; после диагностики stand stopped.
-  DM follow-up: Node8/8, desktop/mobile discovery, TS7.0.2 PASS; live runtime открыт.
-- State: `C:/Temp/ue-live-acceptance/run-orchestrator-76cd4026d-20261006-e27723ac7de24e31a02870ffc409506c`.
-  Project `ue-live-2bec0462a275fd36`; env, seed и evidence сохраняются.
+- Ordinary full Compose source97a, project `ue-live-5b58d4ebdfc22c50`:
+  signed owner/daemon/Compose fingerprint проверены,29 services ready,
+  шесть init jobs exit0, frontend/Mailpit HTTP200, seed committed.
+  Focused avatar + messenger run:2 passed/10 failed, desktop/mobile.
+  Это diagnostic-only subset, не полный сертификат live-приёмки.
+- Mobile avatar failure на waitForResponse POST; mobile DM — sender chat-log
+  prerequisite до receiver WS join/send. Group cases также падали на API outcome,
+  visibility, reaction/history и cleanup assertions. Sanitized receipt не
+  содержит фактических status/body/locator values; RCA нельзя предполагать.
+  Prepared passive diagnostics сохраняют исходные assertions и закрытый output.
+- Ordinary stand безопасно stopped после terminal failure; env/data/evidence
+  сохранены. State:
+  `C:/Temp/ue-live-acceptance/run-ordinary-97a-avatar-dm-20261006-54a6e8136ba948bb8671abfc3534f4a2`.
+- Historical diagnostic image6a avatar desktop/mobile PASS не подтверждает
+  ordinary97a. Original cold auth-role error source76cd остаётся открытым;
+  warm denial4/4 не заменяет cold proof. Private diagnostics Python809/Node16
+  проверены, integration/live execution ещё отсутствуют.
+- Блоки4/5: остаются полная traceability ТЗ, RU/EN, light/dark, responsive,
+  SSR/PWA, accessibility/performance и пользовательское visual approval.
+  Group notification context отсутствует в live assertions; draft отложен
+  до разбора существующих messenger prerequisites.
 
 ## Backup/restore и рабочая среда
 
-- DR run `8b804d4b67a24f2481099d50349ab7d1` связан с `76cd…`.
-  Pinned runner, private assets/key, PS7 preflight и absence guard проверены.
-  Root V6 adapter/dispatcher offline31/31 и независимое review пройдены.
-- One-shot clock начат, owned source quiescence PASS. Standalone source-env CLI
-  failed из-за import-path; явная reconciliation через тот же pinned signed
-  context PASS. Первое failure сохранено; clock не сбрасывался.
-- Paired snapshot создан. Executor failed на `source_snapshot_gate`,
-  `runner_step_failed`; restore_started_at_utc отсутствует, target restore
-  не начат. Read-only gate diagnostic: `source_snapshot_gate_failed`;
-  Read-only V4 probe: `BackupArtifactError`, outer `manifest_s3_read`.
-  Внутренняя причина ещё устанавливается: старые classifier line ranges
-  не соответствуют pinned helper. Ledger failed, RPO/RTO не подтверждены.
-- Исторический DR stand остановлен для освобождения ОЗУ; PG/S3/env сохранены.
-  Diagnostic stand `6a1d…` также stopped; данные/env/evidence сохранены.
-  Новый heavy workload: RAM ≤75%, free ≥8GiB, один heavy job.
-  Все315 containers stopped; teardown с volumes запрещён.
-- Только основной worktree. 80b stand очищен по владельцу; остальные retained
-  data/volumes и private backups сохраняются до проверки уникальности.
-  Global prune, чужие stop/delete и распространение rescue bundle запрещены.
-- Private scratch artifacts: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
-  Удаление dependency scratch и PG V4 `__pycache__` отклонено автоматической
-  проверкой; оба сохранены, bypass не выполнялся.
+- DR source76cd: paired snapshot создан, executor failed на source_snapshot_gate,
+  restore не начат, clock не сбрасывался. Read-only probe: BackupArtifactError,
+  outer manifest_s3_read; внутренний RCA открыт. RPO/RTO не подтверждены.
+- Исторические DR/diagnostic и ordinary97a stands stopped; env, volumes,
+  backups, evidence сохранены. Новый heavy workload: RAM≤75%,free≥8GiB,
+  один heavy job. Last root snapshot: running Docker0, free17GiB/RAM46.6%.
+- Docker address pools exhausted при новом up. Root/peer проверили signed owner,
+  daemon, полный resource fingerprint и emptiness трёх старых d484 networks;
+  удалены только exact IDs. Container/volume inventory до/после совпал.
+  Повторный ordinary startup успешен; global prune не применялся.
+- Root ignored pytest cache перенесён целиком в проверенный private quarantine
+  без удаления содержимого. Исходный cache guard finding пока не воспроизведён
+  в isolated fixtures; code patch не принят, исключения не расширены.
+- Только основной worktree. Не удалять retained данные без проверки уникальности.
+  Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
+  Отклонённые cleanup requests не обходились; rescue bundle остаётся private.
 
 ## Следующие результаты
 
-- Закоммитить reviewed workflow/benchmark/WebKit checkpoint; привязать trusted
-  helper activation к actual commit/tree; push и новый canonical evidence.
-- Подтвердить avatar на ordinary image, native PG mutation lane и полный backend
-  execution route. Блоки4/5: live traceability ТЗ, RU/EN, light/dark, responsive,
-  SSR/PWA, performance и пользовательское visual approval остаются открыты.
-- Открыты 100% viable score, три полных зелёных CI, migrations/rollback/BE-02,
-  app restore, SpiceDB graph/search parity, WS load, Envoy Gateway/kind,
-  63 audit IDs, шесть certified GHCR digests и выпуск `v1.0.0`.
+- Закрыть CodeQL checkout findings, Helm delegated consumer contract и Chromium
+  RSS build: проверить reviewed fixes → preflight/hooks → обычный commit/push;
+  закрытие hosted findings подтверждает только новый SHA-bound CI.
+- Сначала проверить PG owned cancellation/deadline, затем native control; разобрать
+  ordinary avatar/DM/group failures с bounded diagnostics, без threshold waiver.
+- Интегрировать reviewed behavioral regressions; получить новый canonical
+  mutation inventory/execution и закрывать survivors по фактическому evidence.
+- Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
+  WS load, Envoy Gateway/kind,63 audit IDs, шесть certified GHCR digests,
+  resulting-main evidence и выпуск `v1.0.0`.
 
 Сохранять env, volumes, backups и Git history. Не применять admin bypass,
 force-push или менять branch protection. Внешний production, реальные SMTP/push,

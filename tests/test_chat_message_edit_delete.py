@@ -21,7 +21,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.ws.serializers import serialize_message
-from app.core.events import _EVENT_REGISTRY, MessageDeleted, MessageEdited
+from app.core.events import (
+    _EVENT_REGISTRY,
+    EventMetadata,
+    MessageDeleted,
+    MessageEdited,
+)
 from app.services.chat.command_service import ChatMaintenanceService
 
 BROADCAST = "app.services.chat.command_service.ws_manager.broadcast_to_chat"
@@ -193,6 +198,11 @@ def test_message_mutation_events_are_registered_for_durable_dispatch() -> None:
             "chat_id": str(chat_id),
             "_schema_version": 1,
             "unknown": "ignored",
+            "metadata": {
+                "correlation_id": "payload-controlled",
+                "user_id": str(uuid.uuid4()),
+                "source": "payload",
+            },
         }
     )
     deleted = MessageDeleted.from_dict(
@@ -203,6 +213,13 @@ def test_message_mutation_events_are_registered_for_durable_dispatch() -> None:
         }
     )
     assert edited.message_id == message_id and edited.chat_id == chat_id
+    if (
+        not isinstance(edited.metadata, EventMetadata)
+        or edited.metadata.user_id is not None
+        or edited.metadata.correlation_id is not None
+        or edited.metadata.source != "app"
+    ):
+        raise AssertionError("event_from_dict_metadata_is_internal")
     assert deleted.message_id == message_id and deleted.chat_id == chat_id
 
 

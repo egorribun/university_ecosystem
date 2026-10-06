@@ -218,6 +218,11 @@ async def test_simultaneous_send_loser_cannot_insert_or_change_owner(redis):
             )
         assert exc.value.status_code == 409
         assert exc.value.headers["Retry-After"] == "1"
+        if exc.value.detail != {
+            "error": "idempotency_in_progress",
+            "message": "This message is already being processed; retry with the same key",
+        }:
+            raise AssertionError("idempotency_conflict_detail_contract")
         assert await redis.get(key) == pending
         loser.repository.create_message.assert_not_awaited()
         loser.uow.commit.assert_not_awaited()
