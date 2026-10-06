@@ -13,7 +13,6 @@ export type SmartImageProps = {
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 
 function buildSrcSet(rawUrl: string, widths: readonly number[], cacheV?: string | number): string {
-  if (!sanitizeUrl(rawUrl)) return ""
   const uniqueWidths = Array.from(
     new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
   ).sort((a, b) => a - b)
@@ -21,10 +20,8 @@ function buildSrcSet(rawUrl: string, widths: readonly number[], cacheV?: string 
   return uniqueWidths
     .map((width) => {
       const proxyUrl = resolveProxyImageUrl(rawUrl, width)
-      const versionedProxyUrl = proxyUrl ? addVersionParam(proxyUrl, cacheV) : ""
-      return versionedProxyUrl ? `${versionedProxyUrl} ${width}w` : null
+      return `${addVersionParam(proxyUrl, cacheV)} ${width}w`
     })
-    .filter((src): src is string => src !== null)
     .join(", ")
 }
 

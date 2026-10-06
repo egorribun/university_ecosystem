@@ -122,4 +122,5 @@ async def test_update_persists_headline_in_news_updated_outbox_event(
     )
 
     assert event is not None
+    assert event.payload["news_id"] == str(news.id)
     assert event.payload["title"] == updated_title

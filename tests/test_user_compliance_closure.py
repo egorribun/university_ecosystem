@@ -441,6 +441,40 @@ async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
     assert '"secret"' not in exported_json
     assert '"token_digest"' not in exported_json
     assert '"otp_digest"' not in exported_json
+    # Export order remains deterministic when enrollment timestamps tie.
+    same_created_at = now - timedelta(days=3)
+    same_time_ids = sorted((uuid4(), uuid4()))
+    same_time_user = await user_factory()
+    db_session.add_all(
+        [
+            models.MfaTotpEnrollment(
+                id=same_time_ids[1],
+                user_id=same_time_user.id,
+                secret=secrets.token_urlsafe(24),
+                label="later id",
+                is_active=True,
+                confirmed_at=same_created_at,
+                created_at=same_created_at,
+            ),
+            models.MfaTotpEnrollment(
+                id=same_time_ids[0],
+                user_id=same_time_user.id,
+                secret=secrets.token_urlsafe(24),
+                label="earlier id",
+                is_active=True,
+                confirmed_at=same_created_at,
+                created_at=same_created_at,
+            ),
+        ]
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    same_time_result = await service.export_user_data(
+        SimpleNamespace(id=same_time_user.id), request
+    )
+
+    assert [item["id"] for item in same_time_result.mfa_enrollments] == same_time_ids
 
 
 @pytest.mark.asyncio

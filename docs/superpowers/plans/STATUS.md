@@ -2,87 +2,109 @@
 
 Срез на 2026-10-06 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Работа приостановлена по поручению пользователя. Выпуск `v1.0.0` не подтверждён.
+Работа возобновлена по поручению пользователя. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Последний source с runtime-проверками — `9f0208621f47b04883b488cc62dcf64eb055e70c`.
-  Эти результаты не подтверждают автоматически следующий HEAD.
+  Последний source с runtime-проверками — `4ad881929b75568fb3f986ca2deefeba49d6cf78`.
+  Его результаты не подтверждают автоматически следующий HEAD.
 - Root — единственный tracked writer и владелец Git. Три GPT-6 Luna Max
-  завершили текущие операции; незавершённые приватные материалы сохранены.
-- Интегрированы SmartImage source-keyed fallback и versioned srcset,
-  регрессии rotated legacy audit signature и persisted `NewsUpdated` payload.
-  Root независимо проверил RED/GREEN до интеграции. После интеграции canonical
-  affected frontend tests: 76/76; backend audit/news tests: 38/38.
-  Это не canonical mutation credit и не release certification.
+  работают параллельно над ограниченными приватными пакетами; root проверяет
+  их код, происхождение evidence и результаты до интеграции.
+- В `4ad881929` интегрированы SmartImage source-keyed fallback и versioned srcset,
+  регрессии rotated legacy audit signature и persisted `NewsUpdated` title.
+  Root независимо проверил RED/GREEN. Canonical affected frontend tests: 76/76;
+  backend audit/news tests: 38/38. Это не release certification.
+- Этот checkpoint добавляет CAS rejection, deterministic MFA export-order
+  и persisted NewsUpdated news_id regression. Root воспроизвёл baseline PASS
+  и точные AST-контроли: CAS 101/102/103/105, export-order 13, news-update 13 —
+  call-phase AssertionError. После интеграции canonical affected tests: 23/23.
+  До нового канонического producer mutation credit не присваивается.
+- SmartImage CI gap воспроизведён на исходном коде. После независимого ревью
+  убраны только недостижимые внутренние guards; внешняя URL-проверка и fallback
+  сохранены. Root canonical focused suite: 20/20; statements 33/33,
+  branches 41/41, functions 10/10, lines 28/28. Full CI ещё нужен.
+- Перед checkpoint: fast preflight 9/9, harness 27/27, оба режима local
+  Markdown link checker и Markdownlint пройдены. Это локальная проверка,
+  не resulting-main release evidence.
 
-## Hosted CI для 9f0208621
+## Hosted CI для 4ad881929
 
-- [Matrix 37376193756](https://github.com/egorribun/university_ecosystem/actions/runs/37376193756),
-  attempt 1: снимок 2026-10-05 23:47:20 UTC — 312 jobs: 135 success,
-  31 failure, 16 in progress, 118 queued, 12 skipped. Все 31 failures в этом
-  снимке — backend incremental mutation groups. Полный результат не получен.
-- Producer PR-merge SHA `458de86f458283aa9fa16c7aa8b0697025a6070d`
-  отличается от source HEAD; tree совпадает:
-  `ac46399765c0ce504cc7fbe570a77089a7254164`. Обе привязки сохранены.
-- [Owned Live 37376192633](https://github.com/egorribun/university_ecosystem/actions/runs/37376192633)
-  и [Unauthenticated Routes Smoke 37376192623](https://github.com/egorribun/university_ecosystem/actions/runs/37376192623)
-  завершились success. Это ограниченные сценарии, не полная приёмка ТЗ.
-- Свежая backend universe — 54 457. Root независимо валидировал canonical
-  evidence групп 1–21: 749 selected, 608 killed, 141 survived. Агент отдельно
-  валидировал 33 группы: 1181 selected, 970 killed, 211 survived; root replay
-  расширенного набора ещё нужен. Все числа частичные, не global score.
-- Group 4: 31 killed, 4 survived, без timeout/no-tests. Audit49 и News12
-  закрыты локальными regression controls; нужен новый producer. Redis15
-  type-cast и NATS80 server-default equivalence требуют разбора по контракту,
-  без ручного Killed или произвольных exclusions.
-- Coverage artifact содержит 100% применимых показателей; integrity checks
-  пройдены. Полный локальный validator ограничен отсутствием Git/inventory
-  в artifact-only каталоге. Frontend shard 0: 20 killed; global gate открыт.
+- [Matrix 37392002746](https://github.com/egorribun/university_ecosystem/actions/runs/37392002746),
+  attempt 1: снимок 2026-10-06 01:09:21 UTC — 119 jobs: 97 success,
+  20 skipped, 2 failure, 0 active/queued. Backend Python shard 3 завершён success.
+- `Coverage & Quality Policy Gate` упал на `Normalize coverage evidence`;
+  `CI Success` — зависимое падение. Frontend statements: 19 231/19 232;
+  branches: 13 788/13 791. Единственный gap — SmartImage. Source и исходные
+  counters проверены; Windows path projection не является canonical evidence.
+  Каталог содержит 57 artifacts, coverage shards и mutation preflight;
+  final quality manifest и mutation execution evidence ещё не получены.
+  Global coverage и 100% viable mutation gate остаются открытыми.
+
+## Мутационный долг
+
+- Исторический [Matrix 37376193756](https://github.com/egorribun/university_ecosystem/actions/runs/37376193756),
+  attempt 1: source `9f0208621f47b04883b488cc62dcf64eb055e70c`, producer
+  `458de86f458283aa9fa16c7aa8b0697025a6070d`, совпадающий tree
+  `ac46399765c0ce504cc7fbe570a77089a7254164`. Universe — 54 457.
+- Root независимо валидировал группы 1–21: 749 selected, 608 killed,
+  141 survived. Агент валидировал 33 группы: 1181 selected, 970 killed,
+  211 survived; root replay расширенного набора ещё нужен. Числа частичные.
+- Audit49, News12 и новые CAS/export-order controls — локальные регрессии,
+  без ручного Killed или предположительного пересчёта surviving population.
+- `UserRepository.get` mutant 9 меняет PostgreSQL lock scope. Нужный PG-тест
+  уже существует, но `mutmut` исключает integration. Это открытый разрыв
+  среды/отбора, требующий канонической PG-проверки, не новый duplicate test.
+- Redis type-cast/logging и MFA default/overwrite кандидаты требуют точного
+  применения контракта эквивалентности; score не изменён. NATS80 остаётся открыт.
 
 ## Live и диагностика
 
-- Owned 9f source запущен и seeded. Первый локальный smoke: 17 passed,
-  1 failed, 2 skipped; desktop admin denial вызвал page error. Повторный
-  диагностический auth-roles набор на прогретом стенде: 16 passed, 2 skipped.
-  Исходная ошибка не воспроизведена; причина и исправление не подтверждены.
-- Avatar V9.3: desktop/mobile POST вернули HTTP 200, page errors — 0.
-  Default и корректный CDP SW-bypass получили HTTP 200 и AVIF image signature;
-  UI assertion naturalWidth всё ещё failed. Причина не установлена.
-  Viewport/lazy loading остаётся гипотезой. SmartImage defects независимо
-  воспроизведены; их связь с этим live failure не доказана.
-- V9.4 в `C:/Temp/ue-avatar-ui-diagnostic-e2ba-20261005/v9.4` — незавершённая
-  unsealed копия со старыми manifest/seal. Не запускать. После возобновления
-  завершить schema, hashes, offline contracts и listing, затем использовать
-  runtime на фактическом clean source.
-- Owned stand state:
-  `C:/Temp/ue-live-acceptance/run-orchestrator-9f0208621-20261006-de281e7d9ff54f07a4a49b5e22d6359e`.
-  Для паузы используется `stop`, сохраняющий volumes, env и evidence.
-  После смены source нельзя приписывать этому стенду новый HEAD.
+- Новый owned stand запущен на `4ad881929`, readiness и seed прошли.
+  Первый canonical smoke: 18 passed, 2 skipped. Старый cold admin page error
+  на `9f0208621` не воспроизведён; причина и исправление не заявляются.
+- Avatar V9.4-r3: desktop POST HTTP 200, page errors 0; изображение во viewport,
+  loading lazy, complete true, naturalWidth/naturalHeight 0. Проверка failed.
+  Outside-viewport гипотеза для этого измерения не поддерживается; причина
+  декодирования не установлена. Mobile завершился до upload.
+- Root выявил и проверил ошибку private r2 producer: module constant внутри
+  browser callback. r3 исправлен и sealed: Python 10/10, Vitest 12/12,
+  strict types и discovery 2 passed. Это диагностический код, не product fix.
+- V9.4-r4 sealed и независимо проверен: Python 11/11, Vitest 14/14, strict
+  types, discovery 2 и peer review. Runtime на 4ad: оба проекта остановились
+  на file-chooser-received, uploads 0, page errors 0; категория runtime.
+  Предполагаемый input lifecycle требует проверки, root cause не установлен.
+  Оба ограниченных runtime receipts сохранены; r3/r4 не являются приёмкой аватара.
+- Текущий state:
+  `C:/Temp/ue-live-acceptance/run-orchestrator-4ad881929-20261006-01094d25a11541af9d2e352a600e8a5c`.
+  Stand остаётся привязанным к `4ad881929` после смены исходного checkout.
 
 ## Восстановление и сохранность
 
 - Старый e2ba paired DB/S3 snapshot экспортирован приватно; root проверил
-  hashes и ACL. Owned teardown старого стенда завершён: его containers,
-  volumes и networks удалены, env/secrets/backups/evidence сохранены.
-- Новый DR RunId `6751bb0189fa45c2a6a2c6820e79b922` — private plan:
-  clock не начат, runtime не создан. Target launcher и bounded profile/image
-  probe прошли offline проверки. Source quiescence и resource snapshot
-  helpers требуют актуальной привязки.
+  hashes и ACL. Owned teardown завершён; env/secrets/backups/evidence сохранены.
+- Старый 9f stand остановлен: 0 running, 35 exited containers, 14 volumes
+  сохранены. Данные и нужное evidence не удалять без проверки принадлежности.
+- Старый DR RunId `6751bb0189fa45c2a6a2c6820e79b922` относится к 9f private plan;
+  clock не начат, runtime не создан. Для 4ad нужен новый source-bound RunId.
+- Private 4ad source snapshot/quiescence helpers V2 проверены root: hashes и
+  12/12 offline tests, включая partial stop, duplicate receipt и timeout.
+  Signed StandOwner даёт authority; DR-owner JSON сам по себе не подписан.
+  Docker execution, source quiescence и новый RTO clock ещё не запускались.
 - App-level restore, RPO/RTO, SpiceDB graph и search parity не подтверждены.
-  После нового HEAD нужен новый source-bound DR run, без старого clock.
-- Приватные receipts и патчи сохранены в
+  Out-of-band writers helpers не проверяют; это явно ограниченная область.
+- Private artifacts находятся в
   `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157` и доменных bundles.
-  Release требует канонических переносимых artifacts. Приватные scratch
-  каталоги сохранены после отклонения удаления проверкой безопасности.
+  Release требует канонических переносимых artifacts. Scratch сохранён после
+  отклонения удаления автоматической проверкой безопасности.
 
-## После явного возобновления
+## Ближайшая работа
 
-- Проверить Git/PR/CI на фактическом HEAD, получить новые canonical mutation
-  результаты для интегрированных тестов и продолжить приоритетные survivors.
-- Завершить avatar V9.4, воспроизвести cold admin error, выполнить source-bound
-  app restore и измерить RPO/RTO.
+- Устранить фактическую CI normalization failure без ослабления контракта;
+  получить новые canonical coverage/mutation evidence на resulting source.
+- Завершить avatar diagnosis, интегрировать проверенные тесты, выполнить
+  source-bound paired app restore и измерить RPO/RTO.
 - Блоки 4/5 открыты: полная live traceability ТЗ, RU/EN, light/dark,
   responsive widths, SSR/PWA, performance и visual approval.
 - Открыты 100% viable mutation score, три полных зелёных CI,
