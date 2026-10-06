@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.lifespan import (
-    RuntimeFeatureOverrides,
     _handle_schema_and_extensions,
     _periodic_scheduler_loop,
     _prewarm_jwt_public_key_cache,
@@ -20,29 +19,6 @@ from app.core.lifespan import (
     lifespan,
 )
 from app.workers.outbox import OutboxWorker
-
-
-class TestRuntimeFeatureOverrides:
-    def test_resolve(self) -> None:
-        overrides = RuntimeFeatureOverrides()
-        # Default fallback: None in override, should return the default value passed
-        assert overrides.resolve("semantic_search_enabled", default=True) is True
-        assert overrides.resolve("semantic_search_enabled", default=False) is False
-
-        # Set override
-        overrides.semantic_search_enabled = True
-        assert overrides.resolve("semantic_search_enabled", default=False) is True
-
-        overrides.semantic_search_enabled = False
-        assert overrides.resolve("semantic_search_enabled", default=True) is False
-
-    def test_disable(self) -> None:
-        overrides = RuntimeFeatureOverrides()
-        overrides.disable("semantic_search_enabled")
-        assert overrides.semantic_search_enabled is False
-
-        with pytest.raises(AttributeError):
-            overrides.disable("non_existent_flag")
 
 
 @pytest.mark.asyncio

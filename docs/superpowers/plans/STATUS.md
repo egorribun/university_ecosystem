@@ -6,122 +6,123 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
-- Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Проверяемый runtime/CI source: `97a8415959bfebd3cc6ccfc565a3f50051ef6e22`.
-  Checkpoint отправлен обычным push; preflight9/9, focused contracts370/370,
-  normal pre-commit PASS. Root — единственный tracked writer и владелец runtime.
-  Три GPT-6 Luna Max готовят приватные пакеты с отдельной проверкой root.
-- Source включает full mutation contracts, immutable benchmark activation,
-  WebKit focus fix, строгую avatar resource identity и DM reconnect/replay oracle.
-  Unit/contracts не заменяют живую приёмку.
-- `source-map-js` 1.2.2 закрывает GHSA-68fv-2mgg-jv7q; frozen install/audit/build
-  проверены на предыдущем checkpoint. На lock97a audit findings0;
-  четыре transitive npm deprecation warnings остаются открыты.
+- Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
+  CI/runtime evidence ниже относится к `7ac88320e0728d67e7af3354b9490ed8a38dd4f5`.
+  Следующий checkpoint переносит RuntimeFeatureOverrides из исключённого
+  lifespan-модуля в обычный тестовый модуль. Production-код, exclusions и пороги
+  не изменены. Root — единственный tracked writer и владелец runtime;
+  три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
+- В checkpoint вошли full-backend mutation workflow, immutable benchmark
+  activation, WebKit focus fix, строгая avatar resource identity и DM
+  reconnect/replay regressions. Локальные контракты не заменяют hosted/live
+  приёмку.
+- Source-map-js 1.2.2 закрывает GHSA-68fv-2mgg-jv7q; frozen install/audit/build
+  прошли на предыдущем checkpoint. Четыре transitive npm deprecation warnings
+  остаются открыты.
 
 ## Hosted CI и мутации
 
-- [Matrix37469190278](https://github.com/egorribun/university_ecosystem/actions/runs/37469190278)
-  source97a, PR merge `ce2122c8f329a2fd36ec201b119db35d2d640e79`.
-  Backend shard1: 3797 passed,26 skipped,1 failed — Helm retry consumer contract
-  для nightly, делегирующего reusable producer. Требуется проверка всей цепочки.
-  Chromium authenticated a11y subcommand: webServer exit1, tests не собраны;
-  предыдущие Chromium subcommands прошли. Vite RSS2071.3MiB превысил watchdog2048;
-  reviewed fix ограничивает Rolldown двумя workers, сохраняя heap1536 и timeout.
-  Root Windows URL_STATE coverage build PASS20.676s; tracked frontend неизменен;
-  это не замена Linux hosted CI proof.
-- CodeQL check112288877701: шесть high cache-poisoning alerts в двух reusable
-  workflows. Guards уже сверяют source/event/workflow SHA; reviewed fix выбирает
-  checkout напрямую по trusted event SHA. Hosted подтверждение ещё отсутствует.
-- [Paired benchmarks37469189921/a1](https://github.com/egorribun/university_ecosystem/actions/runs/37469189921):
-  оба обязательных gate success. BASE `6fa133b57f62c554162876d4e6d8349f8060fce9`,
-  candidate — merge `ce2122…`, source97a. Root проверил archive/API digests,
-  merge parents, helper/harness Git pins и повторил immutable BASE comparator:
-  по12 пар,33 Go и4 Rust metrics, результаты полностью совпали с CI.
-  Threshold1.10 сохранён; это microbenchmarks, не WS load/release certification.
-- Исторический quality manifest source76cd valid: applicable coverage100%.
-  Это не подтверждение coverage текущего source97a.
-- Frontend generation:43193 mutants/565 files/64 shards; partial artifacts
-  не устанавливают global score. Свежий shard30 на6a:487 Killed/10 files,
-  Survived/NoCoverage0; aggregate полного execution отсутствует.
-- Backend generation:54457 mutants/344 files/mutmut3.8.0; incremental selection
-  4589 в128 groups, universe digest
-  `d15e06c97f7e8d286081277b9137efdbbd6948596c5a19004503d57619a6c351`.
-  Root проверил свежие groups1/6/8 на6a:108 selected,94 Killed,14 Survived.
-  Неполный execution не устанавливает viable score.
-- Интегрированные auth/events/push/audit/NATS/presence/WS-ticket regressions
-  имеют локальные baseline/exact-mutant controls; новый canonical producer
-  требуется для mutation credit. Unsupported метрики трактуются по контракту.
-- Интегрированы reviewed regressions: localized empty-chat403 (EN/RU), concurrent
-  idempotency409 detail, internal MessageEdited metadata. Root exact controls
-  baseline PASS/expected mutant FAIL; affected private modules40/40,12/12,11/11.
-  Canonical affected modules и workflow contracts359/359 PASS, Helm retry29/29;
-  actionlint трёх изменённых workflows PASS. Global mutation credit ещё отсутствует.
-- PG UserRepository.get mutant9: historical generation source76cd отдельно
-  от execution97a. Root проверил ten fixture pins на97a/6a/76cd и семь input
-  hashes плюс historical receipt; inner38 tests PASS, outer Windows32 PASS/2
-  platform skips и WSL34/34 PASS. V5 native execution удержан: Windows timeout
-  не доказывает завершение owned WSL scope; новый cancellation contract в работе.
-  Regular mutation selector исключает integration; supplemental credit не
-  добавляется автоматически к regular/global score.
-- Full-backend reusable workflow подготовлен для полного source-bound execution;
-  default incremental/manual и main-only nightly сохранены. Hosted full run,
-  canonical global score100 и три сопоставимых зелёных CI ещё открыты.
+- CodeQL check `112329936293` и CodeQL Advanced run `37481003467` для `7ac`
+  завершились SUCCESS. Check сообщал: “No new alerts in code changed by PR”.
+- Matrix run `37481003822/a1` относится к `7ac`. Проверенные source-bound
+  backend groups 1/2 дали соответственно 29 Killed / 7 Survived и 32 Killed /
+  4 Survived. Это реальные survivors, а не runner failure; остальные группы
+  и полный inventory ещё не закрыты. Полный viable score не установлен.
+- Manual full run `37481732603/a1`: frontend shard jobs завершились 64/64
+  SUCCESS, но итоговый aggregate FAILED и aggregate artifact отсутствовал.
+  Backend preflight завершился ошибкой до запуска 128 backend execution shards;
+  пропущенные shards не являются результатами мутаций. Глобальный viable score
+  не установлен.
+- Для source7ac локальные затронутые contracts359/359 и Helm retry29/29 PASS;
+  CodeQL/Chromium исправления имеют hosted proof. Для переноса тестов canonical
+  lifespan + новый модуль39/39, preflight9/9 и test-file pre-commit PASS.
+  Проверка нового checkpoint в hosted CI ещё требуется.
+- Historical backend generation54,457/344 и incremental selection4,589/128
+  не подменяют свежий inventory. Принятый перенос сохраняет None/default,
+  явные True/False, disable из True и None, reset и неизвестные флаги.
+  Root повторил V8 baseline3/3 и exact resolve6/disable13 controls:
+  2 PASS/1 call failure и 1 PASS/2 call failures, без skips/collection errors.
+  V7 matrix22 не перенесён на изменённый V8; global score не установлен.
+- Frontend preflight source7ac: 43,200 mutants / 565 files / 64 shards;
+  digest `e0c3083e3defb06169c8f59897b61c3a46a4dee65c6ae66c9963168ffad66c29`.
+  Все 64 archive digests проверены, полный planned/report join ещё не принят.
+  Aggregate log содержит Survived; точный состав требует проверки reports.
+  Root независимо подтвердил fresh shard30: 487/487 Killed,10 regions/6 files,
+  source/run/attempt/preflight/report hashes. Это только shard-local proof.
+- Historical UserRepository.get9 Survived: run37403597748/a1, source76cd.
+  Current7ac module bytes совпадают; это основание для focused regression,
+  не перенос старого mutation status на новый run. Applicable coverage100%
+  подтверждалась для historical76cd, текущий source требует своего evidence.
+- Paired benchmark workflow сохранил immutable BASE comparator, threshold 1.10,
+  33 Go и 4 Rust metrics по 12 парам. Root проверял BASE/candidate archive и
+  сравнение на предыдущем source97a; это не нагрузочная или release
+  certification для `7ac`.
 
 ## Live-приёмка
 
-- Ordinary full Compose source97a, project `ue-live-5b58d4ebdfc22c50`:
-  signed owner/daemon/Compose fingerprint проверены,29 services ready,
-  шесть init jobs exit0, frontend/Mailpit HTTP200, seed committed.
-  Focused avatar + messenger run:2 passed/10 failed, desktop/mobile.
-  Это diagnostic-only subset, не полный сертификат live-приёмки.
-- Mobile avatar failure на waitForResponse POST; mobile DM — sender chat-log
-  prerequisite до receiver WS join/send. Group cases также падали на API outcome,
-  visibility, reaction/history и cleanup assertions. Sanitized receipt не
-  содержит фактических status/body/locator values; RCA нельзя предполагать.
-  Prepared passive diagnostics сохраняют исходные assertions и закрытый output.
-- Ordinary stand безопасно stopped после terminal failure; env/data/evidence
-  сохранены. State:
-  `C:/Temp/ue-live-acceptance/run-ordinary-97a-avatar-dm-20261006-54a6e8136ba948bb8671abfc3534f4a2`.
-- Historical diagnostic image6a avatar desktop/mobile PASS не подтверждает
-  ordinary97a. Original cold auth-role error source76cd остаётся открытым;
-  warm denial4/4 не заменяет cold proof. Private diagnostics Python809/Node16
-  проверены, integration/live execution ещё отсутствуют.
-- Блоки4/5: остаются полная traceability ТЗ, RU/EN, light/dark, responsive,
-  SSR/PWA, accessibility/performance и пользовательское visual approval.
-  Group notification context отсутствует в live assertions; draft отложен
-  до разбора существующих messenger prerequisites.
+- Обычный Compose stand `7ac` был поднят с 29 healthy services, seed прошёл.
+  После диагностического запуска root остановил stand штатно; данные и
+  evidence сохранены.
+- Desktop avatar diagnostic R3 завершился без принятых маркеров: counts
+  invalid, child exit 1, cleanup verified. Mobile run — NOT RUN / HOLD. Это
+  диагностический результат, не pass/fail продукта и не полная live-приёмка.
+  Причина неизвестна: child output не сохранён в outer log. До нового runtime
+  закрыть descendant lineage и ограниченную классификацию child output.
+- Ранний desktop запуск до seed не учитывается: защищённый synthetic admin
+  credential отсутствовал. Canonical demo seed затем завершился PASS; это
+  устранило только prerequisite, но не закрыло R3.
+- Полная traceability требований, RU/EN, light/dark, responsive, SSR/PWA,
+  accessibility/performance и пользовательское visual approval остаются
+  открытыми.
+- Historical ordinary97a subset:2 passed/10 failed, desktop/mobile;
+  diagnostic-image avatar PASS не подтверждает ordinary source.
+  Original cold auth-role failure source76cd остаётся открытым.
 
-## Backup/restore и рабочая среда
+## Backup/restore и диагностика
 
-- DR source76cd: paired snapshot создан, executor failed на source_snapshot_gate,
-  restore не начат, clock не сбрасывался. Read-only probe: BackupArtifactError,
-  outer manifest_s3_read; внутренний RCA открыт. RPO/RTO не подтверждены.
-- Исторические DR/diagnostic и ordinary97a stands stopped; env, volumes,
-  backups, evidence сохранены. Новый heavy workload: RAM≤75%,free≥8GiB,
-  один heavy job. Last root snapshot: running Docker0, free17GiB/RAM46.6%.
-- Docker address pools exhausted при новом up. Root/peer проверили signed owner,
-  daemon, полный resource fingerprint и emptiness трёх старых d484 networks;
-  удалены только exact IDs. Container/volume inventory до/после совпал.
-  Повторный ordinary startup успешен; global prune не применялся.
-- Root ignored pytest cache перенесён целиком в проверенный private quarantine
-  без удаления содержимого. Исходный cache guard finding пока не воспроизведён
-  в isolated fixtures; code patch не принят, исключения не расширены.
-- Только основной worktree. Не удалять retained данные без проверки уникальности.
+- DR RunId `8b804d4b67a24f2481099d50349ab7d1`, historical source
+  `76cd4026dbe241f9a57b7f98488f54856f6b37d9`: paired snapshot был создан,
+  но основной executor завершился на `source_snapshot_gate`; target restore
+  НЕ НАЧИНАЛСЯ. RTO clock не сбрасывался; logical restore, RPO и RTO не
+  подтверждены.
+- Отдельная read-only V7 диагностика не стартовала probe из-за template
+  проверки image metadata. V8 создал диагностический контейнер, но отклонил
+  его до старта на identity validation. Сохранённый V8 receipt остаётся
+  `cleanup_complete=false` / `identity_unverified`; менять его задним числом
+  нельзя.
+  Concrete mismatch: Docker shorthand SecurityOpt и ещё пустой endpoint
+  NetworkID в created state. До старта проверять exact HostConfig network
+  binding, после старта — endpoint. Probe не запускался.
+- Позже точные name и nonce selectors оба вернули отсутствие контейнера
+  (Docker exit 0); root сообщил, что start/rm не выполнял. Ограниченная
+  Docker-events проверка не дала событий из-за команды с exit 64. Причина
+  исчезновения не установлена; acceptance/RCA credit отсутствует. Не было
+  backup/restore retry, source snapshot retry или clock reset.
+
+## Рабочая среда
+
+- Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
+  Последний root snapshot: running Docker0, RAM47.2%,free16.8GiB.
+  Удалены только три доказанно пустые retired networks; global prune не применялся.
+- Только основной worktree. Не удалять уникальные env/data/volumes/backups.
   Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
-  Отклонённые cleanup requests не обходились; rescue bundle остаётся private.
+  Rescue bundle остаётся private; Git history сохраняется.
 
-## Следующие результаты
+## Следующие проверки и ограничения
 
-- Закрыть CodeQL checkout findings, Helm delegated consumer contract и Chromium
-  RSS build: проверить reviewed fixes → preflight/hooks → обычный commit/push;
-  закрытие hosted findings подтверждает только новый SHA-bound CI.
-- Сначала проверить PG owned cancellation/deadline, затем native control; разобрать
-  ordinary avatar/DM/group failures с bounded diagnostics, без threshold waiver.
-- Интегрировать reviewed behavioral regressions; получить новый canonical
-  mutation inventory/execution и закрывать survivors по фактическому evidence.
+- Получить exact same-run survivors и новый full-run preflight после переноса;
+  затем получить complete same-run backend/frontend aggregates с source/run/
+  attempt-bound artifacts до заявления о mutation score.
+- Получить root-reviewed live diagnostics для desktop/mobile без ослабления
+  исходных assertions; доказать auth, API/DB/S3 equality и пользовательские
+  сценарии, а не только health/readiness.
+- Продолжить DR RCA через отдельные immutable версии helper/receipts. Исторические
+  receipts и их failure status не перезаписывать; не объявлять восстановление
+  или RPO/RTO до успешной проверки target app.
 - Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
-  WS load, Envoy Gateway/kind,63 audit IDs, шесть certified GHCR digests,
+  WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,
   resulting-main evidence и выпуск `v1.0.0`.
+  Три сопоставимых зелёных полных CI-наблюдения ещё требуются.
 
 Сохранять env, volumes, backups и Git history. Не применять admin bypass,
 force-push или менять branch protection. Внешний production, реальные SMTP/push,
