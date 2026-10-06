@@ -12,6 +12,7 @@ from uuid import UUID
 
 import pytest
 from sqlalchemy import delete, event
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles, deregister
 from sqlalchemy.sql.elements import BinaryExpression
 
@@ -255,3 +256,42 @@ async def test_native_query_binds_pgvector_nan_as_postgresql_float(monkeypatch, 
     assert normalization is not None, str(compiled)
     parameter_name = compiled.positiontup[int(normalization.group(1)) - 1]
     assert math.isnan(compiled.params[parameter_name])
+
+
+@pytest.mark.asyncio
+async def test_ranked_news_cursor_uses_same_order_for_tied_scores(
+    ranked_database: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC).replace(microsecond=0)
+    older = News(
+        id=UUID(int=(0xA << 124) + 2),
+        title="Older tied result",
+        content="Content",
+        created_at=now - timedelta(days=2),
+        embedding="0.1",
+    )
+    newer = News(
+        id=UUID(int=(0xA << 124) + 1),
+        title="Newer tied result",
+        content="Content",
+        created_at=now - timedelta(days=1),
+        embedding="0.1",
+    )
+    ranked_database.add_all([older, newer])
+    await ranked_database.commit()
+    monkeypatch.setattr(settings, "semantic_search_enabled", True)
+    vector = AsyncMock()
+    vector.get_embedding.return_value = [1.0, 0.0]
+    service = NewsService(uow_from_session(ranked_database), vector)
+
+    ids = []
+    cursor = None
+    for _ in range(3):
+        page = await service.list_news(search="query", limit=1, cursor=cursor)
+        ids.extend(item.id for item in page.items)
+        if not page.has_more:
+            break
+        assert page.next_cursor != cursor
+        cursor = page.next_cursor
+
+    assert ids == [newer.id, older.id]

@@ -7,7 +7,7 @@
 ## Контрольная точка
 
 - Работа только на `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Последний source с runtime-проверками — `4ad881929b75568fb3f986ca2deefeba49d6cf78`.
+  Последний source с runtime-проверками — `80b40d291524ac059be3708d4bab6a408790203c`.
   Его результаты не подтверждают автоматически следующий HEAD.
 - Root — единственный tracked writer и владелец Git. Три GPT-6 Luna Max
   работают параллельно над ограниченными приватными пакетами; root проверяет
@@ -16,7 +16,7 @@
   регрессии rotated legacy audit signature и persisted `NewsUpdated` title.
   Root независимо проверил RED/GREEN. Canonical affected frontend tests: 76/76;
   backend audit/news tests: 38/38. Это не release certification.
-- Этот checkpoint добавляет CAS rejection, deterministic MFA export-order
+- В `80b40d291` добавлены CAS rejection, deterministic MFA export-order
   и persisted NewsUpdated news_id regression. Root воспроизвёл baseline PASS
   и точные AST-контроли: CAS 101/102/103/105, export-order 13, news-update 13 —
   call-phase AssertionError. После интеграции canonical affected tests: 23/23.
@@ -25,11 +25,21 @@
   убраны только недостижимые внутренние guards; внешняя URL-проверка и fallback
   сохранены. Root canonical focused suite: 20/20; statements 33/33,
   branches 41/41, functions 10/10, lines 28/28. Full CI ещё нужен.
+- Текущий checkpoint добавляет persisted ranked-news tie/cursor regression:
+  root baseline PASS, exact mutant 114 — call-phase AssertionError; canonical
+  модуль 24/24. SQLite UDF задаёт score; PostgreSQL ranking этим не подтверждён.
+- Targeted security patch: `source-map-js` 1.2.1 → 1.2.2 для GHSA-68fv-2mgg-jv7q.
+  Peer review и root diff/hash checks пройдены; меняется только одна lock entry.
+  Exception записан в PR #1306; cooldown 7 дней и allowlist сохранены.
+  Frozen npm ci и root audit GREEN; локальный frontend build прошёл.
+  Npm install вывел четыре transitive deprecation warnings; cleanup ещё открыт.
+  Windows-generated WASM сохранён приватно; три исходных tracked artifacts
+  восстановлены с hash checks. Canonical WASM parity остаётся отдельным gate.
 - Перед checkpoint: fast preflight 9/9, harness 27/27, оба режима local
   Markdown link checker и Markdownlint пройдены. Это локальная проверка,
   не resulting-main release evidence.
 
-## Hosted CI для 4ad881929
+## Hosted CI
 
 - [Matrix 37392002746](https://github.com/egorribun/university_ecosystem/actions/runs/37392002746),
   attempt 1: снимок 2026-10-06 01:09:21 UTC — 119 jobs: 97 success,
@@ -41,6 +51,11 @@
   Каталог содержит 57 artifacts, coverage shards и mutation preflight;
   final quality manifest и mutation execution evidence ещё не получены.
   Global coverage и 100% viable mutation gate остаются открытыми.
+- [Matrix 37399724694](https://github.com/egorribun/university_ecosystem/actions/runs/37399724694),
+  attempt 1 на `80b40d291`: ранний снимок содержит Node audit failure и
+  gateway lint checkout failure. Audit воспроизведён локально и исправлен
+  текущим patch; checkout причина не установлена, логи ещё недоступны.
+  Прогон неполный; следующие source changes требуют нового CI evidence.
 
 ## Мутационный долг
 
@@ -51,7 +66,7 @@
 - Root независимо валидировал группы 1–21: 749 selected, 608 killed,
   141 survived. Агент валидировал 33 группы: 1181 selected, 970 killed,
   211 survived; root replay расширенного набора ещё нужен. Числа частичные.
-- Audit49, News12 и новые CAS/export-order controls — локальные регрессии,
+- Audit49, News12, CAS/export-order и ranked-news114 — локальные регрессии,
   без ручного Killed или предположительного пересчёта surviving population.
 - `UserRepository.get` mutant 9 меняет PostgreSQL lock scope. Нужный PG-тест
   уже существует, но `mutmut` исключает integration. Это открытый разрыв
@@ -61,7 +76,7 @@
 
 ## Live и диагностика
 
-- Новый owned stand запущен на `4ad881929`, readiness и seed прошли.
+- Новый owned stand запущен на `80b40d291`, readiness и seed прошли.
   Первый canonical smoke: 18 passed, 2 skipped. Старый cold admin page error
   на `9f0208621` не воспроизведён; причина и исправление не заявляются.
 - Avatar V9.4-r3: desktop POST HTTP 200, page errors 0; изображение во viewport,
@@ -76,9 +91,14 @@
   на file-chooser-received, uploads 0, page errors 0; категория runtime.
   Предполагаемый input lifecycle требует проверки, root cause не установлен.
   Оба ограниченных runtime receipts сохранены; r3/r4 не являются приёмкой аватара.
+- V9.4-r5 root checks: Python 12/12, Vitest 16/16, strict types, discovery 2,
+  source/private/dependency hashes. Runtime на 80b: оба input connected,
+  setFiles completed и native change true; upload HTTP 200, page errors 0.
+  Natural dimensions 0 во viewport; default SW и network bypass возвращают
+  HTTP 200/image signature. Byte decode/root cause ещё не подтверждены.
 - Текущий state:
-  `C:/Temp/ue-live-acceptance/run-orchestrator-4ad881929-20261006-01094d25a11541af9d2e352a600e8a5c`.
-  Stand остаётся привязанным к `4ad881929` после смены исходного checkout.
+  `C:/Temp/ue-live-acceptance/run-orchestrator-80b40d291-20261006-43e3864f50a5416d80a8587b94da62ec`.
+  Stand остаётся привязанным к `80b40d291` после смены исходного checkout.
 
 ## Восстановление и сохранность
 
@@ -86,6 +106,8 @@
   hashes и ACL. Owned teardown завершён; env/secrets/backups/evidence сохранены.
 - Старый 9f stand остановлен: 0 running, 35 exited containers, 14 volumes
   сохранены. Данные и нужное evidence не удалять без проверки принадлежности.
+- 4ad stand также остановлен: 0 running, 35 exited containers, 14 volumes
+  сохранены; stop receipt и resource counts проверены root.
 - Старый DR RunId `6751bb0189fa45c2a6a2c6820e79b922` относится к 9f private plan;
   clock не начат, runtime не создан. Для 4ad нужен новый source-bound RunId.
 - Private 4ad source snapshot/quiescence helpers V2 проверены root: hashes и
@@ -101,7 +123,7 @@
 
 ## Ближайшая работа
 
-- Устранить фактическую CI normalization failure без ослабления контракта;
+- Проверить coverage и dependency fixes в новом CI без ослабления контракта;
   получить новые canonical coverage/mutation evidence на resulting source.
 - Завершить avatar diagnosis, интегрировать проверенные тесты, выполнить
   source-bound paired app restore и измерить RPO/RTO.
