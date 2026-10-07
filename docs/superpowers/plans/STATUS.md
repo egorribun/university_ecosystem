@@ -7,18 +7,18 @@
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База текущей контрольной точки — `c1b208476fbd92c21bdc0a0ccf9b5ee74977cfb1`.
+  База контрольной точки и demo — `a3f33951459883adc05968bc6e1db9892d5b2b29`.
   Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
-  Три GPT-6 Luna Max готовят приватные пакеты; root проверяет и интегрирует.
+  Агенты остановлены; приватные кандидаты сохранены для следующего ревью.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
   локальные контракты не заменяют hosted/live приёмку.
 
 ## Hosted CI и мутации
 
-- Matrix `37658682087/a1` для `c1b`: FAILED; 90 jobs SUCCESS, пять FAILED,
-  24 skipped. Inventory и backend shards0/1: catalog/nightly needs;
-  shard3: устаревший full-mutation command contract; CI Success — итоговый gate.
-  Catalog/preflight/scheduled согласованы; retry classification остаётся review-required.
+- Matrix `37668629672/a1` на `a3f`: незавершён; backend unit shard1 FAILED.
+  Full mutation `37670438144/a1` запущен с `backend_scope=full`; stats shard2/8 FAILED.
+  Остальные jobs ещё выполняются; причины разобрать по logs. Это не итоговый score.
+  Старые catalog/nightly/scheduled contract failures исправлены в `a3f`.
 - Root cumulative auth138/138 и catalog/preflight/nightly62/62 PASS.
   Scheduled/preflight delta12/12 PASS после двух воспроизведённых stale assertions.
   Полный новый fast preflight10/10 PASS; это не release evidence.
@@ -74,18 +74,17 @@
 
 ## Live-приёмка
 
-- Hosted Live Acceptance `37658678595/a1`: SUCCESS, 18 PASS/2 project skips;
-  auth-roles/password-reset desktop/mobile, checkout merge `153ec752` (`c1b` + main `6fa133`).
+- Hosted Live Acceptance `37668628464/a1` на `a3f`: SUCCESS.
   Полная продуктовая приёмка этим smoke не закрыта.
-- Локальный run `c1b208476-20261007-82671e94`: up144s, 29 running, peak RAM83%.
-  Seed/E2E не запускались: startup budget75%/8GiB не выдержан после up.
-  Canonical stop PASS: owned running0, 14 томов сохранены; следующий run — на новом SHA.
-- Desktop avatar diagnostic R3 завершился без принятых маркеров: counts
-  invalid, child exit 1, cleanup verified. Mobile run — NOT RUN / HOLD. Это
-  диагностический результат, не pass/fail продукта и не полная live-приёмка.
-  Причина неизвестна: child output не сохранён в outer log. До нового runtime
-  закрыть descendant lineage и ограниченную классификацию child output.
-- Ранний desktop без synthetic admin не учитывается; seed PASS не закрывает R3.
+- Demo: `http://localhost:41976/login`, project `ue-live-8c2a21f71d21a9a6`.
+  State: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
+  Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
+  Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
+  news10, stories15, schedule28, chats2, events10 +2 будущих demo events.
+  Student login — в `frontend/tests/e2e-live/fixtures.ts`; secret values здесь нет.
+  Browser UI не проверен: CUA policy check unavailable; обход не выполнялся.
+  Стенд оставлен работающим; source `a3f` нельзя подменять новым HEAD при up.
+  Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
 - Полная traceability требований, RU/EN, light/dark, responsive, SSR/PWA,
   accessibility/performance и пользовательское visual approval остаются
   открытыми.
@@ -120,12 +119,12 @@
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Последний root snapshot: owned running0, RAM54.3%, free14.55GiB; worktree один.
-  Под canonical lifecycle lock удалены 35 exact owned stopped CIDs и три сети.
-  Перед удалением V10 verify-existing подтвердил 35 archives/96 resource records;
-  11 083 100 160 bytes filesystem archives, без volume/restore/RPO/RTO credit.
-  16 volumes/29 images сохранены; remaining target containers/networks0.
-  Старый total351/27 предшествует новому stand; global prune не применялся.
+  На паузе работает пользовательский demo; tests/build завершены, worktree один.
+  Под lifecycle lock освобождены три пустые сети старого c1b project;
+  35 stopped containers, 14 volumes и state files сохранены без изменений.
+  C1b требует проверенную Compose recreation для повторного запуска.
+  Ранее 39edd retired после V10 filesystem exports; 16 volumes/29 images сохранены.
+  Global prune не применялся; filesystem archives не доказывают backup/restore.
 - Сохранять env/data/volumes/backups; private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
   Rescue bundle остаётся private; Git history сохраняется.
 
@@ -134,8 +133,9 @@
 - Получить exact same-run survivors и новый full-run preflight после переноса;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
-  Manual full dispatch на `egorribun` ещё не выполнен; проверить acceptance новых inputs API.
-  Приватный MFA lifecycle V4 — unrun; mapper V1 требует строковый achievements до controls.
+  Full dispatch API принят; не создавать повторный run без причины. Private MFA263/307:
+  baseline81/81, каждый exact mutant даёт одну assertion failure. Mapper16 controls:
+  исправить stale #117 expectation/baseline pins. Flaky config: static RED7/8 → GREEN8/8.
 - Получить root-reviewed live diagnostics для desktop/mobile без ослабления
   исходных assertions; доказать auth, API/DB/S3 equality и пользовательские
   сценарии, а не только health/readiness.
