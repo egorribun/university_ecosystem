@@ -7,6 +7,7 @@ import { AxiosError, AxiosHeaders } from "axios"
 import { extractSigningKey, useAuthApi } from "./useAuthApi"
 import type { User } from "@/types/User"
 import { ChallengeLockedError, type PendingMfaState } from "@/types/Auth"
+import type { PendingMfaResponse } from "@/types/Mfa"
 import {
   acceptBrowserSessionGeneration,
   captureSessionEpoch,
@@ -1444,6 +1445,61 @@ describe("login MFA browser-session boundary", () => {
 })
 
 describe("authenticated MFA step-up", () => {
+  it("switches accounts after login MFA even when a prior user is still present", async () => {
+    const priorUser = fullUser({ id: "prior-account" })
+    const nextUser = fullUser({ id: "new-account" })
+    const w = makeWires({ user: priorUser })
+    const loginChallengeResponse = {
+      status: "mfa_required",
+      user_id: "new-account",
+      methods: [
+        {
+          method: "totp",
+          challenge_token: "new-account-challenge",
+          challenge_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        },
+      ],
+    } satisfies PendingMfaResponse
+    mocks.apiPost
+      .mockResolvedValueOnce({
+        status: 202,
+        data: loginChallengeResponse,
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { user: nextUser, session: { signing_key: "new-account-key" } },
+      })
+    const { result, rerender } = renderApi(w)
+    const challengeHolder: { current: PendingMfaState | null } = { current: null }
+
+    await act(async () => {
+      challengeHolder.current = await result.current.login("new@example.com", "password")
+    })
+
+    const loginChallenge = challengeHolder.current
+    expect(loginChallenge).toMatchObject({ reason: "login", user_id: "new-account" })
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(w.updatePendingMfa).toHaveBeenCalledWith(loginChallenge)
+
+    if (loginChallenge === null) throw new Error("Expected a login MFA challenge")
+    const loginTotpMethod = loginChallenge.methods.find(({ method }) => method === "totp")
+    if (!loginTotpMethod) throw new Error("Expected the login challenge to include TOTP")
+    w.pendingMfa = loginChallenge
+    rerender()
+
+    await act(async () => {
+      await result.current.submitMfaChallenge({
+        method: "totp",
+        code: "123456",
+        challengeToken: loginTotpMethod.challenge_token,
+      })
+    })
+
+    expect(w.updateSessionSigningKey).toHaveBeenCalledWith("new-account-key")
+    expect(w.setUser).toHaveBeenCalledWith(nextUser)
+    expect(w.updatePendingMfa).toHaveBeenLastCalledWith(null)
+  })
+
   it("preserves the same account's captured retry lifetime and signing key", async () => {
     const currentUser = fullUser()
     const w = makeWires({ user: currentUser, pendingMfa: { reason: "step-up" } as PendingMfaState })

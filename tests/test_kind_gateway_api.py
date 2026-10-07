@@ -267,12 +267,14 @@ class FakeEnvironment:
         available: int = 1,
         owner: str | None = RUN_ID,
         version: str = "v1.9.2",
+        create_namespace: bool = True,
     ) -> None:
-        self.resources[("namespace", ENVOY_NAMESPACE, None)] = _resource(
-            "Namespace",
-            ENVOY_NAMESPACE,
-            annotations=({OWNER_KEY: owner} if owner is not None else {}),
-        )
+        if create_namespace:
+            self.resources[("namespace", ENVOY_NAMESPACE, None)] = _resource(
+                "Namespace",
+                ENVOY_NAMESPACE,
+                annotations=({OWNER_KEY: owner} if owner is not None else {}),
+            )
         self.resources[("deployment", "envoy-gateway", ENVOY_NAMESPACE)] = _resource(
             "Deployment",
             "envoy-gateway",
@@ -563,6 +565,7 @@ class FakeEnvironment:
                     self.add_controller(
                         owner=self.controller_owner_on_install,
                         version=self.controller_version_on_install,
+                        create_namespace=False,
                     )
             else:
                 returncode = 2
@@ -2202,10 +2205,69 @@ def test_controller_installer_rejects_owned_controller_with_wrong_version(
     assert environment.helm_installs == 0
 
 
+def test_controller_installer_creates_owned_namespace_before_helm(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    tool = _tool(tmp_path, environment)
+
+    tool._install_envoy_controller(_run_state())
+
+    namespace_create_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl"
+        and argv[3:6] == ["create", "-f", "-"]
+        and json.loads(environment.commands[index][1]["input"]).get("kind")
+        == "Namespace"
+    )
+    helm_install_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/helm" and argv[1:2] == ["install"]
+    )
+    namespace_manifest = json.loads(
+        environment.commands[namespace_create_index][1]["input"]
+    )
+    assert namespace_create_index < helm_install_index
+    assert namespace_manifest["metadata"]["name"] == ENVOY_NAMESPACE
+    assert namespace_manifest["metadata"]["annotations"] == {
+        OWNER_KEY: RUN_ID,
+        MANAGED_BY_KEY: MANAGED_BY_VALUE,
+    }
+    assert "--create-namespace" not in environment.commands[helm_install_index][0]
+    assert (
+        environment.resources[("namespace", ENVOY_NAMESPACE, None)]["metadata"][
+            "annotations"
+        ]
+        == namespace_manifest["metadata"]["annotations"]
+    )
+
+
+def test_controller_namespace_create_race_does_not_adopt_foreign_namespace(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.namespace_appears_before_create = True
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError):
+        tool._install_envoy_controller(_run_state())
+
+    namespace = environment.resources[("namespace", ENVOY_NAMESPACE, None)]
+    assert namespace["metadata"]["annotations"] == {OWNER_KEY: "ffffffffffff"}
+    assert environment.helm_installs == 0
+    assert not any(argv[0] == "/fake/helm" for argv, _ in environment.commands)
+    assert not any(
+        argv[0] == "/fake/kubectl" and argv[3] == "annotate"
+        for argv, _ in environment.commands
+    )
+
+
 @pytest.mark.parametrize(
     ("mode", "message"),
     [
-        ("missing", "Helm install did not create namespace"),
+        ("missing", "Helm install did not create deployment"),
         ("foreign", "has a different run ownership marker"),
         ("no_annotation", "deployment ownership marker could not be verified"),
         ("wrong_version", "deployment must be v1.9.2"),

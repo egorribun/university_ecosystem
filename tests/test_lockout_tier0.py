@@ -255,6 +255,9 @@ def test_active_lockout_message_includes_retry_details(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) -> None:
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.sql.elements import TextClause
+
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
@@ -267,14 +270,21 @@ async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) 
     attempt = _attempt(datetime.now(UTC))
     service.repo.create_failed_attempt = AsyncMock(return_value=attempt)
 
-    lock_until, triggered, count = await service.register_failed_attempt(
-        "postgres@example.com", None
-    )
+    email = "postgres@example.com"
+    lock_until, triggered, count = await service.register_failed_attempt(email, None)
 
     assert lock_until is not None
     assert triggered is True
     assert count == 1
     db.execute.assert_awaited_once()
+    execute_call = db.execute.await_args
+    assert execute_call is not None
+    assert len(execute_call.args) == 2, "postgres_advisory_lock_binding_argument_count"
+    statement, parameters = execute_call.args
+    assert isinstance(statement, TextClause), "postgres_advisory_lock_text_clause"
+    compiled = statement.compile(dialect=postgresql.dialect())
+    assert set(compiled.params) == {"email"}, "postgres_advisory_lock_named_bind"
+    assert parameters == {"email": email}, "postgres_advisory_lock_email_binding"
     db.flush.assert_awaited_once()
     db.commit.assert_awaited_once()
 

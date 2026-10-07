@@ -7,20 +7,22 @@
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База изменений — `2697eb250`; закрытый demo и full mutation run — на `a3f339514`.
+  База изменений — `ec69e25fd`; закрытый demo и прежний full run — на `a3f339514`.
   Три GPT-6 Luna Max работают в раздельных областях; root проверяет интеграцию и ресурсы.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
   локальные контракты не заменяют hosted/live приёмку.
 
 ## Hosted CI и мутации
 
-- Matrix `37668629672/a1` на `a3f`: CANCELLED; backend unit shard1 FAILED.
-  Причина: stale urllib3 floor assertion; corrected focused backend5/5 PASS.
+- Full mutation `37699104150/a1` на `ec69`: preflight/generation PASS; stats/frontend jobs active.
+  Backend-only dispatch отсутствует; frontend64 также включён, duplicate run не запускался.
   Full mutation `37670438144/a1` завершён: backend execution0/128, stats7/8.
   Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
 - Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
-  preflight10/10, local exact140/44/45/121 RED; gate открыт. PR live `37684359401/a1` FAILED до Docker:
+  preflight10/10, kind/lockout259/259 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
+  Namespace create атомарно задаёт ownership; новый helper ещё требует live-приёмки.
+  Local exact140/44/45/121 RED; global gate открыт. PR live `37684359401/a1` FAILED до Docker:
   stale seed signature regex исправлен; требуется новый hosted run.
   Focused366: initial AuthContext failure, outcomes отсутствуют; baseline94/94 PASS.
   Related dry-run GREEN после policy staging; exact case collection не доказана, RCA открыт.
@@ -129,7 +131,7 @@
 
 ## Следующие проверки и ограничения
 
-- Следующие очереди: news schema14 Survived (shard50), Outbox process_batch31;
+- Следующие очереди: точный MFA export mutant и atomic CRD ownership (18 CRDs +2 policies);
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   Full dispatch API принят; не создавать повторный run без причины. MFA263/307:

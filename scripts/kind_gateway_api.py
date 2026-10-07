@@ -2008,6 +2008,31 @@ class KindGatewayApi:
             self._save_state(updated)
             return updated
 
+        namespace_manifest = {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": ENVOY_NAMESPACE,
+                "annotations": {
+                    OWNER_KEY: state.run_id,
+                    MANAGED_BY_KEY: MANAGED_BY_VALUE,
+                },
+            },
+        }
+        self._assert_owned(state)
+        self._kubectl(
+            state,
+            "create",
+            "-f",
+            "-",
+            input_text=json.dumps(namespace_manifest, separators=(",", ":")),
+        )
+        created_namespace = self._namespace(state)
+        if not self._has_run_owner(created_namespace, state.run_id):
+            raise KindGatewayApiError(
+                "Envoy Gateway namespace ownership could not be verified after creation"
+            )
+
         self._assert_owned(state)
         self._run(
             [
@@ -2019,7 +2044,6 @@ class KindGatewayApi:
                 ENVOY_GATEWAY_VERSION,
                 "--namespace",
                 ENVOY_NAMESPACE,
-                "--create-namespace",
                 "--set",
                 "crds.enabled=false",
                 "--kube-context",
@@ -2039,6 +2063,12 @@ class KindGatewayApi:
                 raise KindGatewayApiError(
                     f"Helm install did not create {kind} '{name}'"
                 )
+            if kind == "namespace":
+                if not self._has_run_owner(resource, state.run_id):
+                    raise KindGatewayApiError(
+                        "Envoy Gateway namespace ownership was lost during Helm install"
+                    )
+                continue
             owner = self._resource_owner(resource)
             if owner not in (None, state.run_id):
                 raise KindGatewayApiError(
@@ -2056,11 +2086,8 @@ class KindGatewayApi:
                         name,
                         f"{OWNER_KEY}={state.run_id}",
                         "--overwrite=false",
-                        *(
-                            ["--namespace", ENVOY_NAMESPACE]
-                            if kind == "deployment"
-                            else []
-                        ),
+                        "--namespace",
+                        ENVOY_NAMESPACE,
                     ]
                 )
         deployment = self._deployment(state)
