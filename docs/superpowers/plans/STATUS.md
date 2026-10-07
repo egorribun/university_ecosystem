@@ -2,14 +2,14 @@
 
 Срез на 2026-10-08 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Работа возобновлена. Выпуск `v1.0.0` не подтверждён.
+Работа безопасно приостановлена по просьбе пользователя. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База изменений — `0477e9e0e`; закрытый demo и full mutation run — на `a3f339514`.
+  База изменений — `27e0fbfc5`; закрытый demo и full mutation run — на `a3f339514`.
   Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
-  Три GPT-6 Luna Max работают в непересекающихся областях; root проверяет интеграцию.
+  Три GPT-6 Luna Max остановлены; owned workloads отсутствуют, root проверил интеграцию.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
   локальные контракты не заменяют hosted/live приёмку.
 
@@ -129,7 +129,7 @@
 
 ## Следующие проверки и ограничения
 
-- Получить exact same-run survivors и новый full-run preflight после переноса;
+- Следующие очереди: news schema14 Survived (shard50), Outbox process_batch31;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   Full dispatch API принят; не создавать повторный run без причины. MFA263/307:
