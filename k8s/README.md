@@ -116,9 +116,11 @@ local kind acceptance and is not a production or public trust root.
 run-owned kind cluster and its Kubernetes data after rechecking the local run
 record, kube context, owner markers, the single control-plane node, its Docker
 cluster label, recorded node image, and matching full Docker container ID in a
-fresh pre-delete inspection. It keeps the local run record and
-does not delete a separately managed local-registry container or volume. If a
-run-owned registry should be stopped, use `registry-stop` before teardown; its
+fresh pre-delete inspection. The Kubernetes Node need not carry kind's Docker
+cluster label; if present on the Node, that label must match. It keeps the
+local run record and does not delete a separately managed local-registry
+container or volume. If a run-owned registry should be stopped, use
+`registry-stop` before teardown; its
 volume remains available. If the cluster is already absent, teardown reports
 that fact without issuing a delete. Stopped or unreachable clusters fail closed
 and require their identity to be restored before teardown.

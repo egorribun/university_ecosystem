@@ -1157,11 +1157,53 @@ def test_owner_marker_establishment_rejects_missing_control_plane_node(
         tool._establish_owner_markers(_run_state(phase="creating"))
 
 
-def test_node_marker_requires_kind_identity_and_run_id(tmp_path: Path) -> None:
+def test_owned_node_identity_uses_context_and_docker_when_node_label_is_absent(
+    tmp_path: Path,
+) -> None:
     environment = FakeEnvironment()
     tool = _tool(tmp_path, environment)
     assert environment.node is not None
-    environment.node["metadata"]["labels"].pop("io.x-k8s.kind.cluster")
+    environment.node["metadata"]["labels"].pop(KIND_CLUSTER_LABEL)
+
+    tool._assert_owned(_run_state())
+
+
+@pytest.mark.parametrize(
+    ("drift", "message"),
+    [
+        ("context", "does not resolve to its expected cluster"),
+        ("docker_cluster", "does not belong to this cluster"),
+        ("docker_image", "image does not match the recorded run"),
+    ],
+)
+def test_owned_node_identity_rejects_context_or_docker_drift_without_node_label(
+    tmp_path: Path, drift: str, message: str
+) -> None:
+    environment = FakeEnvironment()
+    tool = _tool(tmp_path, environment)
+    assert environment.node is not None
+    environment.node["metadata"]["labels"].pop(KIND_CLUSTER_LABEL)
+    node_name = f"{CLUSTER}-control-plane"
+    if drift == "context":
+        environment.context_cluster = "kind-unrelated"
+    elif drift == "docker_cluster":
+        environment.docker_containers[node_name]["Config"]["Labels"][
+            KIND_CLUSTER_LABEL
+        ] = "unrelated"
+    else:
+        environment.docker_containers[node_name]["Config"]["Image"] = (
+            "kindest/node:v1.35.2"
+        )
+
+    with pytest.raises(KindGatewayApiError, match=message):
+        tool._assert_owned(_run_state())
+
+
+def test_node_marker_rejects_conflicting_kind_cluster_label(tmp_path: Path) -> None:
+    environment = FakeEnvironment()
+    tool = _tool(tmp_path, environment)
+    assert environment.node is not None
+    environment.node["metadata"]["labels"][KIND_CLUSTER_LABEL] = "unrelated"
 
     with pytest.raises(
         KindGatewayApiError, match="control-plane node ownership marker"
@@ -1371,8 +1413,14 @@ def test_create_rerun_refuses_interrupted_state_with_different_image(
     )
 
 
-def test_recover_finishes_markers_and_is_idempotent(tmp_path: Path) -> None:
+@pytest.mark.parametrize("node_cluster_label", [CLUSTER, None])
+def test_recover_finishes_markers_and_is_idempotent(
+    tmp_path: Path, node_cluster_label: str | None
+) -> None:
     tool, environment = _interrupted_create_tool(tmp_path)
+    if node_cluster_label is None:
+        assert environment.node is not None
+        environment.node["metadata"]["labels"].pop(KIND_CLUSTER_LABEL)
 
     recovered = tool.recover(RUN_ID)
 
@@ -1489,11 +1537,18 @@ def test_recover_refuses_unverified_or_conflicting_cluster_identity_without_muta
     )
 
 
-def test_recover_repairs_only_missing_same_run_marker(tmp_path: Path) -> None:
+@pytest.mark.parametrize("node_cluster_label", [CLUSTER, None])
+def test_recover_repairs_only_missing_same_run_marker(
+    tmp_path: Path, node_cluster_label: str | None
+) -> None:
     environment = FakeEnvironment(owned=False)
     tool, environment = _interrupted_create_tool(tmp_path, environment)
     assert environment.node is not None
     environment.node["metadata"]["labels"][OWNER_KEY] = RUN_ID
+    if node_cluster_label is None:
+        environment.node["metadata"]["labels"].pop(KIND_CLUSTER_LABEL)
+    else:
+        environment.node["metadata"]["labels"][KIND_CLUSTER_LABEL] = node_cluster_label
 
     state = tool.recover(RUN_ID)
 
@@ -2430,7 +2485,10 @@ def test_teardown_refuses_node_image_drift(tmp_path: Path) -> None:
     )
     tool = _tool(tmp_path, environment)
 
-    with pytest.raises(KindGatewayApiError, match="image or running state differs"):
+    with pytest.raises(
+        KindGatewayApiError,
+        match="control-plane node image does not match the recorded run",
+    ):
         tool.teardown(RUN_ID)
 
     assert environment.deleted_clusters == []
@@ -2448,7 +2506,9 @@ def test_teardown_refuses_same_name_container_replaced_before_delete(
     ):
         tool.teardown(RUN_ID)
 
-    assert environment.kind_node_inspect_count == 2
+    # The initial verified ID is captured before the separate owned-state
+    # inspection and the final pre-delete identity check.
+    assert environment.kind_node_inspect_count == 3
     assert environment.deleted_clusters == []
 
 

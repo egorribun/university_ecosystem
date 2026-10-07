@@ -205,3 +205,114 @@ async def test_reduced_retry_budget_does_not_redeliver_exhausted_ordinary_events
     assert ordinary.last_error == last_error
     await db_session.refresh(revoke)
     assert revoke.processed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_batch_counts_only_success_when_multiple_membership_retries_fail(
+    db_session, outbox_bus
+):
+    from sqlalchemy import select
+
+    from app.models.failed_outbox_events import FailedOutboxEvent
+
+    attempted_membership_retries: list[str] = []
+    delivered_users: list[str] = []
+
+    async def fail_membership_retry(event):
+        attempted_membership_retries.append(event.event_id)
+        raise RuntimeError("membership delivery unavailable")
+
+    async def deliver_user_created(event):
+        delivered_users.append(event.event_id)
+
+    outbox_bus.subscribe(ChatParticipantRemoved.EVENT_TYPE, fail_membership_retry)
+    outbox_bus.subscribe("user.created", deliver_user_created)
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    first_retry = membership_retry(created_at=timestamp, error_count=1)
+    second_retry = membership_retry(
+        created_at=timestamp + timedelta(seconds=1), error_count=1
+    )
+    successful = user_created(created_at=timestamp + timedelta(seconds=2))
+    db_session.add_all([first_retry, second_retry, successful])
+    await db_session.flush()
+
+    worker = OutboxWorker(batch_size=3, max_retries=1)
+    assert await worker.process_batch() == 1
+
+    retry_ids = sorted((str(first_retry.id), str(second_retry.id)))
+    assert sorted(attempted_membership_retries) == retry_ids
+    assert delivered_users == [str(successful.id)]
+
+    for retry in (first_retry, second_retry):
+        await db_session.refresh(retry)
+        assert retry.processed_at is None
+        assert retry.error_count == 2
+        assert retry.last_error is not None
+        assert (
+            await db_session.scalar(
+                select(FailedOutboxEvent.id).where(
+                    FailedOutboxEvent.original_event_id == retry.id
+                )
+            )
+            is None
+        )
+
+    await db_session.refresh(successful)
+    assert successful.processed_at is not None
+    assert successful.error_count == 0
+
+
+@pytest.mark.asyncio
+async def test_singleton_membership_retry_preempts_lower_uuid_ordinary_event(
+    db_session, outbox_bus
+):
+    attempted_membership_retries: list[str] = []
+    delivered_users: list[str] = []
+
+    async def fail_membership_retry(event):
+        attempted_membership_retries.append(event.event_id)
+        raise RuntimeError("membership delivery unavailable")
+
+    async def deliver_user_created(event):
+        delivered_users.append(event.event_id)
+
+    outbox_bus.subscribe(ChatParticipantRemoved.EVENT_TYPE, fail_membership_retry)
+    outbox_bus.subscribe("user.created", deliver_user_created)
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    first_aggregate = uuid.UUID("a1111111-1111-4111-8111-111111111111")
+    competing_aggregate = uuid.UUID("b2222222-2222-4222-8222-222222222222")
+    retry_aggregate = uuid.UUID("c3333333-3333-4333-8333-333333333333")
+    first = user_created(
+        created_at=timestamp,
+        aggregate_id=first_aggregate,
+        sequence_number=1,
+    )
+    competing = user_created(
+        created_at=timestamp,
+        aggregate_id=competing_aggregate,
+        sequence_number=1,
+    )
+    retry = membership_retry(created_at=timestamp, error_count=1)
+    retry.aggregate_id = str(retry_aggregate)
+    retry.aggregate_id_uuid = retry_aggregate
+    retry.sequence_number = 1
+    retry.payload["chat_id"] = str(retry_aggregate)
+    db_session.add_all([first, competing, retry])
+    await db_session.flush()
+
+    worker = OutboxWorker(batch_size=1, max_retries=5)
+    assert await worker.process_batch() == 1
+    assert delivered_users == [str(first.id)]
+
+    assert await worker.process_batch() == 0
+    assert attempted_membership_retries == [str(retry.id)]
+    assert delivered_users == [str(first.id)]
+
+    await db_session.refresh(first)
+    await db_session.refresh(competing)
+    await db_session.refresh(retry)
+    assert first.processed_at is not None
+    assert competing.processed_at is None
+    assert competing.error_count == 0
+    assert retry.processed_at is None
+    assert retry.error_count == 2

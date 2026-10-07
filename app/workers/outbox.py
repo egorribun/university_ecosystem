@@ -231,7 +231,6 @@ class OutboxWorker:
                     ),
                 )
 
-                retry_first = False
                 if self.batch_size <= 1:
                     retry_first = (
                         self.batch_size == 1 and self._prefer_membership_retry_next

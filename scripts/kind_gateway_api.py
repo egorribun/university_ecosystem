@@ -32,8 +32,10 @@ All external commands use argv lists with ``shell=False``. Read-only commands
 never write cluster or local state. Mutating commands after ``create`` require
 both the local run record and matching ConfigMap / control-plane node markers.
 ``recover`` is the narrow exception for an interrupted create: it verifies the
-recorded context, one control-plane node, Docker cluster label, and exact node
-image before adding only missing markers; conflicting markers stop recovery.
+recorded context resolves to the expected cluster, the exact control-plane
+node, and its Docker cluster label and image before adding only missing
+markers. The Kubernetes Node need not repeat kind's Docker label, but a
+conflicting value is rejected.
 The local registry image must be supplied by immutable digest. Stopping the
 registry preserves its owner-marked Docker volume and the cluster's data.
 """
@@ -453,7 +455,10 @@ class KindGatewayApi:
             not isinstance(metadata, dict)
             or not isinstance(labels, dict)
             or metadata.get("name") != f"{state.cluster}-control-plane"
-            or labels.get("io.x-k8s.kind.cluster") != state.cluster
+            or (
+                KIND_CLUSTER_LABEL in labels
+                and labels[KIND_CLUSTER_LABEL] != state.cluster
+            )
             or labels.get(OWNER_KEY) != state.run_id
         ):
             raise KindGatewayApiError(
@@ -473,8 +478,10 @@ class KindGatewayApi:
             raise KindGatewayApiError(
                 f"owned kind context '{state.context}' is unavailable"
             )
+        self._assert_context_identity(state)
         self._assert_owner_configmap(state, self._owner_configmap(state))
         self._assert_node_marker(state, self._node(state))
+        self._verify_kind_node_container(state, f"{state.cluster}-control-plane")
 
     def _assert_recoverable_creation_identity(
         self, state: RunState
@@ -495,7 +502,10 @@ class KindGatewayApi:
             not isinstance(metadata, dict)
             or not isinstance(labels, dict)
             or metadata.get("name") != expected_node
-            or labels.get(KIND_CLUSTER_LABEL) != state.cluster
+            or (
+                KIND_CLUSTER_LABEL in labels
+                and labels[KIND_CLUSTER_LABEL] != state.cluster
+            )
         ):
             raise KindGatewayApiError(
                 "kind control-plane node identity does not match the recorded cluster"
@@ -510,12 +520,7 @@ class KindGatewayApi:
         if owner_configmap is not None:
             self._assert_owner_configmap(state, owner_configmap)
 
-        container = self._verify_kind_node_container(state, expected_node)
-        image = container["Config"].get("Image")
-        if image != state.node_image:
-            raise KindGatewayApiError(
-                "kind control-plane node image does not match the recorded run"
-            )
+        self._verify_kind_node_container(state, expected_node)
         return owner_configmap, node
 
     @staticmethod
@@ -643,7 +648,11 @@ class KindGatewayApi:
                 f"kind node container '{node_name}' is unavailable"
             )
         config = node_container.get("Config")
-        labels = config.get("Labels") if isinstance(config, dict) else None
+        if not isinstance(config, dict):
+            raise KindGatewayApiError(
+                f"kind node container '{node_name}' does not belong to this cluster"
+            )
+        labels = config.get("Labels")
         name = node_container.get("Name")
         if (
             not isinstance(name, str)
@@ -653,6 +662,11 @@ class KindGatewayApi:
         ):
             raise KindGatewayApiError(
                 f"kind node container '{node_name}' does not belong to this cluster"
+            )
+        image = config.get("Image")
+        if image != state.node_image:
+            raise KindGatewayApiError(
+                "kind control-plane node image does not match the recorded run"
             )
         return node_container
 
@@ -671,6 +685,16 @@ class KindGatewayApi:
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     def _assert_teardown_identity(self, state: RunState) -> str:
+        node_name = f"{state.cluster}-control-plane"
+        initial_container = self._verify_kind_node_container(state, node_name)
+        initial_container_id = initial_container.get("Id")
+        if not isinstance(initial_container_id, str) or not re.fullmatch(
+            r"[0-9a-fA-F]{64}", initial_container_id
+        ):
+            raise KindGatewayApiError(
+                "kind node container has an invalid Docker identity"
+            )
+
         self._assert_owned(state)
         self._assert_context_identity(state)
 
@@ -682,7 +706,6 @@ class KindGatewayApi:
             raise KindGatewayApiError(
                 "could not verify the run-owned kind node inventory"
             ) from exc
-        node_name = f"{state.cluster}-control-plane"
         if (
             not isinstance(nodes, list)
             or len(nodes) != 1
@@ -704,6 +727,10 @@ class KindGatewayApi:
         ):
             raise KindGatewayApiError(
                 "kind node container has an invalid Docker identity"
+            )
+        if container_id.casefold() != initial_container_id.casefold():
+            raise KindGatewayApiError(
+                "kind node container identity changed before teardown"
             )
         if (
             not isinstance(config, dict)

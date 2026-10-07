@@ -17,20 +17,14 @@ export const newsFormSchema = v.object({
     v.maxLength(3000, "Content must be less than 3000 characters")
   ),
   title_en: v.optional(
-    v.union([
-      v.pipe(v.string(), v.trim(), v.maxLength(100, "Title (EN) must be less than 100 characters")),
-      v.literal(""),
-    ])
+    v.pipe(v.string(), v.trim(), v.maxLength(100, "Title (EN) must be less than 100 characters"))
   ),
   content_en: v.optional(
-    v.union([
-      v.pipe(
-        v.string(),
-        v.trim(),
-        v.maxLength(3000, "Content (EN) must be less than 3000 characters")
-      ),
-      v.literal(""),
-    ])
+    v.pipe(
+      v.string(),
+      v.trim(),
+      v.maxLength(3000, "Content (EN) must be less than 3000 characters")
+    )
   ),
   image: v.nullable(
     v.optional(
