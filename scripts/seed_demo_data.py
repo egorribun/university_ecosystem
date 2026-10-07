@@ -1162,54 +1162,167 @@ async def seed_stories(db, user: User) -> None:
     print(f"  ✓ Stories: {len(STORIES_DATA)} stories (expires in 1 year)")
 
 
-async def seed_events(db, user: User) -> None:
-    for item in EVENTS_DATA:
-        existing_seed = await db.scalar(
+def _event_datetime_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _event_now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
+def _next_event_anchor(now: datetime) -> datetime:
+    first_start = _event_datetime_utc(EVENTS_DATA[0]["starts_at"])
+    normalized_now = _event_datetime_utc(now)
+    days_ahead = (first_start.weekday() - normalized_now.weekday()) % 7
+    next_anchor = first_start.replace(
+        year=normalized_now.year,
+        month=normalized_now.month,
+        day=normalized_now.day,
+    ) + timedelta(days=days_ahead)
+    if next_anchor <= normalized_now:
+        next_anchor += timedelta(days=7)
+    return next_anchor
+
+
+def _event_schedule(anchor: datetime) -> list[tuple[dict, datetime, datetime]]:
+    source_anchor = _event_datetime_utc(EVENTS_DATA[0]["starts_at"])
+    normalized_anchor = _event_datetime_utc(anchor)
+    return [
+        (
+            item,
+            normalized_anchor
+            + (_event_datetime_utc(item["starts_at"]) - source_anchor),
+            normalized_anchor + (_event_datetime_utc(item["ends_at"]) - source_anchor),
+        )
+        for item in EVENTS_DATA
+    ]
+
+
+def _event_source_matches(existing: Event, item: dict) -> bool:
+    return all(
+        getattr(existing, field) == item[field]
+        for field in ("description", "location", "event_type")
+    )
+
+
+def _backfill_event_translations(existing: Event, item: dict) -> None:
+    if not _event_source_matches(existing, item):
+        return
+    for field in ("title_en", "description_en", "location_en", "event_type_en"):
+        if not getattr(existing, field):
+            setattr(existing, field, item[field])
+
+
+async def _find_reusable_event_anchor(
+    db: AsyncSession, user: User, now: datetime
+) -> datetime | None:
+    source_anchor = _event_datetime_utc(EVENTS_DATA[0]["starts_at"])
+    latest_event_end_offset = max(
+        _event_datetime_utc(item["ends_at"]) - source_anchor for item in EVENTS_DATA
+    )
+    source_by_title = {item["title"]: item for item in EVENTS_DATA}
+    result = await db.scalars(
+        select(Event).where(
+            Event.created_by == user.id,
+            Event.title.in_(tuple(source_by_title)),
+        )
+    )
+
+    normalized_now = _event_datetime_utc(now)
+    seeded_rows = result.all()
+    existing_by_key = {
+        (existing.title, _event_datetime_utc(existing.starts_at)): existing
+        for existing in seeded_rows
+    }
+    anchors: set[datetime] = set()
+    for existing in seeded_rows:
+        if not getattr(existing, "is_active", True):
+            continue
+        item = source_by_title.get(existing.title)
+        if item is None or not _event_source_matches(existing, item):
+            continue
+        item_offset = _event_datetime_utc(item["starts_at"]) - source_anchor
+        anchor = _event_datetime_utc(existing.starts_at) - item_offset
+        expected_end = anchor + (_event_datetime_utc(item["ends_at"]) - source_anchor)
+        if _event_datetime_utc(existing.ends_at) != expected_end:
+            continue
+        if anchor + latest_event_end_offset <= normalized_now:
+            continue
+
+        has_visible_future_event = False
+        for source_item in EVENTS_DATA:
+            future_start = anchor + (
+                _event_datetime_utc(source_item["starts_at"]) - source_anchor
+            )
+            if future_start <= normalized_now:
+                continue
+            future_row = existing_by_key.get((source_item["title"], future_start))
+            if future_row is None or future_row.is_active:
+                has_visible_future_event = True
+                break
+        if has_visible_future_event:
+            anchors.add(anchor)
+    return max(anchors) if anchors else None
+
+
+async def seed_events(db: AsyncSession, user: User) -> None:
+    now = _event_datetime_utc(_event_now_utc())
+    anchor = await _find_reusable_event_anchor(db, user, now)
+    if anchor is None:
+        anchor = _next_event_anchor(now)
+
+    for item, starts_at, ends_at in _event_schedule(anchor):
+        # Keep repairing English translations on rows from the original seed.
+        legacy_seed = await db.scalar(
             select(Event).where(
                 Event.title == item["title"],
                 Event.starts_at == item["starts_at"],
                 Event.created_by == user.id,
             )
         )
-        if existing_seed is not None:
-            source_matches = all(
-                getattr(existing_seed, field) == item[field]
-                for field in ("description", "location", "event_type")
+        if legacy_seed is not None:
+            _backfill_event_translations(legacy_seed, item)
+
+        existing_seed = await db.scalar(
+            select(Event).where(
+                Event.title == item["title"],
+                Event.starts_at == starts_at,
+                Event.created_by == user.id,
             )
-            if source_matches:
-                for field in (
-                    "title_en",
-                    "description_en",
-                    "location_en",
-                    "event_type_en",
-                ):
-                    if not getattr(existing_seed, field):
-                        setattr(existing_seed, field, item[field])
+        )
+        if existing_seed is not None:
+            _backfill_event_translations(existing_seed, item)
             continue
+        if starts_at <= now:
+            continue
+
         natural_key_collision = await db.scalar(
             select(Event).where(
                 Event.title == item["title"],
-                Event.starts_at == item["starts_at"],
+                Event.starts_at == starts_at,
             )
         )
         if natural_key_collision is not None:
             continue
-        ev = Event(
-            title=item["title"],
-            title_en=item["title_en"],
-            description=item["description"],
-            description_en=item["description_en"],
-            location=item["location"],
-            location_en=item["location_en"],
-            event_type=item["event_type"],
-            event_type_en=item["event_type_en"],
-            starts_at=item["starts_at"],
-            ends_at=item["ends_at"],
-            image_url=item["image_url"],
-            is_active=True,
-            created_by=user.id,
+        db.add(
+            Event(
+                title=item["title"],
+                title_en=item["title_en"],
+                description=item["description"],
+                description_en=item["description_en"],
+                location=item["location"],
+                location_en=item["location_en"],
+                event_type=item["event_type"],
+                event_type_en=item["event_type_en"],
+                starts_at=starts_at,
+                ends_at=ends_at,
+                image_url=item["image_url"],
+                is_active=True,
+                created_by=user.id,
+            )
         )
-        db.add(ev)
     await db.flush()
     print(f"  ✓ Events: {len(EVENTS_DATA)} events")
 

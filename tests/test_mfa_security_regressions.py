@@ -1679,6 +1679,111 @@ async def test_totp_confirmation_without_active_session_rolls_back() -> None:
 
 
 @pytest.mark.asyncio
+async def test_totp_confirmation_rolls_back_when_durable_revocation_write_fails(
+    db_session, test_user, mock_global_redis
+) -> None:
+    import pyotp
+    from redis.exceptions import RedisError
+
+    from app.models import MfaTotpEnrollment
+    from app.services.auth.redis_session import RedisSessionService
+
+    now = datetime.now(UTC)
+    original_epoch = int(test_user.mfa_epoch or 0)
+    original_default = test_user.mfa_default_method
+    original_required = test_user.mfa_required
+    secret = pyotp.random_base32()
+    enrollment = MfaTotpEnrollment(
+        user_id=test_user.id,
+        secret=secret,
+        label="authenticator",
+        is_active=False,
+    )
+    current = ActiveSession(
+        user_id=test_user.id,
+        jti=uuid.uuid4().hex,
+        expires_at=now + timedelta(hours=1),
+        mfa_epoch=original_epoch,
+        mfa_required=True,
+    )
+    sibling = ActiveSession(
+        user_id=test_user.id,
+        jti=uuid.uuid4().hex,
+        expires_at=now + timedelta(hours=1),
+        mfa_epoch=original_epoch,
+    )
+    db_session.add_all([enrollment, current, sibling])
+    await db_session.commit()
+
+    cache = RedisSessionService(redis_url="redis://127.0.0.1:6379/0")
+    await cache.create_session(
+        current.jti,
+        test_user.id,
+        fingerprint=None,
+        mfa_verified_at=None,
+        session_id=current.id,
+        mfa_epoch=original_epoch,
+    )
+    await cache.create_session(
+        sibling.jti,
+        test_user.id,
+        fingerprint=None,
+        mfa_verified_at=None,
+        session_id=sibling.id,
+        mfa_epoch=original_epoch,
+    )
+    current_cache_before = await cache.get_session(current.jti)
+    sibling_cache_before = await cache.get_session(sibling.jti)
+    assert current_cache_before is not None
+    assert sibling_cache_before is not None
+
+    revocation_client = AsyncMock()
+    revocation_client.set.side_effect = RedisError("durable tombstone write failed")
+    request = _api_request(active_session=current)
+    request.state.rotate_csrf = False
+    audit = MagicMock()
+
+    with patch(
+        "app.services.auth.redis_session.get_revocation_redis_client",
+        AsyncMock(return_value=revocation_client),
+    ):
+        with pytest.raises(RedisError, match="durable tombstone write failed"):
+            await mfa_api.confirm_totp_enrollment.__dishka_orig_func__(
+                TotpEnrollmentConfirmIn(
+                    enrollment_id=enrollment.id,
+                    code=pyotp.TOTP(secret).now(),
+                ),
+                request,
+                db_session,
+                audit,
+                test_user,
+            )
+
+    await db_session.refresh(enrollment)
+    await db_session.refresh(test_user)
+    await db_session.refresh(current)
+    await db_session.refresh(sibling)
+    assert enrollment.confirmed_at is None
+    assert enrollment.is_active is False
+    assert test_user.mfa_epoch == original_epoch
+    assert test_user.mfa_default_method == original_default
+    assert test_user.mfa_required is original_required
+    assert current.revoked_at is None
+    assert current.mfa_verified_at is None
+    assert current.mfa_completed_at is None
+    assert current.mfa_epoch == original_epoch
+    assert sibling.revoked_at is None
+    assert await cache.get_session(current.jti) == current_cache_before
+    assert await cache.get_session(sibling.jti) == sibling_cache_before
+    assert await mock_global_redis.exists(f"revoked:jti:{sibling.jti}") == 0
+    revocation_client.set.assert_awaited_once()
+    assert revocation_client.set.await_args.args[0] == f"revoked:jti:{sibling.jti}"
+    revocation_client.delete.assert_not_awaited()
+    assert request.state.rotate_csrf is False
+    audit.log.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_step_up_rate_limit_rolls_back_without_partial_challenge() -> None:
     user = SimpleNamespace(id=uuid.uuid4(), mfa_default_method=MFA_METHOD_EMAIL_OTP)
     login_service = MagicMock()

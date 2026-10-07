@@ -2,22 +2,24 @@
 
 Срез на 2026-10-07 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Пауза по запросу пользователя. Выпуск `v1.0.0` не подтверждён.
+Работа возобновлена. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База контрольной точки и demo — `a3f33951459883adc05968bc6e1db9892d5b2b29`.
+  База изменений — `f741475d0`; закрытый demo и full mutation run — на `a3f339514`.
   Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
-  Агенты остановлены; приватные кандидаты сохранены для следующего ревью.
+  Три GPT-6 Luna Max работают в непересекающихся областях; root проверяет интеграцию.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
   локальные контракты не заменяют hosted/live приёмку.
 
 ## Hosted CI и мутации
 
-- Matrix `37668629672/a1` на `a3f`: незавершён; backend unit shard1 FAILED.
+- Matrix `37668629672/a1` на `a3f`: CANCELLED; backend unit shard1 FAILED.
+  Причина: stale urllib3 floor assertion; corrected focused backend5/5 PASS.
   Full mutation `37670438144/a1` запущен с `backend_scope=full`; stats shard2/8 FAILED.
-  Остальные jobs ещё выполняются; причины разобрать по logs. Это не итоговый score.
+  Backend aggregate FAILED; frontend jobs ещё выполняются. Stats RCA ждёт logs.
+  Это не итоговый score. PR checks нового source проверяются отдельно.
   Старые catalog/nightly/scheduled contract failures исправлены в `a3f`.
 - Root cumulative auth138/138 и catalog/preflight/nightly62/62 PASS.
   Scheduled/preflight delta12/12 PASS после двух воспроизведённых stale assertions.
@@ -36,14 +38,8 @@
   Backend preflight завершился ошибкой до запуска 128 backend execution shards;
   пропущенные shards не являются результатами мутаций. Глобальный viable score
   не установлен.
-- Для source7ac локальные затронутые contracts359/359 и Helm retry29/29 PASS;
-  CodeQL/Chromium исправления имеют hosted proof. Для переноса тестов canonical
-  lifespan + новый модуль39/39, preflight9/9 и test-file pre-commit PASS.
-  Manual full run 37512795410/a1 на 7aa CANCELLED: backend planning достиг 60-minute ceiling.
+- Manual full run 37512795410/a1 на 7aa CANCELLED: backend planning достиг 60-minute ceiling.
   Frontend aggregate job112519043882 завершился из-за Survived, без найденного provenance failure шага.
-- Historical generation54,457/344 и selection4,589/128 не являются свежим inventory.
-  V8 feature flags: baseline3/3; exact resolve6/disable13 дают call failures,
-  без skips/collection errors; V7 matrix22 не переносится; global score не установлен.
 - Frontend preflight source7ac: 43,200 mutants / 565 files / 64 shards;
   digest `e0c3083e3defb06169c8f59897b61c3a46a4dee65c6ae66c9963168ffad66c29`.
   Root и независимый reviewer приняли полный exact planned/report join:
@@ -76,14 +72,15 @@
 
 - Hosted Live Acceptance `37668628464/a1` на `a3f`: SUCCESS.
   Полная продуктовая приёмка этим smoke не закрыта.
-- Demo: `http://localhost:41976/login`, project `ue-live-8c2a21f71d21a9a6`.
+- Demo завершён: project `ue-live-8c2a21f71d21a9a6`.
   State: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
   news10, stories15, schedule28, chats2, events10 +2 будущих demo events.
   Student login — в `frontend/tests/e2e-live/fixtures.ts`; secret values здесь нет.
   Browser UI не проверен: CUA policy check unavailable; обход не выполнялся.
-  Стенд оставлен работающим; source `a3f` нельзя подменять новым HEAD при up.
+  По разрешению пользователя выполнены stop и teardown: 35 containers,
+  14 volumes, 3 networks удалены; тестовые данные не сохранялись.
   Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
 - Полная traceability требований, RU/EN, light/dark, responsive, SSR/PWA,
   accessibility/performance и пользовательское visual approval остаются
@@ -119,13 +116,15 @@
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  На паузе работает пользовательский demo; tests/build завершены, worktree один.
-  Под lifecycle lock освобождены три пустые сети старого c1b project;
-  35 stopped containers, 14 volumes и state files сохранены без изменений.
-  C1b требует проверенную Compose recreation для повторного запуска.
-  Ранее 39edd retired после V10 filesystem exports; 16 volumes/29 images сохранены.
+  Пользователь разрешил удалить все аналогичные ue-live стенды и тестовые данные.
+  После проверки Compose ownership, daemon и references удалены ещё 386 stopped
+  containers, 188 volumes (включая 16 доказанных anonymous mounts), 26 networks.
+  Удалены 142 локальных ue-live image tags. Fresh verification: containers0,
+  ue-live volumes0/networks0/image tags0; shared base images не удалялись.
   Global prune не применялся; filesystem archives не доказывают backup/restore.
-- Сохранять env/data/volumes/backups; private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
+- Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
+  Чужие env/data/volumes/backups сохраняются; временный state-dir deletion
+  отклонён automatic review, обход не выполняется.
   Rescue bundle остаётся private; Git history сохраняется.
 
 ## Следующие проверки и ограничения
@@ -133,9 +132,10 @@
 - Получить exact same-run survivors и новый full-run preflight после переноса;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
-  Full dispatch API принят; не создавать повторный run без причины. Private MFA263/307:
+  Full dispatch API принят; не создавать повторный run без причины. MFA263/307:
   baseline81/81, каждый exact mutant даёт одну assertion failure. Mapper16 controls:
-  исправить stale #117 expectation/baseline pins. Flaky config: static RED7/8 → GREEN8/8.
+  #117 pins исправлены; root backend/seed45/45 и auth635/635, typecheck/lint PASS;
+  flaky config static8/8 и root fast preflight10/10 PASS; global mutation gate открыт.
 - Получить root-reviewed live diagnostics для desktop/mobile без ослабления
   исходных assertions; доказать auth, API/DB/S3 equality и пользовательские
   сценарии, а не только health/readiness.
@@ -145,6 +145,6 @@
   resulting-main evidence и выпуск `v1.0.0`.
   Три полных зелёных CI ещё требуются; следующий live-стенд привязывать к новому committed SHA.
 
-Сохранять env, volumes, backups и Git history. Не применять admin bypass,
+Сохранять чужие env, volumes, backups, private evidence и Git history. Не применять admin bypass,
 force-push или менять branch protection. Внешний production, реальные SMTP/push,
 физические устройства, CDC и field CWV вне MVP.

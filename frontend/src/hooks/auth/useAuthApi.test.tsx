@@ -7,7 +7,11 @@ import { AxiosError, AxiosHeaders } from "axios"
 import { extractSigningKey, useAuthApi } from "./useAuthApi"
 import type { User } from "@/types/User"
 import { ChallengeLockedError, type PendingMfaState } from "@/types/Auth"
-import { acceptBrowserSessionGeneration, captureSessionEpoch } from "@/stores/sessionEpoch"
+import {
+  acceptBrowserSessionGeneration,
+  captureSessionEpoch,
+  invalidateSessionEpoch,
+} from "@/stores/sessionEpoch"
 import { API_UNAUTHORIZED_EVENT } from "@/api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 
@@ -713,8 +717,45 @@ describe("submitMfaChallenge", () => {
     expect(mocks.apiPost).not.toHaveBeenCalled()
   })
 
+  it("does not submit when authOperation becomes in-flight after MFA callback creation", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    const w = makeWires({
+      pendingMfa: { status: "mfa_required", user_id: "u-1", methods: [], reason: "login" },
+    })
+    let unmount = () => {}
+
+    try {
+      acceptBrowserSessionGeneration()
+      const stillOwnsCapturedSession = captureSessionEpoch()
+      const { result, rerender, unmount: unmountHook } = renderApi(w)
+      unmount = unmountHook
+      w.authOperation = true
+      rerender()
+
+      await act(async () => {
+        await result.current.submitMfaChallenge({
+          code: "123456",
+          challengeToken: "ct",
+        })
+      })
+
+      expect(stillOwnsCapturedSession()).toBe(true)
+      expect(localStorage.getItem(storageKey)).toBe(previousGeneration)
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).not.toHaveBeenCalled()
+      expect(w.setUser).not.toHaveBeenCalled()
+      expect(w.updatePendingMfa).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
+  })
+
   it("verifies a totp challenge and signs the session in (lines 243-279)", async () => {
-    const w = makeWires()
+    const w = makeWires({ updateSessionSigningKey: vi.fn(() => invalidateSessionEpoch()) })
     mocks.apiPost.mockResolvedValue({
       status: 200,
       data: { user: fullUser({ spotify_connected: true }), session: { signing_key: "sk-2" } },
@@ -738,6 +779,9 @@ describe("submitMfaChallenge", () => {
       expect.objectContaining({ skipRateLimitQueue: true })
     )
     expect(w.updateSessionSigningKey).toHaveBeenCalledWith("sk-2")
+    expect(w.setAuthOperation).toHaveBeenCalledTimes(2)
+    expect(w.setAuthOperation).toHaveBeenNthCalledWith(1, true)
+    expect(w.setAuthOperation).toHaveBeenNthCalledWith(2, false)
     expect(mocks.incrementSessionEpoch).toHaveBeenCalled()
     expect(w.setUser).toHaveBeenCalled()
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))

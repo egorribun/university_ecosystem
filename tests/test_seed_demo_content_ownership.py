@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -53,6 +54,22 @@ class DemoContentSession:
 
     async def scalars(self, statement: object) -> Rows:
         entity = statement.column_descriptions[0].get("entity")
+        if entity is Event:
+            parameters = statement.compile().params
+            owner_id = next(
+                value
+                for name, value in parameters.items()
+                if name.startswith("created_by_")
+            )
+            titles = {item["title"] for item in seed_demo_data.EVENTS_DATA}
+            return Rows(
+                [
+                    row
+                    for row in self.content_rows
+                    if getattr(row, "created_by", None) == owner_id
+                    and getattr(row, "title", None) in titles
+                ]
+            )
         if entity is not Schedule:
             raise AssertionError(f"Unexpected query entity: {entity!r}")
         compiled = statement.compile()
@@ -95,7 +112,14 @@ async def test_same_title_user_content_is_not_adopted_or_mutated(
     data: dict[str, object],
     owner_field: str,
     seed_function,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    if model is Event:
+        monkeypatch.setattr(
+            seed_demo_data,
+            "_event_now_utc",
+            lambda: datetime(2026, 10, 7, 12, tzinfo=UTC),
+        )
     demo_user = SimpleNamespace(id=uuid4())
     unrelated_owner_id = uuid4()
     user_row = SimpleNamespace(
@@ -109,6 +133,8 @@ async def test_same_title_user_content_is_not_adopted_or_mutated(
         description_en=None,
         location_en=None,
         event_type_en=None,
+        ends_at=data.get("ends_at"),
+        is_active=True,
         content="user-authored synthetic content",
         short_text="user-authored synthetic story",
         description="user-authored synthetic event",
@@ -126,9 +152,15 @@ async def test_same_title_user_content_is_not_adopted_or_mutated(
     seeded = [
         row
         for row in database.added
-        if isinstance(row, model) and row.title == data["title"]
+        if isinstance(row, model)
+        and row.title == data["title"]
+        and getattr(row, owner_field) == demo_user.id
     ]
-    assert seeded == []
+    if model is Event:
+        assert len(seeded) == 1
+        assert seeded[0].starts_at != data["starts_at"]
+    else:
+        assert seeded == []
 
     await seed_function(database, demo_user)
     second_run_seeded = [
@@ -138,7 +170,10 @@ async def test_same_title_user_content_is_not_adopted_or_mutated(
         and row.title == data["title"]
         and getattr(row, owner_field) == demo_user.id
     ]
-    assert second_run_seeded == []
+    if model is Event:
+        assert second_run_seeded == seeded
+    else:
+        assert second_run_seeded == []
     assert user_row.title_en is None
     assert user_row.content_en is None
     assert user_row.short_text_en is None
@@ -180,7 +215,14 @@ async def test_same_owner_custom_source_content_is_not_backfilled_or_duplicated(
     owner_field: str,
     source_field: str,
     seed_function,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    if model is Event:
+        monkeypatch.setattr(
+            seed_demo_data,
+            "_event_now_utc",
+            lambda: datetime(2026, 10, 7, 12, tzinfo=UTC),
+        )
     demo_user = SimpleNamespace(id=uuid4())
     user_row = SimpleNamespace(
         title=data["title"],
@@ -193,6 +235,8 @@ async def test_same_owner_custom_source_content_is_not_backfilled_or_duplicated(
         description_en=None,
         location_en=None,
         event_type_en=None,
+        ends_at=data.get("ends_at"),
+        is_active=True,
         content="user-edited synthetic news text",
         short_text="user-edited synthetic story text",
         description="user-edited synthetic event description",
@@ -210,13 +254,19 @@ async def test_same_owner_custom_source_content_is_not_backfilled_or_duplicated(
     assert user_row.description_en is None
     assert user_row.location_en is None
     assert user_row.event_type_en is None
-    assert not [
+    seeded = [
         row
         for row in database.added
         if isinstance(row, model)
         and row.title == data["title"]
         and getattr(row, owner_field) == demo_user.id
     ]
+    if model is Event:
+        assert len(seeded) == 1
+        assert seeded[0].description == data["description"]
+        assert seeded[0].starts_at != data["starts_at"]
+    else:
+        assert not seeded
 
 
 @pytest.mark.asyncio
@@ -256,7 +306,14 @@ async def test_seed_owned_matching_source_content_backfills_translation_only_onc
     source_field: str,
     english_field: str,
     seed_function,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    if model is Event:
+        monkeypatch.setattr(
+            seed_demo_data,
+            "_event_now_utc",
+            lambda: datetime(2026, 10, 7, 12, tzinfo=UTC),
+        )
     demo_user = SimpleNamespace(id=uuid4())
     user_row = SimpleNamespace(
         title=data["title"],
@@ -271,6 +328,7 @@ async def test_seed_owned_matching_source_content_backfills_translation_only_onc
         event_type_en=None,
         cover_url=data.get("cover_url"),
         cta_url=None,
+        ends_at=data.get("ends_at"),
         is_active=True,
         expires_at=None,
         content=data.get("content"),
@@ -291,13 +349,18 @@ async def test_seed_owned_matching_source_content_backfills_translation_only_onc
 
     assert getattr(user_row, english_field) == data[english_field]
     assert user_row.title_en == data["title_en"]
-    assert not [
+    seeded = [
         row
         for row in database.added
         if isinstance(row, model)
         and row.title == data["title"]
         and getattr(row, owner_field) == demo_user.id
     ]
+    if model is Event:
+        assert len(seeded) == 1
+        assert seeded[0].starts_at != data["starts_at"]
+    else:
+        assert not seeded
 
 
 @pytest.mark.asyncio

@@ -40,7 +40,7 @@ def test_deptry_is_pinned_and_scoped_to_the_application() -> None:
     # Security floors for transitive packages are constraints, not direct
     # dependencies that the application pretends to import.
     constraints = project["tool"]["uv"]["constraint-dependencies"]
-    assert "urllib3>=2.7.0,<2.9" in constraints
+    assert "urllib3>=2.8.0,<2.9" in constraints
     assert "h2>=4.4.1,<5" in constraints
     dependencies = project["project"]["dependencies"]
     assert not any(dep.startswith(("urllib3", "h2>")) for dep in dependencies)
