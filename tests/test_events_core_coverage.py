@@ -106,6 +106,30 @@ class TestDomainEventFromDict:
         event = MessageSent.from_dict(data)
         assert event.content_preview == "Hello..."
 
+    def test_message_deleted_from_dict_ignores_base_identity_fields(self):
+        from datetime import UTC, datetime
+
+        from app.core.events import MessageDeleted
+
+        supplied_event_id = "00000000-0000-4000-8000-000000000001"
+        supplied_occurred_at = "2001-02-03T04:05:06+00:00"
+        before = datetime.now(UTC)
+        event = MessageDeleted.from_dict(
+            {
+                "message_id": str(uuid.UUID("a1111111-1111-4111-8111-111111111111")),
+                "chat_id": str(uuid.UUID("b2222222-2222-4222-8222-222222222222")),
+                "event_id": supplied_event_id,
+                "occurred_at": supplied_occurred_at,
+            }
+        )
+        after = datetime.now(UTC)
+
+        assert event.message_id == uuid.UUID("a1111111-1111-4111-8111-111111111111")
+        assert event.chat_id == uuid.UUID("b2222222-2222-4222-8222-222222222222")
+        assert uuid.UUID(event.event_id) != uuid.UUID(supplied_event_id)
+        assert isinstance(event.occurred_at, datetime)
+        assert before <= event.occurred_at <= after
+
     def test_chat_deleted_from_dict(self):
         from app.core.events import ChatDeleted
 

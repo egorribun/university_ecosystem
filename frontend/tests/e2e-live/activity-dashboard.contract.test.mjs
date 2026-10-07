@@ -20,7 +20,7 @@ test("Activity empty-baseline acceptance uses only seeded records and the real r
     readFile(hookUrl, "utf8"),
   ])
 
-  assert.match(seed, /async def seed_events\(db, user: User\)/u)
+  assert.match(seed, /async def seed_events\(db(?::\s*AsyncSession)?,\s*user: User\)/u)
   assert.doesNotMatch(seed, /(?:EventAttendance|Grade|Notification)\s*\(/u)
   assert.match(analytics, /self\.stats_repo = UserStatsRepository\(db\)/u)
   assert.match(analytics, /self\.stats_repo\.get_attendance_stats_raw\(\s*user_id,/u)

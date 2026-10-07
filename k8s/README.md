@@ -87,10 +87,34 @@ bash scripts/apply_raw_k8s.sh k8s/backend/secret-store.yaml
 ```
 
 The chart's opt-in `gatewayApi` route mode needs a cluster-scoped
-`GatewayClass`; it does not install controller or CRDs. Install Envoy Gateway
-and its CRDs from the upstream pinned charts first. When this project owns the
-Gateway API CRDs, the upstream split install uses the Standard channel and
-disables CRD installation in the controller chart:
+`GatewayClass`; the application chart itself does not install Gateway API
+controllers or CRDs. For the repository's local kind acceptance path, use the
+run-owned helper, which installs the pinned Gateway API/Envoy Gateway
+components and cert-manager, then creates a run-specific local CA:
+
+```bash
+python scripts/kind_gateway_api.py create \
+  --node-image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+python scripts/kind_gateway_api.py prepare --run-id <printed-run-id>
+python scripts/kind_gateway_api.py preflight --run-id <printed-run-id>
+python scripts/kind_gateway_api.py smoke --run-id <printed-run-id>
+python scripts/kind_gateway_api.py ca-export --run-id <printed-run-id>
+```
+
+The pinned cert-manager v1.21.2 Helm release installs its CRDs and enables
+Gateway API integration after the Gateway API CRDs are present. The helper
+creates a run-owned self-signed `ClusterIssuer` for local acceptance. The
+export command writes only the public CA certificate under the local run-state
+directory. Pass that file explicitly to a client, for example with
+`curl --cacert <path-to-exported-ca.crt>`; it does not modify the operating
+system trust store or export the CA private key. This CA is only for disposable
+local kind acceptance and is not a production or public trust root.
+
+For another cluster, the cluster owner must install and manage compatible
+Gateway API, Envoy Gateway, and cert-manager resources. Do not run this
+run-owned kind installer against a provider-managed cluster. When this project
+owns the Gateway API CRDs, the upstream split install uses the Standard channel
+and disables CRD installation in the controller chart:
 
 ```bash
 helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
@@ -107,11 +131,11 @@ helm install eg oci://docker.io/envoyproxy/gateway-helm \
 
 If a cluster provider already owns compatible Gateway API CRDs, do not install
 a second Gateway API bundle; follow the upstream provider-managed CRD flow and
-keep one owner for each cluster-scoped CRD. Install cert-manager separately.
-For the currently reviewed pair, the read-only preflight accepts Kubernetes
-1.33–1.36, Gateway API Standard bundle v1.6.1, Envoy Gateway v1.9.2, and the
-served `ClientTrafficPolicy` and cert-manager `Certificate` versions required
-by the chart. The wrapper runs this preflight before creating the class:
+keep one owner for each cluster-scoped CRD. For the currently reviewed pair,
+the read-only preflight accepts Kubernetes 1.33–1.36, Gateway API Standard
+bundle v1.6.1, Envoy Gateway v1.9.2, and the served `ClientTrafficPolicy` and
+cert-manager `Certificate` versions required by the chart. The raw-manifest
+wrapper runs this preflight before creating the class:
 
 ```bash
 GATEWAY_CLASS_NAME=eg \
@@ -123,9 +147,10 @@ Set `GATEWAY_CLASS_NAME` to the same value as
 allowlisted and creates only that one GatewayClass, with a management
 annotation. If the named class already exists, the wrapper checks that its
 controller is Envoy Gateway and leaves the object unchanged; it refuses to
-take over a class bound to another controller. The preflight and bootstrap do
-not install, update, or delete CRDs, controllers, or other cluster resources.
-They do not replace the Helm chart as the application release artifact.
+take over a class bound to another controller. The raw-manifest preflight and
+bootstrap do not install, update, or delete CRDs, controllers, or other cluster
+resources. The kind helper's `prepare` workflow is separate and run-owned;
+neither path replaces the Helm chart as the application release artifact.
 
 The checked compatibility values follow the upstream [Envoy Gateway
 compatibility matrix](https://gateway.envoyproxy.io/news/releases/matrix/)

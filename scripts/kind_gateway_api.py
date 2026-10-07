@@ -2,11 +2,11 @@
 """Run-owned kind acceptance helpers for the Gateway API preview.
 
 The tool creates a dedicated kind cluster from an explicit Kubernetes node
-image, installs the documented Gateway API / Envoy Gateway versions, checks
-their readiness, and can remove only its own GatewayClass. It never deletes a
-cluster, CRD, controller, namespace, PVC, or application data. The repository
-does not pin cert-manager, so ``preflight`` checks its API but ``prepare`` leaves
-its installation to the separately managed local environment.
+image, installs pinned Gateway API, Envoy Gateway, and cert-manager components,
+and bootstraps a run-owned local CA. It can remove only its own GatewayClass.
+It never deletes a cluster, CRD, controller, namespace, PVC, or application
+data. The local CA is for kind acceptance only; its public certificate can be
+exported for client-scoped trust without changing the host trust store.
 
 Examples (choose an exact kindest/node image within the documented 1.33–1.36
 Kubernetes support range)::
@@ -17,6 +17,7 @@ Kubernetes support range)::
     python scripts/kind_gateway_api.py preflight --run-id <printed-run-id>
     python scripts/kind_gateway_api.py prepare --run-id <printed-run-id>
     python scripts/kind_gateway_api.py smoke --run-id <printed-run-id>
+    python scripts/kind_gateway_api.py ca-export --run-id <printed-run-id>
     python scripts/kind_gateway_api.py registry-start --run-id <printed-run-id> --image registry@sha256:<64-hex-digest>
     python scripts/kind_gateway_api.py registry-status --run-id <printed-run-id>
     python scripts/kind_gateway_api.py registry-stop --run-id <printed-run-id>
@@ -35,6 +36,8 @@ registry preserves its owner-marked Docker volume and the cluster's data.
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 import os
 import re
@@ -45,8 +48,14 @@ import tempfile
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from cryptography import x509
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 GATEWAY_API_BUNDLE_VERSION = "v1.6.1"
 GATEWAY_API_CHANNEL = "standard"
@@ -77,6 +86,23 @@ ENVOY_GATEWAY_CRDS = (
     "backendtrafficpolicies.gateway.envoyproxy.io",
 )
 CERT_MANAGER_CRD = "certificates.cert-manager.io"
+CERT_MANAGER_VERSION = "v1.21.2"
+CERT_MANAGER_HELM_CHART = "oci://quay.io/jetstack/charts/cert-manager"
+CERT_MANAGER_NAMESPACE = "cert-manager"
+CERT_MANAGER_RELEASE = "cert-manager"
+CERT_MANAGER_DEPLOYMENTS = (
+    "cert-manager",
+    "cert-manager-cainjector",
+    "cert-manager-webhook",
+)
+CERT_MANAGER_CRDS = (
+    "certificates.cert-manager.io",
+    "certificaterequests.cert-manager.io",
+    "clusterissuers.cert-manager.io",
+    "issuers.cert-manager.io",
+    "orders.acme.cert-manager.io",
+    "challenges.acme.cert-manager.io",
+)
 
 CRD_HELM_CHART = "oci://docker.io/envoyproxy/gateway-crds-helm"
 CONTROLLER_HELM_CHART = "oci://docker.io/envoyproxy/gateway-helm"
@@ -84,7 +110,7 @@ CONTROLLER_HELM_CHART = "oci://docker.io/envoyproxy/gateway-helm"
 _RUN_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 _REGISTRY_IMAGE_RE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 _NODE_IMAGE_RE = re.compile(
-    r"^(?:docker\.io/)?kindest/node:v1\.(?P<minor>33|34|35|36)\.(?P<patch>0|[1-9][0-9]*)$"
+    r"^(?:docker\.io/)?kindest/node:v1\.(?P<minor>33|34|35|36)\.(?P<patch>0|[1-9][0-9]*)(?:@sha256:[0-9a-f]{64})?$"
 )
 
 
@@ -833,7 +859,7 @@ class KindGatewayApi:
         match = _NODE_IMAGE_RE.fullmatch(node_image)
         if match is None:
             raise KindGatewayApiError(
-                "node image must be an exact kindest/node:v1.33.x through v1.36.x version"
+                "node image must be an exact kindest/node:v1.33.x through v1.36.x version, optionally pinned by a lowercase sha256 digest"
             )
         selected_run_id = self._validate_run_id(run_id or uuid.uuid4().hex[:12])
         state = RunState(
@@ -1215,6 +1241,593 @@ class KindGatewayApi:
         self._save_state(updated)
         return updated
 
+    @staticmethod
+    def _is_cert_manager_crd(crd: dict[str, Any]) -> bool:
+        spec = crd.get("spec")
+        return isinstance(spec, dict) and spec.get("group") in {
+            "cert-manager.io",
+            "acme.cert-manager.io",
+        }
+
+    def _cert_manager_crds(self, state: RunState) -> dict[str, dict[str, Any]]:
+        return {
+            str(metadata["name"]): crd
+            for crd in self._gateway_crds(state)
+            if self._is_cert_manager_crd(crd)
+            and isinstance(metadata := crd.get("metadata"), dict)
+            and isinstance(metadata.get("name"), str)
+        }
+
+    @staticmethod
+    def _cert_manager_names(state: RunState) -> dict[str, str]:
+        return {
+            "bootstrap_issuer": f"ue-gw-selfsigned-{state.run_id}",
+            "root_certificate": f"ue-gw-root-ca-{state.run_id}",
+            "ca_secret": f"ue-gw-root-ca-{state.run_id}",
+            "cluster_issuer": f"ue-gw-ca-{state.run_id}",
+        }
+
+    @staticmethod
+    def _has_run_owner(resource: dict[str, Any] | None, run_id: str) -> bool:
+        if resource is None:
+            return False
+        metadata = resource.get("metadata")
+        annotations = (
+            metadata.get("annotations") if isinstance(metadata, dict) else None
+        )
+        return (
+            isinstance(annotations, dict)
+            and annotations.get(OWNER_KEY) == run_id
+            and annotations.get(MANAGED_BY_KEY) == MANAGED_BY_VALUE
+        )
+
+    @staticmethod
+    def _has_helm_identity(resource: dict[str, Any] | None) -> bool:
+        if resource is None:
+            return False
+        metadata = resource.get("metadata")
+        if not isinstance(metadata, dict):
+            return False
+        labels = metadata.get("labels")
+        annotations = metadata.get("annotations")
+        return (
+            isinstance(labels, dict)
+            and labels.get("app.kubernetes.io/managed-by") == "Helm"
+            and labels.get("app.kubernetes.io/instance") == CERT_MANAGER_RELEASE
+            and isinstance(annotations, dict)
+            and annotations.get("meta.helm.sh/release-name") == CERT_MANAGER_RELEASE
+            and annotations.get("meta.helm.sh/release-namespace")
+            == CERT_MANAGER_NAMESPACE
+        )
+
+    def _mark_cert_manager_owned(
+        self,
+        state: RunState,
+        kind: str,
+        name: str,
+        resource: dict[str, Any],
+        *,
+        namespace: str | None = None,
+    ) -> None:
+        if not self._has_helm_identity(resource):
+            raise KindGatewayApiError(
+                f"cert-manager {kind} '{name}' lacks the pinned Helm release identity"
+            )
+        metadata = resource.get("metadata", {})
+        annotations = metadata.get("annotations", {})
+        owner = annotations.get(OWNER_KEY)
+        manager = annotations.get(MANAGED_BY_KEY)
+        if owner == state.run_id and manager == MANAGED_BY_VALUE:
+            return
+        if owner is not None or manager is not None:
+            raise KindGatewayApiError(
+                f"cert-manager {kind} '{name}' has conflicting run ownership"
+            )
+        self._assert_owned(state)
+        self._kubectl(
+            state,
+            "annotate",
+            kind,
+            name,
+            f"{OWNER_KEY}={state.run_id}",
+            f"{MANAGED_BY_KEY}={MANAGED_BY_VALUE}",
+            "--overwrite=false",
+            *(["--namespace", namespace] if namespace else []),
+        )
+        verified = self._get_json(
+            state, kind, name, *(["--namespace", namespace] if namespace else [])
+        )
+        if not self._has_run_owner(verified, state.run_id):
+            raise KindGatewayApiError(
+                f"cert-manager {kind} '{name}' ownership could not be verified"
+            )
+
+    def _verify_cert_manager_installation(self, state: RunState) -> None:
+        namespace = self._get_json(state, "namespace", CERT_MANAGER_NAMESPACE)
+        if (
+            namespace is None
+            or namespace.get("metadata", {}).get("name") != CERT_MANAGER_NAMESPACE
+        ):
+            raise KindGatewayApiError("cert-manager namespace is unavailable")
+        if not self._has_run_owner(namespace, state.run_id):
+            raise KindGatewayApiError("cert-manager namespace is unowned by this run")
+
+        for name in CERT_MANAGER_DEPLOYMENTS:
+            deployment = self._get_json(
+                state, "deployment", name, "--namespace", CERT_MANAGER_NAMESPACE
+            )
+            metadata = deployment.get("metadata", {}) if deployment else {}
+            labels = metadata.get("labels", {}) if isinstance(metadata, dict) else {}
+            status = deployment.get("status", {}) if deployment else {}
+            replicas = (
+                status.get("availableReplicas", 0) if isinstance(status, dict) else 0
+            )
+            if (
+                not self._has_run_owner(deployment, state.run_id)
+                or not self._has_helm_identity(deployment)
+                or not isinstance(labels, dict)
+                or labels.get("app.kubernetes.io/version") != CERT_MANAGER_VERSION
+                or not isinstance(replicas, int)
+                or isinstance(replicas, bool)
+                or replicas < 1
+            ):
+                raise KindGatewayApiError(
+                    f"cert-manager deployment '{name}' is unowned, unready, or not {CERT_MANAGER_VERSION}"
+                )
+
+        crds = self._cert_manager_crds(state)
+        if set(crds) != set(CERT_MANAGER_CRDS):
+            raise KindGatewayApiError(
+                "cert-manager CRD inventory is incomplete or unexpected"
+            )
+        for name, crd in crds.items():
+            self._require_crd(state, name, "v1")
+            if not self._has_run_owner(
+                crd, state.run_id
+            ) or not self._has_helm_identity(crd):
+                raise KindGatewayApiError(
+                    f"cert-manager CRD '{name}' is unowned or not part of the pinned Helm release"
+                )
+
+    def _install_cert_manager(self, state: RunState) -> None:
+        namespace = self._get_json(state, "namespace", CERT_MANAGER_NAMESPACE)
+        deployments = (
+            {
+                name: self._get_json(
+                    state, "deployment", name, "--namespace", CERT_MANAGER_NAMESPACE
+                )
+                for name in CERT_MANAGER_DEPLOYMENTS
+            }
+            if namespace is not None
+            else {name: None for name in CERT_MANAGER_DEPLOYMENTS}
+        )
+        existing_crds = self._cert_manager_crds(state)
+        present = (
+            namespace is not None
+            or any(resource is not None for resource in deployments.values())
+            or bool(existing_crds)
+        )
+        if present:
+            if (
+                namespace is None
+                or any(resource is None for resource in deployments.values())
+                or set(existing_crds) != set(CERT_MANAGER_CRDS)
+            ):
+                raise KindGatewayApiError(
+                    "cert-manager installation is partial; refusing Helm mutation"
+                )
+            self._verify_cert_manager_installation(state)
+            return
+
+        namespace_manifest = {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": CERT_MANAGER_NAMESPACE,
+                "annotations": {
+                    OWNER_KEY: state.run_id,
+                    MANAGED_BY_KEY: MANAGED_BY_VALUE,
+                },
+            },
+        }
+        self._assert_owned(state)
+        self._kubectl(
+            state,
+            "create",
+            "-f",
+            "-",
+            input_text=json.dumps(namespace_manifest, separators=(",", ":")),
+        )
+        created_namespace = self._get_json(state, "namespace", CERT_MANAGER_NAMESPACE)
+        if created_namespace is None or not self._has_run_owner(
+            created_namespace, state.run_id
+        ):
+            raise KindGatewayApiError(
+                "cert-manager namespace ownership could not be verified after creation"
+            )
+        self._assert_owned(state)
+        self._run(
+            [
+                self._tool("helm"),
+                "install",
+                CERT_MANAGER_RELEASE,
+                CERT_MANAGER_HELM_CHART,
+                "--version",
+                CERT_MANAGER_VERSION,
+                "--namespace",
+                CERT_MANAGER_NAMESPACE,
+                "--set",
+                "crds.enabled=true",
+                "--set",
+                "config.gatewayAPI.enabled=true",
+                "--set",
+                f"clusterResourceNamespace={CERT_MANAGER_NAMESPACE}",
+                "--wait",
+                "--timeout",
+                "180s",
+                "--kube-context",
+                state.context,
+            ]
+        )
+        created_namespace = self._get_json(state, "namespace", CERT_MANAGER_NAMESPACE)
+        if created_namespace is None or not self._has_run_owner(
+            created_namespace, state.run_id
+        ):
+            raise KindGatewayApiError(
+                "cert-manager namespace ownership was lost during Helm install"
+            )
+        for name in CERT_MANAGER_DEPLOYMENTS:
+            deployment = self._get_json(
+                state, "deployment", name, "--namespace", CERT_MANAGER_NAMESPACE
+            )
+            self._mark_cert_manager_owned(
+                state,
+                "deployment",
+                name,
+                deployment or {},
+                namespace=CERT_MANAGER_NAMESPACE,
+            )
+        crds = self._cert_manager_crds(state)
+        if set(crds) != set(CERT_MANAGER_CRDS):
+            raise KindGatewayApiError(
+                "cert-manager Helm install created an unexpected CRD inventory"
+            )
+        for name, crd in crds.items():
+            self._require_crd(state, name, "v1")
+            self._mark_cert_manager_owned(state, "crd", name, crd)
+        self._verify_cert_manager_installation(state)
+
+    def _local_ca_manifests(self, state: RunState) -> tuple[dict[str, Any], ...]:
+        names = self._cert_manager_names(state)
+        owned = {OWNER_KEY: state.run_id, MANAGED_BY_KEY: MANAGED_BY_VALUE}
+        return (
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Issuer",
+                "metadata": {
+                    "name": names["bootstrap_issuer"],
+                    "namespace": CERT_MANAGER_NAMESPACE,
+                    "annotations": owned,
+                },
+                "spec": {"selfSigned": {}},
+            },
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Certificate",
+                "metadata": {
+                    "name": names["root_certificate"],
+                    "namespace": CERT_MANAGER_NAMESPACE,
+                    "annotations": owned,
+                },
+                "spec": {
+                    "secretName": names["ca_secret"],
+                    "commonName": f"ue-gw-{state.run_id}.kind.local",
+                    "subject": {"organizations": ["University Ecosystem kind"]},
+                    "duration": "2160h",
+                    "renewBefore": "24h",
+                    "isCA": True,
+                    "privateKey": {
+                        "algorithm": "ECDSA",
+                        "size": 256,
+                        "rotationPolicy": "Always",
+                    },
+                    "usages": ["cert sign", "crl sign", "digital signature"],
+                    "issuerRef": {
+                        "name": names["bootstrap_issuer"],
+                        "kind": "Issuer",
+                        "group": "cert-manager.io",
+                    },
+                    "secretTemplate": {"annotations": owned},
+                },
+            },
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "ClusterIssuer",
+                "metadata": {
+                    "name": names["cluster_issuer"],
+                    "annotations": owned,
+                },
+                "spec": {"ca": {"secretName": names["ca_secret"]}},
+            },
+        )
+
+    def _assert_local_ca_resources_available(self, state: RunState) -> None:
+        manifests = self._local_ca_manifests(state)
+        existing_crds = self._cert_manager_crds(state)
+        namespace_exists = (
+            self._get_json(state, "namespace", CERT_MANAGER_NAMESPACE) is not None
+        )
+        crd_for_kind = {
+            "issuer": "issuers.cert-manager.io",
+            "certificate": "certificates.cert-manager.io",
+            "clusterissuer": "clusterissuers.cert-manager.io",
+        }
+        for manifest in manifests:
+            metadata = manifest["metadata"]
+            namespace = metadata.get("namespace")
+            args = ["--namespace", namespace] if namespace else []
+            resource_kind = manifest["kind"].lower()
+            if (namespace is not None and not namespace_exists) or crd_for_kind[
+                resource_kind
+            ] not in existing_crds:
+                continue
+            resource = self._get_json(state, resource_kind, metadata["name"], *args)
+            if resource is not None and (
+                not self._has_run_owner(resource, state.run_id)
+                or not self._contains_expected(resource.get("spec"), manifest["spec"])
+            ):
+                raise KindGatewayApiError(
+                    f"run-specific local CA {manifest['kind']} '{metadata['name']}' "
+                    "already exists with conflicting ownership or configuration"
+                )
+
+        secret = (
+            self._get_json(
+                state,
+                "secret",
+                self._cert_manager_names(state)["ca_secret"],
+                "--namespace",
+                CERT_MANAGER_NAMESPACE,
+            )
+            if namespace_exists
+            else None
+        )
+        if secret is not None:
+            if secret.get("type") != "kubernetes.io/tls" or not self._has_run_owner(
+                secret, state.run_id
+            ):
+                raise KindGatewayApiError(
+                    "run-specific local CA Secret already exists with conflicting ownership"
+                )
+            self._local_ca_pair(state)
+
+    @staticmethod
+    def _contains_expected(actual: Any, expected: Any) -> bool:
+        if isinstance(expected, dict):
+            return isinstance(actual, dict) and all(
+                key in actual and KindGatewayApi._contains_expected(actual[key], value)
+                for key, value in expected.items()
+            )
+        return actual == expected
+
+    def _ensure_ca_resource(
+        self, state: RunState, manifest: dict[str, Any]
+    ) -> dict[str, Any]:
+        metadata = manifest["metadata"]
+        name = metadata["name"]
+        namespace = metadata.get("namespace")
+        namespace_args = ["--namespace", namespace] if namespace else []
+        kind = manifest["kind"].lower()
+        resource = self._get_json(state, kind, name, *namespace_args)
+        if resource is None:
+            self._assert_owned(state)
+            self._kubectl(
+                state,
+                "create",
+                "-f",
+                "-",
+                input_text=json.dumps(manifest, separators=(",", ":")),
+            )
+            resource = self._get_json(state, kind, name, *namespace_args)
+        if not self._has_run_owner(
+            resource, state.run_id
+        ) or not self._contains_expected(resource.get("spec"), manifest["spec"]):
+            raise KindGatewayApiError(
+                f"run-owned local CA {manifest['kind']} '{name}' could not be verified"
+            )
+        return resource
+
+    def _wait_for_ca_resource(
+        self, state: RunState, manifest: dict[str, Any]
+    ) -> dict[str, Any]:
+        metadata = manifest["metadata"]
+        namespace = metadata.get("namespace")
+        args = ["--namespace", namespace] if namespace else []
+        kind = manifest["kind"].lower()
+        self._assert_owned(state)
+        self._kubectl(
+            state,
+            "wait",
+            "--for=condition=Ready",
+            f"{kind}/{metadata['name']}",
+            *args,
+            "--timeout=120s",
+        )
+        resource = self._get_json(state, kind, metadata["name"], *args)
+        if not self._condition_true(resource, "Ready"):
+            raise KindGatewayApiError(
+                f"run-owned local CA {kind} '{metadata['name']}' is not Ready"
+            )
+        return resource
+
+    @staticmethod
+    def _validated_ca_pair(
+        certificate_pem: bytes,
+        private_key_pem: bytes,
+        *,
+        expected_common_name: str,
+        expected_organization: str,
+    ) -> bytes:
+        try:
+            certificate = x509.load_pem_x509_certificate(certificate_pem)
+            private_key = serialization.load_pem_private_key(
+                private_key_pem, password=None
+            )
+            constraints = certificate.extensions.get_extension_for_class(
+                x509.BasicConstraints
+            ).value
+            usage = certificate.extensions.get_extension_for_class(x509.KeyUsage).value
+            public_key = certificate.public_key()
+            common_names = certificate.subject.get_attributes_for_oid(
+                x509.oid.NameOID.COMMON_NAME
+            )
+            organizations = certificate.subject.get_attributes_for_oid(
+                x509.oid.NameOID.ORGANIZATION_NAME
+            )
+            if (
+                not constraints.ca
+                or not usage.key_cert_sign
+                or certificate.subject != certificate.issuer
+                or len(common_names) != 1
+                or common_names[0].value != expected_common_name
+                or len(organizations) != 1
+                or organizations[0].value != expected_organization
+                or not isinstance(public_key, ec.EllipticCurvePublicKey)
+                or not isinstance(private_key, ec.EllipticCurvePrivateKey)
+                or public_key.curve.name != "secp256r1"
+            ):
+                raise ValueError("certificate is not the expected run-owned ECDSA CA")
+            if public_key.public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            ) != private_key.public_key().public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            ):
+                raise ValueError("CA private key does not match its certificate")
+            now = datetime.now(UTC)
+            if (
+                not certificate.not_valid_before_utc
+                <= now
+                < certificate.not_valid_after_utc
+            ):
+                raise ValueError("CA certificate is outside its validity period")
+            public_key.verify(
+                certificate.signature,
+                certificate.tbs_certificate_bytes,
+                ec.ECDSA(certificate.signature_hash_algorithm),
+            )
+            canonical_pem = certificate.public_bytes(serialization.Encoding.PEM)
+            if certificate_pem != canonical_pem:
+                raise ValueError("CA certificate is not one canonical PEM certificate")
+        except (
+            InvalidSignature,
+            UnsupportedAlgorithm,
+            ValueError,
+            TypeError,
+            x509.ExtensionNotFound,
+        ) as exc:
+            raise KindGatewayApiError("run-owned local CA key pair is invalid") from exc
+        return canonical_pem
+
+    def _local_ca_pair(self, state: RunState) -> bytes:
+        name = self._cert_manager_names(state)["ca_secret"]
+        secret = self._get_json(
+            state, "secret", name, "--namespace", CERT_MANAGER_NAMESPACE
+        )
+        data = secret.get("data") if secret else None
+        if (
+            secret is None
+            or secret.get("type") != "kubernetes.io/tls"
+            or not self._has_run_owner(secret, state.run_id)
+            or not isinstance(data, dict)
+            or not isinstance(data.get("tls.crt"), str)
+            or not isinstance(data.get("tls.key"), str)
+        ):
+            raise KindGatewayApiError("run-owned local CA TLS secret is unavailable")
+        try:
+            certificate = base64.b64decode(data["tls.crt"], validate=True)
+            private_key = base64.b64decode(data["tls.key"], validate=True)
+        except (ValueError, TypeError) as exc:
+            raise KindGatewayApiError(
+                "run-owned local CA TLS secret is malformed"
+            ) from exc
+        return self._validated_ca_pair(
+            certificate,
+            private_key,
+            expected_common_name=f"ue-gw-{state.run_id}.kind.local",
+            expected_organization="University Ecosystem kind",
+        )
+
+    def _ensure_local_ca(self, state: RunState) -> None:
+        self._verify_cert_manager_installation(state)
+        manifests = self._local_ca_manifests(state)
+        for manifest in manifests:
+            self._ensure_ca_resource(state, manifest)
+            self._wait_for_ca_resource(state, manifest)
+            if manifest["kind"] == "Certificate":
+                self._local_ca_pair(state)
+
+    def _verify_local_ca(self, state: RunState) -> bytes:
+        self._verify_cert_manager_installation(state)
+        for manifest in self._local_ca_manifests(state):
+            metadata = manifest["metadata"]
+            namespace = metadata.get("namespace")
+            args = ["--namespace", namespace] if namespace else []
+            resource = self._get_json(
+                state, manifest["kind"].lower(), metadata["name"], *args
+            )
+            if (
+                not self._has_run_owner(resource, state.run_id)
+                or not self._contains_expected(
+                    resource.get("spec") if resource else None, manifest["spec"]
+                )
+                or not self._condition_true(resource, "Ready")
+            ):
+                raise KindGatewayApiError(
+                    f"run-owned local CA {manifest['kind']} is not Ready"
+                )
+        return self._local_ca_pair(state)
+
+    def ca_export(self, run_id: str) -> dict[str, str]:
+        state = self._load_state(self._validate_run_id(run_id))
+        self._assert_owned(state)
+        certificate = self._verify_local_ca(state)
+        self._state_dir.mkdir(parents=True, exist_ok=True)
+        path = self._state_dir / f"{state.cluster}-ca.crt"
+        if path.is_symlink():
+            raise KindGatewayApiError("local CA output path is a symbolic link")
+        if path.exists():
+            try:
+                existing = path.read_bytes()
+            except OSError as exc:
+                raise KindGatewayApiError(
+                    "could not read existing local CA file"
+                ) from exc
+            if existing != certificate:
+                raise KindGatewayApiError(
+                    "local CA file differs; refusing to overwrite it"
+                )
+        else:
+            try:
+                descriptor = os.open(
+                    path,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0),
+                    0o600,
+                )
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(certificate)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except OSError as exc:
+                raise KindGatewayApiError("could not create local CA file") from exc
+        return {
+            "run_id": state.run_id,
+            "ca_bundle_path": str(path),
+            "ca_bundle_sha256": hashlib.sha256(certificate).hexdigest(),
+            "host_trust_store_modified": "false",
+        }
+
     def _namespace(self, state: RunState) -> dict[str, Any] | None:
         return self._get_json(state, "namespace", ENVOY_NAMESPACE)
 
@@ -1335,21 +1948,27 @@ class KindGatewayApi:
     def _gateway_class_resource(self, state: RunState) -> dict[str, Any] | None:
         return self._get_json(state, "gatewayclass", state.gateway_class)
 
+    def _assert_gateway_class_not_foreign(self, state: RunState) -> None:
+        existing = self._gateway_class_resource(state)
+        if existing is None:
+            return
+        metadata = existing.get("metadata", {})
+        annotations = metadata.get("annotations", {})
+        controller = existing.get("spec", {}).get("controllerName")
+        if (
+            annotations.get(OWNER_KEY) != state.run_id
+            or annotations.get("university-ecosystem.dev/managed-by")
+            != "kind_gateway_api.py"
+            or controller != GATEWAY_CLASS_CONTROLLER
+        ):
+            raise KindGatewayApiError(
+                f"GatewayClass '{state.gateway_class}' is not owned by this run; refusing to change it"
+            )
+
     def _ensure_gateway_class(self, state: RunState) -> RunState:
         existing = self._gateway_class_resource(state)
         if existing is not None:
-            metadata = existing.get("metadata", {})
-            annotations = metadata.get("annotations", {})
-            controller = existing.get("spec", {}).get("controllerName")
-            if (
-                annotations.get(OWNER_KEY) != state.run_id
-                or annotations.get("university-ecosystem.dev/managed-by")
-                != "kind_gateway_api.py"
-                or controller != GATEWAY_CLASS_CONTROLLER
-            ):
-                raise KindGatewayApiError(
-                    f"GatewayClass '{state.gateway_class}' is not owned by this run; refusing to change it"
-                )
+            self._assert_gateway_class_not_foreign(state)
             updated = RunState(**{**state.__dict__, "gateway_class_created": True})
             self._save_state(updated)
             return updated
@@ -1393,7 +2012,12 @@ class KindGatewayApi:
     def prepare(self, run_id: str) -> RunState:
         state = self._load_state(self._validate_run_id(run_id))
         self._assert_owned(state)
+        self._assert_gateway_class_not_foreign(state)
+        self._assert_local_ca_resources_available(state)
         state = self._install_gateway_crds(state)
+        self._assert_owned(state)
+        self._install_cert_manager(state)
+        self._ensure_local_ca(state)
         self._assert_owned(state)
         state = self._install_envoy_controller(state)
         self._assert_owned(state)
@@ -1521,13 +2145,18 @@ def _build_parser() -> argparse.ArgumentParser:
         ("preflight", "read-only pinned Gateway API prerequisites check"),
         (
             "prepare",
-            "install pinned Gateway API CRDs/controller and a run-owned GatewayClass",
+            "install pinned Gateway API/cert-manager prerequisites and run-owned CA",
         ),
         ("smoke", "check controller availability and GatewayClass acceptance"),
         ("rollback", "delete only this run's GatewayClass; retain cluster and data"),
     ):
         command_parser = subparsers.add_parser(name, help=help_text)
         command_parser.add_argument("--run-id", required=True)
+    ca_export_parser = subparsers.add_parser(
+        "ca-export",
+        help="write this run's public local CA certificate without changing host trust",
+    )
+    ca_export_parser.add_argument("--run-id", required=True)
     registry_start_parser = subparsers.add_parser(
         "registry-start", help="start this run's persistent local registry"
     )
@@ -1595,6 +2224,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         elif args.command == "smoke":
             print(json.dumps(tool.smoke(args.run_id), sort_keys=True))
+        elif args.command == "ca-export":
+            print(json.dumps(tool.ca_export(args.run_id), sort_keys=True))
         elif args.command == "registry-start":
             print(
                 json.dumps(

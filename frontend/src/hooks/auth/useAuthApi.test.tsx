@@ -545,6 +545,22 @@ describe("login → prefetchDashboardData branches", () => {
     )
   })
 
+  it("uses English from the configured language when the resolved language is absent", async () => {
+    mocks.i18n.resolvedLanguage = undefined
+    mocks.i18n.language = "en"
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() =>
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "en")
+    )
+  })
+
   it("defaults dashboard prefetching to Russian when i18n exposes no active language", async () => {
     mocks.i18n.resolvedLanguage = undefined
     mocks.i18n.language = undefined
@@ -845,6 +861,9 @@ describe("submitMfaChallenge", () => {
     })
     expect(caught).toBeInstanceOf(ChallengeLockedError)
     expect((caught as ChallengeLockedError).refreshable).toBe(false)
+    expect((caught as ChallengeLockedError).message).toBe(
+      "login.locked login.lockedRetry:login.duration.minutes:2"
+    )
     expect(mocks.apiPost).toHaveBeenCalledTimes(1)
   })
 
@@ -1274,14 +1293,18 @@ describe("useAuthApi — residual defensive branches", () => {
 
   it("formats lockouts measured in hours", async () => {
     const w = makeWires()
-    mocks.apiPost.mockRejectedValue(lockedError("7200"))
+    const cause = lockedError("7200")
+    mocks.apiPost.mockRejectedValue(cause)
     const { result } = renderApi(w)
 
     await expect(
       act(async () => {
         await result.current.login("a@b.dev", "pw")
       })
-    ).rejects.toThrow(/login\.duration\.hours:2/)
+    ).rejects.toMatchObject({
+      message: "login.locked login.lockedRetry:login.duration.hours:2",
+      cause,
+    })
   })
 
   it("logs a push-sync rejection after login without failing the login", async () => {

@@ -1,17 +1,29 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import runpy
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from scripts import kind_gateway_api as kind_gateway_api_module
 from scripts.kind_gateway_api import (
+    CERT_MANAGER_CRDS,
+    CERT_MANAGER_DEPLOYMENTS,
+    CERT_MANAGER_HELM_CHART,
+    CERT_MANAGER_NAMESPACE,
+    CERT_MANAGER_RELEASE,
+    CERT_MANAGER_VERSION,
     ENVOY_NAMESPACE,
     KIND_CLUSTER_LABEL,
     MANAGED_BY_KEY,
@@ -31,7 +43,66 @@ RUN_ID = "012345abcdef"
 CLUSTER = f"ue-gw-{RUN_ID}"
 CONTEXT = f"kind-{CLUSTER}"
 NODE_IMAGE = "kindest/node:v1.35.1"
+PINNED_NODE_IMAGE = (
+    "kindest/node:v1.36.4@sha256:"
+    "099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed"  # pragma: allowlist secret (public kind image digest)
+)
 REGISTRY_IMAGE = f"registry@sha256:{'a' * 64}"
+
+
+def _test_ca_pair(
+    *,
+    is_ca: bool = True,
+    expired: bool = False,
+    common_name: str = f"ue-gw-{RUN_ID}.kind.local",
+) -> tuple[bytes, bytes]:
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    subject = x509.Name(
+        [
+            x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, common_name),
+            x509.NameAttribute(
+                x509.oid.NameOID.ORGANIZATION_NAME, "University Ecosystem kind"
+            ),
+        ]
+    )
+    now = datetime.now(UTC).replace(tzinfo=None)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(private_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(
+            now - timedelta(days=1) if expired else now - timedelta(minutes=1)
+        )
+        .not_valid_after(
+            now - timedelta(seconds=30) if expired else now + timedelta(days=30)
+        )
+        .add_extension(x509.BasicConstraints(ca=is_ca, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=is_ca,
+                crl_sign=is_ca,
+                encipher_only=None,
+                decipher_only=None,
+            ),
+            critical=True,
+        )
+        .sign(private_key, hashes.SHA256())
+    )
+    return (
+        certificate.public_bytes(serialization.Encoding.PEM),
+        private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
 
 
 def _resource(
@@ -97,6 +168,11 @@ class FakeEnvironment:
         self.add_crds_on_apply = True
         self.controller_owner_on_install: str | None = RUN_ID
         self.controller_version_on_install = "v1.9.2"
+        self.add_cert_manager_on_install = True
+        self.cert_manager_version_on_install = CERT_MANAGER_VERSION
+        self.cert_manager_available_replicas = 1
+        self.cert_manager_pair = _test_ca_pair()
+        self.namespace_appears_before_create = False
         self.add_controller_on_install = True
         self.ignore_annotations = False
         self.store_gateway_class = True
@@ -200,6 +276,67 @@ class FakeEnvironment:
             },
         )
 
+    def add_cert_manager(self, *, run_owned: bool = False) -> None:
+        namespace_key = ("namespace", CERT_MANAGER_NAMESPACE, None)
+        if namespace_key not in self.resources:
+            self.resources[namespace_key] = _resource(
+                "Namespace",
+                CERT_MANAGER_NAMESPACE,
+                annotations=(
+                    {OWNER_KEY: RUN_ID, MANAGED_BY_KEY: MANAGED_BY_VALUE}
+                    if run_owned
+                    else None
+                ),
+            )
+        helm_annotations = {
+            "meta.helm.sh/release-name": CERT_MANAGER_RELEASE,
+            "meta.helm.sh/release-namespace": CERT_MANAGER_NAMESPACE,
+        }
+        helm_labels = {
+            "app.kubernetes.io/managed-by": "Helm",
+            "app.kubernetes.io/instance": CERT_MANAGER_RELEASE,
+        }
+        for name in CERT_MANAGER_DEPLOYMENTS:
+            labels = {
+                **helm_labels,
+                "app.kubernetes.io/version": self.cert_manager_version_on_install,
+            }
+            annotations = dict(helm_annotations)
+            if run_owned:
+                annotations.update(
+                    {OWNER_KEY: RUN_ID, MANAGED_BY_KEY: MANAGED_BY_VALUE}
+                )
+            self.resources[("deployment", name, CERT_MANAGER_NAMESPACE)] = _resource(
+                "Deployment",
+                name,
+                labels=labels,
+                annotations=annotations,
+                status={"availableReplicas": self.cert_manager_available_replicas},
+            )
+        for name in CERT_MANAGER_CRDS:
+            if name.endswith(".acme.cert-manager.io"):
+                group = "acme.cert-manager.io"
+            else:
+                group = "cert-manager.io"
+            annotations = dict(helm_annotations)
+            if run_owned:
+                annotations.update(
+                    {OWNER_KEY: RUN_ID, MANAGED_BY_KEY: MANAGED_BY_VALUE}
+                )
+            self.crds.append(
+                {
+                    "metadata": {
+                        "name": name,
+                        "annotations": annotations,
+                        "labels": helm_labels.copy(),
+                    },
+                    "spec": {
+                        "group": group,
+                        "versions": [{"name": "v1", "served": True}],
+                    },
+                }
+            )
+
     def add_gateway_class(self, *, owned: bool = True, accepted: bool = True) -> None:
         annotations = {"university-ecosystem.dev/managed-by": "kind_gateway_api.py"}
         if owned:
@@ -275,6 +412,49 @@ class FakeEnvironment:
                 body = json.loads(kwargs.get("input", "{}"))
                 if body.get("kind") == "GatewayClass" and self.store_gateway_class:
                     self.gateway_class = body
+                elif body.get("kind") == "Namespace":
+                    key = ("namespace", body["metadata"]["name"], None)
+                    if self.namespace_appears_before_create:
+                        self.resources[key] = _resource(
+                            "Namespace",
+                            body["metadata"]["name"],
+                            annotations={OWNER_KEY: "ffffffffffff"},
+                        )
+                        self.namespace_appears_before_create = False
+                    if key in self.resources:
+                        returncode = 1
+                    else:
+                        self.resources[key] = body
+                elif body.get("kind") in {"Issuer", "Certificate", "ClusterIssuer"}:
+                    metadata = body["metadata"]
+                    namespace = metadata.get("namespace")
+                    kind = body["kind"].lower()
+                    resource = {
+                        **body,
+                        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                    }
+                    self.resources[(kind, metadata["name"], namespace)] = resource
+                    if body["kind"] == "Certificate":
+                        certificate, private_key = self.cert_manager_pair
+                        annotations = body["spec"]["secretTemplate"]["annotations"]
+                        self.resources[
+                            ("secret", body["spec"]["secretName"], namespace)
+                        ] = _resource(
+                            "Secret",
+                            body["spec"]["secretName"],
+                            annotations=annotations.copy(),
+                            type="kubernetes.io/tls",
+                            data={
+                                "tls.crt": base64.b64encode(certificate).decode(
+                                    "ascii"
+                                ),
+                                "tls.key": base64.b64encode(private_key).decode(
+                                    "ascii"
+                                ),
+                            },
+                        )
+            elif args and args[0] == "wait":
+                pass
             elif args and args[0] == "label":
                 if self.node is not None:
                     key, value = args[3].split("=", 1)
@@ -283,8 +463,11 @@ class FakeEnvironment:
             elif args and args[0] == "annotate":
                 kind = args[1]
                 name = args[2]
-                key, value = args[3].split("=", 1)
-                namespace = ENVOY_NAMESPACE if "--namespace" in args else None
+                namespace = (
+                    args[args.index("--namespace") + 1]
+                    if "--namespace" in args
+                    else None
+                )
                 resource = self.resources.get((kind, name, namespace))
                 if kind == "crd":
                     resource = next(
@@ -296,7 +479,13 @@ class FakeEnvironment:
                         None,
                     )
                 if resource is not None and not self.ignore_annotations:
-                    resource["metadata"].setdefault("annotations", {})[key] = value
+                    annotations = resource["metadata"].setdefault("annotations", {})
+                    for item in args[3:]:
+                        if item.startswith("--"):
+                            continue
+                        if "=" in item:
+                            key, value = item.split("=", 1)
+                            annotations[key] = value
             elif args and args[0] == "apply":
                 self.applied_manifests += 1
                 if self.add_crds_on_apply:
@@ -312,7 +501,10 @@ class FakeEnvironment:
                 output = "apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n"
             elif len(argv) > 1 and argv[1] == "install":
                 self.helm_installs += 1
-                if self.add_controller_on_install:
+                if len(argv) > 2 and argv[2] == CERT_MANAGER_RELEASE:
+                    if self.add_cert_manager_on_install:
+                        self.add_cert_manager()
+                elif self.add_controller_on_install:
                     self.add_controller(
                         owner=self.controller_owner_on_install,
                         version=self.controller_version_on_install,
@@ -564,8 +756,43 @@ def test_create_uses_run_specific_cluster_and_argv_without_shell(
     assert saved["phase"] == "owned"
 
 
+def test_create_preserves_digest_pinned_node_image_in_state_and_argv(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment(owned=False)
+    environment.clusters.clear()
+    environment.contexts.clear()
+    tool = KindGatewayApi(
+        runner=environment,
+        which=lambda name: f"/fake/{name}",
+        state_dir=tmp_path,
+    )
+
+    state = tool.create(node_image=PINNED_NODE_IMAGE, run_id=RUN_ID)
+    saved_state = tool._load_state(RUN_ID)
+    kind_create = next(
+        argv
+        for argv, _ in environment.commands
+        if argv[0] == "/fake/kind" and argv[1:3] == ["create", "cluster"]
+    )
+
+    assert state.node_image == PINNED_NODE_IMAGE
+    assert saved_state.node_image == PINNED_NODE_IMAGE
+    assert kind_create[kind_create.index("--image") + 1] == PINNED_NODE_IMAGE
+    assert all(kwargs["shell"] is False for _, kwargs in environment.commands)
+
+
 @pytest.mark.parametrize(
-    "image", ["kindest/node:latest", "kindest/node:v1.32.9", "kindest/node:v1.37.0"]
+    "image",
+    [
+        "kindest/node:latest",
+        "kindest/node:v1.32.9",
+        "kindest/node:v1.37.0",
+        "kindest/node:v1.36.4@sha256:ABCDEF" + ("0" * 58),
+        "kindest/node:v1.36.4@sha256:" + ("0" * 63),
+        "ghcr.io/kindest/node:v1.36.4@sha256:" + ("0" * 64),
+        "kindest/node:v1.36.4@sha256:" + ("0" * 64) + " --help",
+    ],
 )
 def test_create_rejects_unpinned_or_undocumented_kubernetes_versions(
     tmp_path: Path, image: str
@@ -1543,7 +1770,242 @@ def test_prepare_marks_new_crds_and_controller_after_verified_install(
         for argv, _ in environment.commands
         if argv[0] == "/fake/kubectl" and argv[3:5] == ["annotate", "crd"]
     ]
-    assert len(crd_annotations) == 5
+    assert len(crd_annotations) == 5 + len(CERT_MANAGER_CRDS)
+
+
+def test_cert_manager_install_is_pinned_and_marks_only_verified_release_resources(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    tool = _tool(tmp_path, environment)
+
+    tool._install_cert_manager(_run_state())
+
+    install = next(
+        argv
+        for argv, _ in environment.commands
+        if argv[0] == "/fake/helm"
+        and len(argv) > 2
+        and argv[1:3] == ["install", CERT_MANAGER_RELEASE]
+    )
+    assert install == [
+        "/fake/helm",
+        "install",
+        CERT_MANAGER_RELEASE,
+        CERT_MANAGER_HELM_CHART,
+        "--version",
+        CERT_MANAGER_VERSION,
+        "--namespace",
+        CERT_MANAGER_NAMESPACE,
+        "--set",
+        "crds.enabled=true",
+        "--set",
+        "config.gatewayAPI.enabled=true",
+        "--set",
+        "clusterResourceNamespace=cert-manager",
+        "--wait",
+        "--timeout",
+        "180s",
+        "--kube-context",
+        CONTEXT,
+    ]
+    namespace = environment.resources[("namespace", CERT_MANAGER_NAMESPACE, None)]
+    assert namespace["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+    assert namespace["metadata"]["annotations"][MANAGED_BY_KEY] == MANAGED_BY_VALUE
+    for name in CERT_MANAGER_DEPLOYMENTS:
+        deployment = environment.resources[("deployment", name, CERT_MANAGER_NAMESPACE)]
+        assert deployment["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+    for crd in environment.crds:
+        if crd["metadata"]["name"] in CERT_MANAGER_CRDS:
+            assert crd["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+
+
+@pytest.mark.parametrize(
+    ("problem", "message"),
+    [
+        ("partial", "installation is partial"),
+        ("wrong_version", "unowned, unready, or not"),
+        ("wrong_helm_identity", "not part of the pinned Helm release"),
+        ("unready", "unowned, unready, or not"),
+        ("foreign_owner", "unowned by this run"),
+    ],
+)
+def test_cert_manager_installation_fails_closed_on_existing_drift(
+    tmp_path: Path, problem: str, message: str
+) -> None:
+    environment = FakeEnvironment()
+    if problem == "partial":
+        environment.resources[("namespace", CERT_MANAGER_NAMESPACE, None)] = _resource(
+            "Namespace", CERT_MANAGER_NAMESPACE
+        )
+    else:
+        environment.add_cert_manager(run_owned=True)
+        if problem == "wrong_version":
+            for name in CERT_MANAGER_DEPLOYMENTS:
+                environment.resources[("deployment", name, CERT_MANAGER_NAMESPACE)][
+                    "metadata"
+                ]["labels"]["app.kubernetes.io/version"] = "v1.20.0"
+        elif problem == "wrong_helm_identity":
+            environment.crds[0]["metadata"]["annotations"].pop(
+                "meta.helm.sh/release-name"
+            )
+        elif problem == "unready":
+            environment.resources[
+                ("deployment", CERT_MANAGER_DEPLOYMENTS[0], CERT_MANAGER_NAMESPACE)
+            ]["status"]["availableReplicas"] = 0
+        elif problem == "foreign_owner":
+            environment.resources[("namespace", CERT_MANAGER_NAMESPACE, None)][
+                "metadata"
+            ]["annotations"][OWNER_KEY] = "ffffffffffff"
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match=message):
+        tool._install_cert_manager(_run_state())
+
+    assert environment.helm_installs == 0
+
+
+def test_cert_manager_namespace_create_race_does_not_adopt_foreign_namespace(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.namespace_appears_before_create = True
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError):
+        tool._install_cert_manager(_run_state())
+
+    namespace = environment.resources[("namespace", CERT_MANAGER_NAMESPACE, None)]
+    assert namespace["metadata"]["annotations"] == {OWNER_KEY: "ffffffffffff"}
+    assert environment.helm_installs == 0
+
+
+@pytest.mark.parametrize(
+    "resource_kind", ["issuer", "certificate", "clusterissuer", "secret"]
+)
+def test_prepare_rejects_foreign_local_ca_name_before_installing_cert_manager(
+    tmp_path: Path, resource_kind: str
+) -> None:
+    environment = FakeEnvironment()
+    environment.add_valid_gateway_crds()
+    environment.resources[("namespace", CERT_MANAGER_NAMESPACE, None)] = _resource(
+        "Namespace",
+        CERT_MANAGER_NAMESPACE,
+        annotations={OWNER_KEY: RUN_ID, MANAGED_BY_KEY: MANAGED_BY_VALUE},
+    )
+    tool = _tool(tmp_path, environment)
+    state = _run_state()
+    names = tool._cert_manager_names(state)
+    if resource_kind == "secret":
+        name = names["ca_secret"]
+        namespace = CERT_MANAGER_NAMESPACE
+        resource = _resource(
+            "Secret",
+            name,
+            annotations={OWNER_KEY: "ffffffffffff"},
+            type="kubernetes.io/tls",
+            data={},
+        )
+    else:
+        manifest = next(
+            item
+            for item in tool._local_ca_manifests(state)
+            if item["kind"].lower() == resource_kind
+        )
+        metadata = manifest["metadata"]
+        name = metadata["name"]
+        namespace = metadata.get("namespace")
+        crd_name = {
+            "issuer": "issuers.cert-manager.io",
+            "certificate": "certificates.cert-manager.io",
+            "clusterissuer": "clusterissuers.cert-manager.io",
+        }[resource_kind]
+        environment.crds.append(
+            {
+                "metadata": {"name": crd_name},
+                "spec": {
+                    "group": "cert-manager.io",
+                    "versions": [{"name": "v1", "served": True}],
+                },
+            }
+        )
+        resource = _resource(
+            manifest["kind"],
+            name,
+            annotations={OWNER_KEY: "ffffffffffff"},
+            spec=manifest["spec"],
+        )
+    environment.resources[(resource_kind, name, namespace)] = resource
+
+    with pytest.raises(
+        KindGatewayApiError, match="already exists with conflicting ownership"
+    ):
+        tool.prepare(RUN_ID)
+
+    assert environment.helm_installs == 0
+    assert environment.applied_manifests == 0
+
+
+@pytest.mark.parametrize(
+    "invalid_pair",
+    [
+        "malformed",
+        "not_ca",
+        "mismatched_key",
+        "expired",
+        "appended_certificate",
+        "wrong_subject",
+    ],
+)
+def test_local_ca_pair_validation_rejects_invalid_material(invalid_pair: str) -> None:
+    certificate, private_key = _test_ca_pair()
+    if invalid_pair == "malformed":
+        certificate = b"not a certificate"
+    elif invalid_pair == "not_ca":
+        certificate, private_key = _test_ca_pair(is_ca=False)
+    elif invalid_pair == "mismatched_key":
+        _, private_key = _test_ca_pair()
+    elif invalid_pair == "appended_certificate":
+        second_certificate, _ = _test_ca_pair()
+        certificate += second_certificate
+    elif invalid_pair == "wrong_subject":
+        certificate, private_key = _test_ca_pair(common_name="foreign-ca.example")
+    else:
+        certificate, private_key = _test_ca_pair(expired=True)
+
+    with pytest.raises(KindGatewayApiError, match="key pair is invalid"):
+        KindGatewayApi._validated_ca_pair(
+            certificate,
+            private_key,
+            expected_common_name=f"ue-gw-{RUN_ID}.kind.local",
+            expected_organization="University Ecosystem kind",
+        )
+
+
+def test_ca_export_writes_only_the_public_certificate_create_only(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.add_cert_manager(run_owned=True)
+    tool = _tool(tmp_path, environment)
+    state = _run_state()
+    tool._ensure_local_ca(state)
+    certificate, private_key = environment.cert_manager_pair
+
+    result = tool.ca_export(RUN_ID)
+    output_path = tmp_path / f"{CLUSTER}-ca.crt"
+
+    assert Path(result["ca_bundle_path"]) == output_path
+    assert output_path.read_bytes() == certificate
+    assert private_key not in output_path.read_bytes()
+    assert result["ca_bundle_sha256"] == hashlib.sha256(certificate).hexdigest()
+    assert result["host_trust_store_modified"] == "false"
+    assert tool.ca_export(RUN_ID) == result
+
+    output_path.write_bytes(b"foreign replacement")
+    with pytest.raises(KindGatewayApiError, match="refusing to overwrite"):
+        tool.ca_export(RUN_ID)
+    assert output_path.read_bytes() == b"foreign replacement"
 
 
 @pytest.mark.parametrize(
@@ -1645,12 +2107,15 @@ def test_controller_install_verifies_created_namespace_and_deployment(
 def test_prepare_rerun_is_idempotent_for_run_owned_resources(tmp_path: Path) -> None:
     environment = FakeEnvironment()
     environment.add_valid_gateway_crds()
+    environment.add_cert_manager(run_owned=True)
     environment.add_controller()
     environment.add_gateway_class()
     tool = _tool(tmp_path, environment)
 
     first = tool.prepare(RUN_ID)
+    commands_after_first_prepare = len(environment.commands)
     second = tool.prepare(RUN_ID)
+    second_prepare_commands = environment.commands[commands_after_first_prepare:]
 
     assert first.gateway_class_created is True
     assert second.gateway_class_created is True
@@ -1658,7 +2123,7 @@ def test_prepare_rerun_is_idempotent_for_run_owned_resources(tmp_path: Path) -> 
     assert environment.helm_installs == 0
     assert not any(
         argv[0] == "/fake/kubectl" and argv[3] == "create" and argv[4:6] == ["-f", "-"]
-        for argv, _ in environment.commands
+        for argv, _ in second_prepare_commands
     )
 
 
@@ -1681,15 +2146,23 @@ def test_prepare_installs_pinned_prerequisites_once_and_creates_run_owned_class(
 
     first = tool.prepare(RUN_ID)
     second = tool.prepare(RUN_ID)
+    names = tool._cert_manager_names(_run_state())
+    ca_certificate = environment.resources[
+        ("certificate", names["root_certificate"], CERT_MANAGER_NAMESPACE)
+    ]
+    ca_issuer = environment.resources[("clusterissuer", names["cluster_issuer"], None)]
 
     assert first.crds_installed is True
     assert first.controller_installed is True
     assert first.gateway_class_created is True
     assert second.gateway_class_created is True
     assert environment.applied_manifests == 1
-    assert environment.helm_installs == 1
+    assert environment.helm_installs == 2
     assert environment.gateway_class is not None
     assert environment.gateway_class["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+    assert ca_certificate["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+    assert ca_certificate["status"]["conditions"][0]["status"] == "True"
+    assert ca_issuer["metadata"]["annotations"][OWNER_KEY] == RUN_ID
 
 
 @pytest.mark.parametrize("mutation", ["owner", "manager", "controller"])
@@ -1717,6 +2190,8 @@ def test_prepare_refuses_existing_gatewayclass_not_owned_by_this_run(
         tool.prepare(RUN_ID)
 
     assert environment.deleted == []
+    assert environment.applied_manifests == 0
+    assert environment.helm_installs == 0
 
 
 def test_prepare_requires_gatewayclass_creation_to_be_verifiable(
@@ -1954,6 +2429,10 @@ def test_cli_dispatches_every_supported_command_without_cluster_access(
             calls.append(("smoke", (run_id,), {}))
             return {"smoke": "ok"}
 
+        def ca_export(self, run_id: str) -> dict[str, str]:
+            calls.append(("ca-export", (run_id,), {}))
+            return {"ca_bundle_path": str(tmp_path / "ca.crt")}
+
         def registry_start(
             self, run_id: str, *, image: str, port: int
         ) -> dict[str, str]:
@@ -1980,6 +2459,7 @@ def test_cli_dispatches_every_supported_command_without_cluster_access(
         ["preflight", "--run-id", RUN_ID],
         ["prepare", "--run-id", RUN_ID],
         ["smoke", "--run-id", RUN_ID],
+        ["ca-export", "--run-id", RUN_ID],
         ["registry-start", "--run-id", RUN_ID, "--image", REGISTRY_IMAGE],
         ["registry-status", "--run-id", RUN_ID],
         ["registry-stop", "--run-id", RUN_ID],
@@ -1999,6 +2479,7 @@ def test_cli_dispatches_every_supported_command_without_cluster_access(
         "preflight",
         "prepare",
         "smoke",
+        "ca-export",
         "registry-start",
         "registry-status",
         "registry-stop",

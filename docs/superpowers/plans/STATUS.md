@@ -1,13 +1,13 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-07 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
+Срез на 2026-10-08 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
 Работа возобновлена. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База изменений — `f741475d0`; закрытый demo и full mutation run — на `a3f339514`.
+  База изменений — `a028107e8`; закрытый demo и full mutation run — на `a3f339514`.
   Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
   Три GPT-6 Luna Max работают в непересекающихся областях; root проверяет интеграцию.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
@@ -20,11 +20,11 @@
   Full mutation `37670438144/a1` запущен с `backend_scope=full`; stats shard2/8 FAILED.
   Backend aggregate FAILED; frontend jobs ещё выполняются. Stats RCA ждёт logs.
   Это не итоговый score. PR checks нового source проверяются отдельно.
-  Старые catalog/nightly/scheduled contract failures исправлены в `a3f`.
-- Root cumulative auth138/138 и catalog/preflight/nightly62/62 PASS.
-  Scheduled/preflight delta12/12 PASS после двух воспроизведённых stale assertions.
-  Полный новый fast preflight10/10 PASS; это не release evidence.
-  UV offline lock check и npm dry-run PASS; только два lock metadata leaves изменены.
+- Root auth82/82, event contracts40/40, live contracts145/145 PASS;
+  fast preflight10/10 PASS. PR live `37684359401/a1` FAILED до Docker:
+  stale seed signature regex исправлен; требуется новый hosted run.
+  Focused Stryker366 остановлен на initial AuthContext cache-purge dry-run failure;
+  mutant outcomes отсутствуют; isolated и combined94/94 baseline PASS, RCA открыт.
   Проверены 33 Dependabot advisory против 56 locked resolutions: affected matches0;
   это не закрытие alerts default branch и не глобальная security-сертификация.
 - Matrix run `37526001524/a1`: event source `4213`; producer —
@@ -65,8 +65,8 @@
   Root get9: baseline2 PASS/exact1 PASS+1 assertion FAIL; canonical get9/9 PASS.
   PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
   Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
-- Paired benchmark: immutable BASE, threshold1.10, 33 Go/4 Rust metrics по 12 парам.
-  Root BASE/candidate proof на source97a не является load/release certification для `7ac`.
+- Cert-manager/local CA: independent review clear, offline kind204/204 PASS.
+  Runtime kind/TLS ещё не запускался; kind binary подготавливается с checksum.
 
 ## Live-приёмка
 
