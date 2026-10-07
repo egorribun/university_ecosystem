@@ -1192,7 +1192,17 @@ class KindGatewayApi:
                 raise KindGatewayApiError(
                     f"Gateway API CRD '{name}' must use {GATEWAY_API_BUNDLE_VERSION} on the Standard channel"
                 )
+        self._wait_for_crd_established(state, name)
         return crd
+
+    def _wait_for_crd_established(self, state: RunState, name: str) -> None:
+        self._kubectl(
+            state,
+            "wait",
+            "--for=condition=Established",
+            f"crd/{name}",
+            "--timeout=60s",
+        )
 
     def _preflight(
         self, state: RunState, *, include_cert_manager: bool
@@ -1696,6 +1706,7 @@ class KindGatewayApi:
                 resource_kind
             ] not in existing_crds:
                 continue
+            self._wait_for_crd_established(state, crd_for_kind[resource_kind])
             resource = self._get_json(state, resource_kind, metadata["name"], *args)
             if resource is not None and (
                 not self._has_run_owner(resource, state.run_id)
@@ -2071,6 +2082,9 @@ class KindGatewayApi:
         return updated
 
     def _gateway_class_resource(self, state: RunState) -> dict[str, Any] | None:
+        if self._get_json(state, "crd", GATEWAY_API_CRDS[0]) is None:
+            return None
+        self._wait_for_crd_established(state, GATEWAY_API_CRDS[0])
         return self._get_json(state, "gatewayclass", state.gateway_class)
 
     def _assert_gateway_class_not_foreign(self, state: RunState) -> None:
@@ -2141,6 +2155,7 @@ class KindGatewayApi:
         self._assert_local_ca_resources_available(state)
         state = self._install_gateway_crds(state)
         self._assert_owned(state)
+        self._assert_gateway_class_not_foreign(state)
         self._install_cert_manager(state)
         self._ensure_local_ca(state)
         self._assert_owned(state)

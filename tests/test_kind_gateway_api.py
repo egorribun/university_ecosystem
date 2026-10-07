@@ -156,6 +156,8 @@ class FakeEnvironment:
         self.configmap: dict[str, Any] | None = None
         self.node: dict[str, Any] | None = None
         self.crds: list[dict[str, Any]] = []
+        self.established_crds: set[str] = set()
+        self.crd_wait_failures: dict[str, str] = {}
         self.resources: dict[tuple[str, str, str | None], dict[str, Any]] = {}
         self.gateway_class: dict[str, Any] | None = None
         self.server_version = {"major": "1", "minor": "35", "gitVersion": "v1.35.1"}
@@ -407,6 +409,23 @@ class FakeEnvironment:
             elif args and args[0] == "version":
                 output = json.dumps({"serverVersion": self.server_version})
             elif args and args[0] == "get":
+                gatewayclass_crd_exists = any(
+                    crd.get("metadata", {}).get("name")
+                    == "gatewayclasses.gateway.networking.k8s.io"
+                    for crd in self.crds
+                )
+                gatewayclass_crd_established = (
+                    "gatewayclasses.gateway.networking.k8s.io" in self.established_crds
+                )
+                if args[1:2] == ["gatewayclass"] and (
+                    not gatewayclass_crd_exists or not gatewayclass_crd_established
+                ):
+                    return subprocess.CompletedProcess(
+                        argv,
+                        1,
+                        "",
+                        'error: the server doesn\'t have a resource type "gatewayclass"',
+                    )
                 output = self._kubectl_get(args)
             elif args[:2] == ["create", "configmap"]:
                 data = {}
@@ -467,7 +486,30 @@ class FakeEnvironment:
                             },
                         )
             elif args and args[0] == "wait":
-                pass
+                if (
+                    len(args) >= 3
+                    and args[1] == "--for=condition=Established"
+                    and args[2].startswith("crd/")
+                ):
+                    crd_name = args[2].removeprefix("crd/")
+                    if crd_name in self.crd_wait_failures:
+                        return subprocess.CompletedProcess(
+                            argv,
+                            1,
+                            "",
+                            self.crd_wait_failures[crd_name],
+                        )
+                    if not any(
+                        crd.get("metadata", {}).get("name") == crd_name
+                        for crd in self.crds
+                    ):
+                        return subprocess.CompletedProcess(
+                            argv,
+                            1,
+                            "",
+                            f'customresourcedefinition "{crd_name}" not found',
+                        )
+                    self.established_crds.add(crd_name)
             elif args and args[0] == "label":
                 if self.node is not None:
                     key, value = args[3].split("=", 1)
@@ -2255,6 +2297,186 @@ def test_prepare_installs_pinned_prerequisites_once_and_creates_run_owned_class(
     assert ca_issuer["metadata"]["annotations"][OWNER_KEY] == RUN_ID
 
 
+def test_prepare_installs_gateway_crds_before_gatewayclass_lookup_on_fresh_cluster(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    tool = _tool(tmp_path, environment)
+    tool._save_state(
+        _run_state(
+            crds_installed=False,
+            controller_installed=False,
+            gateway_class_created=False,
+        )
+    )
+
+    state = tool.prepare(RUN_ID)
+
+    assert state.crds_installed is True
+    crd_apply_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl" and argv[3:6] == ["apply", "--server-side", "-f"]
+    )
+    gatewayclass_lookup_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl" and argv[3:5] == ["get", "gatewayclass"]
+    )
+    gatewayclass_wait_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl"
+        and argv[3:6]
+        == [
+            "wait",
+            "--for=condition=Established",
+            "crd/gatewayclasses.gateway.networking.k8s.io",
+        ]
+    )
+    assert crd_apply_index < gatewayclass_wait_index < gatewayclass_lookup_index
+    assert "--timeout=60s" in environment.commands[gatewayclass_wait_index][0]
+    assert environment.established_crds.issuperset(
+        {
+            "gatewayclasses.gateway.networking.k8s.io",
+            "gateways.gateway.networking.k8s.io",
+            "httproutes.gateway.networking.k8s.io",
+            "clienttrafficpolicies.gateway.envoyproxy.io",
+            "backendtrafficpolicies.gateway.envoyproxy.io",
+            *CERT_MANAGER_CRDS,
+        }
+    )
+
+
+def test_prepare_waits_for_preexisting_partial_gateway_crd_before_lookup(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.add_valid_gateway_crds()
+    environment.crds = environment.crds[:1]
+    tool = _tool(tmp_path, environment)
+    tool._save_state(
+        _run_state(
+            crds_installed=False,
+            controller_installed=False,
+            gateway_class_created=False,
+        )
+    )
+
+    state = tool.prepare(RUN_ID)
+
+    assert state.crds_installed is True
+    wait_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl"
+        and argv[3:6]
+        == [
+            "wait",
+            "--for=condition=Established",
+            "crd/gatewayclasses.gateway.networking.k8s.io",
+        ]
+    )
+    lookup_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl" and argv[3:5] == ["get", "gatewayclass"]
+    )
+    assert wait_index < lookup_index
+    assert environment.applied_manifests == 1
+
+
+def test_prepare_preserves_crd_establishment_wait_failure_before_mutation(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.add_valid_gateway_crds()
+    environment.crd_wait_failures["gatewayclasses.gateway.networking.k8s.io"] = (
+        "timed out waiting for condition"
+    )
+    tool = _tool(tmp_path, environment)
+    tool._save_state(
+        _run_state(
+            crds_installed=False,
+            controller_installed=False,
+            gateway_class_created=False,
+        )
+    )
+
+    with pytest.raises(KindGatewayApiError, match="timed out waiting for condition"):
+        tool.prepare(RUN_ID)
+
+    assert environment.applied_manifests == 0
+    assert environment.helm_installs == 0
+    assert not any(
+        argv[0] == "/fake/kubectl" and argv[3:5] == ["get", "gatewayclass"]
+        for argv, _ in environment.commands
+    )
+
+
+def test_prepare_waits_for_existing_cert_manager_crd_before_local_resource_get(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.add_cert_manager(run_owned=True)
+    tool = _tool(tmp_path, environment)
+    tool._save_state(
+        _run_state(
+            crds_installed=False,
+            controller_installed=False,
+            gateway_class_created=False,
+        )
+    )
+
+    tool.prepare(RUN_ID)
+
+    issuer_crd = "issuers.cert-manager.io"
+    wait_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl"
+        and argv[3:6] == ["wait", "--for=condition=Established", f"crd/{issuer_crd}"]
+    )
+    issuer_lookup_index = next(
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl" and argv[3:5] == ["get", "issuer"]
+    )
+    assert wait_index < issuer_lookup_index
+
+
+def test_prepare_does_not_treat_gatewayclass_crd_read_error_as_absence(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+
+    def runner(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if (
+            argv[0] == "/fake/kubectl"
+            and argv[3:5] == ["get", "crd"]
+            and argv[5] == "gatewayclasses.gateway.networking.k8s.io"
+        ):
+            return subprocess.CompletedProcess(argv, 1, "", "forbidden")
+        return environment(argv, **kwargs)
+
+    tool = KindGatewayApi(
+        runner=runner, which=lambda name: f"/fake/{name}", state_dir=tmp_path
+    )
+    tool._save_state(
+        _run_state(
+            crds_installed=False,
+            controller_installed=False,
+            gateway_class_created=False,
+        )
+    )
+
+    with pytest.raises(KindGatewayApiError, match="forbidden"):
+        tool.prepare(RUN_ID)
+
+    assert environment.applied_manifests == 0
+    assert environment.helm_installs == 0
+
+
 @pytest.mark.parametrize("mutation", ["owner", "manager", "controller"])
 def test_prepare_refuses_existing_gatewayclass_not_owned_by_this_run(
     tmp_path: Path, mutation: str
@@ -2586,6 +2808,7 @@ def test_rollback_refuses_unowned_gateway_class_and_deletes_nothing(
     tmp_path: Path,
 ) -> None:
     environment = FakeEnvironment()
+    environment.add_valid_gateway_crds()
     environment.add_gateway_class(owned=False)
     tool = _tool(tmp_path, environment)
 
@@ -2626,6 +2849,7 @@ def test_rollback_deletes_only_owned_gateway_class_and_preserves_cluster_data(
     tmp_path: Path,
 ) -> None:
     environment = FakeEnvironment()
+    environment.add_valid_gateway_crds()
     environment.add_controller()
     environment.add_gateway_class()
     environment.resources[("persistentvolumeclaim", "user-data", "university")] = (
@@ -2647,6 +2871,7 @@ def test_rollback_deletes_only_owned_gateway_class_and_preserves_cluster_data(
 
 def test_rollback_fails_if_owned_class_remains_after_delete(tmp_path: Path) -> None:
     environment = FakeEnvironment()
+    environment.add_valid_gateway_crds()
     environment.add_gateway_class()
     environment.keep_gateway_class_on_delete = True
     tool = _tool(tmp_path, environment)

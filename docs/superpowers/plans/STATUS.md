@@ -7,7 +7,7 @@
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База изменений — `c3bd0854a`; закрытый demo и full mutation run — на `a3f339514`.
+  База изменений — `75c5599b8`; закрытый demo и full mutation run — на `a3f339514`.
   Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
   Три GPT-6 Luna Max работают в раздельных областях; root проверяет интеграцию и ресурсы.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
@@ -20,8 +20,8 @@
   Full mutation `37670438144/a1` завершён: backend execution0/128, stats7/8.
   Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
-- Root outbox9/9, news schema14/14 +UI23/23, typecheck PASS;
-  fast preflight10/10 PASS. PR live `37684359401/a1` FAILED до Docker:
+- Root outbox9/9, news schema14/14 +UI23/23 PASS; cursor26/26 PASS, exact140/44 assertion RED.
+  Preflight9/10, lint PASS после отката epoch cleanup. PR live `37684359401/a1` FAILED до Docker:
   stale seed signature regex исправлен; требуется новый hosted run.
   Focused366: initial AuthContext failure, outcomes отсутствуют; baseline94/94 PASS.
   Related dry-run GREEN после policy staging; exact case collection не доказана, RCA открыт.
@@ -65,8 +65,8 @@
   Root get9: baseline2 PASS/exact1 PASS+1 assertion FAIL; canonical get9/9 PASS.
   PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
   Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
-- Kind identity/race fixes: root226/226 PASS и independent review clear.
-  Run489217e3ed90: create FAILED на Node identity; recover после нового checkpoint.
+- Kind identity/race root226/226 PASS; CRD readiness231/231 PASS; recover489217e3ed90 PASS.
+  Prepare FAILED: GatewayClass запрошен до CRD; teardown PASS, Docker containers0.
 
 ## Live-приёмка
 

@@ -152,6 +152,65 @@ async def test_legacy_datetime_cursor_resolves_relevance_anchor(
     assert [item.id for item in page.items] == expected
 
 
+@pytest.mark.asyncio
+async def test_legacy_event_cursor_uses_the_matching_unique_rank_anchor(
+    ranked_database, user_factory, monkeypatch
+):
+    user = await user_factory()
+    records = await _seed(ranked_database, user, "event")
+    monkeypatch.setattr(settings, "semantic_search_enabled", False)
+    vector = AsyncMock()
+    vector.get_embedding.return_value = [1.0, 0.0]
+    service = EventService(uow_from_session(ranked_database), vector)
+    anchor = records[2]
+    cursor = encode_datetime_cursor(anchor.starts_at, str(anchor.id))
+
+    page = await service.get_events(search="query", limit=10, cursor=cursor)
+
+    assert [item.id for item in page.items] == [
+        records[3].id,
+        records[4].id,
+        records[5].id,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_event_hybrid_rank_prefers_the_closer_embedding(
+    ranked_database, user_factory, monkeypatch
+):
+    user = await user_factory()
+    now = datetime.now(UTC)
+    closer = Event(
+        id=UUID(int=(0xB << 124) + 1),
+        title="Equal text rank",
+        search_vector="1",
+        embedding="0.1",
+        starts_at=now + timedelta(days=2),
+        ends_at=now + timedelta(days=3),
+        created_by=user.id,
+    )
+    farther = Event(
+        id=UUID(int=(0xB << 124) + 2),
+        title="Equal text rank",
+        search_vector="1",
+        embedding="0.8",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=2),
+        created_by=user.id,
+    )
+    ranked_database.add_all([closer, farther])
+    await ranked_database.commit()
+
+    monkeypatch.setattr(settings, "semantic_search_enabled", True)
+    vector = AsyncMock()
+    vector.get_embedding.return_value = [1.0, 0.0]
+    service = EventService(uow_from_session(ranked_database), vector)
+
+    page = await service.get_events(search="query", limit=10)
+
+    assert [item.id for item in page.items] == [closer.id, farther.id]
+
+
 def test_ranked_cursor_round_trip_preserves_nulls_and_precision():
     from app.utils.pagination import (
         decode_ranked_datetime_cursor,
