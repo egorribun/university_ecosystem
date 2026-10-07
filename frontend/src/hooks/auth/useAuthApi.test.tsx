@@ -7,7 +7,7 @@ import { AxiosError, AxiosHeaders } from "axios"
 import { extractSigningKey, useAuthApi } from "./useAuthApi"
 import type { User } from "@/types/User"
 import { ChallengeLockedError, type PendingMfaState } from "@/types/Auth"
-import { captureSessionEpoch } from "@/stores/sessionEpoch"
+import { acceptBrowserSessionGeneration, captureSessionEpoch } from "@/stores/sessionEpoch"
 import { API_UNAUTHORIZED_EVENT } from "@/api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 
@@ -208,6 +208,22 @@ describe("login", () => {
     expect(w.setAuthOperation).not.toHaveBeenCalled()
   })
 
+  it("no-ops when authOperation becomes in-flight after login callback creation", async () => {
+    const w = makeWires({ authOperation: false })
+    const { result, rerender } = renderApi(w)
+    w.authOperation = true
+    rerender()
+
+    let output: unknown
+    await act(async () => {
+      output = await result.current.login("a@b.dev", "pw")
+    })
+
+    expect(output).toBeNull()
+    expect(mocks.apiPost).not.toHaveBeenCalled()
+    expect(w.setAuthOperation).not.toHaveBeenCalled()
+  })
+
   it("posts to /auth/login with urlencoded body + trust_device flag (lines 135-149)", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
@@ -228,6 +244,21 @@ describe("login", () => {
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 
+  it("omits trusted-device enrollment when login uses its default", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser() },
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    const body = mocks.apiPost.mock.calls[0]![1] as URLSearchParams
+    expect(body.has("trust_device")).toBe(false)
+  })
   it("returns pending state on 202 MFA challenge (lines 151-159)", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({
@@ -264,6 +295,26 @@ describe("login", () => {
     dispatch.mockRestore()
   })
 
+  it("does not request Spotify reauthorization for an unconnected login profile", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent")
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser({ spotify_connected: false }) },
+    })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.login("a@b.dev", "pw")
+      })
+      expect(dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT })
+      )
+    } finally {
+      dispatch.mockRestore()
+    }
+  })
   it("hands push sync to the identity gate for exactly the logged-in account", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser({ id: 42 } as never) } })
@@ -288,17 +339,29 @@ describe("login", () => {
     expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
   })
 
-  it("throws 'Invalid response from server' when payload is not a token-with-profile (line 187)", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockResolvedValue({ status: 200, data: { nope: true } })
-    const { result } = renderApi(w)
-    await expect(
-      act(async () => {
-        await result.current.login("a@b.dev", "pw")
-      })
-    ).rejects.toThrow("Invalid response from server")
-    expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
-  })
+  it.each([
+    ["missing user property", { nope: true }],
+    ["null response payload", null],
+    ["truthy non-object user", { user: "malformed-profile" }],
+  ] as const)(
+    "rejects malformed login response payloads before changing auth state (%s)",
+    async (_caseName, data) => {
+      const w = makeWires()
+      mocks.apiPost.mockResolvedValueOnce({ status: 200, data } as never)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("test@example.com", "password")
+        })
+      ).rejects.toThrow("Invalid response from server")
+
+      expect(w.setUser).not.toHaveBeenCalled()
+      expect(w.updateSessionSigningKey).not.toHaveBeenCalled()
+      expect(mocks.incrementSessionEpoch).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+    }
+  )
 
   it("maps 423 lockout WITHOUT retry-after to plain locked message (lines 196-197)", async () => {
     const w = makeWires()
@@ -339,6 +402,53 @@ describe("login", () => {
         await result.current.login("a@b.dev", "pw")
       })
     ).rejects.toThrow(expected)
+  })
+
+  it.each(["not-a-number", "-1"])(
+    "keeps a plain lockout message for unusable Retry-After value %s",
+    async (retryAfter) => {
+      const w = makeWires()
+      const cause = lockedError(retryAfter)
+      mocks.apiPost.mockRejectedValue(cause)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("a@b.dev", "pw")
+        })
+      ).rejects.toMatchObject({ message: "login.locked", cause })
+      expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+    }
+  )
+  describe("lockout Retry-After public behavior", () => {
+    it("keeps zero retry-after as the plain locked error", async () => {
+      const w = makeWires()
+      const cause = lockedError("0")
+      mocks.apiPost.mockRejectedValue(cause)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("a@b.dev", "pw")
+        })
+      ).rejects.toMatchObject({ message: "login.locked", cause })
+    })
+
+    it("reports the rounded positive seconds in the login lockout error", async () => {
+      const w = makeWires()
+      const cause = lockedError("30")
+      mocks.apiPost.mockRejectedValue(cause)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("a@b.dev", "pw")
+        })
+      ).rejects.toMatchObject({
+        message: "login.locked login.lockedRetry:login.duration.seconds:30",
+        cause,
+      })
+    })
   })
 
   it("rethrows an Axios transport error when the response is absent", async () => {
@@ -572,6 +682,21 @@ describe("logout", () => {
     })
     expect(w.handleUnauthorized).toHaveBeenCalled()
   })
+
+  it("uses the latest signed-in profile when logout follows an auth-state rerender", async () => {
+    const w = makeWires({ user: null })
+    const { result, rerender } = renderApi(w)
+    w.user = fullUser({ id: "current-account" })
+    rerender()
+
+    await act(async () => {
+      await result.current.logout()
+    })
+
+    expect(mocks.apiPost).toHaveBeenCalledTimes(1)
+    expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
+    expect(w.handleUnauthorized).toHaveBeenCalledTimes(1)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -626,6 +751,26 @@ describe("submitMfaChallenge", () => {
     expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
   })
 
+  it("does not request Spotify reauthorization for an unconnected login MFA profile", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent")
+    const w = makeWires({ pendingMfa: { reason: "login" } as PendingMfaState })
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser({ spotify_connected: false }) },
+    })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.submitMfaChallenge({ code: "123456" })
+      })
+      expect(dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT })
+      )
+    } finally {
+      dispatch.mockRestore()
+    }
+  })
   it("sends an empty challenge token when the optional token is absent", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
@@ -646,11 +791,17 @@ describe("submitMfaChallenge", () => {
     const w = makeWires()
     mocks.apiPost.mockRejectedValue(lockedError("90"))
     const { result } = renderApi(w)
-    await expect(
-      act(async () => {
+    let caught: unknown
+    await act(async () => {
+      try {
         await result.current.submitMfaChallenge({ code: "1", challengeToken: "ct" })
-      })
-    ).rejects.toBeInstanceOf(ChallengeLockedError)
+      } catch (error) {
+        caught = error
+      }
+    })
+    expect(caught).toBeInstanceOf(ChallengeLockedError)
+    expect((caught as ChallengeLockedError).refreshable).toBe(false)
+    expect(mocks.apiPost).toHaveBeenCalledTimes(1)
   })
 
   it("throws ChallengeLockedError (plain message) on 423 with no retry-after", async () => {
@@ -835,6 +986,81 @@ describe("refresh", () => {
     expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
   })
 
+  it("does not let a stale refresh 401 clear a newly signed-in profile", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    let finishCurrentUser!: (value: User) => void
+    let rejectCurrentUser!: (reason: unknown) => void
+    let refreshSettled = false
+    let refreshPending!: Promise<void>
+    const rerenderHook: { current?: () => void } = {}
+    const replacement = fullUser({ id: "new-account", email: "new@b.dev" })
+    const handleUnauthorized = vi.fn(() => {
+      w.user = null
+      rerenderHook.current?.()
+    })
+    const w: Wires = makeWires({
+      user: fullUser({ id: "old-account", email: "old@b.dev" }),
+      handleUnauthorized,
+    })
+    mocks.fetchCurrentUser.mockImplementationOnce(
+      () =>
+        new Promise<User>((resolve, reject) => {
+          finishCurrentUser = resolve
+          rejectCurrentUser = reject
+        })
+    )
+    const { result, rerender } = renderApi(w)
+    rerenderHook.current = rerender
+
+    try {
+      act(() => {
+        refreshPending = result.current.refresh()
+      })
+      await act(() => result.current.logout())
+      expect(w.user).toBeNull()
+      handleUnauthorized.mockClear()
+
+      mocks.apiPost.mockResolvedValueOnce({
+        status: 200,
+        data: { user: replacement },
+      } as never)
+      await act(async () => {
+        await result.current.login("new@b.dev", "password")
+      })
+      w.user = replacement
+      rerender()
+
+      const unauthorized = new AxiosError("stale unauthorized")
+      unauthorized.response = {
+        status: 401,
+        headers: {},
+        data: {},
+        statusText: "Unauthorized",
+        config: {} as never,
+      }
+      await act(async () => {
+        rejectCurrentUser(unauthorized)
+        refreshSettled = true
+        await refreshPending
+      })
+
+      expect(w.setUser).toHaveBeenCalledWith(replacement)
+      expect(handleUnauthorized).not.toHaveBeenCalled()
+      expect(w.user).toBe(replacement)
+    } finally {
+      if (!refreshSettled && finishCurrentUser) {
+        finishCurrentUser(fullUser({ id: "old-account", email: "old@b.dev" }))
+        await act(async () => {
+          await refreshPending
+        })
+      }
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
+  })
+
   it("resets etag cache, fetches profile + sets user (lines 332-346)", async () => {
     const w = makeWires()
     mocks.fetchCurrentUser.mockResolvedValue(fullUser())
@@ -923,6 +1149,32 @@ describe("refresh", () => {
     )
     expect(w.handleUnauthorized).not.toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+  })
+
+  it("uses the latest unauthorized handler when refresh follows callback rerender", async () => {
+    const previousHandler = vi.fn()
+    const currentHandler = vi.fn()
+    const w = makeWires({ handleUnauthorized: previousHandler })
+    const { result, rerender } = renderApi(w)
+    w.handleUnauthorized = currentHandler
+    rerender()
+
+    const unauthorized = new AxiosError("unauthorized")
+    unauthorized.response = {
+      status: 401,
+      headers: {},
+      data: {},
+      statusText: "Unauthorized",
+      config: {} as never,
+    }
+    mocks.fetchCurrentUser.mockRejectedValueOnce(unauthorized)
+
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(currentHandler).toHaveBeenCalledTimes(1)
+    expect(previousHandler).not.toHaveBeenCalled()
   })
 })
 

@@ -141,17 +141,30 @@ class TestMakeIdempotencyKey:
 
 class TestSendMessageValidation:
     @pytest.mark.asyncio
-    async def test_chat_not_found(self):
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        [("en", "Chat not found"), ("ru", "Чат не найден")],
+    )
+    async def test_chat_not_found(self, locale: str, expected_detail: str) -> None:
         uow = _mock_uow()
         uow.chats.get_by_id = AsyncMock(return_value=None)
+        chat_id = uuid.uuid4()
 
         dispatcher = ChatMessageDispatcher(
             uow, _mock_attachment_service(), _mock_notification_service()
         )
         user = _mock_user()
 
-        with pytest.raises(Exception):  # noqa: B017  # noqa: B017
-            await dispatcher.send_message(uuid.uuid4(), user, "Hello", [], "en")
+        with pytest.raises(HTTPException) as exc_info:
+            await dispatcher.send_message(chat_id, user, "Hello", [], locale)
+
+        if exc_info.value.status_code != 404:
+            raise AssertionError("chat_not_found_status_contract")
+        if exc_info.value.detail != expected_detail:
+            raise AssertionError("chat_not_found_localized_detail_contract")
+        uow.chats.get_by_id.assert_awaited_once_with(chat_id)
+        uow.chats.check_participant.assert_not_called()
+        uow.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_not_participant(self):
@@ -583,6 +596,70 @@ class TestClearHistory:
         uow.chats.delete_messages.assert_not_awaited()
         uow.commit.assert_not_awaited()
         attachment_svc.collect_urls.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        (
+            ("en", "You are not a participant of this chat"),
+            ("ru", "Вы не участник этого чата"),
+        ),
+    )
+    async def test_empty_chat_admin_is_forbidden_without_mutation(
+        self, locale: str, expected_detail: str
+    ) -> None:
+        uow = _mock_uow()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(admin.id)
+        chat.participants = []
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.delete_messages = AsyncMock()
+        uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.chats.add = MagicMock()
+
+        attachment_svc = _mock_attachment_service()
+        service = ChatMaintenanceService(uow, attachment_svc)
+
+        with pytest.raises(HTTPException) as raised:
+            await service.clear_history(chat.id, admin, locale)
+
+        assert raised.value.status_code == 403
+        assert raised.value.detail == expected_detail
+        assert uow.chats.get_by_id.await_count == 1
+        uow.chats.delete_messages.assert_not_awaited()
+        uow.chats.update_timestamp_by_id.assert_not_awaited()
+        uow.chats.add.assert_not_called()
+        attachment_svc.collect_urls.assert_not_awaited()
+        uow.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_participant_admin_uses_own_identity_for_history_clear(self) -> None:
+        uow = _mock_uow()
+        first_participant = _mock_user()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(first_participant.id, admin.id)
+        message = MagicMock(id=uuid.uuid4())
+        chat.messages = [message]
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.delete_messages = AsyncMock()
+        uow.chats.update_timestamp_by_id = AsyncMock()
+
+        service = ChatMaintenanceService(uow, _mock_attachment_service())
+        result = await service.clear_history(chat.id, admin, "en")
+
+        assert result.status == "cleared"
+        assert uow.chats.get_by_id.await_count == 2
+        uow.chats.get_by_id.assert_has_awaits(
+            [
+                call(chat.id),
+                call(chat.id, load_messages=True, user_id=admin.id),
+            ]
+        )
+        uow.chats.delete_messages.assert_awaited_once_with(
+            [message.id], chat_id=chat.id, user_id=admin.id
+        )
+        uow.chats.update_timestamp_by_id.assert_awaited_once()
+        uow.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(self):

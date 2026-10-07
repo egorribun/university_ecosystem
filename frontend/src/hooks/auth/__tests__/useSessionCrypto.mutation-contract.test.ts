@@ -2,6 +2,7 @@ import { renderHook, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+import { acceptBrowserSessionGeneration, getBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { cryptoWorker } from "@/utils/cryptoWorker"
 import {
   clearLegacySessionSigningKey,
@@ -334,6 +335,40 @@ describe("useSessionCrypto mutation contracts", () => {
     ])
   })
 
+  it("does not create a session generation when purging without a signing key", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    localStorage.removeItem(storageKey)
+    acceptBrowserSessionGeneration()
+
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+    const { result, unmount } = renderHook(() => useSessionCrypto())
+
+    try {
+      await act(async () => {
+        await Promise.resolve()
+      })
+      postMessage.mockClear()
+
+      await act(async () => {
+        await result.current.sendSessionCacheUpdate(null, { purge: true, force: true })
+      })
+
+      expect(getBrowserSessionGeneration()).toBeNull()
+      expect(postMessage.mock.calls).toEqual([
+        [{ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE }],
+        [{ type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY, sessionHash: undefined }],
+      ])
+    } finally {
+      unmount()
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
+  })
   it("synchronizes the empty session cache key on browser mount", async () => {
     const postMessage = vi.fn()
     vi.stubGlobal("navigator", {

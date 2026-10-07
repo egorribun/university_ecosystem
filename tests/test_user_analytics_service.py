@@ -115,6 +115,7 @@ async def test_attendance_stats_empty(svc, user_factory):
         user_id=user.id, period_days=30, skip_cache=True
     )
     assert result["percent"] == 0.0
+    assert result["present"] == 0
     assert result["total"] == 0
     assert result["recent"] == []
 

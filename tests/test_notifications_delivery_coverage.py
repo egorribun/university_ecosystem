@@ -397,6 +397,10 @@ async def test_send_exception_records_exception_row(
     assert rows[0].detail is not None
     assert rows[0].detail.startswith("exception:")
     assert subscription.endpoint not in rows[0].detail
+    if rows[0].subscription_id != subscription.id:
+        raise AssertionError(
+            "notification_exception_row_subscription_identity_contract"
+        )
 
 
 @pytest.mark.asyncio

@@ -1,16 +1,16 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-06 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
+Срез на 2026-10-07 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
 Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Исходный checkpoint — `c421c0e5128339f9ab519846086c0a56138304b7`.
+  Исходный checkpoint интеграции — `4213ed042416ff39cd4c50cc6e49edbf44e9b992`.
   В `6d8` перенесены RuntimeFeatureOverrides, в `7be1` — auth/audit/session
   regressions; `107845` обновил sharp/libvips; `1ab` — RLS; `c421` — cache/session.
-  Сейчас — MFA/profile/get regressions и эквивалентное UTF-8 упрощение; exclusions/пороги сохранены.
+  MFA/profile/get regressions и эквивалентное UTF-8 упрощение уже входят в checkpoint; exclusions/пороги сохранены.
   три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
 - В checkpoint вошли full-backend mutation workflow, immutable benchmark
   activation, WebKit focus fix, строгая avatar resource identity и DM
@@ -24,11 +24,12 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 - CodeQL check `112329936293` и CodeQL Advanced run `37481003467` для `7ac`
   завершились SUCCESS. Check сообщал: “No new alerts in code changed by PR”.
-- Matrix run `37481003822/a1`: event source `7ac`; artifact producer —
-  PR merge `a43b6b471b6d964093b994eb9c08b436be6015ad`.
-  Проверенные backend groups 1/2 дали соответственно 29 Killed / 7 Survived и 32 Killed /
-  4 Survived. Это реальные survivors, а не runner failure; остальные группы
-  и полный inventory ещё не закрыты. Полный viable score не установлен.
+- Matrix run `37526001524/a1`: event source `4213`; producer —
+  `deb33a29cc7a91b2043828fc578dc34ad037337f`. Все 128 incremental jobs FAILED.
+  Root проверил API digests, ZIP/JSON, canonical evidence и exact planned join:
+  4 584 terminal = 3 949 Killed / 635 Survived; selection полна.
+  Timeout/no-tests/skipped/suspicious/interrupted/segfault/typecheck записей нет.
+  Generated universe 54 452 не исполнялся полностью; global score не установлен.
 - Manual full run `37481732603/a1`: frontend shard jobs завершились 64/64
   SUCCESS, но итоговый aggregate FAILED и aggregate artifact отсутствовал.
   Backend preflight завершился ошибкой до запуска 128 backend execution shards;
@@ -37,7 +38,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Для source7ac локальные затронутые contracts359/359 и Helm retry29/29 PASS;
   CodeQL/Chromium исправления имеют hosted proof. Для переноса тестов canonical
   lifespan + новый модуль39/39, preflight9/9 и test-file pre-commit PASS.
-  Manual full run 37512795410/a1 на 7aa выполняется; полный hosted proof ещё требуется.
+  Manual full run 37512795410/a1 на 7aa CANCELLED: backend planning достиг 60-minute ceiling.
+  Frontend aggregate job112519043882 завершился из-за Survived, без найденного provenance failure шага.
 - Historical backend generation54,457/344 и incremental selection4,589/128
   не подменяют свежий inventory. Принятый перенос сохраняет None/default,
   явные True/False, disable из True и None, reset и неизвестные флаги.
@@ -52,14 +54,13 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Диагностический viable score88.7101%; обязательный gate FAILED.
   Root независимо подтвердил fresh shard30: 487/487 Killed,10 regions/6 files,
   source/run/attempt/preflight/report hashes. Это только shard-local proof.
-- Root повторил auth signing-key #62: baseline65/65, exact mutant64 PASS/
-  1 call failure; HMAC missing-IP #48: baseline PASS/exact call failure.
-  Session ownership #417: baseline18/18, exact mutant17 PASS/1 call failure.
-  Replay #723/#735/#827: baseline40/40, каждый exact mutant39 PASS/1 call failure.
-  RLS reload #255: root baseline PASS/exact call-phase ValueError; typed fixture,
-  canonical chat80/80 и strict targeted mypy PASS, без реальной PostgreSQL.
-  Canonical suites: frontend123/123, session/WS/persistence81/81, MFA/profile260/260 и audit67/67 PASS.
-  Root подтвердил exact WS4, session382/390 и persistence1037 RED/GREEN; global credit отсутствует.
+- Интегрированы reviewed auth/chat/notification/RLS/cache/analytics regressions,
+  generation reuse, planner progress и byte-safe Windows ACL subprocess calls.
+  Root: frontend273/273 и crypto46/46; backend1352 PASS +5 subtests и session-policy34/34.
+  PostgreSQL RLS enforcement и global mutation credit отсутствуют.
+  Initial preflight7/9 сохранён; после исправлений type/lint/contracts и format PASS.
+  Остальные семь checks PASS; повторный staged pre-commit после форматирования PASS.
+  Links433/433 в обоих режимах, Markdownlint PASS, CSpell9 files/0 issues.
   Focused useAuthApi на1ab:366 mutants =318 Killed/48 Survived,0 Timeout/RuntimeError/NoCoverage;
   86.8852%, gate FAILED. Dry-run1670 PASS; immutable local report d59264c6 сохранён.
   Preflight9/9 и последующие frontend delta checks3/3, pre-commit,
@@ -72,10 +73,8 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   Root get9: baseline2 PASS/exact1 PASS+1 assertion FAIL; canonical get9/9 PASS.
   PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
   Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
-- Paired benchmark workflow сохранил immutable BASE comparator, threshold 1.10,
-  33 Go и 4 Rust metrics по 12 парам. Root проверял BASE/candidate archive и
-  сравнение на предыдущем source97a; это не нагрузочная или release
-  certification для `7ac`.
+- Paired benchmark: immutable BASE, threshold1.10, 33 Go/4 Rust metrics по 12 парам.
+  Root BASE/candidate proof на source97a не является load/release certification для `7ac`.
 
 ## Live-приёмка
 
@@ -86,14 +85,12 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   диагностический результат, не pass/fail продукта и не полная live-приёмка.
   Причина неизвестна: child output не сохранён в outer log. До нового runtime
   закрыть descendant lineage и ограниченную классификацию child output.
-- Ранний desktop до seed не учитывается: synthetic admin credential отсутствовал. Demo seed затем PASS; это
-  устранило только prerequisite, но не закрыло R3.
+- Ранний desktop без synthetic admin не учитывается; seed PASS не закрывает R3.
 - Полная traceability требований, RU/EN, light/dark, responsive, SSR/PWA,
   accessibility/performance и пользовательское visual approval остаются
   открытыми.
-- Historical ordinary97a subset:2 passed/10 failed, desktop/mobile;
-  diagnostic-image avatar PASS не подтверждает ordinary source.
-  Original cold auth-role failure source76cd остаётся открытым.
+- Historical97a subset:2 PASS/10 FAIL, desktop/mobile; diagnostic avatar не подтверждает ordinary source.
+  Cold auth-role failure source76cd остаётся открытым.
 
 ## Backup/restore и диагностика
 
@@ -123,10 +120,13 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Последний root snapshot: running Docker0, RAM38.5%; основной worktree один.
-  Удалены только три доказанно пустые retired networks; global prune не применялся.
-- Только основной worktree. Не удалять уникальные env/data/volumes/backups.
-  Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
+  Последний root snapshot: running Docker0, RAM53.3%; основной worktree один.
+  Под canonical lifecycle lock удалены 35 exact owned stopped CIDs и три сети.
+  Перед удалением V10 verify-existing подтвердил 35 archives/96 resource records;
+  11 083 100 160 bytes filesystem archives, без volume/restore/RPO/RTO credit.
+  16 volumes/29 images сохранены; remaining target containers/networks0.
+  Docker snapshot:351 containers/27 bridge networks; global prune не применялся.
+- Сохранять env/data/volumes/backups; private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
   Rescue bundle остаётся private; Git history сохраняется.
 
 ## Следующие проверки и ограничения
@@ -143,7 +143,7 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
   WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,
   resulting-main evidence и выпуск `v1.0.0`.
-  Три полных зелёных CI ещё требуются; GitHub PR/webhook incident задерживает PR HEAD обновление.
+  Три полных зелёных CI ещё требуются; следующий live-стенд привязывать к новому committed SHA.
 
 Сохранять env, volumes, backups и Git history. Не применять admin bypass,
 force-push или менять branch protection. Внешний production, реальные SMTP/push,

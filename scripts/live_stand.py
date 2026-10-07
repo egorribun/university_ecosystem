@@ -366,14 +366,12 @@ def _restrict_new_windows_state_directory(path: Path) -> None:
             [icacls, str(path), "/reset"],
             check=True,
             capture_output=True,
-            text=True,
             timeout=20,
         )
         subprocess.run(  # noqa: S603 - fixed Windows ACL tool, SID is validated above
             [icacls, str(path), "/setowner", f"*{user_sid}"],
             check=True,
             capture_output=True,
-            text=True,
             timeout=20,
         )
         subprocess.run(  # noqa: S603 - fixed Windows ACL tool, SID/path are validated
@@ -387,7 +385,6 @@ def _restrict_new_windows_state_directory(path: Path) -> None:
             ],
             check=True,
             capture_output=True,
-            text=True,
             timeout=20,
         )
     except (OSError, subprocess.SubprocessError):
@@ -427,14 +424,12 @@ def _restrict_in_place_windows_state_file(path: Path) -> None:
             [icacls, str(candidate), "/reset"],
             check=True,
             capture_output=True,
-            text=True,
             timeout=20,
         )
         subprocess.run(  # noqa: S603 - validated current-user SID and confined path
             [icacls, str(candidate), "/setowner", f"*{user_sid}"],
             check=True,
             capture_output=True,
-            text=True,
             timeout=20,
         )
     except (OSError, subprocess.SubprocessError):

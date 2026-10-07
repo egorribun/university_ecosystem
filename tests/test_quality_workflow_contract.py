@@ -4788,7 +4788,43 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     )
     assert mutation_steps.index(mutation_dependencies) < run_step_index
 
-    assert "rm -rf mutants" in stats_script
+    generation_job = jobs["mutation-tests-full-generation-base"]
+    generation_steps = generation_job["steps"]
+    generation_step = next(
+        step
+        for step in generation_steps
+        if step.get("name") == "Generate reusable mutmut source and metadata"
+    )
+    generation_script = generation_step["run"]
+    generation_upload = next(
+        step
+        for step in generation_steps
+        if step.get("name") == "Upload full mutmut generation base"
+    )
+    assert generation_job["needs"] == "verify-full-mutation-provenance"
+    assert stats_job["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-generation-base",
+    ]
+    assert "rm -rf mutants" in generation_script
+    assert "--prepare-only" in generation_script
+    assert "test -s mutants/mutmut-generation.json" in generation_script
+    assert "mutants/" in generation_upload["with"]["path"]
+    assert "rm -rf mutants" not in stats_script
+    assert "--reuse-generated-universe" in stats_script
+    assert "test ! -e mutants/mutmut-stats.json" in stats_script
+    stats_step_names = [
+        step.get("name") for step in stats_steps if isinstance(step, dict)
+    ]
+    assert stats_step_names.index(
+        "Download selected same-run mutmut generation base"
+    ) < stats_step_names.index("Verify selected full mutmut generation payload")
+    assert stats_step_names.index(
+        "Verify selected full mutmut generation payload"
+    ) < stats_step_names.index("Select retry-safe full mutmut generation base")
+    assert stats_step_names.index(
+        "Select retry-safe full mutmut generation base"
+    ) < stats_step_names.index("Collect full mutmut stats shard")
     assert "scripts/mutmut_stats_shard.py" in stats_script
     assert '--shard-id "${{ matrix.stats_shard }}"' in stats_script
     assert "--num-shards 8" in stats_script
@@ -4843,7 +4879,9 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert "scripts/plan_mutmut_shards.py" in run_script
     assert "--num-shards 128" in run_script
     assert "cmp --silent" in run_script
-    assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
+    assert (
+        "scripts/run_mutmut_with_stats.py --reuse-generated-universe --max-children 8"
+    ) in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
     assert "uv run mutmut run" not in run_script
     assert "scripts/mutmut_stats_shard.py" not in run_script

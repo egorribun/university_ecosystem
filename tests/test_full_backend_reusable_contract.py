@@ -17,13 +17,13 @@ NIGHTLY = WORKFLOWS / "nightly-full-gate.yml"
 MANUAL = WORKFLOWS / "manual-mutation-evidence.yml"
 FULL_BACKEND = WORKFLOWS / "reusable-full-backend-mutation.yml"
 HELM = WORKFLOWS / "reusable-helm-dependencies.yml"
-BASELINE = ROOT / "tests" / "fixtures" / "full-backend-reusable-baseline.v1.yaml"
+BASELINE = ROOT / "tests" / "fixtures" / "full-backend-reusable-baseline.v3.yaml"
 REQUIRED_CONTEXTS = {"CI Success", "Coverage & Quality Policy Gate"}
 
 
 def _baseline() -> dict[str, object]:
     value = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
-    assert value["schema"] == "full-backend-reusable-baseline-v1"
+    assert value["schema"] == "full-backend-reusable-baseline-v3"
     return value
 
 
@@ -224,6 +224,7 @@ def test_full_backend_is_a_trusted_reusable_workflow_with_same_run_artifacts() -
     jobs = _jobs(workflow)
     assert set(jobs) == {
         "verify-full-mutation-provenance",
+        "mutation-tests-full-generation-base",
         "mutation-tests-full-stats",
         "mutation-tests-full-plan",
         "mutation-tests-full",
@@ -250,10 +251,15 @@ def test_full_backend_is_a_trusted_reusable_workflow_with_same_run_artifacts() -
     assert "int(producer_attempt) > int(run_attempt)" in verify_script
 
     stats = jobs["mutation-tests-full-stats"]
+    generation = jobs["mutation-tests-full-generation-base"]
     plan = jobs["mutation-tests-full-plan"]
     execute = jobs["mutation-tests-full"]
     aggregate = jobs["mutation-tests-full-aggregate"]
-    assert stats["needs"] == "verify-full-mutation-provenance"
+    assert generation["needs"] == "verify-full-mutation-provenance"
+    assert stats["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-generation-base",
+    ]
     assert plan["needs"] == [
         "verify-full-mutation-provenance",
         "mutation-tests-full-stats",
@@ -270,7 +276,7 @@ def test_full_backend_is_a_trusted_reusable_workflow_with_same_run_artifacts() -
     assert execute["strategy"]["matrix"]["shard"] == list(range(1, 129))
     assert execute["strategy"]["max-parallel"] == 8
 
-    for job in (stats, plan, execute, aggregate):
+    for job in (generation, stats, plan, execute, aggregate):
         for step in _steps(job):
             if step.get("uses", "").startswith("actions/checkout@"):
                 assert step["with"]["ref"] == "${{ github.sha }}"
@@ -306,6 +312,104 @@ def test_full_backend_is_a_trusted_reusable_workflow_with_same_run_artifacts() -
     assert "if-no-artifact-found" not in str(
         _step(aggregate, "Download full mutation shard evidence")["with"]
     )
+
+
+def test_full_mutmut_generation_is_retry_bound_and_reused_by_eligible_phases() -> None:
+    jobs = _jobs(_load(FULL_BACKEND))
+    generation = jobs["mutation-tests-full-generation-base"]
+    assert generation["permissions"] == {"contents": "read", "actions": "read"}
+    assert generation["timeout-minutes"] == 45
+    assert generation["needs"] == "verify-full-mutation-provenance"
+    assert (
+        "--prepare-only"
+        in _step(generation, "Generate reusable mutmut source and metadata")["run"]
+    )
+    envelope = _step(generation, "Create retry-scoped mutmut generation envelope")
+    envelope_run = envelope["run"]
+    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in envelope_run
+    assert "create-universe" in envelope_run
+    assert "--mode generation" in envelope_run
+    assert '"$RUN_ATTEMPT"' in envelope_run
+
+    upload = _step(generation, "Upload full mutmut generation base")["with"]
+    assert upload["name"] == (
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-"
+        "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert "mutmut-universe-artifact.json" in upload["path"]
+    assert "mutants/" in upload["path"]
+    assert upload["include-hidden-files"] is True
+    assert upload["if-no-files-found"] == "error"
+
+    plan_upload = _step(
+        jobs["mutation-tests-full-plan"], "Upload preflighted full mutation plan"
+    )["with"]
+    assert "mutants/mutmut-universe.json" in plan_upload["path"].splitlines()
+
+    consumers = (
+        jobs["mutation-tests-full-stats"],
+        jobs["mutation-tests-full-plan"],
+        jobs["mutation-tests-full"],
+    )
+    producer_run = envelope_run
+    producer_inputs = re.findall(r"--config-input ([^\s\\]+)", producer_run)
+    assert producer_inputs
+    for job in consumers:
+        steps = _steps(job)
+        selector = _step(job, "Select immutable same-run mutmut generation base")
+        assert "--attempt-policy current-or-earlier" in selector["run"]
+        assert '--run-id "${{ github.run_id }}"' in selector["run"]
+        assert '--commit-sha "${{ github.sha }}"' in selector["run"]
+
+        download = _step(job, "Download selected same-run mutmut generation base")
+        assert (
+            "${{ steps.select_full_mutmut_generation.outputs.artifact_id }}"
+            == (download["with"]["artifact-ids"])
+        )
+        assert download["with"]["repository"] == "${{ github.repository }}"
+        assert download["with"]["run-id"] == "${{ github.run_id }}"
+
+        select = _step(job, "Select retry-safe full mutmut generation base")
+        select_run = select["run"]
+        assert "--expected-mode generation" in select_run
+        assert '"$SOURCE_REVISION" = "$COMMIT_SHA"' in select_run
+        assert '"$RUN_ATTEMPT"' in select_run
+        assert re.findall(r"--config-input ([^\s\\]+)", select_run) == producer_inputs
+        assert "mutmut-generation-selection.json" in select_run
+        assert "mutants/mutmut-generation.json" in select_run
+        assert any(
+            step.get("name") == "Select immutable same-run mutmut generation base"
+            for step in steps
+        )
+
+    stats_run = _step(
+        jobs["mutation-tests-full-stats"], "Collect full mutmut stats shard"
+    )["run"]
+    plan_run = _step(
+        jobs["mutation-tests-full-plan"],
+        "Plan and budget every exact full mutation shard",
+    )["run"]
+    execution_run = _step(
+        jobs["mutation-tests-full"], "Plan and run exact full mutation shard"
+    )["run"]
+    for command in (stats_run, plan_run, execution_run):
+        assert "--reuse-generated-universe" in command
+
+    mutation_commands = [
+        line
+        for line in execution_run.splitlines()
+        if "scripts/run_mutmut_with_stats.py" in line
+    ]
+    assert len(mutation_commands) == 2
+    assert any("--max-children 8" in command for command in mutation_commands)
+    primary_command = next(
+        command for command in mutation_commands if "--max-children 8" in command
+    )
+    confirmation_command = next(
+        command for command in mutation_commands if "--max-children 2" in command
+    )
+    assert "--reuse-generated-universe" in primary_command
+    assert "--reuse-generated-universe" not in confirmation_command
 
 
 def test_full_backend_guard_rejects_input_sha_that_differs_from_event_sha() -> None:
@@ -689,7 +793,12 @@ def test_reusable_helm_consumer_uses_same_run_verified_artifact_before_build() -
     assert 'expected_prefix = f"{helm_artifact_prefix}{run_id}-"' in provenance
     assert "int(producer_attempt) > int(run_attempt)" in provenance
 
-    for job_id in ("mutation-tests-full-stats", "mutation-tests-full"):
+    for job_id in (
+        "mutation-tests-full-generation-base",
+        "mutation-tests-full-stats",
+        "mutation-tests-full-plan",
+        "mutation-tests-full",
+    ):
         job = reusable[job_id]
         names = [step.get("name") for step in _steps(job)]
         selector = _step(job, "Select same-run Helm dependency artifact")["run"]

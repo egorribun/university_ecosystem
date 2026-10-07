@@ -224,3 +224,25 @@ async def test_verify_dummy_password_runs_one_argon2_verification():
     # The throw-away hash is reused, never regenerated per request.
     await security.verify_dummy_password("another")
     assert security._dummy_password_hash == first_hash
+
+
+@pytest.mark.asyncio
+async def test_dummy_password_verification_uses_auth_executor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.auth import security
+
+    # Synthetic input passed only to the stub verifier, never an account credential.
+    submitted_password = "submitted-value"  # pragma: allowlist secret
+    observed_passwords: list[str] = []
+
+    def record_verification(password: str) -> None:
+        observed_passwords.append(password)
+
+    executor = security._auth_executor
+    monkeypatch.setattr(security, "_verify_against_dummy_sync", record_verification)
+    with patch.object(executor, "submit", wraps=executor.submit) as submit:
+        await security.verify_dummy_password(submitted_password)
+
+    submit.assert_called_once_with(record_verification, submitted_password)
+    assert observed_passwords == [submitted_password]
