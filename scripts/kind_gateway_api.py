@@ -3,10 +3,14 @@
 
 The tool creates a dedicated kind cluster from an explicit Kubernetes node
 image, installs pinned Gateway API, Envoy Gateway, and cert-manager components,
-and bootstraps a run-owned local CA. It can remove only its own GatewayClass.
-It never deletes a cluster, CRD, controller, namespace, PVC, or application
-data. The local CA is for kind acceptance only; its public certificate can be
-exported for client-scoped trust without changing the host trust store.
+and bootstraps a run-owned local CA. ``rollback`` removes only its own
+GatewayClass. The explicit ``teardown`` command deletes the whole run-owned
+cluster, including its Kubernetes resources and data, after verifying the local
+record, context, ownership markers, and exact single-node cluster identity.
+The teardown preserves the local run record and any separately managed
+registry container/volume. The local CA is for kind acceptance only; its public
+certificate can be exported for client-scoped trust without changing the host
+trust store.
 
 Examples (choose an exact kindest/node image within the documented 1.33–1.36
 Kubernetes support range)::
@@ -22,6 +26,7 @@ Kubernetes support range)::
     python scripts/kind_gateway_api.py registry-status --run-id <printed-run-id>
     python scripts/kind_gateway_api.py registry-stop --run-id <printed-run-id>
     python scripts/kind_gateway_api.py rollback --run-id <printed-run-id>
+    python scripts/kind_gateway_api.py teardown --run-id <printed-run-id>
 
 All external commands use argv lists with ``shell=False``. Read-only commands
 never write cluster or local state. Mutating commands after ``create`` require
@@ -650,6 +655,99 @@ class KindGatewayApi:
                 f"kind node container '{node_name}' does not belong to this cluster"
             )
         return node_container
+
+    def _kind_node_container_names(self, state: RunState) -> list[str]:
+        result = self._run(
+            [
+                self._tool("docker"),
+                "ps",
+                "--all",
+                "--filter",
+                f"label={KIND_CLUSTER_LABEL}={state.cluster}",
+                "--format",
+                "{{.Names}}",
+            ]
+        )
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    def _assert_teardown_identity(self, state: RunState) -> str:
+        self._assert_owned(state)
+        self._assert_context_identity(state)
+
+        result = self._kubectl(state, "get", "nodes", "-o", "json")
+        try:
+            payload = json.loads(result.stdout)
+            nodes = payload["items"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise KindGatewayApiError(
+                "could not verify the run-owned kind node inventory"
+            ) from exc
+        node_name = f"{state.cluster}-control-plane"
+        if (
+            not isinstance(nodes, list)
+            or len(nodes) != 1
+            or not isinstance(nodes[0], dict)
+        ):
+            raise KindGatewayApiError("teardown requires exactly one run-owned node")
+        self._assert_node_marker(state, nodes[0])
+
+        if self._kind_node_container_names(state) != [node_name]:
+            raise KindGatewayApiError(
+                "Docker node-container inventory differs from this run's cluster"
+            )
+        container = self._verify_kind_node_container(state, node_name)
+        config = container.get("Config")
+        docker_state = container.get("State")
+        container_id = container.get("Id")
+        if not isinstance(container_id, str) or not re.fullmatch(
+            r"[0-9a-fA-F]{64}", container_id
+        ):
+            raise KindGatewayApiError(
+                "kind node container has an invalid Docker identity"
+            )
+        if (
+            not isinstance(config, dict)
+            or config.get("Image") != state.node_image
+            or not isinstance(docker_state, dict)
+            or docker_state.get("Running") is not True
+        ):
+            raise KindGatewayApiError(
+                "kind node container image or running state differs from the run record"
+            )
+        return container_id.casefold()
+
+    def teardown(self, run_id: str) -> bool:
+        """Delete only a fully verified single-node cluster created by this run."""
+        state = self._load_state(self._validate_run_id(run_id))
+        if state.phase != "owned":
+            raise KindGatewayApiError(
+                "teardown requires a fully owned cluster; refusing mutation"
+            )
+        if state.cluster not in self._kind_clusters():
+            return False
+
+        verified_container_id = self._assert_teardown_identity(state)
+        if state.cluster not in self._kind_clusters():
+            return False
+        final_container_id = self._assert_teardown_identity(state)
+        if final_container_id != verified_container_id:
+            raise KindGatewayApiError(
+                "kind node container identity changed before teardown"
+            )
+        self._run(
+            [
+                self._tool("kind"),
+                "delete",
+                "cluster",
+                "--name",
+                state.cluster,
+            ]
+        )
+        if state.cluster in self._kind_clusters():
+            raise KindGatewayApiError("kind cluster remains after teardown")
+        if self._kind_node_container_names(state):
+            raise KindGatewayApiError("kind node containers remain after teardown")
+        return True
 
     @staticmethod
     def _registry_hosts_toml(state: RunState) -> str:
@@ -2149,6 +2247,10 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         ("smoke", "check controller availability and GatewayClass acceptance"),
         ("rollback", "delete only this run's GatewayClass; retain cluster and data"),
+        (
+            "teardown",
+            "delete only this run's verified kind cluster after evidence capture",
+        ),
     ):
         command_parser = subparsers.add_parser(name, help=help_text)
         command_parser.add_argument("--run-id", required=True)
@@ -2243,6 +2345,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "run_id": args.run_id,
                         "stopped": stopped,
                         "registry_data_preserved": True,
+                    },
+                    sort_keys=True,
+                )
+            )
+        elif args.command == "teardown":
+            deleted = tool.teardown(args.run_id)
+            print(
+                json.dumps(
+                    {
+                        "run_id": args.run_id,
+                        "cluster_deleted": deleted,
+                        "local_run_record_preserved": True,
+                        "registry_volume_preserved": True,
                     },
                     sort_keys=True,
                 )

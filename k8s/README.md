@@ -99,6 +99,8 @@ python scripts/kind_gateway_api.py prepare --run-id <printed-run-id>
 python scripts/kind_gateway_api.py preflight --run-id <printed-run-id>
 python scripts/kind_gateway_api.py smoke --run-id <printed-run-id>
 python scripts/kind_gateway_api.py ca-export --run-id <printed-run-id>
+# only after the acceptance evidence has been saved and verified:
+python scripts/kind_gateway_api.py teardown --run-id <printed-run-id>
 ```
 
 The pinned cert-manager v1.21.2 Helm release installs its CRDs and enables
@@ -109,6 +111,17 @@ directory. Pass that file explicitly to a client, for example with
 `curl --cacert <path-to-exported-ca.crt>`; it does not modify the operating
 system trust store or export the CA private key. This CA is only for disposable
 local kind acceptance and is not a production or public trust root.
+
+`teardown` is a destructive, explicit command: it deletes the complete
+run-owned kind cluster and its Kubernetes data after rechecking the local run
+record, kube context, owner markers, the single control-plane node, its Docker
+cluster label, recorded node image, and matching full Docker container ID in a
+fresh pre-delete inspection. It keeps the local run record and
+does not delete a separately managed local-registry container or volume. If a
+run-owned registry should be stopped, use `registry-stop` before teardown; its
+volume remains available. If the cluster is already absent, teardown reports
+that fact without issuing a delete. Stopped or unreachable clusters fail closed
+and require their identity to be restored before teardown.
 
 For another cluster, the cluster owner must install and manage compatible
 Gateway API, Envoy Gateway, and cert-manager resources. Do not run this

@@ -160,6 +160,10 @@ class FakeEnvironment:
         self.gateway_class: dict[str, Any] | None = None
         self.server_version = {"major": "1", "minor": "35", "gitVersion": "v1.35.1"}
         self.deleted: list[tuple[str, ...]] = []
+        self.deleted_clusters: list[str] = []
+        self.keep_cluster_after_delete = False
+        self.replace_node_id_after_first_inspect = False
+        self.kind_node_inspect_count = 0
         self.applied_manifests = 0
         self.helm_installs = 0
         self.helm_uninstalls = 0
@@ -179,6 +183,7 @@ class FakeEnvironment:
         self.keep_gateway_class_on_delete = False
         self.docker_volumes: dict[str, dict[str, Any]] = {}
         self.docker_containers: dict[str, dict[str, Any]] = {}
+        self.extra_nodes: list[dict[str, Any]] = []
         self.node_registry_configs: dict[tuple[str, str], str] = {}
         self.node_registry_directories: set[tuple[str, str]] = set()
         self.omit_volume_after_create = False
@@ -207,6 +212,7 @@ class FakeEnvironment:
 
     def _add_kind_node_container(self, name: str, image: str = NODE_IMAGE) -> None:
         self.docker_containers[name] = {
+            "Id": "a" * 64,
             "Name": f"/{name}",
             "Config": {"Image": image, "Labels": {KIND_CLUSTER_LABEL: CLUSTER}},
             "State": {"Running": True},
@@ -362,6 +368,13 @@ class FakeEnvironment:
         if argv[0] == "/fake/kind":
             if argv[1:3] == ["get", "clusters"]:
                 output = "\n".join(sorted(self.clusters))
+            elif argv[1:3] == ["delete", "cluster"]:
+                cluster = argv[argv.index("--name") + 1]
+                self.deleted_clusters.append(cluster)
+                if not self.keep_cluster_after_delete:
+                    self.clusters.discard(cluster)
+                    self.contexts.discard(f"kind-{cluster}")
+                    self.docker_containers.pop(f"{cluster}-control-plane", None)
             elif argv[1:3] == ["create", "cluster"]:
                 self.clusters.add(CLUSTER)
                 self.contexts.add(CONTEXT)
@@ -557,6 +570,25 @@ class FakeEnvironment:
                 error = f"Error: No such object: {name}"
             else:
                 output = json.dumps([container])
+                if name == f"{CLUSTER}-control-plane":
+                    self.kind_node_inspect_count += 1
+                    if (
+                        self.replace_node_id_after_first_inspect
+                        and self.kind_node_inspect_count == 1
+                    ):
+                        container["Id"] = "b" * 64
+        elif args[:1] == ["ps"]:
+            label_filter = args[args.index("--filter") + 1]
+            expected_label, expected_value = label_filter.removeprefix("label=").split(
+                "=", 1
+            )
+            names = [
+                container.get("Name", "").lstrip("/")
+                for container in self.docker_containers.values()
+                if (container.get("Config", {}).get("Labels") or {}).get(expected_label)
+                == expected_value
+            ]
+            output = "\n".join(sorted(names))
         elif args and args[0] == "run":
             name = args[args.index("--name") + 1]
             container_labels: dict[str, str] = {}
@@ -641,6 +673,9 @@ class FakeEnvironment:
             value = self.configmap if name == OWNER_CONFIGMAP else None
         elif resource_type == "node":
             value = self.node if name == f"{CLUSTER}-control-plane" else None
+        elif resource_type == "nodes":
+            items = ([self.node] if self.node is not None else []) + self.extra_nodes
+            return json.dumps({"items": items})
         elif resource_type == "version":
             value = {"serverVersion": self.server_version}
         elif resource_type == "crds":
@@ -2301,6 +2336,192 @@ def test_resource_owner_handles_missing_resource() -> None:
     assert KindGatewayApi._resource_owner(None) is None
 
 
+def test_teardown_deletes_only_the_verified_cluster_and_preserves_local_data(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    tool = _tool(tmp_path, environment)
+    registry_name = f"ue-gw-registry-{RUN_ID}"
+    registry_volume_name = f"ue-gw-registry-data-{RUN_ID}"
+    registry_container = {
+        "Name": f"/{registry_name}",
+        "Config": {"Image": REGISTRY_IMAGE, "Labels": {OWNER_KEY: RUN_ID}},
+        "State": {"Running": True},
+    }
+    registry_volume = {"Name": registry_volume_name, "Labels": {OWNER_KEY: RUN_ID}}
+    environment.docker_containers[registry_name] = registry_container.copy()
+    environment.docker_volumes[registry_volume_name] = registry_volume.copy()
+    local_state = tool._state_path(RUN_ID).read_bytes()
+
+    assert tool.teardown(RUN_ID) is True
+
+    assert environment.deleted_clusters == [CLUSTER]
+    assert environment.clusters == set()
+    assert f"{CLUSTER}-control-plane" not in environment.docker_containers
+    assert environment.docker_containers[registry_name] == registry_container
+    assert environment.docker_volumes[registry_volume_name] == registry_volume
+    assert tool._state_path(RUN_ID).read_bytes() == local_state
+    assert [
+        argv
+        for argv, _kwargs in environment.commands
+        if argv[:3] == ["/fake/kind", "delete", "cluster"]
+    ] == [["/fake/kind", "delete", "cluster", "--name", CLUSTER]]
+
+
+def test_teardown_of_a_previously_owned_but_absent_cluster_is_read_only(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.clusters.clear()
+    tool = _tool(tmp_path, environment)
+    local_state = tool._state_path(RUN_ID).read_bytes()
+
+    assert tool.teardown(RUN_ID) is False
+
+    assert environment.deleted_clusters == []
+    assert environment.commands == [
+        (
+            ["/fake/kind", "get", "clusters"],
+            {
+                "input": None,
+                "capture_output": True,
+                "text": True,
+                "check": False,
+                "shell": False,
+            },
+        )
+    ]
+    assert tool._state_path(RUN_ID).read_bytes() == local_state
+
+
+def test_teardown_refuses_a_cluster_with_changed_owner_markers(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    assert environment.configmap is not None
+    environment.configmap["data"]["run-id"] = "ffffffffffff"
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match="ownership ConfigMap"):
+        tool.teardown(RUN_ID)
+
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_refuses_context_that_no_longer_resolves_to_run_cluster(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.context_cluster = "foreign-cluster"
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(
+        KindGatewayApiError, match="does not resolve to its expected cluster"
+    ):
+        tool.teardown(RUN_ID)
+
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_refuses_node_image_drift(tmp_path: Path) -> None:
+    environment = FakeEnvironment()
+    environment.docker_containers[f"{CLUSTER}-control-plane"]["Config"]["Image"] = (
+        "kindest/node:v1.34.0"
+    )
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match="image or running state differs"):
+        tool.teardown(RUN_ID)
+
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_refuses_same_name_container_replaced_before_delete(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.replace_node_id_after_first_inspect = True
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(
+        KindGatewayApiError, match="container identity changed before teardown"
+    ):
+        tool.teardown(RUN_ID)
+
+    assert environment.kind_node_inspect_count == 2
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_refuses_malformed_docker_container_id(tmp_path: Path) -> None:
+    environment = FakeEnvironment()
+    environment.docker_containers[f"{CLUSTER}-control-plane"]["Id"] = "not-an-id"
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match="invalid Docker identity"):
+        tool.teardown(RUN_ID)
+
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_refuses_an_added_kind_node(tmp_path: Path) -> None:
+    environment = FakeEnvironment()
+    worker_name = f"{CLUSTER}-worker"
+    environment.extra_nodes.append(
+        _resource(
+            "Node",
+            worker_name,
+            labels={KIND_CLUSTER_LABEL: CLUSTER, OWNER_KEY: RUN_ID},
+        )
+    )
+    environment._add_kind_node_container(worker_name)
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match="exactly one run-owned node"):
+        tool.teardown(RUN_ID)
+
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_refuses_an_extra_cluster_labeled_docker_container(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment._add_kind_node_container("unexpected-cluster-container")
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(
+        KindGatewayApiError, match="Docker node-container inventory differs"
+    ):
+        tool.teardown(RUN_ID)
+
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_refuses_an_incomplete_creation_record(tmp_path: Path) -> None:
+    environment = FakeEnvironment()
+    tool = _tool(tmp_path, environment)
+    tool._save_state(_run_state(phase="creating"))
+
+    with pytest.raises(KindGatewayApiError, match="fully owned cluster"):
+        tool.teardown(RUN_ID)
+
+    assert environment.commands == []
+    assert environment.deleted_clusters == []
+
+
+def test_teardown_fails_closed_when_kind_reports_cluster_after_delete(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.keep_cluster_after_delete = True
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match="remains after teardown"):
+        tool.teardown(RUN_ID)
+
+    assert environment.deleted_clusters == [CLUSTER]
+
+
 def test_rollback_refuses_unowned_gateway_class_and_deletes_nothing(
     tmp_path: Path,
 ) -> None:
@@ -2451,6 +2672,10 @@ def test_cli_dispatches_every_supported_command_without_cluster_access(
             calls.append(("rollback", (run_id,), {}))
             return True
 
+        def teardown(self, run_id: str) -> bool:
+            calls.append(("teardown", (run_id,), {}))
+            return True
+
     monkeypatch.setattr(kind_gateway_api_module, "KindGatewayApi", CliTool)
     commands = [
         ["create", "--node-image", NODE_IMAGE, "--run-id", RUN_ID],
@@ -2464,6 +2689,7 @@ def test_cli_dispatches_every_supported_command_without_cluster_access(
         ["registry-status", "--run-id", RUN_ID],
         ["registry-stop", "--run-id", RUN_ID],
         ["rollback", "--run-id", RUN_ID],
+        ["teardown", "--run-id", RUN_ID],
     ]
 
     for command in commands:
@@ -2484,6 +2710,7 @@ def test_cli_dispatches_every_supported_command_without_cluster_access(
         "registry-status",
         "registry-stop",
         "rollback",
+        "teardown",
     ]
     assert all(
         call[2].get("state_dir") == tmp_path for call in calls if call[0] == "init"

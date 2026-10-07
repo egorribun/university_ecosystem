@@ -7,7 +7,7 @@
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База изменений — `a028107e8`; закрытый demo и full mutation run — на `a3f339514`.
+  База изменений — `0477e9e0e`; закрытый demo и full mutation run — на `a3f339514`.
   Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
   Три GPT-6 Luna Max работают в непересекающихся областях; root проверяет интеграцию.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
@@ -18,13 +18,13 @@
 - Matrix `37668629672/a1` на `a3f`: CANCELLED; backend unit shard1 FAILED.
   Причина: stale urllib3 floor assertion; corrected focused backend5/5 PASS.
   Full mutation `37670438144/a1` запущен с `backend_scope=full`; stats shard2/8 FAILED.
-  Backend aggregate FAILED; frontend jobs ещё выполняются. Stats RCA ждёт logs.
+  Backend aggregate FAILED; stats RCA: stale urllib3 assertion, исправлен в `a028`.
   Это не итоговый score. PR checks нового source проверяются отдельно.
 - Root auth82/82, event contracts40/40, live contracts145/145 PASS;
   fast preflight10/10 PASS. PR live `37684359401/a1` FAILED до Docker:
   stale seed signature regex исправлен; требуется новый hosted run.
-  Focused Stryker366 остановлен на initial AuthContext cache-purge dry-run failure;
-  mutant outcomes отсутствуют; isolated и combined94/94 baseline PASS, RCA открыт.
+  Focused366: initial AuthContext failure, outcomes отсутствуют; baseline94/94 PASS.
+  Related dry-run GREEN после policy staging; exact case collection не доказана, RCA открыт.
   Проверены 33 Dependabot advisory против 56 locked resolutions: affected matches0;
   это не закрытие alerts default branch и не глобальная security-сертификация.
 - Matrix run `37526001524/a1`: event source `4213`; producer —
@@ -66,7 +66,7 @@
   PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
   Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
 - Cert-manager/local CA: independent review clear, offline kind204/204 PASS.
-  Runtime kind/TLS ещё не запускался; kind binary подготавливается с checksum.
+  Kind teardown11/11 PASS; binary/checksum проверены. Runtime kind/TLS ещё не запускался.
 
 ## Live-приёмка
 
