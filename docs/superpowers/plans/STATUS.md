@@ -18,12 +18,12 @@
   Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
 - Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
-  preflight10/10, kind243/243, compliance9/9 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
-  Новый CRD helper: exact inventory20, create-only ownership; live-приёмка ещё требуется.
-  Local exact259/140/44/45/121 RED; global gate открыт. PR live `37684359401/a1` FAILED до Docker:
+  preflight10/10, kind243/243, ranked28/28, compliance9/9 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
+  CRD helper прошёл K3 prerequisites; приложение в kind ещё не развёрнуто.
+  Local exact259/314/123/278/56/140/44/45/121 RED; global gate открыт. PR live `37684359401/a1` FAILED до Docker:
   stale seed signature regex исправлен; требуется новый hosted run.
-  Focused366: initial AuthContext failure, outcomes отсутствуют; baseline94/94 PASS.
-  Related dry-run GREEN после policy staging; exact case collection не доказана, RCA открыт.
+  Focused366: initial failure без outcomes; отдельные dry-run/collection proof не заменяют full gate.
+  Staged dry-run1689 PASS; shard50/a3 содержит worker cases923/924 с текущими source/test bytes.
   Проверены 33 Dependabot advisory против 56 locked resolutions: affected matches0;
   это не закрытие alerts default branch и не глобальная security-сертификация.
 - Matrix run `37526001524/a1`: event source `4213`; producer —
@@ -65,9 +65,9 @@
   MFA export5 эквивалентен COUNT(*): код упрощён, без Killed credit.
   PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
   Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
-- Kind helper231/231 PASS; K2/6de9be2b1a0c на `2697`: create/prepare/preflight/smoke/CA PASS.
-  GatewayClass Accepted; app routes заблокированы parity; teardown PASS, Docker containers0.
-  Evidence: `C:/Temp/ue-kind-acceptance-2697eb25-20261008-6de9be2b1a0c/evidence`.
+- K3/e874a81e778d helper@`727eecab`: create/prepare/repeat/preflight/smoke/CA/teardown PASS.
+  Inventory20 и Helm revisions1 неизменны; app routes заблокированы parity. Docker containers0.
+  Evidence: `C:/Temp/ue-kind-acceptance-k3-e874a81e778d/receipts`.
 
 ## Live-приёмка
 
@@ -130,7 +130,7 @@
 
 ## Следующие проверки и ограничения
 
-- Следующие очереди: точный MFA export mutant и atomic CRD ownership (18 CRDs +2 policies);
+- Следующие очереди: live profile email guard (collection4, runtime ожидается) и chart parity;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   MFA263/307:   baseline81/81, каждый exact mutant даёт одну assertion failure. Mapper16 controls:

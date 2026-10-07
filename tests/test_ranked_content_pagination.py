@@ -212,6 +212,46 @@ async def test_event_hybrid_rank_prefers_the_closer_embedding(
 
 
 @pytest.mark.asyncio
+async def test_event_hybrid_rank_can_overcome_a_stronger_text_match(
+    ranked_database, user_factory, monkeypatch
+):
+    user = await user_factory()
+    now = datetime.now(UTC)
+    stronger_text = Event(
+        id=UUID(int=(0xD << 124) + 1),
+        title="Stronger text match",
+        search_vector="0.9",
+        embedding="0.8",
+        starts_at=now + timedelta(days=2),
+        ends_at=now + timedelta(days=3),
+        created_by=user.id,
+    )
+    stronger_semantic = Event(
+        id=UUID(int=(0xD << 124) + 2),
+        title="Stronger semantic match",
+        search_vector="0.1",
+        embedding="0.1",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=2),
+        created_by=user.id,
+    )
+    ranked_database.add_all([stronger_text, stronger_semantic])
+    await ranked_database.commit()
+
+    monkeypatch.setattr(settings, "semantic_search_enabled", True)
+    vector = AsyncMock()
+    vector.get_embedding.return_value = [1.0, 0.0]
+    service = EventService(uow_from_session(ranked_database), vector)
+
+    page = await service.get_events(search="query", limit=2)
+
+    assert [item.id for item in page.items] == [
+        stronger_semantic.id,
+        stronger_text.id,
+    ], "hybrid_rank_cross_signal_weight_contract"
+
+
+@pytest.mark.asyncio
 async def test_hybrid_event_search_excludes_weak_nonmatching_vector_results(
     ranked_database, user_factory, monkeypatch
 ):

@@ -11,6 +11,7 @@ import {
 interface OwnerProfileResponse {
   id: string
   email: string
+  pending_email?: string | null
   role: string
   full_name: string | null
   profile_detail: { about: string | null } | null
@@ -40,34 +41,39 @@ const ownerAbout = (profile: OwnerProfileResponse): string => profile.profile_de
 const deleteOnlyCreatedAccount = async (
   adminPage: Page,
   email: string,
-  possibleNames: string[]
+  possibleNames: string[],
+  createdUserId?: string
 ): Promise<void> => {
-  const userPages = await Promise.all(
-    possibleNames.map(async (fullName) => {
-      const query = new URLSearchParams({ search: fullName, limit: "200" })
-      const response = await adminPage.request.get(`/api/v1/users?${query.toString()}`)
-      expect(response.status(), "admin can locate the test-owned synthetic account").toBe(200)
-      return (await response.json()) as AdminUserRow[]
-    })
-  )
-  const expectedNames = new Set(possibleNames)
-  const matchesById = [
-    ...new Map(
-      userPages
-        .flat()
-        .filter(
-          (entry) => entry.email === email && entry.full_name && expectedNames.has(entry.full_name)
-        )
-        .map((entry) => [entry.id, entry] as const)
-    ).values(),
-  ]
-  expect(
-    matchesById.length,
-    "the generated identity must resolve to at most one account"
-  ).toBeLessThanOrEqual(1)
+  let userId = createdUserId
+  if (!userId) {
+    const userPages = await Promise.all(
+      possibleNames.map(async (fullName) => {
+        const query = new URLSearchParams({ search: fullName, limit: "200" })
+        const response = await adminPage.request.get(`/api/v1/users?${query.toString()}`)
+        expect(response.status(), "admin can locate the test-owned synthetic account").toBe(200)
+        return (await response.json()) as AdminUserRow[]
+      })
+    )
+    const expectedNames = new Set(possibleNames)
+    const matchesById = [
+      ...new Map(
+        userPages
+          .flat()
+          .filter(
+            (entry) =>
+              entry.email === email && entry.full_name && expectedNames.has(entry.full_name)
+          )
+          .map((entry) => [entry.id, entry] as const)
+      ).values(),
+    ]
+    expect(
+      matchesById.length,
+      "the generated identity must resolve to at most one account"
+    ).toBeLessThanOrEqual(1)
 
-  const [match] = matchesById
-  if (!match) return
+    userId = matchesById[0]?.id
+  }
+  if (!userId) return
 
   const deletion = await adminPage.evaluate(async (userId) => {
     const csrfCookie = document.cookie
@@ -84,7 +90,7 @@ const deleteOnlyCreatedAccount = async (
     })
     const body = (await response.json().catch(() => null)) as { deleted?: boolean } | null
     return { status: response.status, deleted: body?.deleted === true }
-  }, match.id)
+  }, userId)
 
   expect(deletion.status, "cleanup targets only the generated synthetic account").toBe(200)
   expect(deletion.deleted).toBe(true)
@@ -233,6 +239,88 @@ test("profile editor cancellation and rejected oversized save preserve values be
           rejectedName,
           updatedName,
         ])
+      }
+    } finally {
+      await adminContext.close()
+    }
+  }
+})
+
+test("profile API rejects email changes outside the verified change flow", async ({
+  page,
+  browser,
+}, testInfo) => {
+  const liveBaseUrl = process.env.LIVE_BASE_URL
+  if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
+
+  const identity = crypto.randomUUID()
+  const fullName = `Live Profile Email Guard ${testInfo.project.name} ${identity}`
+  const email = `live-profile-email-guard-${testInfo.project.name}-${identity}@university.dev`
+  const attemptedEmail = `live-profile-email-target-${testInfo.project.name}-${identity}@university.dev`
+  const password = freshPassword()
+  let registrationAttempted = false
+  let createdUserId: string | undefined
+
+  const adminContext = await browser.newContext({
+    baseURL: liveBaseUrl,
+    ignoreHTTPSErrors: true,
+    locale: "ru-RU",
+  })
+  const adminPage = await adminContext.newPage()
+
+  try {
+    await loginAs(adminPage, "admin")
+    await stubBreachedPasswordLookup(page)
+
+    await page.goto("/register")
+    await page.getByLabel("Имя", { exact: true }).fill(fullName)
+    await page.getByRole("textbox", { name: "E-mail" }).fill(email)
+    await page.getByLabel("Пароль", { exact: true }).fill(password)
+    await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
+    registrationAttempted = true
+    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await expect(page).toHaveURL(/\/login$/u)
+    await loginWith(page, email, password)
+
+    const profileBeforeAttempt = await readOwnerProfile(page)
+    expect(profileBeforeAttempt.email).toBe(email)
+    expect(profileBeforeAttempt.pending_email).toBeNull()
+    expect(profileBeforeAttempt.role).toBe("student")
+    expect(profileBeforeAttempt.id).toMatch(/^[0-9a-f-]{36}$/iu)
+    createdUserId = profileBeforeAttempt.id
+
+    const attemptedStatus = await page.evaluate(async (candidateEmail) => {
+      const csrfCookie = document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("csrf_token="))
+      if (!csrfCookie) return 0
+
+      const csrfToken = decodeURIComponent(csrfCookie.slice("csrf_token=".length))
+      const response = await fetch("/api/v1/users/me", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
+        body: JSON.stringify({ email: candidateEmail }),
+      })
+      return response.status
+    }, attemptedEmail)
+
+    expect(
+      attemptedStatus,
+      "a valid-CSRF profile request cannot bypass the dedicated email-confirmation endpoint"
+    ).toBe(422)
+
+    const profileAfterAttempt = await readOwnerProfile(page)
+    expect(profileAfterAttempt.email).toBe(profileBeforeAttempt.email)
+    expect(profileAfterAttempt.pending_email).toBe(profileBeforeAttempt.pending_email)
+  } finally {
+    try {
+      if (registrationAttempted) {
+        await deleteOnlyCreatedAccount(adminPage, email, [fullName], createdUserId)
       }
     } finally {
       await adminContext.close()
