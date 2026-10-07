@@ -604,6 +604,11 @@ access доказаны; observability показывает реальные tar
   для render/schema/routes/policies. Создать run-owned kind tooling для prepare,
   local registry, deploy, smoke, chaos/failure, rollback, stop/teardown. Все
   teardown операции проверяют owner/cluster identity.
+- Закрыть обнаруженный race установки CRD: отсутствующий объект создавать с
+  owner marker атомарно через create-only; SSA допускается для подтверждённого
+  same-run объекта. Проверка UID после apply не предотвращает чужую мутацию.
+  Добавить контроль конкурентного появления foreign CRD и сохранения его данных;
+  ожидать Established до обращения к соответствующему custom resource.
 - Поднять cluster/registry до сборки; собрать, просканировать и подписать образы;
   разворачивать immutable image digests, не mutable tags. Проверить TLS,
   HTTP/WebSocket/gRPC маршруты, Kyverno, ExternalSecrets refresh, metrics/HPA,

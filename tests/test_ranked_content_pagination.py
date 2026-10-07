@@ -211,6 +211,63 @@ async def test_event_hybrid_rank_prefers_the_closer_embedding(
     assert [item.id for item in page.items] == [closer.id, farther.id]
 
 
+@pytest.mark.asyncio
+async def test_hybrid_event_search_excludes_weak_nonmatching_vector_results(
+    ranked_database, user_factory, monkeypatch
+):
+    user = await user_factory()
+    now = datetime.now(UTC)
+    text_match = Event(
+        id=UUID(int=(0xC << 124) + 1),
+        title="Full text match",
+        search_vector="1",
+        embedding="0.9",
+        starts_at=now + timedelta(days=2),
+        ends_at=now + timedelta(days=3),
+        created_by=user.id,
+    )
+    weak_vector_only = Event(
+        id=UUID(int=(0xC << 124) + 2),
+        title="Below threshold",
+        search_vector="0",
+        embedding="0.5",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=2),
+        created_by=user.id,
+    )
+    ranked_database.add_all([text_match, weak_vector_only])
+    await ranked_database.commit()
+
+    connection = await ranked_database.connection()
+
+    def set_fts_match(sync_connection, function):
+        connection_driver = sync_connection.connection.dbapi_connection
+        connection_driver.create_function("fts_match", 2, function)
+
+    await connection.run_sync(
+        lambda sync_connection: set_fts_match(
+            sync_connection, lambda document, _query: int(document == "1")
+        )
+    )
+    try:
+        monkeypatch.setattr(settings, "semantic_search_enabled", True)
+        vector = AsyncMock()
+        vector.get_embedding.return_value = [1.0, 0.0]
+        service = EventService(uow_from_session(ranked_database), vector)
+
+        page = await service.get_events(search="query", limit=10)
+    finally:
+        await connection.run_sync(
+            lambda sync_connection: set_fts_match(
+                sync_connection, lambda _document, _query: 1
+            )
+        )
+
+    assert [item.id for item in page.items] == [text_match.id], (
+        "hybrid_vector_threshold_filter_contract"
+    )
+
+
 def test_ranked_cursor_round_trip_preserves_nulls_and_precision():
     from app.utils.pagination import (
         decode_ranked_datetime_cursor,

@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/r
 import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { allEventsApiV1EventsGet } from "@/api/generated/sdk.gen"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
 
@@ -105,6 +109,34 @@ describe("events hooks SSR fallbacks", () => {
         </QueryClientProvider>
       )
     ).toContain("<span>true:true</span>")
+  })
+
+  it("keeps an authenticated server render free of events data and requests", () => {
+    expect(typeof window).toBe("undefined")
+    const previousAuth = useAuthStore.getState()
+    try {
+      useAuthStore.setState({
+        user: {
+          id: "server-render-user",
+          email: "server-render-user@example.test",
+          is_active: true,
+        } satisfies NonNullable<UserState>,
+        loading: false,
+      })
+      expect(getConfirmedUserId(useAuthStore.getState())).toBe("server-render-user")
+
+      const queryClient = createClient()
+      expect(
+        renderToString(
+          <QueryClientProvider client={queryClient}>
+            <SsrProbe />
+          </QueryClientProvider>
+        )
+      ).toContain("<span>true:true</span>")
+      expect(allEventsApiV1EventsGet).not.toHaveBeenCalled()
+    } finally {
+      useAuthStore.setState({ user: previousAuth.user, loading: previousAuth.loading })
+    }
   })
 
   it("derives server-rendered navigation from cached cursor pages in first-seen order", () => {

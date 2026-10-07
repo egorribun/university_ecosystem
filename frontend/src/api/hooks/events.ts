@@ -229,13 +229,7 @@ export const useEventsListQuery = (
 
   // Read from localStorage as fallback for offline mode
   const placeholderData = useMemo(() => {
-    if (
-      typeof window === "undefined" ||
-      !owner ||
-      !isCurrentSession() ||
-      getCurrentConfirmedUserId() !== owner
-    )
-      return undefined
+    if (!owner || !isCurrentSession() || getCurrentConfirmedUserId() !== owner) return undefined
     const activity =
       normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
     // StorageItem#get is itself fail-closed (including blocked browser storage

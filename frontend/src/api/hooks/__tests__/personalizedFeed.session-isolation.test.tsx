@@ -303,6 +303,21 @@ describe("personalized list cache isolation", () => {
     expect(requests.news).not.toHaveBeenCalled()
   })
 
+  it("does not adopt an events snapshot without a confirmed account identity", () => {
+    setIdentity(null)
+    const unowned = [{ id: "unowned-event" }]
+    window.localStorage.setItem("events:list:account:null:en:all", JSON.stringify(unowned))
+
+    const { result } = renderHook(
+      () => useEventsListQuery({ language: "en" }, { enabled: false }),
+      createWrapper()
+    )
+
+    expect(result.current.events).toEqual([])
+    expect(result.current.data).toBeUndefined()
+    expect(requests.events).not.toHaveBeenCalled()
+  })
+
   it("discards a delayed account-A network result after switching to account B", async () => {
     const delayed = deferred<ReturnType<typeof page<NewsItem>>>()
     requests.news

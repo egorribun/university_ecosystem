@@ -7,8 +7,7 @@
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База изменений — `75c5599b8`; закрытый demo и full mutation run — на `a3f339514`.
-  Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
+  База изменений — `2697eb250`; закрытый demo и full mutation run — на `a3f339514`.
   Три GPT-6 Luna Max работают в раздельных областях; root проверяет интеграцию и ресурсы.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
   локальные контракты не заменяют hosted/live приёмку.
@@ -20,8 +19,8 @@
   Full mutation `37670438144/a1` завершён: backend execution0/128, stats7/8.
   Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
-- Root outbox9/9, news schema14/14 +UI23/23 PASS; cursor26/26 PASS, exact140/44 assertion RED.
-  Preflight9/10, lint PASS после отката epoch cleanup. PR live `37684359401/a1` FAILED до Docker:
+- Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
+  preflight10/10, local exact140/44/45/121 RED; gate открыт. PR live `37684359401/a1` FAILED до Docker:
   stale seed signature regex исправлен; требуется новый hosted run.
   Focused366: initial AuthContext failure, outcomes отсутствуют; baseline94/94 PASS.
   Related dry-run GREEN после policy staging; exact case collection не доказана, RCA открыт.
@@ -65,8 +64,9 @@
   Root get9: baseline2 PASS/exact1 PASS+1 assertion FAIL; canonical get9/9 PASS.
   PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
   Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
-- Kind identity/race root226/226 PASS; CRD readiness231/231 PASS; recover489217e3ed90 PASS.
-  Prepare FAILED: GatewayClass запрошен до CRD; teardown PASS, Docker containers0.
+- Kind helper231/231 PASS; K2/6de9be2b1a0c на `2697`: create/prepare/preflight/smoke/CA PASS.
+  GatewayClass Accepted; app routes заблокированы parity; teardown PASS, Docker containers0.
+  Evidence: `C:/Temp/ue-kind-acceptance-2697eb25-20261008-6de9be2b1a0c/evidence`.
 
 ## Live-приёмка
 
