@@ -305,9 +305,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         export only exposes a challenge count and enrollment metadata.
         """
         count_result = await self.db.execute(
-            select(func.count(models.MfaChallenge.id)).where(
-                models.MfaChallenge.user_id == user_id
-            )
+            select(func.count()).where(models.MfaChallenge.user_id == user_id)
         )
         challenge_count = count_result.scalar_one()
         result = await self.db.execute(

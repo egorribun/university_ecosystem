@@ -694,14 +694,17 @@ describe("logout", () => {
     expect(w.handleUnauthorized).toHaveBeenCalled()
   })
 
-  it("still unauthorizes even when the logout POST throws (lines 225-228)", async () => {
+  it("logs logout POST failure context and still unauthorizes", async () => {
     const w = makeWires({ user: fullUser() })
-    mocks.apiPost.mockRejectedValue(new Error("boom"))
+    const failure = new Error("logout transport failure")
+    mocks.apiPost.mockRejectedValue(failure)
     const { result } = renderApi(w)
     await act(async () => {
       await result.current.logout()
     })
-    expect(w.handleUnauthorized).toHaveBeenCalled()
+    expect(mocks.logError).toHaveBeenCalledOnce()
+    expect(mocks.logError).toHaveBeenCalledWith("Logout failed", { error: failure })
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
   })
 
   it("uses the latest signed-in profile when logout follows an auth-state rerender", async () => {

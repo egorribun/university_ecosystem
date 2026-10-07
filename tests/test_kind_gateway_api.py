@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -48,6 +49,118 @@ PINNED_NODE_IMAGE = (
     "099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed"  # pragma: allowlist secret (public kind image digest)
 )
 REGISTRY_IMAGE = f"registry@sha256:{'a' * 64}"
+
+_GATEWAY_CRD_FIXTURE_GROUPS = {
+    **{
+        name: "gateway.networking.k8s.io"
+        for name in (
+            "backendtlspolicies.gateway.networking.k8s.io",
+            "gatewayclasses.gateway.networking.k8s.io",
+            "gateways.gateway.networking.k8s.io",
+            "grpcroutes.gateway.networking.k8s.io",
+            "httproutes.gateway.networking.k8s.io",
+            "listenersets.gateway.networking.k8s.io",
+            "referencegrants.gateway.networking.k8s.io",
+            "tcproutes.gateway.networking.k8s.io",
+            "tlsroutes.gateway.networking.k8s.io",
+            "udproutes.gateway.networking.k8s.io",
+        )
+    },
+    **{
+        name: "gateway.envoyproxy.io"
+        for name in (
+            "backends.gateway.envoyproxy.io",
+            "backendtrafficpolicies.gateway.envoyproxy.io",
+            "clienttrafficpolicies.gateway.envoyproxy.io",
+            "envoyextensionpolicies.gateway.envoyproxy.io",
+            "envoypatchpolicies.gateway.envoyproxy.io",
+            "envoyproxies.gateway.envoyproxy.io",
+            "httproutefilters.gateway.envoyproxy.io",
+            "securitypolicies.gateway.envoyproxy.io",
+        )
+    },
+}
+
+
+def _gateway_chart_documents() -> list[dict[str, Any]]:
+    documents: list[dict[str, Any]] = []
+    for name, group in _GATEWAY_CRD_FIXTURE_GROUPS.items():
+        short_name = name.removesuffix(f".{group}")
+        version = "v1alpha1" if group == "gateway.envoyproxy.io" else "v1"
+        documents.append(
+            {
+                "apiVersion": "apiextensions.k8s.io/v1",
+                "kind": "CustomResourceDefinition",
+                "metadata": {
+                    "name": name,
+                    "annotations": (
+                        {
+                            "gateway.networking.k8s.io/bundle-version": "v1.6.1",
+                            "gateway.networking.k8s.io/channel": "standard",
+                        }
+                        if group == "gateway.networking.k8s.io"
+                        else {"controller-gen.kubebuilder.io/version": "v0.17.2"}
+                    ),
+                    "labels": {},
+                },
+                "spec": {
+                    "group": group,
+                    "names": {
+                        "kind": "FixtureResource",
+                        "listKind": "FixtureResourceList",
+                        "plural": short_name,
+                        "singular": short_name.removesuffix("s"),
+                    },
+                    "scope": "Cluster",
+                    "versions": [{"name": version, "served": True, "storage": True}],
+                },
+            }
+        )
+    admission_annotations = {
+        "gateway.networking.k8s.io/bundle-version": "v1.6.1",
+        "gateway.networking.k8s.io/channel": "standard",
+    }
+    documents.extend(
+        [
+            {
+                "apiVersion": "admissionregistration.k8s.io/v1",
+                "kind": "ValidatingAdmissionPolicy",
+                "metadata": {
+                    "name": "safe-upgrades.gateway.networking.k8s.io",
+                    "annotations": admission_annotations.copy(),
+                    "labels": {},
+                },
+                "spec": {
+                    "failurePolicy": "Fail",
+                    "matchConstraints": {"resourceRules": []},
+                },
+            },
+            {
+                "apiVersion": "admissionregistration.k8s.io/v1",
+                "kind": "ValidatingAdmissionPolicyBinding",
+                "metadata": {
+                    "name": "safe-upgrades.gateway.networking.k8s.io",
+                    "annotations": admission_annotations.copy(),
+                    "labels": {},
+                },
+                "spec": {
+                    "policyName": "safe-upgrades.gateway.networking.k8s.io",
+                    "validationActions": ["Deny"],
+                },
+            },
+        ]
+    )
+    return documents
+
+
+def _gateway_chart_render() -> str:
+    return (
+        "\n---\n".join(
+            json.dumps(document, sort_keys=True)
+            for document in _gateway_chart_documents()
+        )
+        + "\n---\n"
+    )
 
 
 def _test_ca_pair(
@@ -170,8 +283,6 @@ class FakeEnvironment:
         self.helm_installs = 0
         self.helm_uninstalls = 0
         self.labelled = False
-        self.crd_owner_on_apply: str | None = RUN_ID
-        self.add_crds_on_apply = True
         self.controller_owner_on_install: str | None = RUN_ID
         self.controller_version_on_install = "v1.9.2"
         self.add_cert_manager_on_install = True
@@ -192,6 +303,11 @@ class FakeEnvironment:
         self.omit_container_after_run = False
         self.omit_container_after_start = False
         self.registry_stays_stopped_after_start = False
+        self.gateway_create_attempts = 0
+        self.gateway_create_failure_at: int | None = None
+        self.gateway_create_skip_at: int | None = None
+        self.gateway_create_race_object: dict[str, Any] | None = None
+        self.gateway_render_output = _gateway_chart_render()
         self.fail_docker_command: tuple[str, ...] | None = None
         self.fail_docker_message = "injected Docker failure"
         if owned:
@@ -221,45 +337,17 @@ class FakeEnvironment:
         }
 
     def add_valid_gateway_crds(self, *, owner: str | None = RUN_ID) -> None:
-        for name in (
-            "gatewayclasses.gateway.networking.k8s.io",
-            "gateways.gateway.networking.k8s.io",
-            "httproutes.gateway.networking.k8s.io",
-        ):
-            self.crds.append(
-                {
-                    "metadata": {
-                        "name": name,
-                        "annotations": {
-                            "gateway.networking.k8s.io/bundle-version": "v1.6.1",
-                            "gateway.networking.k8s.io/channel": "standard",
-                            **({OWNER_KEY: owner} if owner is not None else {}),
-                        },
-                    },
-                    "spec": {
-                        "group": "gateway.networking.k8s.io",
-                        "versions": [{"name": "v1", "served": True}],
-                    },
-                }
-            )
-        for name in (
-            "clienttrafficpolicies.gateway.envoyproxy.io",
-            "backendtrafficpolicies.gateway.envoyproxy.io",
-        ):
-            self.crds.append(
-                {
-                    "metadata": {
-                        "name": name,
-                        "annotations": (
-                            {OWNER_KEY: owner} if owner is not None else {}
-                        ),
-                    },
-                    "spec": {
-                        "group": "gateway.envoyproxy.io",
-                        "versions": [{"name": "v1alpha1", "served": True}],
-                    },
-                }
-            )
+        for document in _gateway_chart_documents():
+            stored = copy.deepcopy(document)
+            annotations = stored["metadata"].setdefault("annotations", {})
+            if owner is not None:
+                annotations[OWNER_KEY] = owner
+                annotations[MANAGED_BY_KEY] = MANAGED_BY_VALUE
+            if stored["kind"] == "CustomResourceDefinition":
+                self.crds.append(stored)
+            else:
+                kind = stored["kind"].lower()
+                self.resources[(kind, stored["metadata"]["name"], None)] = stored
 
     def add_controller(
         self,
@@ -368,6 +456,7 @@ class FakeEnvironment:
     ) -> subprocess.CompletedProcess[str]:
         self.commands.append((argv, kwargs))
         output = ""
+        error = ""
         returncode = 0
         if argv[0] == "/fake/kind":
             if argv[1:3] == ["get", "clusters"]:
@@ -444,7 +533,46 @@ class FakeEnvironment:
                 }
             elif args[:2] == ["create", "-f"]:
                 body = json.loads(kwargs.get("input", "{}"))
-                if body.get("kind") == "GatewayClass" and self.store_gateway_class:
+                if body.get("kind") in {
+                    "CustomResourceDefinition",
+                    "ValidatingAdmissionPolicy",
+                    "ValidatingAdmissionPolicyBinding",
+                }:
+                    self.gateway_create_attempts += 1
+                    metadata = body.get("metadata", {})
+                    name = metadata.get("name")
+                    if self.gateway_create_race_object is not None:
+                        raced = self.gateway_create_race_object
+                        self.gateway_create_race_object = None
+                        if raced.get("kind") == "CustomResourceDefinition":
+                            self.crds.append(copy.deepcopy(raced))
+                        else:
+                            self.resources[
+                                (raced["kind"].lower(), raced["metadata"]["name"], None)
+                            ] = copy.deepcopy(raced)
+                        returncode = 1
+                        error = "already exists"
+                    elif self.gateway_create_failure_at == self.gateway_create_attempts:
+                        returncode = 1
+                        error = "injected create failure"
+                    elif self.gateway_create_skip_at != self.gateway_create_attempts:
+                        if body.get("kind") == "CustomResourceDefinition":
+                            if any(
+                                item.get("metadata", {}).get("name") == name
+                                for item in self.crds
+                            ):
+                                returncode = 1
+                                error = "already exists"
+                            else:
+                                self.crds.append(body)
+                        else:
+                            key = (body["kind"].lower(), name, None)
+                            if key in self.resources:
+                                returncode = 1
+                                error = "already exists"
+                            else:
+                                self.resources[key] = body
+                elif body.get("kind") == "GatewayClass" and self.store_gateway_class:
                     self.gateway_class = body
                 elif body.get("kind") == "Namespace":
                     key = ("namespace", body["metadata"]["name"], None)
@@ -545,8 +673,6 @@ class FakeEnvironment:
                             annotations[key] = value
             elif args and args[0] == "apply":
                 self.applied_manifests += 1
-                if self.add_crds_on_apply:
-                    self.add_valid_gateway_crds(owner=self.crd_owner_on_apply)
             elif args and args[0] == "delete":
                 self.deleted.append(tuple(args[1:]))
                 if args[1] == "gatewayclass" and not self.keep_gateway_class_on_delete:
@@ -555,7 +681,7 @@ class FakeEnvironment:
                 returncode = 2
         elif argv[0] == "/fake/helm":
             if len(argv) > 1 and argv[1] == "template":
-                output = "apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n"
+                output = self.gateway_render_output
             elif len(argv) > 1 and argv[1] == "install":
                 self.helm_installs += 1
                 if len(argv) > 2 and argv[2] == CERT_MANAGER_RELEASE:
@@ -574,7 +700,10 @@ class FakeEnvironment:
         else:
             returncode = 2
         return subprocess.CompletedProcess(
-            argv, returncode, output, "fake command error" if returncode else ""
+            argv,
+            returncode,
+            output,
+            error or ("fake command error" if returncode else ""),
         )
 
     def _docker(
@@ -734,6 +863,16 @@ class FakeEnvironment:
                 ),
                 None,
             )
+        elif resource_type in {
+            "validatingadmissionpolicies.admissionregistration.k8s.io",
+            "validatingadmissionpolicybindings.admissionregistration.k8s.io",
+        }:
+            kind = (
+                "validatingadmissionpolicy"
+                if resource_type.startswith("validatingadmissionpolicies.")
+                else "validatingadmissionpolicybinding"
+            )
+            value = self.resources.get((kind, name or "", None))
         elif resource_type == "gatewayclass":
             value = (
                 self.gateway_class
@@ -1323,6 +1462,72 @@ def test_gateway_crd_list_parser_rejects_malformed_output(
         tool._gateway_crds(_run_state())
 
 
+def test_gateway_render_parser_accepts_exact_inventory_and_empty_separator() -> None:
+    rendered = _gateway_chart_render()
+    parsed = kind_gateway_api_module.KindGatewayApi._gateway_install_manifest(
+        rendered, RUN_ID
+    )
+
+    assert len(parsed) == 20
+    assert set(parsed) == kind_gateway_api_module._GATEWAY_INSTALL_IDENTITIES
+    assert all(
+        resource["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+        and resource["metadata"]["annotations"][MANAGED_BY_KEY] == MANAGED_BY_VALUE
+        for resource in parsed.values()
+    )
+
+
+@pytest.mark.parametrize(
+    ("rendered", "message"),
+    [
+        (_gateway_chart_render() + "\nnull\n", "non-object YAML document"),
+        (
+            _gateway_chart_render()
+            + "\n---\n"
+            + json.dumps(_gateway_chart_documents()[0]),
+            "duplicate resource identity",
+        ),
+        (
+            _gateway_chart_render()
+            + "\n---\n"
+            + json.dumps(
+                {
+                    "apiVersion": "v1",
+                    "kind": "Secret",
+                    "metadata": {"name": "x"},
+                    "spec": {},
+                }
+            ),
+            "unexpected resource",
+        ),
+    ],
+)
+def test_gateway_render_parser_rejects_null_duplicate_and_unexpected_documents(
+    rendered: str, message: str
+) -> None:
+    with pytest.raises(KindGatewayApiError, match=message):
+        kind_gateway_api_module.KindGatewayApi._gateway_install_manifest(
+            rendered, RUN_ID
+        )
+
+
+def test_gateway_render_parser_rejects_duplicate_yaml_keys() -> None:
+    with pytest.raises(KindGatewayApiError, match="invalid YAML"):
+        kind_gateway_api_module._load_unique_yaml_documents(
+            "apiVersion: v1\nkind: Secret\nkind: ConfigMap\nmetadata: {name: x}\n"
+        )
+
+
+def test_gateway_render_parser_rejects_incomplete_inventory() -> None:
+    documents = _gateway_chart_documents()[:-1]
+    rendered = "\n---\n".join(json.dumps(document) for document in documents)
+
+    with pytest.raises(KindGatewayApiError, match="exact pinned 20-resource inventory"):
+        kind_gateway_api_module.KindGatewayApi._gateway_install_manifest(
+            rendered, RUN_ID
+        )
+
+
 @pytest.mark.parametrize(
     ("target", "mutation", "message"),
     [
@@ -1791,6 +1996,8 @@ def test_prepare_refuses_unowned_gateway_crd_before_applying_anything(
     environment = FakeEnvironment()
     environment.crds = [
         {
+            "apiVersion": "apiextensions.k8s.io/v1",
+            "kind": "CustomResourceDefinition",
             "metadata": {
                 "name": "gateways.gateway.networking.k8s.io",
                 "annotations": {},
@@ -1800,7 +2007,7 @@ def test_prepare_refuses_unowned_gateway_crd_before_applying_anything(
     ]
     tool = _tool(tmp_path, environment)
 
-    with pytest.raises(KindGatewayApiError, match="is unowned; refusing to apply"):
+    with pytest.raises(KindGatewayApiError, match="is not owned by this run"):
         tool.prepare(RUN_ID)
 
     assert environment.applied_manifests == 0
@@ -1865,7 +2072,6 @@ def test_prepare_marks_new_crds_and_controller_after_verified_install(
     tmp_path: Path,
 ) -> None:
     environment = FakeEnvironment()
-    environment.crd_owner_on_apply = None
     environment.controller_owner_on_install = None
     tool = KindGatewayApi(
         runner=environment,
@@ -1886,7 +2092,16 @@ def test_prepare_marks_new_crds_and_controller_after_verified_install(
     assert state.controller_installed is True
     assert state.gateway_class_created is True
     assert all(
-        crd["metadata"]["annotations"][OWNER_KEY] == RUN_ID for crd in environment.crds
+        crd["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+        and crd["metadata"]["annotations"][MANAGED_BY_KEY] == MANAGED_BY_VALUE
+        for crd in environment.crds
+    )
+    assert all(
+        resource["metadata"]["annotations"][OWNER_KEY] == RUN_ID
+        and resource["metadata"]["annotations"][MANAGED_BY_KEY] == MANAGED_BY_VALUE
+        for resource in environment.resources.values()
+        if resource.get("kind")
+        in {"ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"}
     )
     assert (
         environment.resources[("namespace", ENVOY_NAMESPACE, None)]["metadata"][
@@ -1905,7 +2120,7 @@ def test_prepare_marks_new_crds_and_controller_after_verified_install(
         for argv, _ in environment.commands
         if argv[0] == "/fake/kubectl" and argv[3:5] == ["annotate", "crd"]
     ]
-    assert len(crd_annotations) == 5 + len(CERT_MANAGER_CRDS)
+    assert len(crd_annotations) == len(CERT_MANAGER_CRDS)
 
 
 def test_cert_manager_install_is_pinned_and_marks_only_verified_release_resources(
@@ -2143,36 +2358,175 @@ def test_ca_export_writes_only_the_public_certificate_create_only(
     assert output_path.read_bytes() == b"foreign replacement"
 
 
-@pytest.mark.parametrize(
-    ("apply_crds", "owner", "message"),
-    [
-        (False, RUN_ID, "install did not create"),
-        (True, "ffffffffffff", "different run ownership marker"),
-    ],
-)
-def test_prepare_refuses_incomplete_or_foreign_crds_after_apply(
-    tmp_path: Path, apply_crds: bool, owner: str, message: str
+def test_gateway_install_creates_exact_twenty_resources_with_owners_before_write(
+    tmp_path: Path,
 ) -> None:
     environment = FakeEnvironment()
-    environment.add_crds_on_apply = apply_crds
-    environment.crd_owner_on_apply = owner
-    tool = KindGatewayApi(
-        runner=environment,
-        which=lambda name: f"/fake/{name}",
-        state_dir=tmp_path,
-    )
-    tool._save_state(
-        _run_state(
-            crds_installed=False,
-            controller_installed=False,
-            gateway_class_created=False,
+    tool = _tool(tmp_path, environment)
+
+    state = tool._install_gateway_crds(_run_state(crds_installed=False))
+
+    creates = [
+        (index, argv, kwargs)
+        for index, (argv, kwargs) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl" and argv[3:6] == ["create", "-f", "-"]
+    ]
+    assert state.crds_installed is True
+    assert len(creates) == 20
+    assert (
+        sum(
+            json.loads(kwargs["input"])["kind"] == "CustomResourceDefinition"
+            for _, _, kwargs in creates
         )
+        == 18
+    )
+    assert (
+        sum(
+            json.loads(kwargs["input"])["kind"]
+            in {"ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"}
+            for _, _, kwargs in creates
+        )
+        == 2
+    )
+    first_create_index = creates[0][0]
+    preflight_get_indexes = [
+        index
+        for index, (argv, _) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl"
+        and argv[3] == "get"
+        and argv[4]
+        in {
+            "crds",
+            "validatingadmissionpolicies.admissionregistration.k8s.io",
+            "validatingadmissionpolicybindings.admissionregistration.k8s.io",
+        }
+    ][:3]
+    assert len(preflight_get_indexes) == 3
+    assert max(preflight_get_indexes) < first_create_index
+    for _, _, kwargs in creates:
+        resource = json.loads(kwargs["input"])
+        annotations = resource["metadata"]["annotations"]
+        assert annotations[OWNER_KEY] == RUN_ID
+        assert annotations[MANAGED_BY_KEY] == MANAGED_BY_VALUE
+    assert not any(
+        argv[0] == "/fake/kubectl"
+        and (argv[3] == "apply" or argv[3:5] == ["annotate", "crd"])
+        for argv, _ in environment.commands
     )
 
-    with pytest.raises(KindGatewayApiError, match=message):
-        tool.prepare(RUN_ID)
 
-    assert environment.deleted == []
+def test_gateway_install_conflict_arriving_after_preflight_is_not_adopted(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    raced = copy.deepcopy(_gateway_chart_documents()[0])
+    raced["metadata"]["annotations"].update(
+        {OWNER_KEY: "ffffffffffff", MANAGED_BY_KEY: MANAGED_BY_VALUE}
+    )
+    environment.gateway_create_race_object = raced
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match=r"command failed.*already exists"):
+        tool._install_gateway_crds(_run_state(crds_installed=False))
+
+    assert environment.gateway_create_attempts == 1
+    assert len(environment.crds) == 1
+    assert environment.crds[0]["metadata"]["annotations"][OWNER_KEY] == "ffffffffffff"
+    assert not any(
+        argv[0] == "/fake/kubectl" and argv[3] == "apply"
+        for argv, _ in environment.commands
+    )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"],
+)
+def test_gateway_install_rejects_foreign_admission_collision_before_any_create(
+    tmp_path: Path, kind: str
+) -> None:
+    environment = FakeEnvironment()
+    collision = next(
+        document for document in _gateway_chart_documents() if document["kind"] == kind
+    )
+    collision = copy.deepcopy(collision)
+    collision["metadata"]["annotations"].update(
+        {OWNER_KEY: "ffffffffffff", MANAGED_BY_KEY: MANAGED_BY_VALUE}
+    )
+    environment.resources[(kind.lower(), collision["metadata"]["name"], None)] = (
+        collision
+    )
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match="is not owned by this run"):
+        tool._install_gateway_crds(_run_state(crds_installed=False))
+
+    assert environment.gateway_create_attempts == 0
+
+
+def test_gateway_install_same_run_partial_creation_resumes_without_mutating_existing(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.gateway_create_failure_at = 5
+    tool = _tool(tmp_path, environment)
+    state = _run_state(crds_installed=False)
+    tool._save_state(state)
+
+    with pytest.raises(
+        KindGatewayApiError, match=r"command failed.*injected create failure"
+    ):
+        tool._install_gateway_crds(state)
+
+    first_four = {
+        (
+            resource["apiVersion"],
+            resource["kind"],
+            resource["metadata"]["name"],
+        ): copy.deepcopy(resource)
+        for resource in environment.crds
+    }
+    assert len(first_four) == 4
+    assert tool._load_state(RUN_ID).crds_installed is False
+
+    environment.gateway_create_failure_at = None
+    resumed = tool._install_gateway_crds(state)
+
+    assert resumed.crds_installed is True
+    # The first invocation includes one injected failure on create five; the
+    # resumed invocation creates the remaining sixteen objects.
+    assert environment.gateway_create_attempts == 21
+    for resource in environment.crds:
+        identity = (
+            resource["apiVersion"],
+            resource["kind"],
+            resource["metadata"]["name"],
+        )
+        if identity in first_four:
+            assert resource == first_four[identity]
+    assert len(environment.crds) == 18
+    assert (
+        sum(
+            resource.get("kind")
+            in {"ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"}
+            for resource in environment.resources.values()
+        )
+        == 2
+    )
+
+
+def test_gateway_install_rejects_owned_spec_drift_before_any_create(
+    tmp_path: Path,
+) -> None:
+    environment = FakeEnvironment()
+    environment.add_valid_gateway_crds()
+    environment.crds[0]["spec"]["scope"] = "Namespaced"
+    tool = _tool(tmp_path, environment)
+
+    with pytest.raises(KindGatewayApiError, match="differs from the pinned render"):
+        tool._install_gateway_crds(_run_state(crds_installed=False))
+
+    assert environment.gateway_create_attempts == 0
 
 
 def test_controller_installer_refuses_partial_or_unowned_existing_resources(
@@ -2350,7 +2704,8 @@ def test_prepare_installs_pinned_prerequisites_once_and_creates_run_owned_class(
     assert first.controller_installed is True
     assert first.gateway_class_created is True
     assert second.gateway_class_created is True
-    assert environment.applied_manifests == 1
+    assert environment.applied_manifests == 0
+    assert environment.gateway_create_attempts == 20
     assert environment.helm_installs == 2
     assert environment.gateway_class is not None
     assert environment.gateway_class["metadata"]["annotations"][OWNER_KEY] == RUN_ID
@@ -2375,10 +2730,12 @@ def test_prepare_installs_gateway_crds_before_gatewayclass_lookup_on_fresh_clust
     state = tool.prepare(RUN_ID)
 
     assert state.crds_installed is True
-    crd_apply_index = next(
+    crd_create_index = next(
         index
-        for index, (argv, _) in enumerate(environment.commands)
-        if argv[0] == "/fake/kubectl" and argv[3:6] == ["apply", "--server-side", "-f"]
+        for index, (argv, kwargs) in enumerate(environment.commands)
+        if argv[0] == "/fake/kubectl"
+        and argv[3:6] == ["create", "-f", "-"]
+        and json.loads(kwargs["input"])["kind"] == "CustomResourceDefinition"
     )
     gatewayclass_lookup_index = next(
         index
@@ -2396,7 +2753,7 @@ def test_prepare_installs_gateway_crds_before_gatewayclass_lookup_on_fresh_clust
             "crd/gatewayclasses.gateway.networking.k8s.io",
         ]
     )
-    assert crd_apply_index < gatewayclass_wait_index < gatewayclass_lookup_index
+    assert crd_create_index < gatewayclass_wait_index < gatewayclass_lookup_index
     assert "--timeout=60s" in environment.commands[gatewayclass_wait_index][0]
     assert environment.established_crds.issuperset(
         {
@@ -2445,7 +2802,9 @@ def test_prepare_waits_for_preexisting_partial_gateway_crd_before_lookup(
         if argv[0] == "/fake/kubectl" and argv[3:5] == ["get", "gatewayclass"]
     )
     assert wait_index < lookup_index
-    assert environment.applied_manifests == 1
+    assert environment.applied_manifests == 0
+    # The fixture retained both admission resources and one CRD before retry.
+    assert environment.gateway_create_attempts == 17
 
 
 def test_prepare_preserves_crd_establishment_wait_failure_before_mutation(

@@ -394,6 +394,9 @@ dev = [
   # (the watchdog reserve is intentionally six seconds; see [tool.mutmut]).
   "pytest-timeout>=2.4.0",
   "pytest-xdist>=3.8.0",
+  # The Gateway API helper parses Helm's multi-document render locally before
+  # any cluster write; kubectl client dry-run still requires API discovery.
+  "pyyaml==6.0.3",
   # RZ-30-05: ruff v0.15.x has regression (strips except parens → SyntaxError).
   # Pin to 0.14.x until upstream fix lands.  Pre-commit already pins 0.14.14.
   "ruff>=0.14.14,<0.17",

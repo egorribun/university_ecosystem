@@ -59,10 +59,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import yaml
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from yaml.constructor import ConstructorError
+from yaml.nodes import MappingNode, ScalarNode
 
 GATEWAY_API_BUNDLE_VERSION = "v1.6.1"
 GATEWAY_API_CHANNEL = "standard"
@@ -91,6 +94,56 @@ GATEWAY_API_CRDS = (
 ENVOY_GATEWAY_CRDS = (
     "clienttrafficpolicies.gateway.envoyproxy.io",
     "backendtrafficpolicies.gateway.envoyproxy.io",
+)
+_GATEWAY_RENDERED_CRD_NAMES = frozenset(
+    {
+        "backendtlspolicies.gateway.networking.k8s.io",
+        "gatewayclasses.gateway.networking.k8s.io",
+        "gateways.gateway.networking.k8s.io",
+        "grpcroutes.gateway.networking.k8s.io",
+        "httproutes.gateway.networking.k8s.io",
+        "listenersets.gateway.networking.k8s.io",
+        "referencegrants.gateway.networking.k8s.io",
+        "tcproutes.gateway.networking.k8s.io",
+        "tlsroutes.gateway.networking.k8s.io",
+        "udproutes.gateway.networking.k8s.io",
+    }
+)
+_ENVOY_RENDERED_CRD_NAMES = frozenset(
+    {
+        "backends.gateway.envoyproxy.io",
+        "backendtrafficpolicies.gateway.envoyproxy.io",
+        "clienttrafficpolicies.gateway.envoyproxy.io",
+        "envoyextensionpolicies.gateway.envoyproxy.io",
+        "envoypatchpolicies.gateway.envoyproxy.io",
+        "envoyproxies.gateway.envoyproxy.io",
+        "httproutefilters.gateway.envoyproxy.io",
+        "securitypolicies.gateway.envoyproxy.io",
+    }
+)
+_GATEWAY_ADMISSION_OBJECTS = (
+    (
+        "admissionregistration.k8s.io/v1",
+        "ValidatingAdmissionPolicy",
+        "safe-upgrades.gateway.networking.k8s.io",
+        "validatingadmissionpolicies.admissionregistration.k8s.io",
+    ),
+    (
+        "admissionregistration.k8s.io/v1",
+        "ValidatingAdmissionPolicyBinding",
+        "safe-upgrades.gateway.networking.k8s.io",
+        "validatingadmissionpolicybindings.admissionregistration.k8s.io",
+    ),
+)
+_CRD_API_VERSION = "apiextensions.k8s.io/v1"
+_CRD_KIND = "CustomResourceDefinition"
+_GATEWAY_INSTALL_IDENTITIES = frozenset(
+    {(_CRD_API_VERSION, _CRD_KIND, name) for name in _GATEWAY_RENDERED_CRD_NAMES}
+    | {(_CRD_API_VERSION, _CRD_KIND, name) for name in _ENVOY_RENDERED_CRD_NAMES}
+    | {
+        (api_version, kind, name)
+        for api_version, kind, name, _resource_type in _GATEWAY_ADMISSION_OBJECTS
+    }
 )
 CERT_MANAGER_CRD = "certificates.cert-manager.io"
 CERT_MANAGER_VERSION = "v1.21.2"
@@ -142,6 +195,82 @@ class RunState:
 
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects ambiguous repeated mapping keys."""
+
+    def construct_mapping(
+        self, node: MappingNode, deep: bool = False
+    ) -> dict[Any, Any]:
+        self.flatten_mapping(node)
+        mapping: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicate = key in mapping
+            except TypeError as exc:
+                raise ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    "found an unhashable mapping key",
+                    key_node.start_mark,
+                ) from exc
+            if duplicate:
+                raise ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found duplicate key {key!r}",
+                    key_node.start_mark,
+                )
+            mapping[key] = self.construct_object(value_node, deep=deep)
+        return mapping
+
+
+def _load_unique_yaml_documents(rendered: str) -> list[dict[str, Any]]:
+    loader = _UniqueKeySafeLoader(rendered)
+    documents: list[dict[str, Any]] = []
+    try:
+        while loader.check_data():
+            node = loader.get_node()
+            if node is None:
+                continue
+            value = loader.construct_document(node)
+            if (
+                isinstance(node, ScalarNode)
+                and node.tag == "tag:yaml.org,2002:null"
+                and node.value == ""
+            ):
+                continue
+            if not isinstance(value, dict):
+                raise KindGatewayApiError(
+                    "Gateway chart render contains a non-object YAML document"
+                )
+            documents.append(value)
+    except yaml.YAMLError as exc:
+        raise KindGatewayApiError("Gateway chart render is invalid YAML") from exc
+    finally:
+        loader.dispose()
+    return documents
+
+
+def _contains_expected_fields(actual: Any, expected: Any) -> bool:
+    """Match rendered fields while allowing Kubernetes server defaults."""
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and _contains_expected_fields(actual[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return (
+            isinstance(actual, list)
+            and len(actual) == len(expected)
+            and all(
+                _contains_expected_fields(actual_value, expected_value)
+                for actual_value, expected_value in zip(actual, expected, strict=True)
+            )
+        )
+    return actual == expected
 
 
 def default_state_dir() -> Path:
@@ -1260,7 +1389,9 @@ class KindGatewayApi:
             raise KindGatewayApiError("could not list cluster CRDs") from exc
         if not isinstance(items, list):
             raise KindGatewayApiError("kubectl CRD list did not contain an item list")
-        return [item for item in items if isinstance(item, dict)]
+        if any(not isinstance(item, dict) for item in items):
+            raise KindGatewayApiError("kubectl CRD list contained an invalid item")
+        return items
 
     @staticmethod
     def _is_gateway_crd(crd: dict[str, Any]) -> bool:
@@ -1275,31 +1406,232 @@ class KindGatewayApi:
                 continue
             annotations = crd.get("metadata", {}).get("annotations", {})
             owner = annotations.get(OWNER_KEY)
-            if owner != state.run_id:
+            manager = annotations.get(MANAGED_BY_KEY)
+            if owner != state.run_id or manager != MANAGED_BY_VALUE:
                 name = crd.get("metadata", {}).get("name", "<unnamed>")
                 raise KindGatewayApiError(
-                    f"Gateway API CRD '{name}' is unowned; refusing to apply over it"
+                    f"Gateway API CRD '{name}' is unowned or has changed markers; refusing to create over it"
                 )
 
-    def _install_gateway_crds(self, state: RunState) -> RunState:
-        before = self._gateway_crds(state)
-        self._verify_owned_gateway_crds(state, before)
-        if state.crds_installed:
-            existing_names = {
-                crd.get("metadata", {}).get("name")
-                for crd in before
-                if self._is_gateway_crd(crd)
-            }
-            missing = set((*GATEWAY_API_CRDS, *ENVOY_GATEWAY_CRDS)) - existing_names
-            if missing:
+    @staticmethod
+    def _rendered_identity(resource: dict[str, Any]) -> tuple[str, str, str]:
+        metadata = resource.get("metadata")
+        if not isinstance(metadata, dict):
+            raise KindGatewayApiError("Gateway chart object has invalid metadata")
+        api_version = resource.get("apiVersion")
+        kind = resource.get("kind")
+        name = metadata.get("name")
+        if not all(
+            isinstance(value, str) and value for value in (api_version, kind, name)
+        ):
+            raise KindGatewayApiError("Gateway chart object has an invalid identity")
+        return api_version, kind, name
+
+    @staticmethod
+    def _gateway_install_manifest(
+        rendered: str, run_id: str
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        documents = _load_unique_yaml_documents(rendered)
+        if not documents:
+            raise KindGatewayApiError("Gateway chart render contains no resources")
+
+        by_identity: dict[tuple[str, str, str], dict[str, Any]] = {}
+        expected_crd_groups = {
+            **{
+                name: "gateway.networking.k8s.io"
+                for name in _GATEWAY_RENDERED_CRD_NAMES
+            },
+            **{name: "gateway.envoyproxy.io" for name in _ENVOY_RENDERED_CRD_NAMES},
+        }
+        for document in documents:
+            identity = KindGatewayApi._rendered_identity(document)
+            if identity not in _GATEWAY_INSTALL_IDENTITIES:
                 raise KindGatewayApiError(
-                    "recorded run-owned Gateway API setup is incomplete; refusing to reinstall CRDs"
+                    "Gateway chart render contains an unexpected resource"
                 )
-            for name in GATEWAY_API_CRDS:
-                self._require_crd(state, name, "v1", require_gateway_bundle=True)
-            for name in ENVOY_GATEWAY_CRDS:
-                self._require_crd(state, name, "v1alpha1")
-            return state
+            if identity in by_identity:
+                raise KindGatewayApiError(
+                    "Gateway chart render contains a duplicate resource identity"
+                )
+
+            metadata = document["metadata"]
+            if any(
+                field in metadata
+                for field in (
+                    "namespace",
+                    "generateName",
+                    "uid",
+                    "resourceVersion",
+                    "generation",
+                    "creationTimestamp",
+                    "deletionTimestamp",
+                    "managedFields",
+                )
+            ):
+                raise KindGatewayApiError(
+                    "Gateway chart render contains server-owned or namespaced metadata"
+                )
+            annotations = metadata.get("annotations", {})
+            labels = metadata.get("labels", {})
+            if annotations is None:
+                annotations = {}
+            if labels is None:
+                labels = {}
+            if not isinstance(annotations, dict) or not isinstance(labels, dict):
+                raise KindGatewayApiError(
+                    "Gateway chart render contains invalid metadata markers"
+                )
+            if (
+                annotations.get(OWNER_KEY, run_id) != run_id
+                or annotations.get(MANAGED_BY_KEY, MANAGED_BY_VALUE) != MANAGED_BY_VALUE
+            ):
+                raise KindGatewayApiError(
+                    "Gateway chart render contains conflicting ownership markers"
+                )
+            annotations = dict(annotations)
+            annotations[OWNER_KEY] = run_id
+            annotations[MANAGED_BY_KEY] = MANAGED_BY_VALUE
+            metadata["annotations"] = annotations
+            if "labels" in metadata:
+                metadata["labels"] = dict(labels)
+
+            spec = document.get("spec")
+            if not isinstance(spec, dict):
+                raise KindGatewayApiError(
+                    "Gateway chart render contains an object without a spec"
+                )
+            if identity[1] == _CRD_KIND:
+                expected_group = expected_crd_groups[identity[2]]
+                if spec.get("group") != expected_group:
+                    raise KindGatewayApiError(
+                        "Gateway chart render contains a CRD with an unexpected group"
+                    )
+                versions = spec.get("versions")
+                if (
+                    not isinstance(versions, list)
+                    or not versions
+                    or any(
+                        not isinstance(version, dict)
+                        or not isinstance(version.get("name"), str)
+                        or type(version.get("served")) is not bool
+                        for version in versions
+                    )
+                    or not any(version["served"] for version in versions)
+                ):
+                    raise KindGatewayApiError(
+                        "Gateway chart render contains invalid CRD versions"
+                    )
+                if expected_group == "gateway.networking.k8s.io" and (
+                    annotations.get("gateway.networking.k8s.io/bundle-version")
+                    != GATEWAY_API_BUNDLE_VERSION
+                    or annotations.get("gateway.networking.k8s.io/channel")
+                    != GATEWAY_API_CHANNEL
+                ):
+                    raise KindGatewayApiError(
+                        "Gateway API CRD render is not from the pinned Standard bundle"
+                    )
+            elif (
+                annotations.get("gateway.networking.k8s.io/bundle-version")
+                != GATEWAY_API_BUNDLE_VERSION
+                or annotations.get("gateway.networking.k8s.io/channel")
+                != GATEWAY_API_CHANNEL
+            ):
+                raise KindGatewayApiError(
+                    "Gateway admission render is not from the pinned Standard bundle"
+                )
+            by_identity[identity] = document
+
+        if set(by_identity) != _GATEWAY_INSTALL_IDENTITIES:
+            raise KindGatewayApiError(
+                "Gateway chart render does not contain the exact pinned 20-resource inventory"
+            )
+        return by_identity
+
+    def _current_gateway_install_objects(
+        self,
+        state: RunState,
+        expected: dict[tuple[str, str, str], dict[str, Any]],
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        current: dict[tuple[str, str, str], dict[str, Any]] = {}
+        expected_crd_names = {
+            identity[2] for identity in expected if identity[1] == _CRD_KIND
+        }
+        for crd in self._gateway_crds(state):
+            metadata = crd.get("metadata")
+            name = metadata.get("name") if isinstance(metadata, dict) else None
+            spec = crd.get("spec")
+            group = spec.get("group") if isinstance(spec, dict) else None
+            if name not in expected_crd_names and group not in {
+                "gateway.networking.k8s.io",
+                "gateway.envoyproxy.io",
+            }:
+                continue
+            identity = self._rendered_identity(crd)
+            if identity not in expected:
+                raise KindGatewayApiError(
+                    "cluster has an unexpected Gateway API CRD; refusing to adopt it"
+                )
+            if identity in current:
+                raise KindGatewayApiError(
+                    "cluster returned a duplicate Gateway API CRD identity"
+                )
+            current[identity] = crd
+
+        for api_version, kind, name, resource_type in _GATEWAY_ADMISSION_OBJECTS:
+            identity = (api_version, kind, name)
+            resource = self._get_json(state, resource_type, name)
+            if resource is not None:
+                if self._rendered_identity(resource) != identity:
+                    raise KindGatewayApiError(
+                        "cluster returned an unexpected Gateway admission identity"
+                    )
+                current[identity] = resource
+        return current
+
+    @staticmethod
+    def _verify_rendered_object(
+        state: RunState,
+        actual: dict[str, Any],
+        expected: dict[str, Any],
+    ) -> None:
+        identity = KindGatewayApi._rendered_identity(expected)
+        actual_metadata = actual.get("metadata")
+        expected_metadata = expected.get("metadata")
+        if not isinstance(actual_metadata, dict) or not isinstance(
+            expected_metadata, dict
+        ):
+            raise KindGatewayApiError("Gateway resource metadata could not be verified")
+        actual_annotations = actual_metadata.get("annotations", {}) or {}
+        if (
+            not isinstance(actual_annotations, dict)
+            or actual_annotations.get(OWNER_KEY) != state.run_id
+            or actual_annotations.get(MANAGED_BY_KEY) != MANAGED_BY_VALUE
+        ):
+            raise KindGatewayApiError(
+                f"Gateway resource '{identity[2]}' is not owned by this run"
+            )
+        for field in ("annotations", "labels"):
+            actual_values = actual_metadata.get(field, {}) or {}
+            expected_values = expected_metadata.get(field, {}) or {}
+            if not isinstance(actual_values, dict) or actual_values != expected_values:
+                raise KindGatewayApiError(
+                    f"Gateway resource '{identity[2]}' metadata {field} differs from the pinned render"
+                )
+        if (
+            actual.get("apiVersion") != expected.get("apiVersion")
+            or actual.get("kind") != expected.get("kind")
+            or actual_metadata.get("name") != expected_metadata.get("name")
+            or actual_metadata.get("namespace") != expected_metadata.get("namespace")
+            or actual_metadata.get("generateName")
+            != expected_metadata.get("generateName")
+            or not _contains_expected_fields(actual.get("spec"), expected.get("spec"))
+        ):
+            raise KindGatewayApiError(
+                f"Gateway resource '{identity[2]}' differs from the pinned render"
+            )
+
+    def _install_gateway_crds(self, state: RunState) -> RunState:
+        self._assert_owned(state)
         rendered = self._run(
             [
                 self._tool("helm"),
@@ -1316,58 +1648,61 @@ class KindGatewayApi:
                 "crds.envoyGateway.enabled=true",
             ]
         )
-        self._assert_owned(state)
-        self._run(
-            [
-                self._tool("kubectl"),
-                "--context",
-                state.context,
-                "apply",
-                "--server-side",
-                "-f",
-                "-",
-            ],
-            input_text=rendered.stdout,
-        )
-        current = self._gateway_crds(state)
-        names = {
-            crd.get("metadata", {}).get("name")
-            for crd in current
-            if self._is_gateway_crd(crd)
-        }
-        missing = set((*GATEWAY_API_CRDS, *ENVOY_GATEWAY_CRDS)) - names
-        if missing:
-            raise KindGatewayApiError(
-                f"Envoy Gateway CRD install did not create: {', '.join(sorted(missing))}"
-            )
-        for crd in current:
-            if not self._is_gateway_crd(crd):
-                continue
-            name = crd.get("metadata", {}).get("name")
-            owner = crd.get("metadata", {}).get("annotations", {}).get(OWNER_KEY)
-            if owner == state.run_id:
-                continue
-            if owner is not None:
-                raise KindGatewayApiError(
-                    f"CRD '{name}' has a different run ownership marker"
+        expected = self._gateway_install_manifest(rendered.stdout, state.run_id)
+        try:
+            payloads = {
+                identity: json.dumps(
+                    resource,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
                 )
-            # A CRD absent before this command was created by the pinned chart;
-            # any pre-existing CRD was required to carry this run's marker.
-            self._assert_owned(state)
-            self._run(
-                [
-                    self._tool("kubectl"),
-                    "--context",
-                    state.context,
-                    "annotate",
-                    "crd",
-                    str(name),
-                    f"{OWNER_KEY}={state.run_id}",
-                    "--overwrite=false",
-                ]
+                for identity, resource in expected.items()
+            }
+        except (TypeError, ValueError) as exc:
+            raise KindGatewayApiError(
+                "Gateway chart render contains values that cannot be serialized safely"
+            ) from exc
+        before = self._current_gateway_install_objects(state, expected)
+        for identity, resource in before.items():
+            self._verify_rendered_object(state, resource, expected[identity])
+        missing = set(expected) - set(before)
+        if state.crds_installed and missing:
+            raise KindGatewayApiError(
+                "recorded run-owned Gateway API setup is incomplete; refusing to create missing resources"
             )
-        marked = self._gateway_crds(state)
-        self._verify_owned_gateway_crds(state, marked)
+
+        if not state.crds_installed:
+            for identity, resource in expected.items():
+                if identity in before:
+                    continue
+                self._assert_owned(state)
+                self._kubectl(
+                    state,
+                    "create",
+                    "-f",
+                    "-",
+                    input_text=payloads[identity],
+                )
+
+        current = self._current_gateway_install_objects(state, expected)
+        missing = set(expected) - set(current)
+        if missing:
+            names = ", ".join(sorted(identity[2] for identity in missing))
+            raise KindGatewayApiError(
+                f"Gateway install did not create the complete pinned inventory: {names}"
+            )
+        for identity, expected_resource in expected.items():
+            self._verify_rendered_object(state, current[identity], expected_resource)
+
+        if state.crds_installed:
+            for name in (*_GATEWAY_RENDERED_CRD_NAMES, *_ENVOY_RENDERED_CRD_NAMES):
+                self._wait_for_crd_established(state, name)
+            return state
+
+        for name in (*_GATEWAY_RENDERED_CRD_NAMES, *_ENVOY_RENDERED_CRD_NAMES):
+            self._wait_for_crd_established(state, name)
+        self._assert_owned(state)
         for name in GATEWAY_API_CRDS:
             self._require_crd(state, name, "v1", require_gateway_bundle=True)
         for name in ENVOY_GATEWAY_CRDS:
