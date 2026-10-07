@@ -1,7 +1,7 @@
 {
   "$schema": "./ci-check-catalog.schema.json",
   "schema_version": 1,
-  "catalog_version": "1.1.1",
+  "catalog_version": "1.1.2",
   "repository": "egorribun/university_ecosystem",
   "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
   "profiles": {
@@ -5047,6 +5047,31 @@
             "review_required": false
           }
         },
+        "mutation-tests-full-generation-base": {
+          "profile": "internal",
+          "check_name_template": "Full mutmut generation base",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "needs": [
+            "verify-full-mutation-provenance"
+          ],
+          "artifacts": [
+            {
+              "name_pattern": "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "mutmut-universe-artifact.json\nmutants/\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML selects same-run current-or-earlier artifacts on retry; classify retry behavior before relaxing this entry."
+          }
+        },
         "mutation-tests-full-stats": {
           "profile": "internal",
           "check_name_template": "Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/8",
@@ -5054,7 +5079,8 @@
           "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
           "needs": [
-            "verify-full-mutation-provenance"
+            "verify-full-mutation-provenance",
+            "mutation-tests-full-generation-base"
           ],
           "artifacts": [
             {
@@ -5065,10 +5091,11 @@
             }
           ],
           "retry_policy": {
-            "mode": "none",
-            "first_failure_preserved": true,
-            "classifier": "not_applicable",
-            "review_required": false
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML selects same-run current-or-earlier artifacts on retry; classify retry behavior before relaxing this entry."
           },
           "matrix_governance": {
             "max_parallel": 4
@@ -5087,16 +5114,17 @@
           "artifacts": [
             {
               "name_pattern": "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}",
-              "path_pattern": "mutants/mutmut-stats.json\nmutants/mutmut-stats-full.json\nmutants/mutmut-stats-reduction.json\nmutants/mutmut-full-plan/\n",
+              "path_pattern": "mutants/mutmut-stats.json\nmutants/mutmut-universe.json\nmutants/mutmut-stats-full.json\nmutants/mutmut-stats-reduction.json\nmutants/mutmut-full-plan/\n",
               "required": false,
               "provenance": "run_id_attempt"
             }
           ],
           "retry_policy": {
-            "mode": "none",
-            "first_failure_preserved": true,
-            "classifier": "not_applicable",
-            "review_required": false
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML selects same-run current-or-earlier artifacts on retry; classify retry behavior before relaxing this entry."
           }
         },
         "mutation-tests-full": {
@@ -5118,10 +5146,11 @@
             }
           ],
           "retry_policy": {
-            "mode": "none",
-            "first_failure_preserved": true,
-            "classifier": "not_applicable",
-            "review_required": false
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML selects same-run current-or-earlier artifacts on retry; classify retry behavior before relaxing this entry."
           },
           "matrix_governance": {
             "max_parallel": 8

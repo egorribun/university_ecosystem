@@ -400,7 +400,7 @@ dev = [
   "types-aiofiles>=25.1.0.20260409",
   # RZ-11 (audit 2026-03-05): virtualenv belongs here — it is developer tooling,
   # not a production runtime dependency.
-  "virtualenv>=21.2.1",
+  "virtualenv>=21.7.13",
   "types-requests>=2.33.0.20260408",
   "types-pyyaml>=6.0.12.20260408",
   "types-redis>=4.6.0.20241004",
@@ -462,7 +462,7 @@ environments = [
 # they bound the resolution without pretending app code imports them.
 constraint-dependencies = [
     "h2>=4.4.1,<5",  # fixes the h2 advisory in httpx's HTTP/2 transport
-    "urllib3>=2.7.0,<2.9",  # PY-P1-01: patched 2.7+ line; urllib3 v3 breaks transport APIs
+    "urllib3>=2.8.0,<2.9",  # PY-P1-01: patched 2.8+ line; urllib3 v3 breaks transport APIs
 ]
 override-dependencies = [
     "protobuf>=6.33.6,<8",

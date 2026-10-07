@@ -65,11 +65,23 @@ def test_nightly_helm_archives_have_one_producer_and_hash_bound_consumers() -> N
         ).read_text(encoding="utf-8")
     )
     jobs = full["jobs"]
-    assert (
-        jobs["mutation-tests-full-stats"]["needs"] == "verify-full-mutation-provenance"
-    )
-    assert "verify-full-mutation-provenance" in jobs["mutation-tests-full"]["needs"]
-    for job_name in ("mutation-tests-full-stats", "mutation-tests-full"):
+    assert jobs["mutation-tests-full-stats"]["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-generation-base",
+    ]
+    assert jobs["mutation-tests-full-plan"]["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-stats",
+    ]
+    assert jobs["mutation-tests-full"]["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-plan",
+    ]
+    for job_name in (
+        "mutation-tests-full-stats",
+        "mutation-tests-full-plan",
+        "mutation-tests-full",
+    ):
         job = jobs[job_name]
         assert job["permissions"] == {"contents": "read", "actions": "read"}
         selector = _step(job, "Select same-run Helm dependency artifact")

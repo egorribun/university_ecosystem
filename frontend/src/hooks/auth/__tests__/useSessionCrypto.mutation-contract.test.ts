@@ -314,6 +314,96 @@ describe("useSessionCrypto mutation contracts", () => {
     })
   })
 
+  it("keeps the latest explicit signing key when cache hashes resolve out of order", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    localStorage.removeItem(storageKey)
+    acceptBrowserSessionGeneration()
+
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+    let resolveFirstHash!: (value: string) => void
+    let resolveLatestHash!: (value: string) => void
+    const firstHash = new Promise<string>((resolve) => {
+      resolveFirstHash = resolve
+    })
+    const latestHash = new Promise<string>((resolve) => {
+      resolveLatestHash = resolve
+    })
+    vi.mocked(cryptoWorker.pbkdf2).mockReturnValueOnce(firstHash).mockReturnValueOnce(latestHash)
+
+    const { result, unmount } = renderHook(() => useSessionCrypto())
+    let firstUpdate: Promise<void> | undefined
+    let latestUpdate: Promise<void> | undefined
+
+    try {
+      await act(async () => {
+        await Promise.resolve()
+      })
+      postMessage.mockClear()
+
+      await act(async () => {
+        firstUpdate = result.current.updateSessionSigningKey("signing-key-a")
+        latestUpdate = result.current.updateSessionSigningKey("signing-key-b")
+        resolveFirstHash("session-hash-a")
+        await firstUpdate
+      })
+
+      expect(result.current.sessionSigningKey).toBe("signing-key-b")
+      expect(result.current.sessionSigningKeyRef.current).toBe("signing-key-b")
+      expect(getBrowserSessionGeneration()).toBeNull()
+      expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+      ])
+
+      await act(async () => {
+        resolveLatestHash("session-hash-b")
+        await latestUpdate
+      })
+
+      const generationNonce = getBrowserSessionGeneration()
+      const storedGeneration = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
+        nonce: string
+        hash: string
+      } | null
+      expect(result.current.sessionSigningKey).toBe("signing-key-b")
+      expect(result.current.sessionSigningKeyRef.current).toBe("signing-key-b")
+      expect(result.current.isCurrentSigningSession()).toBe(true)
+      expect(generationNonce).not.toBeNull()
+      expect(storedGeneration).toEqual({
+        nonce: generationNonce,
+        hash: "session-hash-b",
+      })
+      expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        {
+          type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+          sessionHash: "session-hash-b",
+          sessionScope: `session-hash-b:${generationNonce}`,
+        },
+      ])
+      expect(cryptoWorker.pbkdf2).toHaveBeenCalledTimes(2)
+    } finally {
+      resolveFirstHash("session-hash-a")
+      resolveLatestHash("session-hash-b")
+      await act(async () => {
+        await Promise.allSettled(
+          [firstUpdate, latestUpdate].filter(
+            (update): update is Promise<void> => update !== undefined
+          )
+        )
+      })
+      unmount()
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
+  })
+
   it("clears the cache and sends an explicit undefined key when the session is removed", async () => {
     const postMessage = vi.fn()
     vi.stubGlobal("navigator", {

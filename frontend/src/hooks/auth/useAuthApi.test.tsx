@@ -919,6 +919,31 @@ describe("requireMfa", () => {
     expect(out).toBeNull()
   })
 
+  it("rethrows a non-Axios response-shaped 401 without dispatching unauthorized", async () => {
+    const w = makeWires()
+    const error = Object.assign(new Error("application-level failure"), {
+      response: { status: 401 },
+    })
+    const dispatch = vi.spyOn(window, "dispatchEvent")
+    mocks.apiPost.mockRejectedValueOnce(error)
+    const { result } = renderApi(w)
+
+    try {
+      await expect(
+        act(async () => {
+          await result.current.requireMfa()
+        })
+      ).rejects.toBe(error)
+      expect(
+        dispatch.mock.calls.filter(([event]) => event.type === API_UNAUTHORIZED_EVENT)
+      ).toHaveLength(0)
+      expect(w.updatePendingMfa).not.toHaveBeenCalled()
+      expect(w.setUser).not.toHaveBeenCalled()
+    } finally {
+      dispatch.mockRestore()
+    }
+  })
+
   it("rethrows an Axios error without a response from step-up", async () => {
     const w = makeWires()
     const error = new AxiosError("step-up transport failure")

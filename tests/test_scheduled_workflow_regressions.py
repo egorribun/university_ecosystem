@@ -100,13 +100,41 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "--metadata-startup-reserve-seconds 120" in run_script
     assert "--max-timeout-seconds 20970" in run_script
     assert "--max-children 8" in run_script
-    assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
-    # The full evidence contract remains attempt-complete; reusable artifacts
-    # are namespaced by the trusted caller guard, not merged across attempts.
-    assert "--reuse-generated-universe" not in run_script
-    assert (
-        "generated source/metadata manifest is intentionally not uploaded" in run_script
+    # The primary pass executes the stats-reduced exact shard against the
+    # already validated generated universe. Full-map confirmation below must
+    # use the complete mapping for each primary survivor.
+    primary_run = (
+        "uv run python scripts/run_mutmut_with_stats.py "
+        '--reuse-generated-universe --max-children 8 "${MUTANT_NAMES[@]}"'
     )
+    assert primary_run in run_script
+    full_map_start = run_script.index('if [ "$survivor_count" -gt 0 ]; then')
+    full_map_run = run_script[full_map_start:]
+    assert "cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json" in full_map_run
+    assert 'for survivor in "${FULL_MAP_SURVIVORS[@]}"' in full_map_run
+    assert (
+        'uv run python scripts/run_mutmut_with_stats.py --max-children 2 "$survivor"'
+        in full_map_run
+    )
+    assert "--reuse-generated-universe" not in full_map_run
+    generation_selection = next(
+        step["run"]
+        for step in steps
+        if step.get("name") == "Select retry-safe full mutmut generation base"
+    )
+    assert "scripts.mutmut_retry_artifacts select-universe" in generation_selection
+    assert "--expected-mode generation" in generation_selection
+    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in generation_selection
+    for binding in (
+        '--source-revision "$SOURCE_REVISION"',
+        '--commit-sha "$COMMIT_SHA"',
+        '--run-id "$RUN_ID"',
+        '--run-attempt "$RUN_ATTEMPT"',
+        '--workflow "$WORKFLOW"',
+        '--workflow-ref "$WORKFLOW_REF"',
+        '--workflow-sha "$WORKFLOW_SHA"',
+    ):
+        assert binding in generation_selection
     assert "full-map-survivors.txt" in run_script
     assert '.status == "survived"' in run_script
     assert "--stats mutants/mutmut-stats-full.json" in run_script

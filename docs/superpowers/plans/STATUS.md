@@ -2,28 +2,29 @@
 
 Срез на 2026-10-07 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Goal активен. Выпуск `v1.0.0` не подтверждён.
+Пауза по запросу пользователя. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Исходный checkpoint интеграции — `4213ed042416ff39cd4c50cc6e49edbf44e9b992`.
-  В `6d8` перенесены RuntimeFeatureOverrides, в `7be1` — auth/audit/session
-  regressions; `107845` обновил sharp/libvips; `1ab` — RLS; `c421` — cache/session.
-  MFA/profile/get regressions и эквивалентное UTF-8 упрощение уже входят в checkpoint; exclusions/пороги сохранены.
-  три GPT-6 Luna Max готовят приватные пакеты для независимой проверки.
-- В checkpoint вошли full-backend mutation workflow, immutable benchmark
-  activation, WebKit focus fix, строгая avatar resource identity и DM
-  reconnect/replay regressions. Локальные контракты не заменяют hosted/live
-  приёмку.
-- Source-map-js 1.2.2 закрывает GHSA-68fv-2mgg-jv7q; frozen install/audit/build
-  прошли на предыдущем checkpoint. Четыре transitive npm deprecation warnings
-  остаются открыты.
+  База текущей контрольной точки — `c1b208476fbd92c21bdc0a0ccf9b5ee74977cfb1`.
+  Reviewed regressions и generation reuse интегрированы; exclusions/пороги сохранены.
+  Три GPT-6 Luna Max готовят приватные пакеты; root проверяет и интегрирует.
+- Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
+  локальные контракты не заменяют hosted/live приёмку.
 
 ## Hosted CI и мутации
 
-- CodeQL check `112329936293` и CodeQL Advanced run `37481003467` для `7ac`
-  завершились SUCCESS. Check сообщал: “No new alerts in code changed by PR”.
+- Matrix `37658682087/a1` для `c1b`: FAILED; 90 jobs SUCCESS, пять FAILED,
+  24 skipped. Inventory и backend shards0/1: catalog/nightly needs;
+  shard3: устаревший full-mutation command contract; CI Success — итоговый gate.
+  Catalog/preflight/scheduled согласованы; retry classification остаётся review-required.
+- Root cumulative auth138/138 и catalog/preflight/nightly62/62 PASS.
+  Scheduled/preflight delta12/12 PASS после двух воспроизведённых stale assertions.
+  Полный новый fast preflight10/10 PASS; это не release evidence.
+  UV offline lock check и npm dry-run PASS; только два lock metadata leaves изменены.
+  Проверены 33 Dependabot advisory против 56 locked resolutions: affected matches0;
+  это не закрытие alerts default branch и не глобальная security-сертификация.
 - Matrix run `37526001524/a1`: event source `4213`; producer —
   `deb33a29cc7a91b2043828fc578dc34ad037337f`. Все 128 incremental jobs FAILED.
   Root проверил API digests, ZIP/JSON, canonical evidence и exact planned join:
@@ -40,12 +41,9 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   lifespan + новый модуль39/39, preflight9/9 и test-file pre-commit PASS.
   Manual full run 37512795410/a1 на 7aa CANCELLED: backend planning достиг 60-minute ceiling.
   Frontend aggregate job112519043882 завершился из-за Survived, без найденного provenance failure шага.
-- Historical backend generation54,457/344 и incremental selection4,589/128
-  не подменяют свежий inventory. Принятый перенос сохраняет None/default,
-  явные True/False, disable из True и None, reset и неизвестные флаги.
-  Root повторил V8 baseline3/3 и exact resolve6/disable13 controls:
-  2 PASS/1 call failure и 1 PASS/2 call failures, без skips/collection errors.
-  V7 matrix22 не перенесён на изменённый V8; global score не установлен.
+- Historical generation54,457/344 и selection4,589/128 не являются свежим inventory.
+  V8 feature flags: baseline3/3; exact resolve6/disable13 дают call failures,
+  без skips/collection errors; V7 matrix22 не переносится; global score не установлен.
 - Frontend preflight source7ac: 43,200 mutants / 565 files / 64 shards;
   digest `e0c3083e3defb06169c8f59897b61c3a46a4dee65c6ae66c9963168ffad66c29`.
   Root и независимый reviewer приняли полный exact planned/report join:
@@ -58,13 +56,11 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
   generation reuse, planner progress и byte-safe Windows ACL subprocess calls.
   Root: frontend273/273 и crypto46/46; backend1352 PASS +5 subtests и session-policy34/34.
   PostgreSQL RLS enforcement и global mutation credit отсутствуют.
-  Initial preflight7/9 сохранён; после исправлений type/lint/contracts и format PASS.
-  Остальные семь checks PASS; повторный staged pre-commit после форматирования PASS.
+  Initial preflight7/9 сохранён; delta checks и повторный staged pre-commit PASS.
   Links433/433 в обоих режимах, Markdownlint PASS, CSpell9 files/0 issues.
   Focused useAuthApi на1ab:366 mutants =318 Killed/48 Survived,0 Timeout/RuntimeError/NoCoverage;
   86.8852%, gate FAILED. Dry-run1670 PASS; immutable local report d59264c6 сохранён.
-  Preflight9/9 и последующие frontend delta checks3/3, pre-commit,
-  links в обоих режимах, Markdownlint и configured CSpell PASS.
+  Historical preflight9/9, frontend delta3/3 и документационные gates PASS.
 - Historical Matrix `37506190354/a1` на `6d8`: Node Dependency Audit FAILED.
   Локальный audit подтвердил GHSA-wq5f-xc86-pv6w: sharp0.35.4→0.35.5,
   librsvg2.63.2. Frozen install, SVG→PNG smoke и pinned-artifact build PASS;
@@ -78,8 +74,12 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 
 ## Live-приёмка
 
-- Обычный Compose stand `7ac` был поднят с 29 healthy services, seed прошёл.
-  Stand штатно остановлен; данные и evidence сохранены.
+- Hosted Live Acceptance `37658678595/a1`: SUCCESS, 18 PASS/2 project skips;
+  auth-roles/password-reset desktop/mobile, checkout merge `153ec752` (`c1b` + main `6fa133`).
+  Полная продуктовая приёмка этим smoke не закрыта.
+- Локальный run `c1b208476-20261007-82671e94`: up144s, 29 running, peak RAM83%.
+  Seed/E2E не запускались: startup budget75%/8GiB не выдержан после up.
+  Canonical stop PASS: owned running0, 14 томов сохранены; следующий run — на новом SHA.
 - Desktop avatar diagnostic R3 завершился без принятых маркеров: counts
   invalid, child exit 1, cleanup verified. Mobile run — NOT RUN / HOLD. Это
   диагностический результат, не pass/fail продукта и не полная live-приёмка.
@@ -120,12 +120,12 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 ## Рабочая среда
 
 - Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Последний root snapshot: running Docker0, RAM53.3%; основной worktree один.
+  Последний root snapshot: owned running0, RAM54.3%, free14.55GiB; worktree один.
   Под canonical lifecycle lock удалены 35 exact owned stopped CIDs и три сети.
   Перед удалением V10 verify-existing подтвердил 35 archives/96 resource records;
   11 083 100 160 bytes filesystem archives, без volume/restore/RPO/RTO credit.
   16 volumes/29 images сохранены; remaining target containers/networks0.
-  Docker snapshot:351 containers/27 bridge networks; global prune не применялся.
+  Старый total351/27 предшествует новому stand; global prune не применялся.
 - Сохранять env/data/volumes/backups; private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
   Rescue bundle остаётся private; Git history сохраняется.
 
@@ -134,12 +134,12 @@ Goal активен. Выпуск `v1.0.0` не подтверждён.
 - Получить exact same-run survivors и новый full-run preflight после переноса;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
+  Manual full dispatch на `egorribun` ещё не выполнен; проверить acceptance новых inputs API.
+  Приватный MFA lifecycle V4 — unrun; mapper V1 требует строковый achievements до controls.
 - Получить root-reviewed live diagnostics для desktop/mobile без ослабления
   исходных assertions; доказать auth, API/DB/S3 equality и пользовательские
   сценарии, а не только health/readiness.
-- Продолжить DR RCA через отдельные immutable версии helper/receipts. Исторические
-  receipts и их failure status не перезаписывать; не объявлять восстановление
-  или RPO/RTO до успешной проверки target app.
+- DR RCA: immutable helper/receipts; RPO/RTO не подтверждены до проверки target app.
 - Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
   WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,
   resulting-main evidence и выпуск `v1.0.0`.
