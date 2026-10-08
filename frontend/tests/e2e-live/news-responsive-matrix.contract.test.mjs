@@ -22,7 +22,10 @@ test("real News content is checked in RU and EN across the approved width matrix
     readFile(planUrl, "utf8"),
   ])
 
-  assert.match(plan, /Проверять RU\/EN при ширинах 360, 390, 768, 1024 и 1440 px/u)
+  assert.match(
+    plan,
+    /RU\/EN и ширины 390\/768\/1440 px обязательны; 360\/1024 px\s+проверять для меню, таблиц и рисковых адаптивных сценариев/u
+  )
   assert.match(spec, /loginAs\(page, ["']student["']\)/u)
   assert.match(spec, /page\.goto\(["']\/news["']\)/u)
   assert.match(spec, /const WIDTHS\s*=\s*\[360,\s*390,\s*768,\s*1024,\s*1440\]/u)

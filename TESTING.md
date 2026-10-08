@@ -10,9 +10,13 @@ must not duplicate its thresholds as a second policy source.
 
 - Every native metric supported by a component's coverage tool must satisfy
   the component threshold in the quality contract.
-- Changed executable lines must have 100% differential coverage.
-- The viable mutation score must be 100%: no surviving, timed-out, or untested
-  viable mutants.
+- Current patch coverage and per-component floors stay enforced until the
+  separately approved Q3 migration; unsupported counters retain their current
+  contract representation.
+- [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md) makes mutation testing
+  a nightly/manual signal after Q1. Until Q1 lands, existing mutation gates
+  remain enforced. Global 100% mutation closure is no longer an MVP task;
+  Q1/Q4 must land before release, and Q2/Q3 remain deferred.
 - Tier 0 code must remain fully covered for every metric its source report can
   represent.
 - Unsupported counters are reported as unsupported, never converted to a
@@ -119,11 +123,30 @@ cross-platform report contract.
 # Hermetic developer-harness checks (--include-global-config also inspects
 # optional per-developer configuration)
 python verify_harness.py --repo-only
+# Hook runtime regressions: corruption, concurrency, timeouts and Go discovery
+python -m pytest tests/test_harness_hook_runtime.py tests/contracts/test_stop_quality_gate_contract.py -q
 # Skip, orphan and anti-pattern inventory
 uv run python scripts/quality/check_orphans_and_anti_patterns.py
 # Relative Markdown links and heading anchors
 uv run pytest tests/test_markdown_links.py -q
 ```
+
+The verifier checks repository configuration, hook JSON protocol and behavior.
+State-writing tests use temporary state and targets; mutating CLI tests use
+copied hooks, and dispatch tests mock tool processes. The verifier does not
+format working files or reset `.agents/hooks/.gate_state.json`.
+Real toolchain checks remain in `scripts/fast_preflight.py`, pre-commit and CI;
+a green verifier is not coverage, product acceptance or release certification.
+
+The existing `.agents/hooks.json` uses the Antigravity protocol and assumes the
+repository root as its working directory. Explicit invocation is available with
+`python .agents/hooks/runner.py pre-tool`, `post-tool` or `stop`, receiving JSON
+on stdin. It is not automatically discovered by Codex. Native Codex hooks need
+their own registration and protocol adapter; see the
+[official hook documentation](https://developers.openai.com/codex/hooks/).
+Profiles in `.agents/subagents.json` are role guidance, not processes: root
+assigns disjoint files in `egorribun`, caps concurrency at three, and controls
+heavy workloads and the 30-minute checkpoint budget.
 
 ## Browser tests
 
@@ -132,15 +155,19 @@ uv run pytest tests/test_markdown_links.py -q
 npm run test:e2e --prefix frontend
 
 # Live acceptance lane: real backend, database, seeded roles and Mailpit
-python scripts/live_stand.py up
-python scripts/live_stand.py seed --demo
+python scripts/live_stand.py up --in-place --stack core
+python scripts/live_stand.py seed --in-place --demo
 npm run test:e2e:live --prefix frontend
-python scripts/live_stand.py down
+python scripts/live_stand.py stop --in-place
 ```
 
-The live stand runs from a separate `../ue-live` worktree and Compose project
-(`docker-compose.full.yml` plus `docker-compose.live.yml`), so it never touches
-the developer's own stack. Infrastructure-backed checks run only when their
+The active MVP plan requires one checkout: use `--in-place` on a clean, frozen
+`egorribun` SHA and keep its generated configuration in an owned temporary run
+directory. The CLI assigns a separate Compose project and checks resource
+ownership; `stop` preserves demo data, while explicit `teardown` deletes only
+the validated run resources. Product acceptance uses Core; the frozen-release
+full smoke explicitly uses `--stack full`. Coordinate any source edits until
+the live run ends. Infrastructure-backed checks run only when their
 services are available; a missing optional service is reported as an explicit
 environment skip, never as a pass.
 

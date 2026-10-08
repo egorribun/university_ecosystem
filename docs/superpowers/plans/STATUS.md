@@ -3,7 +3,7 @@
 Срез на 2026-10-08 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md) — единственный
 действующий план; [ТЗ MVP](University_Ecosystem_MVP.md) задаёт продуктовые границы,
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) — переход качества.
-Работа приостановлена по просьбе пользователя после консолидации плана.
+Работа приостановлена по просьбе пользователя после подготовки плана и harness.
 Выпуск `v1.0.0` пока не подтверждён.
 
 ## Решения владельца и ближайший результат
@@ -55,6 +55,19 @@
   `C:/Temp/ue-quality-session-dm-root-20261008-82730e4856e54ecbb944e5fa90cc3110/checkpoint-7ddc114b-v1.json`.
 
 ## Сохранённые начатые направления
+
+- Подготовка harness: verifier изолирован от real gate state; shared loader/lock,
+  atomic write и per-file latest map сохраняют failures; malformed JSON и timeout
+  fail closed. Все Go modules обнаруживаются, max2 workers/shared95s budget.
+  Profiles согласованы с одним checkout/root Git/30-minute checkpoint.
+- Verifier28/28, hook runtime/Stop44/44, relevant full preflight10/10,
+  live contracts154/154 PASS; real gate state hash неизменен после проверок.
+  Старый OwnedLive `37839467416/a1` на `a01e572b5` упал до Docker на двух
+  stale plan-wording assertions; они исправлены. Новый hosted результат требуется.
+- Known P2: Windows timeout cleanup через `taskkill /T` не гарантирует завершение
+  descendant, если родитель уже вышел и оставил inherited pipes. В этом случае
+  cleanup failure явный, PASS нет; полную Job Object containment отнести в backlog.
+  Нативная Codex registration отсутствует; Antigravity hooks вызываются явно.
 
 - Mutation diagnostic: frontend inventory43200, viable88,7101%; backend
   universe54450, complete global score отсутствует. Это debt/baseline,

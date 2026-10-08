@@ -195,10 +195,16 @@ for the MVP release; the current plan is
 
 The developer harness defines 5 specialized subagents configured in `.agents/subagents.json`:
 - `lead_architect` (`inherit` mode): System design, ADR governance, Dishka DI validation.
-- `tdd_developer` (`branch` mode): Isolated RED-GREEN-REFACTOR test-driven implementation.
+- `tdd_developer` (`share` mode): RED-GREEN-REFACTOR implementation in explicitly assigned files.
 - `qa_e2e_tester` (`share` mode): Browser E2E, Playwright, ARIA compliance, SSR hydration testing.
 - `security_auditor` (`inherit` mode): Argon2id, RS256 JWKS, path traversal, SAST, secret leak prevention.
 - `perf_optimizer` (`inherit` mode): EXPLAIN ANALYZE, TieredCache tuning, frontend bundle budget (<500 KB).
+
+These profiles are guidance, not active processes or enforced timers. The root
+assigns at most three GPT-6 Luna Max agents in the current `egorribun` checkout,
+with disjoint file ownership and a 30-minute checkpoint budget; root owns Git.
+The lifecycle scripts use the Antigravity protocol. They are available through
+the explicit runner and are not automatically registered as Codex hooks.
 
 ---
 

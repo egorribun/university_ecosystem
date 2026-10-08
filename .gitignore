@@ -452,6 +452,8 @@ artifacts/
 # Ephemeral agent caches and transient runtime state
 .agents/**/__pycache__/
 .agents/**/.gate_state.json
+.agents/hooks/.gate_state.json.lock
+.agents/hooks/..gate_state.json.*.tmp
 .agents/**/progress.md
 .agents/**/BRIEFING*.md
 .agents/**/DISPATCH.md

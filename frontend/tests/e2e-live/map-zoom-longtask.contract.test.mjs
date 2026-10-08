@@ -26,7 +26,10 @@ test("map zoom long-task acceptance observes the real MapLibre browser path", as
     readFile(planUrl, "utf8"),
   ])
 
-  assert.match(plan, /при zoom карты отсутствуют long tasks ≥ 50 ms/u)
+  assert.match(
+    plan,
+    /В v1\.1: полный lab protocol navbar CLS <0\.1, отсутствие map long tasks ≥50 ms/u
+  )
   assert.match(mapFeature, /data-testid="map-activation-placeholder"/u)
   assert.match(mapFeature, /setMapReady\(true\)/u)
   assert.match(mapLibre, /https:\/\/tiles\.openfreemap\.org\/styles\/bright/u)
