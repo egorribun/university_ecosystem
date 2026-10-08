@@ -9,6 +9,10 @@ evidence, not current configuration or release certification.
 - [Active MVP closure status](../superpowers/plans/STATUS.md) — the current
   operational status. It is a plan, not an audit certificate; every release
   claim still requires fresh exact-SHA evidence.
+- [MVP release plan](../superpowers/plans/MVP_RELEASE_PLAN.md) and
+  [ADR-047](../adr/ADR-047-risk-based-quality-policy.md) — since 2026-10-08 the
+  `v1.0.0` definition of done is product acceptance; mutation score and release
+  certification items moved to `v1.1`.
 - [Platform audit ledger](AUDIT_PLATFORM_FULL.md) — working classification of
   63 external-audit findings. Revalidate its evidence against the release SHA;
   the ledger is not a release certificate and is removed only after its useful

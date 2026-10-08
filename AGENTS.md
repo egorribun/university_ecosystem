@@ -112,16 +112,24 @@ python verify_harness.py
 
 ## 4. Quality & Zero-Warning Contract
 
-All contributions must strictly comply with `quality/quality-contract.json`:
+All contributions must comply with `quality/quality-contract.json` and
+[ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md) (risk-based quality policy
+for the MVP release; the current plan is
+[`docs/superpowers/plans/MVP_RELEASE_PLAN.md`](docs/superpowers/plans/MVP_RELEASE_PLAN.md)):
 
-1. **100% Coverage Mandate**:
-   - 100% Line Coverage
-   - 100% Statement Coverage
-   - 100% Branch Coverage
-   - 100% Function Coverage
-   - Tier 0 core modules require 100% test coverage across all dimensions.
+1. **Coverage**:
+   - Tier 0 files (`tier0_rules` in `quality/ownership-mapping.json`) require 100% line,
+     statement, branch and function coverage.
+   - Other components keep their current contract floors until ADR-047 stage Q3 replaces
+     them with a no-decrease ratchet and a 90% patch floor for changed lines.
 2. **Mutation Testing**:
-   - 100% viable mutant score required (`mutmut` for Python backend, `Stryker` for TypeScript frontend).
+   - Full `mutmut` (Python backend) and Stryker (TypeScript frontend) runs are nightly and
+     manual quality signals with a no-regression check, not a release gate. Until ADR-047
+     stage Q1 lands the CI jobs still run; do not spend MVP effort on raising the mutation
+     score — implement stage Q1 instead.
+   - A proven equivalent mutant goes to `quality/mutation-exclusions.json` with owner,
+     evidence and an expiry date; quarantine and manual `Killed` reclassification stay
+     forbidden.
 3. **Pre-Commit Enforcement**:
    - `ruff` (v0.14.14 pinned — prevents syntax regressions).
    - `detect-secrets` (scans for credentials against `.secrets.baseline`).

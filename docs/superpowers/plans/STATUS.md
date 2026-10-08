@@ -1,11 +1,15 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-08 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
+Срез на 2026-10-08 (Europe/Istanbul). [План выпуска MVP](MVP_RELEASE_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
 Работа приостановлена по просьбе пользователя на проверенной контрольной точке. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
+- 2026-10-08: владелец принял [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и
+  [план выпуска MVP](MVP_RELEASE_PLAN.md); [мастер-план](MVP_MASTER_PLAN.md) — справочный.
+  Этап 1 выполнен; следующий — этап 2 (ADR-047 Q1: мутации вне `ci-success`).
+  Разделы ниже — история до этого решения; mutation score больше не является целью MVP.
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
   Три GPT-6 Luna Max работают в раздельных областях; root проверяет интеграцию и ресурсы.
 - Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы; локальные контракты не заменяют hosted/live приёмку.
