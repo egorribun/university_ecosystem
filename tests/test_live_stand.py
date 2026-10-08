@@ -954,6 +954,7 @@ def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() 
         name: f"allowed-runtime-{name.lower()}"
         for name in (
             "PATH",
+            "PLAYWRIGHT_BROWSERS_PATH",
             *live_stand.LIVE_E2E_WINDOWS_ENVIRONMENT,
             *live_stand.LIVE_E2E_UNIX_ENVIRONMENT,
             *live_stand.LIVE_E2E_CI_ENVIRONMENT,
@@ -989,6 +990,7 @@ def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() 
             "nt",
             (
                 "PATH",
+                "PLAYWRIGHT_BROWSERS_PATH",
                 *live_stand.LIVE_E2E_WINDOWS_ENVIRONMENT,
                 *live_stand.LIVE_E2E_CI_ENVIRONMENT,
             ),
@@ -997,6 +999,7 @@ def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() 
             "posix",
             (
                 "PATH",
+                "PLAYWRIGHT_BROWSERS_PATH",
                 *live_stand.LIVE_E2E_UNIX_ENVIRONMENT,
                 *live_stand.LIVE_E2E_CI_ENVIRONMENT,
             ),
@@ -1016,6 +1019,123 @@ def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() 
             pytest.fail(
                 "caller secrets and unrelated environment values must be excluded"
             )
+
+
+def test_playwright_browser_cache_uses_existing_local_override_and_preserves_default(
+    tmp_path: Path,
+) -> None:
+    profile = tmp_path / "profile"
+    selected_cache = tmp_path / "private-browser-cache"
+    selected_cache.mkdir()
+
+    assert live_stand._playwright_browser_cache_path(
+        {"HOME": str(profile), "LOCALAPPDATA": str(profile)}
+    ) == profile / ("ms-playwright" if os.name == "nt" else ".cache/ms-playwright")
+    assert live_stand._playwright_browser_cache_path(
+        {
+            "HOME": str(profile),
+            "LOCALAPPDATA": str(profile),
+            "PLAYWRIGHT_BROWSERS_PATH": str(selected_cache),
+        }
+    ) == selected_cache.resolve(strict=True)
+
+
+def test_live_e2e_environment_uses_override_and_rejects_blank_before_writes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(live_stand.tempfile, "gettempdir", lambda: str(tmp_path))
+    cache = tmp_path / "selected-cache"
+    cache.mkdir()
+    config_root = tmp_path / "ue-live-playwright-valid"
+    output_directory = config_root / "playwright-output"
+    output_directory.mkdir(parents=True)
+
+    environment = live_stand._live_e2e_environment(
+        output_directory=str(output_directory),
+        npm_config_directory=str(config_root),
+        source_environment={
+            "PATH": "runtime-path",
+            "PLAYWRIGHT_BROWSERS_PATH": str(cache),
+        },
+    )
+    assert environment["PLAYWRIGHT_BROWSERS_PATH"] == str(cache.resolve())
+    assert (config_root / live_stand.LIVE_E2E_OUTPUT_OWNER_MARKER).is_file()
+
+    invalid_config = tmp_path / "ue-live-playwright-invalid"
+    invalid_output = invalid_config / "playwright-output"
+    invalid_output.mkdir(parents=True)
+    with pytest.raises(live_stand.StandError, match="PLAYWRIGHT_BROWSERS_PATH"):
+        live_stand._live_e2e_environment(
+            output_directory=str(invalid_output),
+            npm_config_directory=str(invalid_config),
+            source_environment={
+                "PATH": "runtime-path",
+                "PLAYWRIGHT_BROWSERS_PATH": "",
+            },
+        )
+    assert not (invalid_config / live_stand.LIVE_E2E_OUTPUT_OWNER_MARKER).exists()
+    assert not (invalid_config / "npm-userconfig").exists()
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        "",
+        " ",
+        "0",
+        ".",
+        "relative-cache",
+        "//server/share/cache",
+        "\\\\server\\share\\cache",
+    ],
+)
+def test_playwright_browser_cache_rejects_invalid_override(
+    tmp_path: Path, override: str
+) -> None:
+    with pytest.raises(live_stand.StandError, match="PLAYWRIGHT_BROWSERS_PATH"):
+        live_stand._playwright_browser_cache_path(
+            {"PLAYWRIGHT_BROWSERS_PATH": override}
+        )
+
+
+def test_playwright_browser_cache_rejects_nonexistent_override(tmp_path: Path) -> None:
+    missing_cache = tmp_path / "missing-cache"
+    with pytest.raises(live_stand.StandError, match="PLAYWRIGHT_BROWSERS_PATH"):
+        live_stand._playwright_browser_cache_path(
+            {"PLAYWRIGHT_BROWSERS_PATH": str(missing_cache)}
+        )
+
+
+def test_playwright_browser_cache_rejects_reparse_override(tmp_path: Path) -> None:
+    target = tmp_path / "target-cache"
+    target.mkdir()
+    link = tmp_path / "linked-cache"
+    if os.name == "nt":
+        _make_windows_junction(link, target)
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(live_stand.StandError, match="reparse point"):
+        live_stand._playwright_browser_cache_path(
+            {"PLAYWRIGHT_BROWSERS_PATH": str(link)}
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows mapped-drive classification")
+def test_playwright_browser_cache_rejects_remote_drive_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    cache = tmp_path / "remote-cache"
+    cache.mkdir()
+    monkeypatch.setattr(
+        live_stand.ctypes.windll.kernel32,
+        "GetDriveTypeW",
+        lambda _root: 4,
+    )
+    with pytest.raises(live_stand.StandError, match="local directory"):
+        live_stand._playwright_browser_cache_path(
+            {"PLAYWRIGHT_BROWSERS_PATH": str(cache)}
+        )
 
 
 def test_live_e2e_npm_ci_uses_static_platform_commands() -> None:
@@ -1069,6 +1189,8 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
     lock_path.write_text(json.dumps(lock_data), encoding="utf-8")
     output_path = tmp_path / "playwright-output"
     output_path.mkdir()
+    browser_cache = tmp_path / "selected-browser-cache"
+    browser_cache.mkdir()
     config_root = tmp_path / "npm-config"
     config_root.mkdir()
     user_config = config_root / "npm-userconfig"
@@ -1077,6 +1199,7 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
     global_config.write_bytes(b"")
     runtime_source = {
         "PATH": "runtime-path-marker",
+        "PLAYWRIGHT_BROWSERS_PATH": str(browser_cache),
         "HOME": str(tmp_path / "profile"),
         "LOCALAPPDATA": str(tmp_path / "profile"),
         "SYSTEMROOT": "runtime-systemroot-marker",
@@ -1113,7 +1236,6 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
         "LIVE_PRIMARY_REPOSITORY_ROOT": runtime_source["LIVE_PRIMARY_REPOSITORY_ROOT"],
         "NPM_CONFIG_USERCONFIG": str(user_config),
         "NPM_CONFIG_GLOBALCONFIG": str(global_config),
-        "PLAYWRIGHT_BROWSERS_PATH": str(browser_cache),
         "TEST_PASSWORD": runtime_source["TEST_PASSWORD"],
         "LIVE_BASE_URL": runtime_source["LIVE_BASE_URL"],
         "LIVE_MAILPIT_URL": runtime_source["LIVE_MAILPIT_URL"],

@@ -2,7 +2,7 @@
 
 Срез на 2026-10-08 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md)
 задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Работа возобновлена по просьбе пользователя. Выпуск `v1.0.0` не подтверждён.
+Работа приостановлена по просьбе пользователя на проверенной контрольной точке. Выпуск `v1.0.0` не подтверждён.
 
 ## Контрольная точка
 
@@ -12,7 +12,7 @@
 
 ## Hosted CI и мутации
 
-- PR@`751f`: Matrix37756691375/a1 незавершён:109 jobs SUCCESS/12 skipped/8 running/54 queued; inventory/pre-commit/security/performance/WS benchmark SUCCESS. Полного зелёного набора нет.
+- PR@`460501`: Matrix37767059576/a1: backend unit shard1 FAILED на трёх старых workflow snapshot assertions; root26/26 PASS после точной проверки добавленного typecheck step. Новый hosted результат требуется; полного зелёного набора нет.
 - Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
   Run CANCELLED; planner59m20s, planning без end marker; plan отсутствует, backend execution0/128, global score открыт.
   Full `37670438144/a1`: execution0/128, stats7/8; shard2 stale urllib3 исправлен в `a028`, score отсутствует.
@@ -69,7 +69,7 @@
 
 ## Live-приёмка
 
-- Hosted Live `37756690559/a1`@`751f`: FAILED,17 passed/2 skipped/1 flaky; desktop auth-roles dashboard React418. Candidate Dashboard: root19/19 PASS, initial SSR/client parity и interrupted/reduced-motion cleanup; нужен новый live run.
+- Hosted Live `37767058529/a1`@`460501`: SUCCESS,18 passed/2 planned skips, без flaky; PR smoke. Root19/19 Dashboard PASS; полный live gate открыт. Uploaded artifacts отсутствуют: evidence — API/job/redacted stdout.
 - Full@`eed9`: readiness35/35, healthy20/init6/sidecars3, HTTP10/Redis AUTH PASS; smoke REFUSED RAM79%/free6,7GiB.
   Full+Core stop0/teardown0, containers/volumes/networks/images0, удалено17 owned local images; private state/evidence сохранены.
 - Core@`f281`: up0, status0 без изменения state; profile desktop/mobile2 PASS/2 FAIL на error alert.
@@ -91,7 +91,7 @@
   Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
 - Полная traceability, RU/EN, light/dark, responsive, SSR/PWA, accessibility/performance и visual approval открыты.
 - Session epoch143/143, TextField44/44, auth diagnostics1152+154, Docker fakes62 PASS; exact224/226/1252/1253 RED. Checker API@`751f`: baseline17,4s PASS, exact ArrayDeclaration compileError/TS2322; полный private Stryker probe без report, причина не подтверждена; canonical score открыт.
-  Candidate: frozen install/preflight10/10, Node553 PASS/1 Windows POSIX-FIFO skip, live contracts154/154; full toolchain/config parity и spec-local full Chromium channel. Native probe@`751f`: default→granted; delivery и first-paint cascade visual acceptance ещё открыты.
+  `460501`: clean Node553 PASS/1 Windows POSIX-FIFO skip, live contracts154/154; full checker toolchain/config parity. Core up PASS, RAM85,4%: E2E не начат, stop/teardown PASS, owned containers/volumes/networks/images0 после удаления8 tags. Shared Chromium: spawn UNKNOWN/SideBySide33; validated existing cache override RED→GREEN,1164 tests PASS; private pinned browser работает, delivery и visual acceptance открыты.
 
 ## Backup/restore и диагностика
 
@@ -138,7 +138,7 @@
   Historical MFA263/307 exact RED; global mutation gate открыт.
 - Owned Docker inspect: batches≤64/full IDs/exact join с прежними guards; CLI probe23/23, root1134/1134 и preflight10/10 PASS, current status/teardown0.
   Container inspect calls1219→116; guards/source/owner pins сохранены, final owned resources0.
-  WS-Hub V3.2: Linux1.26.6 race/statement100% и control20 RED; Linux12-pair ratio1,08346/95%upper1,09726, within1,10 local budget; hosted pending. V2 confounded GOWORK. Group push: pagination/endpoint cleanup исправлены; TSC/Node/lint PASS, live pending.
+  Planner cost cache: RED24 conversions вместо4→GREEN; root317 PASS+5 subtests, preflight10/10. Synthetic512/128: планы идентичны, candidate0,41s против0,64–0,70s, allocation peak выше; полный planning/global score открыт. WS-Hub V3.2: Linux race/statement100%, control20 RED,12-pair ratio1,08346/95%upper1,09726 local. Group push live pending.
 - DR RCA: immutable helper/receipts; RPO/RTO не подтверждены до проверки target app.
 - Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
   WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,

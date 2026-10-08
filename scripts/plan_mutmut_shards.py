@@ -51,6 +51,28 @@ class MutantEstimate:
 
 
 @dataclass(frozen=True, slots=True)
+class _BudgetTestCost:
+    """Exact and float costs for one test in a shared immutable mapping."""
+
+    name: str
+    exact_seconds: Fraction
+    float_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _BudgetTestCosts:
+    """Interned cost projection for one canonical test-name tuple."""
+
+    names: tuple[str, ...]
+    membership: frozenset[str]
+    costs: tuple[_BudgetTestCost, ...]
+    exact_seconds: Fraction
+    fsum_seconds: float
+    watchdog_cap_seconds: int
+    forced_fail_cap_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class _BudgetMutant:
     """A validated mutant cost used by the budget-aware planner."""
 
@@ -58,6 +80,8 @@ class _BudgetMutant:
     estimate_exact_seconds: Fraction
     estimate_fsum_seconds: float
     test_names: tuple[str, ...]
+    test_membership: frozenset[str]
+    test_costs: tuple[_BudgetTestCost, ...]
     watchdog_cap_seconds: int
     forced_fail_cap_seconds: int
 
@@ -284,13 +308,6 @@ def plan_mutant_shards(
     return shard_names
 
 
-def _duration_ceil(value: float) -> int:
-    """Return the conservative integer ceiling used by the budget helper."""
-
-    exact = Fraction.from_float(value)
-    return max(math.ceil(exact), math.ceil(value))
-
-
 def _budget_mutants(
     estimates: Sequence[MutantEstimate],
     tests_by_mangled_function_name: Mapping[str, Sequence[str]],
@@ -299,6 +316,8 @@ def _budget_mutants(
     """Normalize planner inputs into the same per-mutant costs as mutmut."""
 
     durations: dict[str, float] = {}
+    exact_durations: dict[str, Fraction] = {}
+    duration_ceilings: dict[str, int] = {}
     for test_name, duration in duration_by_test.items():
         if isinstance(duration, bool) or not isinstance(duration, (int, float)):
             raise ValueError(
@@ -318,6 +337,7 @@ def _budget_mutants(
         raise ValueError("mutant estimates contain duplicate names")
 
     normalized: list[_BudgetMutant] = []
+    costs_by_test_tuple: dict[tuple[str, ...], _BudgetTestCosts] = {}
     for estimate in estimates:
         function_name, separator, _ = estimate.name.partition("__mutmut_")
         if not separator:
@@ -338,41 +358,68 @@ def _budget_mutants(
             )
 
         ordered_tests = tuple(sorted(set(associated_tests)))
-        exact_seconds = sum(
-            (Fraction.from_float(durations[test_name]) for test_name in ordered_tests),
-            start=Fraction(),
-        )
-        try:
-            fsum_seconds = math.fsum(
-                durations[test_name] for test_name in ordered_tests
+        cached_costs = costs_by_test_tuple.get(ordered_tests)
+        if cached_costs is None:
+            for test_name in ordered_tests:
+                if test_name not in exact_durations:
+                    exact = Fraction.from_float(durations[test_name])
+                    exact_durations[test_name] = exact
+                    duration_ceilings[test_name] = max(
+                        math.ceil(exact), math.ceil(durations[test_name])
+                    )
+            costs = tuple(
+                _BudgetTestCost(
+                    name=test_name,
+                    exact_seconds=exact_durations[test_name],
+                    float_seconds=durations[test_name],
+                )
+                for test_name in ordered_tests
             )
-        except OverflowError as error:
-            raise ValueError(
-                f"mutmut estimated duration is not finite: {estimate.name!r}"
-            ) from error
-        if not math.isfinite(fsum_seconds):
-            raise ValueError(
-                f"mutmut estimated duration is not finite: {estimate.name!r}"
+            exact_seconds = sum(
+                (cost.exact_seconds for cost in costs), start=Fraction()
             )
+            try:
+                fsum_seconds = math.fsum(cost.float_seconds for cost in costs)
+            except OverflowError as error:
+                raise ValueError(
+                    f"mutmut estimated duration is not finite: {estimate.name!r}"
+                ) from error
+            if not math.isfinite(fsum_seconds):
+                raise ValueError(
+                    f"mutmut estimated duration is not finite: {estimate.name!r}"
+                )
 
-        watchdog_exact = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
-            exact_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
-        )
-        watchdog_fsum = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
-            fsum_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
-        )
-        watchdog_cap = max(math.ceil(watchdog_exact), math.ceil(watchdog_fsum))
-        forced_fail_cap = max(
-            _duration_ceil(durations[test_name]) for test_name in ordered_tests
-        )
+            watchdog_exact = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
+                exact_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
+            )
+            watchdog_fsum = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
+                fsum_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
+            )
+            cached_costs = _BudgetTestCosts(
+                names=ordered_tests,
+                membership=frozenset(ordered_tests),
+                costs=costs,
+                exact_seconds=exact_seconds,
+                fsum_seconds=fsum_seconds,
+                watchdog_cap_seconds=max(
+                    math.ceil(watchdog_exact), math.ceil(watchdog_fsum)
+                ),
+                forced_fail_cap_seconds=max(
+                    duration_ceilings[test_name] for test_name in ordered_tests
+                ),
+            )
+            costs_by_test_tuple[ordered_tests] = cached_costs
+
         normalized.append(
             _BudgetMutant(
                 name=estimate.name,
-                estimate_exact_seconds=exact_seconds,
-                estimate_fsum_seconds=fsum_seconds,
-                test_names=tuple(sorted(set(associated_tests))),
-                watchdog_cap_seconds=watchdog_cap,
-                forced_fail_cap_seconds=forced_fail_cap,
+                estimate_exact_seconds=cached_costs.exact_seconds,
+                estimate_fsum_seconds=cached_costs.fsum_seconds,
+                test_names=cached_costs.names,
+                test_membership=cached_costs.membership,
+                test_costs=cached_costs.costs,
+                watchdog_cap_seconds=cached_costs.watchdog_cap_seconds,
+                forced_fail_cap_seconds=cached_costs.forced_fail_cap_seconds,
             )
         )
     return normalized
@@ -399,9 +446,12 @@ def _budget_bin_upper_bound(
         )
         worker_loads[worker_index] += mutant.watchdog_cap_seconds
 
-    new_tests = sorted(set(candidate.test_names).difference(bucket.test_names))
+    new_test_names = candidate.test_membership.difference(bucket.test_names)
+    new_costs = tuple(
+        cost for cost in candidate.test_costs if cost.name in new_test_names
+    )
     new_exact = sum(
-        (Fraction.from_float(float(durations[test_name])) for test_name in new_tests),
+        (cost.exact_seconds for cost in new_costs),
         start=Fraction(),
     )
     union_exact = bucket.union_exact_seconds + new_exact
@@ -411,7 +461,7 @@ def _budget_bin_upper_bound(
             union_fsum = math.fsum(
                 [
                     bucket.union_fsum_seconds,
-                    *(float(durations[test_name]) for test_name in new_tests),
+                    *(cost.float_seconds for cost in new_costs),
                 ]
             )
         except OverflowError:
@@ -445,9 +495,12 @@ def _budget_bin_lower_bound(
     that schedule, but never replace the exact projection for selection.
     """
 
-    new_tests = sorted(set(candidate.test_names).difference(bucket.test_names))
+    new_test_names = candidate.test_membership.difference(bucket.test_names)
+    new_costs = tuple(
+        cost for cost in candidate.test_costs if cost.name in new_test_names
+    )
     union_exact = bucket.union_exact_seconds + sum(
-        (Fraction.from_float(float(durations[test_name])) for test_name in new_tests),
+        (cost.exact_seconds for cost in new_costs),
         start=Fraction(),
     )
     watchdog_cap_sum = bucket.watchdog_cap_sum_seconds + candidate.watchdog_cap_seconds
@@ -472,12 +525,13 @@ def _add_budget_mutant(
 ) -> None:
     """Apply a selected candidate to a budget-bin state."""
 
-    new_tests = sorted(set(mutant.test_names).difference(bucket.test_names))
+    new_test_names = mutant.test_membership.difference(bucket.test_names)
+    new_costs = tuple(cost for cost in mutant.test_costs if cost.name in new_test_names)
     bucket.names.append(mutant.name)
     bucket.mutants.append(mutant)
-    bucket.test_names.update(new_tests)
+    bucket.test_names.update(cost.name for cost in new_costs)
     bucket.union_exact_seconds += sum(
-        (Fraction.from_float(float(durations[test_name])) for test_name in new_tests),
+        (cost.exact_seconds for cost in new_costs),
         start=Fraction(),
     )
     if bucket.union_fsum_seconds is not None:
@@ -485,7 +539,7 @@ def _add_budget_mutant(
             bucket.union_fsum_seconds = math.fsum(
                 [
                     bucket.union_fsum_seconds,
-                    *(float(durations[test_name]) for test_name in new_tests),
+                    *(cost.float_seconds for cost in new_costs),
                 ]
             )
         except OverflowError:

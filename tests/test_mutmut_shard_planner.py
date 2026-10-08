@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -511,3 +512,77 @@ def test_budget_candidate_pruning_preserves_tie_choice_and_reduces_exact_calls(
     pruned_plan, pruned_calls = run(disable_pruning=False)
     assert pruned_plan == exact_plan
     assert pruned_calls < exact_calls
+
+
+def test_budget_cost_projection_is_interned_and_reused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import plan_mutmut_shards as planner
+
+    durations = {
+        "tests/shared.py::test_shared": 0.125,
+        "tests/a.py::test_a": 0.25,
+        "tests/b.py::test_b": 0.5,
+        "tests/c.py::test_c": 0.75,
+        "tests/unused.py::test_unused": 9.0,
+    }
+    tests_by_function = {
+        "app.module_a.run": [
+            "tests/shared.py::test_shared",
+            "tests/a.py::test_a",
+        ],
+        "app.module_b.run": [
+            "tests/shared.py::test_shared",
+            "tests/b.py::test_b",
+        ],
+        "app.module_c.run": [
+            "tests/shared.py::test_shared",
+            "tests/c.py::test_c",
+        ],
+    }
+    estimates = [
+        MutantEstimate(f"app.module_{module}.run__mutmut_{index}", 1.0)
+        for index, module in enumerate(("a", "b", "a", "c", "b", "a"), 1)
+    ]
+
+    from_float_calls: list[float] = []
+
+    class CountingFraction(Fraction):
+        @classmethod
+        def from_float(cls, value: float) -> Fraction:
+            from_float_calls.append(value)
+            return super().from_float(value)
+
+    monkeypatch.setattr(planner, "Fraction", CountingFraction)
+    normalized = planner._budget_mutants(estimates, tests_by_function, durations)
+
+    used_test_names = {
+        test_name
+        for test_names in tests_by_function.values()
+        for test_name in test_names
+    }
+    assert len(from_float_calls) == len(used_test_names)
+    bucket = planner._budget_bin_from_mutants(normalized[:2], durations)
+    normalized_conversion_count = len(from_float_calls)
+
+    for candidate in normalized[2:]:
+        lower_bound = planner._budget_bin_lower_bound(
+            bucket,
+            candidate,
+            durations=durations,
+            max_children=2,
+            control_cycle_reserve_seconds=2,
+            metadata_and_startup_reserve_seconds=7,
+        )
+        upper_bound = planner._budget_bin_upper_bound(
+            bucket,
+            candidate,
+            durations=durations,
+            max_children=2,
+            control_cycle_reserve_seconds=2,
+            metadata_and_startup_reserve_seconds=7,
+        )
+        assert lower_bound <= upper_bound
+        planner._add_budget_mutant(bucket, candidate, durations)
+
+    assert len(from_float_calls) == normalized_conversion_count

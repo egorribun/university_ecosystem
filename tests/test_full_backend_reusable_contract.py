@@ -62,6 +62,41 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
     return next(step for step in _steps(job) if step.get("name") == name)
 
 
+def _assert_frontend_typecheck_is_only_job_delta(
+    job: dict[str, object], expected_digest: str
+) -> None:
+    steps = _steps(job)
+    typecheck_steps = [
+        step
+        for step in steps
+        if step.get("name") == "Type-check frontend before mutation evidence"
+    ]
+    assert typecheck_steps == [
+        {
+            "name": "Type-check frontend before mutation evidence",
+            "working-directory": "frontend",
+            "run": "npm run typecheck",
+        }
+    ]
+
+    typecheck_index = steps.index(typecheck_steps[0])
+    npm_ci_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("run") == "npm ci --no-audit --no-fund"
+    )
+    mutation_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Generate canonical immutable Stryker preflight"
+    )
+    assert npm_ci_index < typecheck_index < mutation_index
+
+    preserved_job = dict(job)
+    preserved_job["steps"] = [step for step in steps if step is not typecheck_steps[0]]
+    assert _digest(preserved_job) == expected_digest
+
+
 def _python_guard(step: dict[str, object]) -> str:
     run = step["run"]
     assert isinstance(run, str)
@@ -645,7 +680,10 @@ def test_nightly_calls_full_backend_only_from_main_nightly_events() -> None:
     expected_jobs = baseline["nightly_preserved_jobs"]
     for job_id, expected_digest in expected_jobs.items():
         assert job_id in jobs
-        assert _digest(jobs[job_id]) == expected_digest
+        if job_id == "frontend-mutation-preflight":
+            _assert_frontend_typecheck_is_only_job_delta(jobs[job_id], expected_digest)
+        else:
+            assert _digest(jobs[job_id]) == expected_digest
 
 
 def test_manual_full_backend_is_opt_in_branch_bound_and_non_required() -> None:
@@ -706,7 +744,12 @@ def test_manual_full_backend_is_opt_in_branch_bound_and_non_required() -> None:
         assert jobs[job_id]["name"] not in REQUIRED_CONTEXTS
     expected_jobs = baseline["manual_preserved_jobs"]
     for job_id in _manual_frontend_job_ids():
-        assert _digest(jobs[job_id]) == expected_jobs[job_id]
+        if job_id == "manual-frontend-mutation-preflight":
+            _assert_frontend_typecheck_is_only_job_delta(
+                jobs[job_id], expected_jobs[job_id]
+            )
+        else:
+            assert _digest(jobs[job_id]) == expected_jobs[job_id]
 
 
 def test_helm_dependency_reusable_has_fixed_callers_and_exact_run_attempt_artifact() -> (
@@ -753,7 +796,12 @@ def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_front
     expected_nightly = baseline["nightly_preserved_jobs"]
     for job_id, expected_digest in expected_nightly.items():
         assert job_id in nightly
-        assert _digest(nightly[job_id]) == expected_digest
+        if job_id == "frontend-mutation-preflight":
+            _assert_frontend_typecheck_is_only_job_delta(
+                nightly[job_id], expected_digest
+            )
+        else:
+            assert _digest(nightly[job_id]) == expected_digest
 
     manual = _jobs(_load(MANUAL))
     expected_manual = baseline["manual_preserved_jobs"]
@@ -762,7 +810,12 @@ def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_front
         actual.pop("if")
         assert _digest(actual) == expected_manual[job_id]
     for job_id in _manual_frontend_job_ids():
-        assert _digest(manual[job_id]) == expected_manual[job_id]
+        if job_id == "manual-frontend-mutation-preflight":
+            _assert_frontend_typecheck_is_only_job_delta(
+                manual[job_id], expected_manual[job_id]
+            )
+        else:
+            assert _digest(manual[job_id]) == expected_manual[job_id]
 
 
 def test_full_backend_execution_steps_match_original_except_reusable_boundaries() -> (

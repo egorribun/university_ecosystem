@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import ctypes
 import errno
 import hashlib
 import hmac
@@ -3411,6 +3412,7 @@ def _live_e2e_environment(
         source_environment if source_environment is not None else os.environ
     )
     env = _live_e2e_runtime_environment(runtime_source)
+    browser_cache = _playwright_browser_cache_path(env)
     config_root = Path(npm_config_directory)
     _mark_live_e2e_output_directory(output_directory, config_root)
     npm_user_config = config_root / "npm-userconfig"
@@ -3418,8 +3420,6 @@ def _live_e2e_environment(
     for config_path in (npm_user_config, npm_global_config):
         with config_path.open("x", encoding="utf-8"):
             pass
-    browser_cache = _playwright_browser_cache_path(env)
-
     env.update(
         {
             "LIVE_E2E_OUTPUT_DIR": output_directory,
@@ -3476,6 +3476,7 @@ def _live_e2e_runtime_environment(
     windows = selected_platform == "nt"
     allowed_names = (
         "PATH",
+        "PLAYWRIGHT_BROWSERS_PATH",
         *(LIVE_E2E_WINDOWS_ENVIRONMENT if windows else LIVE_E2E_UNIX_ENVIRONMENT),
         *LIVE_E2E_CI_ENVIRONMENT,
     )
@@ -3503,8 +3504,50 @@ def _live_e2e_runtime_environment(
 def _playwright_browser_cache_path(
     environment: Mapping[str, str], *, platform: str | None = None
 ) -> Path:
-    """Use Playwright's per-user cache while passing its location explicitly."""
-    windows = (platform or os.name) == "nt"
+    """Resolve the default cache or validate an existing local cache override."""
+    selected_platform = platform or os.name
+    windows = selected_platform == "nt"
+    if "PLAYWRIGHT_BROWSERS_PATH" in environment:
+        raw_override = environment["PLAYWRIGHT_BROWSERS_PATH"]
+        if not isinstance(raw_override, str) or not raw_override.strip():
+            raise StandError(
+                "PLAYWRIGHT_BROWSERS_PATH must be an existing local directory"
+            )
+        if raw_override == "0" or raw_override.startswith(("\\\\", "//")):
+            raise StandError(
+                "PLAYWRIGHT_BROWSERS_PATH must be an existing local directory"
+            )
+        candidate = Path(raw_override)
+        if not candidate.is_absolute():
+            raise StandError(
+                "PLAYWRIGHT_BROWSERS_PATH must be an absolute local directory"
+            )
+        _assert_no_reparse_ancestors(candidate)
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise StandError(
+                "PLAYWRIGHT_BROWSERS_PATH must be an existing local directory"
+            ) from error
+        if not resolved.is_dir():
+            raise StandError(
+                "PLAYWRIGHT_BROWSERS_PATH must be an existing local directory"
+            )
+        _assert_no_reparse_ancestors(resolved)
+        if windows:
+            if not candidate.drive or candidate.anchor.startswith("\\\\"):
+                raise StandError("PLAYWRIGHT_BROWSERS_PATH must be a local directory")
+            try:
+                drive_type = ctypes.windll.kernel32.GetDriveTypeW(candidate.anchor)
+            except (AttributeError, OSError) as error:
+                raise StandError(
+                    "could not verify the local Playwright browser cache"
+                ) from error
+            # DRIVE_REMOVABLE, DRIVE_FIXED, and DRIVE_RAMDISK are local stores.
+            if drive_type not in {2, 3, 6}:
+                raise StandError("PLAYWRIGHT_BROWSERS_PATH must be a local directory")
+        return resolved
+
     profile_root = environment.get("LOCALAPPDATA" if windows else "HOME")
     if not profile_root:
         required_name = "LOCALAPPDATA" if windows else "HOME"
