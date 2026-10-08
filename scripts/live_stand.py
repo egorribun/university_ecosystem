@@ -3888,13 +3888,15 @@ def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
 
 _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
     r"UE_LIVE_PAGE_ERROR_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>password-reset|admin-notifications) "
-    r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|admin-notifications|other) "
+    r"check=(?P<check>password-reset|admin-notifications|auth-roles) "
+    r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|"
+    r"admin-notifications|admin-users|admin-feature-flags|other) "
     r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
     r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
     r"count=(?P<count>[1-9][0-9]{0,2})"
 )
-_PLAYWRIGHT_PAGE_ERROR_LIMIT = 248
+# One aggregate per allowed project/check/page/type combination across all checks.
+_PLAYWRIGHT_PAGE_ERROR_LIMIT = 378
 
 
 _PLAYWRIGHT_PROFILE_SAVE_LINE = re.compile(
@@ -3985,7 +3987,27 @@ def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, 
                 "other",
             }:
                 continue
-        elif match["page"] == "admin-notifications" or match["type"] == "react-418":
+        elif match["check"] == "auth-roles":
+            if match["page"] not in {
+                "login",
+                "dashboard",
+                "admin-users",
+                "admin-feature-flags",
+                "other",
+            }:
+                continue
+        elif (
+            match["page"]
+            not in {
+                "register",
+                "login",
+                "forgot-password",
+                "reset-password",
+                "dashboard",
+                "other",
+            }
+            or match["type"] == "react-418"
+        ):
             continue
         record = (
             _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],

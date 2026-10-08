@@ -110,6 +110,27 @@ def _install_hermetic_stand(
             return subprocess.CompletedProcess(
                 argv, 0, stdout="\n".join(existing_container_labels), stderr=""
             )
+        if argv[:4] == ["docker", "inspect", "--type", "container"]:
+            assert argv[4:5] == ["--format"]
+            assert argv[5] == live_stand._DOCKER_INSPECT_FORMAT
+            records = []
+            for container_id in argv[6:]:
+                assert container_id in existing_container_labels
+                assert not existing_container_mounts.get(container_id, [])
+                labels = existing_container_labels[container_id]
+                records.append(
+                    json.dumps(
+                        {
+                            "Id": container_id,
+                            "ProjectLabel": labels.get("com.docker.compose.project"),
+                            "ServiceLabel": labels.get("com.docker.compose.service"),
+                            "Mounts": [],
+                        }
+                    )
+                )
+            return subprocess.CompletedProcess(
+                argv, 0, stdout="\n".join(records), stderr=""
+            )
         if argv[:4] == ["docker", "inspect", "--format", "{{json .Mounts}}"]:
             container_id = argv[-1]
             assert container_id in existing_container_labels

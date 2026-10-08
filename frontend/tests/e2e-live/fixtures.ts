@@ -2,6 +2,7 @@ import { expect, test as base, type Page } from "@playwright/test"
 import {
   createLivePageErrorDiagnostics,
   isLiveAdminNotificationsScenario,
+  isLiveAuthRoleDenialScenario,
 } from "./page-error-diagnostic"
 import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
 
@@ -151,11 +152,18 @@ export const test = base.extend<{ pageErrors: Error[] }>({
         testInfo.file,
         testInfo.title
       )
+      const isAuthRoleDenialScenario = isLiveAuthRoleDenialScenario(
+        testInfo.project.name,
+        testInfo.file,
+        testInfo.title
+      )
       const diagnosticCheck = isResetScenario
         ? "password-reset"
         : isAdminNotificationsScenario
           ? "admin-notifications"
-          : null
+          : isAuthRoleDenialScenario
+            ? "auth-roles"
+            : null
       const pageErrorDiagnostics = createLivePageErrorDiagnostics()
       page.on("pageerror", (error) => {
         errors.push(error)

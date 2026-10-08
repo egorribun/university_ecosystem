@@ -1693,13 +1693,48 @@ def test_live_playwright_page_errors_accept_admin_hydration_domains(
 
 
 @pytest.mark.parametrize(
+    ("project", "page", "kind", "count", "newline"),
+    [
+        ("desktop", "login", "type-error", 1, "\n"),
+        ("mobile", "dashboard", "react-418", 999, "\r\n"),
+        ("desktop", "admin-users", "other", 999, "\r\n"),
+        ("mobile", "admin-feature-flags", "type-error", 1, "\r\n"),
+        ("desktop", "other", "react-418", 999, "\n"),
+        ("mobile", "login", "other", 1, "\n"),
+        ("desktop", "dashboard", "type-error", 999, "\r\n"),
+        ("mobile", "admin-users", "react-418", 1, "\n"),
+        ("desktop", "admin-feature-flags", "other", 1, "\r\n"),
+        ("mobile", "other", "type-error", 999, "\r\n"),
+    ],
+)
+def test_live_playwright_page_errors_accept_auth_roles_domain(
+    project: str, page: str, kind: str, count: int, newline: str
+) -> None:
+    sentinel = (
+        f"UE_LIVE_PAGE_ERROR_V1 project={project} check=auth-roles page={page} "
+        f"type={kind} count={count}{newline}"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == [
+        (project, "auth-roles", page, kind, count)
+    ]
+
+
+@pytest.mark.parametrize(
     ("check", "page", "kind"),
     [
         ("password-reset", "admin-notifications", "error"),
+        ("password-reset", "admin-users", "error"),
+        ("password-reset", "admin-feature-flags", "error"),
         ("password-reset", "login", "react-418"),
         ("admin-notifications", "register", "error"),
         ("admin-notifications", "forgot-password", "error"),
         ("admin-notifications", "reset-password", "error"),
+        ("admin-notifications", "admin-users", "error"),
+        ("admin-notifications", "admin-feature-flags", "error"),
+        ("auth-roles", "register", "error"),
+        ("auth-roles", "forgot-password", "error"),
+        ("auth-roles", "reset-password", "error"),
+        ("auth-roles", "admin-notifications", "error"),
     ],
 )
 def test_live_playwright_page_errors_reject_cross_scenario_domains(
@@ -1759,7 +1794,7 @@ def test_live_playwright_page_errors_deduplicate_and_bound_records() -> None:
     )
     assert live_stand._live_playwright_page_errors(output) == [
         ("desktop", "password-reset", "reset-password", "other", count)
-        for count in range(1, 249)
+        for count in range(1, 379)
     ]
 
 
@@ -1777,6 +1812,10 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
         stdout=(
             "private-title https://private.invalid/?token=private-token\n"
             + sentinel * 30
+            + (
+                "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles "
+                "page=admin-users type=react-418 count=1\n"
+            )
             + "UE_LIVE_PAGE_ERROR_V1 project=mobile check=password-reset page=reset-password type=other count=999\r\n"
             + "UE_LIVE_PAGE_ERROR_V1 project=mobile check=password-reset page=reset-password type=error count="
         ).encode(),
@@ -1797,6 +1836,7 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         "live E2E page error project=desktop check=password-reset page=reset-password type=type-error count=2",
+        "live E2E page error project=desktop check=auth-roles page=admin-users type=react-418 count=1",
         "live E2E page error project=mobile check=password-reset page=reset-password type=other count=999",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]

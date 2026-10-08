@@ -341,6 +341,7 @@ def test_core_status_is_read_only_and_queries_only_signed_services(
         "ps",
         "--all",
         "--quiet",
+        "--no-trunc",
         "--filter",
         f"label=com.docker.compose.project={owner.project_name}",
     ]

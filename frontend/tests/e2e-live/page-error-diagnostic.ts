@@ -1,9 +1,14 @@
-// Hard worker-local cap for the fixed cross-project page/error protocol.
+// The fixed three-domain protocol has 378 admissible project/check/page/type tuples.
 const emittedRecords = new Set<string>()
-const MAX_RECORDS = 248
+const MAX_RECORDS = 378
 const MAX_COUNT = 999
 
-type DiagnosticCheck = "password-reset" | "admin-notifications"
+type DiagnosticCheck = "password-reset" | "admin-notifications" | "auth-roles"
+
+const AUTH_ROLE_DENIAL_TITLES = new Set([
+  "student is denied access to admin pages, user listing, and feature flags",
+  "teacher is denied access to admin pages, user listing, and feature flags",
+])
 
 const ADMIN_NOTIFICATIONS_TITLES = new Set([
   "admin can read the seeded notification queue without changing it",
@@ -24,6 +29,19 @@ export function isLiveAdminNotificationsScenario(
   return typeof title === "string" && ADMIN_NOTIFICATIONS_TITLES.has(title)
 }
 
+export function isLiveAuthRoleDenialScenario(
+  project: unknown,
+  file: unknown,
+  title: unknown
+): boolean {
+  if (project !== "desktop" && project !== "mobile") return false
+  if (typeof file !== "string") return false
+  if (!file.replace(/\\/g, "/").endsWith("/tests/e2e-live/auth-roles.live.spec.ts")) {
+    return false
+  }
+  return typeof title === "string" && AUTH_ROLE_DENIAL_TITLES.has(title)
+}
+
 function isReactHydration418(error: object): boolean {
   try {
     const message = (error as { message?: unknown }).message
@@ -42,7 +60,7 @@ function isReactHydration418(error: object): boolean {
 
 function errorType(error: unknown, check: DiagnosticCheck): string {
   if (typeof error !== "object" || error === null) return "other"
-  if (check === "admin-notifications" && isReactHydration418(error)) return "react-418"
+  if (check !== "password-reset" && isReactHydration418(error)) return "react-418"
   try {
     switch ((error as { name?: unknown }).name) {
       case "Error":
@@ -88,6 +106,21 @@ function currentPage(pathname: unknown, check: DiagnosticCheck): string {
     }
   }
 
+  if (check === "auth-roles") {
+    switch (pathname) {
+      case "/login":
+        return "login"
+      case "/dashboard":
+        return "dashboard"
+      case "/admin/users":
+        return "admin-users"
+      case "/admin/feature-flags":
+        return "admin-feature-flags"
+      default:
+        return "other"
+    }
+  }
+
   switch (pathname) {
     case "/register":
       return "register"
@@ -119,7 +152,7 @@ export function createLivePageErrorDiagnostics() {
     report(project: string, check: DiagnosticCheck): void {
       if (
         (project !== "desktop" && project !== "mobile") ||
-        (check !== "password-reset" && check !== "admin-notifications")
+        (check !== "password-reset" && check !== "admin-notifications" && check !== "auth-roles")
       )
         return
       for (const { currentPage, type, count } of counts.values()) {

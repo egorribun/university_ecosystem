@@ -15,6 +15,11 @@ const resetTitle =
   "a student resets with the Mailpit link without retaining tokens or following hostile redirects"
 const adminNotificationsPath =
   "/workspace/frontend/tests/e2e-live/admin-notifications-rbac.live.spec.ts"
+const authRolesPath = "/workspace/frontend/tests/e2e-live/auth-roles.live.spec.ts"
+const authRoleTitles = [
+  "student is denied access to admin pages, user listing, and feature flags",
+  "teacher is denied access to admin pages, user listing, and feature flags",
+]
 function freshPassword() {
   return `Aa1!${randomUUID()}`
 }
@@ -88,11 +93,12 @@ test("admin notification page errors emit only a bounded React 418 category", ()
   assert.doesNotMatch(output, /private-token|private-message/u)
 })
 
-test("React hydration classification is limited to admin notification diagnostics", () => {
+test("React hydration diagnostics use a fixed category only on allowlisted checks", () => {
   const output = reportInChild(
     [
       'reportLivePageErrors("desktop", "password-reset", [new Error("Minified React error #418; private-token")]);',
       'reportLivePageErrors("desktop", "admin-notifications", [new Error("Minified React error #418; private-token")], "/admin/notifications");',
+      'reportLivePageErrors("desktop", "auth-roles", [new Error("Minified React error #418; private-token")], "/admin/users");',
     ].join("\n")
   )
   assert.equal(
@@ -100,6 +106,7 @@ test("React hydration classification is limited to admin notification diagnostic
     [
       "UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=1\n",
       "UE_LIVE_PAGE_ERROR_V1 project=desktop check=admin-notifications page=admin-notifications type=react-418 count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles page=admin-users type=react-418 count=1\n",
     ].join("")
   )
 })
@@ -136,6 +143,90 @@ test("admin notification diagnostics require exact desktop/mobile file and test 
   assert.equal(result.status, 0)
   assert.equal(result.stderr, "")
   assert.equal(result.stdout, "[true,true,true,false,false,false,false]\n")
+})
+
+test("auth role diagnostics require the exact denied student and teacher scenarios", () => {
+  const childSource =
+    "import { isLiveAuthRoleDenialScenario } from " +
+    JSON.stringify(helperUrl.href) +
+    ";\n" +
+    "console.log(JSON.stringify([" +
+    'isLiveAuthRoleDenialScenario("desktop", ' +
+    JSON.stringify(authRolesPath) +
+    ", " +
+    JSON.stringify(authRoleTitles[0]) +
+    ")," +
+    'isLiveAuthRoleDenialScenario("mobile", ' +
+    JSON.stringify(authRolesPath) +
+    ", " +
+    JSON.stringify(authRoleTitles[1]) +
+    ")," +
+    'isLiveAuthRoleDenialScenario("private-project", ' +
+    JSON.stringify(authRolesPath) +
+    ", " +
+    JSON.stringify(authRoleTitles[0]) +
+    ")," +
+    'isLiveAuthRoleDenialScenario("desktop", ' +
+    JSON.stringify(authRolesPath + ".backup") +
+    ", " +
+    JSON.stringify(authRoleTitles[0]) +
+    ")," +
+    'isLiveAuthRoleDenialScenario("desktop", ' +
+    JSON.stringify(authRolesPath) +
+    ', "student is denied access to admin pages, user listing, and feature flags private-title"),' +
+    'isLiveAuthRoleDenialScenario("desktop", ' +
+    JSON.stringify(authRolesPath) +
+    ', "admin can read the seeded notification queue without changing it"),' +
+    'isLiveAuthRoleDenialScenario("desktop", { toString() { throw Error("private-file") } }, ' +
+    JSON.stringify(authRoleTitles[0]) +
+    ")" +
+    "]));"
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], {
+    encoding: "utf8",
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stderr, "")
+  assert.equal(result.stdout, "[true,true,false,false,false,false,false]\n")
+})
+
+test("auth role diagnostics expose only bounded route and error categories", () => {
+  const output = reportInChild(
+    [
+      "const diagnostics = createLivePageErrorDiagnostics();",
+      'diagnostics.record(new TypeError("private-message"), "/login", "auth-roles");',
+      'diagnostics.record(new ReferenceError("private-message"), "/dashboard", "auth-roles");',
+      'diagnostics.record(new RangeError("private-message"), "/admin/users", "auth-roles");',
+      'diagnostics.record(new Error("Minified React error #418; private-token"), "/admin/feature-flags", "auth-roles");',
+      'diagnostics.record(new TypeError("private-message"), "/admin/notifications", "auth-roles");',
+      'diagnostics.record(new TypeError("private-message"), "/admin/users?private-token", "auth-roles");',
+      'diagnostics.record(new Error("private-message"), "/reset-password", "auth-roles");',
+      'diagnostics.report("desktop", "auth-roles");',
+    ].join("\n")
+  )
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles page=login type=type-error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles page=dashboard type=reference-error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles page=admin-users type=range-error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles page=admin-feature-flags type=react-418 count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles page=other type=type-error count=2\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=auth-roles page=other type=error count=1\n",
+    ].join("")
+  )
+  assert.doesNotMatch(output, /private-message|private-token|reset-password/u)
+
+  const saturated = reportInChild(
+    [
+      "const diagnostics = createLivePageErrorDiagnostics();",
+      'for (let i = 0; i < 1200; i += 1) diagnostics.record(new TypeError("private-message"), "/admin/users", "auth-roles");',
+      'diagnostics.report("mobile", "auth-roles");',
+    ].join("\n")
+  )
+  assert.equal(
+    saturated,
+    "UE_LIVE_PAGE_ERROR_V1 project=mobile check=auth-roles page=admin-users type=type-error count=999\n"
+  )
 })
 
 test("page error diagnostics never coerce private names and unknown values count as other", () => {
@@ -212,12 +303,12 @@ test("page error diagnostics saturate counts and deduplicate bounded worker outp
   )
   assert.equal(
     reportInChild(`
-      for (let count = 1; count < 400; count += 1) {
+      for (let count = 1; count <= 379; count += 1) {
         reportLivePageErrors("desktop", "password-reset", Array.from({ length: count }, () => new Error("private-message")));
       }
     `),
     Array.from(
-      { length: 248 },
+      { length: 378 },
       (_, i) =>
         `UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=${i + 1}\n`
     ).join("")
@@ -270,6 +361,26 @@ test("reset diagnostic wiring preserves the hard page error and replay assertion
   assert.match(
     spec,
     /reportLiveHttpStatus\(testInfo\.project\.name, "password-reset-replay", replayResult\.status\(\)\)\s*expect\(replayResult\.status\(\), "a consumed reset token must be rejected by the API"\)\.toBe\(400\)/u
+  )
+})
+
+test("auth role fixture wires diagnostics only to its exact denied-role tests", async () => {
+  const fixtures = await readFile(fixtureUrl, "utf8")
+  const authRoleSpec = await readFile(new URL("./auth-roles.live.spec.ts", import.meta.url), "utf8")
+  assert.ok(fixtures.includes("isLiveAuthRoleDenialScenario("))
+  assert.ok(fixtures.includes('isAuthRoleDenialScenario\n            ? "auth-roles"'))
+  assert.ok(fixtures.includes("errors.push(error)"))
+  assert.ok(
+    fixtures.includes(
+      'expect(errors, errors.map((error) => error.message).join("\\n")).toEqual([])'
+    )
+  )
+  assert.ok(authRoleSpec.includes('for (const role of ["student", "teacher"] as const)'))
+  assert.ok(
+    authRoleSpec.includes("is denied access to admin pages, user listing, and feature flags")
+  )
+  assert.ok(
+    authRoleSpec.includes("role} is denied access to admin pages, user listing, and feature flags")
   )
 })
 
