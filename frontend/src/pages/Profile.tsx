@@ -443,11 +443,13 @@ export default function Profile() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={!!snackbar} autoHideDuration={2600} onClose={() => setSnackbar(null)}>
-        <Alert onClose={() => setSnackbar(null)} severity={snackbar?.severity || "info"}>
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
+      <div data-testid="profile-save-feedback">
+        <Snackbar open={!!snackbar} autoHideDuration={2600} onClose={() => setSnackbar(null)}>
+          <Alert onClose={() => setSnackbar(null)} severity={snackbar?.severity || "info"}>
+            {snackbarMessage}
+          </Alert>
+        </Snackbar>
+      </div>
     </Layout>
   )
 }

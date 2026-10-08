@@ -1,9 +1,10 @@
 import type { ReactNode } from "react"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { User } from "@/types/User"
 import { rotateBrowserSession } from "@/stores/sessionEpoch"
+import { LiveRegionProvider } from "@/components/ui/LiveRegionProvider"
 
 const {
   authState,
@@ -734,12 +735,17 @@ describe("Profile behavior", () => {
     },
     { status: 500, data: {}, expectedMessage: "profile:snackbar.error" },
   ])(
-    "renders the real alert and retains the draft after a $status save failure",
+    "renders the scoped profile alert beside the global live region and retains the draft after a $status save failure",
     async ({ status, data, expectedMessage }) => {
       searchState.edit = "1"
       apiState.put.mockRejectedValueOnce({ response: { status, data } })
 
-      render(<Profile />)
+      render(
+        <LiveRegionProvider>
+          <Profile />
+        </LiveRegionProvider>
+      )
+      const profileFeedback = screen.getByTestId("profile-save-feedback")
       fireEvent.change(screen.getByRole("textbox", { name: "full name" }), {
         target: { value: "Ada draft" },
       })
@@ -748,7 +754,10 @@ describe("Profile behavior", () => {
       })
       fireEvent.click(screen.getByRole("button", { name: "save profile" }))
 
-      const alert = await screen.findByRole("alert")
+      const alert = await within(profileFeedback).findByRole("alert")
+      await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2))
+      expect(within(profileFeedback).getAllByRole("alert")).toHaveLength(1)
+      expect(alert).toBeVisible()
       expect(alert).toHaveTextContent(expectedMessage)
       expect(screen.getByTestId("profile-editor")).toBeInTheDocument()
       expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("Ada draft")

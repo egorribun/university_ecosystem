@@ -196,11 +196,12 @@ test("profile editor cancellation and rejected oversized save preserve values be
       rejectedSaveResponse.status(),
       "the database-bound profile field rejects a value beyond its supported size"
     ).toBeGreaterThanOrEqual(400)
+    const profileFeedback = page.getByTestId("profile-save-feedback")
     try {
-      await expect(page.getByRole("alert")).toBeVisible()
+      await expect(profileFeedback.getByRole("alert")).toBeVisible()
     } catch (assertionError) {
       const responseBody = await rejectedSaveResponse.json().catch(() => undefined)
-      const alertCount = await page
+      const alertCount = await profileFeedback
         .getByRole("alert")
         .count()
         .catch(() => undefined)

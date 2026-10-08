@@ -77,11 +77,11 @@
   RED→GREEN: root49 PASS, logic/mapper line+branch100%; DTO/schema54 и UI28 PASS, OpenAPI synced; preflight10/10 PASS.
   Peak RAM70%,free≥9,533GiB; stop0/teardown0, owned containers/volumes/networks/image tags0.
   Evidence: `C:/Temp/ue-core-review-f2818079c-e2e-v1/root-cleanup-f281.v1.json`; полный live gate открыт.
-- Core@`520850`: up0/status0 без изменения state; profile desktop/mobile2 PASS/2 FAIL, email guard PASS.
-  Login DTO fix RED→GREEN, root72 PASS; error alert после PUT422 открыт; добавлена failure-only диагностика без payload.
-  Restart не запускался; acceptance credit отсутствует; full mutation37723031168/a1@`520850`: stats0/8 FAILED, RCA в работе.
-  Stop0/teardown0, owned containers/volumes/networks/image tags0; peak RAM69%, free≥9,555GiB.
-  Evidence: `C:/Temp/ue-core-review-520850de3-e2e-v1/root-cleanup-520850.v1.json`; bounds: root114 PASS, schema line/branch100% локально.
+- Core@`0f5aa740f`: up0/status0 без изменения10 state files; profile desktop/mobile2 PASS/2 FAIL, email guard PASS.
+  PUT422/2 alerts/save enabled/no JS errors: global live region +profile Snackbar; scoped locator RED→GREEN/root41, live repeat требуется.
+  Restart не запускался; acceptance credit отсутствует; full mutation37723031168/a1@`520850`: stats0/8 и5/8 FAILED, RCA открыт.
+  Stop0/teardown0, owned containers/volumes/networks/image tags0; peak RAM72%, free≥8,867GiB; teardown299s/2147 subprocess calls.
+  Evidence: `C:/Temp/ue-core-review-0f5aa740f-e2e-v1/root-cleanup-0f5aa740f.v1.json`; bounds: root114 PASS, schema line/branch100% локально.
 - Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
