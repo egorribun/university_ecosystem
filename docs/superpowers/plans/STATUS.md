@@ -77,11 +77,11 @@
   RED→GREEN: root49 PASS, logic/mapper line+branch100%; DTO/schema54 и UI28 PASS, OpenAPI synced; preflight10/10 PASS.
   Peak RAM70%,free≥9,533GiB; stop0/teardown0, owned containers/volumes/networks/image tags0.
   Evidence: `C:/Temp/ue-core-review-f2818079c-e2e-v1/root-cleanup-f281.v1.json`; полный live gate открыт.
-- Core@`c221`: up0; profile0 PASS/4 FAIL до профиля — admin login500 или registration redirect.
-  RCA login: `education_path.user_id` запрещён `UserOut`; actual ORM→DTO→token RED→GREEN, root72 PASS.
-  Registration POST200: причина redirect ещё не доказана. Restart не запускался; acceptance credit отсутствует.
-  Stop0/teardown0, owned containers/volumes/networks/image tags0; peak RAM73%, free≥8,379GiB.
-  Evidence: `C:/Temp/ue-core-review-c221d2400-e2e-v1/root-cleanup-c221.v1.json`.
+- Core@`520850`: up0/status0 без изменения state; profile desktop/mobile2 PASS/2 FAIL, email guard PASS.
+  Login DTO fix RED→GREEN, root72 PASS; error alert после PUT422 открыт; добавлена failure-only диагностика без payload.
+  Restart не запускался; acceptance credit отсутствует; full mutation37723031168/a1@`520850`: stats0/8 FAILED, RCA в работе.
+  Stop0/teardown0, owned containers/volumes/networks/image tags0; peak RAM69%, free≥9,555GiB.
+  Evidence: `C:/Temp/ue-core-review-520850de3-e2e-v1/root-cleanup-520850.v1.json`; bounds: root114 PASS, schema line/branch100% локально.
 - Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
@@ -132,7 +132,7 @@
 
 ## Следующие проверки и ограничения
 
-- MSW drift исправлен генератором; root planner/OpenAPI105, harness27, preflight10/10 PASS; следующий live/restart, затем chart parity;
+- Новые profile bounds синхронизированы с ORM/migration/OpenAPI; runner1127 и Node11 PASS; следующий live/restart, затем chart parity;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   Historical MFA263/307 exact RED; global mutation gate открыт.

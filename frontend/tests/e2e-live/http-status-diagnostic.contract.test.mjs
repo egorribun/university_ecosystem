@@ -8,6 +8,7 @@ import test from "node:test"
 import { fileURLToPath, URL } from "node:url"
 
 const helperUrl = new URL("./http-status-diagnostic.ts", import.meta.url)
+const profileHelperUrl = new URL("./profile-save-diagnostic.ts", import.meta.url)
 
 function reportInChild(calls) {
   const result = spawnSync(
@@ -15,7 +16,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { reportLiveHttpStatus } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
+      `import { reportLiveHttpStatus } from ${JSON.stringify(helperUrl.href)};\nimport { reportLiveProfileSaveFailure } from ${JSON.stringify(profileHelperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -165,6 +166,72 @@ test("the real Playwright list reporter preserves stdout protocol without browse
   assert.match(result.stderr, /private-credential/u)
   assert.doesNotMatch(result.stderr, /UE_LIVE_HTTP_STATUS_V1/u)
   assert.deepEqual(await readdir(outputPath), [".last-run.json"])
+})
+
+test("profile-save diagnostics expose only closed validation and UI fields", () => {
+  const output = reportInChild(`
+    reportLiveProfileSaveFailure({
+      project: "desktop",
+      status: 422,
+      body: { detail: [{ loc: ["body", "profile_detail", "about"], msg: "private-validation-message", type: "too_long", input: "private-user-input", ctx: { limit: 4096 } }] },
+      alertCount: 0,
+      saveDisabled: false,
+      pathname: "/profile",
+      pageErrors: [new TypeError("private-stack-message")],
+    });
+  `)
+  assert.equal(
+    output,
+    "UE_LIVE_PROFILE_SAVE_V1 project=desktop status=422 detail=array detail_count=1 detail_msg=true alert_count=0 save_disabled=false route=profile page_error_count=1 page_error=type-error\n"
+  )
+  assert.doesNotMatch(
+    output,
+    /private-validation-message|private-user-input|private-stack-message|profile_detail|4096/u
+  )
+})
+
+test("profile-save diagnostics reject invalid domains and do not coerce private values", () => {
+  const output = reportInChild(`
+    const privateValue = { toString() { throw new Error("private-value") } };
+    reportLiveProfileSaveFailure({
+      project: "mobile", status: 422, body: { detail: [{ msg: "secret" }] },
+      alertCount: privateValue, saveDisabled: "false",
+      pathname: "/profile?token=private", pageErrors: [],
+    });
+    reportLiveProfileSaveFailure({ project: "private-project", status: 422 });
+    reportLiveProfileSaveFailure({ project: "desktop", status: "422" });
+  `)
+  assert.equal(
+    output,
+    "UE_LIVE_PROFILE_SAVE_V1 project=mobile status=422 detail=array detail_count=1 detail_msg=true alert_count=unknown save_disabled=unknown route=other page_error_count=0 page_error=none\n"
+  )
+  assert.doesNotMatch(output, /secret|private|token/u)
+})
+
+test("profile-save diagnostics deduplicate and stop after four records", () => {
+  const output = reportInChild(`
+    for (let status = 400; status < 410; status += 1) {
+      reportLiveProfileSaveFailure({ project: "desktop", status, body: { detail: [] }, alertCount: 0, saveDisabled: false, pathname: "/profile", pageErrors: [] });
+    }
+    reportLiveProfileSaveFailure({ project: "desktop", status: 400, body: { detail: [] }, alertCount: 0, saveDisabled: false, pathname: "/profile", pageErrors: [] });
+  `)
+  assert.equal(
+    output,
+    Array.from(
+      { length: 4 },
+      (_, index) =>
+        `UE_LIVE_PROFILE_SAVE_V1 project=desktop status=${400 + index} detail=array detail_count=0 detail_msg=false alert_count=0 save_disabled=false route=profile page_error_count=0 page_error=none\n`
+    ).join("")
+  )
+})
+
+test("profile-save diagnostic helper has no browser, response, environment, or artifact access", async () => {
+  const source = await readFile(profileHelperUrl, "utf8")
+  assert.doesNotMatch(
+    source,
+    /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\b(?:page|browser|context|response|request|URL)\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
+  )
+  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
 })
 
 test("HTTP diagnostics cannot replace an assertion when stdout writing fails", () => {

@@ -27,18 +27,18 @@ from app.schemas.mappers.user_mapper import (
 
 class UserProfileBase(BaseModel):
     about: str | None = Field(default=None, max_length=4096)
-    telegram: str | None = None
-    status: str | None = None
-    achievements: str | None = None
-    department: str | None = None
-    position: str | None = None
+    telegram: str | None = Field(default=None, max_length=128)
+    status: str | None = Field(default=None, max_length=256)
+    achievements: str | None = Field(default=None, max_length=2048)
+    department: str | None = Field(default=None, max_length=256)
+    position: str | None = Field(default=None, max_length=256)
 
 
 class UserPreferencesBase(OrmModel):
     dnd_enabled: bool | None = None
     dnd_start: time | None = None
     dnd_end: time | None = None
-    timezone: str | None = None
+    timezone: str | None = Field(default=None, max_length=64)
 
     @field_validator("dnd_enabled", mode="before")
     @classmethod
@@ -76,12 +76,12 @@ class UserPreferencesBase(OrmModel):
 
 
 class UserEducationBase(BaseModel):
-    institute: str | None = None
-    course: str | None = None
-    education_level: str | None = None
-    track: str | None = None
-    program: str | None = None
-    record_book_number: str | None = None
+    institute: str | None = Field(default=None, max_length=512)
+    course: str | None = Field(default=None, max_length=64)
+    education_level: str | None = Field(default=None, max_length=128)
+    track: str | None = Field(default=None, max_length=256)
+    program: str | None = Field(default=None, max_length=512)
+    record_book_number: str | None = Field(default=None, max_length=64)
 
 
 class UserProfilePublicFlattened(BaseModel):
@@ -231,7 +231,7 @@ class DataDeletionOut(BaseModel):
 
 
 class UserProfileUpdate(UserProfileBase, UserPreferencesBase, UserEducationBase):
-    full_name: str | None = None
+    full_name: str | None = Field(default=None, max_length=256)
     profile_detail: UserProfileBase | None = None
     preferences: UserPreferencesBase | None = None
     education_path: UserEducationBase | None = None

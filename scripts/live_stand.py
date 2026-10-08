@@ -3730,6 +3730,76 @@ _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
 _PLAYWRIGHT_PAGE_ERROR_LIMIT = 248
 
 
+_PLAYWRIGHT_PROFILE_SAVE_LINE = re.compile(
+    r"UE_LIVE_PROFILE_SAVE_V1 project=(?P<project>desktop|mobile) "
+    r"status=(?P<status>[1-5][0-9]{2}) "
+    r"detail=(?P<detail>absent|array|object|string|number|boolean|null|unavailable) "
+    r"detail_count=(?P<detail_count>unknown|0|[1-9][0-9]{0,2}) "
+    r"detail_msg=(?P<detail_msg>true|false|unknown) "
+    r"alert_count=(?P<alert_count>unknown|0|[1-9][0-9]{0,2}) "
+    r"save_disabled=(?P<save_disabled>true|false|unknown) "
+    r"route=(?P<route>profile|login|register|dashboard|other) "
+    r"page_error_count=(?P<page_error_count>unknown|0|[1-9][0-9]{0,2}) "
+    r"page_error=(?P<page_error>none|error|type-error|reference-error|syntax-error|range-error|"
+    r"uri-error|eval-error|aggregate-error|abort-error|security-error|invalid-state-error|other|unknown)"
+)
+_PLAYWRIGHT_PROFILE_SAVE_LIMIT = 4
+_ProfileSaveDiagnostic = tuple[
+    str,
+    int,
+    str,
+    int | None,
+    bool | None,
+    int | None,
+    bool | None,
+    str,
+    int | None,
+    str,
+]
+
+
+def _profile_save_diagnostic_count(match: re.Match[str], name: str) -> int | None:
+    value = match[name]
+    return None if value == "unknown" else int(value)
+
+
+def _profile_save_diagnostic_flag(match: re.Match[str], name: str) -> bool | None:
+    value = match[name]
+    return None if value == "unknown" else value == "true"
+
+
+def _live_playwright_profile_save_diagnostics(
+    output: str,
+) -> list[_ProfileSaveDiagnostic]:
+    """Accept only the fixed profile-save diagnostic protocol and discard all other text."""
+    records: list[_ProfileSaveDiagnostic] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 320 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_PROFILE_SAVE_LINE.fullmatch(line)
+        if match is None:
+            continue
+
+        record: _ProfileSaveDiagnostic = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            int(match["status"]),
+            match["detail"],
+            _profile_save_diagnostic_count(match, "detail_count"),
+            _profile_save_diagnostic_flag(match, "detail_msg"),
+            _profile_save_diagnostic_count(match, "alert_count"),
+            _profile_save_diagnostic_flag(match, "save_disabled"),
+            match["route"],
+            _profile_save_diagnostic_count(match, "page_error_count"),
+            match["page_error"],
+        )
+        if record not in records:
+            records.append(record)
+            if len(records) == _PLAYWRIGHT_PROFILE_SAVE_LIMIT:
+                break
+    return records
+
+
 def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, int]]:
     """Accept fixed current-page/type counts only, without retaining private text."""
     records: list[tuple[str, str, str, str, int]] = []
@@ -4035,6 +4105,7 @@ def _run_live_playwright(
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
     page_errors = _live_playwright_page_errors(stdout)
+    profile_save_diagnostics = _live_playwright_profile_save_diagnostics(stdout)
     # A header from one stream must never authorize frames from the other.
     failure_locations = list(
         dict.fromkeys(
@@ -4092,6 +4163,37 @@ def _run_live_playwright(
             f"page={current_page} type={error_type} count={count}",
             flush=True,
         )
+    if return_code != 0:
+        for (
+            project,
+            status,
+            detail,
+            detail_count,
+            detail_message,
+            alert_count,
+            save_disabled,
+            route,
+            page_error_count,
+            page_error,
+        ) in profile_save_diagnostics:
+            detail_count_text = "unknown" if detail_count is None else str(detail_count)
+            detail_message_text = (
+                "unknown" if detail_message is None else str(detail_message).lower()
+            )
+            alert_count_text = "unknown" if alert_count is None else str(alert_count)
+            save_disabled_text = (
+                "unknown" if save_disabled is None else str(save_disabled).lower()
+            )
+            page_error_count_text = (
+                "unknown" if page_error_count is None else str(page_error_count)
+            )
+            print(
+                f"live E2E profile save project={project} status={status} detail={detail} "
+                f"detail_count={detail_count_text} detail_msg={detail_message_text} "
+                f"alert_count={alert_count_text} save_disabled={save_disabled_text} "
+                f"route={route} page_error_count={page_error_count_text} page_error={page_error}",
+                flush=True,
+            )
     outcome = "passed" if return_code == 0 else "failed"
     print(f"live E2E outcome={outcome} exit_code={return_code}", flush=True)
     if return_code != 0:

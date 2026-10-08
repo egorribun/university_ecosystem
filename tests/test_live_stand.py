@@ -1361,6 +1361,124 @@ def test_live_playwright_counts_accept_numeric_durations(duration: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("project", "route", "newline"),
+    [("desktop", "profile", "\n"), ("mobile", "other", "\r\n")],
+)
+def test_live_playwright_profile_save_diagnostics_accept_closed_records(
+    project: str, route: str, newline: str
+) -> None:
+    record = (
+        f"UE_LIVE_PROFILE_SAVE_V1 project={project} status=422 detail=array detail_count=1 "
+        f"detail_msg=true alert_count=0 save_disabled=false route={route} "
+        f"page_error_count=0 page_error=none{newline}"
+    )
+    assert live_stand._live_playwright_profile_save_diagnostics(record) == [
+        (project, 422, "array", 1, True, 0, False, route, 0, "none")
+    ]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("project=desktop", "project=private-project"),
+        ("status=422", "status=600"),
+        ("detail=array", "detail=private-body"),
+        ("detail_count=1", "detail_count=1000"),
+        ("detail_msg=true", "detail_msg=true private-message"),
+        ("alert_count=0", "alert_count=0 private-input"),
+        ("save_disabled=false", "save_disabled=unknown-url"),
+        ("route=profile", "route=/profile?token=secret"),
+        ("page_error=none", "page_error=TypeError:secret"),
+        ("page_error_count=0", "page_error_count=-1"),
+        ("\n", ""),
+        ("\n", "\r\r\n"),
+        ("\n", "\x00\n"),
+        ("\n", "\x1b[0m\n"),
+        ("\n", "\u202e\n"),
+        ("UE_LIVE", "private\rUE_LIVE"),
+    ],
+)
+def test_live_playwright_profile_save_diagnostics_reject_malformed_records(
+    replacement: tuple[str, str],
+) -> None:
+    record = (
+        "UE_LIVE_PROFILE_SAVE_V1 project=desktop status=422 detail=array detail_count=1 "
+        "detail_msg=true alert_count=0 save_disabled=false route=profile "
+        "page_error_count=0 page_error=none\n"
+    )
+    assert (
+        live_stand._live_playwright_profile_save_diagnostics(
+            record.replace(*replacement)
+        )
+        == []
+    )
+
+
+def test_live_playwright_profile_save_diagnostics_deduplicate_and_bound_records() -> (
+    None
+):
+    output = "".join(
+        f"UE_LIVE_PROFILE_SAVE_V1 project=desktop status={status} detail=array detail_count=0 "
+        "detail_msg=false alert_count=0 save_disabled=false route=profile "
+        "page_error_count=0 page_error=none\n" * 5
+        for status in range(400, 410)
+    )
+    assert live_stand._live_playwright_profile_save_diagnostics(output) == [
+        ("desktop", status, "array", 0, False, 0, False, "profile", 0, "none")
+        for status in range(400, 404)
+    ]
+
+
+def test_live_playwright_emits_only_validated_profile_save_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    sentinel = (
+        "UE_LIVE_PROFILE_SAVE_V1 project=desktop status=422 detail=array detail_count=1 "
+        "detail_msg=true alert_count=0 save_disabled=false route=profile "
+        "page_error_count=1 page_error=type-error\n"
+    )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(
+            b"private-response-body private-validation-message https://private.invalid/?token=x\n"
+            + sentinel.encode()
+            + b"UE_LIVE_PROFILE_SAVE_V1 project=mobile status=422 detail=array detail_count=1 "
+            b"detail_msg=true alert_count=0 save_disabled=false route=/profile?token=x "
+            b"page_error_count=0 page_error=none\n"
+        ),
+        stderr=b"private-stack private-credential\n",
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E profile save project=desktop status=422 detail=array detail_count=1 "
+        "detail_msg=true alert_count=0 save_disabled=false route=profile "
+        "page_error_count=1 page_error=type-error",
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert printed.err == ""
+    assert not any(
+        marker in printed.out + printed.err
+        for marker in (
+            "private-response-body",
+            "private-validation-message",
+            "private.invalid",
+            "private-stack",
+            "private-credential",
+            "token=x",
+        )
+    )
+
+
+@pytest.mark.parametrize(
     "line",
     [
         "  1 unknown\n",
@@ -1700,7 +1818,8 @@ def test_live_playwright_preserves_control_characters_before_diagnostic_validati
         "+ b'UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=500\\n'"
         "+ b'UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=503\\r\\n'"
         "+ b'private\\rUE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=login type=error count=2\\n'"
-        "+ b'UE_LIVE_PAGE_ERROR_V1 project=mobile check=password-reset page=reset-password type=type-error count=1\\r\\n')"
+        "+ b'UE_LIVE_PAGE_ERROR_V1 project=mobile check=password-reset page=reset-password type=type-error count=1\\r\\n'"
+        "+ b'UE_LIVE_PROFILE_SAVE_V1 project=mobile status=422 detail=array detail_count=1 detail_msg=true alert_count=0 save_disabled=false route=profile page_error_count=0 page_error=none\\r\\n')"
     )
 
     def run_actual_child(

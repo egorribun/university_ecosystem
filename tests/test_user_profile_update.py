@@ -1,6 +1,7 @@
 import asyncio
 import io
 import secrets
+import unicodedata
 import uuid
 from datetime import UTC, datetime
 
@@ -8,6 +9,7 @@ import pytest
 from fastapi import UploadFile
 from httpx import AsyncClient
 from PIL import Image
+from pydantic import ValidationError
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
@@ -15,6 +17,7 @@ import app.models as models
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.repositories.user_repository import UserRepository
+from app.schemas.users import UserProfileUpdate
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
 from app.utils.files import delete_static_file
@@ -691,3 +694,242 @@ async def test_forgot_password_sends_email_via_thread(
     await asyncio.wait_for(event.wait(), timeout=1)
     assert captured["to_email"] == user.email
     assert "reset-password" in captured["link"]
+
+
+_PROFILE_AND_EDUCATION_COLUMN_LIMITS = (
+    (("full_name",), 256),
+    (("about",), 4096),
+    (("telegram",), 128),
+    (("status",), 256),
+    (("achievements",), 2048),
+    (("department",), 256),
+    (("position",), 256),
+    (("profile_detail", "about"), 4096),
+    (("profile_detail", "telegram"), 128),
+    (("profile_detail", "status"), 256),
+    (("profile_detail", "achievements"), 2048),
+    (("profile_detail", "department"), 256),
+    (("profile_detail", "position"), 256),
+    (("institute",), 512),
+    (("course",), 64),
+    (("education_level",), 128),
+    (("track",), 256),
+    (("program",), 512),
+    (("record_book_number",), 64),
+    (("education_path", "institute"), 512),
+    (("education_path", "course"), 64),
+    (("education_path", "education_level"), 128),
+    (("education_path", "track"), 256),
+    (("education_path", "program"), 512),
+    (("education_path", "record_book_number"), 64),
+)
+
+
+def _profile_update_body(path: tuple[str, ...], value: str) -> dict[str, object]:
+    if len(path) == 1:
+        return {path[0]: value}
+    parent, child = path
+    return {parent: {child: value}}
+
+
+@pytest.mark.parametrize(("path", "limit"), _PROFILE_AND_EDUCATION_COLUMN_LIMITS)
+def test_profile_update_schema_accepts_database_string_limits(
+    path: tuple[str, ...], limit: int
+) -> None:
+    body = _profile_update_body(path, "x" * limit)
+    parsed = UserProfileUpdate.model_validate(body)
+
+    assert parsed.model_dump(exclude_unset=True) == body
+
+
+@pytest.mark.parametrize(("path", "limit"), _PROFILE_AND_EDUCATION_COLUMN_LIMITS)
+def test_profile_update_schema_rejects_database_string_overflow(
+    path: tuple[str, ...], limit: int
+) -> None:
+    body = _profile_update_body(path, "x" * (limit + 1))
+
+    with pytest.raises(ValidationError) as error:
+        UserProfileUpdate.model_validate(body)
+
+    assert path in {tuple(item["loc"]) for item in error.value.errors()}
+
+
+@pytest.mark.parametrize(
+    ("body", "path"),
+    [
+        ({"timezone": "x" * 65}, ("timezone",)),
+        ({"preferences": {"timezone": "x" * 65}}, ("preferences", "timezone")),
+    ],
+)
+def test_timezone_update_rejects_values_over_its_database_column_limit(
+    body: dict[str, object], path: tuple[str, ...]
+) -> None:
+    assert (
+        UserProfileUpdate(timezone="America/Argentina/ComodRivadavia").timezone
+        == "America/Argentina/ComodRivadavia"
+    )
+
+    with pytest.raises(ValidationError) as error:
+        UserProfileUpdate.model_validate(body)
+
+    assert any(
+        tuple(item["loc"]) == path and item["type"] == "string_too_long"
+        for item in error.value.errors()
+    )
+
+
+@pytest.mark.asyncio
+async def test_profile_and_education_column_limits_persist_at_flat_and_nested_paths(
+    async_client, user_factory, db_session
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    headers = await _login(async_client, user.email, password)
+
+    flat_profile = {
+        "full_name": "n" * 256,
+        "telegram": "t" * 128,
+        "status": "s" * 256,
+        "achievements": "a" * 2048,
+        "department": "d" * 256,
+        "position": "p" * 256,
+    }
+    flat_education = {
+        "institute": "i" * 512,
+        "course": "c" * 64,
+        "education_level": "l" * 128,
+        "track": "t" * 256,
+        "program": "p" * 512,
+        "record_book_number": "r" * 64,
+    }
+    flat_response = await async_client.put(
+        "/users/me",
+        json={**flat_profile, **flat_education, "timezone": "UTC"},
+        headers=headers,
+    )
+    assert flat_response.status_code == 200
+    assert flat_response.json()["full_name"] == flat_profile["full_name"]
+
+    nested_profile = {
+        key: value for key, value in flat_profile.items() if key != "full_name"
+    }
+    nested_education = {
+        "institute": "I" * 512,
+        "course": "C" * 64,
+        "education_level": "L" * 128,
+        "track": "T" * 256,
+        "program": "P" * 512,
+        "record_book_number": "R" * 64,
+    }
+    nested_response = await async_client.put(
+        "/users/me",
+        json={
+            "profile_detail": nested_profile,
+            "education_path": nested_education,
+            "preferences": {"timezone": "UTC"},
+        },
+        headers=headers,
+    )
+    assert nested_response.status_code == 200
+    nested_body = nested_response.json()
+    for field, value in nested_profile.items():
+        assert nested_body["profile_detail"][field] == value
+    assert nested_body["education_path"] == nested_education
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    stored_education = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.full_name == flat_profile["full_name"]
+    for field, value in nested_profile.items():
+        assert getattr(stored_profile, field) == value
+    assert stored_education is not None
+    for field, value in nested_education.items():
+        assert getattr(stored_education, field) == value
+
+
+@pytest.mark.asyncio
+async def test_profile_column_overflow_returns_422_without_changing_profile(
+    async_client, user_factory
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    headers = await _login(async_client, user.email, password)
+    before_response = await async_client.get("/users/me", headers=headers)
+    assert before_response.status_code == 200
+    before_body = before_response.json()
+
+    overflow_body = {
+        "full_name": "n" * 257,
+        "telegram": "t" * 129,
+        "profile_detail": {"department": "d" * 257},
+        "institute": "i" * 513,
+        "education_path": {"program": "p" * 513},
+    }
+    response = await async_client.put("/users/me", json=overflow_body, headers=headers)
+
+    assert response.status_code == 422
+    error_locations = {tuple(error["loc"]) for error in response.json()["detail"]}
+    assert {
+        ("body", "full_name"),
+        ("body", "telegram"),
+        ("body", "profile_detail", "department"),
+        ("body", "institute"),
+        ("body", "education_path", "program"),
+    } <= error_locations
+
+    after_response = await async_client.get("/users/me", headers=headers)
+    assert after_response.status_code == 200
+    assert after_response.json() == before_body
+
+
+@pytest.mark.asyncio
+async def test_full_name_column_limit_counts_unicode_codepoints_without_normalizing(
+    async_client, user_factory, db_session
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    headers = await _login(async_client, user.email, password)
+
+    astral_name = "🙂" * 256
+    assert len(astral_name) == 256
+    astral_response = await async_client.put(
+        "/users/me", json={"full_name": astral_name}, headers=headers
+    )
+    assert astral_response.status_code == 200
+    assert astral_response.json()["full_name"] == astral_name
+
+    decomposed_name = "e\u0301" * 128
+    assert len(decomposed_name) == 256
+    assert unicodedata.normalize("NFC", decomposed_name) != decomposed_name
+    decomposed_response = await async_client.put(
+        "/users/me", json={"full_name": decomposed_name}, headers=headers
+    )
+    assert decomposed_response.status_code == 200
+    assert decomposed_response.json()["full_name"] == decomposed_name
+
+    overflow_response = await async_client.put(
+        "/users/me",
+        json={"full_name": decomposed_name + "x"},
+        headers=headers,
+    )
+    assert overflow_response.status_code == 422
+    unchanged_response = await async_client.get("/users/me", headers=headers)
+    assert unchanged_response.status_code == 200
+    assert unchanged_response.json()["full_name"] == decomposed_name
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.full_name == decomposed_name

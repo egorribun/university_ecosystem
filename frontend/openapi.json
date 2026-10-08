@@ -5143,6 +5143,7 @@
           "course": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5154,6 +5155,7 @@
           "education_level": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -5165,6 +5167,7 @@
           "institute": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5176,6 +5179,7 @@
           "program": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5187,6 +5191,7 @@
           "record_book_number": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5198,6 +5203,7 @@
           "track": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5724,6 +5730,7 @@
           "timezone": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5754,6 +5761,7 @@
           "achievements": {
             "anyOf": [
               {
+                "maxLength": 2048,
                 "type": "string"
               },
               {
@@ -5765,6 +5773,7 @@
           "department": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5776,6 +5785,7 @@
           "position": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5787,6 +5797,7 @@
           "status": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5798,6 +5809,7 @@
           "telegram": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -5828,6 +5840,7 @@
           "achievements": {
             "anyOf": [
               {
+                "maxLength": 2048,
                 "type": "string"
               },
               {
@@ -5839,6 +5852,7 @@
           "course": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5862,6 +5876,7 @@
           "department": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5908,6 +5923,7 @@
           "education_level": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -5929,6 +5945,7 @@
           "full_name": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5940,6 +5957,7 @@
           "institute": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5951,6 +5969,7 @@
           "position": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5982,6 +6001,7 @@
           "program": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5993,6 +6013,7 @@
           "record_book_number": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -6004,6 +6025,7 @@
           "status": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -6015,6 +6037,7 @@
           "telegram": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -6026,6 +6049,7 @@
           "timezone": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -6037,6 +6061,7 @@
           "track": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {

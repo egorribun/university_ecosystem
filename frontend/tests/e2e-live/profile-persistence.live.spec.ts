@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test"
+import { reportLiveProfileSaveFailure } from "./profile-save-diagnostic"
 import {
   expect,
   freshPassword,
@@ -99,6 +100,7 @@ const deleteOnlyCreatedAccount = async (
 test("profile editor cancellation and rejected oversized save preserve values before success", async ({
   page,
   browser,
+  pageErrors,
 }, testInfo) => {
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
@@ -194,7 +196,39 @@ test("profile editor cancellation and rejected oversized save preserve values be
       rejectedSaveResponse.status(),
       "the database-bound profile field rejects a value beyond its supported size"
     ).toBeGreaterThanOrEqual(400)
-    await expect(page.getByRole("alert")).toBeVisible()
+    try {
+      await expect(page.getByRole("alert")).toBeVisible()
+    } catch (assertionError) {
+      const responseBody = await rejectedSaveResponse.json().catch(() => undefined)
+      const alertCount = await page
+        .getByRole("alert")
+        .count()
+        .catch(() => undefined)
+      const saveButton = page.getByRole("button", { name: "СОХРАНИТЬ", exact: true })
+      const saveButtonCount = await saveButton.count().catch(() => 0)
+      const saveDisabled =
+        saveButtonCount === 1 ? await saveButton.isDisabled().catch(() => undefined) : undefined
+      let pathname: string | undefined
+      try {
+        pathname = new URL(page.url()).pathname
+      } catch {
+        // An unavailable URL is reduced to the fixed "other" route family.
+      }
+      try {
+        reportLiveProfileSaveFailure({
+          project: testInfo.project.name,
+          status: rejectedSaveResponse.status(),
+          body: responseBody,
+          alertCount,
+          saveDisabled,
+          pathname,
+          pageErrors,
+        })
+      } catch {
+        // Diagnostics must never replace the original alert assertion.
+      }
+      throw assertionError
+    }
     await expect(nameField).toHaveValue(rejectedName)
     const retainedDraft = await aboutField.inputValue()
     expect(retainedDraft.length).toBe(oversizedAbout.length)
