@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test"
+import { isProfileMutationRequest } from "./profile-mutation-domain.mjs"
 import { reportLiveProfileSaveFailure } from "./profile-save-diagnostic"
 import {
   expect,
@@ -150,12 +151,10 @@ test("profile editor cancellation and rejected oversized save preserve values be
     expect(createdProfile.full_name).toBe(initialName)
     const initialAbout = ownerAbout(createdProfile)
     page.on("request", (request) => {
+      const method = request.method()
       const path = new URL(request.url()).pathname
-      if (
-        path.startsWith("/api/v1/") &&
-        ["POST", "PUT", "PATCH", "DELETE"].includes(request.method())
-      ) {
-        profileMutationPaths.push(`${request.method()} ${path}`)
+      if (isProfileMutationRequest(method, path)) {
+        profileMutationPaths.push(method + " " + path)
       }
     })
 

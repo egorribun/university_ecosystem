@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
 import test from "node:test"
+import { isProfileMutationRequest } from "./profile-mutation-domain.mjs"
 
 const specUrl = new URL("./profile-persistence.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
@@ -17,6 +18,35 @@ const profileBoundsMigrationUrl = new URL(
 )
 const fixtureUrl = new URL("./fixtures.ts", import.meta.url)
 const packageUrl = new URL("../../package.json", import.meta.url)
+
+test("profile mutation tracking includes writes only within the users API domain", () => {
+  const writeMethods = ["POST", "PUT", "PATCH", "DELETE"]
+  const userPaths = [
+    "/api/v1/users",
+    "/api/v1/users/",
+    "/api/v1/users/me",
+    "/api/v1/users/me/avatar",
+  ]
+  const unrelatedPaths = [
+    "/api/v1/users-extra",
+    "/api/v1/notifications/check-schedule",
+    "/api/v1/auth/refresh",
+    "/api/v1/push/subscribe",
+  ]
+
+  for (const method of writeMethods) {
+    for (const pathname of userPaths) {
+      assert.equal(isProfileMutationRequest(method, pathname), true, method + " " + pathname)
+    }
+    for (const pathname of unrelatedPaths) {
+      assert.equal(isProfileMutationRequest(method, pathname), false, method + " " + pathname)
+    }
+  }
+
+  for (const method of ["GET", "HEAD", "OPTIONS"]) {
+    assert.equal(isProfileMutationRequest(method, "/api/v1/users/me"), false, method)
+  }
+})
 
 test("live profile persistence covers real self-edit and cleans only its synthetic user", async () => {
   let spec
@@ -106,7 +136,7 @@ test("live profile persistence covers real self-edit and cleans only its synthet
   assert.match(spec, /await expect\(aboutField\)\.toHaveValue\(initialAbout\)/u)
   assert.match(spec, /await page\.reload\(\)/u)
   assert.match(spec, /const oversizedAbout = "x"\.repeat\(4097\)/u)
-  assert.match(spec, /await expect\(page\.getByRole\("alert"\)\)\.toBeVisible\(\)/u)
+  assert.match(spec, /await expect\(profileFeedback\.getByRole\("alert"\)\)\.toBeVisible\(\)/u)
   assert.match(spec, /expect\(rejectedProfile\.full_name\)\.toBe\(initialName\)/u)
   assert.match(spec, /expect\(ownerAbout\(rejectedProfile\)\)\.toBe\(initialAbout\)/u)
   assert.match(spec, /retainedDraft\.length\)\.toBe\(oversizedAbout\.length\)/u)
@@ -115,6 +145,16 @@ test("live profile persistence covers real self-edit and cleans only its synthet
     spec,
     /expect\(profileMutationPaths\)\.toEqual\(\[\s*"PUT \/api\/v1\/users\/me",\s*"PUT \/api\/v1\/users\/me",?\s*\]\)/u,
     "the owned profile flow writes only its self-profile endpoint"
+  )
+  assert.match(
+    spec,
+    /import \{ isProfileMutationRequest \} from "\.\/profile-mutation-domain\.mjs"/u,
+    "the collector uses the tested profile mutation predicate"
+  )
+  assert.match(
+    spec,
+    /if \(isProfileMutationRequest\(method, path\)\)/u,
+    "the profile path assertion is scoped through the tested predicate"
   )
   assert.match(spec, /const cancelledName = /u)
   assert.match(spec, /const cancelledAbout = /u)

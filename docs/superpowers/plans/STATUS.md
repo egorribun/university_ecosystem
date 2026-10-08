@@ -8,11 +8,11 @@
 
 - Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
   Три GPT-6 Luna Max работают в раздельных областях; root проверяет интеграцию и ресурсы.
-- Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы;
-  локальные контракты не заменяют hosted/live приёмку.
+- Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы; локальные контракты не заменяют hosted/live приёмку.
 
 ## Hosted CI и мутации
 
+- PR@`444ed`: live FAILED до Docker (stale alert contract исправлен/root150 PASS); WS-Hub HandleRegister ns/op ratio1,146, gate1,10, RCA открыт.
 - Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
   Run CANCELLED; planner59m20s, planning без end marker; plan отсутствует, backend execution0/128, global score открыт.
   Full `37670438144/a1`: execution0/128, stats7/8; shard2 stale urllib3 исправлен в `a028`, score отсутствует.
@@ -77,11 +77,11 @@
   RED→GREEN: root49 PASS, logic/mapper line+branch100%; DTO/schema54 и UI28 PASS, OpenAPI synced; preflight10/10 PASS.
   Peak RAM70%,free≥9,533GiB; stop0/teardown0, owned containers/volumes/networks/image tags0.
   Evidence: `C:/Temp/ue-core-review-f2818079c-e2e-v1/root-cleanup-f281.v1.json`; полный live gate открыт.
-- Core@`0f5aa740f`: up0/status0 без изменения10 state files; profile desktop/mobile2 PASS/2 FAIL, email guard PASS.
-  PUT422/2 alerts/save enabled/no JS errors: global live region +profile Snackbar; scoped locator RED→GREEN/root41, live repeat требуется.
-  Restart не запускался; acceptance credit отсутствует; full mutation37723031168/a1@`520850`: stats0/8 и5/8 FAILED, RCA открыт.
-  Stop0/teardown0, owned containers/volumes/networks/image tags0; peak RAM72%, free≥8,867GiB; teardown299s/2147 subprocess calls.
-  Evidence: `C:/Temp/ue-core-review-0f5aa740f-e2e-v1/root-cleanup-0f5aa740f.v1.json`; bounds: root114 PASS, schema line/branch100% локально.
+- Core@`444ed09e0`: up0; profile2 PASS/2 FAIL: scoped alert проходит, следующий отказ на списке mutation paths; persistence/reload ещё не подтверждены.
+  Smoke18 PASS/2 planned skips до и после stop/start; read-only baseline16 users/10 news/10 events, hashes/4 secret files/6 volumes совпали.
+  Stop0/teardown0, owned containers/volumes/networks/image tags0; teardown2147 subprocess calls; Core/full acceptance остаётся открытой.
+  Evidence: `C:/Temp/ue-core-review-444ed09e0-e2e-v1/root-smoke-restart-summary.v1.json` и `root-cleanup-444ed09e0.v1.json`; first-smoke scope исправлен sidecar.
+  Full mutation37723031168/a1@`520850`: stats0/8 и5/8 FAILED, aggregate incomplete; frontend выполняется, RCA stats открыт; schema100% только локально.
 - Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
@@ -132,7 +132,7 @@
 
 ## Следующие проверки и ограничения
 
-- Новые profile bounds синхронизированы с ORM/migration/OpenAPI; runner1127 и Node11 PASS; следующий live/restart, затем chart parity;
+- Profile contract/collector исправлены: root150/150 и preflight10/10 PASS; bounds root114/schema100%, runner1127/Node11; следующий live, затем chart parity;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   Historical MFA263/307 exact RED; global mutation gate открыт.
