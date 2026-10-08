@@ -14,6 +14,7 @@ import {
   PRESENTATION_IGNORER,
   canonicalInstrumenterConfig,
 } from "./stryker-presentation-ignorer.mjs"
+import { canonicalTypeScriptCheckerConfig } from "./stryker-checker-config.mjs"
 
 const runnerUrl = new URL("./run-stryker.mjs", import.meta.url)
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*"]
@@ -836,9 +837,64 @@ test("actual Stryker configuration opts in only exact 1 while preserving release
       assert.equal(config.dryRunTimeoutMinutes, 30)
       assert.equal(config.incremental, false)
       assert.equal(config.coverageAnalysis, "perTest")
+      assert.deepEqual(config.checkers, ["typescript"])
+      assert.equal(config.tsconfigFile, "tsconfig.json")
+      assert.deepEqual(config.typescriptChecker, {
+        prioritizePerformanceOverAccuracy: false,
+        experimentalNativePreview: false,
+      })
       assert.deepEqual(config.mutator, { plugins: null, excludedMutations: [] })
       assert.deepEqual(config.ignorers, [PRESENTATION_IGNORER])
     }
+})
+
+test("actual Stryker configuration matches the shared checker contract", async () => {
+  const config = (await import(new URL("../stryker.config.mjs?checker-contract", import.meta.url)))
+    .default
+  const { canonicalTypeScriptCheckerConfig } = await import("./validate-stryker-inventory.mjs")
+
+  assert.deepEqual(
+    {
+      checkers: config.checkers,
+      tsconfigFile: config.tsconfigFile,
+      typescriptChecker: config.typescriptChecker,
+    },
+    canonicalTypeScriptCheckerConfig
+  )
+})
+
+test("pins the checker dependency and records the TypeScript alias and runtime separately", async () => {
+  const packageManifest = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8")
+  )
+  const packageLock = JSON.parse(
+    await readFile(new URL("../package-lock.json", import.meta.url), "utf8")
+  )
+  const checkerLock = packageLock.packages["node_modules/@stryker-mutator/typescript-checker"]
+  const typescriptLock = packageLock.packages["node_modules/typescript"]
+  const typescriptManifest = JSON.parse(
+    await readFile(new URL("../node_modules/typescript/package.json", import.meta.url), "utf8")
+  )
+  const { createRequire } = await import("node:module")
+  const typescriptRuntime = createRequire(import.meta.url)("typescript")
+
+  assert.equal(packageManifest.devDependencies["@stryker-mutator/typescript-checker"], "10.0.0")
+  assert.equal(
+    packageLock.packages[""].devDependencies["@stryker-mutator/typescript-checker"],
+    "10.0.0"
+  )
+  assert.equal(checkerLock.version, "10.0.0")
+  assert.match(checkerLock.integrity, /^sha512-[A-Za-z0-9+/]+=*$/u)
+  assert.equal(packageManifest.devDependencies.typescript, "npm:@typescript/typescript6@^6.0.2")
+  assert.equal(
+    packageLock.packages[""].devDependencies.typescript,
+    packageManifest.devDependencies.typescript
+  )
+  assert.equal(typescriptLock.name, "@typescript/typescript6")
+  assert.equal(typescriptLock.version, "6.0.2")
+  assert.equal(typescriptManifest.name, "@typescript/typescript6")
+  assert.equal(typescriptManifest.version, typescriptLock.version)
+  assert.equal(typescriptRuntime.version, "6.0.3")
 })
 
 const adapterUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
@@ -5064,6 +5120,7 @@ test("merges split mutation-range reports without duplicate or misplaced mutants
         schemaVersion: "1.0",
         config: {
           mutate: shard.files,
+          ...canonicalTypeScriptCheckerConfig,
           coverageAnalysis: "perTest",
           incremental: false,
           mutator: { plugins: null, excludedMutations: [] },
@@ -6274,6 +6331,7 @@ test("rejects malformed candidate directories and duplicate producer attempts", 
 test("merges exact shard reports and namespaces otherwise colliding mutant ids", async () => {
   const { mergeShardReports } = await import(runnerUrl)
   const baseConfig = {
+    ...canonicalTypeScriptCheckerConfig,
     coverageAnalysis: "perTest",
     incremental: false,
     mutator: { plugins: null, excludedMutations: [] },
@@ -6308,10 +6366,34 @@ test("merges exact shard reports and namespaces otherwise colliding mutant ids",
   })
 
   assert.deepEqual(merged.config.mutate, expectedPatterns)
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.keys(canonicalTypeScriptCheckerConfig).map((key) => [key, merged.config[key]])
+    ),
+    canonicalTypeScriptCheckerConfig
+  )
   assert.equal(merged.config.incremental, false)
   assert.deepEqual(
     Object.values(merged.files).map(({ mutants }) => mutants[0].id),
     ["shard-000:0", "shard-001:0"]
+  )
+  assert.throws(
+    () =>
+      mergeShardReports({
+        expectedPatterns,
+        shards: [
+          {
+            id: "shard-000",
+            files: ["src/a.ts"],
+            report: {
+              schemaVersion: "1.0",
+              config: { ...baseConfig, checkers: [], mutate: ["src/a.ts"] },
+              files: { "src/a.ts": file("0", "false") },
+            },
+          },
+        ],
+      }),
+    /canonical TypeScript checker configuration/u
   )
 })
 

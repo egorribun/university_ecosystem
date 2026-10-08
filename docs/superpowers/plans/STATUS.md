@@ -12,7 +12,7 @@
 
 ## Hosted CI и мутации
 
-- PR@`eed9`: snapshot156 checks:135 SUCCESS/18 SKIPPED/1 FAILED/2 running; shard1 stale Docker fakes: local62 PASS; исторический DB Docker Hub502.
+- PR@`751f`: Matrix37756691375/a1 незавершён:109 jobs SUCCESS/12 skipped/8 running/54 queued; inventory/pre-commit/security/performance/WS benchmark SUCCESS. Полного зелёного набора нет.
 - Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
   Run CANCELLED; planner59m20s, planning без end marker; plan отсутствует, backend execution0/128, global score открыт.
   Full `37670438144/a1`: execution0/128, stats7/8; shard2 stale urllib3 исправлен в `a028`, score отсутствует.
@@ -69,7 +69,7 @@
 
 ## Live-приёмка
 
-- Hosted Live Acceptance `37751750731/a1`@`eed9`: SUCCESS; это только smoke, local Core auth pageerror остаётся открытым.
+- Hosted Live `37756690559/a1`@`751f`: FAILED,17 passed/2 skipped/1 flaky; desktop auth-roles dashboard React418. Candidate Dashboard: root19/19 PASS, initial SSR/client parity и interrupted/reduced-motion cleanup; нужен новый live run.
 - Full@`eed9`: readiness35/35, healthy20/init6/sidecars3, HTTP10/Redis AUTH PASS; smoke REFUSED RAM79%/free6,7GiB.
   Full+Core stop0/teardown0, containers/volumes/networks/images0, удалено17 owned local images; private state/evidence сохранены.
 - Core@`f281`: up0, status0 без изменения state; profile desktop/mobile2 PASS/2 FAIL на error alert.
@@ -90,8 +90,8 @@
   пользователя stop/teardown удалили35 containers/14 volumes/3 networks и тестовые данные.
   Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
 - Полная traceability, RU/EN, light/dark, responsive, SSR/PWA, accessibility/performance и visual approval открыты.
-- Session epoch143/143, TextField44/44 PASS; exact224/226/1252/1253 RED; auth diagnostics1152+154 и Docker fakes62 PASS, global mutation открыт.
-  Core@`eed9`: smoke17 PASS/1 FAIL/2 planned skips (auth uncaught pageerror); push6 FAIL до delivery: native permission denied при grant; gate открыт.
+- Session epoch143/143, TextField44/44, auth diagnostics1152+154, Docker fakes62 PASS; exact224/226/1252/1253 RED. Checker API@`751f`: baseline17,4s PASS, exact ArrayDeclaration compileError/TS2322; полный private Stryker probe без report, причина не подтверждена; canonical score открыт.
+  Candidate: frozen install/preflight10/10, Node553 PASS/1 Windows POSIX-FIFO skip, live contracts154/154; full toolchain/config parity и spec-local full Chromium channel. Native probe@`751f`: default→granted; delivery и first-paint cascade visual acceptance ещё открыты.
 
 ## Backup/restore и диагностика
 

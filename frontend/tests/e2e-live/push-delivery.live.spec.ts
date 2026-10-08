@@ -9,6 +9,8 @@ import {
   test,
 } from "./fixtures"
 
+test.use({ channel: "chromium" })
+
 interface PermissionAuditEntry {
   isActive: boolean
 }

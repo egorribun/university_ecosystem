@@ -32,7 +32,9 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => state.queryClient,
 }))
 
-vi.mock("framer-motion", () => {
+vi.mock("framer-motion", async () => {
+  const { useRef, useState } = await import("react")
+
   const MotionDiv = ({
     children,
     className,
@@ -40,6 +42,7 @@ vi.mock("framer-motion", () => {
     onMouseMove,
     onMouseLeave,
     initial,
+    animate,
   }: {
     children?: ReactNode
     className?: string
@@ -47,6 +50,7 @@ vi.mock("framer-motion", () => {
     onMouseMove?: MouseEventHandler<HTMLDivElement>
     onMouseLeave?: MouseEventHandler<HTMLDivElement>
     initial?: unknown
+    animate?: { status?: string }
   }) => (
     <div
       className={className}
@@ -54,13 +58,51 @@ vi.mock("framer-motion", () => {
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
       data-testid="motion-card"
-      data-cascade={initial ? "active" : "idle"}
+      data-cascade={initial || animate?.status === "hidden" ? "active" : "idle"}
     >
       {children}
     </div>
   )
 
-  return { m: { div: MotionDiv } }
+  function useAnimationControls() {
+    const [status, setStatus] = useState("visible")
+    const statusRef = useRef(status)
+    statusRef.current = status
+    const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+    const resolveRef = useRef<(() => void) | undefined>(undefined)
+    const [controls] = useState(() => ({
+      get status() {
+        return statusRef.current
+      },
+      set(target: { opacity?: number }) {
+        setStatus(target.opacity === 0 ? "hidden" : "visible")
+      },
+      start(definition: { transition?: { duration?: number; delay?: number } }) {
+        return new Promise<void>((resolve) => {
+          resolveRef.current = resolve
+          timerRef.current = setTimeout(
+            () => {
+              timerRef.current = undefined
+              resolveRef.current = undefined
+              setStatus("visible")
+              resolve()
+            },
+            ((definition.transition?.duration ?? 0) + (definition.transition?.delay ?? 0)) * 1000
+          )
+        })
+      },
+      stop() {
+        if (timerRef.current !== undefined) clearTimeout(timerRef.current)
+        timerRef.current = undefined
+        const resolve = resolveRef.current
+        resolveRef.current = undefined
+        resolve?.()
+      },
+    }))
+    return controls
+  }
+
+  return { m: { div: MotionDiv }, useAnimationControls }
 })
 
 vi.mock("@/components/ui/SEO", () => ({

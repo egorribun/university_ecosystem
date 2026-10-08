@@ -56,6 +56,19 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
 
   assert.match(spec, /permission is requested only after the explicit settings action/u)
   assert.match(spec, /chat message reaches Chromium through its real push subscription/u)
+  const chromiumChannelSetup = spec.indexOf('test.use({ channel: "chromium" })')
+  const firstNativePushTest = spec.indexOf(
+    'test("permission is requested only after the explicit settings action"'
+  )
+  assert.ok(
+    chromiumChannelSetup >= 0 && chromiumChannelSetup < firstNativePushTest,
+    "native push scenarios select full Chromium locally before declaring tests"
+  )
+  assert.doesNotMatch(
+    config,
+    /channel:\s*["']chromium["']/u,
+    "full Chromium remains scoped to the native push spec"
+  )
   assert.match(spec, /browserName !== "chromium"/u)
   assert.match(spec, /navigator\.userActivation\.isActive/u)
   assert.match(spec, /Notification\.requestPermission/u)

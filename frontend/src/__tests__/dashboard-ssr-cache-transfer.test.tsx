@@ -41,17 +41,28 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     useNavigate: () => () => Promise.resolve(),
   }
 })
-vi.mock("framer-motion", () => ({
-  AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  m: {
-    div: ({ children, className }: { children?: ReactNode; className?: string }) => (
-      <div className={className}>{children}</div>
-    ),
-    li: ({ children, className }: { children?: ReactNode; className?: string }) => (
-      <li className={className}>{children}</li>
-    ),
-  },
-}))
+vi.mock("framer-motion", async () => {
+  const { useState } = await import("react")
+  return {
+    AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    m: {
+      div: ({ children, className }: { children?: ReactNode; className?: string }) => (
+        <div className={className}>{children}</div>
+      ),
+      li: ({ children, className }: { children?: ReactNode; className?: string }) => (
+        <li className={className}>{children}</li>
+      ),
+    },
+    useAnimationControls: () => {
+      const [controls] = useState(() => ({
+        set: () => undefined,
+        start: () => Promise.resolve(),
+        stop: () => undefined,
+      }))
+      return controls
+    },
+  }
+})
 vi.mock("@/api/client", () => ({ default: { get: state.apiGet } }))
 vi.mock("@/api/stories", () => ({ fetchStories: state.fetchStories }))
 vi.mock("@/components/ui/SEO", () => ({ SEO: () => null }))

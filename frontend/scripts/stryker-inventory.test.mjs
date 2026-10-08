@@ -20,6 +20,32 @@ const policy = {
   },
 }
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*", "!src/**/*.d.ts"]
+const checkerConfig = {
+  checkers: ["typescript"],
+  tsconfigFile: "tsconfig.json",
+  typescriptChecker: {
+    prioritizePerformanceOverAccuracy: false,
+    experimentalNativePreview: false,
+  },
+}
+const checkerToolchain = {
+  typescriptChecker: {
+    packageName: "@stryker-mutator/typescript-checker",
+    pluginName: "typescript",
+    dependencySpec: "10.0.0",
+    packageVersion: "10.0.0",
+    lockVersion: "10.0.0",
+    lockIntegrity:
+      "sha512-GLvC0LVd8RJ5SxR3eFcgb7DFKmw07DYtPXs942z6Qh7l6p7YBnFyd7lPw7nvA9UKEYDd22embrFmLlyC1XJjXw==", // pragma: allowlist secret -- public npm package integrity checksum
+  },
+  typescript: {
+    dependencySpec: "npm:@typescript/typescript6@^6.0.2",
+    packageName: "@typescript/typescript6",
+    packageVersion: "6.0.2",
+    lockVersion: "6.0.2",
+    runtimeVersion: "6.0.3",
+  },
+}
 const location = { start: { line: 1, column: 17 }, end: { line: 1, column: 21 } }
 const killedMutant = {
   id: "1",
@@ -50,6 +76,7 @@ function mutationReport(overrides = {}) {
     schemaVersion: "1.0",
     config: {
       mutate: expectedPatterns,
+      ...checkerConfig,
       coverageAnalysis: "perTest",
       incremental: false,
       mutator: { plugins: null, excludedMutations: [] },
@@ -79,6 +106,83 @@ function buildArgs(overrides = {}) {
 test("derives mutation patterns from the canonical coverage source policy", async () => {
   const { mutationPatternsFromPolicy } = await import(inventoryModuleUrl)
   assert.deepEqual(mutationPatternsFromPolicy(policy), expectedPatterns)
+})
+
+test("exports the shared exact checker configuration and validates locked toolchain metadata", async () => {
+  const {
+    assertCanonicalCheckerToolchain,
+    buildCanonicalCheckerToolchain,
+    canonicalTypeScriptCheckerConfig,
+  } = await import(inventoryModuleUrl)
+  const checkerIntegrity = checkerToolchain.typescriptChecker.lockIntegrity
+  const packageManifest = {
+    devDependencies: {
+      "@stryker-mutator/core": "^10.0.0",
+      "@stryker-mutator/typescript-checker": "10.0.0",
+      typescript: "npm:@typescript/typescript6@^6.0.2",
+    },
+  }
+  const packageLock = {
+    packages: {
+      "": {
+        devDependencies: {
+          "@stryker-mutator/core": "^10.0.0",
+          "@stryker-mutator/typescript-checker": "10.0.0",
+          typescript: "npm:@typescript/typescript6@^6.0.2",
+        },
+      },
+      "node_modules/@stryker-mutator/core": { version: "10.0.0" },
+      "node_modules/@stryker-mutator/typescript-checker": {
+        version: "10.0.0",
+        integrity: checkerIntegrity,
+      },
+      "node_modules/typescript": {
+        name: "@typescript/typescript6",
+        version: "6.0.2",
+      },
+    },
+  }
+  const builtToolchain = buildCanonicalCheckerToolchain({
+    packageManifest,
+    packageLock,
+    checkerPackage: {
+      name: "@stryker-mutator/typescript-checker",
+      version: "10.0.0",
+      peerDependencies: { "@stryker-mutator/core": "10.0.0" },
+    },
+    typescriptPackage: { name: "@typescript/typescript6", version: "6.0.2" },
+    typescriptRuntimeVersion: "6.0.3",
+    strykerCoreVersion: "10.0.0",
+  })
+
+  assert.deepEqual(canonicalTypeScriptCheckerConfig, checkerConfig)
+  assert.deepEqual(builtToolchain, checkerToolchain)
+  assert.equal(assertCanonicalCheckerToolchain(builtToolchain), true)
+  assert.throws(
+    () =>
+      buildCanonicalCheckerToolchain({
+        packageManifest,
+        packageLock: {
+          ...packageLock,
+          packages: {
+            ...packageLock.packages,
+            "node_modules/typescript": {
+              name: "@typescript/typescript6",
+              version: "6.0.3",
+            },
+          },
+        },
+        checkerPackage: {
+          name: "@stryker-mutator/typescript-checker",
+          version: "10.0.0",
+          peerDependencies: { "@stryker-mutator/core": "10.0.0" },
+        },
+        typescriptPackage: { name: "@typescript/typescript6", version: "6.0.2" },
+        typescriptRuntimeVersion: "6.0.3",
+        strykerCoreVersion: "10.0.0",
+      }),
+    /differs from the source lock/u
+  )
 })
 
 test("discovers only included authored files while applying broad exclusions in-place", async (t) => {
@@ -353,7 +457,7 @@ test("rejects every non-killed viable mutant status", async () => {
   }
 })
 
-test("accounts for explained compile errors as non-viable", async () => {
+test("accounts for explained compile errors as non-viable only with checker provenance", async () => {
   const { buildMutationInventory } = await import(inventoryModuleUrl)
   const compileError = {
     ...killedMutant,
@@ -364,6 +468,7 @@ test("accounts for explained compile errors as non-viable", async () => {
   }
   const inventory = buildMutationInventory(
     buildArgs({
+      toolchain: checkerToolchain,
       preflightByFile: preflight([["src/a.ts", [killedMutant, compileError]]]),
       report: mutationReport({
         files: {
@@ -420,6 +525,53 @@ test("excludes ADR-040 presentation mutants from the viable denominator", async 
     ignoredMutants: 1,
     viableMutantScore: 100,
   })
+})
+
+test("rejects CompileError accounting without canonical checker configuration and provenance", async () => {
+  const { buildMutationInventory } = await import(inventoryModuleUrl)
+  const compileError = {
+    ...killedMutant,
+    id: "2",
+    replacement: "null",
+    status: "CompileError",
+    statusReason: "TypeScript compiler rejected this mutant",
+  }
+  const withCompileError = buildArgs({
+    preflightByFile: preflight([["src/a.ts", [killedMutant, compileError]]]),
+    report: mutationReport({
+      files: {
+        "src/a.ts": {
+          source: sources["src/a.ts"],
+          mutants: [killedMutant, compileError],
+        },
+      },
+    }),
+  })
+
+  assert.throws(() => buildMutationInventory(withCompileError), /checker toolchain provenance/u)
+  assert.throws(
+    () =>
+      buildMutationInventory({
+        ...withCompileError,
+        toolchain: checkerToolchain,
+        report: mutationReport({
+          config: { ...mutationReport().config, checkers: [] },
+          files: withCompileError.report.files,
+        }),
+      }),
+    /canonical TypeScript checker configuration/u
+  )
+  assert.throws(
+    () =>
+      buildMutationInventory({
+        ...withCompileError,
+        toolchain: {
+          ...checkerToolchain,
+          typescript: { ...checkerToolchain.typescript, runtimeVersion: "6.0.2" },
+        },
+      }),
+    /checker toolchain provenance/u
+  )
 })
 
 test("rejects an Ignored mutant the preflight policy did not ignore", async () => {

@@ -5541,6 +5541,17 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "STRYKER_PREFLIGHT_MODE": "generate",
     }
     assert manual_preflight["permissions"] == {"contents": "read"}
+    manual_preflight_install = next(
+        index
+        for index, step in enumerate(manual_preflight["steps"])
+        if step.get("name") == "Install frontend dependencies"
+    )
+    manual_typecheck = manual_preflight["steps"][manual_preflight_install + 1]
+    assert manual_typecheck == {
+        "name": "Type-check frontend before mutation evidence",
+        "working-directory": "frontend",
+        "run": "npm run typecheck",
+    }
     manual_preflight_upload = next(
         step
         for step in manual_preflight["steps"]
@@ -5599,6 +5610,13 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "STRYKER_PREFLIGHT_MODE": "generate",
     }
     assert nightly_preflight["permissions"] == {"contents": "read"}
+    nightly_preflight_install = next(
+        index
+        for index, step in enumerate(nightly_preflight["steps"])
+        if step.get("name") == "Install frontend dependencies"
+    )
+    nightly_typecheck = nightly_preflight["steps"][nightly_preflight_install + 1]
+    assert nightly_typecheck == manual_typecheck
     nightly_preflight_upload = next(
         step
         for step in nightly_preflight["steps"]

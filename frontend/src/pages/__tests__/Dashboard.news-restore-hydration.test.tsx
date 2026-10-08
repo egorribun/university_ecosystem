@@ -90,7 +90,24 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/news">{children}</a>,
   useNavigate: () => () => undefined,
 }))
-vi.mock("framer-motion", () => ({ m: { div: "div" } }))
+vi.mock("framer-motion", async () => {
+  const { useState } = await import("react")
+  return {
+    m: {
+      div: ({ children, className }: { children?: ReactNode; className?: string }) => (
+        <div className={className}>{children}</div>
+      ),
+    },
+    useAnimationControls: () => {
+      const [controls] = useState(() => ({
+        set: () => undefined,
+        start: () => Promise.resolve(),
+        stop: () => undefined,
+      }))
+      return controls
+    },
+  }
+})
 
 const article = {
   id: "news-hydration-item",

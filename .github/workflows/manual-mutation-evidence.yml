@@ -472,6 +472,10 @@ jobs:
         working-directory: frontend
         run: npm ci --no-audit --no-fund
 
+      - name: Type-check frontend before mutation evidence
+        working-directory: frontend
+        run: npm run typecheck
+
       - name: Generate canonical immutable Stryker preflight
         working-directory: frontend
         run: npm run test:mutation
