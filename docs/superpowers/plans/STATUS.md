@@ -1,154 +1,106 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-08 (Europe/Istanbul). [План выпуска MVP](MVP_RELEASE_PLAN.md)
-задаёт приёмку; [ТЗ MVP](University_Ecosystem_MVP.md) — продуктовые границы.
-Работа приостановлена по просьбе пользователя на проверенной контрольной точке. Выпуск `v1.0.0` не подтверждён.
+Срез на 2026-10-08 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md) — единственный
+действующий план; [ТЗ MVP](University_Ecosystem_MVP.md) задаёт продуктовые границы,
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) — переход качества.
+Работа приостановлена по просьбе пользователя после консолидации плана.
+Выпуск `v1.0.0` пока не подтверждён.
 
-## Контрольная точка
+## Решения владельца и ближайший результат
 
-- 2026-10-08: владелец принял [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и
-  [план выпуска MVP](MVP_RELEASE_PLAN.md); [мастер-план](MVP_MASTER_PLAN.md) — справочный.
-  Этап 1 выполнен; следующий — этап 2 (ADR-047 Q1: мутации вне `ci-success`).
-  Разделы ниже — история до этого решения; mutation score больше не является целью MVP.
-- Работа ведётся на `egorribun` в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Три GPT-6 Luna Max работают в раздельных областях; root проверяет интеграцию и ресурсы.
-- Full-backend workflow, benchmark, WebKit/avatar/DM fixes интегрированы; локальные контракты не заменяют hosted/live приёмку.
+- При следующем разрешении на продолжение исполнение возобновляется.
+  Работа строго на `egorribun`, один checkout и
+  [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
+  Root интегрирует; максимум три GPT-6 Luna Max владеют раздельными областями.
+- Кратчайший путь: Q1/Q4 → Core/product/visual/security/restore → full smoke →
+  обычный merge → main checks → готовый producer шести GHCR images → release.
+  Независимые исправления продукта идут параллельно с CI; агенту 30 минут до
+  контрольной точки, длительные процессы контролируются отдельно.
+- Q1 и весь Q4 обязательны до MVP: мутации, Schemathesis, DAST, chaos,
+  cross-browser и kind переходят из blocking PR lane в scheduled/manual.
+  Live Chromium smoke, security и fail-closed оставшиеся checks сохраняются.
+  Эти изменения ещё не внедрены; старые CI dependencies пока действуют.
+- Tier 0 — 100%; остальные действующие coverage floors также сохраняются до Q3.
+  Если они блокируют MVP, перенос Q3 согласуется отдельно. Q2/Q3 — `v1.1`.
+- Полный mutation score, три сопоставимых полных CI-прогона, kind certification,
+  RPO/RTO и deployed BE-02/MIG-PASS — `v1.1`; готовую оснастку сохраняем.
+  Один согласованный изолированный DB/S3 restore обязателен для MVP.
+- ГУУ остаётся брендом внутреннего демо; данные синтетические. Публичное
+  использование решается отдельно. Помещения/вместимость — после MVP.
+- Без embeddings key текстовый поиск работает; UI semantic mode выключен,
+  direct semantic-only API сообщает о недоступности без нулевых векторов.
 
-## Hosted CI и мутации
+## Подтверждённая контрольная точка до изменения политики
 
-- PR@`460501`: Matrix37767059576/a1: backend unit shard1 FAILED на трёх старых workflow snapshot assertions; root26/26 PASS после точной проверки добавленного typecheck step. Новый hosted результат требуется; полного зелёного набора нет.
-- Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
-  Run CANCELLED; planner59m20s, planning без end marker; plan отсутствует, backend execution0/128, global score открыт.
-  Full `37670438144/a1`: execution0/128, stats7/8; shard2 stale urllib3 исправлен в `a028`, score отсутствует.
-  Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
-- Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
-  preflight10/10, kind243/243, ranked28/28, compliance9/9 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
-  Root chat63/63, gateway middleware/config и Linux race PASS; pinned Go lint0 issues после complexity fix.
-  Helm wiring13/13 +275 contracts и doc delta PASS; planner reuse37 +5 subtests/150 contracts PASS.
-  CRD helper прошёл K3 prerequisites; приложение в kind ещё не развёрнуто.
-  Local exact259/314/123/278/56/140/44/45/121 RED; global gate открыт. PR live `37684359401/a1` FAILED до Docker:
-  stale seed signature regex исправлен; требуется новый hosted run.
-  Проверены 33 Dependabot advisory против 56 locked resolutions: affected matches0;
-  это не закрытие alerts default branch и не глобальная security-сертификация.
-- Matrix run `37526001524/a1`: event source `4213`; producer —
-  `deb33a29cc7a91b2043828fc578dc34ad037337f`. Все 128 incremental jobs FAILED.
-  Root проверил API digests, ZIP/JSON, canonical evidence и exact planned join:
-  4 584 terminal = 3 949 Killed / 635 Survived; selection полна.
-  Timeout/no-tests/skipped/suspicious/interrupted/segfault/typecheck записей нет.
-  Generated universe 54 452 не исполнялся полностью; global score не установлен.
-- Manual full run `37481732603/a1`: frontend shard jobs завершились 64/64
-  SUCCESS, но итоговый aggregate FAILED и aggregate artifact отсутствовал.
-  Backend preflight завершился ошибкой до запуска 128 backend execution shards;
-  пропущенные shards не являются результатами мутаций. Глобальный viable score
-  не установлен.
-- Manual full run 37512795410/a1 на 7aa CANCELLED: backend planning достиг 60-minute ceiling.
-  Frontend aggregate job112519043882 завершился из-за Survived, без найденного provenance failure шага.
-- Frontend preflight source7ac: 43,200 mutants / 565 files / 64 shards;
-  digest `e0c3083e3defb06169c8f59897b61c3a46a4dee65c6ae66c9963168ffad66c29`.
-  Root и независимый reviewer приняли полный exact planned/report join:
-  Killed37,221, Survived4,672, Timeout33, RuntimeError31, NoCoverage1, Ignored1,242.
-  Missing/extra/duplicate signatures0; source/input hashes проверены.
-  Диагностический viable score88.7101%; обязательный gate FAILED.
-  Root независимо подтвердил fresh shard30: 487/487 Killed,10 regions/6 files,
-  source/run/attempt/preflight/report hashes. Это только shard-local proof.
-- Интегрированы reviewed auth/chat/notification/RLS/cache/analytics regressions,
-  generation reuse, planner progress и byte-safe Windows ACL subprocess calls.
-  Root: frontend273/273 и crypto46/46; backend1352 PASS +5 subtests и session-policy34/34.
-  PostgreSQL RLS enforcement и global mutation credit отсутствуют.
-  Initial preflight7/9 сохранён; delta checks и повторный staged pre-commit PASS.
-  Links433/433 в обоих режимах, Markdownlint PASS, CSpell9 files/0 issues.
-  Focused useAuthApi на1ab:366 mutants =318 Killed/48 Survived,0 Timeout/RuntimeError/NoCoverage;
-  86.8852%, gate FAILED. Dry-run1670 PASS; immutable local report d59264c6 сохранён.
-  Historical preflight9/9, frontend delta3/3 и документационные gates PASS.
-- Historical Matrix `37506190354/a1` на `6d8`: Node Dependency Audit FAILED.
-  Локальный audit подтвердил GHSA-wq5f-xc86-pv6w: sharp0.35.4→0.35.5,
-  librsvg2.63.2. Frozen install, SVG→PNG smoke и pinned-artifact build PASS;
-  npm audit:0 advisories. Hosted Node Audit112439174423 на 7aa SUCCESS (run37512735806/a1).
-- Historical UserRepository.get9 Survived: run37403597748/a1, source76cd; root canonical get9/9 PASS.
-  MFA export5 эквивалентен COUNT(*): код упрощён, без Killed credit.
-  PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
-  Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
-- K3/e874a81e778d helper@`727eecab`: create/prepare/repeat/preflight/smoke/CA/teardown PASS.
-  Inventory20/Helm revisions1 неизменны; app routes заблокированы parity; `C:/Temp/ue-kind-acceptance-k3-e874a81e778d/receipts`.
+- Source checkpoint: `7ddc114b72f346ff27bd6dd6d83e191eb7f89412`, отправлен в remote.
+  Новый policy commit: `60a886529c6e89176e2d53395268ca6279805cb4`.
+  Старые результаты ниже подтверждают свои SHA, а не текущий release candidate.
+- Planner cost cache: RED 24 conversions вместо 4 → GREEN; root317 PASS и
+  5 subtests. Synthetic512/128 планы идентичны; global score не получен.
+- Browser cache override: validated private pinned Playwright browser работает;
+  live CLI1164 tests PASS. Workflow snapshot contracts26/26 PASS после исправления.
+  Preflight10/10, staged hooks и push прошли на checkpoint.
+- Hosted Live `37767058529/a1` на `460501`: SUCCESS, 18 passed/2 planned skips,
+  flaky нет. Uploaded artifact отсутствует; evidence — API/job/redacted stdout.
+- Matrix `37767059576/a1` на `460501`: backend shard1 FAILED на трёх stale
+  workflow assertions, 4189 passed/18 skipped. Локальное исправление принято;
+  новый hosted результат и обязательный зелёный набор ещё нужно подтвердить.
+- Profile Core acceptance на `15ad90aac`: 4/4 PASS, validation/save/reload.
+  Исторический stop/start smoke на `444ed`: 18 PASS/2 planned skips,
+  hashes/secret files/volumes совпали. Полная продуктовая traceability открыта.
+- Core на `460501` поднялся, E2E не начат из-за RAM85,4%/free4,63 GiB.
+  Stop/teardown PASS; проверенные owned containers/volumes/networks/image tags0.
+  Shared base images/build cache сохранены; global prune не применялся.
+- Private checkpoint receipt:
+  `C:/Temp/ue-quality-session-dm-root-20261008-82730e4856e54ecbb944e5fa90cc3110/checkpoint-7ddc114b-v1.json`.
 
-## Live-приёмка
+## Сохранённые начатые направления
 
-- Hosted Live `37767058529/a1`@`460501`: SUCCESS,18 passed/2 planned skips, без flaky; PR smoke. Root19/19 Dashboard PASS; полный live gate открыт. Uploaded artifacts отсутствуют: evidence — API/job/redacted stdout.
-- Full@`eed9`: readiness35/35, healthy20/init6/sidecars3, HTTP10/Redis AUTH PASS; smoke REFUSED RAM79%/free6,7GiB.
-  Full+Core stop0/teardown0, containers/volumes/networks/images0, удалено17 owned local images; private state/evidence сохранены.
-- Core@`f281`: up0, status0 без изменения state; profile desktop/mobile2 PASS/2 FAIL на error alert.
-  Backend PUT500: nested education dict присваивается ORM relation; profile_detail не сохраняется.
-  RED→GREEN: root49 PASS, logic/mapper line+branch100%; DTO/schema54 и UI28 PASS, OpenAPI synced; preflight10/10 PASS.
-  Peak RAM70%,free≥9,533GiB; stop0/teardown0, owned containers/volumes/networks/image tags0.
-  Evidence: `C:/Temp/ue-core-review-f2818079c-e2e-v1/root-cleanup-f281.v1.json`; полный live gate открыт.
-- Core@`15ad90aac`: up0, status0/state10 files unchanged; profile4/4 PASS, validation/save/reload; peak RAM73%,free≥8,411GiB.
-  Historical `444ed`: smoke18 PASS/2 planned skips до/после stop/start; baseline16/10/10, hashes/4 secret files/6 volumes равны; `C:/Temp/ue-core-review-444ed09e0-e2e-v1/root-smoke-restart-summary.v1.json`.
-  Current stop0/teardown0, owned containers/volumes/networks/image tags0; вызовы2147→1044, wall157s; это два замера, не performance-сертификация.
-  Evidence: `C:/Temp/ue-core-review-15ad90aac-e2e-v1/root-profile-acceptance.v1.json`, `root-cleanup-15ad90aac.v1.json`, `root-teardown-comparison.v1.json`; полный gate открыт.
-  Full mutation37723031168/a1@`520850` FAILURE: stats0/8 и5/8 stale tests; локальные модули1234/1234 PASS после8 fixes; frontend64/64 shard SUCCESS, aggregate Survived26:188/без validated artifact.
-- Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
-  Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
-  Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
-  news10, stories15, schedule28, chats2, events10 +2 будущих demo events.
-  Browser UI не проверен: CUA policy check unavailable; обход не выполнялся. По разрешению
-  пользователя stop/teardown удалили35 containers/14 volumes/3 networks и тестовые данные.
-  Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
-- Полная traceability, RU/EN, light/dark, responsive, SSR/PWA, accessibility/performance и visual approval открыты.
-- Session epoch143/143, TextField44/44, auth diagnostics1152+154, Docker fakes62 PASS; exact224/226/1252/1253 RED. Checker API@`751f`: baseline17,4s PASS, exact ArrayDeclaration compileError/TS2322; полный private Stryker probe без report, причина не подтверждена; canonical score открыт.
-  `460501`: clean Node553 PASS/1 Windows POSIX-FIFO skip, live contracts154/154; full checker toolchain/config parity. Core up PASS, RAM85,4%: E2E не начат, stop/teardown PASS, owned containers/volumes/networks/images0 после удаления8 tags. Shared Chromium: spawn UNKNOWN/SideBySide33; validated existing cache override RED→GREEN,1164 tests PASS; private pinned browser работает, delivery и visual acceptance открыты.
+- Mutation diagnostic: frontend inventory43200, viable88,7101%; backend
+  universe54450, complete global score отсутствует. Это debt/baseline,
+  не MVP допуск. Полные очереди ради 100% теперь не запускаются.
+- Kind K3 helper на `727eecab`: controllers/CA/create/prepare/repeat/preflight/
+  smoke/teardown PASS, inventory20 и Helm revisions1 неизменны.
+  Приложение не развёрнуто; chart/routes parity и полная приёмка — `v1.1`.
+- DR на `76cd4026dbe241f9a57b7f98488f54856f6b37d9`: paired snapshot создан,
+  executor остановился на `source_snapshot_gate`; target restore НЕ НАЧИНАЛСЯ.
+  Logical restore, DB/S3 связность, RPO/RTO не подтверждены. Неудачные
+  immutable diagnostics/receipts сохраняются без заднего изменения outcome.
+- Manifest-aware backup/restore CLI/runbook и BE-02 preflight/tests реализованы;
+  наличие кода не подтверждает deployed restore/upgrade/rollback.
+- Six-image main-only producer и source-bound release consumer реализованы;
+  signing/SBOM/provenance/WASM parity сохраняются. Публикация текущего релиза
+  и проверка его main SHA/run/attempt/manifest/digests ещё предстоят.
 
-## Backup/restore и диагностика
+## Открытая MVP-приёмка
 
-- DR RunId `8b804d4b67a24f2481099d50349ab7d1`@`76cd4026dbe241f9a57b7f98488f54856f6b37d9`: paired snapshot создан,
-  но основной executor завершился на `source_snapshot_gate`; target restore
-  НЕ НАЧИНАЛСЯ. RTO clock не сбрасывался; logical restore, RPO и RTO не
-  подтверждены.
-- Отдельная read-only V7 диагностика не стартовала probe из-за template
-  проверки image metadata. V8 создал диагностический контейнер, но отклонил
-  его до старта на identity validation. Сохранённый V8 receipt остаётся
-  `cleanup_complete=false` / `identity_unverified`; менять его задним числом
-  нельзя.
-  Concrete mismatch: Docker shorthand SecurityOpt и ещё пустой endpoint
-  NetworkID в created state. До старта проверять exact HostConfig network
-  binding, после старта — endpoint. Probe не запускался.
-- Позже точные name и nonce selectors оба вернули отсутствие контейнера
-  (Docker exit 0); root сообщил, что start/rm не выполнял. Ограниченная
-  Docker-events проверка не дала событий из-за команды с exit 64. Причина
-  исчезновения не установлена; acceptance/RCA credit отсутствует. Не было
-  backup/restore retry, source snapshot retry или clock reset.
-- Root-reviewed V9/controllerV4 прошли39/39 и23/23 offline tests. Один V4
-  runtime проверил probe identity, но inner cleanup остался неподтверждённым;
-  outer source cleanup PASS, running Docker0. Exact probe ID затем отсутствовал.
-  Receipt сохраняет failure; причина отсутствия ещё не установлена.
+- Q1/Q4 implementation ещё не начат. Schedule regression draft сохранён
+  приватным patch `C:/Temp/ue-quality-session-dm-root-20261008-82730e4856e54ecbb944e5fa90cc3110/schedule-update-checkpoint.patch`;
+  production code не менялся, RED/GREEN не получен. Search fix только спроектирован.
+- Schedule update conflict; проверка потребителей unused event analytics;
+  поведение semantic search без ключа и согласованный UI.
+- ТЗ2–13: актуальные Core auth/MFA, messenger/group delivery, push,
+  profile/settings, admin permissions, SSR/PWA/i18n, RU/EN и a11y.
+- Visual approval: light/dark, 390/768/1440 px, targeted360/1024;
+  Linux baselines, bundle budget, Lighthouse, stories20 cycles/reduced motion.
+- Независимый auth/session/data review и ADR-006 tombstone-first ordering;
+  все63 audit ID классифицировать; P0/P1 security нельзя переносить молча.
+- Один backup/restore в отдельные DB/S3 targets с чтением восстановленного
+  объекта через DB reference. Затем frozen RC и один full release smoke.
+- Q1/Q4 должны обновить triggers/dependencies/results/assertions/catalog/
+  release requirements/contracts вместе. Целевой PR бюджет15 минут ещё не измерен.
+  Scheduled/manual lanes требуют default-branch activation; наличие workflow
+  в `egorribun` не доказывает их работоспособность на `main`.
 
-## Рабочая среда
+## Ресурсы и сохранность
 
-- Один heavy workload; перед запуском RAM≤75%,free≥8GiB, runtime guard85%/4GiB.
-  Пользователь разрешил удалить все аналогичные ue-live стенды и тестовые данные.
-  После проверки Compose ownership, daemon и references удалены ещё 386 stopped
-  containers, 188 volumes (включая 16 доказанных anonymous mounts), 26 networks.
-  Удалены 142 локальных ue-live image tags; containers/volumes/networks/image tags0, shared base images сохранены.
-  Global prune не применялся; filesystem archives не доказывают backup/restore.
-- Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
-  Чужие env/data/volumes/backups сохраняются; временный state-dir deletion
-  отклонён automatic review, обход не выполняется.
-  Rescue bundle остаётся private; Git history сохраняется.
-
-## Следующие проверки и ограничения
-
-- Profile contract/collector исправлены: root150/150, preflight10/10 и live4/4 PASS; bounds root114/schema100%, runner1127/Node11; дальше full live и chart parity;
-  затем получить complete same-run backend/frontend aggregates с source/run/
-  attempt-bound artifacts до заявления о mutation score.
-  Historical MFA263/307 exact RED; global mutation gate открыт.
-- Owned Docker inspect: batches≤64/full IDs/exact join с прежними guards; CLI probe23/23, root1134/1134 и preflight10/10 PASS, current status/teardown0.
-  Container inspect calls1219→116; guards/source/owner pins сохранены, final owned resources0.
-  Planner cost cache: RED24 conversions вместо4→GREEN; root317 PASS+5 subtests, preflight10/10. Synthetic512/128: планы идентичны, candidate0,41s против0,64–0,70s, allocation peak выше; полный planning/global score открыт. WS-Hub V3.2: Linux race/statement100%, control20 RED,12-pair ratio1,08346/95%upper1,09726 local. Group push live pending.
-- DR RCA: immutable helper/receipts; RPO/RTO не подтверждены до проверки target app.
-- Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
-  WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,
-  resulting-main evidence и выпуск `v1.0.0`.
-  Три полных зелёных CI ещё требуются; следующий live-стенд привязывать к новому committed SHA.
-
-Сохранять чужие env, volumes, backups, private evidence и Git history. Не применять admin bypass,
-force-push или менять branch protection. Внешний production, реальные SMTP/push,
-физические устройства, CDC и field CWV вне MVP.
+- Один heavy workload: перед стартом RAM≤75%, free≥8 GiB;
+  runtime guard85%/4 GiB. Следующий запуск требует свежего измерения.
+- Удалять только доказанно принадлежащие нам ненужные Docker ресурсы;
+  пользователь разрешил удаление synthetic ue-live данных. Чужие env/data/
+  volumes/backups/processes сохраняются. Worktree не создавать.
+- Git history/migrations/private rescue bundle сохраняются. Исторические
+  session logs и superseded snapshots не возвращать в текущие индексы.
+- Codex goal сохраняет прежнюю расширенную формулировку и сейчас `paused`;
+  инструмент не предоставляет изменения objective/resume. Последнее поручение —
+  безопасно приостановиться; выпуск MVP не закрывает сертификацию `v1.1`.

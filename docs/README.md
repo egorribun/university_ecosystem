@@ -34,13 +34,12 @@ handoffs are intentionally not part of the canonical index.
 
 ## Quality evidence
 
-- [MVP release plan (Russian)](superpowers/plans/MVP_RELEASE_PLAN.md) — the
-  current definition of done for `v1.0.0`, its stages and the items moved to
-  `v1.1`; it replaces the [former master plan](superpowers/plans/MVP_MASTER_PLAN.md),
-  which remains a reference for detailed acceptance scenarios.
+- [MVP master plan (Russian)](superpowers/plans/MVP_MASTER_PLAN.md) — the single
+  current roadmap, product acceptance for `v1.0.0`, retained work checkpoints
+  and the certification backlog for `v1.1`.
 - [ADR-047: risk-based quality policy](adr/ADR-047-risk-based-quality-policy.md)
   — Tier 0 keeps 100% coverage; mutation testing is a nightly signal, not a
-  release gate.
+  release gate after Q1. Current coverage floors remain enforced until Q3.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)

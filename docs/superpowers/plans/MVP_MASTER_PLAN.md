@@ -1,91 +1,161 @@
-# University Ecosystem — план приёмки и выпуска MVP v1.0.0
+# University Ecosystem: полный цикл приёмки и выпуска MVP v1.0.0
 
-> **Заменён 2026-10-08.** Действующий план — [план выпуска MVP](MVP_RELEASE_PLAN.md),
-> основание — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md). Этот документ
-> сохранён как справка: подробности live-стенда, сценариев приёмки, безопасности и
-> блоков, перенесённых в `v1.1`. Где он расходится с новым планом, действует новый план.
+Редакция 3 от 2026-10-08 (Europe/Istanbul). Единственный действующий план,
+объединяющий прежний мастер-план и решение коммита
+`60a886529c6e89176e2d53395268ca6279805cb4` с уточнениями владельца в этой беседе.
+Основание качества — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+[ТЗ MVP](University_Ecosystem_MVP.md) задаёт продукт, [STATUS.md](STATUS.md) —
+короткий оперативный срез. Отдельный план выпуска объединён с этим
+документом; новую конкурирующую дорожную карту не создавать.
 
-Обновлён 2026-10-03. Исполнение долгосрочного goal продолжается по этому плану.
-Текущие проверенные факты и ближайшие действия находятся только в [STATUS.md](STATUS.md);
-продуктовые требования — в
-[ТЗ MVP](University_Ecosystem_MVP.md); обязательные технические инварианты — в
-`AGENTS.md`, доменных `AGENTS.md`, ADR, quality contract и runbooks.
+## Цель и принятые решения
 
-Содержимое прежних handoff, старые CI-запуски, локальные worktree и прежние
-машины являются историей, а не доказательством текущего состояния. Этот документ
-закрепляет решения и критерии. Git, актуальная конфигурация и evidence, связанное с
-проверяемым SHA, определяют факты. Применимые требования архивов перенесены,
-архивные каталоги удалены из рабочего дерева, а внешний rescue bundle проверен и
-остаётся приватным по политике блока 2. Не создавайте второй текущий план.
+**Цель v1.0.0:** выпустить принятый продукт по ТЗ: живые сценарии, утверждённый
+визуал, отсутствие открытых P0/P1 по безопасности, успешные обязательные проверки
+и обычный merge в `main`; опубликовать шесть образов существующим main-only
+producer и релиз с ограничениями. Полная сертификация этих образов в kind,
+RPO/RTO, глобальный mutation score и три сопоставимых полных CI-прогона — `v1.1`.
 
-## Цель и утверждённые решения
+- Работа строго на `egorribun`, один checkout и PR #1306. Root проверяет
+  интеграцию и выполняет stage/commit/push; максимум три GPT-6 Luna Max пишут в
+  непересекающихся областях. Новые ветки/worktree не создавать. Обычный merge;
+  admin bypass, force-push и изменение branch protection не разрешены.
+- Уже реализованные исправления, тесты и оснастка сохраняются. Начатые направления
+  доводятся до **ограниченной контрольной точки**, указанной ниже, без восстановления
+  старого требования полной сертификации до MVP. Наличие исходника или mock-теста
+  не является доказательством живой приёмки.
+- ГУУ остаётся брендом внутреннего демо. Данные и аккаунты синтетические, роли —
+  student/teacher/admin. Согласие на публичное использование названия/логотипа и
+  обработку данных реальных пользователей решается отдельно до такого использования.
+- Не добавлять новую обязательную MFA, учебные цели/attendance, CDC, сущности
+  помещений и вместимости, QR-приход или лимиты мест. Новая учебная модель —
+  отдельный план после MVP. «Проверка аудитории при создании» относится к этой
+  будущей модели и не является задачей текущего релиза.
+- Продуктовая приёмка — на Core; full — отдельный smoke на замороженном релизном
+  SHA. Использовать утверждённый Compose inventory, а не постоянное число сервисов
+  из старого отчёта. Остановка сохраняет данные; удаление только после проверки
+  владельца. Чужие env, тома, backups и процессы сохраняются.
+- RU/EN, light/dark; обязательные ширины 390/768/1440 px. На 360/1024 px —
+  дополнительные проверки меню, таблиц и найденных адаптивных дефектов. Физические
+  устройства, внешние SMTP/push-провайдеры и field CWV вне текущей приёмки.
+- Русский — ТЗ/план/статус, английский — технические ADR/runbooks/код.
+  Git history, migrations, harness и приватный rescue bundle сохраняются.
 
-**Goal:** довести University Ecosystem до подтверждённого соответствия MVP-ТЗ,
-завершить продуктовую, визуальную, техническую и инфраструктурную приёмку,
-согласованно очистить устаревшее содержимое и выпустить `v1.0.0` с шестью
-сертифицированными образами в GHCR. Goal считается завершённым после проверки
-опубликованных image digests в локальном kind-кластере и наличия полного
-SHA-bound release evidence, а не после написания кода или зелёных локальных тестов.
+## Переход качества: решение и фактический CI
 
-Утверждены следующие границы и решения:
+- Tier 0 сохраняет 100% всех применимых coverage-метрик. До Q3 **все нынешние
+  per-component floors из `quality/quality-contract.json` и текущий 100% patch
+  coverage остаются машинно обязательными**; unsupported метрики не превращать
+  в новые требования.
+  Ratchet и 90% non-Tier-0 patch coverage ещё не внедрены. Если действующие floors
+  блокируют MVP, отдельно согласовать включение Q3; не снижать их молча.
+- Q1 обязателен до MVP: мутации исключаются из release gate и перестают запускаться
+  как PR/main blocking lane; полные mutmut/Stryker остаются nightly/manual.
+  Пока Q1 не внедрён, старые зависимости CI ещё действуют. Не продолжать работу
+  ради достижения глобального 100% mutation score.
+- Q4 также обязателен до MVP: Schemathesis, DAST, chaos, cross-browser E2E и kind
+  переходят в scheduled/manual lanes; PR сохраняет lint/types/unit/contracts,
+  API drift, coverage и необходимую security-проверку. Live Chromium smoke остаётся
+  на PR. Проверить не только `needs`, но и results array, специальные assertions,
+  triggers, catalog и release-required checks. Целевой бюджет PR — 15 минут;
+  измерить wall time и critical path, не объявлять его выполненным заранее.
+- Q2 (nightly mutation regression более 1 процентного пункта, dashboard) и Q3
+  (coverage ratchet) — `v1.1`. Nightly сигналы могут оставаться красными на прежнем
+  пороге до Q2; они не дают основания подменять результат или считать регрессию
+  реализованной. Equivalent exclusions — только доказанные, с owner/evidence и
+  сроком до 90 дней; quarantine и ручной `Killed` запрещены.
+- Уже готовые security, signing, SBOM/provenance и WASM parity шаги image producer
+  сохраняются. Отложена дополнительная сертификация/продвижение в kind, а не
+  удаление работающей защиты или публикация произвольного набора образов.
 
-- Полный автономный цикл охватывает изменения, проверки, согласованную очистку,
-  обычные коммиты/push/PR/merge, GHCR и `v1.0.0`. Это не разрешает admin bypass,
-  force-push, переписывание Git history или удаление чужих данных.
-- Сохраняются 100% всех применимых метрик coverage и 100% viable mutation score.
-  Не ослаблять quality contract исключениями, quarantine, увеличением timeout,
-  waivers или ручной переклассификацией мутантов.
-- Сначала восстановить достоверную проверяемость; продуктовую приёмку вести
-  параллельно там, где она не конкурирует за тяжёлые ресурсы.
-- ТЗ, планы и статус ведутся на русском; технические документы, интерфейсы,
-  исходный код и runbooks — на английском, если существующий контракт не требует
-  иного.
-- Полезные требования и инструкции из архивов перенесены, внешний Git bundle от
-  rescue SHA и sample restore проверены, архивные каталоги удалены из рабочего
-  дерева без переписывания Git history. Bundle хранить приватно из-за
-  credential-подобных строк. Сократить `.agents/skills`, сохранив реально
-  применяемые навыки; рабочий harness сохранить. Историю миграций не сжимать.
-- Для Kubernetes MVP использовать Envoy Gateway + Gateway API. Среды MVP —
-  Docker Core/full, локальный kind и GHCR; внешний staging/production не входит.
-- Нагрузочная цель WebSocket: 1 000 подключений, 500 пар, до 100 сообщений/с,
-  30 минут, p95 доставки не выше 500 мс.
-- Backup/restore демонстрирует RPO не хуже 24 часов и RTO не более 30 минут на
-  измеренном наборе данных.
-- Визуальные комплекты экранов и обновление визуальных baseline требуют
-  пользовательского review/утверждения. Показывать небольшие сравнимые комплекты.
-- Демо использует вымышленный университет, синтетические данные и роли
-  student/teacher/admin. Не добавлять обязательную MFA для новых групп. Activity
-  ограничен существующими heatmap, trends, grades и comparison; не добавлять новые
-  учебные цели, attendance или другие предметные функции. CDC остаётся вне MVP.
+## Шесть этапов до v1.0.0
 
-## Evidence и порядок работы
+| Этап | Работа и проверяемый результат | Детали старых блоков |
+| --- | --- | --- |
+| 1. Решение и документы | ADR-047, единый план, AGENTS/индексы/STATUS согласованы; ссылки проверены. Решение принято, консолидация завершается этим изменением. | 0, 2 |
+| 2. Q1 и Q4 в CI | Удалить mutation-зависимости и специальные blocking assertions; перенести тяжёлые lanes; сохранить fail-closed оставшиеся gates, nightly/manual и release-source verification. Contracts и актуальный PR зелёные, бюджет измерен. | 1, 6 |
+| 3. Core и продукт | Traceability ТЗ 2–13; реальный Chromium, mocked Firefox/WebKit; два последовательных прогона, stop/start и seed. Исправить schedule update conflicts и проверенные audit defects. | 3, 4 |
+| 4. Визуал и performance | Утверждённые небольшие пакеты RU/EN, light/dark, desktop/mobile, Linux baselines; main JS <500 KB, Lighthouse ключевых страниц, stories 20 циклов, a11y/reduced motion. | 5 |
+| 5. Security, ledger, данные | Независимый auth/session/data review, решение ADR-006 ordering; все 63 ID классифицированы, P0/P1 нет; один согласованный DB/S3 backup/restore в изолированную цель с чтением объекта по DB reference. | 1, 2, 8 |
+| 6. Выпуск | Frozen RC, full smoke, required PR checks, обычный merge, свежие main-push checks, ровно шесть GHCR images существующим producer, tag/release notes и SHA-bound evidence. | 10 |
 
-Каждое значимое доказательство должно фиксировать исходный SHA, workflow/job и
-run/attempt либо локальную команду, конфигурацию и её hash, ОС и версии
-инструментов/контейнеров, проверяемую популяцию, результат и ссылки на artifacts.
-Для mutation/coverage evidence указывать происхождение и полноту инвентаря,
-проверку владельца и отсутствие подмены локальным или старым результатом.
-Указывать ограничения результата прямо. Старый успешный запуск не подтверждает
-новый SHA; PR checks не подменяют проверку resulting `main` SHA.
+Порядок допуска: 1 → 2 → 3–5 → 6. Подготовка и исправления этапов 3–5
+идут параллельно с этапом 2; ждать всей CI-очереди для независимой работы не нужно.
+Тяжёлый локальный процесс один: RAM до запуска ≤75% и free ≥8 GiB; runtime guard
+85%/4 GiB. Ненужные owned Docker-ресурсы удалять, global prune не применять.
+Каждая задача субагента — максимум 30 минут до контрольной точки с чётким
+критерием результата. Длительные CI/live-процессы контролируются отдельно;
+исчерпание бюджета не превращает failure/NOT RUN в PASS и не снимает требование.
+Новая quality/evidence-оснастка до MVP не создаётся, кроме необходимого Q1/Q4.
+Использовать готовые collectors, workflows и проверяемые команды.
 
-Работать блоками 0–10; завершение каждого подтверждать доказательствами и
-обновлением `STATUS.md`. После первого свежего полного inventory и живого прогона
-переоценить срок по реальному темпу и critical path. Старые оценки длительности не
-являются обещанием. Текущая работа выполняется только на ветке `egorribun`, в общем
-checkout и единственном PR. Root координирует максимум трёх субагентов
-GPT-6 Luna с reasoning effort `max`, проверяет их изменения и самостоятельно
-выполняет stage/commit/push. Субагенты могут одновременно писать код только в
-непересекающихся наборах файлов с явно назначенным владельцем; новые ветки и
-worktree не создавать. На время сборки или проверки, требующей неизменного source
-SHA, root замораживает соответствующие исходники до сохранения результата.
-Тяжёлые локальные jobs сначала запускать по одному и увеличивать параллельность
-только после измерения ресурсов. Не смешивать косметику, поведенческие исправления
-и миграции данных в один недифференцированный пакет.
+## Сохранённые начатые направления и границы остановки
+
+| Направление | Что уже есть | Ограниченный результат до MVP; что остаётся v1.1 |
+| --- | --- | --- |
+| Planner/checker | Cost cache, TypeScript checker и provenance checks интегрированы; synthetic512/128 parity, local tests; global evidence нет. | Сохранить исправления и контракты, включить их в работающие nightly/manual lanes. Не запускать полные mutation очереди ради score. Q2/global closure — v1.1. |
+| Live/UI/realtime | Owner-checked Core/full CLI, seed, profile fix, Dashboard hydration и browser-cache override; hosted smoke18/2 на старом SHA. | Свежие Core product scenarios и полная traceability; delivery/group push/visual ещё открыты. Старый smoke не закрывает новый SHA. |
+| Backup/restore | Manifest-aware CLI/runbook и paired snapshot; прошлый target restore не начинался. | Завершить один безопасный app-compatible restore с DB/S3 связностью. RPO/RTO и длительная сертификация — v1.1; корректность согласованной копии обязательна сейчас. |
+| Envoy/kind | Пinned controllers/CA и run-owned helper; prerequisite smoke пройден, приложение не развёрнуто. | Принятую prerequisite-стадию сохранить; незавершённые chart/routes/render вопросы записать с владельцем, без нового cluster deployment до MVP. App deployment/TLS/chaos/rollback в kind — v1.1. |
+| BE-02/MIG-PASS | Preflight CLI и offline/disposable-Postgres contracts. | Сохранить CI миграций и готовые проверки. Непустые deployed DB upgrade/rollback/lock budgets — v1.1. |
+| Code/quality cleanup | Частичные catalog, planner, WS lifecycle/perf и consolidation fixes. | Сохранить принятые исправления; закончить текущий маленький пакет без массовой ревизии. Runtime reachability/API/assets/i18n/helpers/invariants/concurrency и gate cost review — v1.1. |
+| Image producer | Main-only producer шести images, security/signing/SBOM/provenance; source-bound release consumer. | Выполнить готовую публикацию с проверкой точного main SHA, run/attempt и manifest/digests. Не переписывать producer ради снятия готовых шагов. Полная kind сертификация — v1.1. |
+
+## Кратчайший путь к MVP и организация работы
+
+1. Сначала Q1, затем Q4 отдельными проверяемыми пакетами; одновременно подготовить
+   продуктовые сценарии и точечные schedule/search fixes. Один агент владеет CI,
+   второй — одним backend-доменом, третий — frontend/live acceptance. Root
+   интегрирует, проверяет независимым ревью и управляет ресурсами. Назначения
+   меняются по critical path, а не ради постоянной загрузки всех машин.
+2. Перед каждым пакетом определить RED/ожидаемое поведение, конкретные файлы,
+   необходимые checks и результат за 30 минут. Доказанные defects чинить;
+   hypotheses сначала проверять. Не рефакторить домен целиком ради одного дефекта.
+3. Проверять затронутые области и required pre-push preflight. Полные coverage,
+   cross-browser и security-наборы выполнять в предусмотренной lane; не повторять
+   одинаковые прогон/установку без нового изменения или найденной ошибки.
+4. На чистом SHA поднять один Core-стенд; совместить продуктовую, visual,
+   Lighthouse и restore приёмку, сохранив раздельные результаты. Пока source
+   заморожен, остальные агенты проводят review или готовят патчи приватно;
+   исходники работающего прогона не изменяют. Стенд останавливать при resource guard.
+5. Применить найденные исправления одним согласованным пакетом. Повторить
+   затронутые сценарии, затем получить два успешных последовательных продуктовых
+   прогона на неизменном RC. Визуальное утверждение запрашивать готовыми пакетами,
+   не откладывать все экраны до конца.
+6. На frozen RC выполнить один full smoke, обычный merge, main checks и готовую
+   публикацию. Не ждать трёх comparable полных CI-прогонов, глобальных мутаций,
+   kind deployment или RPO/RTO, отнесённых к v1.1.
+
+Для release каждого обязательного критерия нужен результат; экономия достигается
+сокращением дублей, scope и ожидания, а не фиктивными PASS или потерей сценариев.
+Срок оценить после Q1/Q4 и первого текущего Core-прогона по реальным длительностям;
+число коммитов и прежние оценки не являются прогнозом.
+
+## Evidence и сохранность результатов
+
+Routine local check: SHA, команда, результат и ограничения. Live, coverage,
+mutation, backup, kind, baseline и release evidence сохраняют необходимые
+config/tool/population/run/attempt/artifact bindings существующими инструментами.
+Нельзя смешивать PR head, synthetic merge, resulting main и старый snapshot.
+Полный release evidence относится к main SHA и опубликованному manifest; evidence
+PR не подменяет проверку main. Session logs не добавлять в индекс документации.
+STATUS ≤150 строк: результаты, следующий шаг и конкретные blockers.
+
+## Подробные блоки и их область применения
+
+Блоки 0–10 ниже сохраняют уникальные сценарии и технические инварианты. Их область:
+0–2 — контекст/security/документация; 3–4 — Core acceptance; 5 — сокращённая
+визуальная приёмка; 6 — Q1/Q4 сейчас и quality backlog v1.1; 7 — v1.1 кроме
+начатых малых исправлений; 8 — restore минимум сейчас, сертификация v1.1;
+9 — начатая контрольная точка, полная kind acceptance v1.1; 10 — MVP выпуск.
+Старые исторические evidence остаются фактами своего SHA, не текущим допуском.
 
 ### Блок 0. Goal и проверяемый рабочий контекст
 
-- Держать один активный Codex goal с целью из этого документа, без произвольного
-  token budget. Goal уже создан; не создавать конкурирующие цели.
+- Сохранить один Codex goal без произвольного token budget. Его прежняя
+  формулировка включала сертификацию kind; это этап v1.1, а критерии MVP теперь
+  задаются этим планом. Не объявлять всю прежнюю сертификацию завершённой при
+  выпуске продукта и не создавать конкурирующую цель.
 - Прочитать корневые и доменные `AGENTS.md`, это ТЗ/план, STATUS, применимые ADR,
   runbooks и quality contracts. Старые инструкции внутри документов считать
   историческими, если они не подтверждены текущими правилами.
@@ -100,8 +170,8 @@ SHA, root замораживает соответствующие исходни
   менять только по доказанной причине. Не предполагать наличие старого домашнего
   файла Claude, локального helper script или worktree: убрать такие зависимости
   из действующих инструкций и обеспечить продолжение только по tracked-документам.
-- Иерархия источников: ТЗ определяет продукт; этот план — решения, требования и
-  порядок; STATUS — короткое оперативное состояние; ADR/runbooks — подробности
+- Иерархия источников: ТЗ определяет продукт; этот план и ADR-047 — решения,
+  требования и порядок; STATUS — короткое оперативное состояние; ADR/runbooks — подробности
   долговечных технических решений; Git/CI/evidence — наблюдаемые факты.
 
 **Приёмка блока:** следующий исполнитель продолжает по tracked-документам без
@@ -241,13 +311,13 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   retry semantics; O6 — каноническую связь check, artifact и owner; O7 — популяцию,
   окно измерения, p50/p95 и critical path; O8 — девять preflight lanes до candidate
   или push без конкурентной мутации общих install-каталогов. Для согласованных O1–O8
-  получить три сопоставимых полных зелёных прогона и сформировать отчёт по одним
+  в v1.1 получить три сопоставимых полных зелёных прогона и сформировать отчёт по одним
   и тем же определениям популяции, SHA, run/attempt, p50/p95, overlap/resource cap
   и critical path. Не выдавать старые числа за новую baseline.
   Подробные критерии и актуальные пробелы O2 находятся в ADR-039, а O3/O5/O7 —
   в [runbook каталога CI](../../testing/ci-check-catalog-runbook.md); наличие
   инструмента или unit-теста само по себе не закрывает end-to-end evidence.
-- **MIG-PASS-01:** сохранить точное read-only preflight
+- **MIG-PASS-01 (deployed proof — v1.1):** сохранить точное read-only preflight
   `python -m app.cli migrate-passwords assert-none`. Exit 0 только если нет
   активных bcrypt credentials; DB/identity/connectivity ошибка — fail closed, без
   skip/pass. Запускать в точном digest-pinned image с secret-backed DB identity.
@@ -266,7 +336,7 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   доступен из default branch для ожидаемой активации. Smoke считается реальным
   только если проверены admin страницы после login, а не login redirect; не
   наследовать устаревшие ссылки на PR/wave и выводы старого snapshot.
-- **BE-02 / ADR-036:** read-only catalog preflight должен покрывать DDL-фазы,
+- **BE-02 / ADR-036 (deployed proof — v1.1):** read-only catalog preflight должен покрывать DDL-фазы,
   предусмотренные ADR-036 (включая phase 1/3/4), и выбирать одну общую миграционную
   логику. Проверить его на непустых deployed Docker и kind БД; сохранить candidate
   catalog, upgrade, rollback/downgrade и lock/statement budget evidence. Source ORM
@@ -278,7 +348,8 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
 - **Audit ledger:** проверить все 63 ID платформенного аудита на актуальном
   состоянии. Для каждого сохранить ID, final classification (актуален, закрыт с
   evidence, заменён согласованным решением либо только исторический), краткое
-  основание, SHA/run/artifact и следующий владелец/шаг, если он открыт. Особо
+  основание, SHA/run/artifact и следующий владелец/шаг, если он открыт. Для MVP
+  допустим перенос некритичного пункта в v1.1 с владельцем; P0/P1 security не переносить. Особо
   проверить MIG-PASS-01, BE-02 и RUST-P3-03. Удалить `AUDIT_PLATFORM_FULL.md`
   только после переноса ledger и проверки всех IDs; текущие статусы не наследовать
   из старых снимков.
@@ -348,8 +419,8 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   удаляет только resources подписанного project и сохраняет state root,
   checkout, `.env*`, `.secrets` и evidence.
 - Выбор `up --stack full|core` отделён от E2E `--mode smoke|full`.
-  По умолчанию запускать full; явный Core предназначен для ограниченной диагностики,
-  а не для закрытия полной приёмки. Его пять корневых сервисов — Caddy, Mailpit,
+  CLI default остаётся full, но для MVP явно указывать `--stack core`: Core —
+  основной продуктовый стенд, full — отдельный release smoke. Его пять корневых сервисов — Caddy, Mailpit,
   notifications-worker, outbox-worker и SpiceDB — запускаются с обычными Compose
   dependencies, без `--no-deps`. Проверять точную утверждённую closure из 23 сервисов,
   включая Tempo/probe и init/migration jobs; изменение состава требует ревью.
@@ -406,7 +477,10 @@ teardown проверяет ownership; пользовательские тома
 
 Построить traceability matrix: каждый применимый пункт ТЗ ссылается на сценарий,
 результат и evidence; явно объяснить ручную проверку для свойства, которое нельзя
-автоматически проверить. Проверять RU/EN при ширинах 360, 390, 768, 1024 и 1440 px.
+автоматически проверить. RU/EN и ширины 390/768/1440 px обязательны; 360/1024 px
+проверять для меню, таблиц и рисковых адаптивных сценариев. Не перемножать без
+необходимости все языки, роли, темы и ширины: матрица обязана показать, какой
+сценарий подтверждает каждую ось и где полный набор вариантов необходим для риска.
 
 - **Auth/MFA:** регистрация, login, TOTP, email OTP из Mailpit, recovery, reset и
   token reuse, safe redirect, cooldown/TTL/attempt limits, правильные 401/429,
@@ -445,6 +519,18 @@ teardown проверяет ownership; пользовательские тома
   действующие разделы settings; не добавлять новые модели или правила достижений.
 - **News/events/map:** сохранение scroll, back/forward, центрирование tabs,
   wheel/touch/pinch isolation и отсутствие page scroll jumps.
+- **Schedule:** `app/services/schedule_service.py` при update проверяет итоговое
+  расписание тем же правилом конфликтов, что create, исключая текущую запись.
+  Regression tests проверяют частичный update, конфликт и допустимое сохранение
+  неизменной записи; модель помещений/вместимости не добавлять.
+- **Search:** без embeddings key обычный текстовый поиск news/events работает;
+  UI остаётся текстовым; новый semantic toggle не добавлять. Прямые semantic-only routes явно
+  возвращают недоступность сервиса, без вычисления результатов по нулевому вектору.
+  Проверить `app/services/vector_service.py`, news/events API и потребителей UI;
+  regression tests включают отсутствие ключа и рабочий configured provider.
+  `EventRepository.get_analytics_data` с отсутствующим `max_attendees` удалить
+  только после подтверждения отсутствия production/SDK потребителей; не вводить
+  новую модель вместимости ради старого неиспользуемого метода.
 - **Home/stories/activity:** пустые состояния, stories открываются по avatar,
   keyboard/swipe, пауза в hidden state, memory plateau; индикатор периода
   Activity совпадает с выбранной radio-кнопкой по геометрии bounding box (x, y,
@@ -480,6 +566,10 @@ failure исправлять, не маскировать ретраями/skip.
 **Приёмка блока:** traceability matrix заполнена; browser сценарии проходят в
 указанной матрице; известные несценарные/manual checks обоснованы; PR/nightly/manual
 лейны реально запускают нужные test groups с корректными artifact/provenance.
+Сценарии проходят дважды последовательно; полный release run привязан к RC SHA.
+Текущий workflow следует перевести на Core явно, сохранив отдельный full smoke;
+nightly/manual activation после merge проверить отдельно, не считать активной
+только по наличию файла на рабочей ветке.
 
 ### Блок 5. Визуальная и performance-приёмка
 
@@ -491,9 +581,15 @@ failure исправлять, не маскировать ретраями/skip.
 - Использовать официальный Playwright container, версия которого совпадает с
   проектной Playwright dependency. Linux baseline является каноническим;
   Windows-only snapshot заменять после проверки соответствующего Linux output.
-- Измерить и сохранить воспроизводимый protocol/config и evidence:
-  navbar CLS < 0.1; при zoom карты отсутствуют long tasks ≥ 50 ms; INP ≤ 200 ms
-  при CPU 4× и Slow 4G; Lighthouse CI score ≥ 0.95; main JavaScript < 500 KB.
+- До MVP: main JavaScript <500 KB по действующему измерителю; один проход
+  Lighthouse по ключевым подготовленным маршрутам (login, home, news/events,
+  profile/settings и messenger при наличии корректной fixture). Сохранить
+  конфигурацию, routes, scores/report и SHA, использовать существующий collector.
+  Не отключать действующие LHCI assertions ради ускорения: их перенос из PR
+  оформлять отдельно в Q4, сохраняя scheduled/manual проверку.
+- В v1.1: полный lab protocol navbar CLS <0.1, отсутствие map long tasks ≥50 ms,
+  INP ≤200 ms при CPU4×/Slow4G и сертификация Lighthouse ≥0.95. Готовые измерители
+  и исправления сохранить; field CWV остаётся вне локальной MVP-приёмки.
 - Выполнить 20 последовательных циклов открытия/закрытия stories и подтвердить
   plateau использования памяти; проверить reduced motion и отсутствие serious /
   critical axe findings на принятых экранах.
@@ -504,41 +600,33 @@ failure исправлять, не маскировать ретраями/skip.
 перфоманс-тезис имеет измерение, конфигурацию, браузер/железо/commit и артефакт;
 несоответствия исправлены и перемерены.
 
-### Блок 6. Закрыть mutation debt и quality contract
+### Блок 6. Переход CI сейчас, quality closure в v1.1
 
-- Получить свежий canonical inventory для exact source SHA. Старые значения 5 511
-  frontend и 250 backend — только историческая точка отсчёта. Проверять
-  population, shard completeness, source fingerprint, run/attempt и владельца
-  каждого отчёта.
-- Закрывать сначала backend/frontend auth, security и data; затем messenger/
-  realtime и очереди по новому inventory. Поведенческий survivor требует теста;
-  equivalent code — упрощения; timeout/runtime/no-coverage — устранения причины.
-  Focused Stryker/mutmut даёт локальную обратную связь; обязательный допуск выдаёт
-  canonical process.
-- Сохранить 100% применимой line/statement/branch/function coverage и 100%
-  viable mutation score для mutmut/Stryker. Метрика вне supported population
-  обозначается как N/A только по текущему quality contract; не превращать N/A в
-  ноль или зелёное неподтверждённое число.
-- Сохранить ADR-040 mutation policy и запреты на исключения, quarantine,
-  timeout-инфляцию, выключение Stryker и ручной статус `Killed`. Ошибку исправлять,
-  а не менять допуск.
-- Закрыть strict typing тестовых фикстур, zero-warning build, Go race/lint,
-  Rust coverage/deny/fuzz по контракту, knip и deptry. Проверить WASM source /
-  artifact parity на каноническом builder.
-- После closure получить три сопоставимых полных зелёных прогона с общей
-  population/SHA/run/attempt; опубликовать O1–O8 timing/critical-path report и
-  стоимость/узкие места. Не вычитать предполагаемые mutants и не переносить
-  доказательства между SHA.
-- O9 повторно не реализовывать: проверить, что принятый механизм ADR-045
-  (bounded progress diagnostic и существующие job ceilings) соответствует
-  текущим CI catalog/contracts.
+- Выполнить Q1 и Q4 ADR-047 в отдельных reviewable пакетах. Проверить весь путь
+  зависимостей, результаты, event filters, special assertions, release rationale
+  и catalog/contracts. Оставшиеся gates fail closed: ошибка, missing evidence
+  или неожиданный skip не становятся PASS. Branch protection не менять.
+- Сохранить integrated planner/checker и ADR-040 presentation ignorer. Проверить
+  затронутые контракты; не запускать полные мутации перед каждым MVP-коммитом.
+  Полный inventory, survivors/runtime/no-coverage closure, Q2 dashboard/regression
+  и Q3 coverage ratchet — v1.1. До Q3 coverage floors остаются действующими.
+- Реальный security/auth/data дефект из любого теста исправлять для MVP, даже
+  если он обнаружен мутацией. Equivalent exclusion допускается по ADR-047;
+  quarantine, timeout-инфляция и ручной статус `Killed` запрещены.
+- Strict typing, zero-warning build, Go race/lint, Rust checks, knip/deptry и
+  canonical WASM parity сохраняются в применимой части существующих gates.
+- O1–O8 и три сопоставимых полных зелёных CI прогона — v1.1. O9/ADR-045 и
+  установленную bounded progress-оснастку не реализовывать заново.
 
-**Приёмка блока:** canonical evidence для всех applicable quality metrics и
-mutation gates полностью зелёное; три повторяемых полных прогона сопоставимы;
-security scans и действующие advisories рассмотрены; нет необъяснённых skip,
-exclusion или stale evidence.
+**Приёмка MVP-части:** Q1/Q4 интегрированы, обязательные PR/main checks зелёные,
+переехавшие lanes остаются исполняемыми, mutation score не блокирует release.
+Полная quality closure и её исторические незавершённые результаты не объявляются
+закрытыми из-за смены политики.
 
 ### Блок 7. Удалить доказанно устаревший код и оснастку
+
+**Область:** v1.1, кроме уже начатого небольшого пакета и конкретных дефектов MVP.
+Массовый cleanup не входит в critical path выпуска.
 
 Выполнять небольшими изолированными пакетами. Для удаления зафиксировать
 потребителей, причину и релевантный regression/contract test. Результаты
@@ -570,6 +658,10 @@ exclusion или stale evidence.
 
 ### Блок 8. Docker, storage, observability и disaster recovery
 
+**MVP:** один backup/restore в изолированную цель и full smoke. RPO/RTO,
+полная observability и deployed BE-02 — v1.1. Paired consistency и сохранность
+исходной среды остаются обязательными даже для разового restore.
+
 - Проверить поддерживаемые Compose-комбинации: base/full и overlays, Core, test;
   выполнить clean startup, health/readiness, корректный stop, повторный запуск и
   замер RAM/CPU. Пользовательские volumes и `.env` не удалять/переписывать.
@@ -577,10 +669,12 @@ exclusion или stale evidence.
   upload/download и object integrity. Завершить SeaweedFS metrics и Grafana
   dashboards/alerts; подтвердить Prometheus targets, logs и traces. Не дублировать
   уже существующие datasource configs.
-- Проверить оставшийся `mc` backup path и перевести действующий путь на
-  поддерживаемый pinned S3 client. Реализовать restore CLI/runbook с manifest и
-  checksums, явной целью; credentials принимать через environment/secret files,
-  не argv/stdout/log.
+- Использовать существующий manifest-aware `scripts/backup_db.py` и runbook,
+  не реализовывать restore повторно. Завершить snapshot/restore-snapshot в
+  отдельные DB/S3 targets и прочитать объект через восстановленную DB reference.
+  Проверить manifest/checksums и явную цель; credentials принимать через
+  environment/secret files, не argv/stdout/log. Согласование Helm CronJob с
+  manifest CLI относится к v1.1 и не заменяет этот разовый app-compatible restore.
 - Восстанавливать по умолчанию в отдельную БД и отдельное S3 пространство.
   Проверить согласованность относящихся друг к другу DB/S3 snapshot, object
   versions, manifest/checksums и восстановленного состояния; два независимых
@@ -600,12 +694,16 @@ exclusion или stale evidence.
 - Измерить RPO ≤24h и RTO ≤30m на документированном demo dataset. Указать размер,
   число объектов, инструменты/ресурсы и какие компоненты входят в таймер.
 
-**Приёмка блока:** Compose-наборы стабильно поднимаются; S3 целостность и private
-access доказаны; observability показывает реальные targets; end-to-end backup/restore
-в отдельную среду доказал согласованность данных, RPO/RTO и сохранность исходной
-среды.
+**Приёмка MVP-части:** Core и release full smoke проходят; backup/restore
+в отдельную БД и S3 доказал согласованность, чтение объекта по DB reference и
+сохранность source. Полная observability, RPO/RTO и deployed migration proof —
+отдельная приёмка v1.1; один разовый restore не является их сертификацией.
 
 ### Блок 9. Envoy Gateway / Gateway API и kind-приёмка
+
+**Область:** full acceptance — v1.1. Готовые controller/CA prerequisites и
+run-owned helper сохраняются на принятой контрольной точке. Не начинать новый
+app deployment/chaos/rollback до MVP только ради закрытия старого блока.
 
 - Создать ADR перехода с nginx-specific Ingress на Envoy Gateway + Kubernetes
   Gateway API для нового MVP стенда. Сохранить существующие frontend/API/JWKS/WS
@@ -636,31 +734,31 @@ chaos/recovery/rollback сохраняют данные; runner не удали�
 
 ### Блок 10. Финальный аудит, ordinary merge и v1.0.0
 
-- Перепроверить все 63 audit IDs по блоку 2 на final candidate. Для каждого
-  `CLOSED`/`DECLINED` должно быть актуальное основание/evidence. Особо закрыть
-  BE-02 в согласованной Docker/kind области и подтвердить уже реализованный
-  RUST-P3-03 base64 path + canonical WASM parity; повторно не реализовывать экспорт.
-- Провести независимый final code/security review и получить пользовательское
-  утверждение обязательных визуальных пакетов. Заморозить release candidate:
-  application code, dependencies, config и документы должны соответствовать
-  одному SHA.
-- Создать/обновить PR, дождаться обязательных checks и перенести результат в
-  `main` обычным merge. Admin bypass, изменение защиты ветки и force-push не
-  использовать. После merge получить свежее успешное canonical evidence именно
-  для resulting `main` SHA.
-- Main-only producer должен выпустить ровно шесть images в GHCR: backend,
-  frontend, gateway, ws-hub, file-processor и caddy. Проверить Trivy, SBOM,
-  signatures/attestations, provenance, image digests и frontend WASM parity.
-- Установить в kind именно опубликованные digest и повторить релизную приёмку:
-  TLS, live workflows, role/security checks, backup/restore, failure recovery и
-  data-preserving rollback. Сверить фактический deployed digest с GHCR evidence.
-- Опубликовать `v1.0.0` с release notes, exact image digests, SHA-bound evidence,
-  ограничениями MVP и repeatable delivery instructions. Машинный финальный отчёт
-  приложить к release/artifacts; после сертификации не менять source лишь ради
-  записи run numbers в Markdown.
+- Перепроверить 63 audit IDs на RC: закрыто с evidence, отклонено с обоснованием
+  или перенесено в v1.1 с владельцем. P0/P1 security не оставлять открытыми.
+  BE-02/MIG-PASS deployed proof относится к v1.1; canonical WASM parity и
+  RUST-P3-03 проверять действующим builder, не реализовывать экспорт повторно.
+- Получить независимый auth/session/data review и утверждение визуальных пакетов.
+  Заморозить code/dependencies/config/docs; пройти финальные Core scenarios,
+  backup/restore и full smoke на этом RC. Изменение поведения после freeze
+  создаёт новый кандидат и требует повторить затронутую приёмку.
+- Обычный merge единственного PR после required checks. Для resulting main SHA
+  получить новое push-main evidence согласно `quality/release-required-checks.json`;
+  synthetic PR merge не подменяет released source. Admin bypass, force-push и
+  изменение branch protection запрещены.
+- Запустить готовый main-only producer ровно шести images: backend/frontend/
+  gateway/ws-hub/file-processor/caddy. Сохранить Trivy, signing, SBOM/provenance
+  и WASM parity; проверить фактические published digests и source/run/attempt
+  manifest. Отсутствие image или несовпадение SHA не считать готовой публикацией.
+- Существующий release consumer не заменять обходом: сверить его прежние
+  сертификационные prerequisites с новой областью и согласованно обновить только
+  неприменимые v1.1 зависимости, сохранив проверку происхождения шести images.
+- Опубликовать tag/release notes `v1.0.0`: состав, ограничения, release SHA,
+  image manifest/evidence и backlog v1.1. Не менять source после certification
+  только ради вписывания run IDs; приложить готовый отчёт как artifact.
 
-**Приёмка блока:** main SHA, evidence, шесть GHCR digests, их kind deploy, audit
-ledger и release report связаны и проверены. Только тогда закрыть Codex goal.
+**Приёмка:** product DoD ниже выполнен, published source и шесть digests связаны;
+полная kind certification, три comparable runs и RPO/RTO остаются v1.1.
 
 ## Изменяемые интерфейсы
 
@@ -677,32 +775,53 @@ ownership вместе с проверками:
 | CI                 | Catalog/contracts синхронны; PR live smoke и полный nightly/manual E2E.                                                        |
 | Release evidence   | Source SHA, workflow run/attempt, inventory provenance, immutable digests, signatures, SBOM, результаты приёмки и ограничения. |
 
-## Финальный checklist
+## Финальный checklist v1.0.0
 
-Goal закрывается только если все пункты подтверждены evidence:
+- [ ] Каждое применимое требование ТЗ 2–13 имеет сценарий/результат/SHA либо
+  обоснованную ручную проверку; Core-сценарии проходят дважды, mocked Firefox/WebKit
+  проверены в scheduled/manual lane; stop/start сохраняет demo state.
+- [ ] Визуальные RU/EN/light/dark/desktop/mobile пакеты утверждены; Linux baselines,
+  JS budget, Lighthouse, 20 циклов stories и accessibility приняты.
+- [ ] Нет открытых P0/P1 security; все 63 audit IDs классифицированы, auth/session/
+  data review завершён, ADR-006 ordering согласован; бренд ГУУ ограничен внутренним
+  синтетическим демо до отдельного решения о публичном использовании.
+- [ ] Q1/Q4 внедрены; все оставшиеся required PR и main-push checks проходят,
+  Tier 0 и действующие pre-Q3 coverage floors соблюдены. Нет необъяснённых failures,
+  skips, исключений, waivers или подменённого evidence.
+- [ ] Разовый согласованный DB/S3 backup восстановлен в отдельные цели; объект
+  прочитан по ссылке из восстановленной БД, исходные данные сохранены.
+- [ ] Frozen RC прошёл full smoke; ordinary merge завершён; resulting-main source
+  проверен заново. Готовый producer опубликовал ровно шесть проверенных digests с
+  работающими security/signing/evidence шагами.
+- [ ] Tag/release notes опубликованы со списком ограничений и backlog v1.1;
+  repository чист, документация согласована, rescue bundle остаётся приватным.
 
-- Каждое применимое требование ТЗ трассируется к приёмке; продуктовые и
-  визуальные сценарии согласованы и выполнены.
-- Все applicable coverage dimensions и viable mutation score составляют 100%;
-  gates, security scans и обязательные CI checks зелёные; нет необъяснённых
-  failures/skips/exclusions.
-- Открытый ledger закрыт актуальным evidence или точно согласованным ограничением.
-- Нагрузочный профиль WS, память/reconnect correctness, S3/backup/restore/RPO/RTO,
-  чтение восстановленных S3-объектов через DB references, BE-02, Gateway API/kind и
-  rollback проверены на реальной целевой конфигурации.
-- Три сопоставимых полных зелёных CI наблюдения и release evidence привязаны к
-  точным SHA/run/attempt/population.
-- Шесть GHCR digests и их signatures/SBOM/provenance проверены и развернуты в
-  kind; релиз `v1.0.0` содержит полный машинный отчёт и ограничения.
-- Рабочее дерево чистое, актуальные документы и реализация не противоречат друг
-  другу; архивный rescue bundle восстанавливаем.
+## Backlog v1.1 и последующего развития
+
+| Направление | Сохранённая область и обязательная будущая приёмка |
+| --- | --- |
+| Q2/mutation debt | Nightly regression >1 п.п., dashboard, полный canonical inventory и разбор слабых поведенческих тестов; рабочие цели ADR-047, без ручного Killed. |
+| Q3/coverage | Доверенная main baseline, no-decrease ratchet и90% non-Tier-0 patch coverage; Tier 0 остаётся100%. До Q3 текущие floors сохраняются. |
+| O1–O8 | Три comparable полных green runs, population/source provenance, timing/cost/critical path и operability report; начатые инструменты сохраняются. |
+| Release certification/kind | Опубликованные шесть GHCR digests, их полный kind deploy, TLS/routes/policies, Kyverno/ExternalSecrets/HPA, failure recovery/rollback; подписи/SBOM/provenance уже сохраняются в MVP producer. |
+| Storage/DR/observability | RPO24h/RTO30m, согласованный paired restore по документированному набору, реальные targets/logs/traces, dashboards/alerts; MVP one-time restore не исключает DB/S3 consistency. |
+| BE-02/MIG-PASS | Непустые deployed DB catalog/upgrade/rollback/lock budgets и secret-backed identity; история миграций сохраняется. |
+| WS load | 1000 connections/500 pairs/100 messages per second/30 minutes, p95≤500ms и reconnect/resource stability. |
+| Full lab performance | CLS/INP/map long tasks и LHCI≥0.95 protocol; принятые исправления и существующие scheduled checks сохраняются. |
+| Code/tooling consolidation | Reachability/API consumers/assets/i18n/generated/helpers/invariants/concurrency, gate cost и дубли; skills/wave cleanup без потери harness/tests. |
+| Перед публичным использованием | Разрешение на название/логотип ГУУ, политика/согласие на персональные данные и отдельная приёмка реальных провайдеров/сред. |
+| Поздние продуктовые решения | Единый search mechanism и Spotify integration review; QR-приход и лимит мест не добавлять без нового продуктового решения. |
+
+Следующая учебная волна — корпуса/аудитории и вместимость, преподаватели,
+дисциплины/нагрузка, семестр/диапазоны недель, численность групп, xlsx import и
+площадки мероприятий. Она оформляется отдельным ADR/планом после MVP.
 
 ## Продолжение сессии
 
-Сначала прочитать корневой и затронутые доменные `AGENTS.md`, этот файл, `STATUS.md`
-и ТЗ. Затем проверить `git status --short --branch`, HEAD/remotes/worktrees, CI и
-evidence для exact SHA. Не переиспользовать старые worktree/WIP patches, CI или
-локальные результаты как текущие. Продолжить первый незавершённый блок в STATUS.
-Сохранять `.env`, volumes, backups, user data, migration history и Git history;
-при новых security или destructive-action границах фиксировать точный факт и
-продолжать всю независимую безопасную работу.
+Прочитать root/domain AGENTS, этот план, ADR-047, STATUS и ТЗ; проверить branch,
+HEAD/remotes/CI и owned ресурсы. Продолжить critical path: Q1/Q4, product/security
+fixes, Core acceptance, visual/restore, RC и выпуск. Не открывать новые mutation,
+kind и массовые cleanup очереди ради старого checklist. После контрольной точки
+обновить короткий STATUS; старые handoffs и локальные результаты не являются
+доказательством текущего SHA. Сохранять чужие env/data/backups, migration history,
+Git history и приватный rescue bundle.

@@ -597,7 +597,12 @@ class TestHierarchicalRules(unittest.TestCase):
         """Verify root AGENTS.md enforces quality contract, commit conventions, and Git rules."""
         content = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("Quality & Zero-Warning Contract", content)
-        self.assertIn("100% Coverage Mandate", content)
+        self.assertIn("ADR-047", content)
+        self.assertIn("Tier 0 files", content)
+        self.assertIn("100% line", content)
+        self.assertIn("current contract floors until ADR-047 stage Q3", content)
+        self.assertIn("existing CI", content)
+        self.assertIn("dependencies remain enforced", content)
         self.assertIn("feat(waveXX):", content)
         self.assertIn("Co-Authored-By", content)
         self.assertIn("NEVER", content)

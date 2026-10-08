@@ -1,5 +1,7 @@
 # ADR-047: Risk-Based Quality Policy for the MVP Release
 
+<!-- cspell:ignore mutmut -->
+
 ## Status
 
 Accepted — owner decision of 2026-10-08. Implementation is staged (see
@@ -60,12 +62,13 @@ the gate competes directly with product work.
    value measured on the last certified `main` run, rounded down to one decimal,
    and may never decrease. Changed non-Tier 0 lines in a pull request need at
    least 90 % patch coverage. Until the first certified `main` baseline exists,
-   the current floors stay in force; coverage is not the current release
-   blocker.
+   the current floors stay in force and remain blocking in CI. Owner clarification
+   on 2026-10-08 keeps these gates until Q3; if they block MVP, bringing Q3 forward
+   requires a separate decision. Tier 0 is never relaxed.
 3. **Mutation testing leaves the release gate.** `ci-success` stops depending
    on mutation jobs. Full mutmut and Stryker runs continue in
-   `nightly-full-gate.yml` and `manual-mutation-evidence.yml`. Their scores are
-   published to the quality dashboard and checked for regression: a drop of more
+   `nightly-full-gate.yml` and `manual-mutation-evidence.yml`. After Q2 lands,
+   their scores are published to the quality dashboard and checked for regression: a drop of more
    than one percentage point against the previous complete run fails the nightly
    job and opens follow-up work, but does not block a release. The working
    target is 80 % for domain logic and 100 % for Tier 0 files.
@@ -84,11 +87,11 @@ the gate competes directly with product work.
 6. **Release certification is split from the MVP.** The `v1.0.0` definition of
    done is product acceptance; items that certify production delivery move to
    `v1.1`. The split is recorded in
-   [the MVP release plan](../superpowers/plans/MVP_RELEASE_PLAN.md).
+   [the consolidated MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md).
 
 This decision supersedes, for the MVP release, the rule "do not weaken the
 quality contract" and the "100 % viable mutation score" release criterion in
-[the former master plan](../superpowers/plans/MVP_MASTER_PLAN.md), the mutation
+[the previous master-plan revision](../superpowers/plans/MVP_MASTER_PLAN.md), the mutation
 part of section 4 of `AGENTS.md`, and the release-gate role of the aggregate
 Stryker threshold described in ADR-040. ADR-040's presentation ignorer itself
 stays.
@@ -100,10 +103,28 @@ is done only when the touched contract tests and the pull-request lane pass.
 
 | Stage | Change | Files |
 | --- | --- | --- |
-| Q1 | Remove the nine mutation jobs from `ci-success` (needs and results array) and from the release rationale; keep them in nightly and manual workflows; update the CI check catalog | `.github/workflows/ci.yml`, `quality/ci-check-catalog.json`, `quality/release-required-checks.json`, `tests/test_quality_workflow_contract.py`, `tests/test_workflow_fail_closed_contracts.py`, `tests/test_ci_check_catalog.py`, `tests/test_frontend_ci_performance_contracts.py` |
+| Q1 | Remove the entire mutation execution graph from PR/main-push CI, including Stryker shards; remove mutation needs, results, event assertions and blocking summaries from `ci-success` and the release rationale; retain full nightly/manual evidence and update the check catalog | `.github/workflows/ci.yml`, `quality/ci-check-catalog.json`, `quality/release-required-checks.json`, `tests/test_quality_workflow_contract.py`, `tests/test_workflow_fail_closed_contracts.py`, `tests/test_ci_check_catalog.py`, `tests/test_frontend_ci_performance_contracts.py` |
 | Q2 | Nightly mutation regression check against the previous complete run; publish scores to the dashboard | `scripts/check_mutation_score.py`, `frontend/stryker.config.mjs`, `scripts/quality/generate_dashboard.py`, `.github/workflows/nightly-full-gate.yml` |
 | Q3 | Coverage ratchet and 90 % non-Tier 0 patch coverage | `quality/quality-contract.json`, `quality/coverage-manifest.schema.json`, `scripts/quality/validate_quality_contract.py`, `codecov.yml`, `tests/test_quality_contract.py`, `tests/test_quality_configuration.py` |
-| Q4 | Pull-request time budget and scanner de-duplication | `.github/workflows/ci.yml`, `.github/workflows/trufflehog.yml`, `.github/workflows/sonar.yml`, `quality/release-required-checks.json`, related contract tests |
+| Q4 | Move Schemathesis, DAST, chaos, cross-browser E2E and kind to scheduled/manual lanes; preserve Chromium PR smoke; implement the PR time budget and scanner de-duplication | `.github/workflows/ci.yml`, affected scheduled/manual workflows, `.github/workflows/trufflehog.yml`, `.github/workflows/sonar.yml`, `quality/ci-check-catalog.json`, `quality/release-required-checks.json`, related contract tests |
+
+Owner clarification on 2026-10-08 makes Q1 and Q4 mandatory before `v1.0.0`.
+Q4 includes the scheduled/manual migration of Schemathesis, DAST, chaos,
+cross-browser E2E and kind, with synchronized triggers, dependencies, check
+catalog, release requirements and tests. Preserve PR live Chromium smoke,
+Tier 0 and the currently enforced coverage floors. Q2 and Q3 stay in `v1.1`.
+Existing six-image publication, signing, SBOM and provenance machinery remains
+part of the MVP release; comprehensive published-image acceptance in kind is
+deferred. Already started work ends at the bounded checkpoints in the master
+plan, rather than restoring the previous certification gate.
+
+Q4 includes SQLMap and TruffleHog trigger/catalog/required-profile migration.
+DAST is already weekly/manual and Sonar is already advisory; preserve those
+paths. No kind PR/main job currently exists, so verify that absence rather than
+creating a new lane. Hosted Semgrep currently runs through the reusable security
+audit, while its Docker-backed pre-commit hook is skipped in CI: reconcile that
+job with the CodeQL decision explicitly. The 15-minute budget is measured as
+critical-path wall time; a miss leaves the budget criterion open.
 
 ## Consequences
 
@@ -111,7 +132,7 @@ is done only when the touched contract tests and the pull-request lane pass.
   becomes tracked, visible work instead of a release blocker.
 - Test effort concentrates on Tier 0 and on behaviour; new tests are not
   written only to kill presentation or equivalent mutants.
-- Regressions in non-Tier 0 code are caught by the coverage ratchet, the patch
+- After Q2/Q3, regressions in non-Tier 0 code are caught by the coverage ratchet, the patch
   floor and the nightly mutation regression check rather than by a uniform
   100 % gate. A real regression can therefore reach `main` before the nightly
   run reports it; Tier 0 keeps the strict gate for that reason.

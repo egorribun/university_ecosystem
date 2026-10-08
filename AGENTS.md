@@ -115,7 +115,7 @@ python verify_harness.py
 All contributions must comply with `quality/quality-contract.json` and
 [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md) (risk-based quality policy
 for the MVP release; the current plan is
-[`docs/superpowers/plans/MVP_RELEASE_PLAN.md`](docs/superpowers/plans/MVP_RELEASE_PLAN.md)):
+[`docs/superpowers/plans/MVP_MASTER_PLAN.md`](docs/superpowers/plans/MVP_MASTER_PLAN.md)):
 
 1. **Coverage**:
    - Tier 0 files (`tier0_rules` in `quality/ownership-mapping.json`) require 100% line,
@@ -123,10 +123,11 @@ for the MVP release; the current plan is
    - Other components keep their current contract floors until ADR-047 stage Q3 replaces
      them with a no-decrease ratchet and a 90% patch floor for changed lines.
 2. **Mutation Testing**:
-   - Full `mutmut` (Python backend) and Stryker (TypeScript frontend) runs are nightly and
-     manual quality signals with a no-regression check, not a release gate. Until ADR-047
-     stage Q1 lands the CI jobs still run; do not spend MVP effort on raising the mutation
-     score — implement stage Q1 instead.
+   - ADR-047 stage Q1 moves full `mutmut` (Python backend) and Stryker (TypeScript frontend)
+     to nightly/manual signals outside the release gate. Until Q1 lands, the existing CI
+     dependencies remain enforced; do not spend MVP effort on raising the mutation score.
+   - The nightly no-regression check is planned for stage Q2; it is not implemented by
+     adopting this policy. Q1 and the heavy-lane migration in Q4 are required before MVP.
    - A proven equivalent mutant goes to `quality/mutation-exclusions.json` with owner,
      evidence and an expiry date; quarantine and manual `Killed` reclassification stay
      forbidden.
