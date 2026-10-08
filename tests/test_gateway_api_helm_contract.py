@@ -531,7 +531,7 @@ def test_gateway_api_v19_buffer_memory_and_scope_limitations_are_documented() ->
     assert "concurrent-buffer memory budget" in documentation
     assert "sourceCIDR.type: Distinct" in documentation
     assert "gatewayApi.clientIPDetection" in documentation
-    assert "not the ingress-wide 50/250" in documentation
+    assert "do not establish the ingress-wide 50/250" in documentation
     assert "local-rate-limit" in documentation
 
 

@@ -414,6 +414,7 @@
           "properties": {
             "jwtSecret": {"type": "string"}, "jwtAudience": {"type": "string"},
             "rateLimitRps": {"type": "integer", "minimum": 1},
+            "rateLimitBurst": {"type": "integer", "minimum": 1},
             "trustedProxies": {"type": "array", "items": {"type": "string", "minLength": 1}},
             "grpcUseTLS": {"type": "boolean"},
             "otelEndpoint": {"type": "string"}, "h3Enabled": {"type": "boolean"}

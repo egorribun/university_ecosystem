@@ -274,6 +274,7 @@ gateway:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     jwtAudience: "university-ecosystem-api"
     rateLimitRps: 100
+    rateLimitBurst: 200
     # Exact proxy IPs/CIDRs only; empty disables forwarded-header trust and
     # preserves the immediate peer address. Do not use broad cluster ranges.
     trustedProxies: []

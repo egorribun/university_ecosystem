@@ -90,11 +90,11 @@ for those semantics:
   source-preserving L4 path, or `xForwardedFor` with the real trusted-hop count
   or trusted proxy CIDRs. The chart does not guess the external load-balancer
   chain, and it rejects activation without exactly one source mode.
-- The Go Gateway defaults to a 100 requests/second limit and a configured burst
-  of 200, but the chart does not wire those settings and the limiter does not
-  consume its burst parameter. Its trusted-proxy set is broader than a
-  target-specific Envoy-to-Gateway chain, so it does not establish the legacy
-  50/250 contract.
+- The chart passes `gateway.config.rateLimitRps` (default `100`) and
+  `gateway.config.rateLimitBurst` (default `200`) to the Go Gateway. These
+  application limits do not establish the ingress-wide 50/250 per-client
+  contract: the edge and Go Gateway have separate counters, and forwarded
+  client identity depends on the explicitly configured trusted-proxy chain.
 - `ClientTrafficPolicy.connection.connectionLimit` limits a Gateway or listener
   per Envoy proxy, not each client. Setting it to 20 would cap the whole listener
   and conflict with the 1,000-connection WebSocket acceptance target.

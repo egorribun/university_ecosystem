@@ -45,7 +45,7 @@ def _helm() -> str:
     return HELM
 
 
-def _render_gateway_deployment(*overrides: str) -> dict[str, Any]:
+def _gateway_deployment_render(*overrides: str) -> subprocess.CompletedProcess[str]:
     command = [
         _helm(),
         "template",
@@ -63,13 +63,17 @@ def _render_gateway_deployment(*overrides: str) -> dict[str, Any]:
         "nats.enabled=false",
         *overrides,
     ]
-    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+    return subprocess.run(  # noqa: S603 - fixed local Helm contract command
         command,
         check=False,
         capture_output=True,
         text=True,
         encoding="utf-8",
     )
+
+
+def _render_gateway_deployment(*overrides: str) -> dict[str, Any]:
+    result = _gateway_deployment_render(*overrides)
     assert result.returncode == 0, result.stderr
     documents = [
         document
@@ -130,6 +134,53 @@ def test_helm_gateway_proxy_trust_is_typed_and_empty_by_default() -> None:
     assert values["gateway"]["config"]["trustedProxies"] == []
     assert trusted_proxies["type"] == "array"
     assert trusted_proxies["items"] == {"type": "string", "minLength": 1}
+
+
+def test_helm_gateway_rate_limit_values_are_typed_positive_integers() -> None:
+    values = _load_yaml(CHART / "values.yaml")
+    schema = json.loads((CHART / "values.schema.json").read_text(encoding="utf-8"))
+    config_schema = schema["properties"]["gateway"]["properties"]["config"][
+        "properties"
+    ]
+
+    assert values["gateway"]["config"]["rateLimitRps"] == 100
+    assert values["gateway"]["config"]["rateLimitBurst"] == 200
+    assert config_schema["rateLimitRps"] == {"type": "integer", "minimum": 1}
+    assert config_schema["rateLimitBurst"] == {"type": "integer", "minimum": 1}
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_helm_gateway_rate_limit_defaults_reach_the_gateway_container() -> None:
+    deployment = _render_gateway_deployment()
+
+    environment = _gateway_env(deployment)
+    assert environment["RATE_LIMIT_RPS"] == "100"
+    assert environment["RATE_LIMIT_BURST"] == "200"
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_helm_gateway_rate_limit_overrides_reach_the_gateway_container() -> None:
+    deployment = _render_gateway_deployment(
+        "--set",
+        "gateway.config.rateLimitRps=50",
+        "--set",
+        "gateway.config.rateLimitBurst=250",
+    )
+
+    environment = _gateway_env(deployment)
+    assert environment["RATE_LIMIT_RPS"] == "50"
+    assert environment["RATE_LIMIT_BURST"] == "250"
+
+
+@pytest.mark.parametrize("setting", ["rateLimitRps", "rateLimitBurst"])
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_helm_gateway_rate_limit_rejects_zero_values(setting: str) -> None:
+    result = _gateway_deployment_render("--set", f"gateway.config.{setting}=0")
+
+    assert result.returncode != 0
+    assert (
+        f"gateway.config.{setting}: Must be greater than or equal to 1" in result.stderr
+    )
 
 
 @pytest.mark.skipif(HELM is None, reason="Helm is not installed")
