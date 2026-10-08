@@ -77,14 +77,14 @@ requests/second with a `5x` per-client burst, and `20` concurrent connections
 per client. Envoy Gateway `v1.9.2` does not provide a drop-in policy combination
 for those semantics:
 
-- The chart now renders a local `BackendTrafficPolicy` rule with
-  `sourceCIDR.type: Distinct` for IPv4 and IPv6, so each observed client IP gets
-  a separate 50 requests/second bucket on each route and Envoy proxy. Envoy
-  Gateway v1.9.2 documents local limits as per proxy, and its routes have
-  separate counters; `RateLimitValue` exposes requests and a time unit but no
-  burst field. This is a tested partial guard, not the ingress-wide 50/250
-  contract. A global source-CIDR limit needs separately configured Envoy
-  rate-limit service infrastructure and a datastore.
+- The chart renders local `BackendTrafficPolicy` entries with
+  `sourceCIDR.type: Distinct` for IPv4 and IPv6, but Envoy Gateway v1.9.2 does
+  not support distinct matching for local rate limits. Do not treat these
+  entries as a per-client limit: local counters are per proxy and per route.
+  `RateLimitValue` exposes requests and a time unit but no burst field, so this
+  policy does not implement the ingress-wide 50/250 contract. A global
+  source-CIDR limit needs separately configured Envoy rate-limit service
+  infrastructure and a datastore.
 - `gatewayApi.clientIPDetection` deliberately defaults to an empty map. Before
   enabling this preview, the operator must select `directSourceIP` for a
   source-preserving L4 path, or `xForwardedFor` with the real trusted-hop count

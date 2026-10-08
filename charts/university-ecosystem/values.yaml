@@ -470,9 +470,9 @@ gatewayApi:
   # Leave empty until the operator confirms whether Envoy receives the original
   # TCP peer or a sanitized X-Forwarded-For chain from trusted proxies.
   clientIPDetection: {}
-  # Envoy Gateway local rate limiting is per proxy and per route. This partial
-  # policy keeps the retained 50 requests/second cap for each distinct source IP;
-  # it does not implement the ingress controller's 5x burst contract.
+  # Envoy Gateway v1.9 local rate limiting is per proxy and per route and does
+  # not support distinct matching. These sourceCIDR Distinct entries therefore
+  # do not establish a per-client limit or the ingress controller's 5x burst.
   rateLimit:
     requests: 50
     unit: Second
