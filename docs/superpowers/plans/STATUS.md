@@ -21,7 +21,6 @@
 - Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
   preflight10/10, kind243/243, ranked28/28, compliance9/9 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
   Root chat63/63, gateway middleware/config и Linux race PASS; pinned Go lint0 issues после complexity fix.
-  Core: root1221 PASS/1 POSIX-only skip; PS readiness/resume/full-unused-volume guards PASS; runtime открыт.
   Helm wiring13/13 +275 contracts и doc delta PASS; planner reuse37 +5 subtests/150 contracts PASS.
   CRD helper прошёл K3 prerequisites; приложение в kind ещё не развёрнуто.
   Local exact259/314/123/278/56/140/44/45/121 RED; global gate открыт. PR live `37684359401/a1` FAILED до Docker:
@@ -75,9 +74,10 @@
 
 - Hosted Live Acceptance `37668628464/a1` на `a3f`: SUCCESS.
   Полная продуктовая приёмка этим smoke не закрыта.
-- Full live@`f653`: up завершился exit-1 до readiness; RAM достигла87,5%,free3,99GiB.
-  Причина exit-1 не установлена; seed/E2E не запускались. Owned stop/teardown PASS, containers0.
-  Evidence: `C:/Temp/ue-live-acceptance/evidence-f6531c9ef-20261008-d3d4406b664c4a2a9b0dae4fd84ef7c8`.
+- Core@`0229`: up1, readiness23/24; Mailpit читался через неверную переменную порта; seed/E2E не запускались.
+  Peak RAM62%,free≥12,027GiB; status0/stop0/teardown0; owned containers/volumes/networks/image tags0.
+  Hosted live `37712621651/a1` FAILED: PowerShell ищет common-Git owner key в `.secrets` worktree.
+  Evidence: `C:/Temp/ue-core-review-188f64ea-v2/root-runtime-review-0229.v1.json`; fixes root PS57 PASS/1 POSIX skip.
 - Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;

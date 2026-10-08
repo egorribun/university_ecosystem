@@ -1368,7 +1368,11 @@ function Test-ServiceHttp {
 function Get-LocalServiceUrl {
     param([string]$Name, [int]$DefaultPort, [string]$Path)
 
-    $environmentName = "LIVE_HOST_PORT_$Name"
+    $environmentName = if ($Name -ieq "MAILPIT") {
+        "LIVE_MAILPIT_PORT"
+    } else {
+        "LIVE_HOST_PORT_$Name"
+    }
     $configuredPort = [Environment]::GetEnvironmentVariable($environmentName)
     $port = $DefaultPort
     if (-not [string]::IsNullOrWhiteSpace($configuredPort)) {
@@ -1670,10 +1674,58 @@ function Resolve-LiveAcceptanceSelection {
     }
 }
 
+function Get-CommonGitOwnerKeyPath {
+    $gitCommonOutput = @()
+    try {
+        $gitCommonOutput = @(& git -C $ProjectRoot rev-parse --git-common-dir 2>$null)
+        $gitExitCode = $LASTEXITCODE
+    } catch {
+        throw "Live acceptance Git metadata cannot be validated."
+    }
+    if ($gitExitCode -ne 0 -or $gitCommonOutput.Count -ne 1 -or
+        [string]::IsNullOrWhiteSpace([string]$gitCommonOutput[0])) {
+        throw "Live acceptance Git metadata cannot be validated."
+    }
+    $reportedDirectory = [string]$gitCommonOutput[0]
+    if ($reportedDirectory -cne $reportedDirectory.Trim() -or
+        $reportedDirectory.Contains([char]0)) {
+        throw "Live acceptance Git metadata cannot be validated."
+    }
+    try {
+        $commonDirectoryInput = if ([System.IO.Path]::IsPathRooted($reportedDirectory)) {
+            $reportedDirectory
+        } else {
+            Join-Path $ProjectRoot $reportedDirectory
+        }
+        $commonDirectory = [System.IO.Path]::GetFullPath($commonDirectoryInput)
+        if (-not (Test-Path -LiteralPath $commonDirectory -PathType Container)) {
+            throw "missing"
+        }
+        $current = $commonDirectory
+        while ($current) {
+            $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                throw "reparse"
+            }
+            $parent = [System.IO.Path]::GetDirectoryName($current)
+            if (-not $parent -or $parent -ceq $current) { break }
+            $current = $parent
+        }
+        return [System.IO.Path]::GetFullPath(
+            (Join-Path $commonDirectory "live-stand-owner.key")
+        )
+    } catch {
+        throw "Live acceptance Git metadata path is missing or unsafe."
+    }
+}
+
 function Get-VerifiedLiveAcceptanceOwner {
     if ($null -ne $script:LiveStandOwner) { return $script:LiveStandOwner }
+    if ($LiveStateMode) {
+        throw "Live acceptance state owner has not been validated."
+    }
     $ownerPath = Join-Path $ProjectRoot ".secrets/live-stand.json"
-    $keyPath = Join-Path $ProjectRoot ".secrets/live-stand-owner.key"
+    $keyPath = Get-CommonGitOwnerKeyPath
     $secretsPath = Join-Path $ProjectRoot ".secrets"
     if (-not (Test-Path -LiteralPath $secretsPath -PathType Container) -or
         ((Get-Item -LiteralPath $secretsPath -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {

@@ -204,10 +204,9 @@ function Get-MapSummary([System.Collections.IDictionary]$Map) {
     }
 }
 
-function Get-LocalServiceUrl {
-    param([string]$Name, [int]$DefaultPort, [string]$Path)
-    return "http://localhost:$DefaultPort$Path"
-}
+Invoke-Expression (Get-UniqueFunctionText "Get-LocalServiceUrl")
+[Environment]::SetEnvironmentVariable("LIVE_MAILPIT_PORT", "43123", "Process")
+[Environment]::SetEnvironmentVariable("LIVE_HOST_PORT_MAILPIT", $null, "Process")
 function Write-Status([string]$Message) { }
 function Write-Ok([string]$Message) { }
 function Write-Err([string]$Message) { }
@@ -267,6 +266,7 @@ $coreGuard = $sourceAst.FindAll({
 if ($null -eq $coreGuard) { throw "core_readiness_guard_missing" }
 
 $coreReadiness = Get-LiveAcceptanceCoreReadinessInventory
+$mailpitUrl = [string]$coreReadiness.mailpit.url
 Invoke-Expression $coreGuard.Extent.Text
 Invoke-Expression $fullAssignment.Extent.Text
 $script:LiveAcceptanceCore = $true
@@ -340,6 +340,7 @@ if ($script:dockerCalls.Count -ne 0) { throw "selection_mismatch_reached_build_o
 
 $result = [pscustomobject]@{
     core = $coreSummary
+    mailpitUrl = $mailpitUrl
     full = $fullSummary
     legacyCore = $legacyCoreSummary
     mismatchMessage = $selectionError
@@ -393,6 +394,7 @@ def test_live_readiness_loop_uses_core_and_preserves_full_inventories(
         "postgres-databases-init",
         "spicedb-migrate",
     ]
+    assert result["mailpitUrl"] == "http://localhost:43123/api/v1/info"
 
     full = result["full"]
     assert isinstance(full, dict)
