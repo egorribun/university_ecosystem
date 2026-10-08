@@ -75,6 +75,14 @@ def test_map_user_orm_to_dict():
         "department": "CS",
         "position": "junior",
     }
+    assert res["education_path"] == {
+        "institute": "MIT",
+        "course": 3,
+        "education_level": "BSc",
+        "track": "SE",
+        "program": "Computer Science",
+        "record_book_number": "R1234",
+    }
     assert res["institute"] == "MIT"
     assert res["dnd_enabled"] is True
     assert res["spotify_connected"] is True
@@ -106,6 +114,7 @@ def test_map_user_orm_to_dict():
     assert res_none["profile_department"] is None
     assert res_none["position"] is None
     assert res_none["profile_detail"] is None
+    assert res_none["education_path"] is None
     assert res_none["institute"] is None
     assert res_none["dnd_enabled"] is False
     assert res_none["spotify_connected"] is False
@@ -140,6 +149,7 @@ def test_map_user_orm_to_public_dict():
     assert res["full_name"] == "John Doe"
     assert res["institute"] == "MIT"
     assert res["course"] == 3
+    assert "education_path" not in res
     # Verify private/MFA fields are not present
     assert "email" not in res
     assert "mfa_required" not in res

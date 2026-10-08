@@ -116,7 +116,11 @@ vi.mock("qrcode.react", () => ({
   QRCodeSVG: ({ value }: { value: string }) => <svg data-testid="qr-code" data-value={value} />,
 }))
 
-vi.mock("@/components/settings", () => {
+vi.mock("@/components/settings", async () => {
+  const { Alert: RealAlert, Snackbar: RealSnackbar } = await vi.importActual<
+    typeof import("@/components/settings/ui/Feedback")
+  >("@/components/settings/ui/Feedback")
+
   function Button({
     as,
     children,
@@ -159,25 +163,45 @@ vi.mock("@/components/settings", () => {
   const DialogTitle = ({ children }: { children?: ReactNode }) => <h2>{children}</h2>
   const DialogContent = ({ children }: { children?: ReactNode }) => <div>{children}</div>
   const DialogActions = ({ children }: { children?: ReactNode }) => <div>{children}</div>
-  const Alert = ({ children, onClose }: { children?: ReactNode; onClose?: () => void }) => (
-    <div>
-      <button type="button" aria-label="close alert" onClick={onClose} />
-      {children}
-    </div>
+  const Alert = ({
+    children,
+    onClose,
+    severity,
+  }: {
+    children?: ReactNode
+    onClose?: () => void
+    severity?: "info" | "error" | "warning" | "success"
+  }) => (
+    <>
+      <RealAlert severity={severity}>{children}</RealAlert>
+      {onClose && (
+        <button type="button" aria-label="close alert" onClick={onClose}>
+          close
+        </button>
+      )}
+    </>
   )
   const Snackbar = ({
     children,
     onClose,
     open,
+    autoHideDuration,
   }: {
     children?: ReactNode
     onClose?: () => void
     open: boolean
+    autoHideDuration?: number
   }) =>
     open ? (
       <div data-testid="snackbar">
         <button type="button" aria-label="close snackbar" onClick={onClose} />
-        {children}
+        <RealSnackbar
+          open={open}
+          onClose={onClose ?? (() => undefined)}
+          autoHideDuration={autoHideDuration}
+        >
+          {children}
+        </RealSnackbar>
       </div>
     ) : null
 
@@ -239,12 +263,14 @@ vi.mock("@/components/profile", () => {
 
   const ProfileEditor = (props: Record<string, unknown>) => {
     profileState.editor(props)
-    const { email, fullName, onCancel, onSave, saving, setFullName } = props as {
+    const { about, email, fullName, onCancel, onSave, saving, setAbout, setFullName } = props as {
       email: string
       fullName: string
+      about: string
       onCancel: () => void
       onSave: () => void
       saving: boolean
+      setAbout: (value: string) => void
       setFullName: (value: string) => void
     }
     return (
@@ -253,6 +279,11 @@ vi.mock("@/components/profile", () => {
           aria-label="full name"
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
+        />
+        <textarea
+          aria-label="about"
+          value={about}
+          onChange={(event) => setAbout(event.target.value)}
         />
         <input aria-label="email" value={email} readOnly />
         <span data-testid="saving-state">{String(saving)}</span>
@@ -694,6 +725,45 @@ describe("Profile behavior", () => {
       expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.error")
     )
   })
+
+  it.each([
+    {
+      status: 422,
+      data: { detail: "About is too long" },
+      expectedMessage: "About is too long",
+    },
+    { status: 500, data: {}, expectedMessage: "profile:snackbar.error" },
+  ])(
+    "renders the real alert and retains the draft after a $status save failure",
+    async ({ status, data, expectedMessage }) => {
+      searchState.edit = "1"
+      apiState.put.mockRejectedValueOnce({ response: { status, data } })
+
+      render(<Profile />)
+      fireEvent.change(screen.getByRole("textbox", { name: "full name" }), {
+        target: { value: "Ada draft" },
+      })
+      fireEvent.change(screen.getByRole("textbox", { name: "about" }), {
+        target: { value: "Unsubmitted profile text" },
+      })
+      fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+
+      const alert = await screen.findByRole("alert")
+      expect(alert).toHaveTextContent(expectedMessage)
+      expect(screen.getByTestId("profile-editor")).toBeInTheDocument()
+      expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("Ada draft")
+      expect(screen.getByRole("textbox", { name: "about" })).toHaveValue("Unsubmitted profile text")
+      await waitFor(() => expect(screen.getByTestId("saving-state")).toHaveTextContent("false"))
+      expect(apiState.put).toHaveBeenCalledWith(
+        "/users/me",
+        expect.objectContaining({
+          full_name: "Ada draft",
+          profile_detail: expect.objectContaining({ about: "Unsubmitted profile text" }),
+        })
+      )
+      expect(authState.setUser).not.toHaveBeenCalled()
+    }
+  )
 
   it("cancels edit mode and navigates back to the profile route", () => {
     render(<Profile />)

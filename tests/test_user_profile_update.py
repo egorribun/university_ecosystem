@@ -240,16 +240,28 @@ async def test_update_profile_timezone_invalid(async_client, user_factory):
 
 @pytest.mark.asyncio
 async def test_self_profile_responses_include_nested_profile_detail(
-    async_client, user_factory
+    async_client, user_factory, db_session
 ):
     password = f"Profile{secrets.token_hex(12)}Aa1!"
     hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    user_role = user.role.value
     headers = await _login(async_client, user.email, password)
 
     update_response = await async_client.put(
         "/users/me",
-        json={"full_name": "Profile Detail User", "about": "Synthetic profile bio"},
+        json={
+            "full_name": "Profile Detail User",
+            "profile_detail": {
+                "about": "Synthetic profile bio",
+                "department": "Synthetic department",
+            },
+            "education_path": {
+                "institute": "Synthetic institute",
+                "course": "Synthetic course",
+            },
+        },
         headers=headers,
     )
 
@@ -257,6 +269,9 @@ async def test_self_profile_responses_include_nested_profile_detail(
     update_body = update_response.json()
     assert update_body["about"] == "Synthetic profile bio"
     assert update_body["profile_detail"]["about"] == "Synthetic profile bio"
+    assert update_body["profile_detail"]["department"] == "Synthetic department"
+    assert update_body["education_path"]["institute"] == "Synthetic institute"
+    assert update_body["education_path"]["course"] == "Synthetic course"
 
     read_response = await async_client.get("/users/me", headers=headers)
 
@@ -264,6 +279,152 @@ async def test_self_profile_responses_include_nested_profile_detail(
     read_body = read_response.json()
     assert read_body["about"] == "Synthetic profile bio"
     assert read_body["profile_detail"]["about"] == "Synthetic profile bio"
+    assert read_body["profile_detail"]["department"] == "Synthetic department"
+    assert read_body["education_path"]["institute"] == "Synthetic institute"
+    assert read_body["education_path"]["course"] == "Synthetic course"
+
+    partial_response = await async_client.put(
+        "/users/me",
+        json={
+            "about": "Flat profile bio",
+            "profile_detail": {"department": None},
+            "education_path": {"course": "Updated course"},
+        },
+        headers=headers,
+    )
+
+    assert partial_response.status_code == 200
+    partial_body = partial_response.json()
+    assert partial_body["about"] == "Flat profile bio"
+    assert partial_body["profile_detail"]["about"] == "Flat profile bio"
+    assert partial_body["profile_detail"]["department"] is None
+    assert partial_body["education_path"]["institute"] == "Synthetic institute"
+    assert partial_body["education_path"]["course"] == "Updated course"
+
+    db_session.expire_all()
+    partially_stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert partially_stored_profile is not None
+    assert partially_stored_profile.about == "Flat profile bio"
+    assert partially_stored_profile.department is None
+    partially_stored_education = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == user_id)
+    )
+    assert partially_stored_education is not None
+    assert partially_stored_education.institute == "Synthetic institute"
+    assert partially_stored_education.course == "Updated course"
+
+    null_response = await async_client.put(
+        "/users/me",
+        json={"profile_detail": None, "education_path": None},
+        headers=headers,
+    )
+
+    assert null_response.status_code == 200
+    null_body = null_response.json()
+    assert null_body["about"] == "Flat profile bio"
+    assert null_body["profile_detail"]["about"] == "Flat profile bio"
+    assert null_body["education_path"] is None
+
+    null_read_response = await async_client.get("/users/me", headers=headers)
+    assert null_read_response.status_code == 200
+    null_read_body = null_read_response.json()
+    assert null_read_body["about"] == "Flat profile bio"
+    assert null_read_body["profile_detail"]["about"] == "Flat profile bio"
+    assert null_read_body["education_path"] is None
+
+    role_response = await async_client.put(
+        "/users/me", json={"role": "admin"}, headers=headers
+    )
+    assert role_response.status_code == 422
+    role_read_response = await async_client.get("/users/me", headers=headers)
+    assert role_read_response.status_code == 200
+    assert role_read_response.json()["role"] == user_role
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.about == "Flat profile bio"
+    assert stored_profile.department is None
+    stored_education = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == user_id)
+    )
+    assert stored_education is None
+
+
+@pytest.mark.asyncio
+async def test_profile_about_accepts_database_limit_for_flat_and_nested_updates(
+    async_client, user_factory, db_session
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    headers = await _login(async_client, user.email, password)
+
+    flat_about = "f" * 4096
+    flat_response = await async_client.put(
+        "/users/me", json={"about": flat_about}, headers=headers
+    )
+
+    assert flat_response.status_code == 200
+    assert flat_response.json()["about"] == flat_about
+
+    nested_about = "n" * 4096
+    nested_response = await async_client.put(
+        "/users/me",
+        json={"profile_detail": {"about": nested_about}},
+        headers=headers,
+    )
+
+    assert nested_response.status_code == 200
+    nested_body = nested_response.json()
+    assert nested_body["about"] == nested_about
+    assert nested_body["profile_detail"]["about"] == nested_about
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.about == nested_about
+
+
+@pytest.mark.asyncio
+async def test_profile_about_over_database_limit_is_rejected_without_persisting(
+    async_client, user_factory
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    headers = await _login(async_client, user.email, password)
+
+    before_response = await async_client.get("/users/me", headers=headers)
+    assert before_response.status_code == 200
+    before_body = before_response.json()
+
+    flat_response = await async_client.put(
+        "/users/me",
+        json={"about": "x" * 4097},
+        headers=headers,
+    )
+
+    assert flat_response.status_code == 422
+    nested_response = await async_client.put(
+        "/users/me",
+        json={"profile_detail": {"about": "x" * 4097}},
+        headers=headers,
+    )
+
+    assert nested_response.status_code == 422
+    after_response = await async_client.get("/users/me", headers=headers)
+    assert after_response.status_code == 200
+    after_body = after_response.json()
+    assert after_body["about"] == before_body["about"]
+    assert after_body["profile_detail"] == before_body["profile_detail"]
 
 
 @pytest.mark.asyncio

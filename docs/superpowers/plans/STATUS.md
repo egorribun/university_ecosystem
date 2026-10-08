@@ -14,7 +14,7 @@
 ## Hosted CI и мутации
 
 - Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
-  Planner отменён после59m20s; plan artifact отсутствует, backend execution не начат, global score открыт.
+  Run CANCELLED; planner59m20s, planning без end marker; plan отсутствует, backend execution0/128, global score открыт.
   Full mutation `37670438144/a1` завершён: backend execution0/128, stats7/8.
   Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
@@ -72,12 +72,14 @@
 
 ## Live-приёмка
 
-- Hosted Live Acceptance `37668628464/a1` на `a3f`: SUCCESS.
-  Полная продуктовая приёмка этим smoke не закрыта.
+- Hosted Live Acceptance `37668628464/a1` на `a3f`: SUCCESS; это только smoke.
 - Core@`0229`: up1, readiness23/24; Mailpit читался через неверную переменную порта; seed/E2E не запускались.
-  Peak RAM62%,free≥12,027GiB; status0/stop0/teardown0; owned containers/volumes/networks/image tags0.
-  Hosted live `37712621651/a1` FAILED: PowerShell ищет common-Git owner key в `.secrets` worktree.
-  Evidence: `C:/Temp/ue-core-review-188f64ea-v2/root-runtime-review-0229.v1.json`; fixes root PS57 PASS/1 POSIX skip.
+  Mailpit/common-Git owner-key fixes@`f281`: root PS57 PASS/1 POSIX skip; hosted live37716509827/a1 SUCCESS.
+- Core@`f281`: up0, status0 без изменения state; profile desktop/mobile2 PASS/2 FAIL на error alert.
+  Backend PUT500: nested education dict присваивается ORM relation; profile_detail не сохраняется.
+  RED→GREEN: root49 PASS, logic/mapper line+branch100%; DTO/schema54 и UI28 PASS, OpenAPI synced; preflight10/10 PASS.
+  Peak RAM70%,free≥9,533GiB; stop0/teardown0, owned containers/volumes/networks/image tags0.
+  Evidence: `C:/Temp/ue-core-review-f2818079c-e2e-v1/root-cleanup-f281.v1.json`; полный live gate открыт.
 - Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
@@ -85,9 +87,7 @@
   Browser UI не проверен: CUA policy check unavailable; обход не выполнялся. По разрешению
   пользователя stop/teardown удалили35 containers/14 volumes/3 networks и тестовые данные.
   Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
-- Полная traceability требований, RU/EN, light/dark, responsive, SSR/PWA,
-  accessibility/performance и пользовательское visual approval остаются
-  открытыми.
+- Полная traceability, RU/EN, light/dark, responsive, SSR/PWA, accessibility/performance и visual approval открыты.
 - Historical97a subset:2 PASS/10 FAIL, desktop/mobile; diagnostic avatar не подтверждает ordinary source.
   Cold auth-role failure source76cd остаётся открытым.
 
@@ -132,7 +132,7 @@
 
 ## Следующие проверки и ограничения
 
-- Следующие очереди: поддерживаемый Core preset, live profile guard (collection4) и chart parity;
+- Следующие очереди: nested profile/API validation, повтор live profile4 и restart/seed, затем chart parity;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   Historical MFA263/307 exact RED; mapper117/seed/auth fixes интегрированы; global mutation gate открыт.

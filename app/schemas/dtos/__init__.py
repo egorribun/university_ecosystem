@@ -18,6 +18,7 @@ from .story import StoryDTO
 from .user import (
     UserAuthDTO,
     UserDTO,
+    UserEducationDTO,
     UserListingDTO,
     UserPreferencesDTO,
     UserProfileDTO,
@@ -51,6 +52,7 @@ __all__ = [
     "StoryDTO",
     "UserAuthDTO",
     "UserDTO",
+    "UserEducationDTO",
     "UserListingDTO",
     "UserPreferencesDTO",
     "UserProfileDTO",

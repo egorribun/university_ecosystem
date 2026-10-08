@@ -26,7 +26,7 @@ from app.schemas.mappers.user_mapper import (
 
 
 class UserProfileBase(BaseModel):
-    about: str | None = None
+    about: str | None = Field(default=None, max_length=4096)
     telegram: str | None = None
     status: str | None = None
     achievements: str | None = None

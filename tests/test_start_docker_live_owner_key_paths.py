@@ -174,10 +174,7 @@ def test_common_git_metadata_rejects_reparse_directory_when_supported(
     target = tmp_path / "real common metadata"
     target.mkdir()
     common_path = tmp_path / "linked common metadata"
-    try:
-        common_path.symlink_to(target, target_is_directory=True)
-    except OSError as error:
-        pytest.skip(f"directory symlinks are unavailable: {type(error).__name__}")
+    common_path.symlink_to(target, target_is_directory=True)
 
     result = _run_path_contract(
         tmp_path,
@@ -210,10 +207,7 @@ def test_worktree_owner_rejects_reparse_common_key_when_supported(
     valid_key = key_path.read_bytes()
     key_path.unlink()
     outside_key.write_bytes(valid_key)
-    try:
-        key_path.symlink_to(outside_key)
-    except OSError as error:
-        pytest.skip(f"file symlinks are unavailable: {type(error).__name__}")
+    key_path.symlink_to(outside_key)
 
     result = _run_powershell_owner_check(
         tmp_path,

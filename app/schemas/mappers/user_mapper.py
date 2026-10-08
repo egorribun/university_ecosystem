@@ -57,6 +57,18 @@ def map_user_orm_to_dict(user: Any) -> dict[str, Any]:
     edu = getattr(user, "education_path", None)
     out.update(
         {
+            "education_path": (
+                {
+                    "institute": get_attr(edu, "institute"),
+                    "course": get_attr(edu, "course"),
+                    "education_level": get_attr(edu, "education_level"),
+                    "track": get_attr(edu, "track"),
+                    "program": get_attr(edu, "program"),
+                    "record_book_number": get_attr(edu, "record_book_number"),
+                }
+                if edu is not None
+                else None
+            ),
             "institute": get_attr(edu, "institute"),
             "course": get_attr(edu, "course"),
             "education_level": get_attr(edu, "education_level"),
