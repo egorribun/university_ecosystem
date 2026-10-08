@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
+import { runInNewContext } from "node:vm"
 import test from "node:test"
 
 const specUrl = new URL("./push-delivery.live.spec.ts", import.meta.url)
@@ -61,6 +62,12 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   assert.match(spec, /registration\.pushManager\.getSubscription\(\)/u)
   assert.match(spec, /registration\.getNotifications\(\)/u)
   assert.match(spec, /interface NotificationRow[\s\S]*?read: boolean/u)
+  assert.match(
+    spec,
+    /interface NotificationListResponse[\s\S]*?has_more: boolean[\s\S]*?next_cursor: string \| null/u,
+    "notification cleanup consumes the API's cursor-page contract"
+  )
+  assert.match(notificationsApi, /has_more=has_more,[\s\S]*?next_cursor=next_cursor/u)
   assert.match(spec, /persistedNotification\?\.read[\s\S]*?\.toBe\(false\)/u)
   assert.match(spec, /notification\.tag[\s\S]*?expectedNotificationId/u)
   assert.match(spec, /data\.notificationId[\s\S]*?expectedNotificationId/u)
@@ -87,6 +94,11 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   )
   assert.match(
     spec,
+    /const endpoint = subscription\?\.endpoint \?\? fallbackEndpoint\s+if \(!endpoint\) return false/u,
+    "cleanup must fail closed when an attempted subscription has no deletable endpoint"
+  )
+  assert.match(
+    spec,
     /if \(!csrfCookie\) \{\s*if \(subscription\) await subscription\.unsubscribe\(\)/u,
     "cleanup must fail closed without dereferencing an absent browser subscription"
   )
@@ -103,6 +115,46 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   assert.match(spec, /const deleteOnlyTestChat/u)
   assert.match(spec, /const deleteOnlyCreatedAccount/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)
+  assert.match(
+    spec,
+    /const listNotifications = async[\s\S]*?query\.set\("cursor", cursor\)/u,
+    "notification reads can advance with the server-provided cursor"
+  )
+  assert.match(
+    spec,
+    /const listTestGroupNotificationIds = async[\s\S]*?while \(true\)[\s\S]*?notificationPage\.has_more[\s\S]*?notificationPage\.next_cursor/u,
+    "group notification cleanup walks all pages and rejects incomplete cursors"
+  )
+  const groupCleanupStart = spec.indexOf("const deleteOnlyTestGroupNotifications")
+  const groupCleanupEnd = spec.indexOf("const listNotifications", groupCleanupStart)
+  const groupCleanupFlow = spec.slice(groupCleanupStart, groupCleanupEnd)
+  const collectGroupNotificationIds = groupCleanupFlow.indexOf(
+    "const notificationIds = await listTestGroupNotificationIds(page, path)"
+  )
+  const deleteGroupNotifications = groupCleanupFlow.indexOf(
+    "for (const notificationId of notificationIds)"
+  )
+  const verifyGroupNotifications = groupCleanupFlow.indexOf(
+    "await listTestGroupNotificationIds(page, path)",
+    deleteGroupNotifications
+  )
+  assert.ok(
+    collectGroupNotificationIds >= 0 &&
+      collectGroupNotificationIds < deleteGroupNotifications &&
+      verifyGroupNotifications > deleteGroupNotifications,
+    "cleanup snapshots all matching IDs before deleting and verifies none remain afterward"
+  )
+  const groupPaginationStart = spec.indexOf("const listTestGroupNotificationIds = async")
+  const groupPaginationEnd = spec.indexOf(
+    "\n\nconst deleteOnlyTestNotification",
+    groupPaginationStart
+  )
+  const groupPaginationHelper = spec.slice(groupPaginationStart, groupPaginationEnd)
+  assert.match(
+    groupPaginationHelper,
+    /item\.url === path[\s\S]*?item\.type === "chat\.message" \|\| item\.type === "chat\.reply"/u,
+    "pagination cleanup only targets chat-specific message and reply notifications"
+  )
   assert.match(config, /name: "desktop"/u)
   assert.match(config, /name: "mobile"/u)
   assert.match(serviceWorker, /self\.addEventListener\("push"/u)
@@ -256,5 +308,69 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   assert.doesNotMatch(
     groupReplyFlow,
     /routeWebSocket|PushManager\.prototype|ServiceWorkerRegistration\.prototype|vi\.mock/u
+  )
+})
+
+test("notification cleanup traverses all pages and rejects broken cursors", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const helperStart = spec.indexOf("const listTestGroupNotificationIds = async")
+  const helperEnd = spec.indexOf("\n\nconst deleteOnlyTestNotification", helperStart)
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, "pagination helper source is present")
+
+  const typescriptModule = await import("typescript")
+  const typescript = typescriptModule.default ?? typescriptModule
+  const compiled = typescript.transpileModule(spec.slice(helperStart, helperEnd), {
+    compilerOptions: {
+      target: typescript.ScriptTarget.ES2022,
+      module: typescript.ModuleKind.None,
+    },
+  })
+  const path = "/messenger/owned-chat"
+  const calls = []
+  const pages = new Map([
+    [
+      null,
+      {
+        items: [
+          { id: "owned-message", url: path, type: "chat.message" },
+          { id: "other-chat", url: "/messenger/other-chat", type: "chat.message" },
+        ],
+        has_more: true,
+        next_cursor: "cursor-1",
+      },
+    ],
+    [
+      "cursor-1",
+      {
+        items: [
+          { id: "owned-reply", url: path, type: "chat.reply" },
+          { id: "unrelated-type", url: path, type: "system" },
+        ],
+        has_more: false,
+        next_cursor: null,
+      },
+    ],
+  ])
+  const helperFor = (listNotifications) =>
+    runInNewContext(`${compiled.outputText}\nlistTestGroupNotificationIds`, { listNotifications })
+  const listNotifications = async (_page, cursor) => {
+    calls.push(cursor)
+    assert.ok(pages.has(cursor), "the helper requests only known continuation pages")
+    return pages.get(cursor)
+  }
+  const collect = helperFor(listNotifications)
+
+  assert.deepEqual(Array.from(await collect({}, path)), ["owned-message", "owned-reply"])
+  assert.deepEqual(calls, [null, "cursor-1"])
+
+  const brokenCursor = helperFor(async (_page, cursor) => ({
+    items: [],
+    has_more: true,
+    next_cursor: cursor ?? "repeat",
+  }))
+  await assert.rejects(
+    () => brokenCursor({}, path),
+    /invalid continuation cursor/u,
+    "a repeated cursor fails closed instead of looping or leaving notifications behind"
   )
 })

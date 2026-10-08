@@ -191,17 +191,34 @@ def test_launcher_validates_resolved_compose_config_before_start_without_printin
     None
 ):
     script = _read("start-docker.ps1")
-    validation_start = script.index("function Assert-ComposeConfiguration")
-    validation_end = script.index("# -- Prerequisite: Docker running", validation_start)
-    validation = script[validation_start:validation_end]
+    validation = _powershell_function(
+        script, "Assert-ComposeConfiguration", "Resolve-LiveAcceptanceSelection"
+    )
     assert (
         "docker compose @ComposeArgs --env-file $EnvFile config --format json"
         in validation
     )
     assert "2>$null" in validation
     assert "$resolvedComposeModel = Assert-ComposeConfiguration" in script
-    assert "COMPOSE_PROJECT_NAME" not in validation
+    assert (
+        "$configOutput = @(docker compose @ComposeArgs --env-file $EnvFile "
+        "config --format json 2>$null)" in validation
+    )
+    assert (
+        "$composeModel = ($configOutput -join [Environment]::NewLine) "
+        "| ConvertFrom-Json -ErrorAction Stop" in validation
+    )
+    assert "return $composeModel" in validation
     assert "Write-Host" not in validation
+    assert "Write-Output" not in validation
+    assert "Out-File" not in validation
+    owner_validation = _powershell_function(
+        script, "Get-VerifiedLiveAcceptanceOwner", "Assert-LiveAcceptanceSelection"
+    )
+    assert (
+        "[string]$env:COMPOSE_PROJECT_NAME -cne "
+        "[string]$owner.project_name" in owner_validation
+    )
 
     validation_call = script.rindex(
         "Assert-ComposeConfiguration", 0, script.index("# -- Core resource guard")
@@ -263,14 +280,32 @@ def test_managed_compose_volume_preflight_is_read_only_and_owner_scoped() -> Non
         0,
         script.index("# -- Core resource guard"),
     )
-    ownership_call = script.index(
-        "Assert-ManagedComposeVolumeOwnership -ComposeModel $resolvedComposeModel",
-        config_call,
+    ownership_projection_start = script.index(
+        "$ownershipComposeModel = $resolvedComposeModel", config_call
     )
+    ownership_projection_end = script.index(
+        "Assert-ManagedComposeVolumeOwnership -ComposeModel $ownershipComposeModel",
+        ownership_projection_start,
+    )
+    ownership_projection = script[ownership_projection_start:ownership_projection_end]
+    assert "if ($script:LiveAcceptanceCore)" in ownership_projection
+    assert "$ownershipComposeModel = Get-LiveAcceptanceVolumeProjection" in (
+        ownership_projection
+    )
+    assert "-ComposeModel $resolvedComposeModel" in ownership_projection
+    assert "-SelectedServices $script:LiveAcceptanceServices" in ownership_projection
+    ownership_call = ownership_projection_end
     core_guard = script.index("# -- Core resource guard")
     build_start = script.index("# -- Build")
     start_services = script.index("# -- Start services")
-    assert config_call < ownership_call < core_guard < build_start < start_services
+    assert (
+        config_call
+        < ownership_projection_start
+        < ownership_call
+        < core_guard
+        < build_start
+        < start_services
+    )
 
 
 def test_launcher_rejects_unowned_default_project_override_before_volume_probe() -> (
@@ -645,8 +680,16 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
     None
 ):
     script = _read("start-docker.ps1")
-    services_start = script.index("$services = [ordered]@{")
-    services_block = script[services_start : script.index("do {", services_start)]
+    services_start = script.index("$fullReadiness = [ordered]@{")
+    services_end = script.index(
+        "\n}\n\nif ($script:LiveAcceptanceCore)", services_start
+    )
+    services_block = script[services_start:services_end]
+    selection_start = script.index(
+        "$services = Get-StartupReadinessInventory", services_end
+    )
+    selection_end = script.index("do {", selection_start)
+    selection_block = script[selection_start:selection_end]
 
     assert "--force-recreate" not in script
     assert "ps --all" in script
@@ -704,6 +747,9 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
     assert "timeout = 20" in re.search(
         r"frontend\s+= @\{([^\n]+)", services_block
     ).group(1)
+    assert "-FullReadiness $fullReadiness" in selection_block
+    assert "-Core:$Core" in selection_block
+    assert "foreach ($name in $services.Keys)" in script[selection_end:]
     assert "Test-ServiceHttp -Url" in script
     assert "-Timeout $requestTimeout" in script
 
@@ -711,7 +757,13 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
 def test_launcher_resolves_readiness_and_prometheus_ports_from_live_map() -> None:
     script = _read("start-docker.ps1")
     assert "function Get-LocalServiceUrl" in script
-    assert '$environmentName = "LIVE_HOST_PORT_$Name"' in script
+    url_helper = _powershell_function(
+        script, "Get-LocalServiceUrl", "Wait-PrometheusTargets"
+    )
+    assert '$environmentName = if ($Name -ieq "MAILPIT") {' in url_helper
+    assert '"LIVE_MAILPIT_PORT"' in url_helper
+    assert '"LIVE_HOST_PORT_$Name"' in url_helper
+    assert "[Environment]::GetEnvironmentVariable($environmentName)" in url_helper
     assert "$parsedPort -lt 1024 -or $parsedPort -gt 65535" in script
     assert 'return "http://localhost:$($port)$Path"' in script
     assert "Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090" in script
@@ -719,6 +771,15 @@ def test_launcher_resolves_readiness_and_prometheus_ports_from_live_map() -> Non
     assert "Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081" in script
     assert "Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083" in script
     assert "Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80" in script
+    core_readiness = _powershell_function(
+        script,
+        "Get-LiveAcceptanceCoreReadinessInventory",
+        "Get-StartupReadinessInventory",
+    )
+    assert (
+        'Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path "/api/v1/info"'
+        in core_readiness
+    )
     assert "http://localhost:8081/login" not in script
 
 
@@ -810,20 +871,37 @@ def test_core_mode_filters_optional_health_probes_and_prometheus_validation() ->
     ):
         assert f'"{service}"' in excluded_block, service
 
-    services_start = script.index("$services = [ordered]@{")
-    services_end = script.index("do {", services_start)
-    services_block = script[services_start:services_end]
-    assert "$services.Remove($name)" in services_block
+    selector_start = script.index("function Get-StartupReadinessInventory")
+    selector_end = script.index(
+        "\n}\n\nif ($script:LiveAcceptanceCore)", selector_start
+    )
+    selector = script[selector_start:selector_end]
+    assert "if ($LiveAcceptanceCore -and $Core)" in selector
+    assert "return $CoreReadiness" in selector
+    assert "foreach ($name in $CoreExcludedHealthServices)" in selector
+    assert "[void]$FullReadiness.Remove($name)" in selector
+    assert "return $FullReadiness" in selector
 
-    prometheus_start = script.rfind(
-        "if (-not $Core)",
-        0,
-        script.index('Write-Status "Validating Prometheus scrape targets..."'),
+    core_readiness = _powershell_function(
+        script,
+        "Get-LiveAcceptanceCoreReadinessInventory",
+        "Get-StartupReadinessInventory",
+    )
+    assert "prometheus = @{" not in core_readiness
+    assert "pyroscope = @{" not in core_readiness
+
+    prometheus_start = script.index(
+        "if (-not $Core -and -not $script:LiveAcceptanceCore)"
     )
     prometheus_block = script[
         prometheus_start : script.index("# -- Done", prometheus_start)
     ]
-    assert "if (-not $Core)" in prometheus_block
+    assert "Wait-PrometheusTargets" in prometheus_block
+    assert "elseif ($script:LiveAcceptanceCore)" in prometheus_block
+    assert (
+        "Skipping Prometheus target validation; Prometheus is outside the signed live Core closure."
+        in prometheus_block
+    )
     assert "Skipping Prometheus target validation in core mode" in prometheus_block
 
 
@@ -1135,8 +1213,14 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
         'Write-Host "Demo seeding and optional live E2E stand (separate from this stack):"'
         in launcher
     )
-    assert "stop this stack first to avoid resource contention" in launcher
-    assert "Run only when no other full Compose stack is active." in launcher
+    assert (
+        "The stand runs the full stack by default; explicitly select its owner-bound Core dependency closure with --stack core."
+        in launcher
+    )
+    assert (
+        "Choose a stack only when host resources are available for that selection."
+        in launcher
+    )
     live_stand_up = 'Write-Host "       python scripts/live_stand.py up --ref HEAD"'
     live_stand_seed = 'Write-Host "       python scripts/live_stand.py seed --demo"'
     live_stand_e2e = 'Write-Host "       python scripts/live_stand.py e2e (optional)"'
@@ -1256,8 +1340,11 @@ def test_launcher_manages_independent_application_secrets() -> None:
 
 def test_launcher_waits_for_pyroscope_readiness_not_just_process_state() -> None:
     script = _read("start-docker.ps1")
-    services_start = script.index("$services = [ordered]@{")
-    services_block = script[services_start : script.index("do {", services_start)]
+    services_start = script.index("$fullReadiness = [ordered]@{")
+    services_end = script.index(
+        "\n}\n\nif ($script:LiveAcceptanceCore)", services_start
+    )
+    services_block = script[services_start:services_end]
     entry = re.search(r"pyroscope\s+= @\{([^\n]+)", services_block)
 
     assert entry is not None
@@ -1265,6 +1352,15 @@ def test_launcher_waits_for_pyroscope_readiness_not_just_process_state() -> None
     assert (
         'Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path "/ready"'
         in entry.group(1)
+    )
+    selection_start = script.index(
+        "$services = Get-StartupReadinessInventory", services_end
+    )
+    selection_end = script.index("do {", selection_start)
+    assert "-FullReadiness $fullReadiness" in script[selection_start:selection_end]
+    assert (
+        "Test-ServiceHttp -Url $services[$name].url -Timeout $requestTimeout"
+        in (script[selection_end:])
     )
 
 

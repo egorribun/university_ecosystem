@@ -3730,6 +3730,11 @@ def test_status_does_not_generate_missing_owner_or_vapid_files(
     worktree.mkdir()
     (worktree / live_stand.OVERLAY).write_text("services: {}\n")
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    common_git_directory = tmp_path / "common-git"
+    common_git_directory.mkdir()
+    monkeypatch.setattr(
+        live_stand, "_git_common_directory", lambda: common_git_directory
+    )
     commands: list[list[str]] = []
     monkeypatch.setattr(
         live_stand, "_run", lambda command, **_: commands.append(list(command))
@@ -3742,6 +3747,7 @@ def test_status_does_not_generate_missing_owner_or_vapid_files(
     assert not (worktree / live_stand.VAPID_FILE).exists()
     assert not (worktree.parent / f".{worktree.name}.lifecycle.lock").exists()
     assert commands == []
+    assert tuple(common_git_directory.iterdir()) == ()
 
 
 def test_status_cli_missing_owner_is_read_only_and_does_not_use_docker(
@@ -3753,6 +3759,11 @@ def test_status_cli_missing_owner_is_read_only_and_does_not_use_docker(
     worktree.mkdir()
     (worktree / live_stand.OVERLAY).write_text("services: {}\n")
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    common_git_directory = tmp_path / "common-git"
+    common_git_directory.mkdir()
+    monkeypatch.setattr(
+        live_stand, "_git_common_directory", lambda: common_git_directory
+    )
 
     def reject_docker(*_: Any, **__: Any) -> None:
         pytest.fail("status must not invoke Docker")
@@ -3766,6 +3777,7 @@ def test_status_cli_missing_owner_is_read_only_and_does_not_use_docker(
     assert not (worktree / live_stand.VAPID_FILE).exists()
     assert not (worktree / live_stand.ADMIN_PASSWORD_FILE).exists()
     assert not (worktree / ".secrets").exists()
+    assert tuple(common_git_directory.iterdir()) == ()
 
 
 @pytest.mark.parametrize("operation", ["status", "stop", "teardown"])

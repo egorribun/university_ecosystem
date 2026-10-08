@@ -81,7 +81,7 @@
   Historical `444ed`: smoke18 PASS/2 planned skips до/после stop/start; baseline16/10/10, hashes/4 secret files/6 volumes равны; `C:/Temp/ue-core-review-444ed09e0-e2e-v1/root-smoke-restart-summary.v1.json`.
   Current stop0/teardown0, owned containers/volumes/networks/image tags0; вызовы2147→1044, wall157s; это два замера, не performance-сертификация.
   Evidence: `C:/Temp/ue-core-review-15ad90aac-e2e-v1/root-profile-acceptance.v1.json`, `root-cleanup-15ad90aac.v1.json`, `root-teardown-comparison.v1.json`; полный gate открыт.
-  Full mutation37723031168/a1@`520850` FAILURE: stats0/8 и5/8 упали на двух stale tests; frontend64/64 shard SUCCESS, aggregate Survived26:188/без validated artifact; global gate открыт.
+  Full mutation37723031168/a1@`520850` FAILURE: stats0/8 и5/8 stale tests; локальные модули1234/1234 PASS после8 fixes; frontend64/64 shard SUCCESS, aggregate Survived26:188/без validated artifact.
 - Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
@@ -138,7 +138,7 @@
   Historical MFA263/307 exact RED; global mutation gate открыт.
 - Owned Docker inspect: batches≤64/full IDs/exact join с прежними guards; CLI probe23/23, root1134/1134 и preflight10/10 PASS, current status/teardown0.
   Container inspect calls1219→116; guards/source/owner pins сохранены, final owned resources0.
-  WS-Hub V3.2: Linux1.26.6 race/statement100% и control20 RED; Linux12-pair ratio1,08346/95%upper1,09726, within1,10 local budget; hosted pending. V2 confounded GOWORK. Group push: TSC/Node150/lint PASS, live pending.
+  WS-Hub V3.2: Linux1.26.6 race/statement100% и control20 RED; Linux12-pair ratio1,08346/95%upper1,09726, within1,10 local budget; hosted pending. V2 confounded GOWORK. Group push: pagination/endpoint cleanup исправлены; TSC/Node/lint PASS, live pending.
 - DR RCA: immutable helper/receipts; RPO/RTO не подтверждены до проверки target app.
 - Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
   WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,

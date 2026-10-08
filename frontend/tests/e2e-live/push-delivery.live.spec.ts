@@ -26,6 +26,8 @@ interface NotificationRow {
 
 interface NotificationListResponse {
   items: NotificationRow[]
+  has_more: boolean
+  next_cursor: string | null
 }
 
 interface AdminUserRow {
@@ -220,11 +222,9 @@ const findOnlyOwnedGroup = async (
 
 const deleteOnlyTestGroupNotifications = async (page: Page, chatId: string): Promise<void> => {
   const path = "/messenger/" + chatId
-  const notificationIds = (await listNotifications(page)).items
-    .filter(
-      (item) => item.url === path && (item.type === "chat.message" || item.type === "chat.reply")
-    )
-    .map((item) => item.id)
+  // Read every page before deleting anything. Removing rows while following a
+  // cursor could shift the result set and skip older notifications.
+  const notificationIds = await listTestGroupNotificationIds(page, path)
 
   for (const notificationId of notificationIds) {
     const deletion = await page.evaluate(async (createdNotificationId) => {
@@ -251,12 +251,59 @@ const deleteOnlyTestGroupNotifications = async (page: Page, chatId: string): Pro
     )
     expect(deletion.ok).toBe(true)
   }
+
+  expect(
+    await listTestGroupNotificationIds(page, path),
+    "cleanup leaves no matching group notifications on this account"
+  ).toHaveLength(0)
 }
 
-const listNotifications = async (page: Page): Promise<NotificationListResponse> => {
-  const response = await page.request.get("/api/v1/notifications?limit=100")
+const listNotifications = async (
+  page: Page,
+  cursor: string | null = null
+): Promise<NotificationListResponse> => {
+  const query = new URLSearchParams({ limit: "100" })
+  if (cursor) query.set("cursor", cursor)
+  const response = await page.request.get("/api/v1/notifications?" + query.toString())
   expect(response.status(), "the signed-in owner can read in-app notifications").toBe(200)
   return (await response.json()) as NotificationListResponse
+}
+
+const listTestGroupNotificationIds = async (page: Page, path: string): Promise<string[]> => {
+  const notificationIds: string[] = []
+  const seenIds = new Set<string>()
+  const seenCursors = new Set<string>()
+  let cursor: string | null = null
+
+  while (true) {
+    const notificationPage = await listNotifications(page, cursor)
+    for (const item of notificationPage.items) {
+      if (seenIds.has(item.id)) {
+        throw new Error("notification pagination returned a duplicate identity")
+      }
+      seenIds.add(item.id)
+      if (item.url === path && (item.type === "chat.message" || item.type === "chat.reply")) {
+        notificationIds.push(item.id)
+      }
+    }
+
+    if (typeof notificationPage.has_more !== "boolean") {
+      throw new Error("notification pagination omitted its continuation flag")
+    }
+    if (!notificationPage.has_more) return notificationIds
+
+    const nextCursor = notificationPage.next_cursor
+    if (
+      typeof nextCursor !== "string" ||
+      nextCursor.length === 0 ||
+      nextCursor === cursor ||
+      seenCursors.has(nextCursor)
+    ) {
+      throw new Error("notification pagination returned an invalid continuation cursor")
+    }
+    seenCursors.add(nextCursor)
+    cursor = nextCursor
+  }
 }
 
 const deleteOnlyTestNotification = async (
@@ -311,7 +358,7 @@ const unsubscribeOnlyNativeSubscription = async (
     const registration = await navigator.serviceWorker.getRegistration()
     const subscription = await registration?.pushManager.getSubscription()
     const endpoint = subscription?.endpoint ?? fallbackEndpoint
-    if (!endpoint) return !subscription
+    if (!endpoint) return false
 
     const csrfCookie = document.cookie
       .split(";")
