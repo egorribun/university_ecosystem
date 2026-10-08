@@ -13,19 +13,19 @@
 
 ## Hosted CI и мутации
 
-- Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS; score открыт.
+- Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
+  Planner отменён после59m20s; plan artifact отсутствует, backend execution не начат, global score открыт.
   Full mutation `37670438144/a1` завершён: backend execution0/128, stats7/8.
   Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
 - Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
   preflight10/10, kind243/243, ranked28/28, compliance9/9 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
   Root chat63/63, gateway middleware/config и Linux race PASS; pinned Go lint0 issues после complexity fix.
-  Core draft: root14/14 selection/readonly/cleanup mocks PASS; PS/readiness/runtime приёмка ещё открыта.
+  Core: root1221 PASS/1 POSIX-only skip; PS readiness/resume/full-unused-volume guards PASS; runtime открыт.
+  Helm wiring13/13 +275 contracts и doc delta PASS; planner reuse37 +5 subtests/150 contracts PASS.
   CRD helper прошёл K3 prerequisites; приложение в kind ещё не развёрнуто.
   Local exact259/314/123/278/56/140/44/45/121 RED; global gate открыт. PR live `37684359401/a1` FAILED до Docker:
   stale seed signature regex исправлен; требуется новый hosted run.
-  Focused366: initial failure без outcomes; отдельные dry-run/collection proof не заменяют full gate.
-  Staged dry-run1689 PASS; shard50/a3 содержит worker cases923/924 с текущими source/test bytes.
   Проверены 33 Dependabot advisory против 56 locked resolutions: affected matches0;
   это не закрытие alerts default branch и не глобальная security-сертификация.
 - Matrix run `37526001524/a1`: event source `4213`; producer —

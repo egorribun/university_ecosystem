@@ -1,4 +1,4 @@
-"""Owned live acceptance stand running the full stack.
+"""Owned live acceptance stand running the full or selected Core stack.
 
 By default the stand runs from ``../ue-live`` (a detached git worktree).
 Explicit ``--in-place --state-dir`` mode keeps generated configuration under
@@ -8,7 +8,8 @@ marker, so its volumes and networks are isolated from other stacks.
 
 Usage::
 
-    python scripts/live_stand.py up [--ref HEAD]   # create/refresh the worktree and start
+    python scripts/live_stand.py up [--ref HEAD] [--stack full|core]
+    # create/refresh the worktree and start (full is the default)
     python scripts/live_stand.py up --in-place --state-dir <owned-temp-run> --ref HEAD
     python scripts/live_stand.py seed --demo        # load demo users and content
     python scripts/live_stand.py e2e [--mode smoke|full]  # reseed and run live Playwright safely
@@ -53,7 +54,8 @@ WORKTREE_NAME = "ue-live"
 WORKTREE = REPO_ROOT.parent / WORKTREE_NAME
 IN_PLACE_MODE = False
 SOURCE_SHA: str | None = None
-IN_PLACE_OWNER_SCHEMA_VERSION = 7
+PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION = 7
+IN_PLACE_OWNER_SCHEMA_VERSION = 9
 IN_PLACE_STATE_PARENT = "ue-live-acceptance"
 IN_PLACE_STATE_PATTERN = re.compile(r"^run-[A-Za-z0-9-]{1,80}$")
 IN_PLACE_BUILD_SOURCE_PATHS = (
@@ -146,11 +148,47 @@ ADMIN_PASSWORD_FILE = Path(".secrets") / "live-admin-password.json"
 STAND_FILE = Path(".secrets") / "live-stand.json"
 PROJECT_PREFIX = "ue-live-"
 PROJECT_PATTERN = re.compile(r"^ue-live-[0-9a-f]{16}$")
-OWNER_SCHEMA_VERSION = 6
+PREVIOUS_STACK_OWNER_SCHEMA_VERSION = 6
+OWNER_SCHEMA_VERSION = 8
 RESOURCE_OWNER_SCHEMA_VERSION = 5
 PREVIOUS_OWNER_SCHEMA_VERSION = 4
 VOLUME_OWNER_SCHEMA_VERSION = 3
 LEGACY_OWNER_SCHEMA_VERSION = 2
+LIVE_STACK_FULL = "full"
+LIVE_STACK_CORE = "core"
+LIVE_STACKS = (LIVE_STACK_FULL, LIVE_STACK_CORE)
+LIVE_CORE_SERVICE_ROOTS = (
+    "caddy",
+    "mailpit",
+    "notifications-worker",
+    "outbox-worker",
+    "spicedb",
+)
+LIVE_CORE_EXPECTED_SERVICES = (
+    "backend",
+    "caddy",
+    "flagd",
+    "flagd-healthprobe",
+    "frontend",
+    "gateway",
+    "imgproxy",
+    "mailpit",
+    "migrations",
+    "minio",
+    "minio-init",
+    "nats",
+    "notifications-worker",
+    "outbox-worker",
+    "postgres",
+    "postgres-databases-init",
+    "redis",
+    "revocation-redis",
+    "spicedb",
+    "spicedb-migrate",
+    "tempo",
+    "tempo-healthprobe",
+    "ws-hub",
+)
 DAEMON_FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
 SEED_SCRIPTS = (
@@ -228,7 +266,11 @@ class StandOwner:
     daemon_fingerprint: str | None = None
     compose_resource_fingerprint: str | None = None
     resume_compose_resource_fingerprint: str | None = None
+    resume_compose_resource_schema_version: int | None = None
     source_sha: str | None = None
+    stack: str = LIVE_STACK_FULL
+    service_roots: tuple[str, ...] = ()
+    selected_services: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -240,6 +282,9 @@ class ComposeResourceEvidence:
     declared_volume_names: tuple[str, ...] = ()
     managed_networks: tuple[tuple[str, str], ...] = ()
     managed_services: tuple[str, ...] = ()
+    stack: str = LIVE_STACK_FULL
+    service_roots: tuple[str, ...] = ()
+    selected_services: tuple[str, ...] = ()
 
 
 def _stand_base_url(published_ports: Mapping[str, int]) -> str:
@@ -495,6 +540,8 @@ def _owner_schema_is_supported(schema_version: int) -> bool:
         VOLUME_OWNER_SCHEMA_VERSION,
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }
@@ -838,11 +885,51 @@ def _validate_published_ports(
     return tuple(result)
 
 
-def choose_published_ports() -> dict[str, int]:
-    """Choose a distinct currently free loopback port for every published service."""
+def _published_port_names_for_services(
+    selected_services: Sequence[str],
+) -> tuple[str, ...]:
+    selected = set(selected_services)
+    if not selected:
+        raise StandError("live stack has no selected services for published ports")
+    known_services = set(LIVE_CORE_EXPECTED_SERVICES) | {
+        service for _name, service, _port in LIVE_PORT_SPECS
+    }
+    if not selected.issubset(known_services):
+        raise StandError("live stack selection contains an unknown published service")
+    return tuple(
+        name
+        for name, service, _container_port in LIVE_PORT_SPECS
+        if service in selected
+    )
+
+
+def _selected_published_ports(
+    published_ports: Mapping[str, int], selected_services: Sequence[str]
+) -> dict[str, int]:
+    ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
+    names = _published_port_names_for_services(selected_services)
+    return {name: ports[name] for name in names}
+
+
+def choose_published_ports(
+    *, active_services: Sequence[str] | None = None
+) -> dict[str, int]:
+    """Choose free active ports and inert unique values for unused Compose inputs.
+
+    The live overlay must receive every port variable while Compose resolves its
+    full model. A bounded Core start only binds the ports for its signed service
+    closure; inactive values are interpolation placeholders and are not probed
+    or reserved.
+    """
     low, high = PORT_RANGE
     chosen: dict[str, int] = {}
-    for name, _service, _container_port in LIVE_PORT_SPECS:
+    active_names = (
+        tuple(name for name, _service, _port in LIVE_PORT_SPECS)
+        if active_services is None
+        else _published_port_names_for_services(active_services)
+    )
+    active_set = set(active_names)
+    for name in active_names:
         for _attempt in range(1000):
             port = low + secrets.randbelow(high - low + 1)
             if port in chosen.values():
@@ -852,7 +939,17 @@ def choose_published_ports() -> dict[str, int]:
                 break
         else:
             raise StandError(f"could not allocate a free loopback port for {name}")
-    return chosen
+    placeholder = low
+    for name, _service, _container_port in LIVE_PORT_SPECS:
+        if name in active_set:
+            continue
+        while placeholder in chosen.values():
+            placeholder += 1
+        if placeholder > high:
+            raise StandError("could not allocate unique Compose interpolation ports")
+        chosen[name] = placeholder
+        placeholder += 1
+    return {name: chosen[name] for name, _service, _container_port in LIVE_PORT_SPECS}
 
 
 @contextmanager
@@ -925,7 +1022,10 @@ def _expected_worktree(worktree: Path) -> Path:
 
 
 def create_stand_owner(
-    worktree: Path, *, published_ports: Mapping[str, int] | None = None
+    worktree: Path,
+    *,
+    published_ports: Mapping[str, int] | None = None,
+    stack: str = LIVE_STACK_FULL,
 ) -> StandOwner:
     """Create an incomplete signed owner reservation for a new worktree."""
     expected_worktree = _expected_worktree(worktree)
@@ -944,9 +1044,18 @@ def create_stand_owner(
         ) from error
     project_name = f"{PROJECT_PREFIX}{secrets.token_hex(8)}"
     _validate_project_name(project_name)
-    port_map = _validate_published_ports(
-        published_ports if published_ports is not None else choose_published_ports()
-    )
+    if stack not in LIVE_STACKS:
+        raise StandError("unsupported live stand stack selection")
+    default_services = LIVE_CORE_EXPECTED_SERVICES if stack == LIVE_STACK_CORE else None
+    if published_ports is None:
+        generated_ports = (
+            choose_published_ports()
+            if default_services is None
+            else choose_published_ports(active_services=default_services)
+        )
+        published_ports = generated_ports
+    port_map = _validate_published_ports(published_ports)
+    service_roots = LIVE_CORE_SERVICE_ROOTS if stack == LIVE_STACK_CORE else ()
     schema_version = _active_owner_schema_version()
     source_sha = SOURCE_SHA if IN_PLACE_MODE else None
     if IN_PLACE_MODE and (
@@ -963,6 +1072,9 @@ def create_stand_owner(
         compose_resource_fingerprint=None,
         resume_compose_resource_fingerprint=None,
         source_sha=source_sha,
+        stack=stack,
+        service_roots=service_roots,
+        selected_services=(),
     )
     payload = {
         "version": schema_version,
@@ -973,6 +1085,10 @@ def create_stand_owner(
         "daemon_fingerprint": daemon_fingerprint,
         "compose_resource_fingerprint": None,
         "resume_compose_resource_fingerprint": None,
+        "resume_compose_resource_schema_version": None,
+        "stack": stack,
+        "service_roots": list(service_roots),
+        "selected_services": [],
     }
     if source_sha is not None:
         payload["source_sha"] = source_sha
@@ -1018,6 +1134,13 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     resource_keys = daemon_keys | {"compose_resource_fingerprint"}
     resumable_resource_keys = resource_keys | {"resume_compose_resource_fingerprint"}
     in_place_resource_keys = resumable_resource_keys | {"source_sha"}
+    stack_resource_keys = resumable_resource_keys | {
+        "resume_compose_resource_schema_version",
+        "stack",
+        "service_roots",
+        "selected_services",
+    }
+    in_place_stack_keys = stack_resource_keys | {"source_sha"}
     if (
         not isinstance(schema_version, int)
         or isinstance(schema_version, bool)
@@ -1027,18 +1150,31 @@ def load_stand_owner(worktree: Path) -> StandOwner:
             schema_version == PREVIOUS_OWNER_SCHEMA_VERSION and set(data) != daemon_keys
         )
         or (
+            schema_version == PREVIOUS_STACK_OWNER_SCHEMA_VERSION
+            and set(data) not in (resource_keys, resumable_resource_keys)
+        )
+        or (
             schema_version == RESOURCE_OWNER_SCHEMA_VERSION
             and set(data) not in (resource_keys, resumable_resource_keys)
         )
         or (
+            schema_version == PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION
+            and (
+                not IN_PLACE_MODE
+                or set(data) != in_place_resource_keys
+                or not isinstance(data.get("source_sha"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}", data["source_sha"])
+            )
+        )
+        or (
             schema_version == OWNER_SCHEMA_VERSION
-            and set(data) not in (resource_keys, resumable_resource_keys)
+            and (IN_PLACE_MODE or set(data) != stack_resource_keys)
         )
         or (
             schema_version == IN_PLACE_OWNER_SCHEMA_VERSION
             and (
                 not IN_PLACE_MODE
-                or set(data) != in_place_resource_keys
+                or set(data) != in_place_stack_keys
                 or not isinstance(data.get("source_sha"), str)
                 or not re.fullmatch(r"[0-9a-f]{40}", data["source_sha"])
             )
@@ -1054,6 +1190,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         VOLUME_OWNER_SCHEMA_VERSION,
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1067,6 +1205,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     if schema_version in {
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1080,8 +1220,11 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         daemon_fingerprint = raw_fingerprint
     compose_resource_fingerprint: str | None = None
     resume_compose_resource_fingerprint: str | None = None
+    resume_compose_resource_schema_version: int | None = None
     if schema_version in {
         RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1104,6 +1247,32 @@ def load_stand_owner(worktree: Path) -> StandOwner:
                     "invalid resumable Compose resource fingerprint in ownership metadata"
                 )
             resume_compose_resource_fingerprint = raw_resume_fingerprint
+            if schema_version in {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}:
+                raw_resume_schema = data.get("resume_compose_resource_schema_version")
+                if raw_resume_schema is not None and (
+                    not isinstance(raw_resume_schema, int)
+                    or isinstance(raw_resume_schema, bool)
+                    or raw_resume_schema
+                    not in {
+                        RESOURCE_OWNER_SCHEMA_VERSION,
+                        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+                        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+                        OWNER_SCHEMA_VERSION,
+                        IN_PLACE_OWNER_SCHEMA_VERSION,
+                    }
+                ):
+                    raise StandError(
+                        "invalid resumable Compose resource schema in ownership metadata"
+                    )
+                resume_compose_resource_schema_version = raw_resume_schema
+                if (raw_resume_fingerprint is None) != (raw_resume_schema is None):
+                    raise StandError(
+                        "resumable Compose fingerprint and schema must be present together"
+                    )
+            else:
+                resume_compose_resource_schema_version = (
+                    schema_version if raw_resume_fingerprint is not None else None
+                )
             if (
                 compose_resource_fingerprint is not None
                 and resume_compose_resource_fingerprint is not None
@@ -1113,7 +1282,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
                 )
     source_sha = (
         data.get("source_sha")
-        if schema_version == IN_PLACE_OWNER_SCHEMA_VERSION
+        if schema_version
+        in {PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}
         else None
     )
     try:
@@ -1138,6 +1308,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         VOLUME_OWNER_SCHEMA_VERSION,
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1145,12 +1317,16 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     if schema_version in {
         PREVIOUS_OWNER_SCHEMA_VERSION,
         RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
         payload["daemon_fingerprint"] = daemon_fingerprint
     if schema_version in {
         RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1159,7 +1335,65 @@ def load_stand_owner(worktree: Path) -> StandOwner:
             payload["resume_compose_resource_fingerprint"] = (
                 resume_compose_resource_fingerprint
             )
-    if schema_version == IN_PLACE_OWNER_SCHEMA_VERSION:
+            if schema_version in {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}:
+                payload["resume_compose_resource_schema_version"] = (
+                    resume_compose_resource_schema_version
+                )
+    if schema_version in {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}:
+        stack = data.get("stack")
+        raw_roots = data.get("service_roots")
+        raw_selected = data.get("selected_services")
+        if (
+            stack not in LIVE_STACKS
+            or not isinstance(raw_roots, list)
+            or not isinstance(raw_selected, list)
+            or any(
+                not isinstance(name, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name)
+                for name in (*raw_roots, *raw_selected)
+            )
+            or raw_roots != sorted(set(raw_roots))
+            or raw_selected != sorted(set(raw_selected))
+        ):
+            raise StandError("invalid live stack selection in ownership metadata")
+        if stack == LIVE_STACK_CORE and raw_roots != list(LIVE_CORE_SERVICE_ROOTS):
+            raise StandError("live Core ownership has unexpected service roots")
+        if compose_resource_fingerprint is not None and not raw_selected:
+            raise StandError("complete live ownership lacks selected services")
+        if compose_resource_fingerprint is None:
+            expected_incomplete_roots = (
+                list(LIVE_CORE_SERVICE_ROOTS) if stack == LIVE_STACK_CORE else []
+            )
+            if raw_roots != expected_incomplete_roots or raw_selected:
+                raise StandError(
+                    "incomplete live ownership contains a service selection"
+                )
+        if stack == LIVE_STACK_CORE and raw_selected not in (
+            [],
+            list(LIVE_CORE_EXPECTED_SERVICES),
+        ):
+            raise StandError("live Core ownership has an unexpected service closure")
+        if (
+            stack == LIVE_STACK_FULL
+            and compose_resource_fingerprint is not None
+            and (raw_roots != raw_selected)
+        ):
+            raise StandError("full-stack service roots and selection do not match")
+        service_roots = tuple(raw_roots)
+        selected_services = tuple(raw_selected)
+        payload["stack"] = stack
+        payload["service_roots"] = list(service_roots)
+        payload["selected_services"] = list(selected_services)
+    else:
+        # Historical owner schemas predate stack selection and always describe
+        # the original full Compose model.
+        stack = LIVE_STACK_FULL
+        service_roots = ()
+        selected_services = ()
+    if schema_version in {
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
         payload["source_sha"] = source_sha
     signature = data["signature"]
     if not isinstance(signature, str) or not hmac.compare_digest(
@@ -1175,7 +1409,11 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         daemon_fingerprint=daemon_fingerprint,
         compose_resource_fingerprint=compose_resource_fingerprint,
         resume_compose_resource_fingerprint=resume_compose_resource_fingerprint,
+        resume_compose_resource_schema_version=resume_compose_resource_schema_version,
         source_sha=source_sha,
+        stack=stack,
+        service_roots=service_roots,
+        selected_services=selected_services,
     )
 
 
@@ -1189,6 +1427,8 @@ def verify_live_endpoints(base_url: str, mailpit_url: str) -> None:
             owner.schema_version
             in {
                 RESOURCE_OWNER_SCHEMA_VERSION,
+                PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+                PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
                 OWNER_SCHEMA_VERSION,
                 IN_PLACE_OWNER_SCHEMA_VERSION,
             }
@@ -1232,7 +1472,17 @@ def update_stand_owner_ports(
             current.compose_resource_fingerprint
             or current.resume_compose_resource_fingerprint
         ),
+        resume_compose_resource_schema_version=(
+            current.schema_version
+            if current.compose_resource_fingerprint is not None
+            else current.resume_compose_resource_schema_version
+        ),
         source_sha=SOURCE_SHA if IN_PLACE_MODE else None,
+        stack=current.stack,
+        service_roots=(
+            LIVE_CORE_SERVICE_ROOTS if current.stack == LIVE_STACK_CORE else ()
+        ),
+        selected_services=(),
     )
     return _write_stand_owner_update(worktree, updated)
 
@@ -1257,6 +1507,12 @@ def _write_stand_owner_update(worktree: Path, updated: StandOwner) -> StandOwner
         "resume_compose_resource_fingerprint": (
             updated.resume_compose_resource_fingerprint
         ),
+        "resume_compose_resource_schema_version": (
+            updated.resume_compose_resource_schema_version
+        ),
+        "stack": updated.stack,
+        "service_roots": list(updated.service_roots),
+        "selected_services": list(updated.selected_services),
     }
     if updated.schema_version == IN_PLACE_OWNER_SCHEMA_VERSION:
         if updated.source_sha is None or not re.fullmatch(
@@ -1300,6 +1556,56 @@ def _write_stand_owner_update(worktree: Path, updated: StandOwner) -> StandOwner
     return updated
 
 
+def _owner_compose_resource_evidence(
+    worktree: Path, owner: StandOwner
+) -> ComposeResourceEvidence:
+    if owner.schema_version in {
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
+        return _compose_resource_evidence(
+            worktree,
+            owner.project_name,
+            dict(owner.published_ports),
+            legacy_projection=True,
+        )
+    if owner.stack == LIVE_STACK_FULL:
+        return _compose_resource_evidence(
+            worktree, owner.project_name, dict(owner.published_ports)
+        )
+    return _compose_resource_evidence(
+        worktree,
+        owner.project_name,
+        dict(owner.published_ports),
+        stack=owner.stack,
+        service_roots=owner.service_roots,
+    )
+
+
+def _resume_compose_resource_evidence(
+    worktree: Path, owner: StandOwner
+) -> ComposeResourceEvidence:
+    """Resolve the projection version recorded with an incomplete resume hash."""
+    schema_version = owner.resume_compose_resource_schema_version
+    if schema_version is None or owner.resume_compose_resource_fingerprint is None:
+        raise StandError("live stand has no verifiable resume evidence")
+    if schema_version in {
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
+        return _compose_resource_evidence(
+            worktree,
+            owner.project_name,
+            dict(owner.published_ports),
+            legacy_projection=True,
+        )
+    if schema_version not in {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}:
+        raise StandError("unsupported Compose resume evidence schema")
+    return _owner_compose_resource_evidence(worktree, owner)
+
+
 def _bind_stand_owner_compose_resources(
     worktree: Path,
     owner: StandOwner,
@@ -1319,17 +1625,27 @@ def _bind_stand_owner_compose_resources(
     if current.compose_resource_fingerprint is not None:
         raise StandError("Compose resources are already registered for this stand")
     _require_owned_docker_daemon(current)
-    evidence = _compose_resource_evidence(
-        worktree, current.project_name, dict(current.published_ports)
-    )
-    if (
-        current.resume_compose_resource_fingerprint is not None
-        and not hmac.compare_digest(
-            evidence.fingerprint, current.resume_compose_resource_fingerprint
-        )
+    evidence = _owner_compose_resource_evidence(worktree, current)
+    if current.resume_compose_resource_fingerprint is not None:
+        resume_evidence = _resume_compose_resource_evidence(worktree, current)
+        if not hmac.compare_digest(
+            resume_evidence.fingerprint,
+            current.resume_compose_resource_fingerprint,
+        ):
+            raise StandError(
+                "resolved Compose resource identity differs from signed resume evidence"
+            )
+    if current.resume_compose_resource_fingerprint is not None and (
+        current.resume_compose_resource_schema_version
+        in {
+            RESOURCE_OWNER_SCHEMA_VERSION,
+            PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+            PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        }
+        and current.stack != LIVE_STACK_FULL
     ):
         raise StandError(
-            "resolved Compose resource identity differs from signed resume evidence"
+            "legacy full-stack resume evidence cannot be reused for a Core stack"
         )
     _assert_compose_volume_ownership(
         current.project_name,
@@ -1356,7 +1672,11 @@ def _bind_stand_owner_compose_resources(
         daemon_fingerprint=current.daemon_fingerprint,
         compose_resource_fingerprint=evidence.fingerprint,
         resume_compose_resource_fingerprint=None,
+        resume_compose_resource_schema_version=None,
         source_sha=current.source_sha,
+        stack=evidence.stack,
+        service_roots=evidence.service_roots,
+        selected_services=evidence.selected_services,
     )
     return _write_stand_owner_update(worktree, updated)
 
@@ -1371,7 +1691,12 @@ def _verify_stand_owner_compose_resources(
     current = load_stand_owner(worktree)
     if current != owner:
         raise StandError("live stand ownership metadata changed")
-    if not _is_active_owner_schema(current.schema_version):
+    legacy_full_owner = current.schema_version in {
+        RESOURCE_OWNER_SCHEMA_VERSION,
+        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+    }
+    if not _is_active_owner_schema(current.schema_version) and not legacy_full_owner:
         raise StandError(
             "live stand ownership lacks Compose resource evidence for the current schema; re-run up before lifecycle operations"
         )
@@ -1379,14 +1704,20 @@ def _verify_stand_owner_compose_resources(
         raise StandError(
             "live stand ownership lacks Compose resource evidence; refusing lifecycle operation"
         )
-    evidence = _compose_resource_evidence(
-        worktree, current.project_name, dict(current.published_ports)
-    )
+    evidence = _owner_compose_resource_evidence(worktree, current)
     if not hmac.compare_digest(
         evidence.fingerprint, current.compose_resource_fingerprint
     ):
         raise StandError(
             "resolved Compose resources differ from signed live stand ownership"
+        )
+    if not legacy_full_owner and (
+        evidence.stack != current.stack
+        or evidence.service_roots != current.service_roots
+        or evidence.selected_services != current.selected_services
+    ):
+        raise StandError(
+            "resolved Compose selection differs from signed live stand ownership"
         )
     _assert_compose_volume_ownership(
         current.project_name,
@@ -1418,7 +1749,17 @@ def _invalidate_stand_owner_compose_resources(
             current.compose_resource_fingerprint
             or current.resume_compose_resource_fingerprint
         ),
+        resume_compose_resource_schema_version=(
+            current.schema_version
+            if current.compose_resource_fingerprint is not None
+            else current.resume_compose_resource_schema_version
+        ),
         source_sha=current.source_sha,
+        stack=current.stack,
+        service_roots=(
+            current.service_roots if current.stack == LIVE_STACK_CORE else ()
+        ),
+        selected_services=(),
     )
     return _write_stand_owner_update(worktree, updated)
 
@@ -1500,10 +1841,102 @@ def compose_command(*args: str, project_name: str) -> list[str]:
     return [*command, *args]
 
 
+def resolve_live_service_selection(
+    compose_project: Mapping[str, object], stack: str
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Resolve the fixed live roots and their complete Compose dependency closure.
+
+    The Core list is deliberately checked against the reviewed service set so
+    a Compose dependency change cannot silently broaden or shrink this stack.
+    Full mode selects every service and remains the default live behavior.
+    """
+    if stack not in LIVE_STACKS:
+        raise StandError("unsupported live stand stack selection")
+    raw_services = compose_project.get("services")
+    if not isinstance(raw_services, Mapping) or not raw_services:
+        raise StandError("resolved Compose service inventory is invalid")
+    services: dict[str, Mapping[str, object]] = {}
+    for name, definition in raw_services.items():
+        if (
+            not isinstance(name, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name)
+            or not isinstance(definition, Mapping)
+        ):
+            raise StandError("resolved Compose service inventory is invalid")
+        services[name] = definition
+
+    if stack == LIVE_STACK_FULL:
+        selected = tuple(sorted(services))
+        return selected, selected
+
+    roots = LIVE_CORE_SERVICE_ROOTS
+    if any(root not in services for root in roots):
+        raise StandError("reviewed live Core service roots are missing from Compose")
+
+    selected_names: set[str] = set()
+    pending = list(roots)
+    while pending:
+        service_name = pending.pop()
+        if service_name in selected_names:
+            continue
+        service = services.get(service_name)
+        if service is None:
+            raise StandError(
+                "resolved Compose dependency references an unknown service"
+            )
+        selected_names.add(service_name)
+
+        raw_dependencies = service.get("depends_on", {})
+        if isinstance(raw_dependencies, Mapping):
+            dependencies = list(raw_dependencies)
+        elif isinstance(raw_dependencies, list):
+            dependencies = raw_dependencies
+        elif raw_dependencies in (None, {}):
+            dependencies = []
+        else:
+            raise StandError("resolved Compose dependency inventory is invalid")
+
+        network_mode = service.get("network_mode")
+        if isinstance(network_mode, str) and network_mode.startswith("service:"):
+            dependencies.append(network_mode.removeprefix("service:"))
+        elif network_mode is not None and not isinstance(network_mode, str):
+            raise StandError("resolved Compose network mode is invalid")
+
+        raw_links = service.get("links", [])
+        if raw_links is not None:
+            if not isinstance(raw_links, list):
+                raise StandError("resolved Compose link inventory is invalid")
+            for link in raw_links:
+                if not isinstance(link, str) or not link:
+                    raise StandError("resolved Compose link inventory is invalid")
+                dependencies.append(link.split(":", 1)[0])
+
+        for dependency in dependencies:
+            if not isinstance(dependency, str) or not dependency:
+                raise StandError("resolved Compose dependency inventory is invalid")
+            if dependency not in services:
+                raise StandError(
+                    "resolved Compose dependency references an unknown service"
+                )
+            if dependency not in selected_names:
+                pending.append(dependency)
+
+    selected = tuple(sorted(selected_names))
+    if selected != LIVE_CORE_EXPECTED_SERVICES:
+        raise StandError(
+            "resolved live Core dependency closure differs from reviewed services"
+        )
+    return tuple(sorted(roots)), selected
+
+
 def _compose_resource_evidence(
     worktree: Path,
     project_name: str,
     published_ports: Mapping[str, int],
+    *,
+    stack: str = LIVE_STACK_FULL,
+    service_roots: Sequence[str] | None = None,
+    legacy_projection: bool = False,
 ) -> ComposeResourceEvidence:
     """Resolve removable resources and service topology without runtime secrets."""
     _validate_project_name(project_name)
@@ -1535,6 +1968,12 @@ def _compose_resource_evidence(
         or not isinstance(raw_services, dict)
     ):
         raise StandError("resolved Compose resource inventory is invalid")
+    resolved_roots, selected_services = resolve_live_service_selection(project, stack)
+    if service_roots is not None and tuple(service_roots) != resolved_roots:
+        raise StandError(
+            "resolved Compose service roots differ from live owner selection"
+        )
+    selected_service_set = set(selected_services)
 
     volumes: dict[str, object] = {}
     managed_volumes: list[tuple[str, str]] = []
@@ -1603,6 +2042,8 @@ def _compose_resource_evidence(
 
     service_mounts: dict[str, object] = {}
     for service_name, raw_service in sorted(raw_services.items()):
+        if service_name not in selected_service_set:
+            continue
         if not isinstance(service_name, str) or not isinstance(raw_service, dict):
             raise StandError("resolved Compose service inventory is invalid")
         mounts = raw_service.get("volumes", [])
@@ -1691,12 +2132,57 @@ def _compose_resource_evidence(
             "network_mode": network_mode,
         }
 
+    used_volume_keys: set[str] = set()
+    used_network_keys: set[str] = set()
+    for service in service_mounts.values():
+        if not isinstance(service, dict):
+            raise StandError("resolved Compose service selection is invalid")
+        for mount in service["volumes"]:
+            if mount["type"] == "volume":
+                used_volume_keys.add(mount["source"])
+        used_network_keys.update(service["networks"])
+    if stack == LIVE_STACK_CORE and not legacy_projection:
+        # Core teardown removes only resources used by its signed service
+        # closure. Full Compose ``down --volumes`` can remove every declared
+        # project volume, including one no selected service currently mounts,
+        # so full and historical projections must retain the complete model.
+        volumes = {
+            key: value for key, value in volumes.items() if key in used_volume_keys
+        }
+        managed_volumes = [
+            (key, name) for key, name in managed_volumes if key in used_volume_keys
+        ]
+        declared_volume_names = {value["resolved_name"] for value in volumes.values()}
+        networks = {
+            key: value for key, value in networks.items() if key in used_network_keys
+        }
+        managed_networks = [
+            (key, name) for key, name in managed_networks if key in used_network_keys
+        ]
+
     projection = {
         "project_name": project_name,
         "volumes": volumes,
         "networks": networks,
         "service_mounts": service_mounts,
     }
+    if not legacy_projection:
+        projection.update(
+            {
+                "stack": stack,
+                "service_roots": list(resolved_roots),
+                "selected_services": list(selected_services),
+            }
+        )
+        if stack == LIVE_STACK_CORE:
+            selected_ports = _selected_published_ports(
+                published_ports, selected_services
+            )
+            # The signed owner marker binds the actual host-port values. The
+            # resource projection binds only which port inputs belong to this
+            # service closure, so a safe port reallocation can resume against
+            # the same Compose resources.
+            projection["published_port_names"] = sorted(selected_ports)
     try:
         canonical = json.dumps(
             projection, sort_keys=True, separators=(",", ":"), ensure_ascii=True
@@ -1715,6 +2201,9 @@ def _compose_resource_evidence(
         declared_volume_names=tuple(sorted(declared_volume_names)),
         managed_networks=tuple(sorted(managed_networks)),
         managed_services=tuple(sorted(service_mounts)),
+        stack=stack,
+        service_roots=resolved_roots,
+        selected_services=selected_services,
     )
 
 
@@ -1921,12 +2410,23 @@ def port_is_free(port: int, host: str = PORT_BIND_HOST) -> bool:
         return True
 
 
-def require_free_ports(ports: Mapping[str, int] | Sequence[int]) -> None:
-    values = (
-        tuple(dict(_validate_published_ports(ports, allow_privileged=True)).values())
-        if isinstance(ports, Mapping)
-        else tuple(ports)
-    )
+def require_free_ports(
+    ports: Mapping[str, int] | Sequence[int],
+    *,
+    active_services: Sequence[str] | None = None,
+) -> None:
+    if isinstance(ports, Mapping):
+        validated_ports = dict(_validate_published_ports(ports, allow_privileged=True))
+        active_names = (
+            tuple(validated_ports)
+            if active_services is None
+            else _published_port_names_for_services(active_services)
+        )
+        values = tuple(validated_ports[name] for name in active_names)
+    else:
+        if active_services is not None:
+            raise StandError("selected services require a named live port map")
+        values = tuple(ports)
     busy = [port for port in values if not port_is_free(port, host=PORT_BIND_HOST)]
     if busy:
         raise StandError(
@@ -1939,6 +2439,404 @@ def _run(
 ) -> None:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, cwd=cwd, env=env, check=True)  # noqa: S603 - fixed argv
+
+
+def _docker_output(arguments: Sequence[str], error_message: str) -> str:
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed Docker inventory/cleanup argv
+            ["docker", *arguments],  # noqa: S607 - fixed executable name
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.CalledProcessError):
+        raise StandError(error_message) from None
+    if not isinstance(completed.stdout, str):
+        raise StandError(error_message)
+    return completed.stdout
+
+
+def _docker_inspect_object(
+    arguments: Sequence[str], error_message: str
+) -> dict[str, object]:
+    output = _docker_output(arguments, error_message)
+    try:
+        value = json.loads(output)
+    except json.JSONDecodeError:
+        raise StandError(error_message) from None
+    if isinstance(value, list) and len(value) == 1:
+        value = value[0]
+    if not isinstance(value, dict):
+        raise StandError(error_message)
+    return value
+
+
+def _project_container_ids(project_name: str) -> tuple[str, ...]:
+    output = _docker_output(
+        [
+            "ps",
+            "--all",
+            "--quiet",
+            "--no-trunc",
+            "--filter",
+            f"label=com.docker.compose.project={project_name}",
+        ],
+        "cannot verify live Core container inventory",
+    )
+    ids = tuple(line for line in output.splitlines() if line)
+    if any(not re.fullmatch(r"[0-9a-f]{64}", item) for item in ids):
+        raise StandError("live Core container inventory is ambiguous")
+    if len(set(ids)) != len(ids):
+        raise StandError("live Core container inventory contains duplicates")
+    return ids
+
+
+def _all_docker_container_ids() -> tuple[str, ...]:
+    output = _docker_output(
+        ["ps", "--all", "--quiet", "--no-trunc"],
+        "cannot verify Docker container network references",
+    )
+    ids = tuple(line for line in output.splitlines() if line)
+    if (
+        len(ids) > 10000
+        or any(not re.fullmatch(r"[0-9a-f]{64}", item) for item in ids)
+        or len(set(ids)) != len(ids)
+    ):
+        raise StandError("Docker container network reference inventory is ambiguous")
+    return ids
+
+
+def _network_has_container_references(network_id: str) -> bool:
+    """Include stopped containers whose inspect data retains a NetworkID."""
+    for container_id in _all_docker_container_ids():
+        record = _docker_inspect_object(
+            ["inspect", container_id],
+            "cannot verify Docker container network references",
+        )
+        settings = record.get("NetworkSettings")
+        networks = settings.get("Networks") if isinstance(settings, dict) else None
+        if not isinstance(networks, dict):
+            raise StandError("Docker container network references are ambiguous")
+        for attachment in networks.values():
+            if not isinstance(attachment, dict):
+                raise StandError("Docker container network references are ambiguous")
+            referenced_id = attachment.get("NetworkID")
+            if referenced_id in (None, ""):
+                continue
+            if not isinstance(referenced_id, str) or not re.fullmatch(
+                r"[0-9a-f]{64}", referenced_id
+            ):
+                raise StandError("Docker container network references are ambiguous")
+            if referenced_id == network_id:
+                return True
+    return False
+
+
+def _verify_core_container_record(
+    container_id: str, owner: StandOwner, evidence: ComposeResourceEvidence
+) -> tuple[str, bool]:
+    record = _docker_inspect_object(
+        ["inspect", container_id], "cannot verify live Core container identity"
+    )
+    config = record.get("Config")
+    labels = config.get("Labels") if isinstance(config, dict) else None
+    if (
+        record.get("Id") != container_id
+        or not isinstance(labels, dict)
+        or labels.get("com.docker.compose.project") != owner.project_name
+        or labels.get("com.docker.compose.service") not in evidence.managed_services
+    ):
+        raise StandError(
+            "live Core container is not owned by the signed service closure"
+        )
+    mounts = record.get("Mounts")
+    image = record.get("Image")
+    config_image = config.get("Image") if isinstance(config, dict) else None
+    name = record.get("Name")
+    if (
+        not isinstance(mounts, list)
+        or not isinstance(image, str)
+        or not isinstance(config_image, str)
+        or not isinstance(name, str)
+        or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in labels.items()
+        )
+    ):
+        raise StandError("live Core container mount inventory is ambiguous")
+    allowed_volumes = set(evidence.declared_volume_names)
+    mount_identity: list[tuple[object, ...]] = []
+    for mount in mounts:
+        if not isinstance(mount, dict) or mount.get("Type") not in {
+            "volume",
+            "bind",
+            "tmpfs",
+        }:
+            raise StandError("live Core container mount inventory is ambiguous")
+        if mount.get("Type") == "volume" and mount.get("Name") not in allowed_volumes:
+            raise StandError("live Core container uses an unregistered volume")
+        mount_identity.append(
+            tuple(
+                mount.get(key)
+                for key in (
+                    "Type",
+                    "Name",
+                    "Source",
+                    "Destination",
+                    "Driver",
+                    "Mode",
+                    "RW",
+                    "Propagation",
+                )
+            )
+        )
+    state = record.get("State")
+    running = state.get("Running") if isinstance(state, dict) else None
+    if not isinstance(running, bool):
+        raise StandError("live Core container state is ambiguous")
+    identity = {
+        "id": container_id,
+        "name": name,
+        "image_id": image,
+        "image_name": config_image,
+        "labels": labels,
+        "mounts": sorted(mount_identity, key=repr),
+    }
+    digest = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return digest, running
+
+
+def _assert_core_owner_unchanged(owner: StandOwner) -> None:
+    if load_stand_owner(WORKTREE) != owner:
+        raise StandError("live stand ownership metadata changed during Core teardown")
+    _require_owned_docker_daemon(owner)
+
+
+def _remove_core_compose_containers(
+    owner: StandOwner,
+    evidence: ComposeResourceEvidence,
+) -> None:
+    container_ids = _project_container_ids(owner.project_name)
+    identities = {
+        container_id: _verify_core_container_record(container_id, owner, evidence)[0]
+        for container_id in container_ids
+    }
+    for container_id in container_ids:
+        _assert_core_owner_unchanged(owner)
+        current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+        if current_evidence != evidence:
+            raise StandError("live Core Compose selection changed during teardown")
+        current_ids = set(_project_container_ids(owner.project_name))
+        if current_ids - set(identities):
+            raise StandError("live Core project gained an unverified container")
+        if container_id not in current_ids:
+            continue
+        current_identity, running = _verify_core_container_record(
+            container_id, owner, evidence
+        )
+        if current_identity != identities[container_id]:
+            raise StandError("live Core container identity changed before removal")
+        if running:
+            _docker_output(
+                ["stop", "--time", "10", container_id],
+                "cannot stop verified live Core container",
+            )
+        current_ids = set(_project_container_ids(owner.project_name))
+        if current_ids - set(identities):
+            raise StandError("live Core project gained an unverified container")
+        if container_id not in current_ids:
+            continue
+        _assert_core_owner_unchanged(owner)
+        current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+        if current_evidence != evidence:
+            raise StandError("live Core Compose selection changed during teardown")
+        current_identity, still_running = _verify_core_container_record(
+            container_id, owner, evidence
+        )
+        if current_identity != identities[container_id] or still_running:
+            raise StandError("live Core container changed before exact-ID removal")
+        _docker_output(
+            ["rm", container_id], "cannot remove verified live Core container"
+        )
+    remaining_ids = _project_container_ids(owner.project_name)
+    if set(remaining_ids) - set(identities):
+        raise StandError("live Core project gained an unverified container")
+    if remaining_ids:
+        raise StandError("live Core containers remain after service-scoped removal")
+
+
+def _remove_core_project_networks(
+    owner: StandOwner, evidence: ComposeResourceEvidence
+) -> None:
+    expected = {name: logical for logical, name in evidence.managed_networks}
+    if len(expected) != len(evidence.managed_networks):
+        raise StandError("live Core network ownership is ambiguous")
+    output = _docker_output(
+        [
+            "network",
+            "ls",
+            "--quiet",
+            "--no-trunc",
+            "--filter",
+            f"label=com.docker.compose.project={owner.project_name}",
+        ],
+        "cannot verify live Core network inventory",
+    )
+    ids = tuple(line for line in output.splitlines() if line)
+    if any(not re.fullmatch(r"[0-9a-f]{64}", item) for item in ids) or len(
+        set(ids)
+    ) != len(ids):
+        raise StandError("live Core network inventory is ambiguous")
+    observed: set[str] = set()
+    for network_id in ids:
+        record = _docker_inspect_object(
+            ["network", "inspect", network_id],
+            "cannot verify live Core network identity",
+        )
+        name = record.get("Name")
+        labels = record.get("Labels")
+        attached = record.get("Containers")
+        if (
+            record.get("Id") != network_id
+            or not isinstance(name, str)
+            or name not in expected
+            or name in observed
+            or not isinstance(labels, dict)
+            or labels.get("com.docker.compose.project") != owner.project_name
+            or labels.get("com.docker.compose.network") != expected[name]
+            or (attached is not None and attached != {})
+        ):
+            raise StandError(
+                "live Core network is foreign, unexpected, or still attached"
+            )
+        observed.add(name)
+        _assert_core_owner_unchanged(owner)
+        current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+        if current_evidence != evidence:
+            raise StandError("live Core Compose selection changed during teardown")
+        fresh = _docker_inspect_object(
+            ["network", "inspect", network_id],
+            "cannot reverify live Core network before removal",
+        )
+        if (
+            fresh.get("Id") != network_id
+            or fresh.get("Name") != name
+            or fresh.get("Labels") != labels
+            or (fresh.get("Containers") is not None and fresh.get("Containers") != {})
+        ):
+            raise StandError("live Core network changed before removal")
+        if _network_has_container_references(network_id):
+            raise StandError("live Core network is referenced by a container")
+        _assert_core_owner_unchanged(owner)
+        current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+        if current_evidence != evidence:
+            raise StandError("live Core Compose selection changed during teardown")
+        _docker_output(
+            ["network", "rm", network_id], "cannot remove verified live Core network"
+        )
+    remaining = _docker_output(
+        [
+            "network",
+            "ls",
+            "--quiet",
+            "--no-trunc",
+            "--filter",
+            f"label=com.docker.compose.project={owner.project_name}",
+        ],
+        "cannot verify live Core network cleanup",
+    )
+    if any(line for line in remaining.splitlines()):
+        raise StandError("live Core project networks remain after cleanup")
+
+
+def _remove_core_project_volumes(
+    owner: StandOwner, evidence: ComposeResourceEvidence
+) -> None:
+    expected = {name: logical for logical, name in evidence.managed_volumes}
+    if len(expected) != len(evidence.managed_volumes):
+        raise StandError("live Core volume ownership is ambiguous")
+    output = _docker_output(
+        [
+            "volume",
+            "ls",
+            "--quiet",
+            "--filter",
+            f"label=com.docker.compose.project={owner.project_name}",
+        ],
+        "cannot verify live Core volume inventory",
+    )
+    names = tuple(line for line in output.splitlines() if line)
+    if len(set(names)) != len(names) or any(name not in expected for name in names):
+        raise StandError("live Core volume inventory contains an unexpected resource")
+    for name in names:
+        record = _docker_inspect_object(
+            ["volume", "inspect", name], "cannot verify live Core volume identity"
+        )
+        labels = record.get("Labels")
+        if (
+            record.get("Name") != name
+            or not isinstance(labels, dict)
+            or labels.get("com.docker.compose.project") != owner.project_name
+            or labels.get("com.docker.compose.volume") != expected[name]
+        ):
+            raise StandError(
+                "live Core volume is not owned by the signed Compose project"
+            )
+        holders = _docker_output(
+            [
+                "ps",
+                "--all",
+                "--quiet",
+                "--no-trunc",
+                "--filter",
+                f"volume={name}",
+            ],
+            "cannot verify live Core volume attachments",
+        )
+        if any(line for line in holders.splitlines()):
+            raise StandError("live Core volume is still attached to a container")
+        _assert_core_owner_unchanged(owner)
+        current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+        if current_evidence != evidence:
+            raise StandError("live Core Compose selection changed during teardown")
+        fresh = _docker_inspect_object(
+            ["volume", "inspect", name],
+            "cannot reverify live Core volume before removal",
+        )
+        if fresh.get("Name") != name or fresh.get("Labels") != labels:
+            raise StandError("live Core volume changed before removal")
+        holders = _docker_output(
+            [
+                "ps",
+                "--all",
+                "--quiet",
+                "--no-trunc",
+                "--filter",
+                f"volume={name}",
+            ],
+            "cannot reverify live Core volume attachments",
+        )
+        if any(line for line in holders.splitlines()):
+            raise StandError("live Core volume became attached before removal")
+        _docker_output(
+            ["volume", "rm", name], "cannot remove verified live Core volume"
+        )
+    remaining = _docker_output(
+        [
+            "volume",
+            "ls",
+            "--quiet",
+            "--filter",
+            f"label=com.docker.compose.project={owner.project_name}",
+        ],
+        "cannot verify live Core volume cleanup",
+    )
+    if any(line for line in remaining.splitlines()):
+        raise StandError("live Core project volumes remain after cleanup")
 
 
 def _git(*args: str) -> str:
@@ -2050,7 +2948,9 @@ def _assert_no_ignored_in_place_build_sources() -> None:
         )
 
 
-def _up_locked(ref: str) -> None:
+def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
+    if stack not in LIVE_STACKS:
+        raise StandError("unsupported live stand stack selection")
     _assert_stand_paths_safe(WORKTREE)
     resolved_sha = resolve_stand_ref(ref)
     if IN_PLACE_MODE:
@@ -2075,6 +2975,10 @@ def _up_locked(ref: str) -> None:
     )
     if WORKTREE.exists() and existing_owned_path:
         existing_owner = load_stand_owner(WORKTREE)
+        if existing_owner.stack != stack:
+            raise StandError(
+                "existing live stand uses a different stack; teardown it before switching"
+            )
         if IN_PLACE_MODE and existing_owner.source_sha != SOURCE_SHA:
             raise StandError("owned in-place stand belongs to a different source SHA")
         if IN_PLACE_MODE:
@@ -2082,8 +2986,15 @@ def _up_locked(ref: str) -> None:
             _ensure_private_state_directory(WORKTREE / ".secrets", owner_verified=True)
     elif IN_PLACE_MODE and WORKTREE.exists():
         raise StandError("in-place state directory exists without an owner marker")
-    published_ports = choose_published_ports()
-    require_free_ports(published_ports)
+    active_port_services = (
+        LIVE_CORE_EXPECTED_SERVICES if stack == LIVE_STACK_CORE else None
+    )
+    if active_port_services is None:
+        published_ports = choose_published_ports()
+        require_free_ports(published_ports)
+    else:
+        published_ports = choose_published_ports(active_services=active_port_services)
+        require_free_ports(published_ports, active_services=active_port_services)
     if existing_owner is not None:
         has_previous_resource_evidence = (
             existing_owner.compose_resource_fingerprint is not None
@@ -2098,6 +3009,8 @@ def _up_locked(ref: str) -> None:
         _require_owned_docker_daemon(existing_owner)
         stop_after_resource_binding = (
             existing_owner.schema_version == PREVIOUS_OWNER_SCHEMA_VERSION
+            or existing_owner.schema_version == PREVIOUS_STACK_OWNER_SCHEMA_VERSION
+            or existing_owner.schema_version == PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION
             or (
                 existing_owner.schema_version == RESOURCE_OWNER_SCHEMA_VERSION
                 and has_previous_resource_evidence
@@ -2113,8 +3026,15 @@ def _up_locked(ref: str) -> None:
             # is stopped; an incomplete reservation cannot authorize reuse.
             _verify_stand_owner_compose_resources(WORKTREE, existing_owner)
             _require_owned_docker_daemon(existing_owner)
+            stop_services = (
+                existing_owner.selected_services
+                if existing_owner.stack == LIVE_STACK_CORE
+                else ()
+            )
             _run(
-                compose_command("stop", project_name=existing_owner.project_name),
+                compose_command(
+                    "stop", *stop_services, project_name=existing_owner.project_name
+                ),
                 cwd=WORKTREE,
                 env=compose_control_environment(
                     existing_owner.project_name,
@@ -2128,14 +3048,20 @@ def _up_locked(ref: str) -> None:
         sha = ensure_worktree(resolved_sha)
     _assert_stand_paths_safe(WORKTREE)
     if not (WORKTREE / STAND_FILE).is_file():
-        owner = create_stand_owner(WORKTREE, published_ports=published_ports)
+        owner = create_stand_owner(
+            WORKTREE, published_ports=published_ports, stack=stack
+        )
     else:
         if existing_owner is None:
             raise StandError("stand ownership metadata appeared during startup")
         owner = update_stand_owner_ports(WORKTREE, existing_owner, published_ports)
     # Catch ports claimed while the old project stopped or the worktree moved.
     # On failure the old stand data remains intact and no new build is started.
-    require_free_ports(dict(owner.published_ports))
+    owner_ports = dict(owner.published_ports)
+    if active_port_services is None:
+        require_free_ports(owner_ports)
+    else:
+        require_free_ports(owner_ports, active_services=active_port_services)
     env = stand_environment(
         load_or_create_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
@@ -2181,8 +3107,11 @@ def _up_locked(ref: str) -> None:
         except StandError:
             _invalidate_stand_owner_compose_resources(WORKTREE, owner)
             raise
+        stop_services = (
+            owner.selected_services if owner.stack == LIVE_STACK_CORE else ()
+        )
         _run(
-            compose_command("stop", project_name=owner.project_name),
+            compose_command("stop", *stop_services, project_name=owner.project_name),
             cwd=WORKTREE,
             env=compose_control_environment(
                 owner.project_name, dict(owner.published_ports)
@@ -2208,6 +3137,14 @@ def _up_locked(ref: str) -> None:
         "-ExtraCompose",
         OVERLAY,
     ]
+    start_command.extend(
+        (
+            "-LiveAcceptanceStack",
+            owner.stack,
+            "-LiveAcceptanceServicesJson",
+            json.dumps(owner.selected_services, separators=(",", ":")),
+        )
+    )
     if IN_PLACE_MODE:
         start_command.extend(
             ("-LiveStandStateRoot", str(WORKTREE.resolve(strict=True)))
@@ -2223,9 +3160,9 @@ def _up_locked(ref: str) -> None:
     print(f"LIVE_MAILPIT_URL={mailpit_url}")
 
 
-def up(ref: str) -> None:
+def up(ref: str, stack: str = LIVE_STACK_FULL) -> None:
     with stand_lifecycle_lock():
-        _up_locked(ref)
+        _up_locked(ref, stack=stack)
 
 
 def _new_test_password() -> str:
@@ -3247,14 +4184,160 @@ def e2e(mode: str = "full", *, specs: Sequence[str] | None = None) -> None:
         admin_password = ""
 
 
+def _readonly_status_snapshot(worktree: Path) -> tuple[tuple[str, object], ...]:
+    """Hash stand inputs/state to detect concurrent changes without a lock write."""
+    _assert_stand_paths_safe(worktree)
+    snapshot: dict[str, object] = {}
+    remaining_entries = 512
+
+    def capture(path: Path, label: str, *, recurse: bool = False) -> None:
+        nonlocal remaining_entries
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            snapshot[label] = ("missing",)
+            return
+        except OSError:
+            raise StandError(
+                "cannot snapshot live stand state for read-only status"
+            ) from None
+        if _path_is_reparse_point(path):
+            raise StandError("unsafe reparse point in live stand state")
+        identity = (
+            info.st_dev,
+            info.st_ino,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+        if stat.S_ISDIR(info.st_mode):
+            if not recurse:
+                snapshot[label] = ("directory", identity)
+                return
+            try:
+                children = sorted(path.iterdir(), key=lambda child: child.name)
+            except OSError:
+                raise StandError(
+                    "cannot snapshot live stand state for read-only status"
+                ) from None
+            for _child in children:
+                remaining_entries -= 1
+                if remaining_entries < 0:
+                    raise StandError(
+                        "live stand state exceeds the read-only snapshot limit"
+                    )
+            snapshot[label] = (
+                "directory",
+                identity,
+                tuple(child.name for child in children),
+            )
+            for child in children:
+                capture(child, f"{label}/{child.name}", recurse=True)
+            return
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 16 * 1024 * 1024:
+            raise StandError("unsupported file in live stand state snapshot")
+        try:
+            content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            after = path.lstat()
+        except OSError:
+            raise StandError(
+                "cannot snapshot live stand state for read-only status"
+            ) from None
+        after_identity = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        if identity != after_identity or _path_is_reparse_point(path):
+            raise StandError(
+                "live stand state changed during read-only status snapshot"
+            )
+        snapshot[label] = ("file", identity, content_hash)
+
+    for relative in (
+        Path(OVERLAY),
+        Path(IN_PLACE_OVERLAY),
+        Path(".env"),
+        Path(".env.docker"),
+        Path(".env.docker.workers"),
+    ):
+        capture(worktree / relative, f"stand/{relative.as_posix()}")
+    capture(worktree / ".secrets", "stand/.secrets", recurse=True)
+    owner_key = (
+        worktree / ".secrets" / "live-stand-owner.key"
+        if IN_PLACE_MODE
+        else _git_common_directory() / "live-stand-owner.key"
+    )
+    capture(owner_key, "owner-signing-key")
+    for relative in (Path("docker-compose.full.yml"), Path(OVERLAY)):
+        capture(REPO_ROOT / relative, f"repository/{relative.as_posix()}")
+    return tuple(sorted(snapshot.items()))
+
+
+def _status_compose_output(
+    command: Sequence[str], *, cwd: Path, env: dict[str, str]
+) -> str:
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed read-only Compose ps argv
+            command,
+            cwd=cwd,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.CalledProcessError):
+        raise StandError("cannot read live stand status") from None
+    if not isinstance(completed.stdout, str):
+        raise StandError("cannot read live stand status")
+    return completed.stdout
+
+
 def status() -> None:
+    """Read status without creating, extending, or repairing the lifecycle lock."""
+    before = _readonly_status_snapshot(WORKTREE)
+    try:
+        command, output, base_url, mailpit_url = _status_locked()
+    except BaseException as error:
+        try:
+            after = _readonly_status_snapshot(WORKTREE)
+        except StandError:
+            raise
+        if before != after:
+            raise StandError(
+                "live stand state changed during read-only status"
+            ) from error
+        raise
+    after = _readonly_status_snapshot(WORKTREE)
+    if before != after:
+        raise StandError("live stand state changed during read-only status")
+    print("+", " ".join(command), flush=True)
+    if output:
+        print(output, end="" if output.endswith("\n") else "\n")
+    print(f"LIVE_BASE_URL={base_url}")
+    print(f"LIVE_MAILPIT_URL={mailpit_url}")
+
+
+def _status_locked() -> tuple[list[str], str, str, str]:
     _require_worktree(require_current_source=False)
     owner = load_stand_owner(WORKTREE)
+    _require_owned_docker_daemon(owner)
+    _verify_stand_owner_compose_resources(WORKTREE, owner)
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
-    _run(compose_command("ps", project_name=owner.project_name), cwd=WORKTREE, env=env)
+    services = owner.selected_services if owner.stack == LIVE_STACK_CORE else ()
+    command = compose_command("ps", *services, project_name=owner.project_name)
+    output = _status_compose_output(command, cwd=WORKTREE, env=env)
     published = dict(owner.published_ports)
-    print(f"LIVE_BASE_URL={_stand_base_url(published)}")
-    print(f"LIVE_MAILPIT_URL=http://127.0.0.1:{published['MAILPIT']}")
+    return (
+        command,
+        output,
+        _stand_base_url(published),
+        f"http://127.0.0.1:{published['MAILPIT']}",
+    )
 
 
 def _stop_locked() -> None:
@@ -3265,8 +4348,13 @@ def _stop_locked() -> None:
     _verify_stand_owner_compose_resources(WORKTREE, owner)
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _require_owned_docker_daemon(owner)
+    services = owner.selected_services if owner.stack == LIVE_STACK_CORE else ()
+    if load_stand_owner(WORKTREE) != owner:
+        raise StandError("live stand ownership metadata changed before stop")
     _run(
-        compose_command("stop", project_name=owner.project_name), cwd=WORKTREE, env=env
+        compose_command("stop", *services, project_name=owner.project_name),
+        cwd=WORKTREE,
+        env=env,
     )
 
 
@@ -3284,10 +4372,19 @@ def _teardown_locked() -> None:
         raise StandError(
             "live stand ownership metadata lacks Compose resource evidence; refusing teardown"
         )
-    _verify_stand_owner_compose_resources(WORKTREE, owner)
+    evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
     # Match the secret-free control environment used for the resource projection.
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _require_owned_docker_daemon(owner)
+    if owner.stack == LIVE_STACK_CORE:
+        if owner.selected_services != LIVE_CORE_EXPECTED_SERVICES:
+            raise StandError("signed live Core service closure is incomplete")
+        _remove_core_compose_containers(owner, evidence)
+        evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+        _remove_core_project_networks(owner, evidence)
+        evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+        _remove_core_project_volumes(owner, evidence)
+        return
     _run(
         compose_command("down", "--volumes", project_name=owner.project_name),
         cwd=WORKTREE,
@@ -3341,6 +4438,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     up_parser = commands.add_parser("up")
     add_state_options(up_parser)
     up_parser.add_argument("--ref", default="HEAD")
+    up_parser.add_argument(
+        "--stack",
+        choices=LIVE_STACKS,
+        default=LIVE_STACK_FULL,
+        help="full stack (default) or the reviewed live Core dependency closure",
+    )
     verify_parser = commands.add_parser(
         "verify-endpoints", help="verify live URLs against the signed owner marker"
     )
@@ -3372,7 +4475,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         _configure_state_mode(args)
         if args.command == "up":
-            up(args.ref)
+            up(args.ref, stack=args.stack)
         elif args.command == "verify-endpoints":
             verify_live_endpoints(args.base_url, args.mailpit_url)
             print("live stand endpoints verified")

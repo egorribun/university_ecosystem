@@ -16,7 +16,11 @@ from scripts import live_stand
 _PROJECT_NAME = "ue-live-aaaaaaaaaaaaaaaa"
 _DAEMON_FINGERPRINT = "d" * 64
 _COMPOSE_SOURCE = """name: ${COMPOSE_PROJECT_NAME:?required}
-services: {}
+services:
+  backend:
+    volumes:
+      - app-data:/var/lib/app
+    volumes_from: []
 volumes:
   app-data:
     name: ${LIVE_TEST_VOLUME:?required}
@@ -35,6 +39,7 @@ def _install_hermetic_stand(
     tmp_path: Path,
     *,
     volume_name: str,
+    unused_volume_name: str | None = None,
     network_name: str | None = None,
     network_labels: dict[str, dict[str, str] | None] | None = None,
     container_labels: dict[str, dict[str, str] | None] | None = None,
@@ -46,10 +51,12 @@ def _install_hermetic_stand(
     worktree.mkdir(parents=True)
     metadata.mkdir()
     compose_source = _COMPOSE_SOURCE
+    if unused_volume_name is not None:
+        compose_source += f"  unused-data:\n    name: {unused_volume_name}\n"
     if network_name is not None:
         compose_source = compose_source.replace(
-            "services: {}\n",
-            "services:\n  backend:\n    networks:\n      - private\n",
+            "    volumes_from: []\n",
+            "    volumes_from: []\n    networks:\n      - private\n",
         )
         compose_source += (
             "networks:\n  private:\n    name: ${LIVE_TEST_NETWORK:?required}\n"
@@ -167,7 +174,19 @@ def _install_hermetic_stand(
         else:
             resolved_volume_name = expression
 
-        services: dict[str, object] = {}
+        services: dict[str, dict[str, object]] = {
+            "backend": {
+                "volumes": [
+                    {
+                        "type": "volume",
+                        "source": "app-data",
+                        "target": "/var/lib/app",
+                        "read_only": False,
+                    }
+                ],
+                "volumes_from": [],
+            }
+        }
         networks: dict[str, object] = {}
         network_match = re.search(
             r"(?ms)^networks:\s*\n\s{2}(?P<key>[A-Za-z0-9_-]+):\s*\n\s{4}name:\s*\$\{LIVE_TEST_NETWORK",
@@ -179,17 +198,16 @@ def _install_hermetic_stand(
                 "name": env_values["LIVE_TEST_NETWORK"],
                 "external": False,
             }
-            services["backend"] = {
-                "volumes": [],
-                "volumes_from": [],
-                "networks": {network_key: None},
-            }
+            services["backend"]["networks"] = {network_key: None}
+        resolved_volumes = {"app-data": {"name": resolved_volume_name}}
+        if unused_volume_name is not None:
+            resolved_volumes["unused-data"] = {"name": unused_volume_name}
         rendered = json.dumps(
             {
                 "name": project_name,
                 "services": services,
                 "networks": networks,
-                "volumes": {"app-data": {"name": resolved_volume_name}},
+                "volumes": resolved_volumes,
             }
         )
         return subprocess.CompletedProcess(argv, 0, stdout=rendered, stderr="")
@@ -587,10 +605,12 @@ def test_teardown_rejects_previous_resource_marker_until_up_rebinds(
         lambda command, **_kwargs: lifecycle_calls.append(list(command)),
     )
 
-    with pytest.raises(live_stand.StandError, match=r"legacy|current|evidence"):
+    with pytest.raises(
+        live_stand.StandError, match=r"legacy|current|evidence|resources"
+    ):
         live_stand.teardown()
 
-    assert len(compose_calls) == compose_calls_before_teardown
+    assert len(compose_calls) == compose_calls_before_teardown + 1
     assert lifecycle_calls == []
 
 
@@ -890,16 +910,10 @@ def test_old_v5_owner_marker_without_resume_field_remains_readable(
     _repository, worktree, _compose_calls, _volume_labels = (
         _create_complete_hermetic_stand(monkeypatch, tmp_path)
     )
-    marker_path = worktree / live_stand.STAND_FILE
-    marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    marker.pop("resume_compose_resource_fingerprint")
-    payload = {key: value for key, value in marker.items() if key != "signature"}
-    marker["signature"] = live_stand._owner_signature(
-        payload, live_stand._owner_signing_key(create=False)
-    )
-    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+    _write_v5_owner_marker(worktree, live_stand.load_stand_owner(worktree))
 
     loaded = live_stand.load_stand_owner(worktree)
+    assert loaded.schema_version == live_stand.RESOURCE_OWNER_SCHEMA_VERSION
     assert loaded.compose_resource_fingerprint is not None
     assert loaded.resume_compose_resource_fingerprint is None
 
@@ -929,19 +943,22 @@ def test_bind_refuses_docker_daemon_change_during_resource_resolution(
     assert live_stand.load_stand_owner(worktree).compose_resource_fingerprint is None
 
 
-def test_teardown_refuses_existing_volume_with_wrong_compose_labels(
+def test_teardown_refuses_unused_declared_volume_with_wrong_compose_labels(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Full-stack down must preflight declared volumes even when unmounted."""
+    unused_volume_name = f"{_PROJECT_NAME}_unused-data"
     _repository, worktree, _compose_calls, volume_labels = _install_hermetic_stand(
         monkeypatch,
         tmp_path,
         volume_name=f"{_PROJECT_NAME}_app-data",
+        unused_volume_name=unused_volume_name,
     )
     owner = live_stand.create_stand_owner(
         worktree, published_ports=_valid_published_ports()
     )
     owner = live_stand._bind_stand_owner_compose_resources(worktree, owner)
-    volume_labels[f"{_PROJECT_NAME}_app-data"] = {
+    volume_labels[unused_volume_name] = {
         "com.docker.compose.project": _PROJECT_NAME,
         "com.docker.compose.volume": "different-volume",
     }
@@ -957,6 +974,36 @@ def test_teardown_refuses_existing_volume_with_wrong_compose_labels(
 
     assert live_stand.load_stand_owner(worktree) == owner
     assert lifecycle_calls == []
+
+
+def test_legacy_full_projection_retains_unused_declared_volume_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    unused_volume_name = f"{_PROJECT_NAME}_unused-data"
+    _repository, worktree, _compose_calls, _volume_labels = _install_hermetic_stand(
+        monkeypatch,
+        tmp_path,
+        volume_name=f"{_PROJECT_NAME}_app-data",
+        unused_volume_name=unused_volume_name,
+    )
+    owner = live_stand.create_stand_owner(
+        worktree, published_ports=_valid_published_ports()
+    )
+    owner = live_stand._bind_stand_owner_compose_resources(worktree, owner)
+    _write_v5_owner_marker(worktree, owner)
+
+    legacy_owner = live_stand.load_stand_owner(worktree)
+    evidence = live_stand._owner_compose_resource_evidence(worktree, legacy_owner)
+
+    assert legacy_owner.schema_version == live_stand.RESOURCE_OWNER_SCHEMA_VERSION
+    assert evidence.declared_volume_names == (
+        f"{_PROJECT_NAME}_app-data",
+        unused_volume_name,
+    )
+    assert evidence.managed_volumes == (
+        ("app-data", f"{_PROJECT_NAME}_app-data"),
+        ("unused-data", unused_volume_name),
+    )
 
 
 def test_stop_refuses_compose_resource_redirect_before_command(
@@ -1244,6 +1291,8 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
         actual_worktree: Path,
         project_name: str,
         published_ports: dict[str, int],
+        *,
+        legacy_projection: bool = False,
     ) -> live_stand.ComposeResourceEvidence:
         assert actual_worktree == worktree
         assert published_ports == ports
@@ -1255,7 +1304,11 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
         return live_stand.ComposeResourceEvidence(
             fingerprint=fingerprint,
             managed_volumes=(("app-data", f"{_PROJECT_NAME}_app-data"),),
-            declared_volume_names=("app-data",),
+            declared_volume_names=(f"{_PROJECT_NAME}_app-data",),
+            managed_networks=(("default", f"{_PROJECT_NAME}_default"),),
+            managed_services=("backend",),
+            service_roots=("backend",),
+            selected_services=("backend",),
         )
 
     def fake_volume_ownership(
@@ -1269,9 +1322,9 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
     ) -> tuple[tuple[str, str], ...]:
         assert project_name == _PROJECT_NAME
         assert managed_volumes == (("app-data", f"{_PROJECT_NAME}_app-data"),)
-        assert declared_volume_names == ("app-data",)
-        assert managed_networks == ()
-        assert managed_services == ()
+        assert declared_volume_names == (f"{_PROJECT_NAME}_app-data",)
+        assert managed_networks == (("default", f"{_PROJECT_NAME}_default"),)
+        assert managed_services == ("backend",)
         assert allow_existing_owned is (
             existing_reservation_schema
             in {
@@ -1358,16 +1411,17 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
         )
         with pytest.raises(live_stand.StandError, match="incomplete"):
             live_stand.teardown()
-        assert events == [
-            "prepare",
-            "evidence",
-            "volume-check",
-            "evidence",
-            "volume-check",
-        ]
+        expected_events = ["prepare", "evidence"]
+        if existing_reservation_schema == live_stand.RESOURCE_OWNER_SCHEMA_VERSION:
+            expected_events.append("evidence")
+        expected_events.extend(["volume-check", "evidence", "volume-check"])
+        assert events == expected_events
     else:
         live_stand._up_locked("HEAD")
-        expected_events = ["prepare", "evidence", "volume-check"]
+        expected_events = ["prepare", "evidence"]
+        if existing_reservation_schema == live_stand.RESOURCE_OWNER_SCHEMA_VERSION:
+            expected_events.append("evidence")
+        expected_events.append("volume-check")
         if existing_reservation_schema in {
             live_stand.PREVIOUS_OWNER_SCHEMA_VERSION,
             live_stand.RESOURCE_OWNER_SCHEMA_VERSION,
@@ -1404,6 +1458,7 @@ def test_existing_v5_stand_can_retry_after_incomplete_startup_with_owned_volumes
         actual_worktree: Path,
         project_name: str,
         published_ports: dict[str, int],
+        **kwargs: Any,
     ) -> live_stand.ComposeResourceEvidence:
         nonlocal evidence_calls
         evidence_calls += 1
@@ -1412,7 +1467,7 @@ def test_existing_v5_stand_can_retry_after_incomplete_startup_with_owned_volumes
         if failure_stage == "resource-bind" and evidence_calls == 2:
             raise live_stand.StandError("simulated resource registration failure")
         return original_resource_evidence(
-            actual_worktree, project_name, published_ports
+            actual_worktree, project_name, published_ports, **kwargs
         )
 
     monkeypatch.setattr(

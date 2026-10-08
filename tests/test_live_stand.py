@@ -14,8 +14,9 @@ import stat
 import subprocess
 import sys
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -2778,6 +2779,60 @@ def test_port_preflight_checks_every_live_port_on_loopback(
     assert probes == [(port, "127.0.0.1") for port in ports.values()]
 
 
+def test_core_port_allocation_probes_only_published_services(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probes: list[int] = []
+
+    def fake_port_is_free(port: int, host: str = "127.0.0.1") -> bool:
+        assert host == "127.0.0.1"
+        probes.append(port)
+        return True
+
+    monkeypatch.setattr(live_stand, "port_is_free", fake_port_is_free)
+    monkeypatch.setattr(live_stand.secrets, "randbelow", lambda _limit: len(probes))
+
+    ports = live_stand.choose_published_ports(
+        active_services=live_stand.LIVE_CORE_EXPECTED_SERVICES
+    )
+    active_names = live_stand._published_port_names_for_services(
+        live_stand.LIVE_CORE_EXPECTED_SERVICES
+    )
+
+    assert tuple(ports) == tuple(
+        name for name, _service, _port in live_stand.LIVE_PORT_SPECS
+    )
+    assert probes == list(ports[name] for name in active_names)
+    assert len(set(ports.values())) == len(live_stand.LIVE_PORT_SPECS)
+    assert not set(probes).intersection(
+        ports[name] for name in ports if name not in active_names
+    )
+
+
+def test_core_port_recheck_ignores_unused_interpolation_ports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active_names = live_stand._published_port_names_for_services(
+        live_stand.LIVE_CORE_EXPECTED_SERVICES
+    )
+    ports = _port_map(50000)
+    inactive_names = set(ports) - set(active_names)
+    probes: list[int] = []
+
+    def fake_port_is_free(port: int, host: str = "127.0.0.1") -> bool:
+        assert host == "127.0.0.1"
+        probes.append(port)
+        return port not in {ports[name] for name in inactive_names}
+
+    monkeypatch.setattr(live_stand, "port_is_free", fake_port_is_free)
+
+    live_stand.require_free_ports(
+        ports, active_services=live_stand.LIVE_CORE_EXPECTED_SERVICES
+    )
+
+    assert probes == [ports[name] for name in active_names]
+
+
 def test_generated_port_map_is_distinct_and_within_unprivileged_range(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2798,6 +2853,64 @@ def test_generated_port_map_is_distinct_and_within_unprivileged_range(
     ]
     assert len(set(ports.values())) == len(live_stand.LIVE_PORT_SPECS)
     assert all(20000 <= port <= 45000 for port in ports.values())
+
+
+def test_core_compose_identity_binds_active_port_names_not_values(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree = tmp_path / "ue-live"
+    worktree.mkdir()
+    (worktree / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    _install_compose_config_mock(monkeypatch, worktree)
+    roots = live_stand.LIVE_CORE_SERVICE_ROOTS
+    selected = live_stand.LIVE_CORE_EXPECTED_SERVICES
+
+    def selected_services(
+        _project: object, stack: str
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        if stack == live_stand.LIVE_STACK_CORE:
+            return roots, selected
+        return (), ("backend",)
+
+    monkeypatch.setattr(live_stand, "resolve_live_service_selection", selected_services)
+    ports = _port_map(40000)
+    changed_active = dict(ports)
+    changed_active["CADDY_HTTP"] += 1000
+    changed_inactive = dict(ports)
+    changed_inactive["GRAFANA"] += 1000
+
+    core = live_stand._compose_resource_evidence(
+        worktree,
+        "ue-live-0123456789abcdef",
+        ports,
+        stack=live_stand.LIVE_STACK_CORE,
+        service_roots=roots,
+    )
+    core_active_change = live_stand._compose_resource_evidence(
+        worktree,
+        "ue-live-0123456789abcdef",
+        changed_active,
+        stack=live_stand.LIVE_STACK_CORE,
+        service_roots=roots,
+    )
+    core_inactive_change = live_stand._compose_resource_evidence(
+        worktree,
+        "ue-live-0123456789abcdef",
+        changed_inactive,
+        stack=live_stand.LIVE_STACK_CORE,
+        service_roots=roots,
+    )
+    full = live_stand._compose_resource_evidence(
+        worktree, "ue-live-0123456789abcdef", ports
+    )
+    full_port_change = live_stand._compose_resource_evidence(
+        worktree, "ue-live-0123456789abcdef", changed_active
+    )
+
+    assert core.fingerprint == core_active_change.fingerprint
+    assert core.fingerprint == core_inactive_change.fingerprint
+    assert full.fingerprint == full_port_change.fingerprint
 
 
 def test_free_port_is_reported_free() -> None:
@@ -2885,6 +2998,39 @@ def _prepare_owned_stand(
     keys = live_stand.load_or_create_vapid(worktree)
     owner = live_stand._bind_stand_owner_compose_resources(worktree, owner)
     return worktree, owner, keys
+
+
+def _prepare_core_owned_stand(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[Path, live_stand.StandOwner]:
+    worktree, full_owner, _keys = _prepare_owned_stand(monkeypatch, tmp_path)
+    original_resolver = live_stand.resolve_live_service_selection
+
+    def resolve_selection(
+        compose_project: Mapping[str, object], stack: str
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        if stack == live_stand.LIVE_STACK_CORE:
+            return (
+                live_stand.LIVE_CORE_SERVICE_ROOTS,
+                live_stand.LIVE_CORE_EXPECTED_SERVICES,
+            )
+        return original_resolver(compose_project, stack)
+
+    monkeypatch.setattr(live_stand, "resolve_live_service_selection", resolve_selection)
+    incomplete_core_owner = replace(
+        full_owner,
+        compose_resource_fingerprint=None,
+        resume_compose_resource_fingerprint=None,
+        resume_compose_resource_schema_version=None,
+        stack=live_stand.LIVE_STACK_CORE,
+        service_roots=live_stand.LIVE_CORE_SERVICE_ROOTS,
+        selected_services=(),
+    )
+    live_stand._write_stand_owner_update(worktree, incomplete_core_owner)
+    core_owner = live_stand._bind_stand_owner_compose_resources(
+        worktree, incomplete_core_owner
+    )
+    return worktree, core_owner
 
 
 def _install_compose_config_mock(
@@ -3014,8 +3160,154 @@ def test_new_owner_marker_stores_fingerprints_without_raw_docker_identity(
     assert engine_id not in marker_text
 
 
+@pytest.mark.parametrize(
+    "stack", [live_stand.LIVE_STACK_FULL, live_stand.LIVE_STACK_CORE]
+)
+def test_invalidated_signed_owner_retains_resumable_resource_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stack: str
+) -> None:
+    if stack == live_stand.LIVE_STACK_CORE:
+        worktree, owner = _prepare_core_owned_stand(monkeypatch, tmp_path)
+    else:
+        worktree, owner, _keys = _prepare_owned_stand(monkeypatch, tmp_path)
+
+    original_fingerprint = owner.compose_resource_fingerprint
+    assert original_fingerprint is not None
+
+    invalidated = live_stand._invalidate_stand_owner_compose_resources(worktree, owner)
+    loaded = live_stand.load_stand_owner(worktree)
+
+    assert loaded == invalidated
+    assert loaded.stack == owner.stack == stack
+    assert loaded.compose_resource_fingerprint is None
+    assert loaded.resume_compose_resource_fingerprint == original_fingerprint
+    assert loaded.resume_compose_resource_schema_version == owner.schema_version
+    assert loaded.selected_services == ()
+    assert loaded.service_roots == (
+        owner.service_roots if stack == live_stand.LIVE_STACK_CORE else ()
+    )
+
+    resumed = live_stand._resume_compose_resource_evidence(worktree, loaded)
+    assert resumed.fingerprint == original_fingerprint
+    assert resumed.stack == owner.stack
+    assert resumed.selected_services == owner.selected_services
+
+
+def test_core_signed_resume_accepts_reallocated_published_port_values(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, owner = _prepare_core_owned_stand(monkeypatch, tmp_path)
+    original_fingerprint = owner.compose_resource_fingerprint
+    assert original_fingerprint is not None
+    changed_ports = dict(owner.published_ports)
+    changed_ports["CADDY_HTTP"] += 1000
+
+    incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
+    rebound = live_stand._bind_stand_owner_compose_resources(worktree, incomplete)
+
+    assert dict(rebound.published_ports) == changed_ports
+    assert rebound.stack == live_stand.LIVE_STACK_CORE
+    assert rebound.service_roots == owner.service_roots
+    assert rebound.selected_services == owner.selected_services
+    assert rebound.compose_resource_fingerprint == original_fingerprint
+
+
+def test_core_signed_resume_rejects_compose_mount_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, owner = _prepare_core_owned_stand(monkeypatch, tmp_path)
+    changed_ports = dict(owner.published_ports)
+    changed_ports["CADDY_HTTP"] += 1000
+    incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
+    marker = worktree / live_stand.STAND_FILE
+    marker_before = marker.read_bytes()
+    original_run = live_stand.subprocess.run
+
+    def changed_mount_run(command: Sequence[str], *args: Any, **kwargs: Any) -> Any:
+        if tuple(command[:2]) == ("docker", "compose") and tuple(command[-3:]) == (
+            "config",
+            "--format",
+            "json",
+        ):
+            project_name = command[command.index("-p") + 1]
+            model = {
+                "name": project_name,
+                "volumes": {
+                    "app-data": {
+                        "name": f"{project_name}_app-data",
+                        "external": False,
+                    }
+                },
+                "services": {
+                    "backend": {
+                        "volumes": [
+                            {
+                                "type": "volume",
+                                "source": "app-data",
+                                "target": "/changed-target",
+                            }
+                        ],
+                        "volumes_from": [],
+                    }
+                },
+            }
+            return subprocess.CompletedProcess(
+                command, 0, stdout=json.dumps(model), stderr=""
+            )
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(live_stand.subprocess, "run", changed_mount_run)
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="resolved Compose resource identity differs from signed resume evidence",
+    ):
+        live_stand._bind_stand_owner_compose_resources(worktree, incomplete)
+
+    assert marker.read_bytes() == marker_before
+    assert live_stand.load_stand_owner(worktree) == incomplete
+
+
+def test_signed_complete_full_owner_requires_roots_to_match_selection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    assert owner.compose_resource_fingerprint is not None
+    malformed = replace(owner, service_roots=())
+    live_stand._write_stand_owner_update(worktree, malformed)
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="full-stack service roots and selection do not match",
+    ):
+        live_stand.load_stand_owner(worktree)
+
+
+def test_signed_incomplete_full_owner_cannot_claim_a_partial_selection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / ".git").mkdir()
+    worktree = tmp_path / live_stand.WORKTREE_NAME
+    worktree.mkdir()
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "a" * 64)
+    owner = live_stand.create_stand_owner(worktree, published_ports=_port_map())
+    malformed = replace(owner, selected_services=("backend",))
+    live_stand._write_stand_owner_update(worktree, malformed)
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="incomplete live ownership contains a service selection",
+    ):
+        live_stand.load_stand_owner(worktree)
+
+
 @pytest.mark.parametrize("version", [2, 3, 4])
-def test_status_reads_legacy_owner_markers_without_migrating_them(
+def test_status_fails_closed_for_legacy_markers_without_resource_identity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     version: int,
@@ -3024,16 +3316,19 @@ def test_status_reads_legacy_owner_markers_without_migrating_them(
     marker_path = _write_legacy_owner_marker(worktree, owner, version)
     marker_before = marker_path.read_bytes()
     commands: list[list[str]] = []
-    monkeypatch.setattr(
-        live_stand, "_run", lambda command, **_: commands.append(list(command))
+    lock_path = worktree.parent / f".{worktree.name}.lifecycle.lock"
+
+    expected_message = (
+        "cannot verify Docker daemon ownership"
+        if version < live_stand.PREVIOUS_OWNER_SCHEMA_VERSION
+        else "lacks Compose resource evidence"
     )
+    with pytest.raises(live_stand.StandError, match=expected_message):
+        live_stand.status()
 
-    live_stand.status()
-
-    assert commands == [
-        live_stand.compose_command("ps", project_name=owner.project_name)
-    ]
+    assert commands == []
     assert marker_path.read_bytes() == marker_before
+    assert not lock_path.exists()
 
 
 @pytest.mark.parametrize("version", [2, 3, 4])
@@ -3326,6 +3621,7 @@ def test_status_does_not_generate_missing_owner_or_vapid_files(
 
     assert not (worktree / live_stand.STAND_FILE).exists()
     assert not (worktree / live_stand.VAPID_FILE).exists()
+    assert not (worktree.parent / f".{worktree.name}.lifecycle.lock").exists()
     assert commands == []
 
 
@@ -3376,7 +3672,16 @@ def test_compose_control_commands_never_read_or_pass_vapid_keys(
     monkeypatch.setenv("LIVE_VAPID_PUBLIC_KEY", "ambient-public")
     monkeypatch.setenv("LIVE_VAPID_PRIVATE_KEY", "ambient-private")
     monkeypatch.setattr(live_stand, "load_vapid", reject_vapid_read)
-    monkeypatch.setattr(live_stand, "_run", capture_compose_environment)
+    if operation == "status":
+        monkeypatch.setattr(
+            live_stand,
+            "_status_compose_output",
+            lambda command, *, cwd, env: (
+                commands.append(list(command)) or environments.append(dict(env)) or ""
+            ),
+        )
+    else:
+        monkeypatch.setattr(live_stand, "_run", capture_compose_environment)
 
     getattr(live_stand, operation)()
 
@@ -3423,20 +3728,19 @@ def test_status_is_read_only_and_uses_the_owned_project(
     vapid = worktree / live_stand.VAPID_FILE
     marker_before = marker.read_bytes()
     vapid_before = vapid.read_bytes()
-    monkeypatch.setattr(
-        live_stand,
-        "docker_daemon_fingerprint",
-        lambda: pytest.fail("status must not query Docker daemon identity"),
-        raising=False,
-    )
     commands: list[list[str]] = []
     environments: list[dict[str, str]] = []
 
-    def capture(command: list[str], *, cwd: Path, env: dict[str, str] | None) -> None:
+    def capture(command: list[str], *, cwd: Path, env: dict[str, str]) -> str:
+        del cwd
         commands.append(list(command))
         environments.append(dict(env or {}))
+        return "NAME STATUS\n"
 
-    monkeypatch.setattr(live_stand, "_run", capture)
+    monkeypatch.setattr(live_stand, "_status_compose_output", capture)
+    before_snapshot = live_stand._readonly_status_snapshot(worktree)
+    lock_path = worktree.parent / f".{worktree.name}.lifecycle.lock"
+    assert not lock_path.exists()
 
     live_stand.status()
 
@@ -3451,6 +3755,8 @@ def test_status_is_read_only_and_uses_the_owned_project(
     _assert_compose_port_environment(environments[0], owner.published_ports)
     assert marker.read_bytes() == marker_before
     assert vapid.read_bytes() == vapid_before
+    assert live_stand._readonly_status_snapshot(worktree) == before_snapshot
+    assert not lock_path.exists()
     assert {
         relative_path: (worktree / relative_path).read_bytes()
         for relative_path in protected_files
@@ -3876,7 +4182,7 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     owner_marker = json.loads(
         (state_root / live_stand.STAND_FILE).read_text(encoding="utf-8")
     )
-    assert owner_marker["version"] == 7
+    assert owner_marker["version"] == live_stand.IN_PLACE_OWNER_SCHEMA_VERSION
     assert owner_marker["repository"] == str(repository.resolve())
     assert owner_marker["worktree"] == str(state_root.resolve())
     assert owner_marker["source_sha"] == resolved_sha
@@ -4074,12 +4380,21 @@ def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(
         "_run",
         lambda command, *, cwd, env=None: commands.append((list(command), cwd, env)),
     )
+    monkeypatch.setattr(
+        live_stand,
+        "_status_compose_output",
+        lambda command, *, cwd, env: (
+            commands.append((list(command), cwd, env)) or "NAME STATUS\n"
+        ),
+    )
 
     owner = live_stand.create_stand_owner(state_root, published_ports=_port_map(32000))
     complete_owner = live_stand.StandOwner(
         **{
             **owner.__dict__,
             "compose_resource_fingerprint": "e" * 64,
+            "service_roots": ("backend",),
+            "selected_services": ("backend",),
         }
     )
     live_stand._write_stand_owner_update(state_root, complete_owner)
@@ -4093,6 +4408,8 @@ def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(
 
     before_state = snapshot(state_root)
     before_source = snapshot(repository)
+    lock_path = state_root.parent / f".{state_root.name}.lifecycle.lock"
+    assert not lock_path.exists()
 
     live_stand.status()
     assert snapshot(state_root) == before_state
@@ -4101,6 +4418,7 @@ def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(
     assert str(repository.resolve()) in commands[-1][0]
     assert str((state_root / ".env.docker").resolve()) in commands[-1][0]
     assert str((state_root / live_stand.IN_PLACE_OVERLAY).resolve()) in commands[-1][0]
+    assert not lock_path.exists()
 
     live_stand.stop()
     assert commands[-1][0][-1] == "stop"
@@ -4113,7 +4431,7 @@ def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(
     assert snapshot(repository) == before_source
     assert repository.is_dir() and state_root.is_dir()
     assert git_calls == []
-    assert resource_verifications == [state_root, state_root]
+    assert resource_verifications == [state_root, state_root, state_root]
 
 
 def test_in_place_mode_rejects_state_path_outside_owned_temp_parent(
@@ -4741,6 +5059,10 @@ def test_up_preflights_every_port_before_stopping_or_building(
         "-Build",
         "-ExtraCompose",
         live_stand.OVERLAY,
+        "-LiveAcceptanceStack",
+        owner.stack,
+        "-LiveAcceptanceServicesJson",
+        json.dumps(owner.selected_services, separators=(",", ":")),
         "-AllowExistingOwnedVolumes",
     ]
     started_owner = live_stand.load_stand_owner(worktree)

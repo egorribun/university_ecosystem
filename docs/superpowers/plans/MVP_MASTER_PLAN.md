@@ -342,6 +342,17 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   переключения worktree. `down` — data-preserving alias для `stop`; `teardown`
   удаляет только resources подписанного project и сохраняет state root,
   checkout, `.env*`, `.secrets` и evidence.
+- Выбор `up --stack full|core` отделён от E2E `--mode smoke|full`.
+  По умолчанию запускать full; явный Core предназначен для ограниченной диагностики,
+  а не для закрытия полной приёмки. Его пять корневых сервисов — Caddy, Mailpit,
+  notifications-worker, outbox-worker и SpiceDB — запускаются с обычными Compose
+  dependencies, без `--no-deps`. Проверять точную утверждённую closure из 23 сервисов,
+  включая Tempo/probe и init/migration jobs; изменение состава требует ревью.
+  Все 15 значений портов остаются в подписанном interpolation map; Core проверяет
+  занятость только девяти активных портов. Resource fingerprint сохраняет identities
+  и активные имена портов, чтобы разрешать подписанную смену host ports при restart.
+  Full и исторические full owner schemas сохраняют проверку всех объявленных
+  ресурсов, включая неиспользуемые volumes, которые удаляет `down --volumes`.
 - Проверить в Docker readiness и рабочий ответ backend, SSR/Caddy, gateway, gRPC,
   WebSocket hub, NATS, Redis, S3/SeaweedFS и Mailpit; не считать container
   `running` достаточным readiness.

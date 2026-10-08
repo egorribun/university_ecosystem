@@ -44,6 +44,9 @@ param(
     [switch]$PrepareOnly,
     [switch]$AllowExistingOwnedVolumes,
     [string]$LiveStandStateRoot = "",
+    [ValidateSet("full", "core")]
+    [string]$LiveAcceptanceStack = "",
+    [string]$LiveAcceptanceServicesJson = "",
     [Alias("Lean")]
     [switch]$Core,
     [string[]]$ExtraCompose = @(),
@@ -54,6 +57,42 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path))
 $LiveStateMode = -not [string]::IsNullOrWhiteSpace($LiveStandStateRoot)
 $StateRoot = $ProjectRoot
+$script:LiveStandOwner = $null
+$script:LiveAcceptanceRoots = @()
+$script:LiveAcceptanceServices = @()
+$script:LiveAcceptanceCore = $false
+$script:LiveAcceptanceCoreRoots = [string[]]@(
+    "caddy",
+    "mailpit",
+    "notifications-worker",
+    "outbox-worker",
+    "spicedb"
+)
+$script:LiveAcceptanceCoreClosure = [string[]]@(
+    "backend",
+    "caddy",
+    "flagd",
+    "flagd-healthprobe",
+    "frontend",
+    "gateway",
+    "imgproxy",
+    "mailpit",
+    "migrations",
+    "minio",
+    "minio-init",
+    "nats",
+    "notifications-worker",
+    "outbox-worker",
+    "postgres",
+    "postgres-databases-init",
+    "redis",
+    "revocation-redis",
+    "spicedb",
+    "spicedb-migrate",
+    "tempo",
+    "tempo-healthprobe",
+    "ws-hub"
+)
 
 function Assert-LiveStandPrivatePath {
     param([Parameter(Mandatory=$true)][string]$Path)
@@ -213,6 +252,31 @@ function ConvertTo-CanonicalLiveOwnerJson {
     return ConvertTo-Json -InputObject $Value -Compress
 }
 
+function Test-CanonicalLiveServiceList {
+    param(
+        [Parameter(Mandatory=$true)][AllowEmptyCollection()][object]$Value,
+        [switch]$AllowEmpty
+    )
+    if ($Value -isnot [array]) { return $false }
+    $items = @($Value)
+    if (-not $AllowEmpty -and $items.Count -eq 0) { return $false }
+    foreach ($item in $items) {
+        if ($item -isnot [string] -or
+            $item -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$') {
+            return $false
+        }
+    }
+    $unique = @($items | Sort-Object -Unique -CaseSensitive)
+    $sorted = @($items | Sort-Object -CaseSensitive)
+    if ($unique.Count -ne $items.Count -or $sorted.Count -ne $items.Count) {
+        return $false
+    }
+    for ($index = 0; $index -lt $items.Count; $index++) {
+        if ([string]$items[$index] -cne [string]$sorted[$index]) { return $false }
+    }
+    return $true
+}
+
 function Resolve-OwnedLiveStandStateRoot {
     param([Parameter(Mandatory=$true)][string]$Path)
     $candidate = [System.IO.Path]::GetFullPath($Path)
@@ -276,7 +340,7 @@ function Resolve-OwnedLiveStandStateRoot {
     } catch {
         throw "Live stand ownership metadata cannot be validated."
     }
-    if ($owner.version -ne 7 -or
+    if ($owner.version -notin @(7, 9) -or
         [string]$owner.repository -ine $ProjectRoot -or
         [string]$owner.worktree -ine $candidate -or
         [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
@@ -286,6 +350,46 @@ function Resolve-OwnedLiveStandStateRoot {
         $key.Length -ne 32 -or
         [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
         throw "Live stand owner does not match this source checkout and run root."
+    }
+    if ($owner.version -eq 7) {
+        if ($owner.ContainsKey("stack") -or $owner.ContainsKey("service_roots") -or
+            $owner.ContainsKey("selected_services")) {
+            throw "Legacy live stand owner contains unsupported stack metadata."
+        }
+    } else {
+        if (-not $owner.ContainsKey("stack") -or
+            [string]$owner.stack -cnotin @("full", "core") -or
+            -not $owner.ContainsKey("service_roots") -or
+            -not $owner.ContainsKey("selected_services") -or
+            -not (Test-CanonicalLiveServiceList -Value $owner.service_roots -AllowEmpty) -or
+            -not (Test-CanonicalLiveServiceList -Value $owner.selected_services -AllowEmpty)) {
+            throw "Live stand owner has an invalid signed service selection."
+        }
+        $resourceFingerprint = $owner.compose_resource_fingerprint
+        $completeSelection = $null -ne $resourceFingerprint
+        if ($completeSelection -and
+            ($resourceFingerprint -isnot [string] -or
+                $resourceFingerprint -cnotmatch '^[0-9a-f]{64}$')) {
+            throw "Live stand owner has an invalid resource fingerprint."
+        }
+        $ownerRootsText = [string]::Join("`n", [string[]]@($owner.service_roots))
+        $ownerServicesText = [string]::Join("`n", [string[]]@($owner.selected_services))
+        if ([string]$owner.stack -ceq "core") {
+            if ($ownerRootsText -cne [string]::Join("`n", $script:LiveAcceptanceCoreRoots) -or
+                ($completeSelection -and
+                    $ownerServicesText -cne [string]::Join("`n", $script:LiveAcceptanceCoreClosure)) -or
+                (-not $completeSelection -and @($owner.selected_services).Count -ne 0)) {
+                throw "Live Core owner has an invalid signed service closure."
+            }
+        } elseif ($completeSelection) {
+            if (@($owner.selected_services).Count -eq 0 -or
+                $ownerRootsText -cne $ownerServicesText) {
+                throw "Full live owner roots and services do not match."
+            }
+        } elseif (@($owner.service_roots).Count -ne 0 -or
+            @($owner.selected_services).Count -ne 0) {
+            throw "Incomplete full live owner contains a service selection."
+        }
     }
     $payload = [ordered]@{}
     foreach ($name in ($owner.Keys | Where-Object { $_ -cne "signature" } | Sort-Object -CaseSensitive)) {
@@ -307,6 +411,7 @@ function Resolve-OwnedLiveStandStateRoot {
     )) {
         throw "Live stand owner signature is invalid."
     }
+    $script:LiveStandOwner = $owner
     return $candidate
 }
 
@@ -353,6 +458,18 @@ if ($LiveStateMode) {
     $ComposeArgs += @("-f", (Join-Path $StateRoot "docker-compose.live-state.yml"))
 }
 $ComposeCommand = "docker compose $($ComposeArgs -join ' ') --env-file .env.docker"
+
+$liveSelectionArgumentsPresent = (
+    -not [string]::IsNullOrEmpty($LiveAcceptanceStack) -or
+    -not [string]::IsNullOrEmpty($LiveAcceptanceServicesJson)
+)
+if ($liveSelectionArgumentsPresent) {
+    if (-not ($Build -or $Rebuild) -or $Down -or $Logs -or $PrepareOnly -or $Core -or
+        @($ExtraCompose).Count -ne 1 -or
+        $ExtraCompose[0] -cne "docker-compose.live.yml") {
+        throw "Live acceptance selection requires a build of the owned live overlay."
+    }
+}
 # Keep the full compose model as the single source of truth.  Core mode scopes
 # `up`/`build` to this audited allowlist rather than maintaining a second compose
 # file that could silently drift in images, networks, or security settings.
@@ -456,6 +573,8 @@ function Assert-PrepareOnlyLiveInputs {
     # Restrict it to the exact overlay and signed project/port/key environment
     # supplied by live_stand.py; never turn it into a generic config writer.
     if ($Build -or $Rebuild -or $Down -or $Logs -or $Core -or $AllowExistingOwnedVolumes -or
+        -not [string]::IsNullOrEmpty($LiveAcceptanceStack) -or
+        -not [string]::IsNullOrEmpty($LiveAcceptanceServicesJson) -or
         -not [string]::IsNullOrWhiteSpace($LogService)) {
         throw "PrepareOnly cannot be combined with build, lifecycle, log, or core-mode switches."
     }
@@ -1451,6 +1570,295 @@ function Assert-ComposeConfiguration {
     return $composeModel
 }
 
+function Resolve-LiveAcceptanceSelection {
+    param(
+        [Parameter(Mandatory=$true)][object]$ComposeModel,
+        [Parameter(Mandatory=$true)][ValidateSet("full", "core")][string]$Stack
+    )
+    $servicesProperty = $ComposeModel.PSObject.Properties["services"]
+    if ($null -eq $servicesProperty -or $null -eq $servicesProperty.Value) {
+        throw "Resolved Compose service inventory is invalid."
+    }
+    $serviceNames = @($servicesProperty.Value.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+    if ($serviceNames.Count -eq 0 -or
+        @($serviceNames | Where-Object { $_ -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$' }).Count -gt 0 -or
+        @($serviceNames | Sort-Object -Unique -CaseSensitive).Count -ne $serviceNames.Count) {
+        throw "Resolved Compose service inventory is invalid."
+    }
+    if ($Stack -ceq "full") {
+        return [pscustomobject]@{ Roots = $serviceNames; Services = $serviceNames }
+    }
+    foreach ($root in $script:LiveAcceptanceCoreRoots) {
+        if ($serviceNames -cnotcontains $root) {
+            throw "Reviewed live Core service roots are missing from Compose."
+        }
+    }
+
+    $selected = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::Ordinal
+    )
+    $pending = [System.Collections.Generic.List[string]]::new()
+    foreach ($root in $script:LiveAcceptanceCoreRoots) { $pending.Add($root) }
+    while ($pending.Count -gt 0) {
+        $lastIndex = $pending.Count - 1
+        $serviceName = $pending[$lastIndex]
+        $pending.RemoveAt($lastIndex)
+        if (-not $selected.Add($serviceName)) { continue }
+        $serviceProperty = $servicesProperty.Value.PSObject.Properties |
+            Where-Object { $_.Name -ceq $serviceName } | Select-Object -First 1
+        if ($null -eq $serviceProperty -or $null -eq $serviceProperty.Value) {
+            throw "Resolved Compose dependency references an unknown service."
+        }
+        $dependencies = [System.Collections.Generic.List[string]]::new()
+        $dependsProperty = $serviceProperty.Value.PSObject.Properties["depends_on"]
+        if ($null -ne $dependsProperty -and $null -ne $dependsProperty.Value) {
+            if ($dependsProperty.Value -is [System.Collections.IDictionary] -or
+                $dependsProperty.Value -is [pscustomobject]) {
+                foreach ($dependencyProperty in $dependsProperty.Value.PSObject.Properties) {
+                    $dependencies.Add([string]$dependencyProperty.Name)
+                }
+            } elseif ($dependsProperty.Value -is [array]) {
+                foreach ($dependency in $dependsProperty.Value) {
+                    if ($dependency -isnot [string]) {
+                        throw "Resolved Compose dependency inventory is invalid."
+                    }
+                    $dependencies.Add($dependency)
+                }
+            } else {
+                throw "Resolved Compose dependency inventory is invalid."
+            }
+        }
+        $networkModeProperty = $serviceProperty.Value.PSObject.Properties["network_mode"]
+        if ($null -ne $networkModeProperty -and $null -ne $networkModeProperty.Value) {
+            if ($networkModeProperty.Value -isnot [string]) {
+                throw "Resolved Compose network mode is invalid."
+            }
+            $networkMode = [string]$networkModeProperty.Value
+            if ($networkMode.StartsWith("service:", [StringComparison]::Ordinal)) {
+                $dependencies.Add($networkMode.Substring(8))
+            }
+        }
+        $linksProperty = $serviceProperty.Value.PSObject.Properties["links"]
+        if ($null -ne $linksProperty -and $null -ne $linksProperty.Value) {
+            foreach ($link in @($linksProperty.Value)) {
+                if ($link -isnot [string] -or [string]::IsNullOrWhiteSpace($link)) {
+                    throw "Resolved Compose link inventory is invalid."
+                }
+                $dependencies.Add($link.Split([char]":")[0])
+            }
+        }
+        foreach ($dependency in $dependencies) {
+            if ([string]::IsNullOrWhiteSpace($dependency) -or
+                $serviceNames -cnotcontains $dependency) {
+                throw "Resolved Compose dependency references an unknown service."
+            }
+            if (-not $selected.Contains($dependency)) { $pending.Add($dependency) }
+        }
+    }
+    $selectedNames = @($selected | Sort-Object -CaseSensitive)
+    if ($selectedNames.Count -ne $script:LiveAcceptanceCoreClosure.Count) {
+        throw "Resolved live Core dependency closure differs from reviewed services."
+    }
+    for ($index = 0; $index -lt $selectedNames.Count; $index++) {
+        if ([string]$selectedNames[$index] -cne [string]$script:LiveAcceptanceCoreClosure[$index]) {
+            throw "Resolved live Core dependency closure differs from reviewed services."
+        }
+    }
+    return [pscustomobject]@{
+        Roots = @($script:LiveAcceptanceCoreRoots | Sort-Object -CaseSensitive)
+        Services = $selectedNames
+    }
+}
+
+function Get-VerifiedLiveAcceptanceOwner {
+    if ($null -ne $script:LiveStandOwner) { return $script:LiveStandOwner }
+    $ownerPath = Join-Path $ProjectRoot ".secrets/live-stand.json"
+    $keyPath = Join-Path $ProjectRoot ".secrets/live-stand-owner.key"
+    $secretsPath = Join-Path $ProjectRoot ".secrets"
+    if (-not (Test-Path -LiteralPath $secretsPath -PathType Container) -or
+        ((Get-Item -LiteralPath $secretsPath -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "Live acceptance owner directory is missing or unsafe."
+    }
+    foreach ($path in @($ownerPath, $keyPath)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Live acceptance requires a signed owner marker and key."
+        }
+        $item = Get-Item -LiteralPath $path -Force
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "Live acceptance owner paths refuse reparse points."
+        }
+    }
+    try {
+        $owner = [System.IO.File]::ReadAllText($ownerPath) |
+            ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $key = [System.IO.File]::ReadAllBytes($keyPath)
+    } catch {
+        throw "Live acceptance owner metadata cannot be validated."
+    }
+    if ($owner.version -ne 8 -or
+        [string]$owner.worktree -ine $ProjectRoot -or
+        [string]::IsNullOrWhiteSpace([string]$owner.repository) -or
+        [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
+        [string]$owner.stack -cnotin @("full", "core") -or
+        -not (Test-CanonicalLiveServiceList -Value $owner.service_roots) -or
+        -not (Test-CanonicalLiveServiceList -Value $owner.selected_services) -or
+        [string]$owner.compose_resource_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
+        [string]$env:COMPOSE_PROJECT_NAME -cne [string]$owner.project_name -or
+        $key.Length -ne 32 -or
+        [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
+        [Array]::Clear($key, 0, $key.Length)
+        throw "Live acceptance owner does not match this worktree and Compose project."
+    }
+    $payload = [ordered]@{}
+    foreach ($name in ($owner.Keys | Where-Object { $_ -cne "signature" } | Sort-Object -CaseSensitive)) {
+        $payload[$name] = $owner[$name]
+    }
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($key)
+    try {
+        $actualSignature = [Convert]::ToHexString(
+            $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(
+                (ConvertTo-CanonicalLiveOwnerJson -Value $payload)
+            ))
+        ).ToLowerInvariant()
+    } finally {
+        $hmac.Dispose()
+        [Array]::Clear($key, 0, $key.Length)
+    }
+    if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals(
+        [Convert]::FromHexString([string]$owner.signature),
+        [Convert]::FromHexString($actualSignature)
+    )) {
+        throw "Live acceptance owner signature is invalid."
+    }
+    $script:LiveStandOwner = $owner
+    return $owner
+}
+
+function Get-LiveAcceptanceVolumeProjection {
+    param(
+        [Parameter(Mandatory=$true)][object]$ComposeModel,
+        [Parameter(Mandatory=$true)][string[]]$SelectedServices
+    )
+    $selectedSet = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::Ordinal
+    )
+    foreach ($service in $SelectedServices) { [void]$selectedSet.Add($service) }
+    $serviceProperty = $ComposeModel.PSObject.Properties["services"]
+    $volumeProperty = $ComposeModel.PSObject.Properties["volumes"]
+    if ($null -eq $serviceProperty -or $null -eq $volumeProperty) {
+        throw "Resolved Compose service or volume inventory is invalid."
+    }
+    $filteredServices = [ordered]@{}
+    $usedVolumes = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::Ordinal
+    )
+    foreach ($property in $serviceProperty.Value.PSObject.Properties) {
+        if (-not $selectedSet.Contains([string]$property.Name)) { continue }
+        $filteredServices[[string]$property.Name] = $property.Value
+        $mountsProperty = $property.Value.PSObject.Properties["volumes"]
+        if ($null -eq $mountsProperty) { continue }
+        foreach ($mount in @($mountsProperty.Value)) {
+            if ($null -ne $mount -and [string]$mount.type -ceq "volume") {
+                if ([string]::IsNullOrWhiteSpace([string]$mount.source)) {
+                    throw "Resolved Compose volume mount is anonymous or undeclared."
+                }
+                [void]$usedVolumes.Add([string]$mount.source)
+            }
+        }
+    }
+    if ($filteredServices.Count -ne $selectedSet.Count) {
+        throw "Resolved Compose service projection differs from signed selection."
+    }
+    $filteredVolumes = [ordered]@{}
+    foreach ($property in $volumeProperty.Value.PSObject.Properties) {
+        if ($usedVolumes.Contains([string]$property.Name)) {
+            $filteredVolumes[[string]$property.Name] = $property.Value
+        }
+    }
+    if ($filteredVolumes.Count -ne $usedVolumes.Count) {
+        throw "Resolved Compose service references an undeclared volume."
+    }
+    return [pscustomobject]@{
+        name = $ComposeModel.name
+        services = [pscustomobject]$filteredServices
+        volumes = [pscustomobject]$filteredVolumes
+    }
+}
+
+function Assert-LiveAcceptanceSelection {
+    param([Parameter(Mandatory=$true)][object]$ComposeModel)
+    if ([string]::IsNullOrEmpty($LiveAcceptanceStack) -and
+        [string]::IsNullOrEmpty($LiveAcceptanceServicesJson)) {
+        if ($LiveStateMode) {
+            $existingOwner = Get-VerifiedLiveAcceptanceOwner
+            if ([string]$existingOwner.stack -ceq "core") {
+                throw "A Core-owned live stand requires its signed stack selection on startup."
+            }
+        } elseif (@($ExtraCompose).Count -eq 1 -and
+            $ExtraCompose[0] -ceq "docker-compose.live.yml" -and
+            (Test-Path -LiteralPath (Join-Path $ProjectRoot ".secrets/live-stand.json") -PathType Leaf)) {
+            $existingOwner = Get-VerifiedLiveAcceptanceOwner
+            if ([string]$existingOwner.stack -ceq "core") {
+                throw "A Core-owned live stand requires its signed stack selection on startup."
+            }
+        }
+        return $false
+    }
+    if (-not $LiveStateMode -and
+        (@($ExtraCompose).Count -ne 1 -or
+            $ExtraCompose[0] -cne "docker-compose.live.yml")) {
+        throw "Live acceptance stack selection requires the owned live overlay."
+    }
+    if ($Core) {
+        throw "Live acceptance stack selection cannot be combined with legacy -Core."
+    }
+    if ($LiveAcceptanceStack -cnotin @("full", "core") -or
+        [string]::IsNullOrEmpty($LiveAcceptanceServicesJson)) {
+        throw "Live acceptance requires both a fixed stack and its signed service selection."
+    }
+    try {
+        $callerServices = ConvertFrom-Json -InputObject $LiveAcceptanceServicesJson `
+            -AsHashtable -ErrorAction Stop
+    } catch {
+        throw "Live acceptance service selection is invalid."
+    }
+    if (-not (Test-CanonicalLiveServiceList -Value $callerServices)) {
+        throw "Live acceptance service selection is not a sorted unique service list."
+    }
+    $selection = Resolve-LiveAcceptanceSelection -ComposeModel $ComposeModel `
+        -Stack $LiveAcceptanceStack
+    $services = [string[]]$selection.Services
+    $roots = [string[]]$selection.Roots
+    if (@($callerServices).Count -ne $services.Count) {
+        throw "Caller live service selection differs from resolved Compose closure."
+    }
+    for ($index = 0; $index -lt $services.Count; $index++) {
+        if ([string]$callerServices[$index] -cne [string]$services[$index]) {
+            throw "Caller live service selection differs from resolved Compose closure."
+        }
+    }
+    $owner = Get-VerifiedLiveAcceptanceOwner
+    if ([string]$owner.stack -cne $LiveAcceptanceStack -or
+        [string]$owner.compose_resource_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
+        @($owner.service_roots).Count -ne $roots.Count -or
+        @($owner.selected_services).Count -ne $services.Count) {
+        throw "Live acceptance selection differs from signed stand ownership."
+    }
+    for ($index = 0; $index -lt $roots.Count; $index++) {
+        if ([string]$owner.service_roots[$index] -cne [string]$roots[$index]) {
+            throw "Live acceptance roots differ from signed stand ownership."
+        }
+    }
+    for ($index = 0; $index -lt $services.Count; $index++) {
+        if ([string]$owner.selected_services[$index] -cne [string]$services[$index]) {
+            throw "Live acceptance services differ from signed stand ownership."
+        }
+    }
+    $script:LiveAcceptanceRoots = $roots
+    $script:LiveAcceptanceServices = $services
+    return $true
+}
+
 function Assert-LiveComposeVersion {
     if (-not $LiveStateMode) { return }
     $versionOutput = @(docker compose version --short 2>$null)
@@ -1862,11 +2270,97 @@ if ($PrepareOnly) {
 }
 
 $resolvedComposeModel = Assert-ComposeConfiguration
-Assert-ManagedComposeVolumeOwnership -ComposeModel $resolvedComposeModel
+$hasLiveAcceptanceSelection = Assert-LiveAcceptanceSelection -ComposeModel $resolvedComposeModel
+$script:LiveAcceptanceCore = $hasLiveAcceptanceSelection -and
+    $LiveAcceptanceStack -ceq "core"
+if ($script:LiveAcceptanceCore -and $Core) {
+    throw "Live acceptance Core and legacy Core selections cannot be combined."
+}
+$liveAcceptanceServiceArgs = @($script:LiveAcceptanceServices)
+$liveAcceptanceRootArgs = @($script:LiveAcceptanceRoots)
+$ownershipComposeModel = $resolvedComposeModel
+if ($script:LiveAcceptanceCore) {
+    $ownershipComposeModel = Get-LiveAcceptanceVolumeProjection `
+        -ComposeModel $resolvedComposeModel `
+        -SelectedServices $script:LiveAcceptanceServices
+}
+Assert-ManagedComposeVolumeOwnership -ComposeModel $ownershipComposeModel
 
 # -- Core resource guard ------------------------------------------------------
 
-if ($Core) {
+function Get-LiveAcceptanceCoreReadinessInventory {
+    return [ordered]@{
+        backend = @{ type = "docker"; service = "backend"; ready = $false }
+        caddy = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/healthz"); ready = $false }
+        site = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/login"); timeout = 20; ready = $false }
+        flagd = @{ type = "docker"; service = "flagd"; ready = $false }
+        flagdHealth = @{ type = "docker"; service = "flagd-healthprobe"; ready = $false }
+        frontend = @{ type = "http"; service = "frontend"; url = (Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path "/login"); timeout = 20; ready = $false }
+        gateway = @{ type = "http"; service = "gateway"; url = (Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path "/health"); ready = $false }
+        imgproxy = @{ type = "docker"; service = "imgproxy"; ready = $false }
+        mailpit = @{ type = "http"; service = "mailpit"; url = (Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path "/api/v1/info"); ready = $false }
+        migrations = @{ type = "job"; service = "migrations"; ready = $false }
+        minio = @{ type = "docker"; service = "minio"; ready = $false }
+        minioInit = @{ type = "job"; service = "minio-init"; ready = $false }
+        nats = @{ type = "docker"; service = "nats"; ready = $false }
+        notifications = @{ type = "docker"; service = "notifications-worker"; ready = $false }
+        outbox = @{ type = "docker"; service = "outbox-worker"; ready = $false }
+        postgres = @{ type = "docker"; service = "postgres"; ready = $false }
+        postgresInit = @{ type = "job"; service = "postgres-databases-init"; ready = $false }
+        redis = @{ type = "docker"; service = "redis"; ready = $false }
+        revocationRedis = @{ type = "docker"; service = "revocation-redis"; ready = $false }
+        spicedb = @{ type = "docker"; service = "spicedb"; ready = $false }
+        spicedbMigrate = @{ type = "job"; service = "spicedb-migrate"; ready = $false }
+        tempo = @{ type = "docker"; service = "tempo"; ready = $false }
+        tempoProbe = @{ type = "docker"; service = "tempo-healthprobe"; ready = $false }
+        wshub = @{ type = "http"; service = "ws-hub"; url = (Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path "/health"); ready = $false }
+    }
+}
+
+function Get-StartupReadinessInventory {
+    param(
+        [switch]$LiveAcceptanceCore,
+        [switch]$Core,
+        [System.Collections.IDictionary]$CoreReadiness,
+        [System.Collections.IDictionary]$FullReadiness
+    )
+
+    if ($LiveAcceptanceCore -and $Core) {
+        throw "Live acceptance Core and legacy Core selections cannot be combined."
+    }
+    if ($LiveAcceptanceCore) {
+        if ($null -eq $CoreReadiness -or $null -eq $FullReadiness) {
+            throw "Readiness inventories are required for live stack selection."
+        }
+        return $CoreReadiness
+    }
+    if ($null -eq $FullReadiness) {
+        throw "Full-stack readiness inventory is required."
+    }
+    if ($Core) {
+        foreach ($name in $CoreExcludedHealthServices) {
+            [void]$FullReadiness.Remove($name)
+        }
+    }
+    return $FullReadiness
+}
+
+if ($script:LiveAcceptanceCore) {
+    # The live acceptance Core preset has its own complete readiness inventory.
+    # One-shot initialization services must have exited successfully; every
+    # other selected service is checked directly or through its established
+    # live HTTP endpoint. The default/full readiness map above stays unchanged.
+    $coreReadiness = Get-LiveAcceptanceCoreReadinessInventory
+    $representedCoreServices = @($coreReadiness.Values | ForEach-Object { [string]$_.service } | Sort-Object -Unique -CaseSensitive)
+    if ($representedCoreServices.Count -ne $script:LiveAcceptanceServices.Count) {
+        throw "Live Core readiness inventory does not cover its signed service closure."
+    }
+    for ($index = 0; $index -lt $representedCoreServices.Count; $index++) {
+        if ([string]$representedCoreServices[$index] -cne [string]$script:LiveAcceptanceServices[$index]) {
+            throw "Live Core readiness inventory does not cover its signed service closure."
+        }
+    }
+} elseif ($Core) {
     # Stop optional containers before any build work so Docker Desktop can
     # reclaim their CPU and memory during a potentially expensive image build.
     # `stop` preserves their named volumes and makes switching back to the
@@ -1882,7 +2376,10 @@ if ($Core) {
 # -- Build --------------------------------------------------------------------
 
 if ($Rebuild) {
-    if ($Core) {
+    if ($script:LiveAcceptanceCore) {
+        Write-Status "Rebuilding the owner-bound live Core service closure (no cache)..."
+        docker compose @ComposeArgs --env-file $EnvFile build --no-cache @liveAcceptanceServiceArgs
+    } elseif ($Core) {
         Write-Status "Rebuilding core images (no cache; optional services are skipped)..."
         docker compose @ComposeArgs --env-file $EnvFile build --no-cache @CoreComposeServices
     } else {
@@ -1893,9 +2390,12 @@ if ($Rebuild) {
         Write-Err "Build failed. Check output above."
         exit 1
     }
-    Write-Ok $(if ($Core) { "Core images rebuilt" } else { "All images rebuilt" })
+    Write-Ok $(if ($script:LiveAcceptanceCore) { "Live acceptance Core images rebuilt" } elseif ($Core) { "Core images rebuilt" } else { "All images rebuilt" })
 } elseif ($Build) {
-    if ($Core) {
+    if ($script:LiveAcceptanceCore) {
+        Write-Status "Building the owner-bound live Core service closure..."
+        docker compose @ComposeArgs --env-file $EnvFile build @liveAcceptanceServiceArgs
+    } elseif ($Core) {
         Write-Status "Building core images (cached; optional services are skipped)..."
         docker compose @ComposeArgs --env-file $EnvFile build @CoreComposeServices
     } else {
@@ -1906,12 +2406,20 @@ if ($Rebuild) {
         Write-Err "Build failed. Check output above."
         exit 1
     }
-    Write-Ok $(if ($Core) { "Core images built" } else { "Images built" })
+    Write-Ok $(if ($script:LiveAcceptanceCore) { "Live acceptance Core images built" } elseif ($Core) { "Core images built" } else { "Images built" })
 }
 
 # -- Start services -----------------------------------------------------------
 
-if ($Core) {
+if ($script:LiveAcceptanceCore) {
+    Write-Status "Starting the signed live Core roots with normal Compose dependencies..."
+    docker compose @ComposeArgs --env-file $EnvFile up -d @liveAcceptanceRootArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to start the signed live Core roots."
+        docker compose @ComposeArgs --env-file $EnvFile ps --all
+        exit 1
+    }
+} elseif ($Core) {
     # Keep dependency ordering for the core topology. The gateway depends on a
     # Tempo health sidecar in the full model, so it is intentionally started in
     # a final `--no-deps` step after core dependencies are up; no optional
@@ -1980,7 +2488,7 @@ if ($Core) {
 Write-Status "Waiting for services..."
 $timeout = 300
 $elapsed = 0
-$services = [ordered]@{
+$fullReadiness = [ordered]@{
     postgres      = @{ type = "docker"; service = "postgres"; ready = $false }
     redis         = @{ type = "docker"; service = "redis"; ready = $false }
     redisexporter = @{ type = "docker"; service = "redis-exporter"; ready = $false }
@@ -2013,14 +2521,18 @@ $services = [ordered]@{
     pyroscope     = @{ type = "http"; service = "pyroscope"; url = (Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path "/ready"); ready = $false }
 }
 
+if ($script:LiveAcceptanceCore) {
+    $services = Get-StartupReadinessInventory `
+        -LiveAcceptanceCore `
+        -CoreReadiness $coreReadiness `
+        -FullReadiness $fullReadiness
+} else {
+    $services = Get-StartupReadinessInventory `
+        -Core:$Core `
+        -FullReadiness $fullReadiness
+}
+
 if ($Core) {
-    # The full map is intentionally kept explicit for the default release-like
-    # path and for review visibility. Core mode removes only the audited
-    # optional probes, so an absent service can never keep the readiness loop
-    # spinning forever.
-    foreach ($name in $CoreExcludedHealthServices) {
-        [void]$services.Remove($name)
-    }
     Write-Status "Core mode readiness excludes search, Temporal, and observability probes."
 }
 
@@ -2031,14 +2543,33 @@ do {
     foreach ($name in $services.Keys) {
         if ($services[$name].ready) { continue }
 
-        if ($services[$name].type -eq "docker") {
+        if ($services[$name].type -in @("docker", "job")) {
             $serviceName = $services[$name].service
-            $infoStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose @ComposeArgs --env-file $EnvFile ps $serviceName --format json 2>$null } | Out-String
+            if ($services[$name].type -eq "job") {
+                $infoStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose @ComposeArgs --env-file $EnvFile ps --all $serviceName --format json 2>$null } | Out-String
+            } else {
+                $infoStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose @ComposeArgs --env-file $EnvFile ps $serviceName --format json 2>$null } | Out-String
+            }
             $info = if ($infoStr -match "\{") { $infoStr | ConvertFrom-Json } else { $null }
-            $h = if ($info -is [array]) { $info[0].Health } else { $info.Health }
-            $state = if ($info -is [array]) { $info[0].State } else { $info.State }
-            if ($h -eq "healthy" -or ((-not $h) -and $state -eq "running")) {
-                $services[$name].ready = $true
+            $rows = @($info)
+            if ($services[$name].type -eq "job") {
+                if ($rows.Count -eq 1 -and
+                    [string]$rows[0].State -ieq "exited" -and
+                    $null -ne $rows[0].PSObject.Properties["ExitCode"] -and
+                    [long]$rows[0].ExitCode -eq 0) {
+                    $services[$name].ready = $true
+                }
+            } elseif ($rows.Count -gt 0) {
+                $allContainersReady = $true
+                foreach ($row in $rows) {
+                    $health = [string]$row.Health
+                    $state = [string]$row.State
+                    if ($health -cne "healthy" -and
+                        -not ([string]::IsNullOrEmpty($health) -and $state -ceq "running")) {
+                        $allContainersReady = $false
+                    }
+                }
+                if ($allContainersReady) { $services[$name].ready = $true }
             }
         } else {
             $requestTimeout = if ($services[$name].ContainsKey("timeout")) {
@@ -2082,13 +2613,15 @@ if (-not $allReady) {
     exit 1
 }
 
-if (-not $Core) {
+if (-not $Core -and -not $script:LiveAcceptanceCore) {
     Write-Status "Validating Prometheus scrape targets..."
     if (-not (Wait-PrometheusTargets)) {
         Write-Err "Prometheus has missing or unhealthy scrape targets."
         exit 1
     }
     Write-Ok "Prometheus scrape targets are healthy"
+} elseif ($script:LiveAcceptanceCore) {
+    Write-Status "Skipping Prometheus target validation; Prometheus is outside the signed live Core closure."
 } else {
     Write-Status "Skipping Prometheus target validation in core mode (Prometheus is not started)."
 }
@@ -2097,40 +2630,60 @@ if (-not $Core) {
 
 Write-Host ""
 Write-Ok "University Ecosystem is running!"
-if ($Core) {
+if ($script:LiveAcceptanceCore) {
+    Write-Host "  Mode: LIVE ACCEPTANCE CORE (23 signed services; full-stack acceptance is not implied)" -ForegroundColor Yellow
+} elseif ($Core) {
     Write-Host "  Mode: CORE (search, Temporal, and observability containers are stopped; volumes are preserved)" -ForegroundColor Yellow
 }
 Write-Host ""
-$siteUrl = Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/"
-$frontendUrl = Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path ""
-$gatewayUrl = Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path ""
-$backendUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path ""
-$backendDocsUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path "/docs"
-$wsHubUrl = Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path ""
-$grafanaUrl = Get-LocalServiceUrl -Name GRAFANA -DefaultPort 3000 -Path ""
-$prometheusUrl = Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path ""
-$pyroscopeUrl = Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path ""
-$alloyUrl = Get-LocalServiceUrl -Name ALLOY -DefaultPort 12345 -Path ""
-Write-Host "  >> Site (use this):  $siteUrl" -ForegroundColor Green
-Write-Host "     Caddy reverse proxy routes /api/* -> gateway:8080 -> backend:8000," -ForegroundColor DarkGray
-Write-Host "     /ws/* -> ws-hub:8081, /sw.js -> frontend:3000, default -> frontend:3000." -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "  Direct service ports (admin/debug only - browser API calls won't work)" -ForegroundColor Gray
-Write-Host "  Frontend (Node SSR):  $frontendUrl  (no /api proxy - use $siteUrl)" -ForegroundColor DarkYellow
-Write-Host "  Gateway API:          $gatewayUrl" -ForegroundColor DarkYellow
-Write-Host "  Backend API:          $backendUrl  (127.0.0.1 only)" -ForegroundColor DarkYellow
-Write-Host "  API Docs:             $backendDocsUrl" -ForegroundColor DarkYellow
-Write-Host "  WS Hub:               $wsHubUrl" -ForegroundColor DarkYellow
-Write-Host "  SeaweedFS S3 API:     minio:9000 (internal Compose network only)" -ForegroundColor DarkYellow
-Write-Host "  Grafana:              $grafanaUrl" -ForegroundColor DarkYellow
-Write-Host "  Prometheus:           $prometheusUrl" -ForegroundColor DarkYellow
-Write-Host "  Pyroscope:            $pyroscopeUrl" -ForegroundColor DarkYellow
-Write-Host "  Alloy:                $alloyUrl" -ForegroundColor DarkYellow
+if ($script:LiveAcceptanceCore) {
+    $siteUrl = Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/"
+    $frontendUrl = Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path ""
+    $gatewayUrl = Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path ""
+    $backendUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path ""
+    $backendDocsUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path "/docs"
+    $wsHubUrl = Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path ""
+    $mailpitUrl = Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path ""
+    Write-Host "  >> Site (use this):  $siteUrl" -ForegroundColor Green
+    Write-Host "  Live acceptance Core exposes only its signed app and Mailpit ports:" -ForegroundColor DarkGray
+    Write-Host "  Frontend (Node SSR):  $frontendUrl  (no /api proxy - use $siteUrl)" -ForegroundColor DarkYellow
+    Write-Host "  Gateway API:          $gatewayUrl" -ForegroundColor DarkYellow
+    Write-Host "  Backend API:          $backendUrl  (127.0.0.1 only)" -ForegroundColor DarkYellow
+    Write-Host "  API Docs:             $backendDocsUrl" -ForegroundColor DarkYellow
+    Write-Host "  WS Hub:               $wsHubUrl" -ForegroundColor DarkYellow
+    Write-Host "  Mailpit:              $mailpitUrl" -ForegroundColor DarkYellow
+} else {
+    $siteUrl = Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/"
+    $frontendUrl = Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path ""
+    $gatewayUrl = Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path ""
+    $backendUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path ""
+    $backendDocsUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path "/docs"
+    $wsHubUrl = Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path ""
+    $grafanaUrl = Get-LocalServiceUrl -Name GRAFANA -DefaultPort 3000 -Path ""
+    $prometheusUrl = Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path ""
+    $pyroscopeUrl = Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path ""
+    $alloyUrl = Get-LocalServiceUrl -Name ALLOY -DefaultPort 12345 -Path ""
+    Write-Host "  >> Site (use this):  $siteUrl" -ForegroundColor Green
+    Write-Host "     Caddy reverse proxy routes /api/* -> gateway:8080 -> backend:8000," -ForegroundColor DarkGray
+    Write-Host "     /ws/* -> ws-hub:8081, /sw.js -> frontend:3000, default -> frontend:3000." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Direct service ports (admin/debug only - browser API calls won't work)" -ForegroundColor Gray
+    Write-Host "  Frontend (Node SSR):  $frontendUrl  (no /api proxy - use $siteUrl)" -ForegroundColor DarkYellow
+    Write-Host "  Gateway API:          $gatewayUrl" -ForegroundColor DarkYellow
+    Write-Host "  Backend API:          $backendUrl  (127.0.0.1 only)" -ForegroundColor DarkYellow
+    Write-Host "  API Docs:             $backendDocsUrl" -ForegroundColor DarkYellow
+    Write-Host "  WS Hub:               $wsHubUrl" -ForegroundColor DarkYellow
+    Write-Host "  SeaweedFS S3 API:     minio:9000 (internal Compose network only)" -ForegroundColor DarkYellow
+    Write-Host "  Grafana:              $grafanaUrl" -ForegroundColor DarkYellow
+    Write-Host "  Prometheus:           $prometheusUrl" -ForegroundColor DarkYellow
+    Write-Host "  Pyroscope:            $pyroscopeUrl" -ForegroundColor DarkYellow
+    Write-Host "  Alloy:                $alloyUrl" -ForegroundColor DarkYellow
+}
 Write-Host ""
 Write-Host "Demo seeding and optional live E2E stand (separate from this stack):" -ForegroundColor Cyan
 Write-Host "  Use the owner-checked stand for synthetic demo data; direct seeding into this Compose database is disabled."
-Write-Host "  It creates a separate full Compose stack; stop this stack first to avoid resource contention."
-Write-Host "  Run only when no other full Compose stack is active."
+Write-Host "  The stand runs the full stack by default; explicitly select its owner-bound Core dependency closure with --stack core."
+Write-Host "  Choose a stack only when host resources are available for that selection."
 Write-Host "       python scripts/live_stand.py up --ref HEAD"
 Write-Host "       python scripts/live_stand.py seed --demo"
 Write-Host "       python scripts/live_stand.py e2e (optional)"
