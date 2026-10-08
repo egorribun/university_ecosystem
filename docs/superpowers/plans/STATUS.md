@@ -13,7 +13,7 @@
 
 ## Hosted CI и мутации
 
-- Full mutation `37699104150/a1` на `ec69`: preflight/generation PASS; stats5/8 PASS, frontend/execution ожидаются.
+- Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS; score открыт.
   Full mutation `37670438144/a1` завершён: backend execution0/128, stats7/8.
   Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
@@ -73,15 +73,15 @@
 
 - Hosted Live Acceptance `37668628464/a1` на `a3f`: SUCCESS.
   Полная продуктовая приёмка этим smoke не закрыта.
-- Demo завершён: project `ue-live-8c2a21f71d21a9a6`.
-  State: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
+- Full live@`f653`: up завершился exit-1 до readiness; RAM достигла87,5%,free3,99GiB.
+  Причина exit-1 не установлена; seed/E2E не запускались. Owned stop/teardown PASS, containers0.
+  Evidence: `C:/Temp/ue-live-acceptance/evidence-f6531c9ef-20261008-d3d4406b664c4a2a9b0dae4fd84ef7c8`.
+- Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
   news10, stories15, schedule28, chats2, events10 +2 будущих demo events.
-  Student login — в `frontend/tests/e2e-live/fixtures.ts`; secret values здесь нет.
-  Browser UI не проверен: CUA policy check unavailable; обход не выполнялся.
-  По разрешению пользователя выполнены stop и teardown: 35 containers,
-  14 volumes, 3 networks удалены; тестовые данные не сохранялись.
+  Browser UI не проверен: CUA policy check unavailable; обход не выполнялся. По разрешению
+  пользователя stop/teardown удалили35 containers/14 volumes/3 networks и тестовые данные.
   Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
 - Полная traceability требований, RU/EN, light/dark, responsive, SSR/PWA,
   accessibility/performance и пользовательское visual approval остаются
@@ -130,7 +130,7 @@
 
 ## Следующие проверки и ограничения
 
-- Следующие очереди: live profile email guard (collection4, runtime ожидается) и chart parity;
+- Следующие очереди: поддерживаемый Core preset, live profile guard (collection4) и chart parity;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   MFA263/307:   baseline81/81, каждый exact mutant даёт одну assertion failure. Mapper16 controls:
