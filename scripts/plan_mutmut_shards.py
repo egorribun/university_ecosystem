@@ -34,9 +34,10 @@ from scripts.mutmut_shard_budget import (
     MUTMUT_WALL_TIMEOUT_MULTIPLIER,
 )
 from scripts.mutmut_universe import (
+    _ValidatedGenerationManifest,
     get_mutmut_config,
     prepare_mutants_directory,
-    prepare_reused_generation,
+    prepare_reused_generation_with_manifest,
     write_universe_manifest,
 )
 
@@ -1178,9 +1179,12 @@ def main() -> None:
         raise ValueError("Changed-file manifest is empty")
 
     mutmut_cli = _load_mutmut_cli()
+    validated_generation_manifest: _ValidatedGenerationManifest | None = None
     if args.reuse_generated_universe:
         reuse_started = _start_progress("reuse_generation")
-        stats = prepare_reused_generation(mutmut_cli)
+        stats, validated_generation_manifest = prepare_reused_generation_with_manifest(
+            mutmut_cli
+        )
         _finish_progress(
             "reuse_generation",
             reuse_started,
@@ -1195,7 +1199,9 @@ def main() -> None:
     # Persist a content-addressed source/metadata/config snapshot so the exact
     # mutation runner can safely reuse this expensive generation phase.
     manifest_started = _start_progress("universe_manifest")
-    manifest = write_universe_manifest(mutmut_cli)
+    manifest = write_universe_manifest(
+        mutmut_cli, validated_generation=validated_generation_manifest
+    )
     _finish_progress(
         "universe_manifest",
         manifest_started,

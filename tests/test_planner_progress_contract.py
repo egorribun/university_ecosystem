@@ -144,6 +144,75 @@ class PlannerProgressContractTests(unittest.TestCase):
             )
             self.assertNotIn("do-not-emit-this", stream.getvalue())
 
+    def test_reused_generation_snapshot_flows_to_universe_manifest_writer(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="planner-reuse-progress-") as temp:
+            root = Path(temp)
+            changed_file_manifest = root / "changed.txt"
+            changed_file_manifest.write_text("app/sample.py\n", encoding="utf-8")
+            output = root / "selected-mutants.txt"
+            snapshot = object()
+            stats_payload = {
+                "tests_by_mangled_function_name": {
+                    "app.sample.x_calculate": ["tests/test_sample.py::test_calculate"]
+                },
+                "duration_by_test": {"tests/test_sample.py::test_calculate": 1.0},
+            }
+            fake_cli = SimpleNamespace(
+                walk_source_files=lambda: ["app/sample.py"],
+                SourceFileMutationData=_FakeMetadata,
+            )
+            fake_universe_manifest = {
+                "source_files": {"app/sample.py": "digest"},
+                "generated_files": {"app/sample.py": "digest"},
+                "metadata_files": {"app/sample.py.meta": "digest"},
+                "mutant_count": 2,
+            }
+            arguments = [
+                "plan_mutmut_shards.py",
+                "--changed-files",
+                str(changed_file_manifest),
+                "--num-shards",
+                "1",
+                "--shard-id",
+                "1",
+                "--reuse-generated-universe",
+                "--output",
+                str(output),
+            ]
+            reuse_stats = SimpleNamespace(mutated=1, ignored=0, unmodified=0)
+
+            def write_manifest(_mutmut_cli, *, validated_generation):
+                self.assertIs(validated_generation, snapshot)
+                return fake_universe_manifest
+
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                Path("mutants").mkdir()
+                Path("mutants/mutmut-stats.json").write_text(
+                    json.dumps(stats_payload), encoding="utf-8"
+                )
+                with (
+                    patch.object(planner.sys, "argv", arguments),
+                    patch.object(planner, "_load_mutmut_cli", return_value=fake_cli),
+                    patch.object(
+                        planner,
+                        "prepare_reused_generation_with_manifest",
+                        return_value=(reuse_stats, snapshot),
+                    ),
+                    patch.object(
+                        planner, "write_universe_manifest", side_effect=write_manifest
+                    ),
+                ):
+                    planner.main()
+            finally:
+                os.chdir(old_cwd)
+
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                "app.sample.x_calculate__mutmut_1\napp.sample.x_calculate__mutmut_2\n",
+            )
+
     def test_main_progress_keeps_exact_mutant_population(self) -> None:
         with tempfile.TemporaryDirectory(prefix="planner-progress-") as temp:
             root = Path(temp)
