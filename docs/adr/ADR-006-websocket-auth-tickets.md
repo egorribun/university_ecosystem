@@ -29,6 +29,18 @@ Tenant selection is deliberately not encoded in the ticket. Client-supplied
 it into WebSocket identity would allow cross-tenant spoofing. Tenant-aware OTTs
 require membership resolution by the issuer and a versioned consumer contract.
 
+The MVP review on 2026-10-09 retains the existing tombstone-first revocation
+boundary for MFA/session changes: write the durable Redis tombstone and notify
+active WebSocket sessions before committing the database mutation. Tombstone
+write failures fail closed and roll back the database transaction; Pub/Sub
+failure after the tombstone must not resurrect the credential. A subsequent
+database rollback may conservatively sign out sibling sessions; never delete
+the tombstone to undo that sign-out. Preserve the current step-up session where
+the factor-change contract requires it, and verify route-level failure paths.
+The owner requested the best safe option; this decision preserves the deployed
+security contract instead of introducing a new post-commit delivery mechanism.
+It records ordering, not completed live/security acceptance.
+
 ## Consequences
 
 **Positive:**

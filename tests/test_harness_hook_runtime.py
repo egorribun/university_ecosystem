@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -17,6 +18,8 @@ import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 HOOKS_DIR = REPOSITORY_ROOT / ".agents" / "hooks"
+COMMON_SOURCE = REPOSITORY_ROOT / ".agents" / "hooks" / "common.py"
+POST_TOOL_LINTER_SOURCE = REPOSITORY_ROOT / ".agents" / "hooks" / "post_tool_linter.py"
 if str(HOOKS_DIR) not in sys.path:
     sys.path.insert(0, str(HOOKS_DIR))
 
@@ -29,6 +32,13 @@ def isolate_gate_state_path(monkeypatch: Any, tmp_path: Path) -> None:
     """Keep hook runtime tests away from the developer's persistent state file."""
     monkeypatch.setattr(
         post_tool_linter, "get_gate_state_path", lambda: tmp_path / ".gate_state.json"
+    )
+
+
+def test_runtime_contract_binds_to_hook_implementation_files() -> None:
+    assert Path(common.__file__).resolve() == COMMON_SOURCE.resolve()
+    assert (
+        Path(post_tool_linter.__file__).resolve() == POST_TOOL_LINTER_SOURCE.resolve()
     )
 
 
@@ -177,13 +187,16 @@ def test_run_process_decodes_invalid_utf8_with_replacement() -> None:
 def test_run_process_timeout_terminates_owned_process_tree(tmp_path: Path) -> None:
     marker = tmp_path / "grandchild-survived"
     grandchild_code = (
-        "import pathlib,time; time.sleep(1.2); "
+        "import pathlib,time; "
+        # bound: delayed side effect must occur after timeout if the grandchild survives
+        "time.sleep(1.2); "
         f"pathlib.Path({str(marker)!r}).write_text('survived', encoding='utf-8')"
     )
     parent_code = (
         "import subprocess,sys,time\n"
         f"subprocess.Popen([sys.executable, '-c', {grandchild_code!r}])\n"
         "print('child-ready', flush=True)\n"
+        # bound: keep the parent alive past the 0.3-second timeout under test
         "time.sleep(30)\n"
     )
 
@@ -195,6 +208,7 @@ def test_run_process_timeout_terminates_owned_process_tree(tmp_path: Path) -> No
     assert stdout == ""
     assert "timed out" in stderr.lower()
     assert "process cleanup failed" not in stderr.lower()
+    # bound: wait past the grandchild's 1.2-second delayed side effect.
     time.sleep(1.4)
     assert not marker.exists(), "timed-out command left its grandchild running"
 
@@ -207,7 +221,13 @@ def test_run_process_reports_unconfirmed_tree_cleanup(monkeypatch: Any) -> None:
     )
 
     code, stdout, stderr = common.run_process(
-        [sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.1
+        [
+            sys.executable,
+            "-c",
+            # bound: child must outlive the 0.1-second timeout to exercise cleanup failure.
+            "import time; time.sleep(30)",
+        ],
+        timeout=0.1,
     )
 
     assert code == -1
@@ -257,7 +277,13 @@ def test_run_process_cleans_owned_child_after_communication_error(
 
     try:
         code, stdout, stderr = common.run_process(
-            [sys.executable, "-c", "import time; time.sleep(30)"], timeout=5
+            [
+                sys.executable,
+                "-c",
+                # bound: hold the child open while communication-error cleanup runs.
+                "import time; time.sleep(30)",
+            ],
+            timeout=5,
         )
     finally:
         if "process" in process_holder:
@@ -324,38 +350,40 @@ def test_gate_state_write_failure_is_reported_and_preserves_previous_state(
 
 def test_gate_state_lock_timeout_fails_closed(tmp_path: Path, monkeypatch: Any) -> None:
     state_path = tmp_path / ".gate_state.json"
-    ready_path = tmp_path / "lock-held"
     monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
     worker = f"""
 import pathlib
 import sys
-import time
 
 sys.path.insert(0, {str(HOOKS_DIR)!r})
 import common
 
 with common.gate_state_lock(pathlib.Path({str(state_path)!r})):
-    pathlib.Path({str(ready_path)!r}).write_text("ready", encoding="utf-8")
-    time.sleep(0.5)
+    print("ready", flush=True)
+    sys.stdin.read(1)
 """
     process = subprocess.Popen(  # noqa: S603 - fixed interpreter and test-owned worker
         [sys.executable, "-c", worker],
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         env=os.environ.copy(),
     )
-    deadline = time.monotonic() + 10
-    while (
-        not ready_path.exists()
-        and process.poll() is None
-        and time.monotonic() < deadline
-    ):
-        time.sleep(0.02)
+    ready_output: list[str] = []
+    ready_received = threading.Event()
+
+    def read_ready_line() -> None:
+        assert process.stdout is not None
+        ready_output.append(process.stdout.readline())
+        ready_received.set()
+
+    reader = threading.Thread(target=read_ready_line, daemon=True)
+    reader.start()
 
     try:
-        assert ready_path.exists(), process.communicate(timeout=5)
+        assert ready_received.wait(timeout=5), "lock-holder did not acquire the lock"
+        assert ready_output == ["ready\n"]
         monkeypatch.setattr(common, "GATE_STATE_LOCK_TIMEOUT_SECONDS", 0.1)
         started = time.monotonic()
         with pytest.raises(RuntimeError, match="Timed out acquiring"):
@@ -365,9 +393,14 @@ with common.gate_state_lock(pathlib.Path({str(state_path)!r})):
         assert time.monotonic() - started < 2
         assert not state_path.exists()
     finally:
+        if process.poll() is None and process.stdin is not None:
+            process.stdin.write("x")
+            process.stdin.flush()
         stdout, stderr = _reap_test_process(process)
+        reader.join(timeout=5)
 
     assert process.returncode == 0, (stdout, stderr)
+    assert not reader.is_alive()
 
 
 def test_post_tool_state_uses_canonical_target_path(
@@ -413,6 +446,7 @@ original_load = hook.load_gate_state
 def delayed_load(path, *, acquire_lock=True):
     state = original_load(path, acquire_lock=acquire_lock)
     if not acquire_lock:
+        # bound: widen the unlocked-read race window to verify writer serialization.
         time.sleep(0.1)
     return state
 

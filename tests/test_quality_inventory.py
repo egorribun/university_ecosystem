@@ -243,6 +243,40 @@ def test_inventory_prunes_dependency_and_hidden_directories(
     assert should_prune_directory(".husky") is False
 
 
+def test_inventory_indexes_authored_hooks_but_prunes_agent_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    files = {
+        ".agents/hooks/common.py": "def helper(): pass\n",
+        ".agents/hooks/post_tool_linter.py": "def lint(): pass\n",
+        ".agents/hooks/.gate_state.json": "{}\n",
+        ".agents/hooks/.gate_state.json.lock": "\n",
+        ".agents/skills/notauthored.py": "pass\n",
+        ".agents/subagents/notauthored.py": "pass\n",
+        ".agents/hooks.json": "{}\n",
+        ".agents/subagents.json": "{}\n",
+    }
+    for relative_path, contents in files.items():
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents, encoding="utf-8")
+    cached_hook = tmp_path / ".agents" / "hooks" / "__pycache__" / "cached.py"
+    cached_hook.parent.mkdir(parents=True)
+    cached_hook.write_text("pass\n", encoding="utf-8")
+
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", tmp_path)
+    records = scan_repository(
+        {"teams": {}, "tier0_rules": [], "generated_patterns": []}
+    )
+
+    assert {
+        (str(record["path"]), str(record["classification"])) for record in records
+    } == {
+        (".agents/hooks/common.py", "utility"),
+        (".agents/hooks/post_tool_linter.py", "utility"),
+    }
+
+
 def test_check_anti_patterns(tmp_path: Path) -> None:
     # 1. Focused test marker error
     test_file_focused = tmp_path / "test_focused.ts"

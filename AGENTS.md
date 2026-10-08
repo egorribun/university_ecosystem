@@ -147,7 +147,8 @@ for the MVP release; the current plan is
 ## 5. Merge Policy
 
 - Use the ordinary pull-request flow and required checks for changes to `main`.
-- Admin bypass, force-push, and changes to branch protection are outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
+- Admin bypass, force-push, and general changes to branch protection are outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
+- On 2026-10-09 the owner explicitly authorized removing only the 14 Q1/Q4 required check contexts listed in [the readiness audit](docs/audits/MVP_READINESS_AUDIT.md), from main ruleset `8335285`, after the corresponding CI diff is complete, reviewed and checked. Preserve every other rule and context. This permission does not authorize bypass, additional context removals, or early promotion of advisory live smoke.
 
 ---
 

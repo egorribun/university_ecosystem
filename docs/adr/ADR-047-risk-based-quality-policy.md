@@ -118,6 +118,16 @@ part of the MVP release; comprehensive published-image acceptance in kind is
 deferred. Already started work ends at the bounded checkpoints in the master
 plan, rather than restoring the previous certification gate.
 
+On 2026-10-09 the owner also confirmed moving the full four-shard Chromium
+suite and Lighthouse to scheduled/manual execution while retaining live
+Chromium PR smoke. Preserve their full scenarios and assertions. The owner
+authorized removing only the 14 existing Q1/Q4 contexts listed in the
+[readiness audit](../audits/MVP_READINESS_AUDIT.md) from main ruleset `8335285`,
+after the corresponding workflow diff is complete, reviewed and checked.
+All other protection rules and contexts remain unchanged; this is not bypass
+permission. The migration and the 15-minute budget are not yet implemented or
+verified by that authorization.
+
 Q4 includes SQLMap and TruffleHog trigger/catalog/required-profile migration.
 DAST is already weekly/manual and Sonar is already advisory; preserve those
 paths. No kind PR/main job currently exists, so verify that absence rather than

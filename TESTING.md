@@ -155,10 +155,12 @@ heavy workloads and the 30-minute checkpoint budget.
 npm run test:e2e --prefix frontend
 
 # Live acceptance lane: real backend, database, seeded roles and Mailpit
-python scripts/live_stand.py up --in-place --stack core
-python scripts/live_stand.py seed --in-place --demo
-npm run test:e2e:live --prefix frontend
-python scripts/live_stand.py stop --in-place
+$liveStateParent = Join-Path (python -c "import tempfile; print(tempfile.gettempdir())") 'ue-live-acceptance'
+$liveStateDir = Join-Path $liveStateParent ('run-' + [guid]::NewGuid().ToString('N'))
+python scripts/live_stand.py up --in-place --state-dir $liveStateDir --ref HEAD --stack core
+python scripts/live_stand.py seed --in-place --state-dir $liveStateDir --demo
+python scripts/live_stand.py e2e --in-place --state-dir $liveStateDir --mode full
+python scripts/live_stand.py stop --in-place --state-dir $liveStateDir
 ```
 
 The active MVP plan requires one checkout: use `--in-place` on a clean, frozen
@@ -170,6 +172,12 @@ full smoke explicitly uses `--stack full`. Coordinate any source edits until
 the live run ends. Infrastructure-backed checks run only when their
 services are available; a missing optional service is reported as an explicit
 environment skip, never as a pass.
+
+Supply the same `--state-dir` with every `--in-place` command. The directory
+must be a direct `run-*` child under Python's temporary `ue-live-acceptance`
+root. The `e2e` wrapper validates owned endpoints and supplies ephemeral
+credentials; use it for acceptance rather than invoking the npm script without
+the stand's environment. `status` reads existing state without creating a run.
 
 ## Normalize and validate evidence
 

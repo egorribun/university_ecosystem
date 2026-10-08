@@ -42,6 +42,10 @@ handoffs are intentionally not part of the canonical index.
   release gate after Q1. Current coverage floors remain enforced until Q3.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
+- [MVP readiness audit](audits/MVP_READINESS_AUDIT.md) — the final preparation
+  review, open acceptance gaps and the approved Q1/Q4 ruleset boundary.
+- [Next-session prompt (Russian)](superpowers/plans/NEXT_SESSION_PROMPT.md) — the
+  current continuation request; refresh its source and CI pointers before work.
 - [Quality dashboard](testing/dashboard.md)
 - [CI check catalog runbook](testing/ci-check-catalog-runbook.md)
 - [i18n gate](testing/i18n-gate.md)

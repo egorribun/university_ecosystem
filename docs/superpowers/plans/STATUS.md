@@ -1,9 +1,9 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-08 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md) — единственный
+Срез на 2026-10-09 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md) — единственный
 действующий план; [ТЗ MVP](University_Ecosystem_MVP.md) задаёт продуктовые границы,
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) — переход качества.
-Работа приостановлена по просьбе пользователя после подготовки плана и harness.
+Исполнение приостановлено по просьбе пользователя; завершён аудит подготовки.
 Выпуск `v1.0.0` пока не подтверждён.
 
 ## Решения владельца и ближайший результат
@@ -17,7 +17,7 @@
   Независимые исправления продукта идут параллельно с CI; агенту 30 минут до
   контрольной точки, длительные процессы контролируются отдельно.
 - Q1 и весь Q4 обязательны до MVP: мутации, Schemathesis, DAST, chaos,
-  cross-browser и kind переходят из blocking PR lane в scheduled/manual.
+  full Chromium/Lighthouse, cross-browser и kind переходят в scheduled/manual.
   Live Chromium smoke, security и fail-closed оставшиеся checks сохраняются.
   Эти изменения ещё не внедрены; старые CI dependencies пока действуют.
 - Tier 0 — 100%; остальные действующие coverage floors также сохраняются до Q3.
@@ -29,6 +29,27 @@
   использование решается отдельно. Помещения/вместимость — после MVP.
 - Без embeddings key текстовый поиск работает; UI semantic mode выключен,
   direct semantic-only API сообщает о недоступности без нулевых векторов.
+- Разрешено снять только 14 contexts ruleset8335285 из readiness audit после
+  готового reviewed Q1/Q4 diff и проверок; остальные правила сохранить.
+- ADR-006: сохранить durable tombstone/WS revoke до commit; rollback может
+  консервативно разлогинить sibling sessions. Failure-path приёмка ещё открыта.
+
+## Финальный аудит подготовки
+
+- [Readiness audit](../../audits/MVP_READINESS_AUDIT.md) и
+  [промпт нового чата](NEXT_SESSION_PROMPT.md) подготовлены на исходном `2a042124`.
+  Последующий handoff commit сверить через Git; старые runs не сертифицируют его.
+- R02: точные hook source bindings, bounded fixtures и inclusion authored hooks
+  в inventory исправлены; независимый review CLEAR; focused165 PASS, inventory0.
+- Завершающий preflight10/10 PASS; link module9 PASS, оба link-checker режима
+  436/0, Markdownlint10/0, configured CSpell9/0. Это не release certification.
+- Hosted Live `37843216072/a1` на `2a042124`: SUCCESS,18 PASS/2 planned skips,
+  artifacts0; это auth/reset PR smoke, не full Core/TЗ приёмка.
+- Matrix `37843217306/a1`: наблюдались Node dependency audit и inventory failures.
+  Inventory исправлен локально; новый hosted результат ещё требуется.
+  Npm policy RED: три Handlebars advisories остаются первым dependency fix.
+- Старт: CI Q1/Q4; параллельно dependency fix, schedule conflict и semantic
+  unavailable; затем Core traceability/visual/security/один paired restore.
 
 ## Подтверждённая контрольная точка до изменения политики
 
@@ -60,10 +81,10 @@
   atomic write и per-file latest map сохраняют failures; malformed JSON и timeout
   fail closed. Все Go modules обнаруживаются, max2 workers/shared95s budget.
   Profiles согласованы с одним checkout/root Git/30-minute checkpoint.
-- Verifier28/28, hook runtime/Stop44/44, relevant full preflight10/10,
+- На предыдущем harness checkpoint verifier28/28, runtime/Stop44/44, preflight10/10,
   live contracts154/154 PASS; real gate state hash неизменен после проверок.
   Старый OwnedLive `37839467416/a1` на `a01e572b5` упал до Docker на двух
-  stale plan-wording assertions; они исправлены. Новый hosted результат требуется.
+  stale plan-wording assertions; они исправлены, свежий smoke указан выше.
 - Known P2: Windows timeout cleanup через `taskkill /T` не гарантирует завершение
   descendant, если родитель уже вышел и оставил inherited pipes. В этом случае
   cleanup failure явный, PASS нет; полную Job Object containment отнести в backlog.

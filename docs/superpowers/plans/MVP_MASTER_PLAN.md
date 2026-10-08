@@ -1,6 +1,6 @@
 # University Ecosystem: полный цикл приёмки и выпуска MVP v1.0.0
 
-Редакция 3 от 2026-10-08 (Europe/Istanbul). Единственный действующий план,
+Редакция 4 от 2026-10-09 (Europe/Istanbul). Единственный действующий план,
 объединяющий прежний мастер-план и решение коммита
 `60a886529c6e89176e2d53395268ca6279805cb4` с уточнениями владельца в этой беседе.
 Основание качества — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
@@ -19,7 +19,10 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
 - Работа строго на `egorribun`, один checkout и PR #1306. Root проверяет
   интеграцию и выполняет stage/commit/push; максимум три GPT-6 Luna Max пишут в
   непересекающихся областях. Новые ветки/worktree не создавать. Обычный merge;
-  admin bypass, force-push и изменение branch protection не разрешены.
+  admin bypass, force-push и общие изменения branch protection не разрешены.
+  Исключение владельца от 2026-10-09: после готового reviewed CI diff и проверок
+  можно убрать только 14 Q1/Q4 contexts из ruleset `8335285`, перечисленных в
+  [итоговом аудите](../../audits/MVP_READINESS_AUDIT.md); остальные правила сохранить.
 - Уже реализованные исправления, тесты и оснастка сохраняются. Начатые направления
   доводятся до **ограниченной контрольной точки**, указанной ниже, без восстановления
   старого требования полной сертификации до MVP. Наличие исходника или mock-теста
@@ -59,6 +62,9 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   на PR. Проверить не только `needs`, но и results array, специальные assertions,
   triggers, catalog и release-required checks. Целевой бюджет PR — 15 минут;
   измерить wall time и critical path, не объявлять его выполненным заранее.
+- Уточнение владельца 2026-10-09: полный Chromium из четырёх шардов и Lighthouse
+  также переходят в scheduled/manual; PR сохраняет живой Chromium smoke.
+  Полные сценарии/существующие assertions сохраняются в новых lanes.
 - Q2 (nightly mutation regression более 1 процентного пункта, dashboard) и Q3
   (coverage ratchet) — `v1.1`. Nightly сигналы могут оставаться красными на прежнем
   пороге до Q2; они не дают основания подменять результат или считать регрессию
@@ -152,11 +158,13 @@ STATUS ≤150 строк: результаты, следующий шаг и к�
 
 ### Блок 0. Goal и проверяемый рабочий контекст
 
-- Подготовительная правка harness по поручению владельца: изолировать verifier
-  от рабочей истории ошибок, сохранять per-file failures при параллельной записи,
-  fail-closed для повреждённого JSON и timeout; согласовать профили с одним
-  checkout и ограничить runtime. Проверить focused regressions, полный verifier
-  и relevant preflight; наличие hooks не считать автоматической Codex-интеграцией.
+- Подготовительная правка harness завершена в контрольной точке 2026-10-09:
+  verifier изолирован от рабочей истории ошибок; per-file failures, shared lock,
+  atomic state и fail-closed JSON/timeout сохранены; профили согласованы с одним
+  checkout и runtime ограничен. Focused165 PASS, verifier28/28, inventory0,
+  relevant preflight10/10 и независимый review CLEAR. Не внедрять повторно;
+  новые failures проверять по текущему SHA. Наличие hooks не означает
+  автоматической Codex-интеграции; детали в readiness audit.
 - Сохранить один Codex goal без произвольного token budget. Его прежняя
   формулировка включала сертификацию kind; это этап v1.1, а критерии MVP теперь
   задаются этим планом. Не объявлять всю прежнюю сертификацию завершённой при
@@ -192,9 +200,12 @@ STATUS ≤150 строк: результаты, следующий шаг и к�
   санитайзера: действующий контракт содержит 14 reports и три Rust branch reports.
   Исправить ожидания по фактическому составу, сохранив fail-closed полноту и
   обязательность evidence.
-- Воспроизвести pre-commit, Source/Test Inventory, quality inventory и link/spelling
-  проблемы по конкретным шагам. Исправить найденные дефекты и предупреждения,
-  включая устаревшие Python API; не маскировать проблемы пропусками.
+- Проверить новые pre-commit, Source/Test Inventory, quality inventory и
+  link/spelling failures по конкретным шагам на текущем SHA. R02 inventory
+  локально закрыт в контрольной точке 2026-10-09, исключение для orphan не
+  добавлялось; сначала подтвердить hosted результат, не повторять принятый fix.
+  Исправить новые дефекты и предупреждения, включая устаревшие Python API;
+  не маскировать проблемы пропусками.
 - Повторно проверить Python и Go advisories после согласованного обновления locks.
   Credential-shaped текст в `AUDIT_PLATFORM_FULL.md` не считать примером без
   проверки происхождения. После подтверждения исторического значения безопасно
@@ -254,15 +265,16 @@ STATUS ≤150 строк: результаты, следующий шаг и к�
   join; смена MFA epoch отзывает связанные sibling/WS sessions в корректном
   порядке относительно commit. При email MFA enablement сохранить текущий
   подтверждённый step-up session, но отозвать siblings; при смене email отозвать
-  все затронутые сессии. События отзыва публиковать после commit; БД остаётся
-  авторитетной при временной ошибке публикации.
-- Проверка 2026-10-07 выявила несогласованность этого требования с действующим
-  tombstone-first контрактом [ADR-006](../../adr/ADR-006-websocket-auth-tickets.md):
+  все затронутые сессии. Отзыв следует tombstone-first контракту
+  [ADR-006](../../adr/ADR-006-websocket-auth-tickets.md):
   durable Redis tombstone записывается до commit, ошибка записи или commit
   вызывает rollback; ошибка Pub/Sub после tombstone не отменяет отзыв.
-  До согласования порядка не менять production поведение и не считать пункт
-  принятым. Проверить route-level failure paths и сохранение текущей step-up
-  session; возможный консервативный logout siblings при rollback документировать.
+  Решение 2026-10-09 по поручению владельца «лучший вариант»: сохранить эту
+  fail-closed границу, включая WS revoke до DB commit; прежнее требование
+  post-commit отзыва заменено. При последующем rollback возможен консервативный
+  logout siblings, tombstone не удалять для восстановления credential.
+  Проверить route-level failure paths и сохранение текущей step-up session.
+  Решение порядка само по себе не закрывает security приёмку.
 - Провести независимый security review production auth/session/data изменений.
 
 **Приёмка блока:** все известные немутационные падения актуального SHA имеют
@@ -610,7 +622,9 @@ nightly/manual activation после merge проверить отдельно, 
 - Выполнить Q1 и Q4 ADR-047 в отдельных reviewable пакетах. Проверить весь путь
   зависимостей, результаты, event filters, special assertions, release rationale
   и catalog/contracts. Оставшиеся gates fail closed: ошибка, missing evidence
-  или неожиданный skip не становятся PASS. Branch protection не менять.
+  или неожиданный skip не становятся PASS. Branch protection менять только
+  в точной границе 14 contexts, разрешённой владельцем 2026-10-09, после
+  готового reviewed CI diff и проверок; остальные правила сохранять.
 - Сохранить integrated planner/checker и ADR-040 presentation ignorer. Проверить
   затронутые контракты; не запускать полные мутации перед каждым MVP-коммитом.
   Полный inventory, survivors/runtime/no-coverage closure, Q2 dashboard/regression
@@ -693,10 +707,10 @@ nightly/manual activation после merge проверить отдельно, 
   Acceptance требует проверки на actual PostgreSQL/Alembic head и чтения объекта
   через `S3Storage` по ссылке из восстановленной БД; синтетический тест, пустой
   prefix или одна смена app config сами по себе deployed compatibility не доказывают.
-- Усовершенствовать BE-02 preflight согласно блоку 2 и ADR-036. На непустых
+- **v1.1:** усовершенствовать BE-02 preflight согласно блоку 2 и ADR-036. На непустых
   deployed Docker/kind databases проверить DDL upgrade/rollback, catalog state,
   idempotency и lock budgets.
-- Измерить RPO ≤24h и RTO ≤30m на документированном demo dataset. Указать размер,
+- **v1.1:** измерить RPO ≤24h и RTO ≤30m на документированном demo dataset. Указать размер,
   число объектов, инструменты/ресурсы и какие компоненты входят в таймер.
 
 **Приёмка MVP-части:** Core и release full smoke проходят; backup/restore
@@ -750,7 +764,8 @@ chaos/recovery/rollback сохраняют данные; runner не удали�
 - Обычный merge единственного PR после required checks. Для resulting main SHA
   получить новое push-main evidence согласно `quality/release-required-checks.json`;
   synthetic PR merge не подменяет released source. Admin bypass, force-push и
-  изменение branch protection запрещены.
+  общие изменения branch protection запрещены; точечное разрешение на 14
+  Q1/Q4 contexts от 2026-10-09 действует только после reviewed CI diff и проверок.
 - Запустить готовый main-only producer ровно шести images: backend/frontend/
   gateway/ws-hub/file-processor/caddy. Сохранить Trivy, signing, SBOM/provenance
   и WASM parity; проверить фактические published digests и source/run/attempt

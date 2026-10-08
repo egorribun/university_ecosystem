@@ -6,6 +6,11 @@ evidence, not current configuration or release certification.
 
 ## Current quality-closure roadmap
 
+- [MVP readiness audit](MVP_READINESS_AUDIT.md) — the 2026-10-09 preparation
+  review, source-bound observations and the approved 14-context Q1/Q4 boundary.
+  This is readiness to continue, not product or release certification.
+- [Next-session prompt](../superpowers/plans/NEXT_SESSION_PROMPT.md) — the current
+  continuation request; use the master plan for scope and refresh all evidence.
 - [Active MVP closure status](../superpowers/plans/STATUS.md) — the current
   operational status. It is a plan, not an audit certificate; every release
   claim still requires fresh exact-SHA evidence.

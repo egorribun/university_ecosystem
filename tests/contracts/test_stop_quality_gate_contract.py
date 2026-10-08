@@ -6,7 +6,6 @@ import importlib
 import json
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -111,27 +110,41 @@ def test_go_vet_diagnostics_are_sorted_independent_of_completion_order(
         module_dir.mkdir(parents=True)
         (module_dir / "go.mod").write_text("module example.invalid\n", encoding="utf-8")
 
-    b_finished = threading.Event()
+    b_completed = threading.Event()
 
     def fake_run_process(
         command: list[str], *, cwd: Path, timeout: int
     ) -> tuple[int, str, str]:
         if cwd.name == "b-module":
-            b_finished.set()
             return 1, "", "failure b"
-        assert b_finished.wait(timeout=2)
-        time.sleep(0.02)
+        assert b_completed.wait(timeout=2)
         return 1, "", "failure a"
+
+    real_executor = stop_quality_gate.concurrent.futures.ThreadPoolExecutor
+
+    class CompletionObservedExecutor(real_executor):
+        def submit(self, function: Any, /, *args: Any, **kwargs: Any) -> Any:
+            future = super().submit(function, *args, **kwargs)
+            if args and Path(args[0]).name == "b-module":
+                future.add_done_callback(lambda _: b_completed.set())
+            return future
 
     monkeypatch.setattr(stop_quality_gate, "find_executable", lambda _: True)
     monkeypatch.setattr(stop_quality_gate, "run_process", fake_run_process)
+    monkeypatch.setattr(
+        stop_quality_gate.concurrent.futures,
+        "ThreadPoolExecutor",
+        CompletionObservedExecutor,
+    )
 
     passed, diagnostics = stop_quality_gate.check_services_subsystem(tmp_path)
 
     assert not passed
-    assert diagnostics.index("services/a-module") < diagnostics.index(
-        "services/b-module"
-    )
+    failure_a = "Go Vet Failure in 'services/a-module':\nfailure a"
+    failure_b = "Go Vet Failure in 'services/b-module':\nfailure b"
+    assert failure_a in diagnostics
+    assert failure_b in diagnostics
+    assert diagnostics.index(failure_a) < diagnostics.index(failure_b)
 
 
 def test_go_vet_shares_one_deadline_and_fails_for_unvisited_modules(
