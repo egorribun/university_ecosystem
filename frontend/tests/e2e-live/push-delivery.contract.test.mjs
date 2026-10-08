@@ -122,8 +122,34 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   )
   assert.match(
     spec,
-    /const listTestGroupNotificationIds = async[\s\S]*?while \(true\)[\s\S]*?notificationPage\.has_more[\s\S]*?notificationPage\.next_cursor/u,
-    "group notification cleanup walks all pages and rejects incomplete cursors"
+    /const listNotificationIdsMatching = async[\s\S]*?while \(true\)[\s\S]*?notificationPage\.has_more[\s\S]*?notificationPage\.next_cursor/u,
+    "shared notification traversal walks all pages and rejects incomplete cursors"
+  )
+  assert.match(
+    spec,
+    /const listTestGroupNotificationIds = \(page: Page, path: string\)[\s\S]*?listNotificationIdsMatching/u,
+    "group cleanup keeps its chat-path and message/reply filter on shared pagination"
+  )
+  assert.match(
+    spec,
+    /const findOnlyTestMessageNotificationId = async[\s\S]*?item\.type === "chat\.message" && item\.url === path && item\.body === message[\s\S]*?matches\.length > 1/u,
+    "DM fallback requires the exact chat path, unique body, and chat.message type"
+  )
+  const directMessageCleanupStart = spec.indexOf("const deleteOnlyTestNotification")
+  const directMessageCleanupEnd = spec.indexOf(
+    "\n\nconst unsubscribeOnlyNativeSubscription",
+    directMessageCleanupStart
+  )
+  const directMessageCleanup = spec.slice(directMessageCleanupStart, directMessageCleanupEnd)
+  assert.match(
+    directMessageCleanup,
+    /if \(!notificationId\)[\s\S]*?findOnlyTestMessageNotificationId\(page, path, message\)[\s\S]*?if \(!notificationId\) return[\s\S]*?method: "DELETE"[\s\S]*?"X-CSRF-Token"/u,
+    "DM cleanup deletes only the unique fallback ID with the owner page CSRF token"
+  )
+  assert.doesNotMatch(
+    directMessageCleanup,
+    /for \([^)]*notificationId of|DELETE[^\n]*notifications\/?\*|deleteAll/u,
+    "DM cleanup never bulk-deletes shared-chat notifications"
   )
   const groupCleanupStart = spec.indexOf("const deleteOnlyTestGroupNotifications")
   const groupCleanupEnd = spec.indexOf("const listNotifications", groupCleanupStart)
@@ -144,16 +170,18 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
       verifyGroupNotifications > deleteGroupNotifications,
     "cleanup snapshots all matching IDs before deleting and verifies none remain afterward"
   )
-  const groupPaginationStart = spec.indexOf("const listTestGroupNotificationIds = async")
+  const groupPaginationStart = spec.indexOf(
+    "const listTestGroupNotificationIds = (page: Page, path: string)"
+  )
   const groupPaginationEnd = spec.indexOf(
-    "\n\nconst deleteOnlyTestNotification",
+    "\n\nconst findOnlyTestMessageNotificationId",
     groupPaginationStart
   )
   const groupPaginationHelper = spec.slice(groupPaginationStart, groupPaginationEnd)
   assert.match(
     groupPaginationHelper,
     /item\.url === path[\s\S]*?item\.type === "chat\.message" \|\| item\.type === "chat\.reply"/u,
-    "pagination cleanup only targets chat-specific message and reply notifications"
+    "group pagination only targets chat-specific message and reply notifications"
   )
   assert.match(config, /name: "desktop"/u)
   assert.match(config, /name: "mobile"/u)
@@ -311,11 +339,11 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   )
 })
 
-test("notification cleanup traverses all pages and rejects broken cursors", async () => {
+test("notification cleanup traverses all pages and keeps the DM fallback unique", async () => {
   const spec = await readFile(specUrl, "utf8")
-  const helperStart = spec.indexOf("const listTestGroupNotificationIds = async")
+  const helperStart = spec.indexOf("const listNotificationIdsMatching = async")
   const helperEnd = spec.indexOf("\n\nconst deleteOnlyTestNotification", helperStart)
-  assert.ok(helperStart >= 0 && helperEnd > helperStart, "pagination helper source is present")
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, "shared pagination helpers are present")
 
   const typescriptModule = await import("typescript")
   const typescript = typescriptModule.default ?? typescriptModule
@@ -332,8 +360,15 @@ test("notification cleanup traverses all pages and rejects broken cursors", asyn
       null,
       {
         items: [
-          { id: "owned-message", url: path, type: "chat.message" },
-          { id: "other-chat", url: "/messenger/other-chat", type: "chat.message" },
+          { id: "owned-group-message", url: path, type: "chat.message", body: "group body" },
+          {
+            id: "other-chat-same-body",
+            url: "/messenger/other",
+            type: "chat.message",
+            body: "dm body",
+          },
+          { id: "same-chat-reply", url: path, type: "chat.reply", body: "dm body" },
+          { id: "same-chat-other-body", url: path, type: "chat.message", body: "other body" },
         ],
         has_more: true,
         next_cursor: "cursor-1",
@@ -343,34 +378,83 @@ test("notification cleanup traverses all pages and rejects broken cursors", asyn
       "cursor-1",
       {
         items: [
-          { id: "owned-reply", url: path, type: "chat.reply" },
-          { id: "unrelated-type", url: path, type: "system" },
+          { id: "owned-group-reply", url: path, type: "chat.reply", body: "reply body" },
+          { id: "dm-match-on-later-page", url: path, type: "chat.message", body: "dm body" },
+          { id: "unrelated-type", url: path, type: "system", body: "dm body" },
         ],
         has_more: false,
         next_cursor: null,
       },
     ],
   ])
-  const helperFor = (listNotifications) =>
-    runInNewContext(`${compiled.outputText}\nlistTestGroupNotificationIds`, { listNotifications })
+  const helpersFor = (listNotifications) =>
+    runInNewContext(
+      `${compiled.outputText}\n({ listTestGroupNotificationIds, findOnlyTestMessageNotificationId })`,
+      { listNotifications }
+    )
   const listNotifications = async (_page, cursor) => {
     calls.push(cursor)
     assert.ok(pages.has(cursor), "the helper requests only known continuation pages")
     return pages.get(cursor)
   }
-  const collect = helperFor(listNotifications)
+  const helpers = helpersFor(listNotifications)
 
-  assert.deepEqual(Array.from(await collect({}, path)), ["owned-message", "owned-reply"])
+  assert.deepEqual(Array.from(await helpers.listTestGroupNotificationIds({}, path)), [
+    "owned-group-message",
+    "same-chat-reply",
+    "same-chat-other-body",
+    "owned-group-reply",
+    "dm-match-on-later-page",
+  ])
   assert.deepEqual(calls, [null, "cursor-1"])
 
-  const brokenCursor = helperFor(async (_page, cursor) => ({
+  calls.length = 0
+  assert.equal(
+    await helpers.findOnlyTestMessageNotificationId({}, path, "dm body"),
+    "dm-match-on-later-page"
+  )
+  assert.deepEqual(calls, [null, "cursor-1"])
+
+  const duplicate = helpersFor(async (_page, cursor) => ({
+    items: [
+      {
+        id: cursor ? "duplicate-two" : "duplicate-one",
+        url: path,
+        type: "chat.message",
+        body: "dm body",
+      },
+    ],
+    has_more: cursor === null,
+    next_cursor: cursor === null ? "cursor-1" : null,
+  }))
+  await assert.rejects(
+    () => duplicate.findOnlyTestMessageNotificationId({}, path, "dm body"),
+    /multiple exact message notifications/u,
+    "ambiguous cleanup fails closed instead of deleting multiple shared-chat notifications"
+  )
+
+  const incompletePage = helpersFor(async () => ({ items: [], next_cursor: null }))
+  await assert.rejects(
+    () => incompletePage.findOnlyTestMessageNotificationId({}, path, "dm body"),
+    /omitted its continuation flag/u,
+    "cleanup fails closed when a page omits has_more"
+  )
+
+  const brokenCursor = helpersFor(async (_page, cursor) => ({
     items: [],
     has_more: true,
     next_cursor: cursor ?? "repeat",
   }))
   await assert.rejects(
-    () => brokenCursor({}, path),
+    () => brokenCursor.findOnlyTestMessageNotificationId({}, path, "dm body"),
     /invalid continuation cursor/u,
     "a repeated cursor fails closed instead of looping or leaving notifications behind"
   )
+
+  const noMatch = helpersFor(async () => ({
+    items: [],
+    has_more: false,
+    next_cursor: null,
+  }))
+  assert.equal(await noMatch.findOnlyTestMessageNotificationId({}, path, "missing"), null)
 })

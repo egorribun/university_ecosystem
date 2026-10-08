@@ -314,10 +314,7 @@ export const useNewsListQuery = (
   const normalized = normalizeNewsListFilters(filters)
   const owner = useAuthStore(getConfirmedUserId)
   const epoch = getSessionEpoch()
-  const isCurrentSession = useMemo(() => {
-    const ownsEpoch = captureSessionEpoch()
-    return () => epoch === getSessionEpoch() && ownsEpoch()
-  }, [epoch])
+  const isCurrentSession = useMemo(() => captureSessionEpoch(epoch), [epoch])
   const queryKey = newsListQueryKey(filters)
   const { enabled = true, ...rest } = pickPrivateListControls(options)
 

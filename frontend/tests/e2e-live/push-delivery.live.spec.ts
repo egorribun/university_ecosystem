@@ -269,7 +269,10 @@ const listNotifications = async (
   return (await response.json()) as NotificationListResponse
 }
 
-const listTestGroupNotificationIds = async (page: Page, path: string): Promise<string[]> => {
+const listNotificationIdsMatching = async (
+  page: Page,
+  matchesNotification: (item: NotificationRow) => boolean
+): Promise<string[]> => {
   const notificationIds: string[] = []
   const seenIds = new Set<string>()
   const seenCursors = new Set<string>()
@@ -282,9 +285,7 @@ const listTestGroupNotificationIds = async (page: Page, path: string): Promise<s
         throw new Error("notification pagination returned a duplicate identity")
       }
       seenIds.add(item.id)
-      if (item.url === path && (item.type === "chat.message" || item.type === "chat.reply")) {
-        notificationIds.push(item.id)
-      }
+      if (matchesNotification(item)) notificationIds.push(item.id)
     }
 
     if (typeof notificationPage.has_more !== "boolean") {
@@ -306,24 +307,37 @@ const listTestGroupNotificationIds = async (page: Page, path: string): Promise<s
   }
 }
 
+const listTestGroupNotificationIds = (page: Page, path: string): Promise<string[]> =>
+  listNotificationIdsMatching(
+    page,
+    (item) => item.url === path && (item.type === "chat.message" || item.type === "chat.reply")
+  )
+
+const findOnlyTestMessageNotificationId = async (
+  page: Page,
+  path: string,
+  message: string
+): Promise<string | null> => {
+  const matches = await listNotificationIdsMatching(
+    page,
+    (item) => item.type === "chat.message" && item.url === path && item.body === message
+  )
+  if (matches.length > 1) {
+    throw new Error("cleanup found multiple exact message notifications")
+  }
+  return matches[0] ?? null
+}
+
 const deleteOnlyTestNotification = async (
   page: Page,
   chatId: string,
   message: string,
   knownId: string | null
 ): Promise<void> => {
+  const path = `/messenger/${chatId}`
   let notificationId = knownId
   if (!notificationId) {
-    const notifications = await listNotifications(page)
-    const matches = notifications.items.filter(
-      (item) =>
-        item.type === "chat.message" && item.url === `/messenger/${chatId}` && item.body === message
-    )
-    expect(
-      matches.length,
-      "cleanup resolves at most one exact message notification"
-    ).toBeLessThanOrEqual(1)
-    notificationId = matches[0]?.id ?? null
+    notificationId = await findOnlyTestMessageNotificationId(page, path, message)
   }
   if (!notificationId) return
 

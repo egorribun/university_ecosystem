@@ -12,7 +12,7 @@
 
 ## Hosted CI и мутации
 
-- PR@`15ad`: 14 checks queued/active, terminal failures0 на срезе; historical `444ed` WS-Hub HandleRegister ns/op ratio1,146, gate1,10, RCA открыт.
+- PR@`fa08`: snapshot140 checks:100 SUCCESS/15 SKIPPED/2 FAILED/23 pending; DB build Docker Hub502, live URL assertion остаётся открытой.
 - Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
   Run CANCELLED; planner59m20s, planning без end marker; plan отсутствует, backend execution0/128, global score открыт.
   Full `37670438144/a1`: execution0/128, stats7/8; shard2 stale urllib3 исправлен в `a028`, score отсутствует.
@@ -70,8 +70,8 @@
 ## Live-приёмка
 
 - Hosted Live Acceptance `37668628464/a1` на `a3f`: SUCCESS; это только smoke.
-- Core@`0229`: up1, readiness23/24; Mailpit читался через неверную переменную порта; seed/E2E не запускались.
-  Mailpit/common-Git owner-key fixes@`f281`: root PS57 PASS/1 POSIX skip; hosted live37716509827/a1 SUCCESS.
+- Full@`fa08`: readonly readiness35/35, running29/healthy20/init6/sidecars3, HTTP10 и Redis AUTH/PING PASS; E2E удержан RAM80%/free6,3GiB.
+  Stop0/teardown0; containers/volumes/networks/local images0 после удаления9 owned references; state11 entries/hash39c886 сохранён. Это не full acceptance.
 - Core@`f281`: up0, status0 без изменения state; profile desktop/mobile2 PASS/2 FAIL на error alert.
   Backend PUT500: nested education dict присваивается ORM relation; profile_detail не сохраняется.
   RED→GREEN: root49 PASS, logic/mapper line+branch100%; DTO/schema54 и UI28 PASS, OpenAPI synced; preflight10/10 PASS.
@@ -90,8 +90,8 @@
   пользователя stop/teardown удалили35 containers/14 volumes/3 networks и тестовые данные.
   Старый desktop avatar R3: invalid counts/exit1; mobile NOT RUN, без acceptance credit.
 - Полная traceability, RU/EN, light/dark, responsive, SSR/PWA, accessibility/performance и visual approval открыты.
-- Historical97a subset:2 PASS/10 FAIL, desktop/mobile; diagnostic avatar не подтверждает ordinary source.
-  Cold auth-role failure source76cd остаётся открытым.
+- Session epoch: observed binding + future-capture regression; focused143/143, lint/format и preflight10/10 PASS; exact224/226 RED, global score открыт.
+  Cold auth-role/password-reset URL assertions требуют свежего live воспроизведения; ожидания без доказательства не менялись.
 
 ## Backup/restore и диагностика
 

@@ -34,6 +34,26 @@ describe("account lifetime epochs", () => {
     expect(getBrowserSessionGeneration()).toBeNull()
   })
 
+  it("captures an explicit render epoch and keeps no-argument captures current", () => {
+    invalidateSessionEpoch()
+    const observedEpoch = getSessionEpoch()
+    expect(observedEpoch).toBeGreaterThan(0)
+
+    const existingWork = captureSessionEpoch(observedEpoch)
+    expect(existingWork()).toBe(true)
+    const futureExpected = captureSessionEpoch(observedEpoch + 1)
+    expect(futureExpected()).toBe(false)
+
+    invalidateSessionEpoch()
+    expect(existingWork()).toBe(false)
+    expect(captureSessionEpoch(observedEpoch)()).toBe(false)
+    expect(futureExpected()).toBe(false)
+
+    const currentEpoch = getSessionEpoch()
+    expect(captureSessionEpoch()()).toBe(true)
+    expect(captureSessionEpoch(currentEpoch)()).toBe(true)
+  })
+
   it("shares a confirmed generation across matching keys and rotates for a new session", () => {
     const nonce = establishBrowserSession("key-A-hash", null)!
     expect(matchesBrowserSession("key-A-hash", nonce)).toBe(true)

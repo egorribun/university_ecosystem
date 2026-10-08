@@ -58,9 +58,12 @@ export const establishBrowserSession = (
     return null
   }
 }
-export const captureSessionEpoch = () => {
+export const captureSessionEpoch = (expected = epoch) => {
   const captured = epoch
   const generation = getBrowserSessionGeneration()
   return () =>
-    captured === epoch && generation === getBrowserSessionGeneration() && isCurrentBrowserSession()
+    expected === captured &&
+    captured === epoch &&
+    generation === getBrowserSessionGeneration() &&
+    isCurrentBrowserSession()
 }

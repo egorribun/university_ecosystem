@@ -215,10 +215,7 @@ export const useEventsListQuery = (
   const normalized = normalizeEventsListFilters(filters)
   const owner = useAuthStore(getConfirmedUserId)
   const epoch = getSessionEpoch()
-  const isCurrentSession = useMemo(() => {
-    const ownsEpoch = captureSessionEpoch()
-    return () => epoch === getSessionEpoch() && ownsEpoch()
-  }, [epoch])
+  const isCurrentSession = useMemo(() => captureSessionEpoch(epoch), [epoch])
   const queryKey = eventsListQueryKey(filters)
   const { enabled = true, ...rest } = pickPrivateListControls(options)
 

@@ -481,7 +481,8 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 
-  it("uses distinct all/archive snapshots and preserves the infinite-page shape", () => {
+  it("uses distinct all/archive snapshots and preserves the infinite-page shape", async () => {
+    allEventsMock.mockResolvedValue(okPage([makeEvent("unexpected-fetch")]))
     const scenarios = [
       { is_active: null, activity: "all", id: "all-snapshot" },
       { is_active: false, activity: "archive", id: "archive-snapshot" },
@@ -498,6 +499,11 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
         { wrapper: makeWrapper(queryClient) }
       )
 
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      })
+      expect(allEventsMock).not.toHaveBeenCalled()
+      expect(result.current.fetchStatus).toBe("idle")
       expect(result.current.data).toEqual({
         pages: [
           {
