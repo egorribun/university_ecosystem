@@ -338,7 +338,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         stmt = (
             select(User.id, UserProfile.full_name)
             .select_from(User)
-            .outerjoin(UserProfile, UserProfile.user_id == User.id)
+            .outerjoin(UserProfile)
             .where(User.id.in_(user_ids))
         )
         result = await self.db.execute(stmt)
