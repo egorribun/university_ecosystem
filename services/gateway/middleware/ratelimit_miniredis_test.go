@@ -29,6 +29,42 @@ func TestNewRateLimiter_SuccessWithMiniredis(t *testing.T) {
 	assert.NotNil(t, rl.GetClient())
 }
 
+func TestRateLimiter_Middleware_UsesConfiguredBurstPerClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mr := miniredis.RunT(t)
+	serverTime := time.Unix(1_700_000_000, 0)
+	mr.SetTime(serverTime)
+	rl, err := NewRateLimiter(context.Background(), "redis://"+mr.Addr(), 1, 3)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rl.Close()) })
+
+	r := gin.New()
+	requestCtx, requestCancel := context.WithCancel(context.Background())
+	t.Cleanup(requestCancel)
+	r.Use(rl.Middleware(requestCtx))
+	r.GET("/api/thing", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	request := func(ip string) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/thing", nil)
+		req.RemoteAddr = ip + ":1234"
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	for i := 0; i < 3; i++ {
+		w := request("203.0.113.7")
+		require.Equal(t, http.StatusOK, w.Code, "configured burst request %d", i+1)
+		assert.Equal(t, "1", w.Header().Get("RateLimit-Limit"), "header remains the steady rate")
+	}
+	assert.Equal(t, http.StatusTooManyRequests, request("203.0.113.7").Code)
+	assert.Equal(t, http.StatusOK, request("203.0.113.8").Code, "client buckets stay separate")
+
+	mr.SetTime(serverTime.Add(time.Second))
+	assert.Equal(t, http.StatusOK, request("203.0.113.7").Code, "the steady rate refills the burst")
+}
+
 func TestRateLimiter_Middleware_HealthExemptAndLimitEnforced(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mr := miniredis.RunT(t)

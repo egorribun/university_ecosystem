@@ -19,6 +19,8 @@
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
 - Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
   preflight10/10, kind243/243, ranked28/28, compliance9/9 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
+  Root chat63/63, gateway middleware/config и Linux race PASS; pinned Go lint0 issues после complexity fix.
+  Core draft: root14/14 selection/readonly/cleanup mocks PASS; PS/readiness/runtime приёмка ещё открыта.
   CRD helper прошёл K3 prerequisites; приложение в kind ещё не развёрнуто.
   Local exact259/314/123/278/56/140/44/45/121 RED; global gate открыт. PR live `37684359401/a1` FAILED до Docker:
   stale seed signature regex исправлен; требуется новый hosted run.
@@ -133,9 +135,7 @@
 - Следующие очереди: поддерживаемый Core preset, live profile guard (collection4) и chart parity;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
-  MFA263/307:   baseline81/81, каждый exact mutant даёт одну assertion failure. Mapper16 controls:
-  #117 pins исправлены; root backend/seed45/45 и auth635/635, typecheck/lint PASS;
-  flaky config static8/8 и root fast preflight10/10 PASS; global mutation gate открыт.
+  Historical MFA263/307 exact RED; mapper117/seed/auth fixes интегрированы; global mutation gate открыт.
 - Получить root-reviewed live diagnostics для desktop/mobile без ослабления
   исходных assertions; доказать auth, API/DB/S3 equality и пользовательские
   сценарии, а не только health/readiness.

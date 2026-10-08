@@ -330,6 +330,46 @@ func TestConfig_StructFields(t *testing.T) {
 	assert.Equal(t, 200, cfg.RateLimitBurst)
 }
 
+func TestValidateConfigRejectsNonPositiveRateLimitSettings(t *testing.T) {
+	tests := []struct {
+		name  string
+		rps   int
+		burst int
+		want  string
+	}{
+		{name: "zero requests per second", rps: 0, burst: 200, want: "RATE_LIMIT_RPS must be greater than zero"},
+		{name: "negative requests per second", rps: -1, burst: 200, want: "RATE_LIMIT_RPS must be greater than zero"},
+		{name: "zero burst", rps: 100, burst: 0, want: "RATE_LIMIT_BURST must be greater than zero"},
+		{name: "negative burst", rps: 100, burst: -1, want: "RATE_LIMIT_BURST must be greater than zero"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{
+				JWTSecret:          "test-secret",
+				JWTAudience:        "gateway-api",
+				RevocationRedisURL: "redis://security-redis:6379/0",
+				RateLimitRPS:       tt.rps,
+				RateLimitBurst:     tt.burst,
+			}
+
+			err := validateConfig(&cfg)
+			assert.ErrorContains(t, err, tt.want)
+		})
+	}
+
+	valid := Config{
+		JWTSecret:          "test-secret",
+		JWTAudience:        "gateway-api",
+		RevocationRedisURL: "redis://security-redis:6379/0",
+		RateLimitRPS:       100,
+		RateLimitBurst:     200,
+	}
+	assert.NoError(t, validateConfig(&valid))
+	assert.Equal(t, 100, valid.RateLimitRPS)
+	assert.Equal(t, 200, valid.RateLimitBurst)
+}
+
 func restoreEnv(t *testing.T, key, value string) {
 	t.Helper()
 	if value == "" {
@@ -606,6 +646,8 @@ func TestValidateConfigRequiresStrongInternalHMACSecretInRelease(t *testing.T) {
 		JWTSecret:                      "jwt-secret",
 		JWTAudience:                    "university-ecosystem-api",
 		RevocationRedisURL:             "redis://revocation:6379/0",
+		RateLimitRPS:                   100,
+		RateLimitBurst:                 200,
 		Environment:                    "production",
 		GrpcUseTLS:                     true,
 		SpiffeEnabled:                  true,
@@ -650,6 +692,8 @@ func TestValidateConfigRequiresFileProcessingCapabilitySecretInRelease(t *testin
 		JWTSecret:                      "jwt-secret",
 		JWTAudience:                    "university-ecosystem-api",
 		RevocationRedisURL:             "redis://revocation:6379/0",
+		RateLimitRPS:                   100,
+		RateLimitBurst:                 200,
 		Environment:                    "production",
 		GrpcUseTLS:                     true,
 		SpiffeEnabled:                  true,
