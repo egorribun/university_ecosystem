@@ -41,7 +41,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -2218,6 +2218,191 @@ def _compose_resource_fingerprint(
     ).fingerprint
 
 
+_DOCKER_INSPECT_MAX_CONTAINER_IDS = 10_000
+_DOCKER_INSPECT_BATCH_SIZE = 64
+_DOCKER_INSPECT_CONTAINER_ID = re.compile(r"[0-9a-f]{64}\Z")
+_DOCKER_INSPECT_MOUNT_TYPES = frozenset({"volume", "bind", "tmpfs"})
+_DOCKER_INSPECT_FORMAT = (
+    '{"Id":{{json .Id}},'
+    '"ProjectLabel":{{json (index .Config.Labels "com.docker.compose.project")}},'
+    '"ServiceLabel":{{json (index .Config.Labels "com.docker.compose.service")}},'
+    '"Mounts":[{{range $i, $m := .Mounts}}{{if $i}},{{end}}'
+    '{"Type":{{json $m.Type}},'
+    '"Name":{{if eq $m.Type "volume"}}{{json $m.Name}}{{else}}null{{end}}'
+    "}{{end}}]}"
+)
+
+
+class _DockerProjectionError(ValueError):
+    """Signal an incomplete or ambiguous batched Docker projection."""
+
+
+@dataclass(frozen=True, slots=True)
+class _DockerMountProjection:
+    mount_type: str
+    name: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _DockerContainerProjection:
+    container_id: str
+    project_label: str | None
+    service_label: str | None
+    mounts: tuple[_DockerMountProjection, ...]
+
+
+def _bounded_docker_strings(values: Iterable[str], *, maximum: int) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or maximum < 0:
+        raise _DockerProjectionError
+    try:
+        iterator = iter(values)
+    except TypeError:
+        raise _DockerProjectionError from None
+    result: list[str] = []
+    for value in iterator:
+        if len(result) >= maximum or not isinstance(value, str):
+            raise _DockerProjectionError
+        result.append(value)
+    return tuple(result)
+
+
+def _validated_docker_container_ids(
+    values: Iterable[str], *, maximum: int
+) -> tuple[str, ...]:
+    ids = _bounded_docker_strings(values, maximum=maximum)
+    if any(not _DOCKER_INSPECT_CONTAINER_ID.fullmatch(item) for item in ids) or len(
+        set(ids)
+    ) != len(ids):
+        raise _DockerProjectionError
+    return ids
+
+
+def _build_docker_inspect_projection_commands(
+    container_ids: Iterable[str],
+) -> tuple[tuple[str, ...], ...]:
+    ids = _validated_docker_container_ids(
+        container_ids, maximum=_DOCKER_INSPECT_MAX_CONTAINER_IDS
+    )
+    return tuple(
+        (
+            "docker",
+            "inspect",
+            "--type",
+            "container",
+            "--format",
+            _DOCKER_INSPECT_FORMAT,
+            *ids[start : start + _DOCKER_INSPECT_BATCH_SIZE],
+        )
+        for start in range(0, len(ids), _DOCKER_INSPECT_BATCH_SIZE)
+    )
+
+
+def _reject_duplicate_docker_json_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DockerProjectionError
+        result[key] = value
+    return result
+
+
+def _parse_docker_inspect_projection_batch(
+    output: str, expected_ids: Sequence[str]
+) -> tuple[_DockerContainerProjection, ...]:
+    ids = _validated_docker_container_ids(
+        expected_ids, maximum=_DOCKER_INSPECT_BATCH_SIZE
+    )
+    if not ids or not isinstance(output, str):
+        raise _DockerProjectionError
+    lines = output.splitlines()
+    if len(lines) != len(ids) or any(not line.strip() for line in lines):
+        raise _DockerProjectionError
+
+    expected = set(ids)
+    parsed: dict[str, _DockerContainerProjection] = {}
+    for line in lines:
+        try:
+            value = json.loads(
+                line, object_pairs_hook=_reject_duplicate_docker_json_keys
+            )
+        except (json.JSONDecodeError, _DockerProjectionError):
+            raise _DockerProjectionError from None
+        if not isinstance(value, dict) or set(value) != {
+            "Id",
+            "ProjectLabel",
+            "ServiceLabel",
+            "Mounts",
+        }:
+            raise _DockerProjectionError
+
+        container_id = value["Id"]
+        project_label = value["ProjectLabel"]
+        service_label = value["ServiceLabel"]
+        raw_mounts = value["Mounts"]
+        if (
+            not isinstance(container_id, str)
+            or not _DOCKER_INSPECT_CONTAINER_ID.fullmatch(container_id)
+            or container_id not in expected
+            or container_id in parsed
+            or (project_label is not None and not isinstance(project_label, str))
+            or (service_label is not None and not isinstance(service_label, str))
+            or not isinstance(raw_mounts, list)
+        ):
+            raise _DockerProjectionError
+
+        mounts: list[_DockerMountProjection] = []
+        for raw_mount in raw_mounts:
+            if (
+                not isinstance(raw_mount, dict)
+                or set(raw_mount) != {"Type", "Name"}
+                or not isinstance(raw_mount["Type"], str)
+                or raw_mount["Type"] not in _DOCKER_INSPECT_MOUNT_TYPES
+                or (
+                    raw_mount["Name"] is not None
+                    and not isinstance(raw_mount["Name"], str)
+                )
+            ):
+                raise _DockerProjectionError
+            mounts.append(_DockerMountProjection(raw_mount["Type"], raw_mount["Name"]))
+        parsed[container_id] = _DockerContainerProjection(
+            container_id=container_id,
+            project_label=project_label,
+            service_label=service_label,
+            mounts=tuple(mounts),
+        )
+
+    if set(parsed) != expected:
+        raise _DockerProjectionError
+    return tuple(parsed[container_id] for container_id in ids)
+
+
+def _parse_docker_inspect_projection_inventory(
+    container_ids: Iterable[str], batch_outputs: Iterable[str]
+) -> tuple[_DockerContainerProjection, ...]:
+    ids = _validated_docker_container_ids(
+        container_ids, maximum=_DOCKER_INSPECT_MAX_CONTAINER_IDS
+    )
+    batches = tuple(
+        ids[start : start + _DOCKER_INSPECT_BATCH_SIZE]
+        for start in range(0, len(ids), _DOCKER_INSPECT_BATCH_SIZE)
+    )
+    outputs = _bounded_docker_strings(batch_outputs, maximum=len(batches))
+    if len(outputs) != len(batches):
+        raise _DockerProjectionError
+
+    parsed_by_id: dict[str, _DockerContainerProjection] = {}
+    for expected_batch, output in zip(batches, outputs, strict=True):
+        for record in _parse_docker_inspect_projection_batch(output, expected_batch):
+            if record.container_id in parsed_by_id:
+                raise _DockerProjectionError
+            parsed_by_id[record.container_id] = record
+    if len(parsed_by_id) != len(ids) or set(parsed_by_id) != set(ids):
+        raise _DockerProjectionError
+    return tuple(parsed_by_id[container_id] for container_id in ids)
+
+
 def _assert_compose_volume_ownership(
     project_name: str,
     managed_volumes: Sequence[tuple[str, str]],
@@ -2258,16 +2443,6 @@ def _assert_compose_volume_ownership(
         if not isinstance(labels, dict):
             raise StandError(error_message)
         return labels
-
-    def inspect_mounts(command: list[str], error_message: str) -> list[object]:
-        output = inventory(command, error_message)
-        try:
-            mounts = json.loads(output)
-        except json.JSONDecodeError:
-            raise StandError(error_message) from None
-        if not isinstance(mounts, list):
-            raise StandError(error_message)
-        return mounts
 
     if managed_volumes:
         existing_names = set(
@@ -2343,57 +2518,49 @@ def _assert_compose_volume_ownership(
             "ps",
             "--all",
             "--quiet",
+            "--no-trunc",
             "--filter",
             project_filter,
         ],
         "cannot verify live stand Docker container ownership",
     ).splitlines()
+    try:
+        validated_ids = _validated_docker_container_ids(
+            container_ids, maximum=_DOCKER_INSPECT_MAX_CONTAINER_IDS
+        )
+    except _DockerProjectionError:
+        raise StandError("live stand container inventory is ambiguous") from None
+
     allowed_services = set(managed_services)
-    for container_id in container_ids:
-        if not re.fullmatch(r"[0-9a-f]{12,64}", container_id):
-            raise StandError("live stand container inventory is ambiguous")
-        if not allow_existing_owned:
-            raise StandError(
-                "a live stand container already exists before its first Compose startup"
-            )
-        labels = inspect_labels(
-            [
-                "docker",
-                "inspect",
-                "--format",
-                "{{json .Config.Labels}}",
-                container_id,
-            ],
-            "cannot verify existing live stand container labels",
+    if validated_ids and not allow_existing_owned:
+        raise StandError(
+            "a live stand container already exists before its first Compose startup"
         )
-        if (
-            labels.get("com.docker.compose.project") != project_name
-            or labels.get("com.docker.compose.service") not in allowed_services
-        ):
-            raise StandError(
-                "an existing live stand container is not owned by the expected Compose project"
-            )
-        mounts = inspect_mounts(
-            [
-                "docker",
-                "inspect",
-                "--format",
-                "{{json .Mounts}}",
-                container_id,
-            ],
-            "cannot verify existing live stand container mounts",
+    if validated_ids:
+        inspect_error = "cannot verify existing live stand Docker container ownership"
+        batch_outputs = tuple(
+            inventory(list(command), inspect_error)
+            for command in _build_docker_inspect_projection_commands(validated_ids)
         )
-        for mount in mounts:
-            if not isinstance(mount, dict):
-                raise StandError("live stand container mount inventory is ambiguous")
-            mount_type = mount.get("Type")
-            if mount_type not in {"volume", "bind", "tmpfs"}:
-                raise StandError("live stand container mount inventory is ambiguous")
-            if mount_type == "volume":
-                volume_name = mount.get("Name")
-                if (
-                    not isinstance(volume_name, str)
-                    or volume_name not in allowed_volume_names
+        try:
+            records = _parse_docker_inspect_projection_inventory(
+                validated_ids, batch_outputs
+            )
+        except _DockerProjectionError:
+            raise StandError(inspect_error) from None
+
+        for record in records:
+            if (
+                record.project_label != project_name
+                or record.service_label not in allowed_services
+            ):
+                raise StandError(
+                    "an existing live stand container is not owned by the expected Compose project"
+                )
+            for mount in record.mounts:
+                if mount.mount_type == "volume" and (
+                    not isinstance(mount.name, str)
+                    or mount.name not in allowed_volume_names
                 ):
                     raise StandError(
                         "live stand container uses an unregistered Docker volume"

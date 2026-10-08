@@ -14,7 +14,7 @@ import stat
 import subprocess
 import sys
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -4070,7 +4070,7 @@ def test_teardown_preflight_rejects_unregistered_anonymous_container_volume(
 ) -> None:
     project_name = "ue-live-0123456789abcdef"
     managed_volume = f"{project_name}_app-data"
-    container_id = "0123456789ab"
+    container_id = "0123456789ab" + "0" * 52
     commands: list[list[str]] = []
 
     def fake_run(command: Sequence[str], **_: Any) -> subprocess.CompletedProcess[str]:
@@ -4096,39 +4096,27 @@ def test_teardown_preflight_rejects_unregistered_anonymous_container_volume(
             return subprocess.CompletedProcess(
                 normalized, 0, stdout=f"{container_id}\n", stderr=""
             )
-        if normalized[:4] == [
+        if normalized[:5] == [
             "docker",
             "inspect",
+            "--type",
+            "container",
             "--format",
-            "{{json .Mounts}}",
-        ]:
-            return subprocess.CompletedProcess(
-                normalized,
-                0,
-                stdout=json.dumps(
-                    [
-                        {
-                            "Type": "volume",
-                            "Name": "anonymous-image-volume",
-                            "Destination": "/var/lib/postgresql/data",
-                        }
-                    ]
-                ),
-                stderr="",
-            )
-        if normalized[:4] == [
-            "docker",
-            "inspect",
-            "--format",
-            "{{json .Config.Labels}}",
         ]:
             return subprocess.CompletedProcess(
                 normalized,
                 0,
                 stdout=json.dumps(
                     {
-                        "com.docker.compose.project": project_name,
-                        "com.docker.compose.service": "backend",
+                        "Id": container_id,
+                        "ProjectLabel": project_name,
+                        "ServiceLabel": "backend",
+                        "Mounts": [
+                            {
+                                "Type": "volume",
+                                "Name": "anonymous-image-volume",
+                            }
+                        ],
                     }
                 ),
                 stderr="",
@@ -4146,7 +4134,278 @@ def test_teardown_preflight_rejects_unregistered_anonymous_container_volume(
             declared_volume_names=[managed_volume],
         )
 
-    assert any("{{json .Mounts}}" in command for command in commands)
+    assert any(
+        "ProjectLabel" in argument for command in commands for argument in command
+    )
+
+
+def _batched_inspect_test_id(value: int) -> str:
+    return f"{value:064x}"
+
+
+def _batched_inspect_test_row(
+    container_id: str,
+    *,
+    project: str = "ue-live-0123456789abcdef",
+    service: str = "backend",
+    mounts: list[dict[str, object]] | None = None,
+) -> str:
+    return json.dumps(
+        {
+            "Id": container_id,
+            "ProjectLabel": project,
+            "ServiceLabel": service,
+            "Mounts": [] if mounts is None else mounts,
+        },
+        separators=(",", ":"),
+    )
+
+
+def _stub_batched_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    inventory_output: str,
+    inspect_output: Callable[[list[str]], str],
+) -> list[list[str]]:
+    commands: list[list[str]] = []
+
+    def fake_run(command: Sequence[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        normalized = list(command)
+        commands.append(normalized)
+        if normalized[:4] == ["docker", "ps", "--all", "--quiet"]:
+            return subprocess.CompletedProcess(
+                normalized, 0, stdout=inventory_output, stderr=""
+            )
+        if normalized[:5] == [
+            "docker",
+            "inspect",
+            "--type",
+            "container",
+            "--format",
+        ]:
+            return subprocess.CompletedProcess(
+                normalized, 0, stdout=inspect_output(normalized), stderr=""
+            )
+        pytest.fail("unexpected Docker command")
+
+    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
+    return commands
+
+
+def test_compose_container_ownership_uses_bounded_full_id_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_name = "ue-live-0123456789abcdef"
+    managed_volume = f"{project_name}_app-data"
+    container_ids = tuple(_batched_inspect_test_id(index) for index in range(1, 66))
+    inspected_ids: list[str] = []
+
+    def inspect_output(command: list[str]) -> str:
+        batch_ids = command[6:]
+        inspected_ids.extend(batch_ids)
+        template = command[5]
+        assert "Config.Env" not in template
+        assert ".Source" not in template
+        assert "Destination" not in template
+        rows: list[str] = []
+        for container_id in batch_ids:
+            mounts: list[dict[str, object]] = []
+            if container_id == container_ids[0]:
+                mounts = [{"Type": "volume", "Name": managed_volume}]
+            elif container_id in container_ids[1:3]:
+                mount_type = "bind" if container_id == container_ids[1] else "tmpfs"
+                mounts = [{"Type": mount_type, "Name": None}]
+            rows.append(
+                _batched_inspect_test_row(
+                    container_id, project=project_name, mounts=mounts
+                )
+            )
+        return "\n".join(rows) + "\n"
+
+    commands = _stub_batched_inspection(
+        monkeypatch,
+        inventory_output="\n".join(container_ids) + "\n",
+        inspect_output=inspect_output,
+    )
+
+    assert (
+        live_stand._assert_compose_volume_ownership(
+            project_name,
+            (),
+            declared_volume_names=(managed_volume,),
+            allow_existing_owned=True,
+            managed_services=("backend",),
+        )
+        == ()
+    )
+
+    inspect_commands = [command for command in commands if command[1] == "inspect"]
+    assert [command[6:] for command in inspect_commands] == [
+        list(container_ids[:64]),
+        list(container_ids[64:]),
+    ]
+    assert inspected_ids == list(container_ids)
+    assert all("--no-trunc" in command for command in commands if command[1] == "ps")
+
+
+def test_compose_container_ownership_rejects_incomplete_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_name = "ue-live-0123456789abcdef"
+    container_ids = tuple(_batched_inspect_test_id(index) for index in range(100, 165))
+    inspect_calls = 0
+
+    def missing_batch(command: list[str]) -> str:
+        nonlocal inspect_calls
+        inspect_calls += 1
+        if inspect_calls == 1:
+            return (
+                "\n".join(
+                    _batched_inspect_test_row(item, project=project_name)
+                    for item in command[6:]
+                )
+                + "\n"
+            )
+        return ""
+
+    _stub_batched_inspection(
+        monkeypatch,
+        inventory_output="\n".join(container_ids) + "\n",
+        inspect_output=missing_batch,
+    )
+    with pytest.raises(
+        live_stand.StandError,
+        match="cannot verify existing live stand Docker container ownership",
+    ):
+        live_stand._assert_compose_volume_ownership(
+            project_name,
+            (),
+            declared_volume_names=(),
+            allow_existing_owned=True,
+            managed_services=("backend",),
+        )
+    assert inspect_calls == 2
+
+
+def test_compose_container_ownership_rejects_duplicate_json_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_name = "ue-live-0123456789abcdef"
+    container_id = _batched_inspect_test_id(501)
+    duplicate_id_row = (
+        '{"Id":"'
+        + container_id
+        + '","Id":"'
+        + container_id
+        + '","ProjectLabel":"'
+        + project_name
+        + '","ServiceLabel":"backend","Mounts":[]}\n'
+    )
+    _stub_batched_inspection(
+        monkeypatch,
+        inventory_output=container_id + "\n",
+        inspect_output=lambda _command: duplicate_id_row,
+    )
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="cannot verify existing live stand Docker container ownership",
+    ):
+        live_stand._assert_compose_volume_ownership(
+            project_name,
+            (),
+            declared_volume_names=(),
+            allow_existing_owned=True,
+            managed_services=("backend",),
+        )
+
+
+@pytest.mark.parametrize(
+    ("service", "volume", "error"),
+    [
+        ("foreign-service", "ue-live-0123456789abcdef_app-data", "not owned"),
+        ("backend", "unregistered-volume", "unregistered.*volume"),
+    ],
+)
+def test_compose_container_ownership_preserves_service_and_volume_guards(
+    monkeypatch: pytest.MonkeyPatch,
+    service: str,
+    volume: str,
+    error: str,
+) -> None:
+    project_name = "ue-live-0123456789abcdef"
+    container_id = _batched_inspect_test_id(701)
+    row = _batched_inspect_test_row(
+        container_id,
+        project=project_name,
+        service=service,
+        mounts=[{"Type": "volume", "Name": volume}],
+    )
+    _stub_batched_inspection(
+        monkeypatch,
+        inventory_output=container_id + "\n",
+        inspect_output=lambda _command: row + "\n",
+    )
+
+    with pytest.raises(live_stand.StandError, match=error):
+        live_stand._assert_compose_volume_ownership(
+            project_name,
+            (),
+            declared_volume_names=(f"{project_name}_app-data",),
+            allow_existing_owned=True,
+            managed_services=("backend",),
+        )
+
+
+def test_first_compose_start_rejects_container_before_inspect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_name = "ue-live-0123456789abcdef"
+    container_id = _batched_inspect_test_id(901)
+    commands = _stub_batched_inspection(
+        monkeypatch,
+        inventory_output=container_id + "\n",
+        inspect_output=lambda _command: pytest.fail(
+            "first start must reject before container inspection"
+        ),
+    )
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="already exists before its first Compose startup",
+    ):
+        live_stand._assert_compose_volume_ownership(
+            project_name,
+            (),
+            declared_volume_names=(),
+            allow_existing_owned=False,
+            managed_services=("backend",),
+        )
+    assert len(commands) == 1
+    assert "--no-trunc" in commands[0]
+
+
+def test_compose_container_ownership_rejects_abbreviated_inventory_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands = _stub_batched_inspection(
+        monkeypatch,
+        inventory_output="0123456789ab\n",
+        inspect_output=lambda _command: pytest.fail(
+            "an abbreviated ID must fail before inspect"
+        ),
+    )
+
+    with pytest.raises(live_stand.StandError, match="container inventory is ambiguous"):
+        live_stand._assert_compose_volume_ownership(
+            "ue-live-0123456789abcdef",
+            (),
+            declared_volume_names=(),
+            allow_existing_owned=True,
+            managed_services=("backend",),
+        )
+    assert len(commands) == 1
+    assert "--no-trunc" in commands[0]
 
 
 def test_lifecycle_lock_serializes_competing_operations(

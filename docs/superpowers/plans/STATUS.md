@@ -136,9 +136,9 @@
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
   Historical MFA263/307 exact RED; global mutation gate открыт.
-- Получить root-reviewed live diagnostics для desktop/mobile без ослабления
-  исходных assertions; доказать auth, API/DB/S3 equality и пользовательские
-  сценарии, а не только health/readiness.
+- Owned Docker inspect: batches≤64/full IDs/exact join с прежними guards; CLI probe23/23, root1134/1134 и preflight10/10 PASS.
+  Дальше committed-SHA profile/live и API/DB/S3 equality; затем измерить teardown.
+  Runtime savings и полная продуктовая приёмка пока не заявлены.
 - DR RCA: immutable helper/receipts; RPO/RTO не подтверждены до проверки target app.
 - Открыты migrations/rollback/BE-02, app restore, SpiceDB graph/search parity,
   WS load, Envoy Gateway/kind, 63 audit IDs, шесть certified GHCR digests,
