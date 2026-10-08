@@ -55,6 +55,11 @@ type Client struct {
 	replays             map[string]*roomReplayState
 	replayJoinLimiter   *rate.Limiter
 	closeOnce           sync.Once
+	// registrationWG bridges Run-loop admission and synchronous shutdown fallback.
+	// registrationStarted is one-shot; registrationAdmitted tracks gauge ownership.
+	registrationWG       sync.WaitGroup
+	registrationStarted  atomic.Bool
+	registrationAdmitted atomic.Bool
 	// ctx / cancel are tied to this connection's lifetime.
 	ctx    context.Context
 	cancel context.CancelFunc

@@ -19,6 +19,7 @@ const notificationSchemaUrl = new URL(
   "../../../app/schemas/notification_delivery.py",
   import.meta.url
 )
+const notificationsApiUrl = new URL("../../../app/api/notifications.py", import.meta.url)
 const notificationHelpersUrl = new URL("../../src/push/notification-helpers.ts", import.meta.url)
 const liveComposeUrl = new URL("../../../docker-compose.live.yml", import.meta.url)
 
@@ -37,6 +38,7 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
     delivery,
     notificationContract,
     notificationSchema,
+    notificationsApi,
     notificationHelpers,
     liveCompose,
   ] = await Promise.all([
@@ -46,6 +48,7 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
     readFile(deliveryUrl, "utf8"),
     readFile(notificationContractUrl, "utf8"),
     readFile(notificationSchemaUrl, "utf8"),
+    readFile(notificationsApiUrl, "utf8"),
     readFile(notificationHelpersUrl, "utf8"),
     readFile(liveComposeUrl, "utf8"),
   ])
@@ -143,4 +146,115 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
     /const subscribePromise = page\.waitForResponse\([\s\S]*?\/api\/v1\/push\/subscribe/u
   )
   assert.match(spec, /deleteOnlyCreatedAccount\(adminPage, email, fullName\)/u)
+
+  assert.match(
+    chatNotification,
+    /if chat_type == "group":[\s\S]*?notif_title = chat_name or "Group"[\s\S]*?f"\{sender_name\}: \{body_preview\}"/u
+  )
+  assert.match(
+    chatNotification,
+    /type="chat\.reply"[\s\S]*?topic="chat\.message\.created"[\s\S]*?push_via_outbox_only=True/u
+  )
+  assert.match(notificationContract, /"chat\.": "chat\.message\.created"/u)
+  assert.match(notificationsApi, /topic = infer_notification_topic\(type_raw\)/u)
+  assert.match(notificationSchema, /topic: SanitizedInput/u)
+
+  const groupReplyStart = spec.indexOf(
+    'test("quoted group author gets one chat.reply push with group context and no generic duplicate'
+  )
+  assert.ok(groupReplyStart >= 0, "the real group-reply Web Push scenario must be registered")
+  const groupReplyFlow = spec.slice(groupReplyStart)
+  assert.match(groupReplyFlow, /getByRole\("tab", \{ name: "Группа", exact: true \}\)/u)
+  assert.match(groupReplyFlow, /participantIds[\s\S]*?expectedMemberIds = participantIds/u)
+  assert.match(groupReplyFlow, /new Set\(participantIds\)/u)
+  const responseGroupId = groupReplyFlow.indexOf("chatId = group.id")
+  assert.ok(
+    responseGroupId >= 0,
+    "the candidate ID is captured only after validating the create response"
+  )
+  for (const identityCheck of [
+    'if (typeof group.id !== "string"',
+    'expect(group.chat_type).toBe("group")',
+    "expect(group.name).toBe(groupName)",
+    "expect(group.created_by).toBe(owner.id)",
+    "expect(group.participants).toHaveLength(3)",
+    "expect(new Set(group.participants.map((participant) => participant.id)))",
+  ]) {
+    const checkIndex = groupReplyFlow.indexOf(identityCheck)
+    assert.ok(
+      checkIndex >= 0 && checkIndex < responseGroupId,
+      `group identity check precedes cleanup ID capture: ${identityCheck}`
+    )
+  }
+  assert.match(
+    spec,
+    /const findOnlyOwnedGroup = async[\s\S]*?expect\(group\.participants\)\.toHaveLength\(expectedMemberIds\.length\)[\s\S]*?new Set\(expectedMemberIds\)/u,
+    "cleanup ownership requires exact participant count and membership"
+  )
+  const cleanupStart = groupReplyFlow.indexOf("const cleanupGroup:")
+  const cleanupRevalidation = groupReplyFlow.indexOf("findOnlyOwnedGroup(", cleanupStart)
+  const cleanupNotifications = groupReplyFlow.lastIndexOf(
+    "deleteOnlyTestGroupNotifications(memberPage, ownedCleanupGroupId)"
+  )
+  const cleanupChat = groupReplyFlow.lastIndexOf(
+    "deleteOnlyTestChat(adminPage!, ownedCleanupGroupId)"
+  )
+  assert.ok(
+    cleanupRevalidation >= 0 &&
+      cleanupRevalidation < cleanupNotifications &&
+      cleanupRevalidation < cleanupChat,
+    "cleanup re-resolves the unique owner-controlled group before deleting notifications or the chat"
+  )
+  assert.match(groupReplyFlow, /if \(chatId && resolvedGroupId !== chatId\)/u)
+  assert.match(groupReplyFlow, /reply_to\?\.id[\s\S]*?quotedMessageId/u)
+  assert.match(groupReplyFlow, /quotedAuthorReplies[\s\S]*?toHaveLength\(1\)/u)
+  assert.match(groupReplyFlow, /quotedAuthorGenericReplies[\s\S]*?toHaveLength\(0\)/u)
+  const finalGenericStart = groupReplyFlow.indexOf("const thirdMemberNotifications =")
+  const thirdReplyStart = groupReplyFlow.indexOf(
+    "const thirdMemberReplyNotifications",
+    finalGenericStart
+  )
+  assert.ok(finalGenericStart >= 0 && thirdReplyStart > finalGenericStart)
+  const finalGenericAssertions = groupReplyFlow.slice(finalGenericStart, thirdReplyStart)
+  assert.match(
+    finalGenericAssertions,
+    /const thirdMemberGenericNotifications = thirdMemberNotifications\.filter\([\s\S]*?item\.type === "chat\.message"[\s\S]*?item\.url === chatPath[\s\S]*?item\.body === expectedReplyBody/u
+  )
+  assert.match(
+    finalGenericAssertions,
+    /expect\(\s*thirdMemberGenericNotifications[\s\S]*?toHaveLength\(1\)/u,
+    "the final read after the poll still has exactly one generic notification"
+  )
+  const thirdReplyFilterEnd = groupReplyFlow.indexOf("    expect(", thirdReplyStart)
+  assert.ok(thirdReplyFilterEnd > thirdReplyStart)
+  const thirdReplyFilter = groupReplyFlow.slice(thirdReplyStart, thirdReplyFilterEnd)
+  assert.match(
+    thirdReplyFilter,
+    /item\.type === "chat\.reply" && item\.url === chatPath/u,
+    "the third-member exclusion scans every reply notification for the chat"
+  )
+  assert.doesNotMatch(
+    thirdReplyFilter,
+    /item\.(?:title|body)/u,
+    "reply exclusion cannot hide notifications with unexpected title or body"
+  )
+  assert.match(
+    groupReplyFlow.slice(thirdReplyFilterEnd),
+    /thirdMemberReplyNotifications[\s\S]*?toHaveLength\(0\)/u,
+    "the third member must not receive a reply-specific notification"
+  )
+  assert.match(groupReplyFlow, /inAppReply\?\.topic[\s\S]*?chat\.message\.created/u)
+  assert.match(groupReplyFlow, /nativeReply\?\.notificationId[\s\S]*?expectedNotificationId/u)
+  assert.match(groupReplyFlow, /nativeReply\?\.topic[\s\S]*?chat\.message\.created/u)
+  assert.match(groupReplyFlow, /nativeReply\?\.repliedToMessageId[\s\S]*?quotedMessageId/u)
+  assert.match(groupReplyFlow, /nativeReply\?\.replyingMessageId[\s\S]*?replyMessageId/u)
+  assert.match(
+    groupReplyFlow,
+    /deleteOnlyTestGroupNotifications\(memberPage, ownedCleanupGroupId\)/u
+  )
+  assert.match(groupReplyFlow, /deleteOnlyTestChat\(adminPage!, ownedCleanupGroupId\)/u)
+  assert.doesNotMatch(
+    groupReplyFlow,
+    /routeWebSocket|PushManager\.prototype|ServiceWorkerRegistration\.prototype|vi\.mock/u
+  )
 })

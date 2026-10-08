@@ -167,6 +167,9 @@ type Hub struct {
 	// subscribeCacheInvalidations is a package-test seam; production leaves it
 	// nil so revocations always use the durable JetStream stream below.
 	subscribeCacheInvalidations func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
+	// registrationWaitTestHook observes only the rare synchronous shutdown fallback.
+	// The bool is false before waiting and true after the registration decision.
+	registrationWaitTestHook func(*Client, bool)
 	// internalSecret is the shared secret for local HMAC validation.
 	internalSecret string
 	// msgLimiters is a per-client token-bucket map that limits NATS publish rate.
@@ -568,6 +571,15 @@ func (h *Hub) registerClient(client *Client) bool {
 		h.lifecycleMu.Unlock()
 		return false
 	}
+	if client.registrationStarted.Load() {
+		h.lifecycleMu.Unlock()
+		return false
+	}
+	// Reserve the admission decision before sending. Stop serializes this
+	// reservation with its stopped transition, and fallback cleanup waits for
+	// the Run loop to resolve it before unregistering.
+	client.registrationWG.Add(1)
+	client.registrationStarted.Store(true)
 	h.clientPumpWG.Add(2)
 	h.lifecycleMu.Unlock()
 
@@ -575,6 +587,7 @@ func (h *Hub) registerClient(client *Client) bool {
 	case h.Register <- client:
 		return true
 	case <-runCtx.Done():
+		client.registrationWG.Done()
 		h.clientPumpWG.Done()
 		h.clientPumpWG.Done()
 		return false
@@ -600,22 +613,38 @@ func (h *Hub) unregisterClient(ctx context.Context, client *Client) {
 	stopped := h.stopped.Load()
 	h.lifecycleMu.Unlock()
 	if stopped {
-		h.handleUnregister(ctx, client)
+		h.unregisterAfterRegistration(ctx, client)
 		return
 	}
 	if runCtx == nil {
 		select {
 		case h.Unregister <- client:
 		default:
-			h.handleUnregister(ctx, client)
+			h.unregisterAfterRegistration(ctx, client)
 		}
 		return
 	}
 	select {
 	case h.Unregister <- client:
 	case <-runCtx.Done():
-		h.handleUnregister(ctx, client)
+		h.unregisterAfterRegistration(ctx, client)
 	}
+}
+
+func (h *Hub) unregisterAfterRegistration(ctx context.Context, client *Client) {
+	if client.registrationStarted.Load() {
+		if hook := h.registrationWaitTestHook; hook != nil {
+			hook(client, false)
+		}
+		client.registrationWG.Wait()
+		if hook := h.registrationWaitTestHook; hook != nil {
+			hook(client, true)
+		}
+		if !client.registrationAdmitted.Load() {
+			return
+		}
+	}
+	h.handleUnregister(ctx, client)
 }
 
 func (h *Hub) dispatchBroadcast(ctx context.Context, msg *Message, broadcastCh, sequencedBroadcastCh chan<- *Message) {
@@ -720,7 +749,7 @@ func (h *Hub) Run(ctx context.Context) {
 			return
 
 		case client := <-h.Register:
-			h.handleRegister(ctx, client)
+			h.handleRegister(runCtx, client)
 
 		case client := <-h.Unregister:
 			h.handleUnregister(ctx, client)
@@ -749,17 +778,19 @@ func (h *Hub) failRoomClients(room string) {
 	}
 }
 
-func (h *Hub) handleRegister(ctx context.Context, client *Client) {
-	// Serialize final admission with Stop and Run-context cancellation. A
-	// register rendezvous can release its sender before this function starts,
-	// allowing an already-started pump to unregister synchronously while shutdown
-	// is in progress. Holding lifecycleMu through insertion and metric accounting
-	// makes either registration precede shutdown completely or be rejected.
-	h.lifecycleMu.Lock()
+func (h *Hub) handleRegister(runCtx context.Context, client *Client) {
+	registrationTracked := client.registrationStarted.Load()
+	if registrationTracked {
+		defer client.registrationWG.Done()
+	}
+
+	// The reservation happened under lifecycleMu before Run received this
+	// client. Stop can mark the hub stopped without waiting for this map lock;
+	// this in-lock check linearizes admission against that transition. Stop then
+	// joins Run and closes any client whose admission won the race.
 	h.mu.Lock()
-	if h.stopped.Load() || (h.runStarted && (h.ctx == nil || h.ctx.Err() != nil)) {
+	if h.stopped.Load() || runCtx == nil || runCtx.Err() != nil {
 		h.mu.Unlock()
-		h.lifecycleMu.Unlock()
 		client.cancelConnection()
 		client.closeOnce.Do(func() { safeClose(client.Send) })
 		client.closeTransport("Failed to close connection after hub shutdown")
@@ -768,28 +799,27 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 
 	if h.maxClients > 0 && len(h.Clients) >= h.maxClients {
 		h.mu.Unlock()
-		h.lifecycleMu.Unlock()
-		if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelWarn) {
-			h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
+		if h.Logger != nil && h.Logger.Enabled(runCtx, slog.LevelWarn) {
+			h.Logger.WarnContext(runCtx, "Max connections reached, rejecting client",
 				"id", client.ID,
 				"max", h.maxClients)
 		}
 		client.closeOnce.Do(func() { safeClose(client.Send) })
 		if client.Conn != nil {
 			if err := client.Conn.Close(); err != nil {
-				if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelError) {
-					h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+				if h.Logger != nil && h.Logger.Enabled(runCtx, slog.LevelError) {
+					h.Logger.ErrorContext(runCtx, "Failed to close connection after max connections", "id", client.ID, "err", err)
 				}
 			}
 		}
 		return
 	}
 	h.Clients[client.ID] = client
+	client.registrationAdmitted.Store(true)
 	ActiveConnections.Inc()
 	h.mu.Unlock()
-	h.lifecycleMu.Unlock()
-	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
-		h.Logger.InfoContext(ctx, "Client connected", "id", client.ID)
+	if h.Logger != nil && h.Logger.Enabled(runCtx, slog.LevelInfo) {
+		h.Logger.InfoContext(runCtx, "Client connected", "id", client.ID)
 	}
 }
 
@@ -818,9 +848,11 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 		client.mu.Unlock()
 		h.mu.Unlock()
 
-		// RZ-33-03: Dec inside closeOnce so concurrent unregister calls
-		// only decrement the gauge once per client.
-		ActiveConnections.Dec()
+		// Only admitted clients own a gauge increment. The atomic transition
+		// keeps concurrent fallback/Run/Stop cleanup to one decrement.
+		if client.registrationAdmitted.Swap(false) {
+			ActiveConnections.Dec()
+		}
 	})
 	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
 		h.Logger.InfoContext(ctx, "Client disconnected", "id", client.ID)

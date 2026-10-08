@@ -271,7 +271,7 @@ func TestHubHandleRegister_RejectsClientAfterStopBegins(t *testing.T) {
 func TestHubHandleRegister_RejectsClientAfterRunContextCancellation(t *testing.T) {
 	baseline := testutil.ToFloat64(ActiveConnections)
 	h := setupTestHub()
-	_, runCancel, started := h.beginRun(context.Background())
+	runCtx, runCancel, started := h.beginRun(context.Background())
 	require.True(t, started)
 	runCancel()
 	t.Cleanup(func() {
@@ -288,7 +288,7 @@ func TestHubHandleRegister_RejectsClientAfterRunContextCancellation(t *testing.T
 		Rooms: make(map[string]bool),
 		Send:  make(chan []byte, 1),
 	}
-	h.handleRegister(context.Background(), client)
+	h.handleRegister(runCtx, client)
 
 	h.mu.RLock()
 	_, registered := h.Clients[client.ID]
@@ -304,6 +304,40 @@ func TestHubHandleRegister_RejectsClientAfterRunContextCancellation(t *testing.T
 	case <-session.closed:
 	default:
 		t.Fatal("cancelled-run registration must close its upgraded transport")
+	}
+}
+
+func TestHubHandleRegister_RejectsNilRunContext(t *testing.T) {
+	baseline := testutil.ToFloat64(ActiveConnections)
+	h := setupTestHub()
+	t.Cleanup(func() { ActiveConnections.Set(baseline) })
+	t.Cleanup(h.Stop)
+
+	session := newBlockingShutdownSession()
+	client := &Client{
+		ID:    "nil-run-context-register-client",
+		Hub:   h,
+		Conn:  session,
+		Rooms: make(map[string]bool),
+		Send:  make(chan []byte, 1),
+	}
+	var nilRunCtx context.Context
+	h.handleRegister(nilRunCtx, client)
+
+	h.mu.RLock()
+	_, registered := h.Clients[client.ID]
+	h.mu.RUnlock()
+	assert.False(t, registered, "registration without a Run context must be rejected")
+	assert.Equal(t, baseline, testutil.ToFloat64(ActiveConnections), "missing-context registration must not change the active gauge")
+	select {
+	case <-client.Send:
+	default:
+		t.Fatal("missing-context registration must close the send queue")
+	}
+	select {
+	case <-session.closed:
+	default:
+		t.Fatal("missing-context registration must close its upgraded transport")
 	}
 }
 
@@ -813,4 +847,209 @@ func TestHubStartLimiterCleanupAfterStopDoesNotStartWorker(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testutil.ToFloat64(ActiveGoroutines) == baseline
 	}, time.Second, time.Millisecond, "test cleanup must leave no limiter goroutine behind")
+}
+
+func TestHubStopWaitsForRendezvousedRegistrationBeforeFallback(t *testing.T) {
+	baseline := testutil.ToFloat64(ActiveConnections)
+	h := setupTestHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runDone := make(chan struct{})
+	go func() {
+		h.Run(ctx)
+		close(runDone)
+	}()
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
+	runCtx := hubLifecycleContext(h)
+	require.NotNil(t, runCtx)
+
+	// Holding Hub.mu pauses Run after the unbuffered Register rendezvous but
+	// before the admission decision. Stop must still mark/cancel the lifecycle.
+	h.mu.Lock()
+	unlockHub := sync.OnceFunc(h.mu.Unlock)
+	t.Cleanup(unlockHub)
+
+	session := newBlockingShutdownSession()
+	client := &Client{
+		ID:    "rendezvoused-stop-race",
+		Hub:   h,
+		Conn:  session,
+		Rooms: make(map[string]bool),
+		Send:  make(chan []byte, 1),
+		ctx:   context.Background(),
+	}
+	require.True(t, h.registerClient(client), "Run must receive the reserved registration")
+	h.startClientPumps(client, client.ctx)
+	select {
+	case <-session.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client read pump did not start")
+	}
+
+	beforeWait := make(chan struct{}, 4)
+	afterWait := make(chan struct{}, 4)
+	h.registrationWaitTestHook = func(_ *Client, completed bool) {
+		if completed {
+			afterWait <- struct{}{}
+			return
+		}
+		beforeWait <- struct{}{}
+	}
+
+	unregisterDone := make(chan struct{})
+	go func() {
+		h.unregisterClient(context.Background(), client)
+		close(unregisterDone)
+	}()
+	stopDone := make(chan struct{})
+	go func() {
+		h.Stop()
+		close(stopDone)
+	}()
+
+	select {
+	case <-runCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("Stop could not cancel Run while admission was paused on Hub.mu")
+	}
+	select {
+	case <-beforeWait:
+	case <-time.After(time.Second):
+		t.Fatal("synchronous unregister fallback did not reach the registration barrier")
+	}
+	select {
+	case <-afterWait:
+		t.Fatal("fallback passed the registration barrier before Run decided admission")
+	case <-time.After(200 * time.Millisecond):
+	}
+	select {
+	case <-unregisterDone:
+		t.Fatal("fallback returned before the pending registration decision")
+	default:
+	}
+
+	unlockHub()
+	for name, done := range map[string]<-chan struct{}{
+		"Run":                 runDone,
+		"Stop":                stopDone,
+		"fallback unregister": unregisterDone,
+	} {
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatalf("%s did not finish after admission was released", name)
+		}
+	}
+
+	h.mu.RLock()
+	_, registered := h.Clients[client.ID]
+	h.mu.RUnlock()
+	assert.False(t, registered, "shutdown-rejected client must not remain in Hub.Clients")
+	assert.False(t, client.registrationAdmitted.Load(), "shutdown-rejected client must not own an active gauge slot")
+	assert.Equal(t, baseline, testutil.ToFloat64(ActiveConnections), "rejected client must not decrement an unowned gauge slot")
+	select {
+	case <-session.closed:
+	default:
+		t.Fatal("rejected client's transport was not closed")
+	}
+	select {
+	case _, open := <-client.Send:
+		assert.False(t, open, "rejected client's send queue must be closed")
+	default:
+		t.Fatal("rejected client's send queue remained open")
+	}
+}
+
+func TestRegisterClientCancelledSendCompletesAdmissionReservation(t *testing.T) {
+	h := setupTestHub()
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	gate := &gatedDoneContext{Context: parent, entered: entered, release: release}
+	h.lifecycleMu.Lock()
+	h.ctx, h.ctxCancel, h.runStarted = gate, cancel, true
+	h.lifecycleMu.Unlock()
+
+	client := &Client{ID: "cancelled-registration-reservation", Hub: h, Send: make(chan []byte, 1)}
+	result := make(chan bool, 1)
+	go func() { result <- h.registerClient(client) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("registration did not evaluate the cancellation branch")
+	}
+	cancel()
+	close(release)
+	select {
+	case admitted := <-result:
+		assert.False(t, admitted, "a canceled unreceived registration must fail")
+	case <-time.After(time.Second):
+		t.Fatal("registerClient remained blocked after its run context was canceled")
+	}
+	waitDone := make(chan struct{})
+	go func() {
+		client.registrationWG.Wait()
+		h.clientPumpWG.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled send leaked a registration or pump reservation")
+	}
+	h.Stop()
+}
+
+func TestRegisterClientRejectsDuplicateClientReservation(t *testing.T) {
+	baseline := testutil.ToFloat64(ActiveConnections)
+	h := setupTestHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runDone := make(chan struct{})
+	go func() {
+		h.Run(ctx)
+		close(runDone)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		h.Stop()
+		ActiveConnections.Set(baseline)
+	})
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
+
+	session := newBlockingShutdownSession()
+	client := &Client{
+		ID:    "duplicate-registration-reservation",
+		Hub:   h,
+		Conn:  session,
+		Rooms: make(map[string]bool),
+		Send:  make(chan []byte, 1),
+		ctx:   context.Background(),
+	}
+	require.True(t, h.registerClient(client))
+	h.startClientPumps(client, client.ctx)
+	require.Eventually(t, func() bool {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		return h.Clients[client.ID] == client
+	}, time.Second, time.Millisecond)
+	before := testutil.ToFloat64(ActiveConnections)
+	assert.False(t, h.registerClient(client), "a Client can reserve admission only once")
+	assert.Equal(t, before, testutil.ToFloat64(ActiveConnections), "duplicate reservation must not create a second metric increment")
+
+	client.Disconnect(1000, "test complete")
+	require.Eventually(t, func() bool {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		_, exists := h.Clients[client.ID]
+		return !exists
+	}, time.Second, time.Millisecond)
+	cancel()
+	select {
+	case <-runDone:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not exit after duplicate-reservation test")
+	}
+	assert.Equal(t, baseline, testutil.ToFloat64(ActiveConnections))
 }

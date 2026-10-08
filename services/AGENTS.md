@@ -21,13 +21,15 @@ Windows host has no C compiler, run the same checks in pinned containers rather
 than silently replacing `go test -race` with a non-race run:
 
 ```powershell
-docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 bash -lc 'CGO_ENABLED=1 go test -race ./...'
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 bash -c 'CGO_ENABLED=1 go test -race ./...'
 docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golangci/golangci-lint:v2.13.2 golangci-lint run --config /workspace/.golangci.yml --timeout 5m
 ```
 
 Repeat the commands with `services/gateway` and `services/file-processor` as
 the working directory. Container output is local diagnostic evidence; the
 required release gate still comes from the current-SHA Linux CI jobs.
+Use `bash -c` to preserve the image's Go executable path; a login shell can
+replace `PATH` before the checks start.
 
 ---
 
