@@ -72,6 +72,8 @@ class _BudgetBin:
     union_exact_seconds: Fraction
     union_fsum_seconds: float | None
     forced_fail_cap_seconds: int
+    watchdog_cap_sum_seconds: int
+    max_watchdog_cap_seconds: int
 
 
 ChangedLineRanges = Mapping[str, Sequence[tuple[int, int]]]
@@ -426,6 +428,43 @@ def _budget_bin_upper_bound(
     )
 
 
+def _budget_bin_lower_bound(
+    bucket: _BudgetBin,
+    candidate: _BudgetMutant,
+    *,
+    durations: Mapping[str, float | int],
+    max_children: int,
+    control_cycle_reserve_seconds: int,
+    metadata_and_startup_reserve_seconds: int,
+) -> int:
+    """Return a cheap mathematical lower bound for an exact bin projection.
+
+    The exact projection includes the same test-union ceiling and failure cap.
+    Its greedy watchdog schedule is at least the largest job and the average
+    load across workers. These terms can reject a candidate without replaying
+    that schedule, but never replace the exact projection for selection.
+    """
+
+    new_tests = sorted(set(candidate.test_names).difference(bucket.test_names))
+    union_exact = bucket.union_exact_seconds + sum(
+        (Fraction.from_float(float(durations[test_name])) for test_name in new_tests),
+        start=Fraction(),
+    )
+    watchdog_cap_sum = bucket.watchdog_cap_sum_seconds + candidate.watchdog_cap_seconds
+    worker_floor = max(
+        bucket.max_watchdog_cap_seconds,
+        candidate.watchdog_cap_seconds,
+        (watchdog_cap_sum + max_children - 1) // max_children,
+    )
+    return (
+        metadata_and_startup_reserve_seconds
+        + math.ceil(union_exact)
+        + max(bucket.forced_fail_cap_seconds, candidate.forced_fail_cap_seconds)
+        + worker_floor
+        + control_cycle_reserve_seconds * (len(bucket.mutants) + 1)
+    )
+
+
 def _add_budget_mutant(
     bucket: _BudgetBin,
     mutant: _BudgetMutant,
@@ -454,6 +493,10 @@ def _add_budget_mutant(
     bucket.forced_fail_cap_seconds = max(
         bucket.forced_fail_cap_seconds, mutant.forced_fail_cap_seconds
     )
+    bucket.watchdog_cap_sum_seconds += mutant.watchdog_cap_seconds
+    bucket.max_watchdog_cap_seconds = max(
+        bucket.max_watchdog_cap_seconds, mutant.watchdog_cap_seconds
+    )
 
 
 def _budget_bin_from_mutants(
@@ -469,6 +512,8 @@ def _budget_bin_from_mutants(
         union_exact_seconds=Fraction(),
         union_fsum_seconds=0.0,
         forced_fail_cap_seconds=0,
+        watchdog_cap_sum_seconds=0,
+        max_watchdog_cap_seconds=0,
     )
     for mutant in mutants:
         _add_budget_mutant(bucket, mutant, durations)
@@ -758,6 +803,8 @@ def plan_mutant_shards_with_budget(
             union_exact_seconds=Fraction(),
             union_fsum_seconds=0.0,
             forced_fail_cap_seconds=0,
+            watchdog_cap_sum_seconds=0,
+            max_watchdog_cap_seconds=0,
         )
         for _ in range(num_shards)
     ]
@@ -792,8 +839,30 @@ def plan_mutant_shards_with_budget(
         _add_budget_mutant(bucket, mutant, duration_by_test)
 
     for mutant in ordered[seed_count:]:
-        candidates: list[tuple[int, int, int]] = []
-        for index, bucket in enumerate(buckets):
+        candidate_bounds = [
+            (
+                _budget_bin_lower_bound(
+                    bucket,
+                    mutant,
+                    durations=duration_by_test,
+                    max_children=max_children,
+                    control_cycle_reserve_seconds=control_cycle_reserve_seconds,
+                    metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
+                ),
+                len(bucket.mutants),
+                index,
+            )
+            for index, bucket in enumerate(buckets)
+        ]
+        candidate_bounds.sort()
+        best_candidate: tuple[int, int, int] | None = None
+        for lower_bound, mutant_count, index in candidate_bounds:
+            lower_key = (lower_bound, mutant_count, index)
+            if lower_bound > max_timeout_seconds or (
+                best_candidate is not None and lower_key >= best_candidate
+            ):
+                break
+            bucket = buckets[index]
             projected = _budget_bin_upper_bound(
                 bucket,
                 mutant,
@@ -803,8 +872,10 @@ def plan_mutant_shards_with_budget(
                 metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
             )
             if projected <= max_timeout_seconds:
-                candidates.append((projected, len(bucket.mutants), index))
-        if not candidates:
+                exact_key = (projected, mutant_count, index)
+                if best_candidate is None or exact_key < best_candidate:
+                    best_candidate = exact_key
+        if best_candidate is None:
             repaired = _rebalance_for_budget_candidate(
                 buckets,
                 mutant,
@@ -838,7 +909,7 @@ def plan_mutant_shards_with_budget(
                 for mutants in repaired
             ]
             continue
-        _, _, selected_index = min(candidates)
+        selected_index = best_candidate[2]
         _add_budget_mutant(buckets[selected_index], mutant, duration_by_test)
 
     # The candidate loop uses an inexpensive conservative upper bound.  The

@@ -4567,7 +4567,10 @@ export function getLoginApiV1AuthLoginPost200Response() {
         ]),
         profile_detail: faker.helpers.arrayElement([
           {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            about: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 4096 } }),
+              null,
+            ]),
             achievements: faker.helpers.arrayElement([
               faker.lorem.words(),
               null,
@@ -4820,7 +4823,10 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
         ]),
         profile_detail: faker.helpers.arrayElement([
           {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            about: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 4096 } }),
+              null,
+            ]),
             achievements: faker.helpers.arrayElement([
               faker.lorem.words(),
               null,
@@ -5425,7 +5431,10 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
       ]),
       profile_detail: faker.helpers.arrayElement([
         {
-          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          about: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 4096 } }),
+            null,
+          ]),
           achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
           department: faker.helpers.arrayElement([faker.lorem.words(), null]),
           position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -10829,7 +10838,10 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           profile_detail: faker.helpers.arrayElement([
             {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              about: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 4096 } }),
+                null,
+              ]),
               achievements: faker.helpers.arrayElement([
                 faker.lorem.words(),
                 null,
@@ -10964,7 +10976,10 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           profile_detail: faker.helpers.arrayElement([
             {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              about: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 4096 } }),
+                null,
+              ]),
               achievements: faker.helpers.arrayElement([
                 faker.lorem.words(),
                 null,
@@ -11167,7 +11182,10 @@ export function getCreateUserApiV1UsersPost200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -11390,7 +11408,10 @@ export function getMeApiV1UsersMeGet200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -11543,7 +11564,10 @@ export function getUpdateMeApiV1UsersMePut200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -11729,7 +11753,10 @@ export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -11882,7 +11909,10 @@ export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -12068,7 +12098,10 @@ export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -12221,7 +12254,10 @@ export function getUploadCoverApiV1UsersMeCoverPost200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -12447,7 +12483,10 @@ export function getChangeEmailApiV1UsersMeEmailPost200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -12633,7 +12672,10 @@ export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -12935,7 +12977,10 @@ export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
         department: faker.helpers.arrayElement([faker.lorem.words(), null]),
         position: faker.helpers.arrayElement([faker.lorem.words(), null]),

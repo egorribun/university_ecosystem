@@ -15,8 +15,7 @@
 
 - Full `37699104150/a1`@`ec69`: generation transport3483 files PASS; universe54 450, stats8/8 PASS.
   Run CANCELLED; planner59m20s, planning без end marker; plan отсутствует, backend execution0/128, global score открыт.
-  Full mutation `37670438144/a1` завершён: backend execution0/128, stats7/8.
-  Stats shard2 RCA: stale urllib3 assertion, исправлен в `a028`; backend score отсутствует.
+  Full `37670438144/a1`: execution0/128, stats7/8; shard2 stale urllib3 исправлен в `a028`, score отсутствует.
   Frontend artifacts64/64; aggregate FAILED на Survived27:108, global gate открыт.
 - Root outbox9/9, news14/14 +UI23/23, ranked27/27, SSR/cache88/88 PASS;
   preflight10/10, kind243/243, ranked28/28, compliance9/9 и auth83/83 PASS; local exact275 и lockout2/4/9/10 RED.
@@ -61,14 +60,12 @@
   Локальный audit подтвердил GHSA-wq5f-xc86-pv6w: sharp0.35.4→0.35.5,
   librsvg2.63.2. Frozen install, SVG→PNG smoke и pinned-artifact build PASS;
   npm audit:0 advisories. Hosted Node Audit112439174423 на 7aa SUCCESS (run37512735806/a1).
-- Historical UserRepository.get9 Survived: run37403597748/a1, source76cd.
-  Root get9: baseline2 PASS/exact1 PASS+1 assertion FAIL; canonical get9/9 PASS.
+- Historical UserRepository.get9 Survived: run37403597748/a1, source76cd; root canonical get9/9 PASS.
   MFA export5 эквивалентен COUNT(*): код упрощён, без Killed credit.
   PostgreSQL SQL compile-only, не live DB proof. MFA230/profile126 также дали exact RED/GREEN;
   Spotify default UTF-8 эквивалентен: canonical55/55 PASS, без Killed credit.
 - K3/e874a81e778d helper@`727eecab`: create/prepare/repeat/preflight/smoke/CA/teardown PASS.
-  Inventory20 и Helm revisions1 неизменны; app routes заблокированы parity. Docker containers0.
-  Evidence: `C:/Temp/ue-kind-acceptance-k3-e874a81e778d/receipts`.
+  Inventory20/Helm revisions1 неизменны; app routes заблокированы parity; `C:/Temp/ue-kind-acceptance-k3-e874a81e778d/receipts`.
 
 ## Live-приёмка
 
@@ -80,6 +77,11 @@
   RED→GREEN: root49 PASS, logic/mapper line+branch100%; DTO/schema54 и UI28 PASS, OpenAPI synced; preflight10/10 PASS.
   Peak RAM70%,free≥9,533GiB; stop0/teardown0, owned containers/volumes/networks/image tags0.
   Evidence: `C:/Temp/ue-core-review-f2818079c-e2e-v1/root-cleanup-f281.v1.json`; полный live gate открыт.
+- Core@`c221`: up0; profile0 PASS/4 FAIL до профиля — admin login500 или registration redirect.
+  RCA login: `education_path.user_id` запрещён `UserOut`; actual ORM→DTO→token RED→GREEN, root72 PASS.
+  Registration POST200: причина redirect ещё не доказана. Restart не запускался; acceptance credit отсутствует.
+  Stop0/teardown0, owned containers/volumes/networks/image tags0; peak RAM73%, free≥8,379GiB.
+  Evidence: `C:/Temp/ue-core-review-c221d2400-e2e-v1/root-cleanup-c221.v1.json`.
 - Demo `ue-live-8c2a21f71d21a9a6` завершён; state: `C:/Temp/ue-live-acceptance/run-a3f339514-20261007-9e5093bd`.
   Attempt1: исчерпаны Docker подсети; attempt2: up111s PASS, peak RAM76%.
   Canonical seed PASS; БД: active student, пароль fixture, profile/group проверены;
@@ -93,8 +95,7 @@
 
 ## Backup/restore и диагностика
 
-- DR RunId `8b804d4b67a24f2481099d50349ab7d1`, historical source
-  `76cd4026dbe241f9a57b7f98488f54856f6b37d9`: paired snapshot был создан,
+- DR RunId `8b804d4b67a24f2481099d50349ab7d1`@`76cd4026dbe241f9a57b7f98488f54856f6b37d9`: paired snapshot создан,
   но основной executor завершился на `source_snapshot_gate`; target restore
   НЕ НАЧИНАЛСЯ. RTO clock не сбрасывался; logical restore, RPO и RTO не
   подтверждены.
@@ -122,8 +123,7 @@
   Пользователь разрешил удалить все аналогичные ue-live стенды и тестовые данные.
   После проверки Compose ownership, daemon и references удалены ещё 386 stopped
   containers, 188 volumes (включая 16 доказанных anonymous mounts), 26 networks.
-  Удалены 142 локальных ue-live image tags. Fresh verification: containers0,
-  ue-live volumes0/networks0/image tags0; shared base images не удалялись.
+  Удалены 142 локальных ue-live image tags; containers/volumes/networks/image tags0, shared base images сохранены.
   Global prune не применялся; filesystem archives не доказывают backup/restore.
 - Private evidence: `C:/Temp/ue-orchestrator-1f5a42b2c5ec49c4bc020ea0752bd157`.
   Чужие env/data/volumes/backups сохраняются; временный state-dir deletion
@@ -132,10 +132,10 @@
 
 ## Следующие проверки и ограничения
 
-- Следующие очереди: nested profile/API validation, повтор live profile4 и restart/seed, затем chart parity;
+- MSW drift исправлен генератором; root planner/OpenAPI105, harness27, preflight10/10 PASS; следующий live/restart, затем chart parity;
   затем получить complete same-run backend/frontend aggregates с source/run/
   attempt-bound artifacts до заявления о mutation score.
-  Historical MFA263/307 exact RED; mapper117/seed/auth fixes интегрированы; global mutation gate открыт.
+  Historical MFA263/307 exact RED; global mutation gate открыт.
 - Получить root-reviewed live diagnostics для desktop/mobile без ослабления
   исходных assertions; доказать auth, API/DB/S3 equality и пользовательские
   сценарии, а не только health/readiness.

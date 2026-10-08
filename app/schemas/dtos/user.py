@@ -68,7 +68,6 @@ class UserPreferencesDTO(DTOModel):
 
 
 class UserEducationDTO(DTOModel):
-    user_id: uuid.UUID
     institute: str | None
     course: str | None
     education_level: str | None
