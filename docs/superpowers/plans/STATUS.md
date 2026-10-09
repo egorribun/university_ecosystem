@@ -27,7 +27,39 @@
   Без embeddings key текстовый поиск доступен, semantic UI выключен,
   direct semantic-only API сообщает недоступность без нулевых векторов.
 
-## Текущий checkpoint: опубликованный SHA14c2 и следующие исправления
+## Текущий checkpoint: опубликованный df068410
+
+- Пакет29 файлов опубликован обычными hooks/commit/push как
+  `df068410c812737a7f592440cf2d6ced86035c84`; HEAD/origin/PR1306 совпали,
+  checkout был чистым. Final local preflight10/10 относится к этому пакету.
+- Свежий snapshot Matrix37917498689 и ruleset8335285: из76 required contexts
+  68 SUCCESS,2 running,6 ещё не emitted; required failures0. Это промежуточный
+  результат, не полный green. Advisory Owned Live37917498427 упал до Docker:
+  source-code regex ожидал одиночный `await removedPage.reload()`, хотя scenario
+  теперь перезагружает две revoked sessions через `Promise.all`. Minimal contract
+  correction согласована с обеими sessions и обеими фазами revoke/reconnect.
+  Полная существующая `npm run test:e2e:live:contract`:154/154 PASS за7,2s,
+  exit0/guardfalse, file hash стабилен; scoped Prettier PASS. Обычная публикация
+  следующего SHA ещё нужна. Это source contracts, не live product PASS.
+- Позднее shard0/1 этого же Matrix прошли без failures: pytest17:35/17:12,
+  4067/3601 cases,18/12 skips; обе JUnit artifacts привязаны к run/head/attempt.
+  Shard2/3 ещё выполнялись. Testcase aggregate не равен wall time; target15m открыт.
+- Fresh Coredf068410 поднялся за2m55s: exit0/source stable/guardfalse,
+  peak69,4%/free9,73 GiB; bounded builder остановлен, recorded owned children0.
+  Независимая read-only readiness PASS:23 services,4 initializer exit0,14 healthy
+  checks,10 signed loopback ports; все23 container bindings проверены.
+  Caddy200/backend ready+brief/Mailpit search200; owner/source/inventory стабильны.
+- Этот пустой промежуточный Core удалён canonical owner-checked teardown:
+  exit0,containers/networks/volumes0, private receipts/state сохранены,
+  guardfalse/recorded owned children0. Admin/global seed, Home, SEC-03 и full198
+  наdf068410 не запускались. Следующий clean SHA требует fresh unique state.
+- Дополнительный Linux native-window probe:20 minimize/restore cycles в каждом
+  из full Chromium headless и headed/Xvfb; hidden transitions0, requests0,
+  browser/context закрыты, exact container удалён. Headless CDP bounds сообщали
+  minimized, Xvfb readback оставался normal; ни один вариант не доказал native
+  hidden state. Focus-emulation diagnostic подготовлена, actual run ещё нужен.
+
+## Сохранённый checkpoint14c2 и исправления пакетаdf068410
 
 - Опубликован `14c2f5ae179dbd2550f06d59bb77aacc742a0b7e` на `egorribun` в PR1306.
   Weather/bookmarks hydration package прошёл обычные hooks/push и preflight10/10.
@@ -90,11 +122,11 @@
   Linux no-network capability probe full Chromium headless и headed/Xvfb завершён:
   каждый20 cycles,0/40 expected visibility pairs, requests0, оба browser/context закрыты,
   exact owned container удалён. Реальная причина ещё исследуется; product PASS нет.
-- SEC-03 на текущем Core: persisted production probe PASS (canonical_v2/configured
+- SEC-03 на Core14c2: persisted production probe PASS (canonical_v2/configured
   key/UTC fields/one PostgreSQL row/logout401); native verifier dispatch PASS.
   Rotation и native signing этими probes не проверялись. SMTP hosted real PG17+
   Mailpit integration job113714252292:1/1 PASS; deadline/cancellation unit tests PASS.
-- Current Rust-P3-03 PR-head parity подтверждена: producer113713539701,
+- Rust-P3-03 parity на14c2 подтверждена: producer113713539701,
   artifact11601332318, все6 Rust inputs совпадают с14c2. Финальные release images,
   signatures/SBOM/provenance и performance claims этим не подтверждаются.
 - JUnit14337 cases дают проверенный duration refresh без удаления истории.
@@ -209,8 +241,8 @@
 
 ## Следующий checkpoint
 
-- Опубликовать проверенный navbar/audit/duration/upload/timezone/spec package
-  обычными hooks/push, заморозить source.
+- Проверить и опубликовать minimal live-contract correction обычными hooks/push,
+  заморозить следующий source; пакет navbar/audit/duration/upload/timezone уже наdf068410.
   Свежие76 contexts и честное измерение critical path; ожидаемый4401 не считать PASS до runtime.
 - Продолжить Linux browser visibility диагностику: реальный переход hidden/visible
   обязателен до проверки story pause/resume; credentialless capability probe не заменяет
@@ -231,6 +263,6 @@
   startup≤80%/free≥6 GiB с1 GiB/2 CPU browser cap; остальные thresholds сохраняются.
 - Свежая resource check перед запуском; удалять лишь доказанно owned временные
   ресурсы. Чужие процессы/env/data, shared Docker/WSL/caches и backups сохранять.
-  Weekly Codex usage92%/remaining8%; free reset1 доступен, не использован.
+  Weekly Codex usage95%/remaining5%; free reset1 доступен, не использован.
 - Git history/migrations/private rescue bundle сохранить; session logs и superseded
   snapshots не возвращать в indexes. Новые branch/worktree не создавать.

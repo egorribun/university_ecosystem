@@ -84,29 +84,65 @@ test("refresh and WebSocket reconnect remove the former member's app, send, and 
   const scenario = spec.slice(scenarioStart, cleanupStart)
 
   assert.match(scenario, /const removedSocket = observeSocket\(removedPage\)/u)
-  assert.match(scenario, /await removedPage\.reload\(\)/u)
-  assert.match(scenario, /removedSocket\.roomJoins[\s\S]*?toBeGreaterThan\(initialRoomJoinCount\)/u)
+  assert.match(scenario, /const removedSocketBaselines = \[removedSocket, removedSecondSocket\]/u)
+  assert.match(
+    scenario,
+    /for \(const \{ socket, connections, roomJoins \} of removedSocketBaselines\)[\s\S]*?socket\.roomRevocations\.filter\(\(room\) => room === groupId\)\.length\)[\s\S]*?\.toBeGreaterThan\(0\)/u
+  )
+  assert.match(
+    scenario,
+    /const postRevocationMessageBaselines = \[removedSocket, removedSecondSocket\]/u
+  )
+  assert.match(
+    scenario,
+    /for \(const \{ socket, messages \} of postRevocationMessageBaselines\)[\s\S]*?countRoomMessages\(socket, groupId\)\)\.toBe\(messages\)[\s\S]*?event\.content === preReconnectRevocationMessage[\s\S]*?\.toBe\(false\)/u
+  )
+  assert.match(
+    scenario,
+    /const removedSocketReconnectBaselines = \[removedSocket, removedSecondSocket\]/u
+  )
+  assert.match(
+    scenario,
+    /await Promise\.all\(\[\s*removedPage\.reload\(\),\s*removedSecondPage\.reload\(\)\s*\]\)/u
+  )
+  assert.match(
+    scenario,
+    /for \(const \{ socket, connections, roomJoins \} of removedSocketReconnectBaselines\)[\s\S]*?socket\.connections\)\.toBeGreaterThan\(connections\)[\s\S]*?socket\.roomJoins\.filter\(\(room\) => room === groupId\)\.length\)[\s\S]*?\.toBeGreaterThan\(roomJoins\)/u
+  )
   assert.match(scenario, /removedPage\.locator\("#chat-message-input"\)\)\.toHaveCount\(0\)/u)
+  assert.match(scenario, /removedSecondPage\.locator\("#chat-message-input"\)\)\.toHaveCount\(0\)/u)
   assert.match(
     scenario,
     /removedPage\.getByText\(messageContent, \{ exact: true \}\)\)\.toHaveCount\(0\)/u
   )
   assert.match(
     scenario,
-    /sameOriginMutation\([\s\S]*?removedPage[\s\S]*?"POST"[\s\S]*?postRevocationAttempt/u
+    /removedSecondPage\.getByText\(messageContent, \{ exact: true \}\)\)\.toHaveCount\(0\)/u
   )
-  assert.match(scenario, /expect\(isDenied\(revokedSend\.status\)\)\.toBe\(true\)/u)
-  assert.match(scenario, /postRevocationMessage/u)
   assert.match(
     scenario,
-    /expect\(\s*removedSocket\.newMessages\.some\([\s\S]*?postRevocationMessage[\s\S]*?\)\s*\)\.toBe\(false\)/u
+    /for \(const revokedPage of \[removedPage, removedSecondPage\]\) \{[\s\S]*?const revokedSend = await sameOriginMutation\([\s\S]*?revokedPage[\s\S]*?"POST"[\s\S]*?postRevocationAttempt[\s\S]*?expect\(isDenied\(revokedSend\.status\)\)\.toBe\(true\)/u
   )
-  assert.match(scenario, /const authorizedHistories/u)
+  assert.match(
+    scenario,
+    /for \(const revokedPage of \[removedPage, removedSecondPage\]\) \{[\s\S]*?const revokedReads = await Promise\.all\([\s\S]*?revokedReads\.every\(\(response\) => isDenied\(response\.status\(\)\)\)\)\.toBe\(true\)/u
+  )
+  assert.match(
+    scenario,
+    /for \(const socket of \[removedSocket, removedSecondSocket\]\) \{[\s\S]*?event\.content === postRevocationMessage[\s\S]*?\.toBe\(false\)[\s\S]*?for \(const \{ socket, messages \} of postRevocationMessageBaselines\) \{[\s\S]*?countRoomMessages\(socket, groupId\)\)\.toBe\(messages\)/u
+  )
+  assert.match(
+    scenario,
+    /const authorizedHistories = await Promise\.all\(\[[\s\S]*?page\.request\.get\([\s\S]*?remainingPage\.request\.get\([\s\S]*?authorizedHistories\.every\(\(response\) => response\.ok\(\)\)\)\.toBe\(true\)[\s\S]*?item\.content === postRevocationMessage[\s\S]*?\.toBe\(true\)/u
+  )
   assert.match(scenario, /remainingPage\.request\.get\([\s\S]*?messages\?limit=/u)
-  assert.match(scenario, /item\.content === postRevocationMessage[\s\S]*?toBe\(true\)/u)
   assert.match(
     scenario,
-    /for \(const memberPage of \[page, remainingPage\]\)[\s\S]*?getByText\(messageContent, \{ exact: true \}\)\)\.toBeVisible\(\)[\s\S]*?getByText\(postRevocationMessage, \{ exact: true \}\)\)\.toBeVisible\(\)/u
+    /for \(const socket of \[ownerSocket, remainingSocket\]\)[\s\S]*?await expectSocketMessage\(socket, groupId, postRevocationMessage\)/u
+  )
+  assert.match(
+    scenario,
+    /for \(const memberPage of \[page, remainingPage\]\)[\s\S]*?getByText\(messageContent, \{ exact: true \}\)\s*\)\s*\.toBeVisible\(\)[\s\S]*?getByText\(preReconnectRevocationMessage, \{ exact: true \}\)\s*\)\s*\.toBeVisible\(\)[\s\S]*?getByText\(postRevocationMessage, \{ exact: true \}\)\s*\)\s*\.toBeVisible\(\)/u
   )
 })
 
