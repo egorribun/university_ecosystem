@@ -187,10 +187,12 @@ scheduled/manual с сохранением PR live smoke и полных сце�
 
 В последующем явном ответе 2026-10-09 владелец дополнительно одобрил снятие
 ровно `Security Audit / Semgrep SAST` после reviewed scanner de-dup diff и
-проверок. CodeQL остаётся blocking, Semgrep — в pre-commit. Ожидается91 →76
-contexts после исходных14 и дополнительного1; остальные правила неизменны.
-Это дополнение к разрешению, а не изменение исходного read-only snapshot;
-фактический PUT и новое hosted подтверждение на этом этапе ещё не выполнены.
+проверок. CodeQL остаётся blocking, Semgrep — в pre-commit. После reviewed diff
+и проверок root выполнил точное снятие этих15 contexts:91 →76; остальные rules,
+contexts и integration IDs сохранены и повторно сверены. Исходный read-only
+snapshot выше сохранён как история. Последующий run37886084026/a1 на679d503e6
+завершён с76/76 surfaced contexts:73 SUCCESS/3 FAILURE (coverage policy gate,
+CodeQL/GHAS alerts, CI Success); полного hosted green ещё нет.
 
 Для MFA владелец поручил выбрать «лучший вариант». Root выбрал сохранение
 существующего ADR-006 tombstone-first boundary: защищённый отказ прежде DB
@@ -261,7 +263,7 @@ fixes и acceptance traceability. Root один интегрирует и пиш
 agent work переключить на review. После Core/visual/security/restore — frozen
 RC full smoke, ordinary merge и main-only producer/release.
 
-В текущем чате goal остаётся `paused`. Его прежний objective включает v1.1
-сертификацию; доступный API не умеет редактировать objective или resume.
-Не объявлять старый goal complete по одному выпуску MVP. Новый чат получает
-обновлённое поручение из prompt и проверяет свои доступные goal tools.
+На момент исходного аудита прежний goal был `paused`, а его objective включал
+v1.1 сертификацию; тот API не умел редактировать objective или resume. Это
+историческая snapshot, не статус текущего MVP goal: актуальный статус указан
+в `STATUS.md`. Не объявлять прежнюю расширенную цель complete по одному MVP.

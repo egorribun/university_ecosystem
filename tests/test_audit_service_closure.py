@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections import UserString
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -49,6 +50,21 @@ def _event(
         prev_hash="0" * 64,
         hash="hash",
     )
+
+
+class _EventWithChangingPrevHash:
+    """Model a row-like value changing while the Python fallback rechecks it."""
+
+    def __init__(self, event: SimpleNamespace, prev_hash_values: list[str]) -> None:
+        self.__dict__.update(vars(event))
+        self._prev_hash_values = prev_hash_values
+        self._prev_hash_reads = 0
+
+    @property
+    def prev_hash(self) -> str:
+        index = min(self._prev_hash_reads, len(self._prev_hash_values) - 1)
+        self._prev_hash_reads += 1
+        return self._prev_hash_values[index]
 
 
 def _audit_log_stub(*, signature: str | None = None) -> SimpleNamespace:
@@ -262,12 +278,42 @@ async def test_create_log_returns_signed_copy_when_update_has_no_row():
 
 
 @pytest.mark.asyncio
+async def test_create_logs_empty_batch_is_a_noop():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    db.flush = AsyncMock()
+    db.execute = AsyncMock()
+
+    assert await service.create_logs(db, entries=[]) == []
+
+    db.add_all.assert_not_called()
+    db.flush.assert_not_awaited()
+    db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_verify_chain_integrity_accepts_empty_result():
     service = SecureAuditService(signing_key=b"key")
     db = MagicMock()
     db.execute = AsyncMock(return_value=_Result())
 
     assert await service.verify_chain_integrity(db) == (True, None, None)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_accepts_only_unchained_outbox_rows():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    unchained = _event("OUTBOX", {"kind": "notice"}, sequence_number=1)
+    unchained.sequence_number = None
+    unchained.prev_hash = None
+    unchained.hash = None
+    unchained.metadata_ = {"source": "outbox"}
+    db.execute = AsyncMock(return_value=_Result([unchained]))
+
+    assert await service.verify_chain_integrity(db) == (True, None, None)
+
+    db.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -388,6 +434,48 @@ async def test_verify_chain_integrity_reports_link_discontinuity():
     assert valid is False
     assert failed_id == second.id
     assert "Chain discontinuity" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_fallback_rechecks_link_discontinuity():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
+    _sign_event(service, first, "0" * 64)
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
+    second.hash = "nonempty-unverified-hash"
+    changing_second = _EventWithChangingPrevHash(second, [first.hash, "broken"])
+    db.execute = AsyncMock(return_value=_Result([first, changing_second]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert valid is False
+    assert failed_id == second.id
+    assert "Chain discontinuity at index 1" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_fallback_rejects_non_string_prev_hash():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
+    _sign_event(service, first, "0" * 64)
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
+    second.prev_hash = UserString(first.hash)
+    second.hash = "nonempty-unverified-hash"
+    db.execute = AsyncMock(return_value=_Result([first, second]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert valid is False
+    assert failed_id == second.id
+    assert "Invalid previous hash at index 1" in str(error)
 
 
 @pytest.mark.asyncio

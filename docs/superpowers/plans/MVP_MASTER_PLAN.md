@@ -57,8 +57,9 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   блокируют MVP, отдельно согласовать включение Q3; не снижать их молча.
 - Q1 обязателен до MVP: мутации исключаются из release gate и перестают запускаться
   как PR/main blocking lane; полные mutmut/Stryker остаются nightly/manual.
-  Пока Q1 не внедрён, старые зависимости CI ещё действуют. Не продолжать работу
-  ради достижения глобального 100% mutation score.
+  Q1/Q4 source migration и разрешённое обновление protections внедрены;
+  hosted acceptance ещё открыта: run37886084026/a1 завершён с coverage/CodeQL
+  failures. Не продолжать работу ради глобального 100% mutation score.
 - Q4 также обязателен до MVP: Schemathesis, DAST, chaos, cross-browser E2E и kind
   переходят в scheduled/manual lanes; PR сохраняет lint/types/unit/contracts,
   API drift, coverage и необходимую security-проверку. Live Chromium smoke остаётся
@@ -627,8 +628,9 @@ nightly/manual activation после merge проверить отдельно, 
   зависимостей, результаты, event filters, special assertions, release rationale
   и catalog/contracts. Оставшиеся gates fail closed: ошибка, missing evidence
   или неожиданный skip не становятся PASS. Branch protection менять только
-  в точной границе 14 contexts, разрешённой владельцем 2026-10-09, после
-  готового reviewed CI diff и проверок; остальные правила сохранять.
+  в точной границе исходных14 contexts и отдельно разрешённого
+  `Security Audit / Semgrep SAST` после готового reviewed CI diff и проверок;
+  остальные правила сохранять, CodeQL оставлять blocking.
 - Сохранить integrated planner/checker и ADR-040 presentation ignorer. Проверить
   затронутые контракты; не запускать полные мутации перед каждым MVP-коммитом.
   Полный inventory, survivors/runtime/no-coverage closure, Q2 dashboard/regression
@@ -768,8 +770,9 @@ chaos/recovery/rollback сохраняют данные; runner не удали�
 - Обычный merge единственного PR после required checks. Для resulting main SHA
   получить новое push-main evidence согласно `quality/release-required-checks.json`;
   synthetic PR merge не подменяет released source. Admin bypass, force-push и
-  общие изменения branch protection запрещены; точечное разрешение на 14
-  Q1/Q4 contexts от 2026-10-09 действует только после reviewed CI diff и проверок.
+  общие изменения branch protection запрещены; разрешены исходные14 Q1/Q4
+  contexts и отдельно ровно один `Security Audit / Semgrep SAST` после reviewed
+  diff/проверок. Все остальные rules/contexts сохраняются; CodeQL blocking.
 - Запустить готовый main-only producer ровно шести images: backend/frontend/
   gateway/ws-hub/file-processor/caddy. Сохранить Trivy, signing, SBOM/provenance
   и WASM parity; проверить фактические published digests и source/run/attempt

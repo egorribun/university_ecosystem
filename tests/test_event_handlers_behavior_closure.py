@@ -108,6 +108,133 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     news_db.commit.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    "embedding",
+    [[0.0, 0.0], [float("nan"), 0.25]],
+    ids=["zero-vector", "nan-vector"],
+)
+@pytest.mark.parametrize(
+    ("enabled", "api_key"),
+    [(False, "configured-key"), (True, None)],
+    ids=["disabled-provider", "missing-api-key"],
+)
+def test_unusable_content_embeddings_are_skipped_without_active_provider(
+    monkeypatch, embedding, enabled, api_key
+):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "semantic_search_enabled", enabled)
+    monkeypatch.setattr(settings, "embedding_api_key", api_key)
+
+    assert event_handlers._usable_content_embedding(embedding) is False
+
+
+@pytest.mark.parametrize(
+    "embedding",
+    [[0.0, 0.0], [float("nan"), 0.25]],
+    ids=["zero-vector", "nan-vector"],
+)
+def test_unusable_content_embeddings_fail_when_provider_is_active(
+    monkeypatch, embedding
+):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "semantic_search_enabled", True)
+    monkeypatch.setattr(settings, "embedding_api_key", "configured-key")
+
+    with pytest.raises(RuntimeError, match="no usable vector"):
+        event_handlers._usable_content_embedding(embedding)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["news", "event"], ids=["news", "event"])
+async def test_active_provider_projection_failure_keeps_outbox_event_retryable(
+    monkeypatch, kind
+):
+    from app.core.config import settings
+    from app.core.events import EventBus
+    from app.models.domain_events import StoredEvent
+    from app.workers import outbox as outbox_module
+
+    monkeypatch.setattr(settings, "semantic_search_enabled", True)
+    monkeypatch.setattr(settings, "embedding_api_key", "configured-key")
+
+    entity_id = uuid4()
+    if kind == "news":
+        event_type = NewsCreated.EVENT_TYPE
+        payload = {"news_id": str(entity_id)}
+        projection = SimpleNamespace(
+            title="News title", content="News body", embedding=None
+        )
+        handler = event_handlers.generate_news_embedding
+    else:
+        event_type = EventCreated.EVENT_TYPE
+        payload = {"event_id_entity": str(entity_id)}
+        projection = SimpleNamespace(
+            title="Event title",
+            description="Event details",
+            location="Room A",
+            embedding=None,
+        )
+        handler = event_handlers.generate_event_embedding
+
+    projection_db = AsyncMock()
+    projection_db.get.return_value = projection
+    vector = MagicMock()
+    vector.get_embedding = AsyncMock(return_value=[0.0, 0.0])
+    vector.close = AsyncMock()
+    monkeypatch.setattr(
+        event_handlers, "async_session", lambda: _session(projection_db)
+    )
+    monkeypatch.setattr(event_handlers, "VectorService", lambda **_: vector)
+
+    bus = EventBus()
+    bus.subscribe(event_type, handler)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+
+    stored_event = StoredEvent(
+        id=uuid4(),
+        event_type=event_type,
+        aggregate_type=kind,
+        aggregate_id=str(entity_id),
+        payload=payload,
+        metadata_={},
+        error_count=0,
+        processed_at=None,
+    )
+    selection_result = MagicMock()
+    selection_result.scalars.return_value.all.return_value = [stored_event]
+    pending_result = MagicMock()
+    pending_result.scalar_one.return_value = 1
+    outbox_db = AsyncMock()
+    outbox_db.execute.side_effect = [
+        selection_result,
+        pending_result,
+        selection_result,
+        pending_result,
+    ]
+    monkeypatch.setattr(outbox_module, "async_session", lambda: _session(outbox_db))
+
+    worker = outbox_module.OutboxWorker(max_retries=3)
+
+    assert await worker.process_batch() == 1
+    assert stored_event.error_count == 1
+    assert stored_event.processed_at is None
+    assert "Durable event handler failed" in stored_event.last_error
+    assert projection.embedding is None
+    projection_db.commit.assert_not_awaited()
+
+    assert await worker.process_batch() == 1
+    assert stored_event.error_count == 2
+    assert stored_event.processed_at is None
+    assert "Durable event handler failed" in stored_event.last_error
+    assert vector.get_embedding.await_count == 2
+    assert vector.close.await_count == 2
+    assert projection.embedding is None
+    projection_db.commit.assert_not_awaited()
+    assert outbox_db.commit.await_count == 2
+
+
 @pytest.mark.asyncio
 async def test_message_handler_successfully_notifies_with_reply(monkeypatch):
     message_id = uuid4()

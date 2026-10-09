@@ -57,7 +57,7 @@ It records ordering, not completed live/security acceptance.
 ## Alternatives Rejected
 
 - **Signed URL with expiry**: No revocation mechanism; leaking the URL grants access until expiry.
-- **Cookie-only auth**: Requires browser to send cookies on WS upgrade, which works but does not provide JTI revocation granularity at the WS layer.
+- **Cookie-only auth**: The existing cookie path can use the same JTI revocation check; as the sole upgrade method, it lacks the short-lived, single-use ticket and depends on cookie availability and browser cross-site behavior.
 - **Keep JWT-in-subprotocol**: Too many log exposure vectors.
 
 ## Implementation
