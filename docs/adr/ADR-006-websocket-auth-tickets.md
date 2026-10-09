@@ -17,12 +17,12 @@ The specific vulnerability (RZ-W14-01) was:
 Replaced JWT-in-header with a **one-time upgrade ticket (OTT)** pattern:
 
 1. Frontend calls `POST /ws/ticket` (authenticated via HttpOnly session cookie) to obtain a short-lived ticket.
-2. Backend generates a cryptographically random ticket, stores `{user_id}:{jti}` under Redis key `ott:ws:{ticket}` with TTL=15s.
+2. Backend generates a cryptographically random ticket, stores `{user_id}:{jti}:{expires_at_unix_seconds}` under Redis key `ott:ws:{ticket}` with TTL=15s.
 3. Frontend includes the ticket as a query parameter: `wss://host/ws?ticket={ticket}`.
 4. ws-hub (Go) and Python WS handler consume the ticket atomically via Redis `GETDEL` — first consumer wins, replays are rejected.
 5. After consumption, each handler checks `revoked:jti:{jti}` in the dedicated revocation store and fails closed if that store is unavailable. A ticket minted before logout therefore cannot outlive its JWT session.
 
-**Redis key contract:** `ott:ws:{ticket}` → `{user_id}:{jti}`, TTL 15s. See `contracts/redis-keys.md`.
+**Redis key contract:** `ott:ws:{ticket}` → `{user_id}:{jti}:{expires_at_unix_seconds}`, TTL 15s. The third field is the session's positive signed-int64 UTC Unix expiry; consumers reject expired, malformed and legacy two-field values. See `contracts/redis-keys.md`.
 
 Tenant selection is deliberately not encoded in the ticket. Client-supplied
 `X-Tenant-ID` is only a routing hint and cannot establish membership; promoting

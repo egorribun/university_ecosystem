@@ -762,11 +762,12 @@ async def test_graphql_token_validator_redis_unavailable():
     with patch(
         "app.services.auth.graphql_token_validator.get_revocation_redis_client",
         new_callable=AsyncMock,
-        side_effect=ConnectionError("Redis down"),
+        side_effect=ConnectionError("provider-diagnostic-marker"),
     ):
-        result = await validator._redis_jti_check("some-jti")
-
-    assert result is True  # Continue to the mandatory database revocation check.
+        with pytest.raises(
+            RuntimeError, match=r"^Durable session revocation check unavailable$"
+        ):
+            await validator._redis_jti_check("some-jti")
 
 
 @pytest.mark.asyncio

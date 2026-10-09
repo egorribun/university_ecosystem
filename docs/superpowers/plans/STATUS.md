@@ -30,17 +30,19 @@
 
 ## Текущий source и проверки
 
-- Code checkpoint `12f72031eeab3bd09f13aac4fa45fa4457f3bf5a` отправлен обычным push;
-  HEAD=origin/egorribun=PR1306 head на этом checkpoint; checkout после push чистый.
-  Обязательные commit/pre-push hooks PASS, `.secrets.baseline` повторно staged.
-- Этот follow-up восстановил шесть nullable Schedule PATCH inputs: обязательные
+- Опубликованный checkpoint `de3e10c20b169d7439cbcd9ea72fd15ea9998c98` проверен
+  в PR1306; следующий package требует отдельного свежего hosted CI.
+  На de3 исправлена mypy-аннотация `TypeAdapter[str]` без изменения runtime;
+  hosted Backend Type Check и Pre-commit PASS. Обязательные commit/pre-push hooks
+  предыдущего push PASS, `.secrets.baseline` повторно staged.
+- Принятые 00b/12f восстановили шесть nullable Schedule PATCH inputs: обязательные
   storage поля получают только ненулевые updates, optional clear сохраняется.
   Focused24/OpenAPI18/MSW3 PASS; semantic schema diff ровно на этих шести полях.
 - Frozen-RC uv/npm caching отключено, включая setup-node automatic caching.
-  CodeQL `37876450427/a1` завершил все пять language analyses успешно,
-  но required GHAS check113646340681 оставляет два HIGH alerts3382/3383.
-  Current instances относятся к PR merge94a6a6b; cache-mode:none уже действует.
-  Query-model gap проверяется отдельно; gate остаётся открытым.
+  На de3 все пять CodeQL language analyses PASS, но required GHAS
+  check113654781071 FAIL по HIGH alerts3382/3383 на PR merge dae6c37e.
+  Read-only triage подтвердил cache-mode query-model gap; отдельное разрешение
+  владельца на запись решения по этим двум alerts ожидается. Gate открыт.
   Job-level cache-mode:none и workflow/security contracts14/14 PASS.
   Actionlint временно pinned на reviewed upstream PR745 commit5dc52e8, архив проверен
   по SHA-256; pre-commit/CI одинаковый source, Go1.26.9, actual repo lint PASS.
@@ -64,56 +66,67 @@
   [Runbook](../../runbooks/database-backup-restore.md) описывает quiesce/resume.
 - Финальный preflight Caddy/cache package10/10 PASS; peak54,0%/free14,65 GiB.
   Obsolete services.command lint exception удалён, прочие правила сохранены.
-- Свежий Matrix37876450739/a1 на12f: snapshot76 —61 success/6 pending/2 failure/7 absent.
-  MD047 в STATUS исправлен, local markdownlint PASS; свежий hosted gate ещё ожидается.
-  Предыдущий shard1:3908 PASS/17 skips/2 stale assertions; retarget13/13 PASS,
-  независимый review CLEAR. Fresh hosted gate и бюджет15 минут ещё не подтверждены.
-- Core00b с COMPOSE_PARALLEL_LIMIT=1 завершился build exit1, guard не сработал:
-  peak60,1%, free12,68 GiB. Caddy требует ca-certificates20260611-r0,
-  Alpine3.24 предоставляет20260909-r0; hosted OwnedLive37873409126/a1 подтвердил.
-  E2E/seed не запускались. Owner-checked stop/teardown exit0;
-  postcheck подписанного project: containers0/volumes0/networks0.
-  CA pin20260909-r0: focused contract и install в том же builder image PASS;
-  Git pin/digests сохранены, четыре owned image tags удалены, shared cache сохранён.
-- Core12f остановлен guard при87,3%/free4,03 GiB во время параллельной Bake build.
-  Caddy apk errors нет; COMPOSE_PARALLEL_LIMIT=1 не ограничил Bake solver.
-  Owner stop/teardown exit0; containers0/volumes0/networks0, четыре owned tags удалены.
-  Ограниченный временный builder готовится; E2E/seed/restore ещё не запускались.
-- Private SEC-03 probe проверен независимо CLEAR, native dispatch snippet подготовлен;
-  runtime/key rotation не доказаны. Visual collectors подготовлены, screenshots ещё нет.
-  Пустой Home требует fresh Core до global-feed seed; admin-only existing seeder
-  использует roster-only synthetic prerequisites; private three-run operation peer CLEAR.
-  Shared feeds не очищать, новый stand ради screenshot не создавать.
+- Terminal Matrix37879139844/a1 на de3: required76 —69 success/4 failure/3 skipped,
+  pending0/absent0; длительность45m42s, цель15 минут не достигнута.
+  Failures: Python shards2/3, GHAS CodeQL и CI Success; downstream coverage,
+  integration и unit aggregators skipped. Shard2:3971 PASS/43 skips/1 stale S3
+  assertion; shard3:4152 PASS/12 skips/1 stale helper-checkpoint assertion.
+  Оба failures локально воспроизведены. Последующий package сохраняет exact live
+  loopback S3 binding и retarget всех provenance полей к reviewed immutable00b
+  с Go1.26.9; два полных contract-модуля21/21 PASS, root review CLEAR.
+  Свежий hosted gate для этого package ещё требуется.
+- Ранние Core00b/12f не прошли build/resource guard; все их owned resources удалены.
+  Caddy CA pin20260909-r0 проверен реальной установкой и contract test;
+  COMPOSE_PARALLEL_LIMIT=1 не ограничивает Bake solver. Для de3 создан
+  отдельный owned builder: parallelism1, CPU2, RAM4 GiB,
+  swap0; реальные cgroup limits проверены. Default builder/shared cache сохранены.
+- Core на de3 успешно поднят: up exit0, guardfalse, peak82,5%/free5,56 GiB.
+  Owner schema11/source/daemon/projection и все23 container identities проверены;
+  четыре one-shot exit0, все14 running healthchecks healthy, 10/10 actual loopback
+  bindings совпадают с подписанными значениями. Edge /healthz, backend readiness,
+  DB/migrations/cache/storage/SpiceDB health и Mailpit search PASS; SMTP delivery,
+  persisted audit, logout/revocation и product E2E этим не доказаны.
+- На этом fresh Core existing admin-only seed PASS: admin/roster/authorization
+  готовы, news/stories/events/schedules/chats остались пустыми. Home screenshots
+  ещё не сняты. Перед изменением source owner-checked stop exit0, running0;
+  teardown exit0, postcheck containers0/volumes0/networks0. Private receipts
+  сохранены; owned builder остановлен, его cache пока нужен следующему build.
+- SEC-03 native dispatch на de3 PASS: настоящий extension/builtin verifier,
+  ровно один positive canonical_v2 вызов; owner/health/inventory до/после неизменны.
+  Первый private probe FAIL из-за не-UTF-8 disposable key; исправлен только
+  оператор, immutable failure receipt сохранён. API/DB calls0, persistent rows0;
+  это не proof persisted audit, native signing или key rotation.
+- Два P1 GraphQL/Python WS DB fallback при mandatory revocation outage
+  воспроизведены20 RED cases; fix и actual GraphQL context проверены121/121 PASS.
+  Оба production-модуля100% line/branch coverage; root и независимый review CLEAR.
+  Public WS идёт через Go ws-hub; Python handler mounted.
+  Current-SHA runtime и независимый финальный review ещё требуются.
+- LHCI requested/final origin/path policy исправлена: protected→login не считается
+  выполненным маршрутом; только root→dashboard alias разрешён. RED/GREEN18 cases,
+  adjacent48/48 PASS. Existing collector/auth hook сохранены, реальные scores NOT RUN.
+- Полный live Chromium набор собран:198 cases/59 specs,99 desktop+99 mobile;
+  collection PASS не является browser execution. Visual collectors готовы,
+  screenshots/owner approval/Linux baselines и DB/S3 restore ещё не выполнены.
+  Пустой Home снимать до global-feed seed; shared feeds не очищать.
 
 ## Проверенные предыдущие checkpoints
 
-- На0fc7af03 hosted CI обнаружил nullable PATCH, shared caches, Go security,
-  ShellCheck и два stale WASM contract blockers; исправления включены в00b.
-  Core0fc достиг readiness, но up guard остановил при85,4%/free4,64 GiB.
-  E2E/seed не запускались; owner stop/teardown и zero-resource postcheck PASS.
-- Refresh851c4763: OwnedLive37848497910/a1 SUCCESS18 PASS/2 planned skips,
-  artifacts0 — только auth/reset smoke. Matrix37848498285/a1 отменён root
-  после сохранения snapshot; Handlebars4.7.10 policy/audit/graph локально PASS.
-- R02 inventory/hooks/fixtures review CLEAR165 PASS; planner317 PASS/5 subtests;
-  auth fail-closed74 PASS, SEC-03 focused98/adjacent221, metadata112/UI7 PASS.
-  Source tests не заменяют runtime acceptance.
-- Старые OwnedLive37843216072/a1 и37767058529/a1:18 PASS/2 planned skips,
-  artifacts0, только их SHA. Profile15ad90aac:4/4; stop/start444ed сохранил
-  hashes/secrets/volumes. Полная current-SHA Core traceability остаётся открытой.
-- Harness verifier28/runtime44/preflight10 PASS; real gate-state hash неизменен.
-  Windows taskkill не гарантирует orphan descendant после parent exit: явный
-  cleanup failure без PASS; Job Object containment — backlog.
-  Antigravity hooks вызываются явно, native Codex registration отсутствует.
-- Kind helper727eecab smoke/teardown PASS без app deployment; certification v1.1.
-  DR76cd4026 остановлен на source_snapshot_gate: target restore не начинался.
-  Immutable failure receipts сохранены; code/runbook не доказывают restore.
-- Mutation inventory43200/backend54450, global score отсутствует; diagnostic debt.
-  Six-image main-only producer/source-bound consumer реализованы;
-  actual release/signing/SBOM/provenance/WASM parity ещё требуется подтвердить.
+- Принятые nullable PATCH/cache/Go/ShellCheck/WASM fixes сохранены; старый Core0fc
+  после resource guard полностью очищен. Старые auth/reset smokes18 PASS/2 skips
+  относятся только к своим SHA и не закрывают current-SHA Core traceability.
+- R02 inventory/hooks165, planner317, auth74, SEC-03 focused98/adjacent221 PASS;
+  profile15ad90aac4/4, stop/start444ed сохранил hashes/secrets/volumes.
+  Эти source/historical checks не заменяют текущую runtime acceptance.
+- Harness28/runtime44/preflight10 PASS; gate-state hash сохранён. Windows taskkill
+  не гарантирует cleanup orphan после parent exit; Job Object — backlog.
+  Antigravity lifecycle explicit, native Codex hooks не зарегистрированы.
+- Kind/global mutation closure — v1.1; прежний DR не дошёл до restore, receipts сохранены.
+- Six-image main-only producer реализован; actual release/signing/SBOM/provenance
+  и WASM parity ещё требуется подтвердить.
 
 ## Открытые этапы и ближайший checkpoint
 
-- Завершить Caddy/cache fixes, focused checks, обычные hooks/push; проверить свежие76
+- Завершить auth fail-closed и текущие contract fixes, обычные hooks/push; проверить свежие76
   required contexts, critical-path15 минут и default-branch scheduled/manual activation.
 - На clean frozen SHA поднять один fresh Core; Home-empty до canonical seed;
   ТЗ2–13: auth/MFA, messenger/group delivery/topics push, profile/settings/admin,

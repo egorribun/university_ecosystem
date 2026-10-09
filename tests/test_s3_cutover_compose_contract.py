@@ -139,13 +139,15 @@ def test_storage_init_waits_for_the_s3_api_without_mc(relative_path: str) -> Non
     assert init["restart"] == "no"
 
 
-def test_overlays_carry_no_minio_only_settings() -> None:
+def test_storage_overlays_use_expected_loopback_publications() -> None:
     observability = _compose("docker-compose.observability.yml")["services"]
     assert "minio" not in observability
     infra_ports = _compose("docker-compose.infra.yml")["services"]["minio"]["ports"]
     assert infra_ports == ["127.0.0.1:9000:9000"]
     live = _compose("docker-compose.live.yml")["services"]
-    assert "minio" not in live
+    assert live["minio"]["ports"] == [
+        "127.0.0.1:${LIVE_HOST_PORT_MINIO:?set by scripts/live_stand.py}:9000"
+    ]
     assert "minio-init" not in live
 
 

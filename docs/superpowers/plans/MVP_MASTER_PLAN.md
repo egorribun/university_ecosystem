@@ -444,8 +444,9 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   notifications-worker, outbox-worker и SpiceDB — запускаются с обычными Compose
   dependencies, без `--no-deps`. Проверять точную утверждённую closure из 23 сервисов,
   включая Tempo/probe и init/migration jobs; изменение состава требует ревью.
-  Все 15 значений портов остаются в подписанном interpolation map; Core проверяет
-  занятость только девяти активных портов. Resource fingerprint сохраняет identities
+  Все 16 значений портов остаются в подписанном interpolation map; Core проверяет
+  занятость только десяти активных портов, включая loopback S3 endpoint.
+  Resource fingerprint сохраняет identities
   и активные имена портов, чтобы разрешать подписанную смену host ports при restart.
   Full и исторические full owner schemas сохраняют проверку всех объявленных
   ресурсов, включая неиспользуемые volumes, которые удаляет `down --volumes`.

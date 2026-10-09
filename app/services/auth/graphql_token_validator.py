@@ -5,7 +5,7 @@ and the REST ``get_current_user`` dependency (``app/api/deps/auth.py``).
 
 The REST path enforces these security layers (the MFA-epoch policy is shared
 through ``app.services.auth.session_policy``):
-  1. Dedicated Redis JTI revocation pre-check (DB fallback on Redis error)
+  1. Mandatory dedicated Redis JTI revocation check (outage fails closed)
   2. DB session revocation check             (fail-closed on DB error)
   3. Session expiry validation               (fail-closed)
   4. Fingerprint validation                  (revokes session on mismatch)
@@ -55,7 +55,8 @@ class GraphQLTokenValidator:
         Mirrors ``app/api/deps/auth.py`` (``_resolve_current_user``); the shared
         session policy lives in ``app.services.auth.session_policy``.
         """
-        # Step 1 — dedicated Redis JTI revocation pre-check (O(1), DB fallback)
+        # Step 1 — mandatory durable revocation check; do not trust a possibly
+        # stale DB row when tombstone verification is unavailable.
         if not await self._redis_jti_check(jti):
             return None
 
@@ -87,15 +88,15 @@ class GraphQLTokenValidator:
     # ------------------------------------------------------------------ helpers
 
     async def _redis_jti_check(self, jti: str) -> bool:
-        """Return False if JTI is revoked; otherwise allow the mandatory DB check."""
+        """Reject revoked JTIs and fail closed when durable state is unavailable."""
         try:
             _redis = await get_revocation_redis_client()
             if await _redis.exists(f"revoked:jti:{jti}"):
                 logger.debug("GraphQL: session revoked in Redis")
                 return False
-        except (RedisError, RuntimeError, OSError) as exc:
-            # RZ-20-04: revocation store unavailable → mandatory DB check.
-            logger.debug("GraphQL session check fallback to DB: %s", exc)  # nosec B110
+        except (RedisError, RuntimeError, OSError):
+            logger.warning("GraphQL session revocation verification unavailable")
+            raise RuntimeError("Durable session revocation check unavailable") from None
         return True
 
     async def _load_db_session(self, jti: str) -> ActiveSession | None:

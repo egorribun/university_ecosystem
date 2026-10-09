@@ -49,24 +49,19 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
         if not user_id:
             return None, None
 
-        # RZ-8: Fast-path Redis JTI revocation check (O(1), beats the DB path).
+        # Durable revocation is mandatory. The DB row may remain active after a
+        # tombstone-first mutation rolls back, so it cannot replace this check.
         if session_jti:
             try:
                 _redis = await get_revocation_redis_client()
                 if await _redis.exists(f"revoked:jti:{session_jti}"):
                     logger.debug(
-                        "WebSocket: JTI %s is revoked (Redis fast-path)", session_jti
+                        "WebSocket session rejected by durable revocation state"
                     )
                     return None, None
-            except (
-                RedisError,
-                RuntimeError,
-                OSError,
-            ) as redis_exc:  # RZ-22-01: narrowed — Redis errors
-                logger.debug(
-                    "WebSocket: Redis JTI check failed, falling through to DB: %s",
-                    redis_exc,
-                )
+            except (RedisError, RuntimeError, OSError):
+                logger.warning("WebSocket session revocation verification unavailable")
+                return None, None
 
         async with async_session() as session:
             user_repo = UserRepository(session)
@@ -182,6 +177,21 @@ async def _resolve_user_from_ids(
 
     Shared by get_user_from_ticket() — avoids re-encoding a fake JWT.
     """
+    # The one-time ticket is consumed before reaching this resolver. Check the
+    # mandatory durable tombstone before opening a DB session: after a failed
+    # security transaction the DB row can still be active while the tombstone
+    # correctly rejects the credential.
+    try:
+        _redis = await get_revocation_redis_client()
+        if await _redis.exists(f"revoked:jti:{jti}"):
+            logger.debug(
+                "WebSocket ticket session rejected by durable revocation state"
+            )
+            return None, None
+    except (RedisError, RuntimeError, OSError):
+        logger.warning("WebSocket ticket revocation verification unavailable")
+        return None, None
+
     try:
         async with async_session() as session:
             user_repo = UserRepository(session)
@@ -190,16 +200,6 @@ async def _resolve_user_from_ids(
             user = await user_repo.get(uuid.UUID(user_id_str))
             if not user or not user.is_active:
                 return None, None
-
-            # Cross-service revocation pre-check. The DB check immediately below
-            # remains authoritative if the dedicated store is unavailable.
-            try:
-                _redis = await get_revocation_redis_client()
-                if await _redis.exists(f"revoked:jti:{jti}"):
-                    logger.debug("WS ticket JTI %s is revoked (Redis fast-path)", jti)
-                    return None, None
-            except (RedisError, RuntimeError, OSError):  # nosec B110  # RZ-28-01 + RZ-22-01: narrowed — Redis errors
-                pass  # fallback to DB revoked_at check below
 
             active_session = await session_repo.get_by_jti(jti)
             if active_session is None or not session_is_usable(active_session, user):

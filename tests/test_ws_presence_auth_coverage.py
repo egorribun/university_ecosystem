@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.exceptions import RedisError
 
 from app.api.ws.auth import (
     _JWT_DECODE_ERRORS,
@@ -236,20 +237,27 @@ async def test_get_user_from_ticket_jti_revoked_redis(
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_ticket_redis_exceptions(
+@pytest.mark.parametrize("failure_stage", ["client_initialization", "exists"])
+@pytest.mark.parametrize("error_type", [RedisError, RuntimeError, OSError])
+async def test_get_user_from_ticket_fails_closed_when_revocation_store_is_unavailable(
     dedicated_revocation_store,
+    caplog: pytest.LogCaptureFixture,
+    failure_stage: str,
+    error_type: type[Exception],
 ) -> None:
-    # Coverage for lines 235-236 (Redis exists throws exception, fallback to DB)
     ticket = secrets.token_hex(32)
     user_id = str(uuid.uuid4())
     jti = "mocked-jti-session"
+    provider_marker = "provider-diagnostic-marker"
     mock_redis = AsyncMock()
     mock_redis.getdel.return_value = (
         f"{user_id}:{jti}:{int((datetime.now(UTC) + timedelta(hours=1)).timestamp())}"
     )
 
     mock_db_user = MagicMock()
+    mock_db_user.id = uuid.UUID(user_id)
     mock_db_user.is_active = True
+    mock_db_user.mfa_epoch = 0
     mock_user_repo = MagicMock()
     mock_user_repo.get = AsyncMock(return_value=mock_db_user)
 
@@ -257,13 +265,28 @@ async def test_get_user_from_ticket_redis_exceptions(
     mock_session.user_id = mock_db_user.id
     mock_session.expires_at = datetime.now(UTC) + timedelta(hours=1)
     mock_session.revoked_at = None
+    mock_session.mfa_epoch = 0
     mock_session_repo = MagicMock()
     mock_session_repo.get_by_jti = AsyncMock(return_value=mock_session)
 
-    # Dedicated revocation Redis raises during EXISTS; DB remains authoritative.
-    dedicated_revocation_store.exists.side_effect = OSError("Redis error")
+    caplog.set_level("DEBUG", logger="app.api.ws.auth")
+    failure = error_type(provider_marker)
+    if failure_stage == "client_initialization":
+        revocation_failure = patch(
+            "app.api.ws.auth.get_revocation_redis_client",
+            new_callable=AsyncMock,
+            side_effect=failure,
+        )
+    else:
+        revocation_failure = patch.object(
+            dedicated_revocation_store,
+            "exists",
+            new_callable=AsyncMock,
+            side_effect=failure,
+        )
 
     with (
+        revocation_failure as revocation_client,
         patch("app.deps.cache.get_cache_client", return_value=mock_redis),
         patch("app.api.ws.auth.UserRepository", return_value=mock_user_repo),
         patch("app.api.ws.auth.SessionRepository", return_value=mock_session_repo),
@@ -275,8 +298,19 @@ async def test_get_user_from_ticket_redis_exceptions(
         mock_async_session.return_value = mock_ctx
 
         user, returned_jti = await get_user_from_ticket(ticket)
-        assert user == mock_db_user
-        assert returned_jti == jti
+        assert user is None
+        assert returned_jti is None
+        mock_redis.getdel.assert_awaited_once_with(f"ott:ws:{ticket}")
+        mock_async_session.assert_not_called()
+        mock_user_repo.get.assert_not_awaited()
+        mock_session_repo.get_by_jti.assert_not_awaited()
+
+    if failure_stage == "client_initialization":
+        revocation_client.assert_awaited_once_with()
+    else:
+        revocation_client.assert_awaited_once_with(f"revoked:jti:{jti}")
+    assert provider_marker not in caplog.text
+    assert jti not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -452,16 +486,37 @@ async def test_get_user_from_token_redis_revoked(dedicated_revocation_store) -> 
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_token_redis_error(dedicated_revocation_store) -> None:
-    # Coverage for lines 59-64 (Redis connection error fall-through)
+@pytest.mark.parametrize("failure_stage", ["client_initialization", "exists"])
+@pytest.mark.parametrize("error_type", [RedisError, RuntimeError, OSError])
+async def test_get_user_from_token_fails_closed_when_revocation_store_is_unavailable(
+    dedicated_revocation_store,
+    caplog: pytest.LogCaptureFixture,
+    failure_stage: str,
+    error_type: type[Exception],
+) -> None:
     token = "some-jwt-token"
     user_id = str(uuid.uuid4())
     jti = "session-jti"
-
-    dedicated_revocation_store.exists.side_effect = ConnectionError("Redis down")
+    provider_marker = "provider-diagnostic-marker"
+    failure = error_type(provider_marker)
+    if failure_stage == "client_initialization":
+        revocation_failure = patch(
+            "app.api.ws.auth.get_revocation_redis_client",
+            new_callable=AsyncMock,
+            side_effect=failure,
+        )
+    else:
+        revocation_failure = patch.object(
+            dedicated_revocation_store,
+            "exists",
+            new_callable=AsyncMock,
+            side_effect=failure,
+        )
 
     mock_db_user = MagicMock()
+    mock_db_user.id = uuid.UUID(user_id)
     mock_db_user.is_active = True
+    mock_db_user.mfa_epoch = 0
     mock_user_repo = MagicMock()
     mock_user_repo.get = AsyncMock(return_value=mock_db_user)
 
@@ -469,10 +524,13 @@ async def test_get_user_from_token_redis_error(dedicated_revocation_store) -> No
     mock_session.user_id = mock_db_user.id
     mock_session.expires_at = datetime.now(UTC) + timedelta(hours=1)
     mock_session.revoked_at = None
+    mock_session.mfa_epoch = 0
     mock_session_repo = MagicMock()
     mock_session_repo.get_by_jti = AsyncMock(return_value=mock_session)
 
+    caplog.set_level("DEBUG", logger="app.api.ws.auth")
     with (
+        revocation_failure as revocation_client,
         patch(
             "app.auth.security.decode_token", return_value={"sub": user_id, "jti": jti}
         ),
@@ -486,8 +544,18 @@ async def test_get_user_from_token_redis_error(dedicated_revocation_store) -> No
         mock_async_session.return_value = mock_ctx
 
         user, returned_jti = await get_user_from_token(token)
-        assert user == mock_db_user
-        assert returned_jti == jti
+        assert user is None
+        assert returned_jti is None
+        mock_async_session.assert_not_called()
+        mock_user_repo.get.assert_not_awaited()
+        mock_session_repo.get_by_jti.assert_not_awaited()
+
+    if failure_stage == "client_initialization":
+        revocation_client.assert_awaited_once_with()
+    else:
+        revocation_client.assert_awaited_once_with(f"revoked:jti:{jti}")
+    assert provider_marker not in caplog.text
+    assert jti not in caplog.text
 
 
 @pytest.mark.asyncio

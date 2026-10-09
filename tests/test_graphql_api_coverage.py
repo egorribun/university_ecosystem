@@ -967,6 +967,59 @@ class TestGraphQLAdvancedCoverage:
             assert excinfo.value.status_code == 503
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure_stage", ["client_initialization", "exists"])
+    @pytest.mark.parametrize("error_type", ["redis", "runtime", "os"])
+    async def test_graphql_context_maps_real_revocation_outage_to_generic_503(
+        self, caplog, failure_stage, error_type
+    ):
+        from fastapi import HTTPException
+        from redis.exceptions import RedisError
+
+        from app.auth.security import _mint_pure_jwt
+        from app.graphql.schema import get_context
+
+        provider_marker = "provider-diagnostic-marker"
+        selected_error = {
+            "redis": RedisError,
+            "runtime": RuntimeError,
+            "os": OSError,
+        }[error_type]
+        failure = selected_error(provider_marker)
+        redis = AsyncMock()
+        if failure_stage == "client_initialization":
+            revocation_client = AsyncMock(side_effect=failure)
+        else:
+            redis.exists.side_effect = failure
+            revocation_client = AsyncMock(return_value=redis)
+
+        database_session = AsyncMock()
+        request = MagicMock()
+        request.app.dependency_overrides = {}
+        request.state.dishka_container.get = AsyncMock(return_value=database_session)
+        user_id = str(uuid.uuid4())
+        token = _mint_pure_jwt(subject=user_id, extra_claims={"jti": "session-456"})
+        request.headers = {"Authorization": f"Bearer {token}"}
+        caplog.set_level("DEBUG", logger="app.graphql.schema")
+
+        with patch(
+            "app.services.auth.graphql_token_validator.get_revocation_redis_client",
+            revocation_client,
+        ):
+            with pytest.raises(HTTPException) as excinfo:
+                async for _ in get_context(request):
+                    pytest.fail("revocation outage must not yield an anonymous context")
+
+        assert excinfo.value.status_code == 503
+        assert excinfo.value.detail == "Service temporarily unavailable"
+        database_session.execute.assert_not_awaited()
+        assert provider_marker not in caplog.text
+        if failure_stage == "client_initialization":
+            revocation_client.assert_awaited_once_with()
+        else:
+            revocation_client.assert_awaited_once_with()
+            redis.exists.assert_awaited_once_with("revoked:jti:session-456")
+
+    @pytest.mark.asyncio
     async def test_graphql_schema_get_context_auth_validation_bearer_token(self):
         from app.auth.security import _mint_pure_jwt
         from app.graphql.schema import get_context
