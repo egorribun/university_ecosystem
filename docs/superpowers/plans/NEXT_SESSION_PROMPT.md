@@ -40,6 +40,31 @@ Commit message для maintenance используй без wave, наприме
 5. По ADR-006 принято направление: сохранить durable tombstone и WebSocket revoke до commit, консервативный rollback с logout siblings документировать. Не меняй этот ordering; независимо проверь failure paths и зафиксируй фактические guarantees/limits. Не превращай тест или непросмотренный сценарий в доказательство безопасности.
 6. Исторический audit зафиксировал ruleset `8335285`, enforcement ACTIVE и91 required context. Разрешённые14 contexts плюс отдельно разрешённый `Security Audit / Semgrep SAST` уже удалены после code/contracts/review: текущий проверенный набор76. Остальные rules сохранены, CodeQL blocking, Semgrep в pre-commit. Q4 boundary: четыре full Chromium shards и LHCI scheduled/manual, PR live Chromium smoke сохраняется. Не повторяй выполненные removals и не меняй остальные protection rules. Любое дополнительное protection изменение требует отдельного разрешения. Admin bypass и фиктивные compatibility PASS запрещены.
 
+## Обновление checkpoint после публикацииddbbc84d
+
+HEAD/origin/PR1306 проверены наddbbc84d8444fa06aee1485fb1ddc0d1ca308d1f.
+Это более новый ориентир, чем89cb50a4 выше; обычные hooks/commit/push пакета
+owned live-session cleanup и navbar gap прошли. Fresh Core up/readiness и
+admin-only seed PASS; новый Linux Home12 технически12/12, serious/critical axe0,
+exact-session cleanup complete. Владелец явно утвердил именно новый пакет;
+замечание RU/light/1440 к расстоянию карта кампуса → Messenger закрыто.
+Не предлагай старый отклонённый пакет повторно.
+Одобренные12 Linux PNG и curated approval/SHA-256 metadata сохранены в
+`frontend/visual-baselines/live/home-empty/` как manual comparison baseline;
+не подменяй ими иной fixture существующего mocked Windows snapshot test.
+
+CI37940158490/a1 наddbbc84d обнаружил false positive anti-pattern checker:
+три ожидаемые строковые формы `test.skip(` в tests/test_live_stand.py.
+Minimal test-only correction сохраняет scanner и exact8 skip identities;
+root13/13 skip contracts, исходный CI checker и Ruff check/format PASS.
+Публикация correction и свежие exact-head checks ещё нужны. Snapshot14:10 UTC:
+67 required SUCCESS,1 FAILURE,2 in progress,6 absent; это не current CI PASS.
+Coreddbbc84d retired canonical teardown/resume: containers/networks/volumes0/0/0,
+source stable, owned children0. Новый commit требует свежего уникального Core
+state: readiness → admin-only seed → Home/affected acceptance → SEC-03 →
+targeted affected scenarios → два full190+exact8. Одобрение Home12 не закрывает
+остальные328 visual captures, native stories20, restore или выпуск.
+
 ## Старт новой сессии и ближайший порядок
 
 Не начинай с нового harness. Inventory/hook bindings, bounded test hygiene, schedule conflict/self-exclusion, semantic unavailable/no-zero, Handlebars/dependency fixes и Q1/Q4 уже интегрированы. Weather/bookmarks SSR fixes опубликованы на14c2. Не повторяй их: сначала сверь текущий diff и свежий CI.

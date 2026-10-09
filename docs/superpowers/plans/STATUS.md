@@ -27,7 +27,40 @@
   Без embeddings key текстовый поиск доступен, semantic UI выключен,
   direct semantic-only API сообщает недоступность без нулевых векторов.
 
-## Текущий checkpoint: опубликованный89cb50a4 и следующий пакет
+## Текущий checkpoint: опубликованныйddbbc84d и Home12 approval
+
+- HEAD/origin/PR1306:ddbbc84d8444fa06aee1485fb1ddc0d1ca308d1f. Пакет owned
+  live-session cleanup и navbar gap опубликован обычными hooks/commit/push;
+  pre-push typecheck PASS, `.secrets.baseline` повторно staged, checkout был чист.
+- Fresh Core ddbbc84d up/readiness PASS:23 services,14 healthy checks,
+  завершённые init jobs, функциональные Mailpit/Redis probes и signed ports.
+  Admin-only seed сохранил пустые Home feeds до screenshots.
+- Новый Linux Home-empty packet:12/12 RU/EN × light/dark ×390/768/1440,
+  loaded Morph cards visible/settled, serious/critical axe0, exact-session
+  cleanup complete. Владелец явно утвердил пакет; единственное замечание
+  RU/light/1440 к расстоянию карта кампуса → Messenger закрыто.
+  Одобренные12 PNG сохранены byte-for-byte в
+  `frontend/visual-baselines/live/home-empty/` с curated approval/SHA-256 metadata;
+  это manual comparison baseline, отдельный от mocked Windows snapshot test.
+- Exact-head CI snapshot14:10 UTC:67/76 required SUCCESS,1 FAILURE,
+  2 in progress,6 absent. Matrix37940158490/a1 ещё не завершён;
+  advisory Owned Live37940157634/a1 также выполнялся. Это не current CI PASS.
+  Единственный обнаруженный failure — Source/Test Inventory & Anti-Pattern
+  Check113852193041: три ожидаемые строковые формы `test.skip(` в Python-тесте
+  ошибочно приняты scanner за runtime skip.
+- Minimal test-only correction меняет лишь сборку ожидаемой строки;
+  scanner и все восемь source/project skip identities сохранены. В основном
+  checkout13/13 выбранных skip contracts PASS; неизменённый CI checker и
+  Ruff check/format PASS. Следующий commit должен опубликовать это исправление.
+- Core ddbbc84d retired canonical owner-checked teardown: containers/networks/
+  volumes0/0/0, source stable, owned children0. Первая попытка остановлена
+  time guard180s при0/1/6; canonical resume завершился exit0 за24s. RAM guard
+  не срабатывал. Private state/evidence сохранены; новый SHA требует нового state.
+- Home approval закрывает только этот пакет12; остальные328 visual captures,
+  current-SHA SEC-03, два full190+exact8, native stories20 cycles, restore,
+  frozen-RC full smoke и обычный выпуск остаются открыты.
+
+## Исторический checkpoint89cb50a4 и опубликованный следующий пакет
 
 - Последний проверенный опубликованный ориентир до этого пакета:
   HEAD/origin/PR1306:89cb50a4e543ce6bcfc55082244343c82940c83f.
@@ -76,7 +109,8 @@
   с переносом final throws за finally и обычным форматированием. После final
   test transfer frontend-typecheck/lint/format rerun3/3 PASS за35s; восемь
   проверок исходного preflight также PASS. Source stable/guardfalse/owned
-  children0. Ruff check/format Python paths PASS. Обычные hooks/push ещё проверить.
+  children0. Ruff check/format Python paths PASS. Затем обычные hooks/commit/push
+  пакета прошли наddbbc84d; новый exact-head CI описан выше.
 - Source accounting198 =190 применимых cases +8 ожидаемых project-axis skips;
   skips не считаются passes. Два успешных Core runs требуют190 PASS,
   exact8 ожидаемых identities,0 failures/flaky/interrupted/did-not-run;

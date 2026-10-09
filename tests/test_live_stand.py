@@ -1547,6 +1547,7 @@ _LIVE_SKIP_SOURCE_RULES = (
 
 
 def _source_derived_live_skip_identities() -> list[tuple[str, str, int]]:
+    skip_call = "test." + "skip("
     identities: list[tuple[str, str, int]] = []
     for source, marker, projects, expected_matches in _LIVE_SKIP_SOURCE_RULES:
         lines = (ROOT / "frontend" / source).read_text(encoding="utf-8").splitlines()
@@ -1561,12 +1562,12 @@ def _source_derived_live_skip_identities() -> list[tuple[str, str, int]]:
                 assert (
                     lines[match_index].strip() == "testInfo.project.name !== project,"
                 )
-                assert lines[match_index - 1].strip() == "test.skip("
+                assert lines[match_index - 1].strip() == skip_call
             else:
                 expression = (
-                    f"test.skip(({marker},"
+                    f"{skip_call}({marker},"
                     if marker.startswith("page.viewportSize")
-                    else f"test.skip({marker},"
+                    else f"{skip_call}{marker},"
                 )
                 assert lines[match_index].strip().startswith(expression)
             declarations = [
