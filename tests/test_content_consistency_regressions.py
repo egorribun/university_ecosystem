@@ -26,6 +26,7 @@ from app.schemas import schemas
 from app.services import attendance_tokens, event_handlers, search_indexer
 from app.services.event_service import EventService
 from app.services.news_service import NewsService
+from app.services.vector_service import SemanticSearchUnavailableError
 from app.workers import outbox
 
 
@@ -533,7 +534,7 @@ async def test_embedding_fallback_is_never_persisted(
     else:
         projection_io.embedding = [0.0] * 1536
     if mode in {"failure", "zero", "nan", "empty"}:
-        with pytest.raises(RuntimeError, match="Embedding"):
+        with pytest.raises(SemanticSearchUnavailableError):
             await handler(event)
     else:
         await handler(event)

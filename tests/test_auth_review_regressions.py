@@ -505,6 +505,151 @@ async def test_cache_free_validity_check_fails_closed_when_revocation_store_is_d
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cache_state", ["miss", "hit"])
+@pytest.mark.parametrize("failure_stage", ["client_initialization", "exists"])
+async def test_current_user_fails_closed_when_durable_revocation_is_unavailable(
+    db_session: AsyncSession,
+    test_user: User,
+    mock_global_redis: Redis[str],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    cache_state: str,
+    failure_stage: str,
+) -> None:
+    import logging
+
+    from fastapi import status
+    from redis.exceptions import RedisError
+
+    from app.api.deps import auth as auth_deps
+    from app.auth.revocation import revoke_with_tombstone
+    from app.services.auth.redis_session import RedisSessionService
+    from tests.fixtures.auth.auth_fixtures import create_access_token
+
+    caplog.set_level(logging.DEBUG)
+    user_id = test_user.id
+    user_email = test_user.email
+    token, session = await create_access_token(str(user_id), db_session)
+    tombstone_key = f"revoked:jti:{session.jti}"
+
+    # Model the failure window where the durable tombstone succeeds but the DB
+    # transaction that would set revoked_at fails and is rolled back.
+    await revoke_with_tombstone(
+        None,
+        session_key=f"session:v2:{session.jti}",
+        jti=session.jti,
+        expires_at=session.expires_at,
+        revocation_redis_client=mock_global_redis,
+    )
+    session.revoked_at = datetime.now(UTC)
+    await db_session.flush()
+    with (
+        patch.object(
+            db_session,
+            "commit",
+            AsyncMock(side_effect=RuntimeError("simulated database commit failure")),
+        ),
+        pytest.raises(RuntimeError, match="simulated database commit failure"),
+    ):
+        await db_session.commit()
+    await db_session.rollback()
+    await db_session.refresh(session)
+
+    assert await mock_global_redis.exists(tombstone_key) == 1
+    assert session.revoked_at is None
+
+    failure_marker = f"redis-error-{uuid4().hex}-{user_email}"
+    revocation_client = AsyncMock()
+    if failure_stage == "client_initialization":
+        client_factory = AsyncMock(side_effect=RuntimeError(failure_marker))
+    else:
+        revocation_client.exists.side_effect = RedisError(failure_marker)
+        client_factory = AsyncMock(return_value=revocation_client)
+    monkeypatch.setattr(auth_deps, "get_revocation_redis_client", client_factory)
+
+    redis_service = RedisSessionService(redis_url="redis://metadata-cache")
+    cache_value = (
+        {
+            "user_id": str(user_id),
+            "session_id": str(session.id),
+            "is_active": True,
+        }
+        if cache_state == "hit"
+        else None
+    )
+    redis_service.get_session = AsyncMock(return_value=cache_value)
+    redis_service.update_last_seen = AsyncMock()
+    redis_service.create_session = AsyncMock()
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/protected",
+            "query_string": b"",
+            "headers": [],
+        }
+    )
+    db_get = AsyncMock(wraps=db_session.get)
+    db_execute = AsyncMock(wraps=db_session.execute)
+    monkeypatch.setattr(db_session, "get", db_get)
+    monkeypatch.setattr(db_session, "execute", db_execute)
+    with pytest.raises(HTTPException) as rejected:
+        await auth_deps._resolve_current_user(request, token, db_session, redis_service)
+
+    assert rejected.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert rejected.value.detail == {
+        "error": "session_verification_unavailable",
+        "message": "Session verification temporarily unavailable",
+    }
+    assert failure_marker not in caplog.text
+    assert user_email not in caplog.text
+    client_factory.assert_awaited_once_with()
+    if failure_stage == "exists":
+        revocation_client.exists.assert_awaited_once_with(tombstone_key)
+    redis_service.get_session.assert_not_awaited()
+    db_get.assert_not_awaited()
+    db_execute.assert_not_awaited()
+    assert session.revoked_at is None
+
+
+@pytest.mark.asyncio
+async def test_optional_current_user_propagates_revocation_store_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import status
+
+    from app.api.deps import auth as auth_deps
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/optional-protected",
+            "query_string": b"",
+            "headers": [],
+        }
+    )
+    db = AsyncMock()
+    unavailable = HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "error": "session_verification_unavailable",
+            "message": "Session verification temporarily unavailable",
+        },
+    )
+    resolver = AsyncMock(side_effect=unavailable)
+    monkeypatch.setattr(auth_deps, "get_current_user", resolver)
+
+    with pytest.raises(HTTPException) as rejected:
+        await auth_deps.get_current_user_optional(request, "token", db)
+
+    assert rejected.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert rejected.value.detail == unavailable.detail
+    resolver.assert_awaited_once_with(request, "token", db)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("target_hash_is_current", [True, False])
 async def test_password_change_compare_and_swap_is_scoped_to_target_user(
     db_session: AsyncSession,

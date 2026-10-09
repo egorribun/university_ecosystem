@@ -478,6 +478,176 @@ def test_secure_audit_verify_integrity_accepts_legacy_signature() -> None:
     ).hexdigest()
 
     assert svc.verify_integrity(log) is True
+    status = svc.signature_status(log)
+    assert status.signature_scheme == "legacy_pipe_v1"
+    assert "id" in status.authenticated_fields
+    for field in ("resource_type", "resource_id", "action", "ip_address"):
+        assert field in status.authenticated_fields
+        assert field not in status.unauthenticated_fields
+    assert {"context", "user_agent"}.issubset(status.unauthenticated_fields)
+
+
+def test_secure_audit_verifies_legacy_json_array_signature_with_exact_coverage() -> (
+    None
+):
+    key = b"synthetic-json-array-legacy-key"
+    svc = SecureAuditService(signing_key=key)
+    log = _fake_log()
+    legacy_payload = json.dumps(
+        [
+            str(log.actor_user_id) if log.actor_user_id else None,
+            str(log.subject_user_id) if log.subject_user_id else None,
+            log.resource_type,
+            log.resource_id,
+            log.action,
+            log.context,
+            log.ip_address,
+            log.user_agent,
+            log.created_at.isoformat(),
+        ],
+        separators=(",", ":"),
+    )
+    log.signature = hmac.new(
+        key, legacy_payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    status = svc.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_json_array_v1"
+    assert "id" in status.unauthenticated_fields
+    assert {"context", "user_agent"}.issubset(status.authenticated_fields)
+    assert "resource_id" in status.authenticated_fields
+    assert "resource_id" not in status.unauthenticated_fields
+    assert "actor_name" in status.unauthenticated_fields
+    assert "subject_name" in status.unauthenticated_fields
+
+
+def test_secure_audit_verifies_legacy_batch_json_array_normalization() -> None:
+    key = b"synthetic-legacy-batch-key"
+    service = SecureAuditService(signing_key=key)
+    log = _fake_log()
+    log.resource_type = None
+    log.resource_id = ""
+    log.action = None
+    payload = json.dumps(
+        [
+            str(log.actor_user_id) if log.actor_user_id else None,
+            str(log.subject_user_id) if log.subject_user_id else None,
+            "",
+            None,
+            "",
+            log.context,
+            log.ip_address,
+            log.user_agent,
+            log.created_at.isoformat(),
+        ],
+        separators=(",", ":"),
+    )
+    log.signature = hmac.new(key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    # The persisted empty string and the historical batch-normalized null have
+    # identical signature bytes. Simulate loading the same signature after the
+    # nullable column has been represented as NULL.
+    log.resource_id = None
+
+    status = service.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_json_array_v1"
+    assert "id" in status.unauthenticated_fields
+    assert "resource_id" in status.unauthenticated_fields
+    assert "resource_id" not in status.authenticated_fields
+
+
+@pytest.mark.parametrize(
+    ("field", "original", "substituted"),
+    [
+        (field, original, substituted)
+        for field in ("resource_id", "ip_address", "user_agent")
+        for original, substituted in ((None, ""), ("", None))
+    ],
+)
+def test_v2_nullable_empty_substitution_is_not_reported_as_authenticated(
+    field: str, original: str | None, substituted: str | None
+) -> None:
+    service = SecureAuditService(signing_key=b"nullable-field-audit-key")
+    log = DataAccessLogDTO.model_validate(_fake_log())
+    unsigned = log.model_copy(update={field: original, "signature": None})
+    signed = unsigned.model_copy(
+        update={"signature": service._compute_signature(unsigned)}
+    )
+    substituted_log = signed.model_copy(update={field: substituted})
+
+    status = service.signature_status(substituted_log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "canonical_v2"
+    assert field in status.unauthenticated_fields
+    assert field not in status.authenticated_fields
+    assert "id" in status.authenticated_fields
+
+
+@pytest.mark.parametrize("field", ["resource_id", "ip_address", "user_agent"])
+def test_v2_nonempty_nullable_fields_remain_authenticated(field: str) -> None:
+    service = SecureAuditService(signing_key=b"nullable-field-audit-key")
+    log = DataAccessLogDTO.model_validate(_fake_log())
+    signed = log.model_copy(update={"signature": service._compute_signature(log)})
+
+    status = service.signature_status(signed)
+
+    assert status.is_valid is True
+    assert field in status.authenticated_fields
+    assert field not in status.unauthenticated_fields
+
+
+def test_legacy_pipe_delimiter_repartition_marks_mutable_strings_ambiguous() -> None:
+    service = SecureAuditService(signing_key=b"legacy-pipe-audit-key")
+    log = _fake_log()
+    log.resource_type = "document|public"
+    log.resource_id = "42"
+    signed_payload = service._legacy_signature_payload(log)
+    log.signature = service._compute_legacy_signature(log)
+
+    # Both rows produce the same historical bare-pipe payload bytes:
+    # "document|public|42" versus "document|public|42".
+    log.resource_type = "document"
+    log.resource_id = "public|42"
+    assert service._legacy_signature_payload(log) == signed_payload
+    status = service.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_pipe_v1"
+    for field in ("resource_type", "resource_id", "action", "ip_address"):
+        assert field in status.unauthenticated_fields
+        assert field not in status.authenticated_fields
+    for field in ("id", "actor_user_id", "created_at"):
+        assert field in status.authenticated_fields
+
+
+@pytest.mark.parametrize(
+    ("field", "original", "substituted"),
+    [
+        (field, original, substituted)
+        for field in ("resource_id", "ip_address")
+        for original, substituted in ((None, ""), ("", None))
+    ],
+)
+def test_legacy_pipe_nullable_empty_substitution_is_not_authenticated(
+    field: str, original: str | None, substituted: str | None
+) -> None:
+    service = SecureAuditService(signing_key=b"legacy-pipe-audit-key")
+    log = _fake_log()
+    setattr(log, field, original)
+    log.signature = service._compute_legacy_signature(log)
+    setattr(log, field, substituted)
+
+    status = service.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_pipe_v1"
+    assert field in status.unauthenticated_fields
+    assert field not in status.authenticated_fields
 
 
 def test_secure_audit_verify_integrity_accepts_independent_v2_fixture() -> None:
@@ -510,6 +680,10 @@ def test_secure_audit_verify_integrity_accepts_independent_v2_fixture() -> None:
     service = SecureAuditService(signing_keys=[b"current-test-key", fixture_key])
 
     assert service.verify_integrity(log) is True
+    status = service.signature_status(log)
+    assert status.signature_scheme == "canonical_v2"
+    assert "id" in status.authenticated_fields
+    assert "context" not in status.unauthenticated_fields
 
     tampered = log.model_copy(update={"actor_user_id": UUID(int=4)})
     assert service.verify_integrity(tampered) is False
@@ -518,6 +692,9 @@ def test_secure_audit_verify_integrity_accepts_independent_v2_fixture() -> None:
 def test_secure_audit_verify_integrity_unsigned_is_false():
     svc = SecureAuditService(signing_key=b"k")
     assert svc.verify_integrity(_fake_log(signature=None)) is False
+    status = svc.signature_status(_fake_log(signature=None))
+    assert status.signature_scheme == "unsigned"
+    assert status.authenticated_fields == ()
 
 
 @pytest.mark.asyncio
@@ -596,3 +773,159 @@ async def test_verify_chain_integrity_tamper_detection(db_session):
         "tampering detected" in (err_msg or "").lower()
         or "discontinuity" in (err_msg or "").lower()
     )
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_rejects_deleted_prefix(db_session):
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+    first = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "101"},
+    )
+    second = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_UPDATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "202"},
+    )
+    await db_session.delete(first)
+    await db_session.flush()
+
+    is_valid, failed_id, _ = await svc.verify_chain_integrity(
+        db_session, aggregate_type="schedule", aggregate_id=agg_id
+    )
+
+    assert is_valid is False
+    assert failed_id == str(second.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tamper", ["first_sequence", "first_root", "sequence_gap"])
+async def test_verify_chain_integrity_rejects_invalid_sequence_or_root(
+    db_session, tamper
+):
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+    first = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "101"},
+    )
+    if tamper == "sequence_gap":
+        event = await svc.record_domain_event(
+            db_session,
+            event_type="SCHEDULE_UPDATED",
+            aggregate_type="schedule",
+            aggregate_id=agg_id,
+            payload={"room": "202"},
+        )
+        event.sequence_number = 3
+    elif tamper == "first_sequence":
+        first.sequence_number = 3
+    else:
+        first.prev_hash = "f" * 64
+        canonical = svc.canonicalize_event_payload(
+            aggregate_type=first.aggregate_type,
+            aggregate_id=first.aggregate_id,
+            event_type=first.event_type,
+            payload=first.payload,
+            version=first.version,
+        )
+        first.hash = svc.compute_event_hash(
+            first.prev_hash,
+            canonical,
+            first.created_at.isoformat(),
+        )
+    await db_session.flush()
+
+    is_valid, _, _ = await svc.verify_chain_integrity(
+        db_session, aggregate_type="schedule", aggregate_id=agg_id
+    )
+
+    assert is_valid is False
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_skips_only_unhashed_outbox_rows(db_session):
+    from app.models.domain_events import StoredEvent
+
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+    await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "101"},
+    )
+    db_session.add(
+        StoredEvent(
+            event_type="NotificationsRequested",
+            aggregate_type="NotificationBatch",
+            aggregate_id=str(uuid4()),
+            payload={"notification_ids": []},
+        )
+    )
+    await db_session.flush()
+
+    is_valid, failed_id, error = await svc.verify_chain_integrity(db_session)
+
+    assert is_valid is True
+    assert failed_id is None
+    assert error is None
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_rejects_partially_marked_outbox_row(db_session):
+    from app.models.domain_events import StoredEvent
+
+    event = StoredEvent(
+        event_type="NotificationsRequested",
+        aggregate_type="NotificationBatch",
+        aggregate_id=str(uuid4()),
+        payload={"notification_ids": []},
+        sequence_number=1,
+        prev_hash="0" * 64,
+        hash=None,
+    )
+    db_session.add(event)
+    await db_session.flush()
+
+    is_valid, failed_id, error = await SecureAuditService(
+        signing_key=b"domain-event-secret-key-32bytes"
+    ).verify_chain_integrity(db_session)
+
+    assert is_valid is False
+    assert failed_id == str(event.id)
+    assert "invalid chain hash" in (error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_rejects_chain_row_with_removed_markers(
+    db_session,
+):
+    service = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    event = await service.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=uuid4(),
+        payload={"room": "101"},
+    )
+    event.sequence_number = None
+    event.prev_hash = None
+    event.hash = None
+    await db_session.flush()
+
+    is_valid, failed_id, error = await service.verify_chain_integrity(db_session)
+
+    assert is_valid is False
+    assert failed_id == str(event.id)
+    assert "sequence" in (error or "").lower()

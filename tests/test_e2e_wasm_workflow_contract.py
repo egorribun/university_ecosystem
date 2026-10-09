@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI_PATH = WORKFLOWS / "ci.yml"
 NIGHTLY_PATH = WORKFLOWS / "nightly-full-gate.yml"
+LIVE_ACCEPTANCE_PATH = WORKFLOWS / "live-acceptance.yml"
 E2E_PATH = WORKFLOWS / "reusable-e2e-tests.yml"
 PRODUCER_PATH = WORKFLOWS / "reusable-e2e-wasm-build.yml"
 
@@ -199,26 +200,13 @@ def test_e2e_consumer_accepts_all_or_none_artifact_inputs() -> None:
     assert "for attempt in 1 2 3" in str(fallback["run"])
 
 
-def test_ci_e2e_matrix_depends_on_shared_producer_not_frontend_suite() -> None:
+def test_full_e2e_matrix_is_deferred_and_live_core_pr_smoke_remains() -> None:
     jobs = _load(CI_PATH)["jobs"]
     producer = jobs["e2e-wasm-build"]
     assert producer["uses"] == "./.github/workflows/reusable-e2e-wasm-build.yml"
     assert "needs" not in producer
-
-    for job_name in ("e2e-tests", "e2e-tests-cross-browser"):
-        caller = jobs[job_name]
-        assert set(caller["needs"]) == {"pre-commit-check", "e2e-wasm-build"}
-        assert caller["permissions"]["actions"] == "read"
-        with_values = caller["with"]
-        assert with_values["wasm-artifact-id"] == (
-            "${{ needs.e2e-wasm-build.outputs.artifact_id }}"
-        )
-        assert with_values["wasm-artifact-name"] == (
-            "${{ needs.e2e-wasm-build.outputs.artifact_name }}"
-        )
-        assert with_values["wasm-artifact-digest"] == (
-            "${{ needs.e2e-wasm-build.outputs.artifact_digest }}"
-        )
+    assert "e2e-tests" not in jobs
+    assert "e2e-tests-cross-browser" not in jobs
 
     assert "frontend-tests" not in producer.get("needs", [])
 
@@ -234,6 +222,20 @@ def test_ci_e2e_matrix_depends_on_shared_producer_not_frontend_suite() -> None:
     assert frontend["with"]["wasm-artifact-digest"] == (
         "${{ needs.e2e-wasm-build.outputs.artifact_digest }}"
     )
+
+    nightly_jobs = _load(NIGHTLY_PATH)["jobs"]
+    browser = nightly_jobs["browser-matrix"]
+    assert browser["needs"] == "e2e-wasm-build"
+    assert browser["strategy"]["fail-fast"] is False
+    assert "github.ref == 'refs/heads/main'" in browser["if"]
+
+    live = _load(LIVE_ACCEPTANCE_PATH)
+    triggers = _triggers(live)
+    assert "pull_request" in triggers
+    live_job = live["jobs"]["live-acceptance"]
+    assert "github.event_name == 'pull_request'" in live_job["if"]
+    assert "'smoke'" in live_job["env"]["LIVE_E2E_MODE"]
+    assert "--stack core" in _step(live_job, "Start the owned live stand")["run"]
 
 
 def test_nightly_browser_matrix_uses_shared_producer() -> None:

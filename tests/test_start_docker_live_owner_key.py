@@ -51,6 +51,8 @@ function Get-UniqueFunctionText([string]$Name) {
 $functionNames = @(
     "ConvertTo-CanonicalLiveOwnerJson",
     "Test-CanonicalLiveServiceList",
+    "Test-ExactLiveOwnerFields",
+    "Test-CanonicalLivePublishedPorts",
     "Get-CommonGitOwnerKeyPath",
     "Get-VerifiedLiveAcceptanceOwner"
 )
@@ -231,6 +233,7 @@ def _non_in_place_fixture(
     *,
     common_key: bytes | None = None,
     tamper_signature: bool = False,
+    schema_version: int = live_stand.OWNER_SCHEMA_VERSION,
 ) -> tuple[Path, Path, str]:
     assert GIT is not None
     repository = tmp_path / "source repository"
@@ -273,8 +276,10 @@ def _non_in_place_fixture(
             live_stand.LIVE_PORT_SPECS
         )
     }
+    if schema_version == live_stand.PRE_MINIO_OWNER_SCHEMA_VERSION:
+        ports.pop("MINIO")
     payload: dict[str, object] = {
-        "version": live_stand.OWNER_SCHEMA_VERSION,
+        "version": schema_version,
         "repository": str(repository.resolve()),
         "worktree": str(worktree.resolve()),
         "project_name": project_name,
@@ -298,7 +303,10 @@ def _non_in_place_fixture(
 
 
 def _in_place_fixture(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    schema_version: int = live_stand.IN_PLACE_OWNER_SCHEMA_VERSION,
 ) -> tuple[Path, str, str]:
     temporary_root = tmp_path / "temp"
     state_parent = temporary_root / "ue-live-acceptance"
@@ -335,6 +343,15 @@ def _in_place_fixture(
     else:
         compose_override.chmod(0o600)
     assert owner.schema_version == live_stand.IN_PLACE_OWNER_SCHEMA_VERSION
+    if schema_version == live_stand.PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION:
+        marker_path = state_root / live_stand.STAND_FILE
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        marker["version"] = schema_version
+        marker["published_ports"].pop("MINIO")
+        payload = {name: value for name, value in marker.items() if name != "signature"}
+        key = (state_root / ".secrets" / "live-stand-owner.key").read_bytes()
+        marker["signature"] = live_stand._owner_signature(payload, key)
+        marker_path.write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
     return state_root, owner.project_name, source_sha
 
 
@@ -364,6 +381,29 @@ def test_worktree_owner_uses_common_git_key_and_ignores_worktree_decoy(
         "stage": "complete",
         "errorType": "",
     }
+
+
+@pytest.mark.skipif(
+    POWERSHELL is None or GIT is None,
+    reason="PowerShell 7 and Git are required for owner verification contracts",
+)
+def test_worktree_owner_rejects_signed_pre_minio_v8_owner(
+    tmp_path: Path,
+) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path, schema_version=live_stand.PRE_MINIO_OWNER_SCHEMA_VERSION
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+    )
+
+    assert result["accepted"] is False
+    assert result["stage"] == "worktree_owner_verification"
+    assert result["gitLookups"] == 1
 
 
 @pytest.mark.skipif(
@@ -445,7 +485,7 @@ def test_worktree_owner_rejects_missing_git_common_metadata(
     POWERSHELL is None,
     reason="PowerShell 7 is required for in-place owner cache contracts",
 )
-def test_in_place_resolver_caches_valid_v9_owner_without_git_lookup(
+def test_in_place_resolver_caches_valid_v11_owner_without_git_lookup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state_root, project_name, source_sha = _in_place_fixture(tmp_path, monkeypatch)
@@ -469,3 +509,31 @@ def test_in_place_resolver_caches_valid_v9_owner_without_git_lookup(
         "stage": "complete",
         "errorType": "",
     }, f"sanitized owner-resolution result: {result}"
+
+
+@pytest.mark.skipif(
+    POWERSHELL is None,
+    reason="PowerShell 7 is required for in-place owner cache contracts",
+)
+def test_in_place_resolver_rejects_signed_pre_minio_v9_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_root, project_name, source_sha = _in_place_fixture(
+        tmp_path,
+        monkeypatch,
+        schema_version=live_stand.PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="inplace",
+        project_root=ROOT,
+        project_name=project_name,
+        state_root=state_root,
+        source_sha=source_sha,
+    )
+
+    assert result["accepted"] is False
+    assert result["failure"] == "in_place_owner_mismatch"
+    assert result["stage"] == "resolve_in_place_owner"
+    assert result["gitLookups"] == 0

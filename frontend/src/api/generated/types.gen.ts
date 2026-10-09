@@ -179,6 +179,10 @@ export type AuditLogOut = {
    */
   actor_user_id?: string | null
   /**
+   * Authenticated Fields
+   */
+  authenticated_fields: Array<string>
+  /**
    * Context
    */
   context?: {
@@ -209,6 +213,11 @@ export type AuditLogOut = {
    */
   resource_type: string
   /**
+   * Signature Scheme
+   */
+  signature_scheme:
+    "canonical_v2" | "legacy_json_array_v1" | "legacy_pipe_v1" | "invalid" | "unsigned"
+  /**
    * Subject Name
    */
   subject_name?: string | null
@@ -216,6 +225,10 @@ export type AuditLogOut = {
    * Subject User Id
    */
   subject_user_id?: string | null
+  /**
+   * Unauthenticated Fields
+   */
+  unauthenticated_fields: Array<string>
   /**
    * User Agent
    */
@@ -2336,11 +2349,11 @@ export type ScheduleUpdate = {
   /**
    * End Time
    */
-  end_time?: string | null
+  end_time?: string
   /**
    * Group Id
    */
-  group_id?: string | null
+  group_id?: string
   /**
    * Lesson Type
    */
@@ -2348,7 +2361,7 @@ export type ScheduleUpdate = {
   /**
    * Parity
    */
-  parity?: string | null
+  parity?: string
   /**
    * Room
    */
@@ -2356,11 +2369,11 @@ export type ScheduleUpdate = {
   /**
    * Start Time
    */
-  start_time?: string | null
+  start_time?: string
   /**
    * Subject
    */
-  subject?: string | null
+  subject?: string
   /**
    * Teacher
    */
@@ -2368,7 +2381,7 @@ export type ScheduleUpdate = {
   /**
    * Weekday
    */
-  weekday?: string | null
+  weekday?: string
 }
 
 /**

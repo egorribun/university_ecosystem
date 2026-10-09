@@ -39,11 +39,10 @@ async def log_data_access(
     commit: bool = True,
 ) -> DataAccessLogDTO:
     created_at = datetime.now(UTC)
+    from app.services.audit_service import get_secure_audit_service
 
-    # Calculate signature
-    from app.utils.audit import calculate_log_signature
-
-    signature = calculate_log_signature(
+    log_entry = await get_secure_audit_service().create_log(
+        db,
         actor_user_id=actor_user_id,
         subject_user_id=subject_user_id,
         resource_type=resource_type,
@@ -53,24 +52,6 @@ async def log_data_access(
         ip_address=request.client.host if request.client else "unknown",  # MED-W19
         user_agent=request.headers.get("user-agent"),
         created_at=created_at,
-    )
-
-    repo = AuditRepository(db)
-    log_entry = await repo.create(
-        {
-            "actor_user_id": actor_user_id,
-            "subject_user_id": subject_user_id,
-            "resource_type": resource_type,
-            "resource_id": resource_id,
-            "action": action,
-            "context": context or {},
-            "ip_address": request.client.host
-            if request.client
-            else "unknown",  # MED-W19
-            "user_agent": request.headers.get("user-agent"),
-            "created_at": created_at,
-            "signature": signature,
-        }
     )
     if commit:
         await db.commit()
@@ -88,7 +69,7 @@ async def batch_log_data_access(
         return
 
     created_at = datetime.now(UTC)
-    from app.utils.audit import calculate_log_signature
+    from app.services.audit_service import get_secure_audit_service
 
     log_entries = []
     ip_address = request.client.host if request.client else "unknown"  # MED-W19
@@ -102,18 +83,6 @@ async def batch_log_data_access(
         action = entry.get("action")
         context = entry.get("context", {})
 
-        signature = calculate_log_signature(
-            actor_user_id=actor_user_id,
-            subject_user_id=subject_user_id,
-            resource_type=str(resource_type) if resource_type else "",
-            resource_id=str(resource_id) if resource_id else None,
-            action=str(action) if action else "",
-            context=context,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            created_at=created_at,
-        )
-
         log_entries.append(
             {
                 "actor_user_id": actor_user_id,
@@ -125,12 +94,10 @@ async def batch_log_data_access(
                 "ip_address": ip_address,
                 "user_agent": user_agent,
                 "created_at": created_at,
-                "signature": signature,
             }
         )
 
-    repo = AuditRepository(db)
-    await repo.batch_create(log_entries)
+    await get_secure_audit_service().create_logs(db, entries=log_entries)
     if commit:
         await db.commit()
 

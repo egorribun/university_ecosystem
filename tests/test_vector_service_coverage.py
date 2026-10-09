@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.core.config import settings
-from app.services.vector_service import VectorService
+from app.services.vector_service import SemanticSearchUnavailableError, VectorService
 
 
 @pytest.fixture
@@ -22,9 +22,8 @@ def vector_service(mock_db):
 @pytest.mark.asyncio
 async def test_get_embedding_disabled(vector_service):
     with patch.object(settings, "semantic_search_enabled", False):
-        embedding = await vector_service.get_embedding("test")
-        assert len(embedding) == settings.embedding_dimensions
-        assert all(x == 0.0 for x in embedding)
+        with pytest.raises(SemanticSearchUnavailableError):
+            await vector_service.get_embedding("test")
 
 
 @pytest.mark.asyncio
@@ -34,9 +33,8 @@ async def test_get_embedding_no_api_key(vector_service):
         patch.object(settings, "semantic_search_enabled", True),
         patch.object(settings, "embedding_api_key", None),
     ):
-        embedding = await vector_service.get_embedding("test")
-        assert len(embedding) == settings.embedding_dimensions
-        assert all(x == 0.0 for x in embedding)
+        with pytest.raises(SemanticSearchUnavailableError):
+            await vector_service.get_embedding("test")
 
 
 @pytest.mark.asyncio
@@ -60,18 +58,18 @@ async def test_get_embedding_success(vector_service):
 
 
 @pytest.mark.asyncio
-async def test_get_embedding_failure(vector_service):
+async def test_get_embedding_failure(vector_service, caplog):
     with (
         patch.object(settings, "semantic_search_enabled", True),
         patch.object(settings, "embedding_api_key", "fake-key"),
     ):
         vector_service._client.post = AsyncMock(
-            side_effect=ConnectionError("API Error")
+            side_effect=ConnectionError("provider-secret-marker")
         )
 
-        embedding = await vector_service.get_embedding("test")
-        assert len(embedding) == settings.embedding_dimensions
-        assert all(x == 0.0 for x in embedding)
+        with pytest.raises(SemanticSearchUnavailableError):
+            await vector_service.get_embedding("test")
+        assert "provider-secret-marker" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -203,16 +201,15 @@ async def test_vector_service_context_manager(mock_db):
     ],
 )
 async def test_get_embedding_various_exceptions(vector_service, exception_cls):
-    """Test that all specified exceptions are caught and return a zero vector."""
+    """Provider failures must surface as semantic-search unavailability."""
     with (
         patch.object(settings, "semantic_search_enabled", True),
         patch.object(settings, "embedding_api_key", "fake-key"),
     ):
         vector_service._client.post = AsyncMock(side_effect=exception_cls)
 
-        embedding = await vector_service.get_embedding("test")
-        assert len(embedding) == settings.embedding_dimensions
-        assert all(x == 0.0 for x in embedding)
+        with pytest.raises(SemanticSearchUnavailableError):
+            await vector_service.get_embedding("test")
 
 
 @pytest.mark.asyncio
@@ -282,11 +279,64 @@ async def test_unused_embedding_provider_never_resolves_dns(mock_db, enabled, ke
     ):
         async with VectorService(mock_db) as service:
             service._client.post = AsyncMock()
-            assert (
+            with pytest.raises(SemanticSearchUnavailableError):
                 await service.get_embedding("unused")
-                == [0.0] * settings.embedding_dimensions
-            )
             service._client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_embedding_rejects_zero_provider_vector(vector_service):
+    with (
+        patch.object(settings, "semantic_search_enabled", True),
+        patch.object(settings, "embedding_api_key", "fake-key"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
+    ):
+        response = MagicMock()
+        response.json.return_value = {"data": [{"embedding": [0.0, 0.0]}]}
+        response.raise_for_status = MagicMock()
+        vector_service._client.post = AsyncMock(return_value=response)
+
+        with pytest.raises(SemanticSearchUnavailableError):
+            await vector_service.get_embedding("test")
+
+
+@pytest.mark.asyncio
+async def test_get_embedding_rejects_wrong_dimension(vector_service):
+    with (
+        patch.object(settings, "semantic_search_enabled", True),
+        patch.object(settings, "embedding_api_key", "fake-key"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
+    ):
+        response = MagicMock()
+        response.json.return_value = {"data": [{"embedding": [0.1, 0.2]}]}
+        response.raise_for_status = MagicMock()
+        vector_service._client.post = AsyncMock(return_value=response)
+
+        with pytest.raises(SemanticSearchUnavailableError):
+            await vector_service.get_embedding("test")
+
+
+@pytest.mark.asyncio
+async def test_get_embedding_rejects_provider_integer_overflow(monkeypatch):
+    real_client = httpx.AsyncClient
+
+    def provider(request):
+        return httpx.Response(200, json={"data": [{"embedding": [10**400, 0.25]}]})
+
+    def client_factory(**kwargs):
+        return real_client(transport=httpx.MockTransport(provider), **kwargs)
+
+    monkeypatch.setattr(settings, "embedding_api_base", "https://93.184.216.34")
+    monkeypatch.setattr(settings, "embedding_api_key", "test-provider-key")
+    monkeypatch.setattr(settings, "embedding_dimensions", 2)
+    monkeypatch.setattr(settings, "semantic_search_enabled", True)
+    monkeypatch.setattr("app.services.vector_service.httpx.AsyncClient", client_factory)
+    async with VectorService(AsyncMock()) as service:
+        with pytest.raises(
+            SemanticSearchUnavailableError,
+            match="Semantic search is currently unavailable",
+        ):
+            await service.get_embedding("research seminar")
 
 
 @pytest.mark.asyncio
@@ -303,6 +353,7 @@ async def test_embedding_request_passes_finite_deadlines_to_http_transport(monke
 
     monkeypatch.setattr(settings, "embedding_api_base", "https://93.184.216.34")
     monkeypatch.setattr(settings, "embedding_api_key", "test-provider-key")
+    monkeypatch.setattr(settings, "embedding_dimensions", 2)
     monkeypatch.setattr(settings, "semantic_search_enabled", True)
     monkeypatch.setattr("app.services.vector_service.httpx.AsyncClient", client_factory)
     async with VectorService(AsyncMock()) as service:

@@ -277,6 +277,56 @@ function Test-CanonicalLiveServiceList {
     return $true
 }
 
+function Test-ExactLiveOwnerFields {
+    param(
+        [Parameter(Mandatory=$true)][object]$Owner,
+        [Parameter(Mandatory=$true)][string[]]$ExpectedFields
+    )
+    if ($Owner -isnot [System.Collections.IDictionary] -or
+        $Owner.Count -ne $ExpectedFields.Count) {
+        return $false
+    }
+    foreach ($name in $ExpectedFields) {
+        if (-not $Owner.Contains($name)) { return $false }
+    }
+    return $true
+}
+
+function Test-CanonicalLivePublishedPorts {
+    param(
+        [Parameter(Mandatory=$true)][object]$Value,
+        [switch]$IncludeMinio
+    )
+    if ($Value -isnot [System.Collections.IDictionary]) { return $false }
+    $expectedNames = [string[]]@(
+        "BACKEND", "FRONTEND", "POSTGRES", "GATEWAY", "WS_HUB",
+        "TEMPORAL_GRPC", "TEMPORAL_WEB", "IMGPROXY", "GRAFANA",
+        "PROMETHEUS", "ALLOY", "PYROSCOPE", "CADDY_HTTP", "CADDY_HTTPS",
+        "MAILPIT"
+    )
+    if ($IncludeMinio) {
+        $expectedNames = [string[]]@(
+            $expectedNames[0..($expectedNames.Count - 2)] + "MINIO" + $expectedNames[-1]
+        )
+    }
+    if ($Value.Count -ne $expectedNames.Count) { return $false }
+    $seenPorts = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($name in $expectedNames) {
+        if (-not $Value.Contains($name)) { return $false }
+        $rawPort = $Value[$name]
+        if ($rawPort -is [bool] -or
+            ($rawPort -isnot [int] -and $rawPort -isnot [long])) {
+            return $false
+        }
+        $port = [long]$rawPort
+        if ($port -lt 1024 -or $port -gt 65535 -or
+            -not $seenPorts.Add([int]$port)) {
+            return $false
+        }
+    }
+    return $true
+}
+
 function Resolve-OwnedLiveStandStateRoot {
     param([Parameter(Mandatory=$true)][string]$Path)
     $candidate = [System.IO.Path]::GetFullPath($Path)
@@ -340,7 +390,7 @@ function Resolve-OwnedLiveStandStateRoot {
     } catch {
         throw "Live stand ownership metadata cannot be validated."
     }
-    if ($owner.version -notin @(7, 9) -or
+    if ($owner.version -notin @(7, 11) -or
         [string]$owner.repository -ine $ProjectRoot -or
         [string]$owner.worktree -ine $candidate -or
         [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
@@ -350,6 +400,25 @@ function Resolve-OwnedLiveStandStateRoot {
         $key.Length -ne 32 -or
         [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
         throw "Live stand owner does not match this source checkout and run root."
+    }
+    $expectedOwnerFields = if ($owner.version -eq 7) {
+        @(
+            "version", "repository", "worktree", "project_name", "published_ports",
+            "daemon_fingerprint", "compose_resource_fingerprint",
+            "resume_compose_resource_fingerprint", "source_sha", "signature"
+        )
+    } else {
+        @(
+            "version", "repository", "worktree", "project_name", "published_ports",
+            "daemon_fingerprint", "compose_resource_fingerprint",
+            "resume_compose_resource_fingerprint",
+            "resume_compose_resource_schema_version", "stack", "service_roots",
+            "selected_services", "source_sha", "signature"
+        )
+    }
+    if (-not (Test-ExactLiveOwnerFields -Owner $owner -ExpectedFields $expectedOwnerFields) -or
+        -not (Test-CanonicalLivePublishedPorts -Value $owner.published_ports -IncludeMinio:($owner.version -eq 11))) {
+        throw "Live stand owner has an invalid schema or published port map."
     }
     if ($owner.version -eq 7) {
         if ($owner.ContainsKey("stack") -or $owner.ContainsKey("service_roots") -or
@@ -605,12 +674,20 @@ function Assert-PrepareOnlyLiveInputs {
         }
     }
 
+    $owner = $script:LiveStandOwner
+    if ($null -eq $owner) {
+        $owner = Get-VerifiedLiveAcceptanceOwner
+    }
+    if ($null -eq $owner -or $owner.version -notin @(7, 10, 11)) {
+        throw "PrepareOnly requires a validated live-stand owner."
+    }
     $portNames = @(
         "BACKEND", "FRONTEND", "POSTGRES", "GATEWAY", "WS_HUB",
         "TEMPORAL_GRPC", "TEMPORAL_WEB", "IMGPROXY", "GRAFANA",
-        "PROMETHEUS", "ALLOY", "PYROSCOPE", "CADDY_HTTP", "CADDY_HTTPS",
-        "MAILPIT"
+        "PROMETHEUS", "ALLOY", "PYROSCOPE", "CADDY_HTTP", "CADDY_HTTPS"
     )
+    if ($owner.version -in @(10, 11)) { $portNames += "MINIO" }
+    $portNames += "MAILPIT"
     $publishedPorts = @{}
     $seenPorts = @{}
     foreach ($portName in $portNames) {
@@ -630,6 +707,17 @@ function Assert-PrepareOnlyLiveInputs {
         }
         $publishedPorts[$portName] = $port
         $seenPorts[$port] = $true
+    }
+    $signedPorts = $owner.published_ports
+    if ($signedPorts -isnot [System.Collections.IDictionary] -or
+        $signedPorts.Count -ne $publishedPorts.Count) {
+        throw "PrepareOnly live-stand ports do not match the signed owner."
+    }
+    foreach ($portName in $portNames) {
+        if (-not $signedPorts.Contains($portName) -or
+            [long]$signedPorts[$portName] -ne [long]$publishedPorts[$portName]) {
+            throw "PrepareOnly live-stand ports do not match the signed owner."
+        }
     }
 
     $expectedBaseUrl = "http://localhost:$($publishedPorts['CADDY_HTTP'])"
@@ -683,7 +771,6 @@ if ($AllowExistingOwnedVolumes) {
 }
 
 Assert-CoreServiceAllowlist
-if ($PrepareOnly) { Assert-PrepareOnlyLiveInputs }
 
 function New-Secret {
     param([int]$Length = 32)
@@ -819,6 +906,50 @@ function Ensure-MetricsEnvironment {
     }
 }
 
+function Test-AuditLogSecretValue {
+    param([Parameter(Mandatory=$true)][AllowNull()][AllowEmptyString()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    $keys = @(
+        $Value.Split(',') |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($keys.Count -eq 0) { return $false }
+
+    # Match SecuritySettings._validate_audit_log_secret: every non-empty,
+    # trimmed rotation key must meet the length floor and avoid known
+    # placeholders. Compare retired repository values by their SHA-256
+    # fingerprints so this launcher never contains those keys in plaintext.
+    $placeholderParts = @(
+        "development-audit-secret-change-me", "change-me", "changeme",
+        "change_me", "placeholder", "example", "secret", "your-secret",
+        "change_me_generate_64_byte_audit_log_secret"
+    )
+    $retiredDigests = @(
+        ([BitConverter]::ToString([byte[]]@(0x1f, 0xe3, 0x61, 0x44, 0xb7, 0xde, 0xec, 0x8d, 0xec, 0xa2, 0x53, 0xc7, 0x4c, 0x32, 0xd2, 0x9e, 0x3f, 0x54, 0x9a, 0x8f, 0xe0, 0x39, 0xe0, 0x5e, 0x03, 0x35, 0x2c, 0x04, 0x81, 0x63, 0x3d, 0xd6))).Replace('-', '').ToLowerInvariant(),
+        ([BitConverter]::ToString([byte[]]@(0xb3, 0xb9, 0x94, 0x45, 0x85, 0x0e, 0x27, 0x4b, 0x1b, 0x9d, 0x6f, 0x67, 0xff, 0x65, 0x62, 0xe3, 0x8f, 0xf9, 0x14, 0x91, 0xc7, 0x18, 0x6b, 0xef, 0x42, 0x9d, 0xda, 0xde, 0xe2, 0x9d, 0x8b, 0x29))).Replace('-', '').ToLowerInvariant()
+    )
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($key in $keys) {
+            if ($key.Length -lt 32) { return $false }
+            $lowerKey = $key.ToLowerInvariant()
+            foreach ($placeholder in $placeholderParts) {
+                if ($lowerKey.IndexOf($placeholder, [StringComparison]::Ordinal) -ge 0) {
+                    return $false
+                }
+            }
+            $digest = [Convert]::ToHexString(
+                $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($lowerKey))
+            ).ToLowerInvariant()
+            if ($digest -cin $retiredDigests) { return $false }
+        }
+    } finally {
+        $sha256.Dispose()
+    }
+    return $true
+}
+
 function Ensure-ApplicationSecrets {
     # Remove development fallbacks that couple unrelated security domains to
     # SECRET_KEY. .env.docker remains canonical and .env is synchronized for
@@ -832,6 +963,7 @@ function Ensure-ApplicationSecrets {
         @{ Key = "CSRF_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "INTERNAL_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "IDEMPOTENCY_HMAC_SECRET"; Length = 48; Fernet = $false },
+        @{ Key = "AUDIT_LOG_SECRET"; Length = 64; Fernet = $false },
         @{ Key = "SPOTIFY_TOKEN_SECRET"; Length = 44; Fernet = $true },
         @{ Key = "SPOTIFY_OAUTH_STATE_SECRET"; Length = 48; Fernet = $false }
     )
@@ -843,6 +975,9 @@ function Ensure-ApplicationSecrets {
             $invalid = $invalid -or $value -notmatch '^[A-Za-z0-9_-]{43}=$'
         } else {
             $invalid = $invalid -or $value.Length -lt 32
+        }
+        if ($spec.Key -eq "AUDIT_LOG_SECRET") {
+            $invalid = $invalid -or -not (Test-AuditLogSecretValue -Value $value)
         }
 
         if ($invalid) {
@@ -1747,7 +1882,16 @@ function Get-VerifiedLiveAcceptanceOwner {
     } catch {
         throw "Live acceptance owner metadata cannot be validated."
     }
-    if ($owner.version -ne 8 -or
+    $expectedOwnerFields = @(
+        "version", "repository", "worktree", "project_name", "published_ports",
+        "daemon_fingerprint", "compose_resource_fingerprint",
+        "resume_compose_resource_fingerprint",
+        "resume_compose_resource_schema_version", "stack", "service_roots",
+        "selected_services", "signature"
+    )
+    if (-not (Test-ExactLiveOwnerFields -Owner $owner -ExpectedFields $expectedOwnerFields) -or
+        -not (Test-CanonicalLivePublishedPorts -Value $owner.published_ports -IncludeMinio) -or
+        $owner.version -ne 10 -or
         [string]$owner.worktree -ine $ProjectRoot -or
         [string]::IsNullOrWhiteSpace([string]$owner.repository) -or
         [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
@@ -1785,6 +1929,8 @@ function Get-VerifiedLiveAcceptanceOwner {
     $script:LiveStandOwner = $owner
     return $owner
 }
+
+if ($PrepareOnly) { Assert-PrepareOnlyLiveInputs }
 
 function Get-LiveAcceptanceVolumeProjection {
     param(

@@ -1,7 +1,8 @@
 name: Owned Live Acceptance
 
-# Pull requests run the auth and password-reset smoke set through the isolated
-# live stand. Scheduled and manually dispatched runs exercise the full suite.
+# Pull requests run the auth and password-reset smoke set on the owned Core
+# stack. Scheduled and manually dispatched runs exercise the full suite on
+# Core; manual runs also smoke a caller-selected frozen RC on the full stack.
 # GitHub activates schedule/workflow_dispatch only after this file reaches the
 # repository's default branch; non-default manual refs are guarded below.
 on:
@@ -9,18 +10,23 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   schedule:
     - cron: "0 3 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      frozen_rc_sha:
+        description: Full 40-character commit SHA for the frozen-RC full-stack smoke
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
   group: live-acceptance-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   live-acceptance:
-    name: Owned live acceptance (${{ github.event_name }})
+    name: Owned live Core acceptance (${{ github.event_name }})
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -37,6 +43,24 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify the checked-out event commit
+        id: verify-event-commit
+        env:
+          EXPECTED_EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_EVENT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The event commit SHA is unavailable or malformed."
+            exit 1
+          fi
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_EVENT_SHA" ]]; then
+            echo "::error::The checked-out commit does not match the event SHA."
+            exit 1
+          fi
+          echo "checked_out_sha=$actual_sha" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -71,15 +95,261 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
+      - name: Select unique owned Core state directory
+        run: |
+          state_root="$(python -c 'import tempfile; print(tempfile.gettempdir())')"
+          printf 'LIVE_STATE_DIR=%s/ue-live-acceptance/run-%s-%s-core\n' \
+            "$state_root" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
       - name: Start the owned live stand
         id: start-stand
         env:
-          STAND_REF: ${{ github.sha }}
-        run: uv run --frozen --no-sync python scripts/live_stand.py up --ref "$STAND_REF"
+          STAND_REF: ${{ steps.verify-event-commit.outputs.checked_out_sha }}
+        run: >-
+          uv run --frozen --no-sync python scripts/live_stand.py up
+          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF"
+          --stack core
 
       - name: Run live acceptance through the redacting runner
-        run: uv run --frozen --no-sync python scripts/live_stand.py e2e --mode "$LIVE_E2E_MODE"
+        id: core-e2e
+        run: >-
+          uv run --frozen --no-sync python scripts/live_stand.py e2e
+          --in-place --state-dir "$LIVE_STATE_DIR" --mode "$LIVE_E2E_MODE"
 
       - name: Stop owned containers and preserve stand data
+        id: stop-stand
         if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
-        run: uv run --frozen --no-sync python scripts/live_stand.py stop
+        run: >-
+          uv run --frozen --no-sync python scripts/live_stand.py stop
+          --in-place --state-dir "$LIVE_STATE_DIR"
+
+      - name: Write the metadata-only Core receipt
+        if: ${{ always() }}
+        env:
+          VERIFIED_SHA: ${{ steps.verify-event-commit.outputs.checked_out_sha }}
+          LIVE_MODE: ${{ env.LIVE_E2E_MODE }}
+          CHECKOUT_OUTCOME: ${{ steps.verify-event-commit.outcome }}
+          STAND_START_OUTCOME: ${{ steps.start-stand.outcome }}
+          E2E_OUTCOME: ${{ steps.core-e2e.outcome }}
+          STAND_STOP_OUTCOME: ${{ steps.stop-stand.outcome }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+
+          source_sha = os.environ.get("VERIFIED_SHA", "")
+          if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+              raise SystemExit("verified Core source SHA is unavailable")
+
+          mode = os.environ.get("LIVE_MODE", "")
+          if mode not in {"smoke", "full"}:
+              raise SystemExit("Core live acceptance mode is unavailable")
+
+          allowed_outcomes = {"success", "failure", "cancelled", "skipped"}
+          outcomes = {
+              "checkout_verification": os.environ.get("CHECKOUT_OUTCOME", ""),
+              "stand_start": os.environ.get("STAND_START_OUTCOME", ""),
+              "e2e": os.environ.get("E2E_OUTCOME", ""),
+              "stand_stop": os.environ.get("STAND_STOP_OUTCOME", ""),
+          }
+          if any(value not in allowed_outcomes for value in outcomes.values()):
+              raise SystemExit("Core live acceptance step outcome is unavailable")
+
+          receipt = {
+              "schema": "ue-live-acceptance-receipt-v1",
+              "kind": "owned-core-live-acceptance",
+              "source_sha": source_sha,
+              "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "stack": "core",
+              "mode": mode,
+              "outcomes": outcomes,
+          }
+          with open("core-live-acceptance-receipt.json", "x", encoding="utf-8") as output:
+              json.dump(receipt, output, sort_keys=True, separators=(",", ":"))
+              output.write("\n")
+          PY
+
+      - name: Upload the metadata-only Core receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-live-receipt-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: core-live-acceptance-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+  validate-frozen-rc:
+    name: Validate frozen-RC full-smoke request
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require main and an immutable commit SHA
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+          FROZEN_RC_SHA: ${{ inputs.frozen_rc_sha }}
+        run: |
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "::error::Frozen-RC smoke must be dispatched from the protected main ref."
+            exit 1
+          fi
+          if [[ ! "$FROZEN_RC_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Frozen-RC smoke requires a full lowercase 40-character commit SHA."
+            exit 1
+          fi
+
+  frozen-rc-full-smoke:
+    name: Frozen-RC full-stack smoke
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate-frozen-rc.result == 'success' }}
+    needs: validate-frozen-rc
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the immutable frozen RC without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.frozen_rc_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the checked-out frozen-RC commit
+        id: verify-frozen-rc
+        env:
+          EXPECTED_FROZEN_RC_SHA: ${{ inputs.frozen_rc_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_FROZEN_RC_SHA" ]]; then
+            echo "::error::Checked-out frozen-RC commit does not match the requested SHA."
+            exit 1
+          fi
+          echo "checked_out_sha=$actual_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Frozen-RC source"
+            echo "- Commit: $actual_sha"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python runtime dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate live acceptance contracts before starting Docker
+        working-directory: frontend
+        run: npm run test:e2e:live:contract
+
+      - name: Install locked Chromium and Linux browser dependencies
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Select unique owned frozen-RC state directory
+        run: |
+          state_root="$(python -c 'import tempfile; print(tempfile.gettempdir())')"
+          printf 'LIVE_STATE_DIR=%s/ue-live-acceptance/run-%s-%s-frozen-rc-full\n' \
+            "$state_root" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - name: Start the owned frozen-RC full stand
+        id: start-frozen-rc
+        env:
+          FROZEN_RC_VERIFIED_SHA: ${{ steps.verify-frozen-rc.outputs.checked_out_sha }}
+        run: >-
+          uv run --frozen --no-sync python scripts/live_stand.py up
+          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$FROZEN_RC_VERIFIED_SHA"
+          --stack full
+
+      - name: Run full frozen-RC acceptance through the redacting runner
+        id: frozen-rc-e2e
+        run: >-
+          uv run --frozen --no-sync python scripts/live_stand.py e2e
+          --in-place --state-dir "$LIVE_STATE_DIR" --mode full
+
+      - name: Stop frozen-RC containers and preserve stand data
+        id: stop-frozen-rc
+        if: ${{ always() && steps.start-frozen-rc.outcome != 'skipped' }}
+        run: >-
+          uv run --frozen --no-sync python scripts/live_stand.py stop
+          --in-place --state-dir "$LIVE_STATE_DIR"
+
+      - name: Write the metadata-only frozen-RC receipt
+        if: ${{ always() }}
+        env:
+          VERIFIED_SHA: ${{ steps.verify-frozen-rc.outputs.checked_out_sha }}
+          E2E_OUTCOME: ${{ steps.frozen-rc-e2e.outcome }}
+          STAND_START_OUTCOME: ${{ steps.start-frozen-rc.outcome }}
+          STAND_STOP_OUTCOME: ${{ steps.stop-frozen-rc.outcome }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+
+          source_sha = os.environ.get("VERIFIED_SHA", "")
+          if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+              raise SystemExit("verified frozen-RC SHA is unavailable")
+
+          allowed_outcomes = {"success", "failure", "cancelled", "skipped"}
+          outcomes = {
+              "e2e": os.environ.get("E2E_OUTCOME", ""),
+              "stand_start": os.environ.get("STAND_START_OUTCOME", ""),
+              "stand_stop": os.environ.get("STAND_STOP_OUTCOME", ""),
+          }
+          if any(value not in allowed_outcomes for value in outcomes.values()):
+              raise SystemExit("frozen-RC step outcome is unavailable")
+
+          receipt = {
+              "schema": "ue-live-acceptance-receipt-v1",
+              "kind": "frozen-rc-full-smoke",
+              "source_sha": source_sha,
+              "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "stack": "full",
+              "outcomes": outcomes,
+          }
+          with open("frozen-rc-live-receipt.json", "x", encoding="utf-8") as output:
+              json.dump(receipt, output, sort_keys=True, separators=(",", ":"))
+              output.write("\n")
+          PY
+
+      - name: Upload the metadata-only frozen-RC receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frozen-rc-live-receipt-${{ inputs.frozen_rc_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: frozen-rc-live-receipt.json
+          if-no-files-found: error
+          retention-days: 90

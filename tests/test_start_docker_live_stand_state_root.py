@@ -9,6 +9,7 @@ import hmac
 import importlib.util
 import json
 import os
+import secrets
 import shutil
 import stat
 import subprocess
@@ -36,6 +37,14 @@ PORT_NAMES = (
     "CADDY_HTTP",
     "CADDY_HTTPS",
     "MAILPIT",
+)
+CURRENT_PORT_NAMES = (*PORT_NAMES[:-1], "MINIO", "MAILPIT")
+LIVE_CORE_ROOTS = (
+    "caddy",
+    "mailpit",
+    "notifications-worker",
+    "outbox-worker",
+    "spicedb",
 )
 
 
@@ -76,20 +85,32 @@ def _vapid_pair() -> tuple[str, str]:
     )
 
 
-def _owner_marker(project: Path, state_root: Path) -> dict[str, object]:
+def _owner_marker(
+    project: Path, state_root: Path, *, version: int = 7
+) -> dict[str, object]:
+    port_names = CURRENT_PORT_NAMES if version == 11 else PORT_NAMES
     payload: dict[str, object] = {
-        "version": 7,
+        "version": version,
         "repository": str(project.resolve()),
         "worktree": str(state_root.resolve()),
         "project_name": "ue-live-36854541120abcd1",
         "published_ports": {
-            name: 32000 + index for index, name in enumerate(PORT_NAMES)
+            name: 32000 + index for index, name in enumerate(port_names)
         },
         "daemon_fingerprint": "d" * 64,
         "compose_resource_fingerprint": None,
         "resume_compose_resource_fingerprint": None,
         "source_sha": "a" * 40,
     }
+    if version == 11:
+        payload.update(
+            {
+                "resume_compose_resource_schema_version": None,
+                "stack": "core",
+                "service_roots": list(LIVE_CORE_ROOTS),
+                "selected_services": [],
+            }
+        )
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     key = b"owner-key-fixture-material-32bytes!"[:32]
     signature = hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -145,7 +166,9 @@ def _secure_state_tree(state_root: Path) -> None:
         path.chmod(0o700 if path.is_dir() else 0o600)
 
 
-def _live_environment(state_root: Path, public: str, private: str) -> dict[str, str]:
+def _live_environment(
+    state_root: Path, public: str, private: str, *, current_schema: bool = False
+) -> dict[str, str]:
     env = os.environ.copy()
     temp_root = state_root.parents[1]
     env["TEMP"] = str(temp_root)
@@ -155,7 +178,8 @@ def _live_environment(state_root: Path, public: str, private: str) -> dict[str, 
     # -NoProfile still uses the .NET startup cache on Unix.
     env["XDG_CACHE_HOME"] = str(temp_root / ".powershell-cache")
     env["COMPOSE_PROJECT_NAME"] = "ue-live-36854541120abcd1"
-    ports = {name: 32000 + index for index, name in enumerate(PORT_NAMES)}
+    port_names = CURRENT_PORT_NAMES if current_schema else PORT_NAMES
+    ports = {name: 32000 + index for index, name in enumerate(port_names)}
     env["LIVE_BASE_URL"] = f"http://localhost:{ports['CADDY_HTTP']}"
     env["LIVE_VAPID_PUBLIC_KEY"] = public
     env["LIVE_VAPID_PRIVATE_KEY"] = private
@@ -197,6 +221,30 @@ def _run_prepare(
         check=False,
         timeout=40,
     )
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key] = value
+    return values
+
+
+def _write_env_value(path: Path, key: str, value: str) -> None:
+    prefix = f"{key}="
+    lines = path.read_text(encoding="utf-8").splitlines()
+    replaced = False
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = f"{prefix}{value}"
+            replaced = True
+    if not replaced:
+        lines.append(f"{prefix}{value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _windows_acl_summary(path: Path) -> dict[str, object]:
@@ -357,6 +405,178 @@ def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
             secrets_root / "temporal_api_key",
         ):
             _assert_windows_private_acl(path)
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
+def test_launcher_generates_and_preserves_run_local_audit_signing_key(
+    tmp_path: Path,
+) -> None:
+    project, state_root = _fixture_project(tmp_path)
+    state_root.mkdir(parents=True)
+    secrets_root = state_root / ".secrets"
+    secrets_root.mkdir()
+    public, private = _vapid_pair()
+    (secrets_root / "live-stand-owner.key").write_bytes(
+        b"owner-key-fixture-material-32bytes!"[:32]
+    )
+    (secrets_root / "live-vapid.json").write_text(
+        json.dumps({"public": public, "private": private}), encoding="utf-8"
+    )
+    (secrets_root / "live-stand.json").write_text(
+        json.dumps(_owner_marker(project, state_root, version=11)), encoding="utf-8"
+    )
+    (state_root / "docker-compose.live-state.yml").write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    _secure_state_tree(state_root)
+    env = _live_environment(state_root, public, private, current_schema=True)
+
+    first_result = _run_prepare(project, state_root, env)
+
+    assert first_result.returncode == 0, "fresh PrepareOnly setup failed"
+    docker_env_path = state_root / ".env.docker"
+    compose_env_path = state_root / ".env"
+    worker_env_path = state_root / ".env.docker.workers"
+    generated_docker = _read_env_file(docker_env_path)
+    generated_compose = _read_env_file(compose_env_path)
+    generated_workers = _read_env_file(worker_env_path)
+    generated_key = generated_docker.get("AUDIT_LOG_SECRET", "")
+    generated_is_independent = not hmac.compare_digest(
+        generated_key, generated_docker.get("SECRET_KEY", "")
+    )
+    generated_was_not_printed = generated_key not in (
+        first_result.stdout + first_result.stderr
+    )
+    assert len(generated_key) == 64
+    assert generated_key.isascii() and generated_key.isalnum()
+    assert generated_is_independent
+    assert generated_compose.get("AUDIT_LOG_SECRET") == generated_key
+    assert generated_workers.get("AUDIT_LOG_SECRET") == generated_key
+    assert generated_was_not_printed
+    assert not (project / ".env").exists()
+    assert not (project / ".env.docker").exists()
+
+    preserved_key = ",".join((secrets.token_hex(32), secrets.token_hex(32)))
+    _write_env_value(docker_env_path, "AUDIT_LOG_SECRET", preserved_key)
+
+    second_result = _run_prepare(project, state_root, env)
+
+    preserved_docker = _read_env_file(docker_env_path)
+    preserved_compose = _read_env_file(compose_env_path)
+    preserved_workers = _read_env_file(worker_env_path)
+    preserved_was_not_printed = preserved_key not in (
+        second_result.stdout + second_result.stderr
+    )
+    assert second_result.returncode == 0, "preserved-key PrepareOnly setup failed"
+    assert hmac.compare_digest(
+        preserved_docker.get("AUDIT_LOG_SECRET", ""), preserved_key
+    )
+    assert hmac.compare_digest(
+        preserved_compose.get("AUDIT_LOG_SECRET", ""), preserved_key
+    )
+    assert hmac.compare_digest(
+        preserved_workers.get("AUDIT_LOG_SECRET", ""), preserved_key
+    )
+    assert preserved_was_not_printed
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
+@pytest.mark.parametrize("invalid_kind", ["short_rotation_entry", "placeholder"])
+def test_prepare_only_replaces_invalid_audit_rotation_entries_without_printing(
+    tmp_path: Path, invalid_kind: str
+) -> None:
+    project, state_root = _fixture_project(tmp_path)
+    state_root.mkdir(parents=True)
+    secrets_root = state_root / ".secrets"
+    secrets_root.mkdir()
+    public, private = _vapid_pair()
+    (secrets_root / "live-stand-owner.key").write_bytes(
+        b"owner-key-fixture-material-32bytes!"[:32]
+    )
+    (secrets_root / "live-vapid.json").write_text(
+        json.dumps({"public": public, "private": private}), encoding="utf-8"
+    )
+    (secrets_root / "live-stand.json").write_text(
+        json.dumps(_owner_marker(project, state_root, version=11)), encoding="utf-8"
+    )
+    (state_root / "docker-compose.live-state.yml").write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    _secure_state_tree(state_root)
+    env = _live_environment(state_root, public, private, current_schema=True)
+    first_result = _run_prepare(project, state_root, env)
+    assert first_result.returncode == 0, "initial PrepareOnly setup failed"
+
+    if invalid_kind == "short_rotation_entry":
+        invalid_value = f"short-a-{'a' * 22},short-b-{'b' * 22}"
+        assert len(invalid_value) >= 32
+        assert all(len(part) < 32 for part in invalid_value.split(","))
+    else:
+        invalid_value = f"example-{secrets.token_hex(32)}"
+    docker_env_path = state_root / ".env.docker"
+    _write_env_value(docker_env_path, "AUDIT_LOG_SECRET", invalid_value)
+
+    result = _run_prepare(project, state_root, env)
+
+    generated = _read_env_file(docker_env_path).get("AUDIT_LOG_SECRET", "")
+    generated_was_not_printed = generated not in (result.stdout + result.stderr)
+    assert result.returncode == 0, "invalid audit-key PrepareOnly setup failed"
+    assert len(generated) == 64 and generated.isascii() and generated.isalnum()
+    assert generated != invalid_value
+    assert "example" not in generated.lower()
+    assert generated_was_not_printed
+    assert invalid_value not in (result.stdout + result.stderr)
+    assert _read_env_file(state_root / ".env").get("AUDIT_LOG_SECRET") == generated
+    assert (
+        _read_env_file(state_root / ".env.docker.workers").get("AUDIT_LOG_SECRET")
+        == generated
+    )
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
+@pytest.mark.parametrize("port_case", ["missing", "mismatched"])
+def test_prepare_only_rejects_unsigned_minio_port_before_environment_writes(
+    tmp_path: Path, port_case: str
+) -> None:
+    project, state_root = _fixture_project(tmp_path)
+    state_root.mkdir(parents=True)
+    secrets_root = state_root / ".secrets"
+    secrets_root.mkdir()
+    public, private = _vapid_pair()
+    (secrets_root / "live-stand-owner.key").write_bytes(
+        b"owner-key-fixture-material-32bytes!"[:32]
+    )
+    (secrets_root / "live-vapid.json").write_text(
+        json.dumps({"public": public, "private": private}), encoding="utf-8"
+    )
+    marker_path = secrets_root / "live-stand.json"
+    marker_path.write_text(
+        json.dumps(_owner_marker(project, state_root, version=11)), encoding="utf-8"
+    )
+    marker_before = marker_path.read_bytes()
+    (state_root / "docker-compose.live-state.yml").write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    _secure_state_tree(state_root)
+    env = _live_environment(state_root, public, private, current_schema=True)
+    if port_case == "missing":
+        env.pop("LIVE_HOST_PORT_MINIO")
+    else:
+        env["LIVE_HOST_PORT_MINIO"] = "32100"
+
+    result = _run_prepare(project, state_root, env)
+
+    assert result.returncode != 0
+    expected_error = (
+        "PrepareOnly requires a complete, unique live-stand port map."
+        if port_case == "missing"
+        else "PrepareOnly live-stand ports do not match the signed owner."
+    )
+    assert expected_error in result.stderr
+    assert marker_path.read_bytes() == marker_before
+    assert not (state_root / ".env").exists()
+    assert not (state_root / ".env.docker").exists()
+    assert not (state_root / ".env.docker.workers").exists()
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")

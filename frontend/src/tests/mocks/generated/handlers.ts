@@ -4192,6 +4192,16 @@ export function getListAuditLogsAdminAuditGet200Response() {
         action: faker.lorem.words(),
         actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        authenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         context: faker.helpers.arrayElement([{}, null]),
         created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
@@ -4199,11 +4209,28 @@ export function getListAuditLogsAdminAuditGet200Response() {
         is_valid: faker.datatype.boolean(),
         resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
         resource_type: faker.lorem.words(),
+        signature_scheme: faker.helpers.arrayElement([
+          "canonical_v2",
+          "legacy_json_array_v1",
+          "legacy_pipe_v1",
+          "invalid",
+          "unsigned",
+        ]),
         subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         subject_user_id: faker.helpers.arrayElement([
           faker.string.uuid(),
           null,
         ]),
+        unauthenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
       }));
     })(),
@@ -4325,6 +4352,16 @@ export function getListAuditLogsApiV1AdminAuditGet200Response() {
         action: faker.lorem.words(),
         actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        authenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         context: faker.helpers.arrayElement([{}, null]),
         created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
@@ -4332,11 +4369,28 @@ export function getListAuditLogsApiV1AdminAuditGet200Response() {
         is_valid: faker.datatype.boolean(),
         resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
         resource_type: faker.lorem.words(),
+        signature_scheme: faker.helpers.arrayElement([
+          "canonical_v2",
+          "legacy_json_array_v1",
+          "legacy_pipe_v1",
+          "invalid",
+          "unsigned",
+        ]),
         subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         subject_user_id: faker.helpers.arrayElement([
           faker.string.uuid(),
           null,
         ]),
+        unauthenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
       }));
     })(),

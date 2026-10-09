@@ -1,10 +1,9 @@
 name: TruffleHog Secrets Scan
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -14,8 +13,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  verify-default-branch-dispatch:
+    name: Verify default branch for manual TruffleHog run
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require protected default branch
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "::error::Manual TruffleHog scans must run from the protected main ref."
+            exit 1
+          fi
+
   trufflehog:
     name: TruffleHog Scan
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || needs.verify-default-branch-dispatch.result == 'success') }}
+    needs: verify-default-branch-dispatch
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

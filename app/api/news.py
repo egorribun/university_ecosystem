@@ -12,6 +12,7 @@ from fastapi import (
     Depends,
     File,
     Header,
+    HTTPException,
     Query,
     Request,
     Response,
@@ -51,7 +52,11 @@ from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
-from app.services.vector_service import VectorService
+from app.services.vector_service import (
+    SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 
 logger = get_logger(__name__)
 
@@ -464,21 +469,31 @@ async def semantic_search(
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
 
+    try:
+        embedding = await vector_service.get_embedding(query)
+    except SemanticSearchUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+        ) from None
+
     # Note: We don't cache semantic search results easily due to query variety,
     # but we can use ETag based on the content version.
     cache = get_cache()
     version = await _get_news_list_version(cache)
-    etag = format_etag(f"semantic:{version}:{query}:{limit}:{min_score}")
-    if etag_matches(etag, if_none_match):
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    etag_value = f"semantic:{version}:{query}:{limit}:{min_score}:{normalized_locale}"
+    if etag_matches(etag_value, if_none_match):
+        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+        not_modified.headers["ETag"] = format_etag(etag_value)
+        _set_language_headers(not_modified, normalized_locale)
+        return not_modified
 
-    embedding = await vector_service.get_embedding(query)
     results = await vector_service.search_similar(
         models.News, embedding, limit=limit, min_score=min_score
     )
 
     items = [service.serialize_news(item, locale) for item in results]
-    response.headers["ETag"] = etag
+    response.headers["ETag"] = format_etag(etag_value)
     _set_language_headers(response, normalized_locale)
     return items
 

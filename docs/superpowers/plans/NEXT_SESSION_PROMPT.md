@@ -2,6 +2,12 @@
 
 Продолжи автономное исполнение MVP по единому мастер-плану до обычного merge и выпуска. Ниже — моё поручение для новой сессии: разрешаю необходимые изменения, commit/push на `egorribun`, работу в существующем PR и публикацию ровно шести образов готовым main-only producer. Не делай admin bypass или force-push. Branch protection можно изменить только в явно разрешённой границе 14 contexts после готового reviewed CI diff и проверок; остальные правила сохраняются.
 
+Последующее явное разрешение владельца от 2026-10-09 дополняет эту границу
+ровно одним context: `Security Audit / Semgrep SAST`. Удалить его только после
+reviewed scanner de-dup diff и проверок; CodeQL остаётся blocking, Semgrep —
+в pre-commit. Во всех ниже приведённых ссылках на исходные14 учитывать также
+это единственное дополнение (91 →76 contexts), сохраняя остальные правила.
+
 ## Цель и источники истины
 
 Ты — root-оркестратор для репозитория `C:\Users\egorribun\Documents\university_ecosystem`. Работай только в одном checkout на `egorribun`, в текущем PR #1306. Не создавай новые ветки и worktree. Root владеет всеми Git-операциями: stage, hooks, commit, push, PR и обычный merge; root также единственный владелец правок canonical `MVP_MASTER_PLAN.md`, `STATUS.md`, `AGENTS.md`, ADR-047 и readiness audit. Разрешённое число итоговых GHCR images — ровно шесть, через уже существующий main-only producer; не переписывай его ради упрощения проверки.

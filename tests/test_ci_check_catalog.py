@@ -116,33 +116,10 @@ def test_bare_needs_context_fails_closed() -> None:
 def test_source_job_needs_drift_is_rejected(tmp_path: Path) -> None:
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
-
     ci_path = workflow_dir / "ci.yml"
-    original = ci_path.read_text(encoding="utf-8")
-    old = (
-        "  stryker-shards:\n"
-        "    name: Frontend mutation shard ${{ matrix.shard-index }}/64"
-    )
-    assert original.count(old) == 1
-    source = original.replace(
-        "      - pre-commit-security-and-types\n"
-        "    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result",
-        "      - pre-commit-security-and-types\n"
-        "      - ci-diagnostic\n"
-        "    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result",
-        1,
-    )
-    assert source != original
-    original_yaml = yaml.safe_load(original)
-    changed_yaml = yaml.safe_load(source)
-    original_needs = original_yaml["jobs"]["stryker-shards"]["needs"]
-    assert changed_yaml["jobs"]["stryker-shards"]["needs"] == [
-        *original_needs,
-        "ci-diagnostic",
-    ]
-    changed_yaml["jobs"]["stryker-shards"]["needs"] = original_needs
-    assert changed_yaml == original_yaml
-    ci_path.write_text(source, encoding="utf-8")
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source["jobs"]["go-fuzz"]["needs"] = ["pre-commit-check", "ci-diagnostic"]
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
 
     errors = _validate_changed_ci(tmp_path, value)
     assert any("needs differs from workflow" in error for error in errors), errors
@@ -151,9 +128,9 @@ def test_source_job_needs_drift_is_rejected(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("new_needs", "expected_error"),
     [
-        (["stryker-preflight", "coverage-policy-gate", "no-such-job"], "unknown job"),
-        (["stryker-preflight", "stryker-preflight"], "duplicate dependency"),
-        (["stryker-preflight", "stryker-shards"], "self-dependency"),
+        (["pre-commit-check", "no-such-job"], "unknown job"),
+        (["pre-commit-check", "pre-commit-check"], "duplicate dependency"),
+        (["pre-commit-check", "go-fuzz"], "self-dependency"),
     ],
 )
 def test_invalid_source_needs_edges_fail_closed(
@@ -163,12 +140,12 @@ def test_invalid_source_needs_edges_fail_closed(
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
     source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
-    source["jobs"]["stryker-shards"]["needs"] = new_needs
+    source["jobs"]["go-fuzz"]["needs"] = new_needs
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
         item for item in value["workflows"] if item["path"].endswith("ci.yml")
     )
-    ci_catalog["jobs"]["stryker-shards"]["needs"] = new_needs
+    ci_catalog["jobs"]["go-fuzz"]["needs"] = new_needs
 
     errors = _validate_changed_ci(tmp_path, value)
     assert any(expected_error in error for error in errors), errors
@@ -184,6 +161,7 @@ def test_invalid_source_needs_edges_fail_closed(
         ("(needs).no-such-job.result", "undeclared needs reference"),
         ("(needs)['no-such-job'].result", "undeclared needs reference"),
         ("NEEDS.no-such-job.result", "undeclared needs reference"),
+        ("needs /* comment */ . no-such-job.result", "dynamic needs reference"),
     ],
 )
 def test_undeclared_or_dynamic_needs_expression_fails_closed(
@@ -193,14 +171,13 @@ def test_undeclared_or_dynamic_needs_expression_fails_closed(
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
     source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
-    job = source["jobs"]["stryker-shards"]
-    assert job["if"].endswith(" }}")
-    job["if"] = job["if"][:-3] + f" && {reference} == 'success'" + " }}"
+    job = source["jobs"]["go-fuzz"]
+    job["if"] = f"${{{{ {reference} == 'success' }}}}"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
         item for item in value["workflows"] if item["path"].endswith("ci.yml")
     )
-    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+    ci_catalog["jobs"]["go-fuzz"]["guard"] = job["if"]
 
     errors = _validate_changed_ci(tmp_path, value)
     assert any(expected_error in error for error in errors), errors
@@ -214,18 +191,15 @@ def test_quoted_expression_delimiter_does_not_hide_needs_reference(
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
     source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
-    job = source["jobs"]["stryker-shards"]
-    assert job["if"].endswith(" }}")
+    job = source["jobs"]["go-fuzz"]
     job["if"] = (
-        job["if"][:-3]
-        + f" && contains('{literal}', 'x') && needs.no-such-job.result == 'success'"
-        + " }}"
+        f"${{{{ contains('{literal}', 'x') && needs.no-such-job.result == 'success' }}}}"
     )
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
         item for item in value["workflows"] if item["path"].endswith("ci.yml")
     )
-    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+    ci_catalog["jobs"]["go-fuzz"]["guard"] = job["if"]
 
     errors = _validate_changed_ci(tmp_path, value)
     assert any("undeclared needs reference" in error for error in errors), errors
@@ -236,7 +210,7 @@ def test_nested_needs_key_expression_is_validated(tmp_path: Path) -> None:
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
     source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
-    source["jobs"]["stryker-shards"]["steps"][0]["with"]["needs"] = (
+    source["jobs"]["go-fuzz"]["steps"][0]["with"]["needs"] = (
         "${{ needs.no-such-job.result }}"
     )
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
@@ -250,13 +224,12 @@ def test_unterminated_actions_expression_fails_closed(tmp_path: Path) -> None:
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
     source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
-    job = source["jobs"]["stryker-shards"]
-    job["if"] = "${{ github.event_name == 'pull_request'"
+    source["jobs"]["go-fuzz"]["if"] = "${{ github.event_name == 'pull_request'"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
         item for item in value["workflows"] if item["path"].endswith("ci.yml")
     )
-    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+    ci_catalog["jobs"]["go-fuzz"]["guard"] = source["jobs"]["go-fuzz"]["if"]
 
     errors = _validate_changed_ci(tmp_path, value)
     assert any("unterminated Actions expression" in error for error in errors), errors
@@ -269,14 +242,12 @@ def test_whitespace_around_needs_dot_cannot_bypass_source_validation(
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
     source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
-    job = source["jobs"]["stryker-shards"]
-    assert job["if"].endswith(" }}")
-    job["if"] = job["if"][:-3] + " && needs . no-such-job.result == 'success' }}"
+    source["jobs"]["go-fuzz"]["if"] = "${{ needs . no-such-job.result == 'success' }}"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
         item for item in value["workflows"] if item["path"].endswith("ci.yml")
     )
-    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+    ci_catalog["jobs"]["go-fuzz"]["guard"] = source["jobs"]["go-fuzz"]["if"]
 
     errors = _validate_changed_ci(tmp_path, value)
     assert any("undeclared needs reference" in error for error in errors), errors
@@ -334,7 +305,7 @@ def test_matrix_governance_is_source_bound_and_fail_closed() -> None:
     assert isinstance(workflows, list)
     ci = next(item for item in workflows if item["path"].endswith("ci.yml"))
     ci_jobs = ci["jobs"]
-    bounded = ci_jobs["stryker-shards"]["matrix_governance"]
+    bounded = ci_jobs["go-tests"]["matrix_governance"]
     bounded["max_parallel"] = 7
     unbounded = next(item for item in workflows if item["path"].endswith("codeql.yml"))[
         "jobs"
@@ -357,7 +328,7 @@ def test_matrix_governance_is_required_only_for_matrix_jobs() -> None:
     ci["jobs"]["ci-diagnostic"]["matrix_governance"] = {
         "max_parallel": 1,
     }
-    ci["jobs"]["e2e-tests"].pop("matrix_governance")
+    ci["jobs"]["go-tests"].pop("matrix_governance")
 
     errors = _errors(value)
     assert any(
@@ -566,7 +537,7 @@ def test_catalog_declares_protected_reusable_and_matrix_expansions() -> None:
     expected = {
         "backend-tests-units",
         "frontend-tests-protected",
-        "e2e-tests-chromium",
+        "nightly-browser-matrix",
         "go-tests-protected",
         "security-audit-protected",
         "codeql-languages",
@@ -575,8 +546,13 @@ def test_catalog_declares_protected_reusable_and_matrix_expansions() -> None:
     }
     assert set(by_id) == expected
     for entry in expansions:
-        assert entry["profile"] == "required-pr-main", entry["id"]
-        assert entry["classification"] == "required", entry["id"]
+        expected_profile = (
+            "nightly" if entry["id"] == "nightly-browser-matrix" else "required-pr-main"
+        )
+        assert entry["profile"] == expected_profile, entry["id"]
+        assert entry["classification"] == (
+            "nightly" if expected_profile == "nightly" else "required"
+        ), entry["id"]
         assert entry["owner"] == "@egorribun", entry["id"]
         assert entry["runbook"] == "docs/testing/ci-check-catalog-runbook.md", entry[
             "id"
@@ -592,14 +568,26 @@ def test_catalog_declares_protected_reusable_and_matrix_expansions() -> None:
     assert by_id["frontend-tests-protected"]["reusable_workflow_path"].endswith(
         "reusable-frontend-tests.yml"
     )
-    assert by_id["e2e-tests-chromium"]["reusable_workflow_path"].endswith(
+    assert not any(
+        "Lighthouse Audit" in context
+        for context in by_id["frontend-tests-protected"]["declared_contexts"]
+    )
+    assert by_id["nightly-browser-matrix"]["caller_workflow_path"].endswith(
+        "nightly-full-gate.yml"
+    )
+    assert by_id["nightly-browser-matrix"]["reusable_workflow_path"].endswith(
         "reusable-e2e-tests.yml"
     )
     assert by_id["go-tests-protected"]["reusable_workflow_path"].endswith(
         "reusable-go-tests.yml"
     )
-    assert by_id["security-audit-protected"]["reusable_workflow_path"].endswith(
+    security_audit = by_id["security-audit-protected"]
+    assert security_audit["reusable_workflow_path"].endswith(
         "reusable-security-audit.yml"
+    )
+    assert "semgrep" not in security_audit["reusable_job_ids"]
+    assert not any(
+        "Semgrep SAST" in context for context in security_audit["declared_contexts"]
     )
     assert len(by_id["codeql-languages"]["declared_contexts"]) == 5
     assert len(by_id["rust-fuzz-command"]["declared_contexts"]) == 1

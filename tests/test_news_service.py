@@ -8,6 +8,7 @@ import app.models as models
 from app.schemas import schemas
 from app.schemas.dtos.news import NewsDTO, NewsListingDTO
 from app.services.news_service import NewsService
+from app.services.vector_service import SemanticSearchUnavailableError
 
 
 @pytest.fixture
@@ -76,6 +77,21 @@ async def test_list_news(news_service, mock_uow, mock_repo, mock_vector_service)
     kwargs = mock_repo.list_news.call_args.kwargs
     assert kwargs["search_query"] == search_query
     assert kwargs["query_embedding"] == [0.1, 0.2]
+
+
+@pytest.mark.asyncio
+async def test_list_news_keeps_text_search_when_semantic_search_is_unavailable(
+    news_service, mock_repo, mock_vector_service
+):
+    mock_vector_service.get_embedding.side_effect = SemanticSearchUnavailableError(
+        "provider detail must not escape the text-search path"
+    )
+
+    await news_service.list_news(search="campus policy")
+
+    kwargs = mock_repo.list_news.await_args.kwargs
+    assert kwargs["search_query"] == "campus policy"
+    assert kwargs["query_embedding"] is None
 
 
 @pytest.mark.asyncio

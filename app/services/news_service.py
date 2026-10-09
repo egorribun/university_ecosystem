@@ -11,7 +11,10 @@ from app.schemas.dtos import (
     NewsInteractionsDTO,
     NewsListingDTO,
 )
-from app.services.vector_service import VectorService
+from app.services.vector_service import (
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 
 logger = get_logger(__name__)
 
@@ -33,7 +36,10 @@ class NewsService:
     ) -> schemas.PaginatedNews:
         query_embedding = None
         if search:
-            query_embedding = await self.vector_service.get_embedding(search)
+            try:
+                query_embedding = await self.vector_service.get_embedding(search)
+            except SemanticSearchUnavailableError:
+                query_embedding = None
 
         from app.utils.pagination import (
             decode_datetime_cursor,

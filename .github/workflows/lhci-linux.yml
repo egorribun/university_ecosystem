@@ -1,11 +1,10 @@
-# Wave 129 SW6 — On-demand Linux Lighthouse CI workflow.
+# Scheduled/manual Linux Lighthouse CI workflow.
 #
 # ## Why this exists separately from `reusable-frontend-tests.yml lighthouse:`
 #
-# The existing `frontend-tests.yml lighthouse:` job (called from `ci.yml` with
-# `run-lighthouse: true`) already runs `npm run lhci` on Linux on every PR
-# + push to main/develop/release/**. That job is part of the full CI matrix
-# (~20-min wall-clock) and is the canonical perf gate.
+# The blocking PR workflow calls `reusable-frontend-tests.yml` with
+# `run-lighthouse: false`. This workflow runs the complete Lighthouse sweep
+# on the protected default branch and remains manually dispatchable there.
 #
 # THIS workflow is for on-demand LHCI runs without waiting for the full
 # CI matrix. Use cases:
@@ -33,14 +32,16 @@
 #
 # ## Triggers
 #
-#   - `workflow_dispatch`: manual run via Actions UI or `gh workflow run`
+#   - Weekly schedule on the default branch
+#   - `workflow_dispatch` from the protected default branch
 #
-# Triggering on PR/push is intentionally NOT done here — that's already
-# the responsibility of `ci.yml frontend-tests`. Keeping this workflow
-# manual avoids double-spending CI minutes on every PR.
+# Pull-request and main-push triggers are intentionally absent from this
+# heavy performance lane.
 name: LHCI Linux On-Demand
 
 on:
+  schedule:
+    - cron: "0 5 * * 1"
   workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the audited URL subset
     inputs:
       urls:
@@ -56,8 +57,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify-default-branch-dispatch:
+    name: Verify default branch for manual Lighthouse run
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require protected default branch
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "::error::Manual Lighthouse checks must run from the protected main ref."
+            exit 1
+          fi
+
   lhci:
     name: Lighthouse on Linux
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || needs.verify-default-branch-dispatch.result == 'success') }}
+    needs: verify-default-branch-dispatch
     # W165 SW2 Tier 1 — Path (b) alternate runner experiment per
     # frontend/scripts/run-lhci.mjs:171-174 framing. **TESTED + REVERTED**.
     # Experiment ran ubuntu-22.04 vs ubuntu-24.04 (= ubuntu-24.04 alias).

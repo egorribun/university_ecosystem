@@ -185,6 +185,13 @@ scheduled/manual с сохранением PR live smoke и полных сце�
 разрешение. Настройки в этом аудите не менялись; operational closure Q1/Q4
 остаётся открытым. Master/ADR/AGENTS/continuation prompt согласованы с решением.
 
+В последующем явном ответе 2026-10-09 владелец дополнительно одобрил снятие
+ровно `Security Audit / Semgrep SAST` после reviewed scanner de-dup diff и
+проверок. CodeQL остаётся blocking, Semgrep — в pre-commit. Ожидается91 →76
+contexts после исходных14 и дополнительного1; остальные правила неизменны.
+Это дополнение к разрешению, а не изменение исходного read-only snapshot;
+фактический PUT и новое hosted подтверждение на этом этапе ещё не выполнены.
+
 Для MFA владелец поручил выбрать «лучший вариант». Root выбрал сохранение
 существующего ADR-006 tombstone-first boundary: защищённый отказ прежде DB
 commit с документированным conservative sibling logout при rollback.

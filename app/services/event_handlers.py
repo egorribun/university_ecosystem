@@ -44,7 +44,10 @@ from app.core.events import (
 from app.core.logging import get_logger
 from app.models.chat import chat_participants
 from app.services import search_indexer
-from app.services.vector_service import VectorService
+from app.services.vector_service import (
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 
 logger = get_logger(__name__)
 
@@ -181,11 +184,22 @@ def _usable_content_embedding(embedding: list[float]) -> bool:
     if not settings.semantic_search_enabled or not settings.embedding_api_key:
         # An intentionally disabled provider has no projection to update.
         return False
-    # The query API can degrade to a zero vector; a durable projection must retry
-    # an active provider failure instead of storing a zero/NaN-producing embedding.
+    # Durable projections retry active provider failures instead of storing a
+    # zero/NaN-producing embedding.
     raise RuntimeError(
         "Embedding projection failed: provider returned no usable vector"
     )
+
+
+async def _get_content_embedding(
+    vector_service: VectorService, text: str
+) -> list[float] | None:
+    try:
+        return await vector_service.get_embedding(text)
+    except SemanticSearchUnavailableError:
+        if not settings.semantic_search_enabled or not settings.embedding_api_key:
+            return None
+        raise
 
 
 async def generate_event_embedding(event: EventCreated | EventUpdated) -> None:
@@ -202,8 +216,8 @@ async def generate_event_embedding(event: EventCreated | EventUpdated) -> None:
                 return
 
             text_to_embed = f"{db_event.title} {db_event.description or ''} {db_event.location or ''}"
-            embedding = await vector_service.get_embedding(text_to_embed)
-            if not _usable_content_embedding(embedding):
+            embedding = await _get_content_embedding(vector_service, text_to_embed)
+            if embedding is None or not _usable_content_embedding(embedding):
                 return
             db_event.embedding = embedding
             await db.commit()
@@ -222,8 +236,8 @@ async def generate_news_embedding(event: NewsCreated | NewsUpdated) -> None:
                 return
 
             text_to_embed = f"{db_news.title} {db_news.content}"
-            embedding = await vector_service.get_embedding(text_to_embed)
-            if not _usable_content_embedding(embedding):
+            embedding = await _get_content_embedding(vector_service, text_to_embed)
+            if embedding is None or not _usable_content_embedding(embedding):
                 return
             db_news.embedding = embedding
             await db.commit()

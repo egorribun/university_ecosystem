@@ -124,17 +124,22 @@ Chromium PR smoke. Preserve their full scenarios and assertions. The owner
 authorized removing only the 14 existing Q1/Q4 contexts listed in the
 [readiness audit](../audits/MVP_READINESS_AUDIT.md) from main ruleset `8335285`,
 after the corresponding workflow diff is complete, reviewed and checked.
-All other protection rules and contexts remain unchanged; this is not bypass
+In a subsequent explicit approval on the same date, the owner authorized
+removing exactly one additional context, `Security Audit / Semgrep SAST`, after
+the reviewed scanner de-duplication change passes its checks. CodeQL stays
+blocking and Semgrep stays in pre-commit. The expected count is 91 to 76;
+all other protection rules and contexts remain unchanged. This is not bypass
 permission. The migration and the 15-minute budget are not yet implemented or
 verified by that authorization.
 
 Q4 includes SQLMap and TruffleHog trigger/catalog/required-profile migration.
 DAST is already weekly/manual and Sonar is already advisory; preserve those
 paths. No kind PR/main job currently exists, so verify that absence rather than
-creating a new lane. Hosted Semgrep currently runs through the reusable security
-audit, while its Docker-backed pre-commit hook is skipped in CI: reconcile that
-job with the CodeQL decision explicitly. The 15-minute budget is measured as
-critical-path wall time; a miss leaves the budget criterion open.
+creating a new lane. The Q4 scanner de-duplication removes the hosted Semgrep
+job from the reusable security audit, retains blocking CodeQL, and keeps the
+Docker-backed Semgrep pre-commit hook mandatory locally and skipped in CI.
+Hosted evidence is still required for the updated source. The 15-minute budget
+is measured as critical-path wall time; a miss leaves the budget criterion open.
 
 ## Consequences
 

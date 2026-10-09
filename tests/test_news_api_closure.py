@@ -12,6 +12,10 @@ from fastapi import BackgroundTasks, HTTPException, Response
 
 import app.api.news as news_api
 from app.models.enums import UserRole
+from app.services.vector_service import (
+    SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+    SemanticSearchUnavailableError,
+)
 from tests.conftest import call_injected
 
 NEWS_ID = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df79")
@@ -548,6 +552,7 @@ async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:
     handler = inspect.unwrap(news_api.semantic_search)
     cache = _cache()
     vector = AsyncMock()
+    vector.get_embedding.return_value = [0.1, 0.2]
     service = AsyncMock()
     response = Response()
 
@@ -559,9 +564,8 @@ async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:
             new_callable=AsyncMock,
             return_value="v1",
         ),
-        patch.object(news_api, "etag_matches", return_value=True),
     ):
-        etag = news_api.format_etag("semantic:v1:query:5:0.7")
+        etag = news_api.format_etag("semantic:v1:query:5:0.7:en")
         result = await call_injected(
             handler,
             request=_request(),
@@ -580,7 +584,128 @@ async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:
 
     assert isinstance(result, Response)
     assert result.status_code == 304
-    vector.get_embedding.assert_not_awaited()
+    vector.get_embedding.assert_awaited_once_with("query")
+
+
+async def test_semantic_search_etag_is_locale_specific_and_reuses_same_locale() -> None:
+    handler = inspect.unwrap(news_api.semantic_search)
+    cache = _cache()
+    vector = AsyncMock()
+    vector.get_embedding.return_value = [0.1, 0.2]
+    vector.search_similar.return_value = [_news_record()]
+    service = MagicMock()
+    service.serialize_news.side_effect = lambda _item, locale: {"locale": locale}
+    ru_response = Response()
+    en_response = Response()
+    repeated_en_response = Response()
+
+    with (
+        patch.object(news_api, "get_cache", return_value=cache),
+        patch.object(
+            news_api,
+            "_get_news_list_version",
+            new_callable=AsyncMock,
+            return_value="v1",
+        ),
+    ):
+        ru_result = await call_injected(
+            handler,
+            request=_request(locale="ru-RU"),
+            response=ru_response,
+            query="query",
+            limit=5,
+            min_score=0.7,
+            if_none_match=None,
+            _user=_user(),
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "VectorService": vector,
+                "NewsService": service,
+            },
+        )
+        en_result = await call_injected(
+            handler,
+            request=_request(locale="en-US"),
+            response=en_response,
+            query="query",
+            limit=5,
+            min_score=0.7,
+            if_none_match=ru_response.headers["ETag"],
+            _user=_user(),
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "VectorService": vector,
+                "NewsService": service,
+            },
+        )
+        repeated_en_result = await call_injected(
+            handler,
+            request=_request(locale="en-US"),
+            response=repeated_en_response,
+            query="query",
+            limit=5,
+            min_score=0.7,
+            if_none_match=en_response.headers["ETag"],
+            _user=_user(),
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "VectorService": vector,
+                "NewsService": service,
+            },
+        )
+
+    assert ru_result == [{"locale": "ru"}]
+    assert en_result == [{"locale": "en"}]
+    assert en_response.headers["Content-Language"] == "en"
+    assert ru_response.headers["Content-Language"] == "ru"
+    assert "Accept-Language" in en_response.headers["Vary"]
+    assert en_response.headers["ETag"] != ru_response.headers["ETag"]
+    assert isinstance(repeated_en_result, Response)
+    assert repeated_en_result.status_code == 304
+    assert repeated_en_result.headers["ETag"] == en_response.headers["ETag"]
+    assert repeated_en_result.headers["Content-Language"] == "en"
+    assert "Accept-Language" in repeated_en_result.headers["Vary"]
+
+
+async def test_semantic_search_unavailability_precedes_matching_etag() -> None:
+    handler = inspect.unwrap(news_api.semantic_search)
+    cache = _cache()
+    vector = AsyncMock()
+    vector.get_embedding.side_effect = SemanticSearchUnavailableError(
+        "provider credentials and error details must remain private"
+    )
+    service = AsyncMock()
+    response = Response()
+    get_version = AsyncMock(return_value="v1")
+    etag_matches = MagicMock(return_value=True)
+
+    with (
+        patch.object(news_api, "get_cache", return_value=cache),
+        patch.object(news_api, "_get_news_list_version", get_version),
+        patch.object(news_api, "etag_matches", etag_matches),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call_injected(
+                handler,
+                request=_request(),
+                response=response,
+                query="query",
+                limit=5,
+                min_score=0.7,
+                if_none_match='"match"',
+                _user=_user(),
+                provides={
+                    "AsyncDatabaseSession": AsyncMock(),
+                    "VectorService": vector,
+                    "NewsService": service,
+                },
+            )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == SEMANTIC_SEARCH_UNAVAILABLE_DETAIL
+    vector.get_embedding.assert_awaited_once_with("query")
+    get_version.assert_not_awaited()
+    etag_matches.assert_not_called()
 
 
 async def test_semantic_search_returns_serialized_matches() -> None:

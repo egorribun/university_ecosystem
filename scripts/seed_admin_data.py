@@ -38,7 +38,7 @@ if "DATABASE_URL" not in os.environ:
     except ImportError:
         pass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.security import get_password_hash_sync, verify_password_sync
@@ -46,7 +46,8 @@ from app.core.database import async_session, init_database
 from app.models.dead_letter import DeadLetterJob, JobStatus
 from app.models.enums import UserRole
 from app.models.logs import DataAccessLog
-from app.models.schedule import Group
+from app.models.notifications import UserPushTopic
+from app.models.schedule import Group, Schedule
 from app.models.users import EducationPath, User, UserProfile
 from app.services.audit_service import SecureAuditService
 from scripts.seed_target import ADMIN_SMOKE_PROJECT, require_owned_live_stand_target
@@ -131,6 +132,21 @@ EXTRA_GROUPS = [
     ("ЭК-401", 4, "Институт экономики и финансов"),
     ("МН-101", 1, "Институт менеджмента"),
 ]
+
+# Real-delivery acceptance fixtures may safely enable only the chat topic for
+# this exact, synthetic seed roster. Unknown accounts are deliberately left
+# untouched so the live spec's all-recipient preflight fails closed.
+LIVE_NOTIFICATION_DELIVERY_GROUP_NAME = (
+    "University Ecosystem live notification delivery"
+)
+LIVE_NOTIFICATION_DELIVERY_ROSTER_EMAILS = (
+    ADMIN_EMAIL,
+    "test@university.dev",
+    "demo.peer@example.com",
+    "demo.peer.two@example.com",
+    *(entry[0] for entry in EXTRA_USERS),
+)
+LIVE_NOTIFICATION_DELIVERY_TOPICS = ("chat.message.created",)
 
 # ---------------------------------------------------------------------------
 # Audit log entries — span resource types + actions for filter UI testing
@@ -380,6 +396,96 @@ async def seed_extra_users(db, groups: dict[str, Group]) -> list[User]:
     return created
 
 
+def should_seed_live_notification_fixture(
+    *, seed_target: str, admin_preexisted: bool
+) -> bool:
+    """Allow notification fixture preparation only on the first owned-stand seed."""
+    return seed_target != ADMIN_SMOKE_PROJECT and not admin_preexisted
+
+
+async def seed_live_notification_delivery_fixture(db) -> Group:
+    """Prepare the isolated schedule group and explicit topic rows for known seeds.
+
+    This is called only by ``main`` after the owned-stand seed target has been
+    verified and the admin was confirmed absent. It never changes an existing
+    topic preference and never discovers accounts by a broad email pattern.
+    """
+    matching_groups = list(
+        (
+            await db.scalars(
+                select(Group).where(Group.name == LIVE_NOTIFICATION_DELIVERY_GROUP_NAME)
+            )
+        ).all()
+    )
+    if len(matching_groups) > 1:
+        raise RuntimeError(
+            "the dedicated notification delivery group name is ambiguous"
+        )
+    if matching_groups:
+        group = matching_groups[0]
+    else:
+        group = Group(name=LIVE_NOTIFICATION_DELIVERY_GROUP_NAME)
+        db.add(group)
+        await db.flush()
+
+    active_members = await db.scalar(
+        select(func.count(User.id)).where(
+            User.group_id == group.id,
+            User.is_active.is_(True),
+        )
+    )
+    schedules = await db.scalar(
+        select(func.count(Schedule.id)).where(Schedule.group_id == group.id)
+    )
+    if int(active_members or 0) != 0 or int(schedules or 0) != 0:
+        raise RuntimeError("the dedicated notification delivery group must be empty")
+
+    users = list(
+        (
+            await db.scalars(
+                select(User).where(
+                    User.email.in_(LIVE_NOTIFICATION_DELIVERY_ROSTER_EMAILS)
+                )
+            )
+        ).all()
+    )
+    users_by_email = {user.email: user for user in users}
+    missing_emails = set(LIVE_NOTIFICATION_DELIVERY_ROSTER_EMAILS) - set(users_by_email)
+    if missing_emails:
+        raise RuntimeError(
+            "the expected synthetic notification delivery roster is incomplete"
+        )
+
+    existing_preferences = {
+        preference.user_id: preference
+        for preference in (
+            await db.scalars(
+                select(UserPushTopic).where(
+                    UserPushTopic.user_id.in_([user.id for user in users])
+                )
+            )
+        ).all()
+    }
+    created_preferences = 0
+    for user in users:
+        if user.id in existing_preferences:
+            continue
+        db.add(
+            UserPushTopic(
+                user_id=user.id,
+                topics=list(LIVE_NOTIFICATION_DELIVERY_TOPICS),
+            )
+        )
+        created_preferences += 1
+
+    await db.flush()
+    print(
+        "  ✓ Live notification fixture: dedicated empty schedule group and "
+        f"{created_preferences} missing saved topic preference(s) prepared"
+    )
+    return group
+
+
 async def seed_audit_logs(db, admin: User, others: list[User]) -> None:
     """Create signed audit log entries for AdminAudit page."""
     audit_secret = os.environ.get(
@@ -483,7 +589,15 @@ async def main() -> None:
 
     async with async_session() as db:
         try:
-            print("\n[1/5] Admin user")
+            admin_preexisted = (
+                await db.scalar(select(User.id).where(User.email == ADMIN_EMAIL))
+            ) is not None
+            seed_notification_fixture = should_seed_live_notification_fixture(
+                seed_target=seed_target,
+                admin_preexisted=admin_preexisted,
+            )
+
+            print("\n[1/6] Admin user")
             try:
                 admin = await find_or_create_admin(
                     db,
@@ -493,16 +607,20 @@ async def main() -> None:
             finally:
                 del admin_password
 
-            print("\n[2/5] Extra groups")
+            print("\n[2/6] Extra groups")
             groups = await seed_extra_groups(db)
 
-            print("\n[3/5] Extra users")
+            print("\n[3/6] Extra users")
             others = await seed_extra_users(db, groups)
 
-            print("\n[4/5] Audit logs")
+            if seed_notification_fixture:
+                print("\n[4/6] Fresh owned-stand notification fixture")
+                await seed_live_notification_delivery_fixture(db)
+
+            print("\n[5/6] Audit logs")
             await seed_audit_logs(db, admin, others)
 
-            print("\n[5/5] Dead-letter notification jobs")
+            print("\n[6/6] Dead-letter notification jobs")
             await seed_dead_letter_jobs(db)
 
             await db.commit()

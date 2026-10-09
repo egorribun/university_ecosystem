@@ -383,6 +383,30 @@ def test_compose_command_targets_only_the_stand_project() -> None:
     ]
 
 
+def test_in_place_compose_command_uses_the_shared_live_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", state_root)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", True)
+
+    command = live_stand.compose_command("ps", project_name="ue-live-0123456789abcdef")
+
+    assert command[command.index("-f") + 1] == str(
+        repository / "docker-compose.full.yml"
+    )
+    assert command[command.index("-f") + 3] == str(
+        repository / "docker-compose.live.yml"
+    )
+    assert command[command.index("-f") + 5] == str(
+        state_root / live_stand.IN_PLACE_OVERLAY
+    )
+
+
 def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -3034,6 +3058,7 @@ def test_port_map_covers_every_full_stack_and_mailpit_publication() -> None:
         "PYROSCOPE",
         "CADDY_HTTP",
         "CADDY_HTTPS",
+        "MINIO",
         "MAILPIT",
     }
 
@@ -3080,6 +3105,7 @@ def test_core_port_allocation_probes_only_published_services(
         live_stand.LIVE_CORE_EXPECTED_SERVICES
     )
 
+    assert "MINIO" in active_names
     assert tuple(ports) == tuple(
         name for name, _service, _port in live_stand.LIVE_PORT_SPECS
     )
@@ -3129,6 +3155,7 @@ def test_generated_port_map_is_distinct_and_within_unprivileged_range(
 
     ports = live_stand.choose_published_ports()
 
+    assert "MINIO" in ports
     assert list(ports) == [
         name for name, _service, _target in live_stand.LIVE_PORT_SPECS
     ]
@@ -3378,7 +3405,9 @@ def _write_legacy_owner_marker(
         "project_name": owner.project_name,
     }
     if version >= 3:
-        payload["published_ports"] = dict(owner.published_ports)
+        payload["published_ports"] = {
+            name: port for name, port in owner.published_ports if name != "MINIO"
+        }
     if version >= live_stand.PREVIOUS_OWNER_SCHEMA_VERSION:
         assert owner.daemon_fingerprint is not None
         payload["daemon_fingerprint"] = owner.daemon_fingerprint
@@ -3391,6 +3420,143 @@ def _write_legacy_owner_marker(
     marker_path = worktree / live_stand.STAND_FILE
     marker_path.write_text(json.dumps(marker), encoding="utf-8")
     return marker_path
+
+
+def _write_pre_minio_owner_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    version: int,
+    *,
+    malformed_ports: bool = False,
+    invalid_signature: bool = False,
+) -> tuple[Path, Path]:
+    in_place_mode = version == 9
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / ".git").mkdir()
+    worktree = (
+        tmp_path / live_stand.IN_PLACE_STATE_PARENT / "run-pre-minio"
+        if in_place_mode
+        else tmp_path / "ue-live"
+    )
+    worktree.mkdir(parents=True)
+    (repository / "docker-compose.full.yml").write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    (repository / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    (worktree / live_stand.OVERLAY).write_text("services: {}\n", encoding="utf-8")
+    secrets_directory = worktree / ".secrets"
+    secrets_directory.mkdir()
+    if in_place_mode:
+        (worktree / live_stand.IN_PLACE_OVERLAY).write_text(
+            "services: {}\n", encoding="utf-8"
+        )
+        if os.name != "nt":
+            worktree.chmod(0o700)
+            secrets_directory.chmod(0o700)
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", in_place_mode)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", "a" * 40 if in_place_mode else None)
+
+    key_path = (
+        worktree / ".secrets" / "live-stand-owner.key"
+        if in_place_mode
+        else repository / ".git" / "live-stand-owner.key"
+    )
+    key = bytes(range(32))
+    key_path.write_bytes(key)
+    old_port_specs = tuple(
+        spec for spec in live_stand.LIVE_PORT_SPECS if spec[0] != "MINIO"
+    )
+    ports = {
+        name: 24000 + index
+        for index, (name, _service, _target) in enumerate(old_port_specs)
+    }
+    if malformed_ports:
+        ports.pop("BACKEND")
+    payload: dict[str, object] = {
+        "version": version,
+        "repository": str(repository.resolve()),
+        "worktree": str(worktree.resolve()),
+        "project_name": "ue-live-0123456789abcdef",
+        "published_ports": ports,
+        "daemon_fingerprint": "b" * 64,
+        "compose_resource_fingerprint": None,
+        "resume_compose_resource_fingerprint": None,
+        "resume_compose_resource_schema_version": None,
+        "stack": live_stand.LIVE_STACK_FULL,
+        "service_roots": [],
+        "selected_services": [],
+    }
+    if in_place_mode:
+        payload["source_sha"] = "a" * 40
+    signature = live_stand._owner_signature(payload, key)
+    if invalid_signature:
+        signature = "0" * 64
+    marker_path = worktree / live_stand.STAND_FILE
+    marker_path.write_text(
+        json.dumps({**payload, "signature": signature}), encoding="utf-8"
+    )
+    return worktree, marker_path
+
+
+@pytest.mark.parametrize(
+    ("in_place_mode", "version"),
+    [(False, 8), (True, 9)],
+    ids=["worktree-v8", "in-place-v9"],
+)
+@pytest.mark.parametrize("operation", ["load", "status", "stop", "teardown"])
+def test_pre_minio_owner_markers_fail_before_lifecycle_commands(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    in_place_mode: bool,
+    version: int,
+    operation: str,
+) -> None:
+    worktree, marker_path = _write_pre_minio_owner_marker(
+        monkeypatch, tmp_path, version
+    )
+    assert in_place_mode == (version == 9)
+    marker_before = marker_path.read_bytes()
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        live_stand.subprocess,
+        "run",
+        lambda command, *_args, **_kwargs: commands.append(tuple(command)),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_run",
+        lambda command, **_kwargs: commands.append(tuple(command)),
+    )
+
+    with pytest.raises(live_stand.StandError, match=r"pre-MINIO.*matching previous"):
+        if operation == "load":
+            live_stand.load_stand_owner(worktree)
+        else:
+            getattr(live_stand, operation)()
+
+    assert marker_path.read_bytes() == marker_before
+    assert commands == []
+
+
+@pytest.mark.parametrize("invalid", ["signature", "port-shape"])
+def test_invalid_pre_minio_owner_markers_use_generic_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid: str,
+) -> None:
+    worktree, _marker_path = _write_pre_minio_owner_marker(
+        monkeypatch,
+        tmp_path,
+        8,
+        malformed_ports=invalid == "port-shape",
+        invalid_signature=invalid == "signature",
+    )
+
+    with pytest.raises(live_stand.StandError, match="invalid ownership metadata"):
+        live_stand.load_stand_owner(worktree)
 
 
 def test_docker_daemon_fingerprint_hashes_engine_id_without_printing(
@@ -4743,6 +4909,7 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     state_override = (state_root / live_stand.IN_PLACE_OVERLAY).read_text(
         encoding="utf-8"
     )
+    assert "minio:" not in state_override
     assert (state_root / ".env.docker").as_posix() in state_override
     assert (state_root / ".env.docker.workers").as_posix() in state_override
     assert "volumes: !override" in state_override
@@ -5506,6 +5673,7 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         "pyroscope",
         "caddy",
         "mailpit",
+        "minio",
     }
     assert source.count("ports: !override") == len(expected)
     assert all(
@@ -5513,6 +5681,9 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         for service_ports in expected.values()
         for port in service_ports
     )
+    assert expected["minio"] == [
+        "127.0.0.1:${LIVE_HOST_PORT_MINIO:?set by scripts/live_stand.py}:9000"
+    ]
     assert sum(map(len, expected.values())) == len(live_stand.LIVE_PORT_SPECS)
     assert not any(
         legacy_port in source
@@ -5531,9 +5702,12 @@ def test_live_overlay_keeps_base_storage_on_a_project_scoped_volume() -> None:
         source.replace("!override", "").replace("!reset", "")
     )
 
-    # Base storage is project-scoped, so the live overlay needs no global-name
-    # reset and cannot mount the developer's storage volume.
-    assert "minio" not in overlay["services"]
+    # The overlay publishes storage only to its owner-bound loopback port. The
+    # base service still owns its project-scoped storage volume.
+    assert set(overlay["services"]["minio"]) == {"ports"}
+    assert overlay["services"]["minio"]["ports"] == [
+        "127.0.0.1:${LIVE_HOST_PORT_MINIO:?set by scripts/live_stand.py}:9000"
+    ]
     assert "minio-init" not in overlay["services"]
     assert "volumes" not in overlay
     assert "!reset null" not in source

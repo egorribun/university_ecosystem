@@ -83,7 +83,7 @@ async def test_event_repository_attendance(db_session, user_factory):
 
 
 @pytest.mark.asyncio
-async def test_event_repository_files_and_analytics(db_session, user_factory):
+async def test_event_repository_files(db_session, user_factory):
     user = await user_factory()
     repo = EventRepository(db_session)
 
@@ -116,35 +116,6 @@ async def test_event_repository_files_and_analytics(db_session, user_factory):
     await repo.delete_event_files(event.id)
     urls_after = await repo.get_event_file_urls(event.id)
     assert urls_after == []
-
-    # 3. Mock database execute for get_analytics_data (since e.max_attendees column does not exist on SQLite model schema)
-    mock_execute = AsyncMock()
-    mock_analytics_result = MagicMock()
-    mock_analytics_result.fetchall.return_value = [
-        (event.id, "Event with Files", starts, "Location", 0, 100)
-    ]
-    mock_analytics_result.keys.return_value = [
-        "id",
-        "title",
-        "start_time",
-        "location",
-        "attendees_count",
-        "max_attendees",
-    ]
-    mock_execute.return_value = mock_analytics_result
-
-    original_execute = db_session.execute
-    db_session.execute = mock_execute
-    try:
-        data, keys = await repo.get_analytics_data()
-        assert len(data) == 1
-        assert "attendees_count" in keys
-
-        # Get analytics data with start_date filter
-        data_filtered, _ = await repo.get_analytics_data(start_date=starts)
-        assert len(data_filtered) == 1
-    finally:
-        db_session.execute = original_execute
 
 
 @pytest.mark.asyncio

@@ -142,11 +142,10 @@ async def list_audit_logs(
     for row in result:
         log, actor_name, subject_name = row
 
-        # Verify cryptographic signature
-        is_valid = secure_audit.verify_integrity(log)
-        metadata_is_authenticated = is_valid and secure_audit.signature_covers_metadata(
-            log
-        )
+        # Return explicit signature coverage so the UI does not overstate which
+        # historical fields were included in a valid legacy signature.
+        signature_status = secure_audit.signature_status(log)
+        authenticated_fields = signature_status.authenticated_fields
 
         items.append(
             schemas.AuditLogOut(
@@ -158,11 +157,18 @@ async def list_audit_logs(
                 resource_type=log.resource_type,
                 resource_id=log.resource_id,
                 action=log.action,
-                context=log.context if metadata_is_authenticated else None,
-                ip_address=log.ip_address if is_valid else None,
-                user_agent=log.user_agent if metadata_is_authenticated else None,
+                context=(log.context if "context" in authenticated_fields else None),
+                ip_address=(
+                    log.ip_address if "ip_address" in authenticated_fields else None
+                ),
+                user_agent=(
+                    log.user_agent if "user_agent" in authenticated_fields else None
+                ),
                 created_at=log.created_at,
-                is_valid=is_valid,
+                is_valid=signature_status.is_valid,
+                signature_scheme=signature_status.signature_scheme,
+                authenticated_fields=list(authenticated_fields),
+                unauthenticated_fields=list(signature_status.unauthenticated_fields),
             )
         )
 

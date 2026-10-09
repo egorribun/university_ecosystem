@@ -1,16 +1,87 @@
 import assert from "node:assert/strict"
+import { randomUUID } from "node:crypto"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 
 import {
+  buildAdminCaptureBasename,
   captureAdminScreenshot,
   classifyAdminPageSnapshot,
   createAdminSmokeRunDirectory,
   createAdminSmokeSidecar,
   isAdminCaptureSuccessful,
+  parseAdminVisualCaptureMatrix,
 } from "./admin-visual-smoke.mjs"
+
+function validAdminMatrixEnvironment(outputDir) {
+  return {
+    VISUAL_CAPTURE_MATRIX: "1",
+    VISUAL_WIDTHS: "390,768,1440",
+    VISUAL_LOCALES: "en,ru",
+    VISUAL_THEMES: "light,dark",
+    VISUAL_HEIGHT: "800",
+    SOURCE_SHA: "c".repeat(40),
+    ORIGIN: "http://localhost",
+    OUT_DIR: outputDir,
+    TEST_EMAIL: "synthetic-admin@example.test",
+    TEST_PASSWORD: randomUUID(),
+  }
+}
+
+test("admin visual matrix validates private destination, source, role inputs, and dimensions", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "admin-visual-matrix-"))
+  const checkoutRoot = path.join(temporaryRoot, "checkout")
+  const privateOutput = path.join(temporaryRoot, "private-output")
+  const credentialedOrigin = new URL("https://example.test/path")
+  credentialedOrigin.username = randomUUID()
+  credentialedOrigin.password = randomUUID()
+  try {
+    const config = parseAdminVisualCaptureMatrix(validAdminMatrixEnvironment(privateOutput), {
+      checkoutRoot,
+    })
+    assert.deepEqual(config.widths, [390, 768, 1440])
+    assert.deepEqual(config.locales, ["en", "ru"])
+    assert.deepEqual(config.themes, ["light", "dark"])
+    assert.equal(config.height, 800)
+    assert.equal(config.sourceSha, "c".repeat(40))
+    assert.equal(config.evidenceKind, "real-browser-no-route-mocks")
+    assert.equal(config.outputDir, privateOutput)
+    assert.equal(parseAdminVisualCaptureMatrix({ VISUAL_CAPTURE_MATRIX: "0" }), null)
+
+    const rejected = [
+      [path.join(checkoutRoot, ".screenshots"), {}, /outside the checkout/u],
+      [privateOutput, { VISUAL_WIDTHS: "390,200" }, /320 through 2560/u],
+      [privateOutput, { VISUAL_LOCALES: "en,fr" }, /supported, unique values/u],
+      [privateOutput, { VISUAL_THEMES: "system" }, /supported, unique values/u],
+      [privateOutput, { SOURCE_SHA: "bad" }, /40-character/u],
+      [privateOutput, { GITHUB_OUTPUT: "C:\\runner\\output" }, /must not publish/u],
+      [privateOutput, { TEST_EMAIL: "" }, /explicit synthetic admin TEST_EMAIL/u],
+      [privateOutput, { ORIGIN: credentialedOrigin.toString() }, /clean HTTP\(S\) origin/u],
+    ]
+    for (const [outputDir, overrides, message] of rejected) {
+      assert.throws(
+        () =>
+          parseAdminVisualCaptureMatrix(
+            { ...validAdminMatrixEnvironment(outputDir), ...overrides },
+            { checkoutRoot }
+          ),
+        message
+      )
+    }
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true })
+  }
+})
+
+test("admin capture filenames preserve baseline names and isolate width variants", () => {
+  assert.equal(buildAdminCaptureBasename("/admin/audit", "ru", "dark"), "admin_audit_ru_dark")
+  assert.equal(
+    buildAdminCaptureBasename("/admin/audit", "ru", "dark", { width: 390 }),
+    "admin_audit_ru_dark_w390"
+  )
+})
 
 test("admin smoke rejects a login redirect even when the response is successful", () => {
   const result = classifyAdminPageSnapshot({
@@ -205,6 +276,49 @@ test("monitoring success requires bootstrap status, ready page, and an actual sc
   assert.equal(isAdminCaptureSuccessful({ ...passed, bootstrapHttpStatus: 500 }), false)
   assert.equal(isAdminCaptureSuccessful({ ...passed, adminRoleConfirmed: false }), false)
   assert.equal(isAdminCaptureSuccessful({ ...passed, bootstrapPath: "/login" }), false)
+  assert.equal(
+    isAdminCaptureSuccessful({ ...passed, pageReadiness: { ready: true, viewportMatches: false } }),
+    false
+  )
+  assert.equal(
+    isAdminCaptureSuccessful({ ...passed, pageReadiness: { ready: true, themeMatches: false } }),
+    false
+  )
+})
+
+test("admin matrix sidecar binds evidence kind, source, and actual viewport dimensions", () => {
+  const report = createAdminSmokeSidecar({
+    routePath: "/admin/audit",
+    locale: "ru",
+    theme: "dark",
+    bootstrapPath: "/dashboard",
+    bootstrapHttpStatus: 200,
+    finalUrl: "http://localhost/admin/audit?private=1",
+    documentLanguage: "ru",
+    redirectedToLogin: false,
+    adminRoleConfirmed: true,
+    pageReadiness: {
+      ready: true,
+      routeMatches: true,
+      localeMatches: true,
+      themeMatches: true,
+      viewportMatches: true,
+    },
+    screenshotPath: "admin_audit_ru_dark_w390.png",
+    consoleErrorCount: 0,
+    hydrationErrorCount: 0,
+    networkRequestCount: 3,
+    width: 390,
+    height: 800,
+    sourceSha: "d".repeat(40),
+    captureMode: "admin-live-visual-matrix",
+  })
+  assert.deepEqual(report.viewport, { width: 390, height: 800 })
+  assert.equal(report.sourceSha, "d".repeat(40))
+  assert.equal(report.captureMode, "admin-live-visual-matrix")
+  assert.equal(report.evidenceKind, "real-browser-no-route-mocks")
+  assert.equal(report.screenshotPath, "admin_audit_ru_dark_w390.png")
+  assert.doesNotMatch(JSON.stringify(report), /private=1|admin@university\.dev|"sub"|"jti"/u)
 })
 
 test("published sidecars contain sanitized evidence without identity or raw console data", () => {
@@ -288,8 +402,22 @@ test("live smoke sets each supported locale before dashboard bootstrap and admin
   assert.match(source, /localStorage\.setItem\("ue:language", language\)/u)
   assert.match(
     source,
-    /for \(const locale of LOCALES\)[\s\S]*?setSmokeLocale\(page, locale[\s\S]*?bootstrapAdminSession\(page, locale\)[\s\S]*?for \(const route of ADMIN_ROUTES\)[\s\S]*?smokeAdminRoute\(page, route, locale, theme/u
+    /for \(const locale of locales\)[\s\S]*?setSmokeLocale\(page, locale[\s\S]*?bootstrapAdminSession\(page, locale\)[\s\S]*?for \(const route of ADMIN_ROUTES\)[\s\S]*?for \(const theme of themes\)[\s\S]*?smokeAdminRoute\(\s*page,\s*route,\s*locale,\s*theme/u
   )
+})
+
+test("matrix preflight runs before network/browser work and matrix filenames avoid baseline collisions", async () => {
+  const source = await readFile(new URL("./admin-visual-smoke.mjs", import.meta.url), "utf8")
+  const mainSource = source.slice(source.indexOf("async function main()"))
+  assert.ok(
+    mainSource.indexOf("parseAdminVisualCaptureMatrix()") <
+      mainSource.indexOf("checkJwksEndpoint()")
+  )
+  assert.ok(
+    mainSource.indexOf("parseAdminVisualCaptureMatrix()") < mainSource.indexOf("chromium.launch")
+  )
+  assert.match(source, /if \(!captureMatrix\) await publishCurrentRunPath\(runDir\)/u)
+  assert.match(source, /_w\$\{captureConfig\.width\}/u)
 })
 
 test("admin smoke rejects missing or blank TEST_PASSWORD and uses the supplied runtime value", async () => {

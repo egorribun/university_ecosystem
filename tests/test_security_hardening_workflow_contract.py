@@ -172,7 +172,6 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "govulncheck",
         "sbom",
         "detect-secrets-baseline",
-        "semgrep",
     )
     for consumer in consumers:
         needs = jobs[consumer].get("needs", [])
@@ -421,19 +420,8 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
     )
 
 
-def test_semgrep_ce_scan_always_covers_the_suppression_ledger() -> None:
-    """The CE fallback must scan all sources on every event.
+def test_semgrep_is_not_a_blocking_security_audit_job() -> None:
+    """The required audit graph does not duplicate the pinned pre-commit hook."""
 
-    A diff-aware baseline can hide an unchanged in-source suppression. The
-    blocking validator intentionally requires every reviewed ledger entry to
-    be observed, so the unauthenticated CE path must use a complete scan.
-    """
-
-    job = _workflow(SECURITY_AUDIT)["jobs"]["semgrep"]
-    run = _step(job, "Run Semgrep SAST")["run"]
-    full_scan = (
-        "semgrep scan --config auto \\\n"
-        "    --error --sarif --sarif-output=semgrep.sarif"
-    )
-    assert full_scan in run
-    assert "--baseline-commit" not in run
+    jobs = _workflow(SECURITY_AUDIT)["jobs"]
+    assert "semgrep" not in jobs

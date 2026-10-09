@@ -91,6 +91,9 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
         return None
 
     class FakeSession:
+        async def scalar(self, statement):
+            return None
+
         async def __aenter__(self) -> FakeSession:
             return self
 
@@ -114,11 +117,19 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
     async def no_op_seed(db, *args):
         return []
 
+    async def no_op_notification_fixture(db):
+        return None
+
     monkeypatch.setattr(seed_admin_data, "init_database", no_op_init_database)
     monkeypatch.setattr(seed_admin_data, "async_session", FakeSession)
     monkeypatch.setattr(seed_admin_data, "find_or_create_admin", capture_admin_password)
     monkeypatch.setattr(seed_admin_data, "seed_extra_groups", no_op_seed)
     monkeypatch.setattr(seed_admin_data, "seed_extra_users", no_op_seed)
+    monkeypatch.setattr(
+        seed_admin_data,
+        "seed_live_notification_delivery_fixture",
+        no_op_notification_fixture,
+    )
     monkeypatch.setattr(seed_admin_data, "seed_audit_logs", no_op_seed)
     monkeypatch.setattr(seed_admin_data, "seed_dead_letter_jobs", no_op_seed)
 
@@ -138,6 +149,169 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
 
     if runtime_password in output.out or runtime_password in output.err:
         pytest.fail("admin seeder wrote the transient password to captured output")
+
+
+@pytest.mark.parametrize(
+    ("seed_target", "admin_preexisted", "should_prepare"),
+    (
+        ("ue-live-0123456789abcdef", False, True),
+        ("ue-live-0123456789abcdef", True, False),
+        ("ci-admin-smoke", False, False),
+    ),
+)
+async def test_notification_fixture_runs_only_for_a_fresh_owned_stand(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    seed_target: str,
+    admin_preexisted: bool,
+    should_prepare: bool,
+) -> None:
+    from scripts import seed_admin_data
+
+    monkeypatch.setattr(
+        seed_admin_data,
+        "require_owned_live_stand_target",
+        lambda: seed_target,
+    )
+    monkeypatch.setenv("TEST_PASSWORD", "Live-Seed-Test-Password9!")
+    prepared: list[bool] = []
+
+    class FakeSession:
+        async def __aenter__(self) -> FakeSession:
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> bool:
+            return False
+
+        async def scalar(self, statement):
+            return object() if admin_preexisted else None
+
+        async def commit(self) -> None:
+            return None
+
+        async def rollback(self) -> None:
+            return None
+
+    def no_op_init_database() -> None:
+        return None
+
+    async def no_op_seed(db, *args):
+        return []
+
+    async def no_op_admin(db, **kwargs):
+        return object()
+
+    async def record_fixture_call(db):
+        prepared.append(True)
+
+    monkeypatch.setattr(seed_admin_data, "init_database", no_op_init_database)
+    monkeypatch.setattr(seed_admin_data, "async_session", FakeSession)
+    monkeypatch.setattr(seed_admin_data, "find_or_create_admin", no_op_admin)
+    monkeypatch.setattr(seed_admin_data, "seed_extra_groups", no_op_seed)
+    monkeypatch.setattr(seed_admin_data, "seed_extra_users", no_op_seed)
+    monkeypatch.setattr(seed_admin_data, "seed_audit_logs", no_op_seed)
+    monkeypatch.setattr(seed_admin_data, "seed_dead_letter_jobs", no_op_seed)
+    monkeypatch.setattr(
+        seed_admin_data,
+        "seed_live_notification_delivery_fixture",
+        record_fixture_call,
+    )
+
+    try:
+        await seed_admin_data.main()
+    finally:
+        output = capsys.readouterr()
+
+    assert bool(prepared) is should_prepare
+    assert "Live-Seed-Test-Password9!" not in output.out
+    assert "Live-Seed-Test-Password9!" not in output.err
+
+
+async def test_notification_fixture_uses_exact_seed_roster_and_preserves_preferences(
+    db_session, user_factory
+) -> None:
+    from scripts import seed_admin_data
+
+    role_by_email = {
+        email: role
+        for email, _password, _name, role, _telegram, _institute, _course, _group in (
+            seed_admin_data.EXTRA_USERS
+        )
+    }
+    roster_users = {}
+    for email in seed_admin_data.LIVE_NOTIFICATION_DELIVERY_ROSTER_EMAILS:
+        role = role_by_email.get(email, "student")
+        if email == seed_admin_data.ADMIN_EMAIL:
+            role = "admin"
+        roster_users[email] = await user_factory(email=email, role=role)
+
+    unknown_account = await user_factory(
+        email="unlisted.acceptance@university.dev",
+        role="student",
+    )
+    preserved_user = roster_users["test@university.dev"]
+    custom_topics = ["news.published", "chat.message.created"]
+    preexisting_preference = models.UserPushTopic(
+        user_id=preserved_user.id,
+        topics=custom_topics.copy(),
+    )
+    db_session.add(preexisting_preference)
+    await db_session.flush()
+    original_updated_at = preexisting_preference.updated_at
+
+    group = await seed_admin_data.seed_live_notification_delivery_fixture(db_session)
+    await db_session.flush()
+
+    assert group.name == seed_admin_data.LIVE_NOTIFICATION_DELIVERY_GROUP_NAME
+    assert group.course is None
+    assert group.faculty is None
+    assert (
+        await db_session.scalar(
+            select(models.User.id).where(models.User.group_id == group.id)
+        )
+        is None
+    )
+    assert (
+        await db_session.scalar(
+            select(models.Schedule.id).where(models.Schedule.group_id == group.id)
+        )
+        is None
+    )
+
+    for email, seeded_user in roster_users.items():
+        preference = await db_session.get(models.UserPushTopic, seeded_user.id)
+        assert preference is not None
+        if email == "test@university.dev":
+            assert preference.topics == custom_topics
+            assert preference.updated_at == original_updated_at
+        else:
+            assert preference.topics == ["chat.message.created"]
+
+    assert await db_session.get(models.UserPushTopic, unknown_account.id) is None
+
+
+async def test_notification_fixture_refuses_a_nonempty_dedicated_group(
+    db_session, user_factory
+) -> None:
+    from scripts import seed_admin_data
+
+    group = models.Group(name=seed_admin_data.LIVE_NOTIFICATION_DELIVERY_GROUP_NAME)
+    db_session.add(group)
+    await db_session.flush()
+    member = await user_factory(role="student", group_id=group.id)
+
+    with pytest.raises(RuntimeError, match="must be empty"):
+        await seed_admin_data.seed_live_notification_delivery_fixture(db_session)
+
+    assert member.group_id == group.id
+    assert (
+        await db_session.scalar(
+            select(models.UserPushTopic.user_id).where(
+                models.UserPushTopic.user_id == member.id
+            )
+        )
+        is None
+    )
 
 
 async def test_reseeding_existing_admin_preserves_the_password_hash(

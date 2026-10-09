@@ -3,23 +3,20 @@
 Срез на 2026-10-09 (Europe/Istanbul). [Мастер-план](MVP_MASTER_PLAN.md) — единственный
 действующий план; [ТЗ MVP](University_Ecosystem_MVP.md) задаёт продуктовые границы,
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) — переход качества.
-Исполнение приостановлено по просьбе пользователя; завершён аудит подготовки.
+Исполнение возобновлено поручением владельца 2026-10-09; аудит подготовки сохранён.
 Выпуск `v1.0.0` пока не подтверждён.
 
 ## Решения владельца и ближайший результат
 
-- При следующем разрешении на продолжение исполнение возобновляется.
-  Работа строго на `egorribun`, один checkout и
+- Работа строго на `egorribun`, один checkout и
   [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Root интегрирует; максимум три GPT-6 Luna Max владеют раздельными областями.
 - Кратчайший путь: Q1/Q4 → Core/product/visual/security/restore → full smoke →
   обычный merge → main checks → готовый producer шести GHCR images → release.
-  Независимые исправления продукта идут параллельно с CI; агенту 30 минут до
-  контрольной точки, длительные процессы контролируются отдельно.
+  Независимые исправления идут параллельно; агенту 30 минут до контрольной точки.
 - Q1 и весь Q4 обязательны до MVP: мутации, Schemathesis, DAST, chaos,
   full Chromium/Lighthouse, cross-browser и kind переходят в scheduled/manual.
   Live Chromium smoke, security и fail-closed оставшиеся checks сохраняются.
-  Эти изменения ещё не внедрены; старые CI dependencies пока действуют.
+  Source diff проверен локально; commit/push и hosted подтверждение ещё впереди.
 - Tier 0 — 100%; остальные действующие coverage floors также сохраняются до Q3.
   Если они блокируют MVP, перенос Q3 согласуется отдельно. Q2/Q3 — `v1.1`.
 - Полный mutation score, три сопоставимых полных CI-прогона, kind certification,
@@ -29,12 +26,27 @@
   использование решается отдельно. Помещения/вместимость — после MVP.
 - Без embeddings key текстовый поиск работает; UI semantic mode выключен,
   direct semantic-only API сообщает о недоступности без нулевых векторов.
-- Разрешено снять только 14 contexts ruleset8335285 из readiness audit после
-  готового reviewed Q1/Q4 diff и проверок; остальные правила сохранить.
+- Разрешено снять 14 contexts ruleset 8335285 и отдельно `Security Audit / Semgrep SAST`
+  после reviewed diff и проверок: 91 → 76; CodeQL и остальные правила сохранить.
 - ADR-006: сохранить durable tombstone/WS revoke до commit; rollback может
-  консервативно разлогинить sibling sessions. Failure-path приёмка ещё открыта.
+  консервативно разлогинить sibling sessions; local failure paths PASS, live открыт.
 
-## Финальный аудит подготовки
+## Текущий refresh и аудит подготовки
+
+- Refresh source: `851c4763ff431232cc4bf3cbfc416823bfd0fce3` = origin/egorribun;
+  main/merge-base `6fa133b57f62c554162876d4e6d8349f8060fce9`, divergence0/1267.
+  PR1306 OPEN/BLOCKED; дерево на старте чистое. Работа Q1/Q4, backend и
+  dependency/traceability назначена трём GPT-6 Luna Max, Git принадлежит root.
+- Matrix `37848498285/a1` на refresh SHA CANCELLED root после сохранения snapshot:
+  111 завершённых jobs, 72 незавершённых mutation jobs; inventory SUCCESS,
+  Node audit FAILURE. Handlebars4.7.10: local npm audit/graph/policy PASS.
+- Owned Live `37848497910/a1` на refresh SHA: SUCCESS,18 PASS/2 planned skips,
+  artifacts0. Smoke остаётся auth/reset, полная Core traceability ещё открыта.
+  Упоминание `--stack core` в contract output не доказывает выбор Core при `up`;
+  tracked workflow нуждается в явных stack/state-dir и отдельном full smoke.
+- Fresh ruleset8335285 ACTIVE,91 contexts; разрешённые14+1 ещё не удалялись.
+  Владелец явно одобрил Semgrep de-dup: CodeQL blocking, Semgrep pre-commit.
+  Q1/Q4 и бюджет15 минут пока не подтверждены hosted evidence.
 
 - [Readiness audit](../../audits/MVP_READINESS_AUDIT.md) и
   [промпт нового чата](NEXT_SESSION_PROMPT.md) подготовлены на исходном `2a042124`.
@@ -47,9 +59,7 @@
   artifacts0; это auth/reset PR smoke, не full Core/TЗ приёмка.
 - Matrix `37843217306/a1`: наблюдались Node dependency audit и inventory failures.
   Inventory исправлен локально; новый hosted результат ещё требуется.
-  Npm policy RED: три Handlebars advisories остаются первым dependency fix.
-- Старт: CI Q1/Q4; параллельно dependency fix, schedule conflict и semantic
-  unavailable; затем Core traceability/visual/security/один paired restore.
+  Npm policy RED этого SHA устранён в текущем source diff; hosted rerun нужен.
 
 ## Подтверждённая контрольная точка до изменения политики
 
@@ -108,11 +118,15 @@
 
 ## Открытая MVP-приёмка
 
-- Q1/Q4 implementation ещё не начат. Schedule regression draft сохранён
-  приватным patch `C:/Temp/ue-quality-session-dm-root-20261008-82730e4856e54ecbb944e5fa90cc3110/schedule-update-checkpoint.patch`;
-  production code не менялся, RED/GREEN не получен. Search fix только спроектирован.
-- Schedule update conflict; проверка потребителей unused event analytics;
-  поведение semantic search без ключа и согласованный UI.
+- Q1/Q4: 20 модулей/402 PASS до Semgrep; затем 428 PASS и scoped rerun 1 PASS;
+  catalog 59/183, actionlint PASS. Перенос не подтверждён hosted/default branch.
+- Fresh preflight 10/10 PASS (337 contracts); live CLI/Core: 1189 PASS.
+  PowerShell: 16 PASS/1 platform skip, peer CLEAR; Core runtime ещё не запускался.
+- Schedule/semantic regressions PASS; root vector/adjacent mocks 82 PASS;
+  unused event analytics удалён после проверки потребителей. Auth fail-closed
+  review: 74 PASS; durable email-change tombstone failure paths PASS.
+- SEC-03 writer/verifier/root/sequence fix: 98 focused и root221 adjacent PASS;
+  nullable/delimiter trust metadata: 112 PASS, peer review CLEAR. UI7 PASS.
 - ТЗ2–13: актуальные Core auth/MFA, messenger/group delivery, push,
   profile/settings, admin permissions, SSR/PWA/i18n, RU/EN и a11y.
 - Visual approval: light/dark, 390/768/1440 px, targeted360/1024;
@@ -135,6 +149,4 @@
   volumes/backups/processes сохраняются. Worktree не создавать.
 - Git history/migrations/private rescue bundle сохраняются. Исторические
   session logs и superseded snapshots не возвращать в текущие индексы.
-- Codex goal сохраняет прежнюю расширенную формулировку и сейчас `paused`;
-  инструмент не предоставляет изменения objective/resume. Последнее поручение —
-  безопасно приостановиться; выпуск MVP не закрывает сертификацию `v1.1`.
+- Goal текущего чата ACTIVE; paused goal из audit относится к прежнему чату.

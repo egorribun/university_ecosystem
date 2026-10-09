@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import httpx
@@ -12,12 +13,17 @@ from app.core.ssrf import validate_url_not_internal_async
 
 logger = get_logger(__name__)
 
-# LOW-W19: metric counter for embedding failures.
-# Tracks the number of times get_embedding() falls back to the zero vector
-# so that observability tooling (Prometheus, Datadog, etc.) can alert when
-# the embedding service is degraded.  Uses a simple in-process counter as a
-# lightweight default; replace with a Prometheus Counter or OTLP metric in
-# environments where a metrics exporter is configured.
+
+class SemanticSearchUnavailableError(RuntimeError):
+    """Raised when semantic search cannot obtain a usable embedding."""
+
+
+SEMANTIC_SEARCH_UNAVAILABLE_DETAIL = "Semantic search is currently unavailable"
+
+
+# LOW-W19: metric counter for embedding provider failures. Uses a simple
+# in-process counter as a lightweight default; replace with a Prometheus
+# Counter or OTLP metric where a metrics exporter is configured.
 _embedding_failure_count: int = 0
 
 
@@ -26,7 +32,7 @@ def _inc_embedding_failure() -> None:
     global _embedding_failure_count
     _embedding_failure_count += 1
     logger.warning(
-        "Embedding fallback to zero vector (total failures this process: %d)",
+        "Embedding provider failures (total this process: %d)",
         _embedding_failure_count,
     )
 
@@ -48,14 +54,14 @@ class VectorService:
     async def get_embedding(self, text: str) -> list[float]:
         """Get embedding for a given text using the configured provider."""
         if not settings.semantic_search_enabled:
-            return [0.0] * settings.embedding_dimensions
+            raise SemanticSearchUnavailableError(SEMANTIC_SEARCH_UNAVAILABLE_DETAIL)
 
         if not settings.embedding_api_key:
-            logger.warning("Embedding API key not set, returning zero vector")
-            return [0.0] * settings.embedding_dimensions
+            logger.warning("Embedding API key is not configured")
+            raise SemanticSearchUnavailableError(SEMANTIC_SEARCH_UNAVAILABLE_DETAIL)
 
         # Validate only when used, before transmitting the API key or input.
-        # Keep security rejection outside the provider-error fallback.
+        # Keep security rejection outside the provider-error conversion.
         await validate_url_not_internal_async(self._base_url)
         try:
             response = await self._client.post(
@@ -63,21 +69,40 @@ class VectorService:
             )
             response.raise_for_status()
             data = response.json()
-            from typing import cast
-
-            return cast("list[float]", data["data"][0]["embedding"])
+            embedding = data["data"][0]["embedding"]
+            if (
+                not isinstance(embedding, list)
+                or not embedding
+                or len(embedding) != settings.embedding_dimensions
+                or not all(
+                    type(value) in (int, float) and math.isfinite(value)
+                    for value in embedding
+                )
+                or not any(embedding)
+            ):
+                raise ValueError("Embedding provider returned an unusable vector")
+            return [float(value) for value in embedding]
         except (
             ConnectionError,
             TimeoutError,
             OSError,
             ValueError,
+            OverflowError,
+            KeyError,
+            IndexError,
+            TypeError,
             httpx.HTTPStatusError,
             httpx.TransportError,
-        ):
+        ) as err:
             # RZ-20-04 + RZ-33-04: httpx.HTTPStatusError added for raise_for_status().
-            logger.exception("Failed to fetch embedding")
-            _inc_embedding_failure()  # LOW-W19: count silent fallbacks
-            return [0.0] * settings.embedding_dimensions
+            logger.warning(
+                "Embedding provider request failed",
+                error_type=type(err).__name__,
+            )
+            _inc_embedding_failure()
+            raise SemanticSearchUnavailableError(
+                SEMANTIC_SEARCH_UNAVAILABLE_DETAIL
+            ) from None
 
     async def search_similar_with_scores(
         self,

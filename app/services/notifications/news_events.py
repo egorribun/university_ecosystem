@@ -108,7 +108,9 @@ async def notify_about_news(
             )
             payload_data = {}
         payload_data.setdefault("headline", headline or getattr(news, "title", None))
-        payload_data.setdefault("newsId", getattr(news, "id", None))
+        news_id = getattr(news, "id", None)
+        if news_id is not None:
+            payload_data["newsId"] = str(news_id)
         if summary:
             payload_data.setdefault("summary", summary)
         payload_data.setdefault("url", resolved_url)
@@ -289,7 +291,9 @@ async def notify_about_event(
                 default_tag,
             )
             payload_data = {}
-        payload_data.setdefault("eventId", getattr(event, "id", None))
+        event_id = getattr(event, "id", None)
+        if event_id is not None:
+            payload_data["eventId"] = str(event_id)
         payload_data.setdefault("title", localized_title_value)
         if summary:
             payload_data.setdefault("summary", summary)

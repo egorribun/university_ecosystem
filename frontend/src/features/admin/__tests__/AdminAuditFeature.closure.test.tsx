@@ -113,6 +113,20 @@ const makeLog = (overrides: Partial<AuditLog> = {}): AuditLog => ({
   user_agent: "Test browser",
   created_at: "2026-07-31T12:00:00Z",
   is_valid: true,
+  signature_scheme: "canonical_v2",
+  authenticated_fields: [
+    "id",
+    "actor_user_id",
+    "subject_user_id",
+    "resource_type",
+    "resource_id",
+    "action",
+    "context",
+    "ip_address",
+    "user_agent",
+    "created_at",
+  ],
+  unauthenticated_fields: ["actor_name", "subject_name"],
   ...overrides,
 })
 
@@ -166,7 +180,7 @@ describe("AdminAuditFeature closure", () => {
     expect(screen.getAllByRole("row")).toHaveLength(6)
     expect(screen.getByText("audit.details.system")).toBeInTheDocument()
     expect(screen.getByText("SYSTEM")).toBeInTheDocument()
-    expect(screen.getByTitle("audit.details.integrityTampered")).toBeInTheDocument()
+    expect(screen.getByTitle("audit.details.integrityInvalid")).toBeInTheDocument()
     expect(screen.getByText("USER DELETE")).toBeInTheDocument()
     expect(screen.getByText("USER CREATE")).toBeInTheDocument()
     expect(screen.getByText("USER MODIFY")).toBeInTheDocument()
@@ -189,6 +203,65 @@ describe("AdminAuditFeature closure", () => {
 
     fireEvent.click(document.getElementById("audit-row-toggle-1")!)
     expect(document.getElementById("audit-row-toggle-1")).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("shows the trust limits for canonical and both legacy signature schemes", async () => {
+    const logs = [
+      makeLog({ id: 10 }),
+      makeLog({
+        id: 11,
+        signature_scheme: "legacy_json_array_v1",
+        authenticated_fields: ["actor_user_id", "context", "user_agent"],
+        unauthenticated_fields: ["id", "actor_name", "subject_name"],
+      }),
+      makeLog({
+        id: 12,
+        signature_scheme: "legacy_pipe_v1",
+        authenticated_fields: ["id", "actor_user_id", "ip_address"],
+        unauthenticated_fields: ["context", "user_agent", "actor_name", "subject_name"],
+        context: undefined,
+        user_agent: undefined,
+      }),
+    ]
+    auditQuery.result = { data: { items: logs, total: logs.length }, isPending: false }
+
+    const user = userEvent.setup()
+    renderFeature()
+
+    expect(screen.getByTitle("audit.details.integrityCanonicalVerified")).toBeInTheDocument()
+    expect(screen.getByTitle("audit.details.integrityLegacyArrayVerified")).toBeInTheDocument()
+    expect(screen.getByTitle("audit.details.integrityLegacyPipeVerified")).toBeInTheDocument()
+
+    await user.click(document.getElementById("audit-row-toggle-10")!)
+    expect(screen.getByText("audit.details.authenticatedFields")).toBeInTheDocument()
+    expect(screen.getByText("audit.details.unauthenticatedFields")).toBeInTheDocument()
+    expect(screen.getByText("actor_name, subject_name")).toBeInTheDocument()
+
+    await user.click(document.getElementById("audit-row-toggle-10")!)
+    await user.click(document.getElementById("audit-row-toggle-11")!)
+    expect(screen.getByText("audit.details.legacyArrayTrustLimit")).toBeInTheDocument()
+    expect(screen.getByText("id, actor_name, subject_name")).toBeInTheDocument()
+
+    await user.click(document.getElementById("audit-row-toggle-11")!)
+    await user.click(document.getElementById("audit-row-toggle-12")!)
+    expect(screen.getByText("audit.details.legacyPipeTrustLimit")).toBeInTheDocument()
+  })
+
+  it("distinguishes invalid, unsigned and unavailable signature metadata", () => {
+    const logs = [
+      makeLog({ id: 20, signature_scheme: "invalid", is_valid: false }),
+      makeLog({ id: 21, signature_scheme: "unsigned", is_valid: false }),
+      makeLog({ id: 22, signature_scheme: undefined, is_valid: true }),
+      makeLog({ id: 23, signature_scheme: "future_scheme", is_valid: true }),
+      makeLog({ id: 24, signature_scheme: "canonical_v2", authenticated_fields: undefined }),
+    ]
+    auditQuery.result = { data: { items: logs, total: logs.length }, isPending: false }
+
+    renderFeature()
+
+    expect(screen.getByTitle("audit.details.integrityInvalid")).toBeInTheDocument()
+    expect(screen.getByTitle("audit.details.integrityUnsigned")).toBeInTheDocument()
+    expect(screen.getAllByTitle("audit.details.integrityUnknown")).toHaveLength(3)
   })
 
   it("keeps the table visible while refreshing a populated page", () => {

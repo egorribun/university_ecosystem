@@ -512,3 +512,151 @@ async def test_email_factor_enablement_rolls_back_and_can_retry_after_publish_fa
     assert cached_after["mfa_verified_at"] is not None
     assert cached_after["mfa_epoch"] == original_epoch + 1
     assert request.state.rotate_csrf is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("commit_fails", [False, True], ids=["success", "rollback"])
+async def test_email_change_revokes_every_session_before_commit_and_keeps_tombstones(
+    db_session,
+    test_user,
+    mock_global_redis,
+    monkeypatch: pytest.MonkeyPatch,
+    commit_fails: bool,
+) -> None:
+    from fastapi import status
+
+    from app.api.deps.auth import _resolve_current_user
+    from app.models import EmailChangeToken
+    from app.repositories.active_session_repository import ActiveSessionRepository
+    from app.repositories.auth_repository import AuthRepository
+    from app.repositories.unit_of_work import uow_from_session
+    from app.repositories.user_repository import UserRepository
+    from app.services.auth_service import AuthService, _hash_token
+    from tests.fixtures.auth.auth_fixtures import create_access_token
+
+    old_email = test_user.email
+    new_email = f"email-change-{uuid4().hex}@example.net"
+    now = datetime.now(UTC)
+    old_verified_at = now - timedelta(days=2)
+    old_email_mfa_enabled_at = now - timedelta(days=3)
+    test_user.email_verified_at = old_verified_at
+    test_user.email_mfa_enabled_at = old_email_mfa_enabled_at
+    test_user.mfa_required = True
+    test_user.mfa_default_method = "email_otp"
+    await db_session.commit()
+
+    current_token, current = await create_access_token(str(test_user.id), db_session)
+    sibling_token, sibling = await create_access_token(str(test_user.id), db_session)
+    current_jti = current.jti
+    sibling_jti = sibling.jti
+    original_current_state = (
+        current.revoked_at,
+        current.mfa_epoch,
+        current.signing_key,
+        current.mfa_verified_at,
+    )
+    original_sibling_state = (
+        sibling.revoked_at,
+        sibling.mfa_epoch,
+        sibling.signing_key,
+        sibling.mfa_verified_at,
+    )
+    confirmation_token = f"confirmation-{uuid4().hex}"
+    token_record = EmailChangeToken(
+        user_id=test_user.id,
+        new_email=new_email,
+        token_hash=_hash_token(confirmation_token),
+        expires_at=now + timedelta(hours=1),
+    )
+    db_session.add(token_record)
+    await db_session.commit()
+
+    service = AuthService(
+        audit=MagicMock(),
+        auth_repo=AuthRepository(db_session),
+        user_repo=UserRepository(db_session),
+        session_repo=ActiveSessionRepository(db_session),
+        uow=uow_from_session(db_session),
+    )
+    request = Request(
+        {
+            "type": "http",
+            "headers": [],
+            "query_string": b"",
+            "path": "/auth/email/confirm",
+            "method": "POST",
+        }
+    )
+    commit_tombstones: list[tuple[int, int]] = []
+    real_commit = db_session.commit
+
+    async def observe_commit() -> None:
+        commit_tombstones.append(
+            (
+                await mock_global_redis.exists(f"revoked:jti:{current_jti}"),
+                await mock_global_redis.exists(f"revoked:jti:{sibling_jti}"),
+            )
+        )
+        if commit_fails:
+            raise RuntimeError("simulated database commit failure")
+        await real_commit()
+
+    monkeypatch.setattr(db_session, "commit", observe_commit)
+    if commit_fails:
+        with pytest.raises(RuntimeError, match="simulated database commit failure"):
+            await service.confirm_email_change(test_user, confirmation_token, request)
+    else:
+        await service.confirm_email_change(test_user, confirmation_token, request)
+
+    assert commit_tombstones == [(1, 1)]
+    assert await mock_global_redis.exists(f"revoked:jti:{current_jti}") == 1
+    assert await mock_global_redis.exists(f"revoked:jti:{sibling_jti}") == 1
+
+    await db_session.refresh(test_user)
+    await db_session.refresh(current)
+    await db_session.refresh(sibling)
+    await db_session.refresh(token_record)
+    if commit_fails:
+
+        def normalized(value: datetime) -> datetime:
+            return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+        assert test_user.email == old_email
+        assert normalized(test_user.email_verified_at) == old_verified_at
+        assert normalized(test_user.email_mfa_enabled_at) == old_email_mfa_enabled_at
+        assert test_user.mfa_required is True
+        assert test_user.mfa_default_method == "email_otp"
+        assert (
+            current.revoked_at,
+            current.mfa_epoch,
+            current.signing_key,
+            current.mfa_verified_at,
+        ) == original_current_state
+        assert (
+            sibling.revoked_at,
+            sibling.mfa_epoch,
+            sibling.signing_key,
+            sibling.mfa_verified_at,
+        ) == original_sibling_state
+        assert token_record.used is False
+    else:
+        assert test_user.email == new_email
+        assert test_user.email_verified_at is not None
+        assert test_user.email_mfa_enabled_at is None
+        assert current.revoked_at is not None
+        assert sibling.revoked_at is not None
+        assert token_record.used is True
+
+    for access_token in (current_token, sibling_token):
+        auth_request = Request(
+            {
+                "type": "http",
+                "headers": [],
+                "query_string": b"",
+                "path": "/protected",
+                "method": "GET",
+            }
+        )
+        with pytest.raises(HTTPException) as rejected:
+            await _resolve_current_user(auth_request, access_token, db_session)
+        assert rejected.value.status_code == status.HTTP_401_UNAUTHORIZED

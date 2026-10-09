@@ -19,10 +19,76 @@ import { SectionCard, TextField, Button } from "@/components/settings"
 import { AuditLog } from "@/types/Admin"
 import { useDebounced } from "@/hooks/useDebounced"
 
+type SignatureState =
+  | "canonicalVerified"
+  | "legacyArrayVerified"
+  | "legacyPipeVerified"
+  | "invalid"
+  | "unsigned"
+  | "unknown"
+
+const hasStringFields = (fields: unknown): fields is string[] =>
+  Array.isArray(fields) && fields.every((field: unknown) => typeof field === "string")
+
+const getSignatureState = (log: AuditLog): SignatureState => {
+  switch (log.signature_scheme) {
+    case "canonical_v2":
+      if (log.is_valid !== true) return "invalid"
+      return hasStringFields(log.authenticated_fields) &&
+        hasStringFields(log.unauthenticated_fields)
+        ? "canonicalVerified"
+        : "unknown"
+    case "legacy_json_array_v1":
+      if (log.is_valid !== true) return "invalid"
+      return hasStringFields(log.authenticated_fields) &&
+        hasStringFields(log.unauthenticated_fields)
+        ? "legacyArrayVerified"
+        : "unknown"
+    case "legacy_pipe_v1":
+      if (log.is_valid !== true) return "invalid"
+      return hasStringFields(log.authenticated_fields) &&
+        hasStringFields(log.unauthenticated_fields)
+        ? "legacyPipeVerified"
+        : "unknown"
+    case "invalid":
+      return "invalid"
+    case "unsigned":
+      return log.is_valid === false ? "unsigned" : "invalid"
+    default:
+      return "unknown"
+  }
+}
+
+const getFieldList = (fields: unknown, unavailable: string, noFields: string) => {
+  if (!hasStringFields(fields)) return unavailable
+  return fields.length > 0 ? fields.join(", ") : noFields
+}
+
 const Row = memo(function Row({ log }: { log: AuditLog }) {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation("admin")
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const signatureState = getSignatureState(log)
+  const signatureTitle = (() => {
+    switch (signatureState) {
+      case "canonicalVerified":
+        return t("audit.details.integrityCanonicalVerified")
+      case "legacyArrayVerified":
+        return t("audit.details.integrityLegacyArrayVerified")
+      case "legacyPipeVerified":
+        return t("audit.details.integrityLegacyPipeVerified")
+      case "invalid":
+        return t("audit.details.integrityInvalid")
+      case "unsigned":
+        return t("audit.details.integrityUnsigned")
+      case "unknown":
+        return t("audit.details.integrityUnknown")
+    }
+  })()
+  const signatureVerified =
+    signatureState === "canonicalVerified" ||
+    signatureState === "legacyArrayVerified" ||
+    signatureState === "legacyPipeVerified"
 
   const getActionColor = (action: string) => {
     if (action.includes("delete"))
@@ -39,9 +105,9 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
       <tr
         className={cn(
           "transition-colors group",
-          log.is_valid
-            ? "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
-            : "bg-error/(--opacity-subtle) hover:bg-error/(--opacity-subtle)",
+          signatureState === "invalid"
+            ? "bg-error/(--opacity-subtle) hover:bg-error/(--opacity-subtle)"
+            : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
           open && "bg-(--bg-surface-hover)/(--opacity-subtle)"
         )}
       >
@@ -106,19 +172,26 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
         </td>
         <td className="px-4 py-4 text-center">
           <div className="flex justify-center">
-            {log.is_valid ? (
+            {signatureVerified ? (
               <div
                 className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand"
-                title={t("audit.details.integrityVerified")}
+                title={signatureTitle}
               >
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               </div>
-            ) : (
+            ) : signatureState === "invalid" ? (
               <div
                 className="flex h-6 w-6 items-center justify-center rounded-full bg-error/(--opacity-subtle) text-error"
-                title={t("audit.details.integrityTampered")}
+                title={signatureTitle}
               >
                 <ShieldAlert className="h-4 w-4" aria-hidden="true" />
+              </div>
+            ) : (
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-(--bg-surface-hover)/(--opacity-dim) text-(--text-secondary)"
+                title={signatureTitle}
+              >
+                <Info className="h-4 w-4" aria-hidden="true" />
               </div>
             )}
           </div>
@@ -140,6 +213,52 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
                     <Info className="h-4 w-4 text-brand" aria-hidden="true" />
                     <span>{t("audit.details.title")}</span>
                   </div>
+
+                  <section
+                    className="mb-6 rounded-md border border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim) p-4"
+                    aria-label={t("audit.details.signatureEvidence")}
+                  >
+                    <h3 className="text-sm font-bold text-text-primary">
+                      {t("audit.details.signatureEvidence")}
+                    </h3>
+                    <p className="mt-1 text-sm text-(--text-secondary)">{signatureTitle}</p>
+                    {signatureState === "legacyArrayVerified" && (
+                      <p className="mt-2 text-sm text-warning">
+                        {t("audit.details.legacyArrayTrustLimit")}
+                      </p>
+                    )}
+                    {signatureState === "legacyPipeVerified" && (
+                      <p className="mt-2 text-sm text-warning">
+                        {t("audit.details.legacyPipeTrustLimit")}
+                      </p>
+                    )}
+                    <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                      <div>
+                        <dt className="font-bold text-(--text-secondary)">
+                          {t("audit.details.authenticatedFields")}
+                        </dt>
+                        <dd className="mt-1 break-words font-mono text-text-primary">
+                          {getFieldList(
+                            log.authenticated_fields,
+                            t("audit.details.metadataUnavailable"),
+                            t("audit.details.noFields")
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="font-bold text-(--text-secondary)">
+                          {t("audit.details.unauthenticatedFields")}
+                        </dt>
+                        <dd className="mt-1 break-words font-mono text-text-primary">
+                          {getFieldList(
+                            log.unauthenticated_fields,
+                            t("audit.details.metadataUnavailable"),
+                            t("audit.details.noFields")
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1">

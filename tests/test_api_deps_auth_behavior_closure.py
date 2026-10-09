@@ -296,11 +296,56 @@ async def test_revoked_jti_and_redis_error_paths():
 
     error_client = AsyncMock()
     error_client.exists.side_effect = ConnectionError("redis unavailable")
+    request = _request()
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
+    session = _session(user_id=user_id, jti="redis-error")
+    repo = MagicMock()
+    repo.get_active_session_with_user = AsyncMock(return_value=(user, session))
+    security = MagicMock()
+    security.validate_session_expiry = MagicMock()
+    security.handle_mfa_ttl = AsyncMock()
+    security.sync_last_seen = AsyncMock()
+    fingerprint = MagicMock()
+    fingerprint.validate_fingerprint = AsyncMock()
     redis_service.get_session.return_value = None
-    result, user, _session_obj, _client, _repo = await _run_db_success(
-        _request(), user_id, "redis-error", redis_service, cache_client=error_client
-    )
-    assert result is user
+    with (
+        patch.object(module, "resolve_locale", return_value="en"),
+        patch.object(
+            module,
+            "get_revocation_redis_client",
+            new_callable=AsyncMock,
+            return_value=error_client,
+        ),
+        patch.object(
+            module.AuthTokenService,
+            "extract_and_decode_token",
+            return_value={"sub": str(user_id), "jti": "redis-error"},
+        ),
+        patch.object(
+            module.AuthTokenService,
+            "validate_payload",
+            return_value=(user_id, "redis-error"),
+        ),
+        patch.object(module, "ActiveSessionRepository", return_value=repo),
+        patch.object(module, "AuthSecurityService", return_value=security),
+        patch.object(module, "AuthFingerprintService", return_value=fingerprint),
+        patch.object(
+            module,
+            "settings",
+            SimpleNamespace(internal_hmac_secret="", environment="testing"),
+        ),
+    ):
+        with pytest.raises(HTTPException) as unavailable:
+            await module.get_current_user(request, "token", AsyncMock(), redis_service)
+
+    assert unavailable.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert unavailable.value.detail == {
+        "error": "session_verification_unavailable",
+        "message": "Session verification temporarily unavailable",
+    }
+    error_client.exists.assert_awaited_once_with("revoked:jti:redis-error")
+    redis_service.get_session.assert_not_awaited()
+    repo.get_active_session_with_user.assert_not_awaited()
 
 
 @pytest.mark.asyncio

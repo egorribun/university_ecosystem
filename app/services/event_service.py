@@ -15,7 +15,10 @@ from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
 from app.services import attendance_tokens, stats_cache
-from app.services.vector_service import VectorService
+from app.services.vector_service import (
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 from app.utils.pagination import (
     decode_datetime_cursor,
     decode_ranked_datetime_cursor,
@@ -135,7 +138,10 @@ class EventService:
     ) -> schemas.PaginatedEvents:
         query_embedding = None
         if search:
-            query_embedding = await self.vector_service.get_embedding(search)
+            try:
+                query_embedding = await self.vector_service.get_embedding(search)
+            except SemanticSearchUnavailableError:
+                query_embedding = None
 
         decoded_cursor = decode_ranked_datetime_cursor(
             cursor

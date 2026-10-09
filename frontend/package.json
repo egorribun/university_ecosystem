@@ -240,6 +240,7 @@
     "@opentelemetry/core": "2.8.0",
     "uuid": ">=14.0.0",
     "lighthouse": "^13.1.0",
+    "handlebars": "4.7.10",
     "msw-auto-mock": {
       "@ai-sdk/provider-utils": "4.0.33"
     },

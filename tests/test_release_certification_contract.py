@@ -1104,26 +1104,68 @@ def test_canonical_policy_requires_every_codeql_language() -> None:
 
 
 def test_canonical_policy_requires_independent_release_security_gates() -> None:
-    expected: set[str] = set()
+    independent_gates: set[str] = set()
     for workflow_name, job_name in [
         ("gitleaks.yml", "gitleaks"),
-        ("trufflehog.yml", "trufflehog"),
         ("cargo-deny.yml", "cargo-deny"),
         ("checkov.yml", "checkov"),
         ("zizmor.yml", "zizmor"),
-        ("sqlmap.yml", "sqlmap"),
         ("sbom.yml", "vuln-gate"),
     ]:
         workflow = yaml.safe_load(
             (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
         )
-        expected.add(workflow["jobs"][job_name]["name"])
-    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
-    names = {
-        check["name"] for check in policy["events"]["push_main"]["required_checks"]
-    }
+        independent_gates.add(workflow["jobs"][job_name]["name"])
 
-    assert expected <= names
+    codeql = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
+    )
+    codeql_languages = {
+        entry["language"]
+        for entry in codeql["jobs"]["analyze"]["strategy"]["matrix"]["include"]
+    }
+    codeql_gates = {f"Analyze ({language})" for language in codeql_languages}
+
+    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    names_by_event = {
+        event: {check["name"] for check in policy["events"][event]["required_checks"]}
+        for event in ("push_main", "pull_request_main")
+    }
+    for event, required_names in names_by_event.items():
+        assert independent_gates | codeql_gates <= required_names, event
+
+    moved_gates: set[str] = set()
+    for workflow_name, job_name in [
+        ("trufflehog.yml", "trufflehog"),
+        ("sqlmap.yml", "sqlmap"),
+    ]:
+        workflow = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        )
+        triggers = workflow.get("on", workflow.get(True, {}))
+        assert set(triggers) == {"schedule", "workflow_dispatch"}, workflow_name
+
+        verify_job = workflow["jobs"]["verify-default-branch-dispatch"]
+        assert verify_job["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+        guard = next(
+            step
+            for step in verify_job["steps"]
+            if step.get("name") == "Require protected default branch"
+        )
+        assert guard["env"]["WORKFLOW_REF"] == "${{ github.ref }}"
+        assert "refs/heads/main" in guard["run"]
+        assert "exit 1" in guard["run"]
+
+        scan_job = workflow["jobs"][job_name]
+        assert scan_job["needs"] == "verify-default-branch-dispatch"
+        scan_guard = scan_job["if"]
+        assert "github.ref == 'refs/heads/main'" in scan_guard
+        assert "github.event_name != 'workflow_dispatch'" in scan_guard
+        assert "needs.verify-default-branch-dispatch.result == 'success'" in scan_guard
+        moved_gates.add(scan_job["name"])
+
+    assert moved_gates.isdisjoint(names_by_event["push_main"])
+    assert moved_gates.isdisjoint(names_by_event["pull_request_main"])
 
 
 def test_validator_accepts_complete_successful_sha_bound_evidence() -> None:

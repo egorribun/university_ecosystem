@@ -126,7 +126,7 @@
       },
       "AddParticipant": {
         "additionalProperties": false,
-        "description": "Wave 209 G1 \u2014 add one member to a group.",
+        "description": "Wave 209 G1 — add one member to a group.",
         "properties": {
           "user_id": {
             "format": "uuid",
@@ -299,6 +299,13 @@
             ],
             "title": "Actor User Id"
           },
+          "authenticated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authenticated Fields",
+            "type": "array"
+          },
           "context": {
             "anyOf": [
               {
@@ -351,6 +358,17 @@
             "title": "Resource Type",
             "type": "string"
           },
+          "signature_scheme": {
+            "enum": [
+              "canonical_v2",
+              "legacy_json_array_v1",
+              "legacy_pipe_v1",
+              "invalid",
+              "unsigned"
+            ],
+            "title": "Signature Scheme",
+            "type": "string"
+          },
           "subject_name": {
             "anyOf": [
               {
@@ -374,6 +392,13 @@
             ],
             "title": "Subject User Id"
           },
+          "unauthenticated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unauthenticated Fields",
+            "type": "array"
+          },
           "user_agent": {
             "anyOf": [
               {
@@ -386,7 +411,16 @@
             "title": "User Agent"
           }
         },
-        "required": ["id", "resource_type", "action", "created_at", "is_valid"],
+        "required": [
+          "id",
+          "resource_type",
+          "action",
+          "created_at",
+          "is_valid",
+          "signature_scheme",
+          "authenticated_fields",
+          "unauthenticated_fields"
+        ],
         "title": "AuditLogOut",
         "type": "object"
       },
@@ -1871,7 +1905,7 @@
       },
       "GroupChatCreate": {
         "additionalProperties": false,
-        "description": "Wave 209 G1 \u2014 create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members).",
+        "description": "Wave 209 G1 — create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members).",
         "properties": {
           "name": {
             "maxLength": 128,
@@ -3614,7 +3648,7 @@
       },
       "ReactionAggregate": {
         "additionalProperties": false,
-        "description": "Wave 206 \u2014 per-emoji reaction tally on a message.\n\n`reacted_by_me` is computed server-side for the requesting user on the REST\npath (the aggregation in ChatQueryService knows current_user). On the WS\ndelta-frame path the client derives it locally \u2014 it's per-viewer, so it can\nnever travel in a broadcast frame.",
+        "description": "Wave 206 — per-emoji reaction tally on a message.\n\n`reacted_by_me` is computed server-side for the requesting user on the REST\npath (the aggregation in ChatQueryService knows current_user). On the WS\ndelta-frame path the client derives it locally — it's per-viewer, so it can\nnever travel in a broadcast frame.",
         "properties": {
           "count": {
             "title": "Count",
@@ -3636,7 +3670,7 @@
       },
       "ReactorOut": {
         "additionalProperties": false,
-        "description": "Wave 207 \u2014 one user in the reactor-list (\"who reacted\") popover.\n\nBuilt by ChatQueryService.get_reactors from the User rows the repository joins\nvia message_reactions. ``user_id`` is remapped explicitly in the service (the\nUser row has ``.id``, not ``.user_id``) \u2014 no from_attributes auto-mapping; only\nplain User columns (no relationship access \u2192 no N+1).",
+        "description": "Wave 207 — one user in the reactor-list (\"who reacted\") popover.\n\nBuilt by ChatQueryService.get_reactors from the User rows the repository joins\nvia message_reactions. ``user_id`` is remapped explicitly in the service (the\nUser row has ``.id``, not ``.user_id``) — no from_attributes auto-mapping; only\nplain User columns (no relationship access → no N+1).",
         "properties": {
           "avatar_url": {
             "anyOf": [
@@ -3672,7 +3706,7 @@
       },
       "ReadReceiptInfo": {
         "additionalProperties": false,
-        "description": "Wave 210 G2 \u2014 one member's read high-water-mark for a group chat.\n\nService-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.\nThe FE folds these + live `read` frames into a per-member \"seen by N\" map.\nDMs carry [] (they keep using Message.read_status), so this rides only on the\nget_chat_details response \u2014 the other ChatResponse construction sites omit it\nand it defaults [].",
+        "description": "Wave 210 G2 — one member's read high-water-mark for a group chat.\n\nService-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.\nThe FE folds these + live `read` frames into a per-member \"seen by N\" map.\nDMs carry [] (they keep using Message.read_status), so this rides only on the\nget_chat_details response — the other ChatResponse construction sites omit it\nand it defaults [].",
         "properties": {
           "last_read_at": {
             "format": "date-time",
@@ -3771,7 +3805,7 @@
       },
       "RenameChat": {
         "additionalProperties": false,
-        "description": "Wave 209 G1 \u2014 rename a group's display title.",
+        "description": "Wave 209 G1 — rename a group's display title.",
         "properties": {
           "name": {
             "maxLength": 128,
@@ -4032,28 +4066,14 @@
         "additionalProperties": false,
         "properties": {
           "end_time": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End Time"
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
           },
           "group_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
+            "format": "uuid",
+            "title": "Group Id",
+            "type": "string"
           },
           "lesson_type": {
             "anyOf": [
@@ -4067,15 +4087,8 @@
             "title": "Lesson Type"
           },
           "parity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parity"
+            "title": "Parity",
+            "type": "string"
           },
           "room": {
             "anyOf": [
@@ -4089,27 +4102,13 @@
             "title": "Room"
           },
           "start_time": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start Time"
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
           },
           "subject": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject"
+            "title": "Subject",
+            "type": "string"
           },
           "teacher": {
             "anyOf": [
@@ -4123,15 +4122,8 @@
             "title": "Teacher"
           },
           "weekday": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weekday"
+            "title": "Weekday",
+            "type": "string"
           }
         },
         "title": "ScheduleUpdate",
@@ -7996,7 +7988,7 @@
         "tags": ["chats"]
       },
       "patch": {
-        "description": "Rename a group's title (Wave 209 G1 \u2014 any participant).\n\nPATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}\n(edit-message). W174 auto-cookie covers PATCH CSRF.",
+        "description": "Rename a group's title (Wave 209 G1 — any participant).\n\nPATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}\n(edit-message). W174 auto-cookie covers PATCH CSRF.",
         "operationId": "rename_chat_api_v1_chats__chat_id__patch",
         "parameters": [
           {
@@ -8440,7 +8432,7 @@
     },
     "/api/v1/chats/{chat_id}/messages/{message_id}/reactions": {
       "delete": {
-        "description": "Remove an emoji reaction from a message (idempotent).\n\nW206 SW7 \u2014 emoji is a QUERY param, NOT a URL-path segment. Query params decode\nunambiguously (parse_qs); that is the robust shape for an arbitrary\nmulti-codepoint emoji used as a sub-resource selector, whereas multi-byte\ncontent in a URL path segment is a known fragility class. Verified LIVE\nend-to-end (two-browser cross-user add + remove of a real \ud83d\udc4d, W206 SW7).\n\nHonest re-attribution: the mid-wave switch from the SW4 path route was first\nblamed on a Caddy path mis-decode, but live verification showed the earlier\n\"failed remove\" was a CORRUPT stored value \u2014 curl on Windows Git-Bash mangles a\nliteral multi-byte emoji in a request BODY to \"??\", so the curl-added reaction\nwas stored as \"??\" and no remove could match the correctly-encoded \ud83d\udc4d. The\nquery param is retained as the more robust design (the path route was never\nverified for a real emoji). W174 auto-cookie covers DELETE CSRF.",
+        "description": "Remove an emoji reaction from a message (idempotent).\n\nW206 SW7 — emoji is a QUERY param, NOT a URL-path segment. Query params decode\nunambiguously (parse_qs); that is the robust shape for an arbitrary\nmulti-codepoint emoji used as a sub-resource selector, whereas multi-byte\ncontent in a URL path segment is a known fragility class. Verified LIVE\nend-to-end (two-browser cross-user add + remove of a real 👍, W206 SW7).\n\nHonest re-attribution: the mid-wave switch from the SW4 path route was first\nblamed on a Caddy path mis-decode, but live verification showed the earlier\n\"failed remove\" was a CORRUPT stored value — curl on Windows Git-Bash mangles a\nliteral multi-byte emoji in a request BODY to \"??\", so the curl-added reaction\nwas stored as \"??\" and no remove could match the correctly-encoded 👍. The\nquery param is retained as the more robust design (the path route was never\nverified for a real emoji). W174 auto-cookie covers DELETE CSRF.",
         "operationId": "remove_reaction_api_v1_chats__chat_id__messages__message_id__reactions_delete",
         "parameters": [
           {
@@ -8510,7 +8502,7 @@
         "tags": ["chats"]
       },
       "get": {
-        "description": "List the users who reacted to a message with a specific emoji (Wave 207).\n\nPowers the reactor-list \"who reacted\" popover \u2014 reactor identities are loaded\non-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat\nguarded (a participant of one chat can't enumerate reactors of a message in\nanother by guessing its id). emoji is a QUERY param (same robust shape as the\nDELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI\nroutes by method).",
+        "description": "List the users who reacted to a message with a specific emoji (Wave 207).\n\nPowers the reactor-list \"who reacted\" popover — reactor identities are loaded\non-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat\nguarded (a participant of one chat can't enumerate reactors of a message in\nanother by guessing its id). emoji is a QUERY param (same robust shape as the\nDELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI\nroutes by method).",
         "operationId": "get_reactors_api_v1_chats__chat_id__messages__message_id__reactions_get",
         "parameters": [
           {
@@ -8651,7 +8643,7 @@
     },
     "/api/v1/chats/{chat_id}/participants": {
       "post": {
-        "description": "Add a member to a group (Wave 209 G1 \u2014 any participant). W174 auto-cookie.",
+        "description": "Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie.",
         "operationId": "add_participant_api_v1_chats__chat_id__participants_post",
         "parameters": [
           {
@@ -8712,7 +8704,7 @@
     },
     "/api/v1/chats/{chat_id}/participants/{user_id}": {
       "delete": {
-        "description": "Remove a member from a group / leave (Wave 209 G1 \u2014 owner or self).\n\n3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.",
+        "description": "Remove a member from a group / leave (Wave 209 G1 — owner or self).\n\n3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.",
         "operationId": "remove_participant_api_v1_chats__chat_id__participants__user_id__delete",
         "parameters": [
           {
@@ -8824,7 +8816,7 @@
     },
     "/api/v1/chats/{chat_id}/typing": {
       "post": {
-        "description": "Broadcast a 'typing' indicator to the other chat participants (Wave 207).\n\nThe frontend WS connects to ws-hub, which drops \"typing\" frames at its parse\nboundary \u2014 so typing can't relay peer-to-peer over the socket. This REST endpoint\ndoes the participant authz + broadcast (W204 bridge \u2192 ws-hub chat.* fan-out \u2192 the\nother participants' live TypingIndicator). A permissive 180/60 limiter (vs the\nstrict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while\ncapping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.",
+        "description": "Broadcast a 'typing' indicator to the other chat participants (Wave 207).\n\nThe frontend WS connects to ws-hub, which drops \"typing\" frames at its parse\nboundary — so typing can't relay peer-to-peer over the socket. This REST endpoint\ndoes the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the\nother participants' live TypingIndicator). A permissive 180/60 limiter (vs the\nstrict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while\ncapping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.",
         "operationId": "typing_indicator_api_v1_chats__chat_id__typing_post",
         "parameters": [
           {
@@ -8875,7 +8867,7 @@
     },
     "/api/v1/chats/{dest_chat_id}/forward": {
       "post": {
-        "description": "Forward 1..N messages from a source chat into this destination chat (Wave 211).\n\nSnapshot-copy: copies the source content + attachments + a \"Forwarded from X\"\nlabel; the source is never dereferenced cross-chat (privacy). The actor must be\na participant of BOTH the source chat (to read) AND this destination chat (to\nsend) \u2014 see ChatMessageDispatcher.forward_messages.",
+        "description": "Forward 1..N messages from a source chat into this destination chat (Wave 211).\n\nSnapshot-copy: copies the source content + attachments + a \"Forwarded from X\"\nlabel; the source is never dereferenced cross-chat (privacy). The actor must be\na participant of BOTH the source chat (to read) AND this destination chat (to\nsend) — see ChatMessageDispatcher.forward_messages.",
         "operationId": "forward_messages_api_v1_chats__dest_chat_id__forward_post",
         "parameters": [
           {
@@ -13795,7 +13787,7 @@
     },
     "/ws/ticket": {
       "post": {
-        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> \u2014 the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
+        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
         "operationId": "issue_ws_upgrade_ticket_ws_ticket_post",
         "responses": {
           "201": {

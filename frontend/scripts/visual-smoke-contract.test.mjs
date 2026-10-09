@@ -1,6 +1,18 @@
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import test from "node:test"
+
+import {
+  buildAuthenticatedCaptureBasename,
+  createAuthenticatedCaptureMetadata,
+  createAuthenticatedLoginSidecar,
+  createAuthenticatedCaptureRunDirectory,
+  parseAuthenticatedVisualCaptureMatrix,
+  parseAuthenticatedVisualRoutes,
+} from "./authenticated-visual-audit.mjs"
 
 import {
   classifyAuthenticatedAuditSummaries,
@@ -8,6 +20,257 @@ import {
   requestFailureRecord,
   responseRecord,
 } from "./visual-smoke-contract.mjs"
+
+function validAuthenticatedMatrixEnvironment(outputDir) {
+  return {
+    VISUAL_CAPTURE_MATRIX: "1",
+    VISUAL_WIDTHS: "390,768,1440",
+    VISUAL_LOCALES: "en,ru",
+    VISUAL_THEMES: "light,dark",
+    VISUAL_HEIGHT: "800",
+    SOURCE_SHA: "a".repeat(40),
+    ORIGIN: "http://localhost",
+    TEST_EMAIL: "synthetic-student@example.test",
+    TEST_PASSWORD: randomUUID(),
+    OUT_DIR: outputDir,
+  }
+}
+
+test("authenticated visual matrix validates its private output and dimensions before use", async () => {
+  const temporaryRoot = await import("node:fs/promises").then(({ mkdtemp }) =>
+    mkdtemp(path.join(os.tmpdir(), "authenticated-visual-matrix-"))
+  )
+  const checkoutRoot = path.join(temporaryRoot, "checkout")
+  const privateOutput = path.join(temporaryRoot, "private-output")
+  const credentialedOrigin = new URL("https://example.test/path")
+  credentialedOrigin.username = randomUUID()
+  credentialedOrigin.password = randomUUID()
+  try {
+    const config = parseAuthenticatedVisualCaptureMatrix(
+      validAuthenticatedMatrixEnvironment(privateOutput),
+      { checkoutRoot }
+    )
+    assert.deepEqual(config.widths, [390, 768, 1440])
+    assert.deepEqual(config.locales, ["en", "ru"])
+    assert.deepEqual(config.themes, ["light", "dark"])
+    assert.equal(config.height, 800)
+    assert.equal(config.sourceSha, "a".repeat(40))
+    assert.equal(config.outputDir, privateOutput)
+
+    assert.equal(
+      parseAuthenticatedVisualCaptureMatrix({ VISUAL_CAPTURE_MATRIX: "0" }),
+      null,
+      "the default audit path remains opt-in and unchanged"
+    )
+    assert.throws(
+      () =>
+        parseAuthenticatedVisualCaptureMatrix(
+          validAuthenticatedMatrixEnvironment(path.join(checkoutRoot, ".screenshots")),
+          { checkoutRoot }
+        ),
+      /outside the checkout/u
+    )
+    assert.throws(
+      () =>
+        parseAuthenticatedVisualCaptureMatrix(
+          { ...validAuthenticatedMatrixEnvironment(privateOutput), VISUAL_WIDTHS: "390,0" },
+          { checkoutRoot }
+        ),
+      /320 through 2560/u
+    )
+    assert.throws(
+      () =>
+        parseAuthenticatedVisualCaptureMatrix(
+          { ...validAuthenticatedMatrixEnvironment(privateOutput), VISUAL_LOCALES: "en,fr" },
+          { checkoutRoot }
+        ),
+      /supported, unique values/u
+    )
+    assert.throws(
+      () =>
+        parseAuthenticatedVisualCaptureMatrix(
+          { ...validAuthenticatedMatrixEnvironment(privateOutput), VISUAL_THEMES: "system" },
+          { checkoutRoot }
+        ),
+      /supported, unique values/u
+    )
+    assert.throws(
+      () =>
+        parseAuthenticatedVisualCaptureMatrix(
+          { ...validAuthenticatedMatrixEnvironment(privateOutput), SOURCE_SHA: "not-a-sha" },
+          { checkoutRoot }
+        ),
+      /40-character/u
+    )
+    assert.throws(
+      () =>
+        parseAuthenticatedVisualCaptureMatrix(
+          {
+            ...validAuthenticatedMatrixEnvironment(privateOutput),
+            ORIGIN: credentialedOrigin.toString(),
+          },
+          { checkoutRoot }
+        ),
+      /clean HTTP\(S\) origin/u
+    )
+  } finally {
+    await import("node:fs/promises").then(({ rm }) =>
+      rm(temporaryRoot, { recursive: true, force: true })
+    )
+  }
+})
+
+test("authenticated route preflight rejects unknown, sensitive, and URL-bearing routes without echoing them", () => {
+  const opaqueResetToken = "opaque-reset-secret-must-not-be-echoed"
+  const invalidRoutes = [
+    "/reset-password/" + opaqueResetToken,
+    "/events?token=" + opaqueResetToken,
+    "/news#" + opaqueResetToken,
+    "/../schedule",
+    "/unknown-route",
+  ]
+
+  for (const route of invalidRoutes) {
+    assert.throws(
+      () =>
+        parseAuthenticatedVisualCaptureMatrix({
+          VISUAL_CAPTURE_MATRIX: "0",
+          ROUTES: route,
+        }),
+      (error) => {
+        assert.equal(error.message, "ROUTES contains an unsupported application path")
+        assert.doesNotMatch(error.message, /opaque-reset-secret-must-not-be-echoed/u)
+        return true
+      },
+      "route validation must run even when matrix capture is disabled"
+    )
+  }
+})
+
+test("authenticated route allowlist preserves legacy routes and a seeded messenger UUID detail", () => {
+  assert.deepEqual(parseAuthenticatedVisualRoutes({}), [
+    "/dashboard",
+    "/events",
+    "/news",
+    "/schedule",
+    "/profile",
+    "/settings",
+    "/map",
+    "/activity",
+    "/messenger",
+  ])
+  assert.deepEqual(parseAuthenticatedVisualRoutes({ ROUTES: "dashboard,/events" }), [
+    "/dashboard",
+    "/events",
+  ])
+
+  const seededChatRoute = "/messenger/0f8fad5b-d9cb-469f-a165-70867728950e"
+  assert.deepEqual(parseAuthenticatedVisualRoutes({ ROUTES: seededChatRoute }), [seededChatRoute])
+  assert.equal(
+    parseAuthenticatedVisualCaptureMatrix({ VISUAL_CAPTURE_MATRIX: "0", ROUTES: seededChatRoute }),
+    null
+  )
+})
+
+test("authenticated matrix filenames and metadata retain every requested dimension", () => {
+  const capture = { locale: "ru", theme: "dark", width: 390, height: 800 }
+  assert.equal(buildAuthenticatedCaptureBasename("/dashboard"), "dashboard")
+  assert.equal(buildAuthenticatedCaptureBasename("/dashboard", capture), "dashboard_ru_dark_w390")
+  assert.deepEqual(
+    createAuthenticatedCaptureMetadata(capture, {
+      sourceSha: "b".repeat(40),
+      visualConfigurationMatches: true,
+      screenshotPath: "dashboard_ru_dark_w390.png",
+    }),
+    {
+      captureMode: "authenticated-live-matrix",
+      sourceSha: "b".repeat(40),
+      locale: "ru",
+      theme: "dark",
+      viewport: { width: 390, height: 800 },
+      visualConfigurationMatches: true,
+      visualConfigurationError: null,
+      screenshotPath: "dashboard_ru_dark_w390.png",
+    }
+  )
+})
+
+test("authenticated matrix uses fresh run directories without replacing earlier captures", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "authenticated-capture-run-"))
+  try {
+    const priorCapture = path.join(temporaryRoot, "prior-capture.png")
+    await writeFile(priorCapture, "owner-supplied baseline")
+    const first = await createAuthenticatedCaptureRunDirectory(temporaryRoot)
+    const second = await createAuthenticatedCaptureRunDirectory(temporaryRoot)
+
+    assert.notEqual(first, second)
+    assert.match(path.basename(first), /^run-/u)
+    assert.match(path.basename(second), /^run-/u)
+    assert.equal(await readFile(priorCapture, "utf8"), "owner-supplied baseline")
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true })
+  }
+})
+
+test("authenticated login sidecar omits subject, token ID, and raw identity claims", () => {
+  const sidecar = createAuthenticatedLoginSidecar({
+    cookies: [{ name: "access_token_v2" }],
+    jwtAlgorithm: "RS256",
+    jwtAudience: "university-ecosystem-api",
+    jwtHeader: { alg: "RS256" },
+    jwtPayload: { sub: "private-subject", jti: "private-token-id", email: "private@example.test" },
+  })
+  const serialized = JSON.stringify(sidecar)
+  assert.equal(sidecar.loginVerified, true)
+  assert.equal(sidecar.jwtAlgorithm, "RS256")
+  assert.doesNotMatch(
+    serialized,
+    /private-subject|private-token-id|private@example\.test|"sub"|"jti"/u
+  )
+})
+
+test("authenticated matrix preflight and filenames stay outside the legacy artifact contract", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const mainSource = source.slice(source.indexOf("async function main()"))
+  const routePreflightIndex = mainSource.indexOf("parseAuthenticatedVisualRoutes(process.env)")
+  assert.notEqual(routePreflightIndex, -1, "all audit modes validate routes before work starts")
+  for (const sideEffect of [
+    "console.log(",
+    "checkJwksEndpoint()",
+    "chromium.launch",
+    "createAuthenticatedCaptureRunDirectory(",
+    "writeFile(",
+  ]) {
+    assert.ok(
+      routePreflightIndex < mainSource.indexOf(sideEffect),
+      `route validation must precede ${sideEffect}`
+    )
+  }
+  assert.ok(
+    mainSource.indexOf("parseAuthenticatedVisualCaptureMatrix()") <
+      mainSource.indexOf("checkJwksEndpoint()"),
+    "invalid matrix input must fail before JWKS network access"
+  )
+  assert.ok(
+    mainSource.indexOf("parseAuthenticatedVisualCaptureMatrix()") <
+      mainSource.indexOf("chromium.launch"),
+    "invalid matrix input must fail before browser launch"
+  )
+  assert.match(source, /path\.join\(outputDir, "matrix\.json"\)/u)
+  assert.match(source, /if \(process\.argv\[1\].*=== __filename\)/u)
+  assert.equal(buildAuthenticatedCaptureBasename("/dashboard"), "dashboard")
+  assert.equal(
+    buildAuthenticatedCaptureBasename("/dashboard", {
+      locale: "en",
+      theme: "light",
+      width: 1440,
+    }),
+    "dashboard_en_light_w1440"
+  )
+})
 
 test("unauthenticated smoke blocks service workers for deterministic SSR lifecycle", async () => {
   const source = await readFile(

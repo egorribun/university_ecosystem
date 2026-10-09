@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import dishka.integrations.fastapi as _dishka_fastapi
 import pytest
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from starlette.responses import Response
 
 _MISSING = object()
@@ -278,6 +279,57 @@ async def test_update_schedule_success_permission_and_missing(monkeypatch):
             uuid.uuid4(), data, _Request(), missing_bus, _user()
         )
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("group_id", "subject", "weekday", "start_time", "end_time", "parity"),
+)
+def test_schedule_update_rejects_explicit_null_for_required_storage_fields(field):
+    with pytest.raises(ValidationError):
+        schemas.ScheduleUpdate.model_validate({field: None})
+
+
+def test_schedule_update_keeps_omitted_fields_partial_and_nullable_fields_clearable():
+    partial = schemas.ScheduleUpdate(subject="Updated")
+    assert partial.model_dump(exclude_unset=True) == {"subject": "Updated"}
+
+    clearable = schemas.ScheduleUpdate.model_validate(
+        {"teacher": None, "room": None, "lesson_type": None}
+    )
+    assert clearable.model_dump(exclude_unset=True) == {
+        "teacher": None,
+        "room": None,
+        "lesson_type": None,
+    }
+
+
+def test_schedule_update_json_schema_is_optional_but_non_nullable_for_storage_fields():
+    schema = schemas.ScheduleUpdate.model_json_schema()
+    properties = schema["properties"]
+    required_fields = (
+        "group_id",
+        "subject",
+        "weekday",
+        "start_time",
+        "end_time",
+        "parity",
+    )
+
+    assert not set(required_fields).intersection(schema.get("required", []))
+    for field in required_fields:
+        field_schema = properties[field]
+        assert "default" not in field_schema
+        assert field_schema.get("type") != "null"
+        assert all(
+            branch.get("type") != "null" for branch in field_schema.get("anyOf", [])
+        )
+
+    for field in ("teacher", "room", "lesson_type"):
+        assert any(
+            branch.get("type") == "null"
+            for branch in properties[field].get("anyOf", [])
+        )
 
 
 @pytest.mark.asyncio

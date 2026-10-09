@@ -11,6 +11,7 @@ on:
   # cannot select an untrusted ref containing a modified privileged workflow.
   repository_dispatch:
     types: [run-nightly-full-gate]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -26,6 +27,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify-default-branch-dispatch:
+    name: Verify default branch for manual nightly run
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require protected default branch
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "::error::Manual nightly checks must run from the protected main ref."
+            exit 1
+          fi
+
   nightly-helm-dependencies:
     name: Produce verified nightly Helm dependencies
     if: ${{ github.repository == 'egorribun/university_ecosystem' && github.ref == 'refs/heads/main' }}
@@ -533,18 +551,35 @@ jobs:
     uses: ./.github/workflows/reusable-e2e-wasm-build.yml
 
   browser-matrix:
-    name: Browser matrix (${{ matrix.browser }})
+    name: Browser matrix (${{ matrix.browser }} ${{ matrix.shard-index }}/${{ matrix.shard-total }})
     if: ${{ github.ref == 'refs/heads/main' }}
     needs: e2e-wasm-build
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        browser:
-          - chromium
-          - firefox
-          - webkit
-          - mobile-webkit
+        include:
+          - browser: chromium
+            shard-index: 1
+            shard-total: 4
+          - browser: chromium
+            shard-index: 2
+            shard-total: 4
+          - browser: chromium
+            shard-index: 3
+            shard-total: 4
+          - browser: chromium
+            shard-index: 4
+            shard-total: 4
+          - browser: firefox
+            shard-index: 1
+            shard-total: 1
+          - browser: webkit
+            shard-index: 1
+            shard-total: 1
+          - browser: mobile-webkit
+            shard-index: 1
+            shard-total: 1
     uses: ./.github/workflows/reusable-e2e-tests.yml
     permissions:
       contents: read
@@ -553,12 +588,167 @@ jobs:
       node-version: "24"
       python-version: "3.14"
       browser: ${{ matrix.browser }}
-      shard-index: 1
-      shard-total: 1
+      shard-index: ${{ matrix.shard-index }}
+      shard-total: ${{ matrix.shard-total }}
       collect-coverage: ${{ matrix.browser == 'chromium' }}
       wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
       wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
       wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
+
+  schemathesis-api-tests-shard:
+    name: Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/8
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies with Schemathesis
+        run: uv sync --frozen --group dev
+
+      - name: Run Schemathesis conformance tests
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test_schemathesis.db
+          ENVIRONMENT: testing
+          REVOCATION_REDIS_URL: redis://localhost:6380/0
+          OTEL_SDK_DISABLED: "true"
+          UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
+          SCHEMATHESIS_MAX_EXAMPLES: "25"
+          SCHEMATHESIS_SHARD_COUNT: "8"
+          SCHEMATHESIS_SHARD_INDEX: ${{ matrix.shard }}
+        run: >-
+          uv run pytest tests/test_schemathesis_api.py -v
+          -m schemathesis --tb=short -p no:cacheprovider
+
+  schemathesis-api-tests:
+    name: Schemathesis - API Schema Conformance
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}
+    needs: schemathesis-api-tests-shard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require every Schemathesis shard to pass
+        env:
+          SHARD_RESULT: ${{ needs.schemathesis-api-tests-shard.result }}
+        run: |
+          if [[ "$SHARD_RESULT" != "success" ]]; then
+            echo "Schemathesis shard aggregate: $SHARD_RESULT"
+            exit 1
+          fi
+          echo "All Schemathesis shards passed."
+
+  chaos-tests:
+    name: Chaos Engineering (ToxiProxy)
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: sqlite+aiosqlite:///./test_chaos.db
+      ENVIRONMENT: testing
+      OTEL_SDK_DISABLED: "true"
+      UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
+    services:
+      minio:
+        image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+        command: mini -dir=/data -s3.port=9000
+        ports:
+          - 9000:9000
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadminsecret # pragma: allowlist secret
+          S3_BUCKET: quality-chaos
+      toxiproxy:
+        image: ghcr.io/shopify/toxiproxy:2.9.0@sha256:b44c283298cea49e2defaba1b3028783798346f2a926684e3a345fd8441af3b8
+        ports:
+          - 8474:8474
+          - 9003:9003
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Configure ToxiProxy proxies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:9000/status >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent --show-error \
+            --request POST http://localhost:8474/proxies \
+            --header 'Content-Type: application/json' \
+            --data '{"name":"minio","listen":"0.0.0.0:9003","upstream":"minio:9000","enabled":true}'
+
+      - name: Run chaos tests
+        env:
+          MINIO_PROXY_ENDPOINT: http://localhost:9003
+          MINIO_DIRECT_ENDPOINT: localhost:9000
+          STORAGE_S3_ENDPOINT_URL: http://localhost:9003
+          STORAGE_S3_BUCKET: quality-chaos
+          STORAGE_S3_ACCESS_KEY_ID: minioadmin
+          STORAGE_S3_SECRET_ACCESS_KEY: minioadminsecret # pragma: allowlist secret
+          UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
+        run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+
+  chaos-loadtest-orchestrator:
+    name: Chaos Loadtest Orchestrator
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run chaos loadtest dry-runs
+        run: |
+          python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/redis-chaos.yaml --duration 5 --verbose
+          python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/nats-chaos.yaml --duration 5
+          python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/gateway-backend-disconnect.yaml --duration 5
 
   load-and-chaos:
     name: Load and chaos resilience
@@ -827,7 +1017,11 @@ jobs:
       - go-integration
       - container-integration-cells
       - browser-matrix
+      - schemathesis-api-tests
+      - chaos-tests
+      - chaos-loadtest-orchestrator
       - load-and-chaos
+      - verify-default-branch-dispatch
       - kyverno-test
       - miri
     runs-on: ubuntu-24.04

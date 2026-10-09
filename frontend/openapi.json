@@ -299,6 +299,13 @@
             ],
             "title": "Actor User Id"
           },
+          "authenticated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authenticated Fields",
+            "type": "array"
+          },
           "context": {
             "anyOf": [
               {
@@ -351,6 +358,17 @@
             "title": "Resource Type",
             "type": "string"
           },
+          "signature_scheme": {
+            "enum": [
+              "canonical_v2",
+              "legacy_json_array_v1",
+              "legacy_pipe_v1",
+              "invalid",
+              "unsigned"
+            ],
+            "title": "Signature Scheme",
+            "type": "string"
+          },
           "subject_name": {
             "anyOf": [
               {
@@ -374,6 +392,13 @@
             ],
             "title": "Subject User Id"
           },
+          "unauthenticated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unauthenticated Fields",
+            "type": "array"
+          },
           "user_agent": {
             "anyOf": [
               {
@@ -386,7 +411,16 @@
             "title": "User Agent"
           }
         },
-        "required": ["id", "resource_type", "action", "created_at", "is_valid"],
+        "required": [
+          "id",
+          "resource_type",
+          "action",
+          "created_at",
+          "is_valid",
+          "signature_scheme",
+          "authenticated_fields",
+          "unauthenticated_fields"
+        ],
         "title": "AuditLogOut",
         "type": "object"
       },
@@ -4032,28 +4066,14 @@
         "additionalProperties": false,
         "properties": {
           "end_time": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End Time"
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
           },
           "group_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
+            "format": "uuid",
+            "title": "Group Id",
+            "type": "string"
           },
           "lesson_type": {
             "anyOf": [
@@ -4067,15 +4087,8 @@
             "title": "Lesson Type"
           },
           "parity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parity"
+            "title": "Parity",
+            "type": "string"
           },
           "room": {
             "anyOf": [
@@ -4089,27 +4102,13 @@
             "title": "Room"
           },
           "start_time": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start Time"
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
           },
           "subject": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject"
+            "title": "Subject",
+            "type": "string"
           },
           "teacher": {
             "anyOf": [
@@ -4123,15 +4122,8 @@
             "title": "Teacher"
           },
           "weekday": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weekday"
+            "title": "Weekday",
+            "type": "string"
           }
         },
         "title": "ScheduleUpdate",

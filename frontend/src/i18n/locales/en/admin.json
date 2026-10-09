@@ -93,7 +93,7 @@
   },
   "audit": {
     "title": "Secure Audit Logs",
-    "subtitle": "Cryptographically verified activity logging system.",
+    "subtitle": "Audit activity with explicit signature and field trust information.",
     "filters": {
       "resourceType": "Resource Type",
       "action": "Action"
@@ -116,8 +116,19 @@
       "ipAddress": "IP Address",
       "userAgent": "User Agent",
       "executionContext": "Execution Context",
-      "integrityVerified": "Cryptographic Integrity Verified",
-      "integrityTampered": "TAMPERED OR INVALID SIGNATURE",
+      "signatureEvidence": "Signature evidence",
+      "authenticatedFields": "Authenticated fields",
+      "unauthenticatedFields": "Unauthenticated fields",
+      "integrityCanonicalVerified": "Canonical v2 signature is valid for the authenticated fields.",
+      "integrityLegacyArrayVerified": "Legacy JSON-array signature is valid, with legacy field coverage.",
+      "integrityLegacyPipeVerified": "Legacy pipe signature is valid, with legacy field coverage.",
+      "integrityInvalid": "Invalid signature. Integrity could not be established.",
+      "integrityUnsigned": "This audit record is unsigned.",
+      "integrityUnknown": "Signature scheme or trust metadata is unavailable. Integrity is not established.",
+      "legacyArrayTrustLimit": "This legacy format does not authenticate the audit row ID.",
+      "legacyPipeTrustLimit": "This legacy format does not authenticate context or User-Agent; those values are omitted when unavailable.",
+      "metadataUnavailable": "Trust metadata unavailable",
+      "noFields": "None",
       "notAvailable": "N/A",
       "system": "System",
       "unknown": "Unknown"

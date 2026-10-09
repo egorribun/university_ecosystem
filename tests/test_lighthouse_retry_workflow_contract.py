@@ -11,6 +11,7 @@ WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
 )
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+LHCI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "lhci-linux.yml"
 
 
 def _workflow() -> dict[str, object]:
@@ -34,23 +35,29 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
     raise AssertionError(f"missing workflow step: {name}")
 
 
-def test_performance_gate_runs_lighthouse_selector_as_a_module_from_repo_root() -> None:
-    """The selector imports the top-level ``scripts`` package."""
+def test_lighthouse_is_only_run_by_the_main_scheduled_or_manual_workflow() -> None:
+    ci = _ci_workflow()
+    ci_jobs = ci["jobs"]
+    assert isinstance(ci_jobs, dict)
+    assert "performance-gate" not in ci_jobs
+    assert ci_jobs["frontend-tests"]["with"]["run-lighthouse"] is False
 
-    workflow = _ci_workflow()
-    jobs = workflow["jobs"]
-    assert isinstance(jobs, dict)
-    performance_gate = jobs["performance-gate"]
-    assert isinstance(performance_gate, dict)
-    assert performance_gate["defaults"] == {"run": {"working-directory": "frontend"}}
+    lhci = yaml.safe_load(LHCI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert isinstance(lhci, dict)
+    trigger = lhci.get("on", lhci.get(True))
+    assert "schedule" in trigger
+    assert "workflow_dispatch" in trigger
+    assert "pull_request" not in trigger
+    assert "push" not in trigger
 
-    materialize = _step(
-        performance_gate, "Select and materialize verified Lighthouse evidence"
-    )
-    run = str(materialize["run"])
-    assert materialize["working-directory"] == "${{ github.workspace }}"
-    assert "python3 -m scripts.quality.select_lighthouse_artifacts_cli" in run
-    assert "python3 scripts/quality/select_lighthouse_artifacts_cli" not in run
+    verify = lhci["jobs"]["verify-default-branch-dispatch"]
+    assert verify["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    job = lhci["jobs"]["lhci"]
+    assert job["needs"] == "verify-default-branch-dispatch"
+    assert "github.ref == 'refs/heads/main'" in job["if"]
+    assert "needs.verify-default-branch-dispatch.result == 'success'" in job["if"]
+    run = _step(job, "Run Lighthouse CI")
+    assert run["run"] == "npm run lhci"
 
 
 def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:

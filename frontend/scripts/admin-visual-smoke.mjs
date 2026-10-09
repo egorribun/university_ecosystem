@@ -17,7 +17,7 @@
  * Prerequisites: a healthy local stack, RSA JWKS, and the seeded admin account.
  */
 import { Buffer } from "node:buffer"
-import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
@@ -28,6 +28,7 @@ import { loginBrowserContext } from "./visual-smoke-auth.mjs"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname, "..")
+const CHECKOUT_ROOT = path.resolve(PROJECT_ROOT, "..")
 
 const ORIGIN = process.env.ORIGIN ?? "http://localhost"
 const TEST_EMAIL = process.env.TEST_EMAIL ?? "admin@university.dev"
@@ -55,6 +56,146 @@ const ADMIN_ROUTES = [
 
 const THEMES = ["light", "dark"]
 const LOCALES = ["en", "ru"]
+
+function parseMatrixList(value, fallback, name, supportedValues) {
+  const raw = typeof value === "string" && value.trim() ? value : fallback
+  const values = raw.split(",").map((item) => item.trim())
+  if (
+    values.length === 0 ||
+    values.some((item) => !item) ||
+    new Set(values).size !== values.length ||
+    values.some((item) => !supportedValues.includes(item))
+  ) {
+    throw new Error(`${name} must be a comma-separated list of supported, unique values`)
+  }
+  return values
+}
+
+function parseMatrixWidths(value) {
+  const raw = typeof value === "string" && value.trim() ? value : "390,768,1440"
+  const values = raw.split(",").map((item) => item.trim())
+  if (values.length === 0 || values.length > 8 || values.some((item) => !/^\d+$/u.test(item))) {
+    throw new Error("VISUAL_WIDTHS must contain one to eight integer CSS-pixel widths")
+  }
+  const widths = values.map(Number)
+  if (
+    new Set(widths).size !== widths.length ||
+    widths.some((width) => width < 320 || width > 2560)
+  ) {
+    throw new Error("VISUAL_WIDTHS must contain unique widths from 320 through 2560")
+  }
+  return widths
+}
+
+function isOutsideCheckout(checkoutRoot, candidate) {
+  const relativePath = path.relative(path.resolve(checkoutRoot), path.resolve(candidate))
+  return (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  )
+}
+
+async function assertPrivateOutputDirectory(outputDirectory) {
+  const resolvedOutput = path.resolve(outputDirectory)
+  let ancestor = resolvedOutput
+  const missingParts = []
+  let realOutput
+  for (;;) {
+    try {
+      const realAncestor = await realpath(ancestor)
+      realOutput = path.resolve(realAncestor, ...missingParts)
+      break
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error
+      const parent = path.dirname(ancestor)
+      if (parent === ancestor) throw error
+      missingParts.unshift(path.basename(ancestor))
+      ancestor = parent
+    }
+  }
+  const realCheckout = await realpath(CHECKOUT_ROOT)
+  if (!isOutsideCheckout(realCheckout, realOutput)) {
+    throw new Error("Matrix capture OUT_DIR must resolve outside the checkout")
+  }
+}
+
+export function parseAdminVisualCaptureMatrix(
+  environment = process.env,
+  { checkoutRoot = CHECKOUT_ROOT } = {}
+) {
+  const enabled = environment.VISUAL_CAPTURE_MATRIX
+  if (enabled === undefined || enabled === "" || enabled === "0") return null
+  if (enabled !== "1") throw new Error("VISUAL_CAPTURE_MATRIX must be 1 when enabled")
+
+  let origin
+  try {
+    origin = new URL(environment.ORIGIN ?? "http://localhost")
+  } catch {
+    throw new Error("ORIGIN must be a valid HTTP(S) origin for matrix capture")
+  }
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash
+  ) {
+    throw new Error("ORIGIN must be a clean HTTP(S) origin without credentials or path")
+  }
+
+  if (typeof environment.OUT_DIR !== "string" || !path.isAbsolute(environment.OUT_DIR)) {
+    throw new Error("Matrix capture requires an absolute caller-selected OUT_DIR")
+  }
+  const outputDir = path.resolve(environment.OUT_DIR)
+  if (!isOutsideCheckout(checkoutRoot, outputDir)) {
+    throw new Error("Matrix capture OUT_DIR must be outside the checkout")
+  }
+  if (environment.GITHUB_OUTPUT) {
+    throw new Error("Matrix capture must not publish its private output as a CI artifact")
+  }
+
+  const sourceSha = environment.SOURCE_SHA ?? environment.GITHUB_SHA
+  if (typeof sourceSha !== "string" || !/^[0-9a-f]{40}$/iu.test(sourceSha)) {
+    throw new Error("Matrix capture requires a 40-character SOURCE_SHA or GITHUB_SHA")
+  }
+  if (typeof environment.TEST_EMAIL !== "string" || !environment.TEST_EMAIL.trim()) {
+    throw new Error("Matrix capture requires an explicit synthetic admin TEST_EMAIL")
+  }
+  if (typeof environment.TEST_PASSWORD !== "string" || !environment.TEST_PASSWORD.trim()) {
+    throw new Error("Matrix capture requires an explicit synthetic admin TEST_PASSWORD")
+  }
+
+  const locales = parseMatrixList(environment.VISUAL_LOCALES, "en,ru", "VISUAL_LOCALES", LOCALES)
+  const themes = parseMatrixList(environment.VISUAL_THEMES, "light,dark", "VISUAL_THEMES", THEMES)
+  const widths = parseMatrixWidths(environment.VISUAL_WIDTHS)
+  const heightValue = environment.VISUAL_HEIGHT ?? "800"
+  if (!/^\d+$/u.test(heightValue)) {
+    throw new Error("VISUAL_HEIGHT must be an integer CSS-pixel height")
+  }
+  const height = Number(heightValue)
+  if (height < 600 || height > 1600) {
+    throw new Error("VISUAL_HEIGHT must be from 600 through 1600")
+  }
+
+  return {
+    mode: "admin-live-visual-matrix",
+    evidenceKind: "real-browser-no-route-mocks",
+    origin: origin.origin,
+    outputDir,
+    sourceSha: sourceSha.toLowerCase(),
+    locales,
+    themes,
+    widths,
+    height,
+  }
+}
+
+export function buildAdminCaptureBasename(routePath, locale, theme, captureConfig = null) {
+  const base = `${safeFilename(routePath)}_${locale}_${theme}`
+  return captureConfig ? `${base}_w${captureConfig.width}` : base
+}
 
 const ADMIN_ROUTE_HEADINGS = {
   "/admin/audit": { en: "Secure Audit Logs", ru: "Защищённый аудит" },
@@ -124,8 +265,12 @@ export function isAdminCaptureSuccessful(capture) {
     capture?.adminRoleConfirmed === true &&
     !capture.redirectedToLogin &&
     capture.pageReadiness?.ready === true &&
+    capture.pageReadiness?.themeMatches !== false &&
+    capture.pageReadiness?.viewportMatches !== false &&
     typeof capture.screenshotPath === "string" &&
-    capture.screenshotPath.trim() !== ""
+    capture.screenshotPath.trim() !== "" &&
+    (capture.width === undefined || (Number.isInteger(capture.width) && capture.width >= 320)) &&
+    (capture.height === undefined || (Number.isInteger(capture.height) && capture.height >= 600))
   )
 }
 
@@ -134,6 +279,15 @@ function safePathname(value) {
     return new URL(value).pathname
   } catch {
     return ""
+  }
+}
+
+function safeRequestUrl(value) {
+  try {
+    const url = new URL(value)
+    return `${url.origin}${url.pathname}`
+  } catch {
+    return "[invalid-url]"
   }
 }
 
@@ -158,6 +312,10 @@ export function createAdminSmokeSidecar({
   hydrationErrorCount,
   networkRequestCount,
   navigationError,
+  width = 1280,
+  height = 800,
+  sourceSha = null,
+  captureMode = "admin-live-default",
 }) {
   const readiness = pageReadiness ?? {}
   const screenshotFilename = typeof screenshotPath === "string" ? path.basename(screenshotPath) : ""
@@ -181,8 +339,15 @@ export function createAdminSmokeSidecar({
       hasAdminTheme: readiness.hasAdminTheme === true,
       localeMatches: readiness.localeMatches === true,
       hasExpectedHeading: readiness.hasExpectedHeading === true,
+      themeMatches: readiness.themeMatches !== false,
+      viewportMatches: readiness.viewportMatches !== false,
     },
     screenshotPath: safeScreenshotPath,
+    captureMode,
+    evidenceKind: "real-browser-no-route-mocks",
+    sourceSha:
+      typeof sourceSha === "string" && /^[0-9a-f]{40}$/iu.test(sourceSha) ? sourceSha : null,
+    viewport: Number.isInteger(width) && Number.isInteger(height) ? { width, height } : null,
     consoleErrorCount,
     hydrationErrorCount,
     networkRequestCount,
@@ -431,7 +596,16 @@ class RS256Error extends Error {
  * because the app uses Tailwind v4's class-based dark mode (per
  * frontend/src/styles/tokens/admin.css:120 `.dark .admin-theme` selector).
  */
-async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSession) {
+async function smokeAdminRoute(
+  page,
+  routePath,
+  locale,
+  theme,
+  outDir,
+  adminSession,
+  captureConfig = null,
+  sourceSha = null
+) {
   const consoleMessages = []
   const networkRequests = []
 
@@ -442,10 +616,11 @@ async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSess
     consoleMessages.push({ type: "pageerror", text: err.message })
   }
   const requestHandler = (req) => {
-    networkRequests.push({ method: req.method(), url: req.url() })
+    networkRequests.push({ method: req.method(), url: safeRequestUrl(req.url()) })
   }
   const responseHandler = (res) => {
-    const idx = networkRequests.findLastIndex((r) => r.url === res.url() && !("status" in r))
+    const responseUrl = safeRequestUrl(res.url())
+    const idx = networkRequests.findLastIndex((r) => r.url === responseUrl && !("status" in r))
     if (idx >= 0) networkRequests[idx].status = res.status()
   }
 
@@ -454,6 +629,9 @@ async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSess
   page.on("request", requestHandler)
   page.on("response", responseHandler)
 
+  if (captureConfig) {
+    await page.setViewportSize({ width: captureConfig.width, height: captureConfig.height })
+  }
   await setSmokeTheme(page, theme)
   let finalUrl
   let navError = null
@@ -462,6 +640,8 @@ async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSess
   let hasAdminTheme = false
   let documentLanguage
   let headingText = ""
+  let viewportMatches = false
+  let themeMatches = false
 
   try {
     await navigateToAdminRoute(page, routePath)
@@ -470,13 +650,29 @@ async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSess
     await main.locator("h1").first().waitFor({ state: "visible", timeout: 15_000 })
     await page.waitForTimeout(1500)
 
+    const viewportState = await page.evaluate(() => {
+      const documentTheme = globalThis.document.documentElement.dataset.colorScheme
+      return {
+        width: globalThis.innerWidth,
+        height: globalThis.innerHeight,
+        theme: documentTheme,
+        hasThemeClass: documentTheme
+          ? globalThis.document.documentElement.classList.contains(documentTheme)
+          : false,
+      }
+    })
+    viewportMatches =
+      viewportState.width === (captureConfig?.width ?? 1280) &&
+      viewportState.height === (captureConfig?.height ?? 800)
+    themeMatches = viewportState.theme === theme && viewportState.hasThemeClass
+
     hasMainLandmark = (await main.count()) > 0
     hasAdminTheme = (await page.locator(".admin-theme").count()) > 0
     documentLanguage = (await page.locator("html").getAttribute("lang")) ?? ""
     headingText =
       (await main.locator("h1").first().textContent())?.replace(/\s+/gu, " ").trim() ?? ""
     finalUrl = page.url()
-    const pageReadiness = classifyAdminPageSnapshot({
+    const baseReadiness = classifyAdminPageSnapshot({
       routePath,
       finalUrl,
       hasMainLandmark,
@@ -485,8 +681,14 @@ async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSess
       documentLanguage,
       headingText,
     })
+    const pageReadiness = {
+      ...baseReadiness,
+      viewportMatches,
+      themeMatches,
+      ready: baseReadiness.ready && viewportMatches && themeMatches,
+    }
 
-    const filename = `${safeFilename(routePath)}_${locale}_${theme}.png`
+    const filename = `${buildAdminCaptureBasename(routePath, locale, theme, captureConfig)}.png`
     const fullPath = path.join(outDir, filename)
     try {
       screenshotPath = await captureAdminScreenshot(page, pageReadiness, {
@@ -516,6 +718,12 @@ async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSess
     documentLanguage,
     headingText,
   })
+  const verifiedPageReadiness = {
+    ...pageReadiness,
+    viewportMatches,
+    themeMatches,
+    ready: pageReadiness.ready && viewportMatches && themeMatches,
+  }
   const finalPath = safeAdminPathname(finalUrl) ?? "unrecognized"
   const redirectedToLogin = finalPath === "/login"
 
@@ -546,26 +754,35 @@ async function smokeAdminRoute(page, routePath, locale, theme, outDir, adminSess
     documentLanguage,
     redirectedToLogin,
     adminRoleConfirmed: adminSession.adminRoleConfirmed,
-    pageReadiness,
+    pageReadiness: verifiedPageReadiness,
     screenshotPath: publicScreenshotPath,
     consoleErrorCount: errors.length,
     hydrationErrorCount: hydrationErrors.length,
     networkRequestCount: networkRequests.length,
     navigationError: navError,
+    width: captureConfig?.width ?? 1280,
+    height: captureConfig?.height ?? 800,
+    sourceSha,
+    captureMode: captureConfig ? "admin-live-visual-matrix" : "admin-live-default",
   })
-  const sidecarPath = path.join(outDir, `${safeFilename(routePath)}_${locale}_${theme}.json`)
+  const sidecarPath = path.join(
+    outDir,
+    `${buildAdminCaptureBasename(routePath, locale, theme, captureConfig)}.json`
+  )
   await writeFile(sidecarPath, JSON.stringify(sidecar, null, 2))
 
   return {
     path: routePath,
     locale,
     theme,
+    width: captureConfig?.width ?? 1280,
+    height: captureConfig?.height ?? 800,
     bootstrapPath: adminSession.documentPath,
     bootstrapHttpStatus: adminSession.documentStatus,
     adminRoleConfirmed: adminSession.adminRoleConfirmed,
     finalPath,
     redirectedToLogin,
-    pageReadiness,
+    pageReadiness: verifiedPageReadiness,
     consoleErrorCount: errors.length,
     hydrationErrorCount: hydrationErrors.length,
     networkRequestCount: networkRequests.length,
@@ -618,20 +835,66 @@ async function publishCurrentRunPath(runDirectory) {
 }
 
 async function main() {
+  // Validate matrix options before output creation, network activity, or a
+  // browser launch. Default scheduled/manual smoke behavior remains unchanged.
+  const captureMatrix = parseAdminVisualCaptureMatrix()
   const credentials = getAdminSmokeCredentials()
   delete process.env.TEST_PASSWORD
-  const expectedCaptureCount = ADMIN_ROUTES.length * LOCALES.length * THEMES.length
-  const runDir = await createAdminSmokeRunDirectory(OUT_DIR)
+  const locales = captureMatrix?.locales ?? LOCALES
+  const themes = captureMatrix?.themes ?? THEMES
+  const widths = captureMatrix?.widths ?? [1280]
+  const captureHeight = captureMatrix?.height ?? 800
+  const expectedCaptureCount = ADMIN_ROUTES.length * locales.length * themes.length * widths.length
+  const outputRoot = captureMatrix?.outputDir ?? OUT_DIR
+  if (captureMatrix) await assertPrivateOutputDirectory(outputRoot)
+  const runDir = await createAdminSmokeRunDirectory(outputRoot)
   const metaDir = path.join(runDir, "metadata")
   await mkdir(metaDir, { recursive: true })
-  await publishCurrentRunPath(runDir)
+  if (!captureMatrix) await publishCurrentRunPath(runDir)
+  const sourceShaCandidate =
+    captureMatrix?.sourceSha ?? process.env.SOURCE_SHA ?? process.env.GITHUB_SHA
+  const sourceSha =
+    typeof sourceShaCandidate === "string" && /^[0-9a-f]{40}$/iu.test(sourceShaCandidate)
+      ? sourceShaCandidate.toLowerCase()
+      : null
 
-  console.log("Admin visual smoke (verified localized client pages via Playwright)")
+  if (captureMatrix) {
+    await writeFile(
+      path.join(metaDir, "run.json"),
+      JSON.stringify(
+        {
+          evidenceKind: captureMatrix.evidenceKind,
+          sourceSha: captureMatrix.sourceSha,
+          origin: captureMatrix.origin,
+          routes: ADMIN_ROUTES,
+          locales,
+          themes,
+          widths,
+          height: captureHeight,
+          captureMode: captureMatrix.mode,
+        },
+        null,
+        2
+      )
+    )
+  }
+
+  console.log(
+    captureMatrix
+      ? "Admin visual matrix (real authenticated browser pages; no route mocks)"
+      : "Admin visual smoke (verified localized client pages via Playwright)"
+  )
   console.log(`  Origin: ${new URL(ORIGIN).origin}`)
   console.log(
-    `  Routes/locales/themes: ${ADMIN_ROUTES.length} x ${LOCALES.length} x ${THEMES.length} = ${expectedCaptureCount} captures`
+    captureMatrix
+      ? `  Routes/locales/themes/widths: ${ADMIN_ROUTES.length} x ${locales.length} x ${themes.length} x ${widths.length} = ${expectedCaptureCount} captures`
+      : `  Routes/locales/themes: ${ADMIN_ROUTES.length} x ${locales.length} x ${themes.length} = ${expectedCaptureCount} captures`
   )
-  console.log(`  Current run output: ${path.relative(PROJECT_ROOT, runDir)}`)
+  console.log(
+    captureMatrix
+      ? "  Current run output: caller-selected private directory outside the checkout"
+      : `  Current run output: ${path.relative(PROJECT_ROOT, runDir)}`
+  )
   console.log("")
 
   let jwks
@@ -702,7 +965,7 @@ async function main() {
   )
 
   const summaries = []
-  for (const locale of LOCALES) {
+  for (const locale of locales) {
     console.log(`-> locale ${locale}: set ue:language cookie + localStorage; reload /dashboard`)
     const beforeNavigation = page.url() === "about:blank"
     await setSmokeLocale(page, locale, { beforeNavigation })
@@ -716,14 +979,28 @@ async function main() {
       process.exit(1)
     }
     for (const route of ADMIN_ROUTES) {
-      for (const theme of THEMES) {
-        console.log(`-> ${route} [${locale}/${theme}]`)
-        const result = await smokeAdminRoute(page, route, locale, theme, runDir, adminSession)
-        summaries.push(result)
-        const glyph = isAdminCaptureSuccessful(result) ? "OK" : "X"
-        console.log(
-          `   ${glyph} bootstrap_http=${result.bootstrapHttpStatus} final=${result.finalPath || "n/a"} page=${result.pageReadiness.ready ? "verified" : "invalid"} ss=${result.screenshotPath ? "yes" : "no"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount}`
-        )
+      for (const theme of themes) {
+        for (const width of widths) {
+          const captureConfig = captureMatrix
+            ? { mode: captureMatrix.mode, locale, theme, width, height: captureHeight }
+            : null
+          console.log(`-> ${route} [${locale}/${theme}/${width}x${captureHeight}]`)
+          const result = await smokeAdminRoute(
+            page,
+            route,
+            locale,
+            theme,
+            runDir,
+            adminSession,
+            captureConfig,
+            sourceSha
+          )
+          summaries.push(result)
+          const glyph = isAdminCaptureSuccessful(result) ? "OK" : "X"
+          console.log(
+            `   ${glyph} bootstrap_http=${result.bootstrapHttpStatus} final=${result.finalPath || "n/a"} page=${result.pageReadiness.ready ? "verified" : "invalid"} ss=${result.screenshotPath ? "yes" : "no"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount}`
+          )
+        }
       }
     }
   }
@@ -748,10 +1025,12 @@ async function main() {
     process.exit(2)
   }
   console.log(
-    `\nOK All ${summaries.length} admin captures (5 routes x 2 locales x 2 themes) verified /dashboard bootstrap, requested URL, locale, main landmark, admin theme, and route heading`
+    `\nOK All ${summaries.length} admin captures verified /dashboard bootstrap, requested URL, locale, main landmark, admin theme, and route heading`
   )
   console.log(
-    `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured to ${path.relative(PROJECT_ROOT, runDir)}/`
+    captureMatrix
+      ? `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured (${captureMatrix.sourceSha}) to private output`
+      : `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured to ${path.relative(PROJECT_ROOT, runDir)}/`
   )
 }
 

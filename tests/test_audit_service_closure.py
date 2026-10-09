@@ -35,6 +35,7 @@ def _event(
     *,
     created_at: datetime | None = None,
     event_id: str | None = None,
+    sequence_number: int = 1,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=event_id or str(uuid4()),
@@ -43,6 +44,7 @@ def _event(
         event_type=event_type,
         payload=payload,
         version=1,
+        sequence_number=sequence_number,
         created_at=created_at,
         prev_hash="0" * 64,
         hash="hash",
@@ -344,7 +346,9 @@ async def test_verify_chain_integrity_python_fallback_accepts_rotated_key_and_gr
     service = SecureAuditService(signing_keys=[b"old", b"key"])
     db = MagicMock()
     first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
-    second = _event("CUSTOM", {"value": 2}, created_at=datetime.now(UTC))
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
     _sign_event(service, first, "0" * 64)
     _sign_event(service, second, first.hash)
     rust = SimpleNamespace()
@@ -371,7 +375,9 @@ async def test_verify_chain_integrity_reports_link_discontinuity():
     service = SecureAuditService(signing_key=b"key")
     db = MagicMock()
     first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
-    second = _event("CUSTOM", {"value": 2}, created_at=datetime.now(UTC))
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
     _sign_event(service, first, "0" * 64)
     second.prev_hash = "broken"
     db.execute = AsyncMock(return_value=_Result([first, second]))

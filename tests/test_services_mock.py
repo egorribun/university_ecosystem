@@ -516,7 +516,10 @@ async def test_generate_event_embedding_found() -> None:
 
 @pytest.mark.asyncio
 async def test_vector_service_get_embedding_disabled() -> None:
-    from app.services.vector_service import VectorService
+    from app.services.vector_service import (
+        SemanticSearchUnavailableError,
+        VectorService,
+    )
 
     mock_db = AsyncMock()
 
@@ -530,14 +533,19 @@ async def test_vector_service_get_embedding_disabled() -> None:
         mock_settings.embedding_dimensions = 128
 
         svc = VectorService(db=mock_db)
-        result = await svc.get_embedding("test text")
-
-    assert result == [0.0] * 128
+        with pytest.raises(
+            SemanticSearchUnavailableError,
+            match=r"^Semantic search is currently unavailable$",
+        ):
+            await svc.get_embedding("test text")
 
 
 @pytest.mark.asyncio
 async def test_vector_service_get_embedding_no_api_key() -> None:
-    from app.services.vector_service import VectorService
+    from app.services.vector_service import (
+        SemanticSearchUnavailableError,
+        VectorService,
+    )
 
     mock_db = AsyncMock()
 
@@ -551,9 +559,11 @@ async def test_vector_service_get_embedding_no_api_key() -> None:
         mock_settings.embedding_dimensions = 64
 
         svc = VectorService(db=mock_db)
-        result = await svc.get_embedding("test")
-
-    assert result == [0.0] * 64
+        with pytest.raises(
+            SemanticSearchUnavailableError,
+            match=r"^Semantic search is currently unavailable$",
+        ):
+            await svc.get_embedding("test")
 
 
 @pytest.mark.asyncio
@@ -591,7 +601,10 @@ async def test_vector_service_get_embedding_http_success() -> None:
 async def test_vector_service_get_embedding_http_error() -> None:
     import httpx
 
-    from app.services.vector_service import VectorService
+    from app.services.vector_service import (
+        SemanticSearchUnavailableError,
+        VectorService,
+    )
 
     mock_db = AsyncMock()
 
@@ -609,9 +622,11 @@ async def test_vector_service_get_embedding_http_error() -> None:
         svc._client = AsyncMock()
         svc._client.post = AsyncMock(side_effect=httpx.ConnectError("no connection"))
 
-        result = await svc.get_embedding("text")
-
-    assert result == [0.0] * 8
+        with pytest.raises(
+            SemanticSearchUnavailableError,
+            match=r"^Semantic search is currently unavailable$",
+        ):
+            await svc.get_embedding("text")
 
 
 @pytest.mark.asyncio

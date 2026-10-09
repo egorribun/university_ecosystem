@@ -97,6 +97,39 @@ def _assert_frontend_typecheck_is_only_job_delta(
     assert _digest(preserved_job) == expected_digest
 
 
+def _assert_nightly_browser_matrix_is_preserved(job: dict[str, object]) -> None:
+    assert job["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    assert job["needs"] == "e2e-wasm-build"
+    assert job["uses"] == "./.github/workflows/reusable-e2e-tests.yml"
+    strategy = job["strategy"]
+    assert strategy["fail-fast"] is False
+    assert strategy["max-parallel"] == 2
+    matrix = strategy["matrix"]["include"]
+    chromium = [entry for entry in matrix if entry["browser"] == "chromium"]
+    assert chromium == [
+        {"browser": "chromium", "shard-index": index, "shard-total": 4}
+        for index in range(1, 5)
+    ]
+    assert {entry["browser"] for entry in matrix if entry["browser"] != "chromium"} == {
+        "firefox",
+        "webkit",
+        "mobile-webkit",
+    }
+    assert job["permissions"] == {"contents": "read", "actions": "read"}
+    assert job["with"]["node-version"] == "24"
+    assert job["with"]["python-version"] == "3.14"
+    assert job["with"]["collect-coverage"] == "${{ matrix.browser == 'chromium' }}"
+    assert job["with"]["wasm-artifact-id"] == (
+        "${{ needs.e2e-wasm-build.outputs.artifact_id }}"
+    )
+    assert job["with"]["wasm-artifact-name"] == (
+        "${{ needs.e2e-wasm-build.outputs.artifact_name }}"
+    )
+    assert job["with"]["wasm-artifact-digest"] == (
+        "${{ needs.e2e-wasm-build.outputs.artifact_digest }}"
+    )
+
+
 def _python_guard(step: dict[str, object]) -> str:
     run = step["run"]
     assert isinstance(run, str)
@@ -641,14 +674,85 @@ def test_mutation_shard_artifacts_stay_attempt_exact_and_fail_closed() -> None:
     assert "seq 1 128" in execution_gate
 
 
+def test_manual_incremental_mutation_artifacts_remain_run_attempt_bound() -> None:
+    jobs = _jobs(_load(MANUAL))
+    stats = jobs["manual-mutation-stats"]
+    execution = jobs["manual-mutation-tests"]
+    assert stats["if"] == "${{ inputs.backend_scope == 'incremental' }}"
+    assert execution["if"] == "${{ inputs.backend_scope == 'incremental' }}"
+    assert stats["strategy"]["matrix"]["stats_shard"] == list(range(8))
+    assert execution["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert execution["needs"] == "manual-mutation-stats"
+
+    stats_upload = _step(stats, "Upload manual mutmut stats shard")["with"]
+    stats_download = _step(execution, "Download manual mutmut stats shards")["with"]
+    mutation_upload = _step(execution, "Upload manual mutation evidence")["with"]
+    assert stats_upload["name"] == (
+        "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.stats_shard }}"
+    )
+    assert stats_download["pattern"] == (
+        "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert "if-no-artifact-found" not in stats_download
+    assert mutation_upload["name"] == (
+        "manual-mutation-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.shard }}"
+    )
+    assert "mutants/mutmut-exact-evidence/" in mutation_upload["path"]
+    assert mutation_upload["if-no-files-found"] == "error"
+
+    stats_gate = _step(execution, "Require all manual mutmut stats shards")["run"]
+    assert "set -euo pipefail" in stats_gate
+    assert "expected=8" in stats_gate
+    assert (
+        "actual=\"$(find mutmut-stats -type f -name 'mutmut-stats.json' | wc -l)\""
+        in stats_gate
+    )
+    assert '"$actual" -ne "$expected"' in stats_gate
+    assert "exit 1" in stats_gate
+    assert "for shard in $(seq 0 7)" in stats_gate
+    assert (
+        "manual-mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
+        in stats_gate
+    )
+    run = _step(
+        execution,
+        "Run manual incremental mutmut (blocking, stats-derived budget)",
+    )["run"]
+    assert "--num-shards 128" in run
+    assert "--prepare-exact-execution" in run
+    assert "--verify-exact-execution" in run
+    assert "scripts/mutmut_ci_gate.py" in run
+    assert "incomplete evidence is not valid" in run
+    assert "continue-on-error" not in execution
+
+
 def test_nightly_calls_full_backend_only_from_main_nightly_events() -> None:
     workflow = _load(NIGHTLY)
     baseline = _baseline()
     triggers = _on(workflow)
-    assert set(triggers) == {"schedule", "repository_dispatch"}
-    assert _digest(triggers) == baseline["nightly_trigger_sha256"]
+    assert set(triggers) == {"schedule", "repository_dispatch", "workflow_dispatch"}
+    scheduled_triggers = {
+        key: value for key, value in triggers.items() if key != "workflow_dispatch"
+    }
+    assert _digest(scheduled_triggers) == baseline["nightly_trigger_sha256"]
+    assert triggers["workflow_dispatch"] == {}
     jobs = _jobs(workflow)
-    assert "workflow_dispatch" not in triggers
+    dispatch_guard = jobs["verify-default-branch-dispatch"]
+    assert dispatch_guard["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    guard_step = _step(dispatch_guard, "Require protected default branch")
+    assert guard_step["env"]["WORKFLOW_REF"] == "${{ github.ref }}"
+    assert '"$WORKFLOW_REF" != "refs/heads/main"' in guard_step["run"]
+    assert (
+        "Manual nightly checks must run from the protected main ref."
+        in guard_step["run"]
+    )
+    assert all(
+        "refs/heads/main" in str(job.get("if", ""))
+        for job_id, job in jobs.items()
+        if job_id != "verify-default-branch-dispatch"
+    )
     assert "mutation-tests-full-stats" not in jobs
     assert "mutation-tests-full-plan" not in jobs
     assert "mutation-tests-full-aggregate" not in jobs
@@ -682,6 +786,8 @@ def test_nightly_calls_full_backend_only_from_main_nightly_events() -> None:
         assert job_id in jobs
         if job_id == "frontend-mutation-preflight":
             _assert_frontend_typecheck_is_only_job_delta(jobs[job_id], expected_digest)
+        elif job_id == "browser-matrix":
+            _assert_nightly_browser_matrix_is_preserved(jobs[job_id])
         else:
             assert _digest(jobs[job_id]) == expected_digest
 
@@ -800,15 +906,24 @@ def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_front
             _assert_frontend_typecheck_is_only_job_delta(
                 nightly[job_id], expected_digest
             )
+        elif job_id == "browser-matrix":
+            _assert_nightly_browser_matrix_is_preserved(nightly[job_id])
         else:
             assert _digest(nightly[job_id]) == expected_digest
 
     manual = _jobs(_load(MANUAL))
     expected_manual = baseline["manual_preserved_jobs"]
-    for job_id in ("manual-mutation-stats", "manual-mutation-tests"):
-        actual = dict(manual[job_id])
-        actual.pop("if")
-        assert _digest(actual) == expected_manual[job_id]
+    # The manual incremental backend lane has evolved beyond the v3 snapshot
+    # with deadline-bounded execution and exact evidence validation. Its live
+    # cardinality, provenance, and fail-closed contracts are pinned by the
+    # focused mutation workflow tests; retain the frozen digest for the manual
+    # frontend lane below.
+    assert manual["manual-mutation-stats"]["if"] == (
+        "${{ inputs.backend_scope == 'incremental' }}"
+    )
+    assert manual["manual-mutation-tests"]["if"] == (
+        "${{ inputs.backend_scope == 'incremental' }}"
+    )
     for job_id in _manual_frontend_job_ids():
         if job_id == "manual-frontend-mutation-preflight":
             _assert_frontend_typecheck_is_only_job_delta(

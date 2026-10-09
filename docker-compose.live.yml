@@ -21,6 +21,10 @@ services:
     ports: !override
       - "127.0.0.1:${LIVE_HOST_PORT_POSTGRES:?set by scripts/live_stand.py}:5432"
 
+  minio:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_MINIO:?set by scripts/live_stand.py}:9000"
+
   gateway:
     ports: !override
       - "127.0.0.1:${LIVE_HOST_PORT_GATEWAY:?set by scripts/live_stand.py}:8080"

@@ -54,6 +54,7 @@ def _assert_helm_dependency_helper_invocation(
 REPOSITORY_ROOT = _find_repo_root()
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 SQLMAP_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sqlmap.yml"
+LHCI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "lhci-linux.yml"
 SQLMAP_OPENAPI_URL = "http://127.0.0.1:8000/api/openapi.json"
 SQLMAP_OPENAPI_BASE_URL = "http://127.0.0.1:8000"
 ACTIONLINT_CONFIG_PATH = REPOSITORY_ROOT / ".github" / "actionlint.yaml"
@@ -173,8 +174,6 @@ REQUIRED_CI_CONTEXTS = frozenset(
         "Frontend Tests / Unit Tests",
         "Frontend Tests / Production Build",
         "Frontend Tests / Bundle Analysis",
-        "Frontend Tests / Lighthouse Audit",
-        "Incremental Mutation Tests (frontend)",
         "Go Tests (services/gateway) / Test Go Service (services/gateway)",
         "Go Tests (services/ws-hub) / Test Go Service (services/ws-hub)",
         "Go Tests (services/file-processor) / Test Go Service (services/file-processor)",
@@ -188,10 +187,8 @@ REQUIRED_CI_CONTEXTS = frozenset(
         "DB Migration Gate (Postgres)",
         "Helm Lint & Validate",
         "Contract Tests",
-        "Schemathesis - API Schema Conformance",
         "OpenAPI Backward Compatibility Check",
         "Verify OpenAPI Types",
-        "Security Audit / Semgrep SAST",
         "Security Audit / Python Dependency Audit",
         "Security Audit / Node.js Dependency Audit",
         "Security Audit / Go Vulnerability Scan",
@@ -857,30 +854,26 @@ def test_ci_success_publishes_current_run_health_artifact() -> None:
     }
 
 
-def test_ci_success_allows_performance_gate_skip_only_after_frontend_failure() -> None:
-    """A dependency skip must not add a misleading second CI failure."""
+def test_lhci_is_outside_blocking_ci_after_q4_migration() -> None:
+    """Blocking CI must not depend on a disabled Lighthouse artifact producer."""
 
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    ci_success = workflow["jobs"]["ci-success"]
-    run = ci_success["steps"][0]["run"]
+    jobs = workflow["jobs"]
 
-    assert "frontend-tests" in ci_success["needs"]
-    assert "performance-gate" in ci_success["needs"]
-    assert (
-        ci_success["steps"][0]["env"].get("FRONTEND_TESTS_RESULT")
-        == "${{ needs.frontend-tests.result }}"
-    )
-    assert '"frontend-tests|${{ needs.frontend-tests.result }}"' in run
-    assert '"performance-gate|${{ needs.performance-gate.result }}"' in run
-    assert "performance_expected_result=success" in run
-    assert (
-        'if [[ "$FRONTEND_TESTS_RESULT" == "failure" || '
-        '"$FRONTEND_TESTS_RESULT" == "skipped" ]]; then\n'
-        "  performance_expected_result=skipped\n"
-        "fi"
-    ) in run
-    assert 'elif [[ "$job" == "performance-gate" ]]; then' in run
-    assert 'expected_result="$performance_expected_result"' in run
+    assert "performance-gate" not in jobs
+    assert "performance-gate" not in jobs["ci-success"]["needs"]
+    assert jobs["frontend-tests"]["with"]["run-lighthouse"] is False
+    finalizer = jobs["ci-success"]["steps"][0]["run"]
+    assert "performance-gate" not in finalizer
+    assert "performance_expected_result" not in finalizer
+
+    lhci = yaml.safe_load(LHCI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    trigger = lhci.get("on", lhci.get(True))
+    assert "schedule" in trigger
+    assert "workflow_dispatch" in trigger
+    assert "pull_request" not in trigger
+    assert "push" not in trigger
+    assert "github.ref == 'refs/heads/main'" in lhci["jobs"]["lhci"]["if"]
 
 
 def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -> None:
@@ -1031,27 +1024,32 @@ def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
     assert "sudo go run" not in command
 
 
-def test_cross_browser_e2e_is_release_blocking() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    jobs = workflow["jobs"]
-    cross_browser = jobs["e2e-tests-cross-browser"]
+def test_cross_browser_e2e_is_nightly_while_live_pr_smoke_remains() -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = nightly["jobs"]
+    browser = jobs["browser-matrix"]
 
-    # Reusable-workflow callers cannot use continue-on-error directly. The
-    # reusable job receives an explicit blocking input and applies the policy
-    # at the executable job level.
-    assert cross_browser.get("continue-on-error") is not True
-    assert cross_browser["with"]["advisory"] is False
-    assert cross_browser["strategy"]["matrix"]["browser"] == [
+    assert "e2e-tests-cross-browser" not in ci["jobs"]
+    assert "e2e-tests-cross-browser" not in ci["jobs"]["ci-success"]["needs"]
+    assert ci["jobs"]["frontend-tests"]["with"]["run-lighthouse"] is False
+    chromium = [
+        entry
+        for entry in browser["strategy"]["matrix"]["include"]
+        if entry["browser"] == "chromium"
+    ]
+    assert [entry["shard-index"] for entry in chromium] == [1, 2, 3, 4]
+    assert all(entry["shard-total"] == 4 for entry in chromium)
+    assert {entry["browser"] for entry in browser["strategy"]["matrix"]["include"]} == {
+        "chromium",
         "firefox",
         "webkit",
         "mobile-webkit",
-    ]
-    assert "e2e-tests-cross-browser" in jobs["ci-success"]["needs"]
-    blocking_script = jobs["ci-success"]["steps"][0]["run"]
-    assert (
-        '"e2e-tests-cross-browser|${{ needs.e2e-tests-cross-browser.result }}"'
-        in blocking_script
-    )
+    }
+    assert browser["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    live_path = REPOSITORY_ROOT / ".github" / "workflows" / "live-acceptance.yml"
+    live = yaml.safe_load(live_path.read_text(encoding="utf-8"))
+    assert "pull_request" in _workflow_triggers(live)
 
 
 def test_trivy_job_id_matches_stable_code_scanning_configuration() -> None:
@@ -1427,10 +1425,10 @@ def test_e2e_coverage_is_chromium_opt_in_and_staged_for_codecov() -> None:
     assert "frontend/coverage/lcov.info" in staging["run"]
     assert "artifacts/coverage/codecov/frontend.lcov" in staging["run"]
 
-    assert ci_workflow["jobs"]["e2e-tests"]["with"]["collect-coverage"] is True
-    assert (
-        "collect-coverage" not in ci_workflow["jobs"]["e2e-tests-cross-browser"]["with"]
-    )
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    browser = nightly["jobs"]["browser-matrix"]
+    assert browser["with"]["collect-coverage"] == "${{ matrix.browser == 'chromium' }}"
+    assert "e2e-tests" not in ci_workflow["jobs"]
 
 
 def test_codecov_oidc_permissions_are_scoped_to_trusted_upload_job() -> None:
@@ -2168,130 +2166,125 @@ def test_go_integration_is_blocking_while_full_chaos_stays_nightly() -> None:
         assert f"needs.{job_name}.result" in blocking_script
 
     # Full load/chaos remains in the intentionally longer nightly workflow.
-    assert "load-and-chaos-tests" not in workflow["jobs"]
+    assert "chaos-tests" not in workflow["jobs"]
+    assert "chaos-loadtest-orchestrator" not in workflow["jobs"]
+    assert "load-and-chaos" not in workflow["jobs"]
     assert "Load and Chaos Resilience Tests" not in CI_WORKFLOW_PATH.read_text(
         encoding="utf-8"
     )
-    assert "load-and-chaos" in nightly_workflow["jobs"]
+    assert {"chaos-tests", "chaos-loadtest-orchestrator", "load-and-chaos"} <= set(
+        nightly_workflow["jobs"]
+    )
     assert nightly_workflow["jobs"]["load-and-chaos"]["name"] == (
         "Load and chaos resilience"
     )
     assert nightly_workflow["jobs"]["load-and-chaos"]["timeout-minutes"] == 45
 
 
-def test_incremental_mutation_budget_matches_declared_gate() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    job = workflow["jobs"]["mutation-tests-incremental"]
-    run_step = next(
-        step
-        for step in job["steps"]
-        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
+def test_blocking_ci_contains_no_mutation_evidence_execution() -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = ci["jobs"]
+    ci_success = jobs["ci-success"]
+    gate = _step_named(ci_success, "Check all jobs passed")["run"].lower()
+
+    assert not any("mutation" in job_id or "stryker" in job_id for job_id in jobs)
+    assert not any(
+        "mutation" in need or "stryker" in need for need in ci_success["needs"]
     )
-    assert job["strategy"]["matrix"] == (
-        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    assert not any(
+        token in gate
+        for token in ("mutation", "stryker", "schemathesis", "chaos", "cross-browser")
     )
-    assert job["timeout-minutes"] == 360
-    assert "scripts/mutmut_shard_budget.py" in run_step["run"]
-    assert "--max-timeout-seconds 20970" in run_step["run"]
-    assert "--control-cycle-reserve-seconds 5" in run_step["run"]
-    assert "--metadata-startup-reserve-seconds 120" in run_step["run"]
-    assert "evidence-backed" in run_step["run"]
-    assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
+    assert {
+        "coverage-policy-gate",
+        "security-audit",
+        "provenance-check",
+        "openapi-verify",
+    } <= set(ci_success["needs"])
+    assert jobs["frontend-tests"]["with"]["run-lighthouse"] is False
+
+
+def test_backend_mutation_evidence_remains_nightly_and_manual() -> None:
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    nightly_triggers = _workflow_triggers(nightly)
+    assert {"schedule", "workflow_dispatch"} <= set(nightly_triggers)
+    caller = nightly["jobs"]["mutation-tests-full"]
     assert (
-        '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
-        in run_step["run"]
+        caller["if"]
+        == "${{ github.repository == 'egorribun/university_ecosystem' && github.ref == 'refs/heads/main' }}"
     )
-    assert (
-        '--verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
-        in run_step["run"]
+    assert caller["uses"] == "./.github/workflows/reusable-full-backend-mutation.yml"
+
+    full = yaml.safe_load(
+        FULL_BACKEND_MUTATION_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    assert "This advisory job" not in run_step["run"]
-    assert "This blocking job runs REAL mutation" in run_step["run"]
-    assert "viable mutation score" in run_step["run"]
-    job_text = "\n".join(
-        step.get("run", "") for step in job["steps"] if isinstance(step, dict)
+    full_jobs = full["jobs"]
+    plan = full_jobs["mutation-tests-full-plan"]
+    mutation = full_jobs["mutation-tests-full"]
+    aggregate = full_jobs["mutation-tests-full-aggregate"]
+    assert mutation["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert mutation["strategy"]["max-parallel"] == 8
+    assert plan["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-stats",
+    ]
+    plan_step = _step_named(plan, "Plan and budget every exact full mutation shard")
+    assert "scripts/plan_mutmut_shards.py" in plan_step["run"]
+    assert "--num-shards 128" in plan_step["run"]
+    assert "--max-timeout-seconds 20970" in plan_step["run"]
+    aggregate_step = _step_named(aggregate, "Merge and gate full mutation evidence")
+    assert "--expected-shards 128" in aggregate_step["run"]
+    assert "scripts/check_mutation_score.py --min-score 100" in aggregate_step["run"]
+
+    manual = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    assert "grep -E '^app/.*\\.py$'" in job_text
-    assert "MATRIX_GROUP_ID" in job_text
-    assert "MATRIX_LOGICAL_SHARDS" in job_text
-    assert "scripts/plan_mutmut_shards.py" not in job_text
-    assert "mutants/mutmut-incremental-plan/shard-" in job_text
-    assert 'cat "$shard_plan" >> /tmp/mutmut-shard.txt' in job_text
-    assert "MATRIX_SELECTED_COUNT" in job_text
-    assert '"${MUTANT_NAMES[@]}"' in job_text
-    assert "awk -v shard" not in job_text
-    assert "grep '^app/core/tenant\\.py$'" not in job_text
-
-
-def test_mutmut_producer_validator_and_consumer_budget_contracts_are_bound() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    producer_job = workflow["jobs"]["mutation-tests-universe"]
-    consumer_job = workflow["jobs"]["mutation-tests-incremental"]
-    producer_step = _step_named(producer_job, "Merge and plan central mutmut universe")
-    validator_step = _step_named(
-        producer_job, "Build validated mutmut execution matrix"
+    assert "workflow_dispatch" in _workflow_triggers(manual)
+    manual_jobs = manual["jobs"]
+    assert manual_jobs["manual-mutation-stats"]["strategy"]["matrix"][
+        "stats_shard"
+    ] == list(range(8))
+    assert manual_jobs["manual-mutation-tests"]["strategy"]["matrix"]["shard"] == list(
+        range(1, 129)
     )
-    consumer_step = _step_named(
-        consumer_job, "Run incremental mutmut (blocking, stats-derived budget)"
+    assert manual_jobs["manual-mutation-tests"]["needs"] == "manual-mutation-stats"
+
+
+def test_manual_incremental_mutation_keeps_deadline_and_exact_artifact_proof() -> None:
+    manual = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-
-    def contract(script: str) -> dict[str, int]:
-        values: dict[str, int] = {}
-        for flag in (
-            "max-children",
-            "control-cycle-reserve-seconds",
-            "metadata-startup-reserve-seconds",
-            "max-timeout-seconds",
-        ):
-            matches = re.findall(rf"--{flag}\s+(\d+)", script)
-            assert matches, f"missing --{flag} in workflow command"
-            assert len(set(matches)) == 1, f"drifting --{flag} values: {matches}"
-            values[flag] = int(matches[0])
-        return values
-
-    producer = contract(producer_step["run"])
-    validator = contract(validator_step["run"])
-    consumer = contract(consumer_step["run"])
-    assert producer == validator
-    assert consumer["max-children"] == producer["max-children"]
-    assert (
-        consumer["control-cycle-reserve-seconds"]
-        == producer["control-cycle-reserve-seconds"]
-    )
-    assert (
-        consumer["metadata-startup-reserve-seconds"]
-        == producer["metadata-startup-reserve-seconds"]
-    )
-    assert consumer["max-timeout-seconds"] >= producer["max-timeout-seconds"]
-
-
-def test_mutmut_execution_disables_periodic_otel_exporter_thread() -> None:
-    """Mutation subprocesses must not register a fork-unsafe OTEL callback."""
-
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    incremental = workflow["jobs"]["mutation-tests-incremental"]
-    assert incremental["env"]["OTEL_METRIC_EXPORT_INTERVAL"] == "inf"
-
-    # Keep the setting scoped to real mutation execution. Stats and universe
-    # producers still exercise the normal observability configuration.
-    for job_name in ("mutation-tests-stats", "mutation-tests-universe"):
-        assert "OTEL_METRIC_EXPORT_INTERVAL" not in workflow["jobs"][job_name].get(
-            "env", {}
-        )
-
-
-def test_mutation_jobs_never_persist_the_workflow_token() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-
-    for job_name in (
-        "mutation-scope",
-        "mutation-tests-stats",
-        "mutation-tests-universe",
-        "mutation-tests-incremental",
+    jobs = manual["jobs"]
+    mutation = jobs["manual-mutation-tests"]
+    assert mutation["timeout-minutes"] == 360
+    assert mutation["strategy"]["max-parallel"] == 20
+    deadline = _step_named(mutation, "Record mutmut job deadline")["run"]
+    assert "MUTMUT_JOB_DEADLINE_EPOCH" in deadline
+    run = _step_named(
+        mutation, "Run manual incremental mutmut (blocking, stats-derived budget)"
+    )["run"]
+    for invariant in (
+        "scripts/plan_mutmut_shards.py",
+        "--num-shards 128",
+        "--max-timeout-seconds 20970",
+        "--prepare-exact-execution",
+        "--verify-exact-execution",
+        "scripts/mutmut_ci_gate.py",
     ):
+        assert invariant in run
+    assert "MUTMUT_JOB_DEADLINE_EPOCH" in str(
+        mutation.get("env", {})
+    ) or "Record mutmut job deadline" in str(mutation["steps"])
+    assert (
+        _step_named(mutation, "Validate manual mutation evidence artifact")[
+            "run"
+        ].count("test -s")
+        >= 3
+    )
+    for job_id in ("manual-mutation-stats", "manual-mutation-tests"):
         checkout = next(
             step
-            for step in workflow["jobs"][job_name]["steps"]
+            for step in jobs[job_id]["steps"]
             if str(step.get("uses", "")).startswith("actions/checkout@")
         )
         assert checkout["with"]["persist-credentials"] is False
@@ -2303,634 +2296,6 @@ def test_pr_code_execution_never_receives_repository_ci_secret() -> None:
 
     assert workflow["env"]["SECRET_KEY"] == ""
     assert "secrets.CI_TEST_SECRET_KEY" not in workflow_text
-
-
-def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    jobs = workflow["jobs"]
-    stats_job = jobs["mutation-tests-stats"]
-    base_job = jobs["mutation-tests-universe-base"]
-    universe_job = jobs["mutation-tests-universe"]
-    mutation_job = jobs["mutation-tests-incremental"]
-
-    assert "workflow_dispatch" not in _workflow_triggers(workflow)
-    assert " ".join(str(workflow["concurrency"]["group"]).split()) == (
-        "${{ github.event_name == 'pull_request' "
-        "&& format('quality-heavy-pr-{0}', github.event.pull_request.number) "
-        "|| format('ci-matrix-{0}', github.ref) }}"
-    )
-    assert jobs["ci-success"]["name"] == "CI Success"
-
-    assert base_job["timeout-minutes"] == 20
-    assert base_job["needs"] == [
-        "mutation-scope",
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "backend-tests",
-        "backend-type-check",
-        "coverage-policy-gate",
-    ]
-    base_text = "\n".join(
-        step.get("run", "") for step in base_job["steps"] if isinstance(step, dict)
-    )
-    assert "scripts/mutmut_stats_shard.py" in base_text
-    assert "--prepare-only" in base_text
-    assert "mutmut-generation.json" in base_text
-    base_upload = next(
-        step
-        for step in base_job["steps"]
-        if step.get("name") == "Upload mutmut generation base"
-    )
-    assert base_upload["with"]["name"] == (
-        "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}"
-    )
-    assert (
-        "charts/university-ecosystem/charts/redis-20.13.4.tgz"
-        in base_upload["with"]["path"]
-    )
-    assert (
-        "charts/university-ecosystem/charts/nats-8.5.4.tgz"
-        in base_upload["with"]["path"]
-    )
-    base_envelope = next(
-        step
-        for step in base_job["steps"]
-        if step.get("name") == "Create retry-scoped mutmut generation envelope"
-    )
-    assert "--mode generation" in base_envelope["run"]
-    assert "mutmut-universe-artifact.json" in base_envelope["run"]
-    assert "--include-helm-dependencies" in base_envelope["run"]
-
-    assert stats_job["strategy"]["matrix"] == (
-        "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
-    )
-    assert stats_job["timeout-minutes"] == 25
-    assert stats_job["needs"] == [
-        "mutation-scope",
-        "mutation-tests-universe-base",
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "backend-tests",
-        "backend-type-check",
-        "coverage-policy-gate",
-    ]
-    for job in (stats_job, universe_job, mutation_job):
-        assert job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
-    assert universe_job["timeout-minutes"] == 35
-    assert universe_job["needs"] == [
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "mutation-tests-universe-base",
-        "mutation-tests-stats",
-        "coverage-policy-gate",
-    ]
-    assert mutation_job["strategy"]["fail-fast"] is False
-    assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 10
-    assert mutation_job["strategy"]["matrix"] == (
-        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
-    )
-    stats_text = "\n".join(
-        step.get("run", "") for step in stats_job["steps"] if isinstance(step, dict)
-    )
-    assert "scripts/mutmut_stats_shard.py" in stats_text
-    assert "--shard-id" in stats_text
-    assert "--num-shards 8" in stats_text
-    assert "--reuse-generated-universe" in stats_text
-    stats_generation_selector = next(
-        step
-        for step in stats_job["steps"]
-        if step.get("name") == "Select retry-safe mutmut generation base"
-    )
-    assert "--expected-mode generation" in stats_generation_selector["run"]
-    assert "mutmut-generation-selection.json" in stats_generation_selector["run"]
-    stats_generation_remote_selector = next(
-        step
-        for step in stats_job["steps"]
-        if step.get("name") == "Select immutable same-run mutmut generation base"
-    )
-    stats_step_names = [
-        step.get("name") for step in stats_job["steps"] if isinstance(step, dict)
-    ]
-    setup_python_index = stats_step_names.index(
-        "Set up Python for artifact provenance selection"
-    )
-    selector_index = stats_step_names.index(
-        "Select immutable same-run mutmut generation base"
-    )
-    assert setup_python_index < selector_index
-    setup_python = stats_job["steps"][setup_python_index]
-    assert setup_python["uses"] == SETUP_PYTHON_ACTION_PIN
-    assert setup_python["with"]["python-version"] == "3.14"
-    assert (
-        '--artifact-prefix "mutmut-generation-base-"'
-        in stats_generation_remote_selector["run"]
-    )
-    helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
-        encoding="utf-8"
-    )
-    helper_tree = ast.parse(helper_text)
-    collect_stats = next(
-        node
-        for node in helper_tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "collect_stats_shard"
-    )
-    # Require the stats path to use the compatibility adapter, not the removed
-    # upstream Config class API. Its behavior and fail-closed isolation checks
-    # are exercised by test_mutmut_universe and test_mutmut_stats_protocol.
-    assert any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "get_mutmut_config"
-        and len(node.args) == 1
-        and isinstance(node.args[0], ast.Name)
-        and node.args[0].id == "mutmut_cli"
-        for node in ast.walk(collect_stats)
-    )
-    assert "mutmut.config" not in helper_text
-
-    assert "mutation-tests-stats" in mutation_job["needs"]
-    assert "mutation-tests-universe" in mutation_job["needs"]
-    for job in (stats_job, mutation_job):
-        mutation_scope = next(
-            step
-            for step in job["steps"]
-            if step.get("name") == "Detect changed Python source"
-        )
-        scope_script = mutation_scope["run"]
-        assert mutation_scope["env"]["PR_BASE_SHA"] == (
-            "${{ github.event.pull_request.base.sha }}"
-        )
-        assert mutation_scope["env"]["EVENT_NAME"] == "${{ github.event_name }}"
-        assert "scripts/resolve_mutation_base.py" in scope_script
-        assert '--pr-base-sha "$PR_BASE_SHA"' in scope_script
-        assert '--event-name "$EVENT_NAME"' in scope_script
-        assert 'COMPARE_BASE="origin/main"' not in scope_script
-        assert '"$COMPARE_BASE...HEAD"' in scope_script
-        assert "origin/main...HEAD" not in scope_script
-    mutation_text = "\n".join(
-        step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
-    )
-    for job in (stats_job, universe_job, mutation_job):
-        helm_step = next(
-            step
-            for step in job["steps"]
-            if step.get("name") == "Resolve Helm chart dependencies"
-        )
-        assert helm_step["shell"] == "bash"
-        _assert_helm_dependency_helper_invocation(helm_step["run"], skip_refresh=True)
-    universe_generation_selection = _step_named(
-        universe_job, "Select retry-safe mutmut generation base"
-    )
-    universe_helm_step = _step_named(universe_job, "Resolve Helm chart dependencies")
-    assert universe_job["steps"].index(universe_generation_selection) < universe_job[
-        "steps"
-    ].index(universe_helm_step)
-    universe_selector = next(
-        step
-        for step in mutation_job["steps"]
-        if step.get("name") == "Select immutable same-run mutmut universe candidate"
-    )
-    assert universe_selector["id"] == "select_mutmut_universe"
-    assert universe_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    assert "scripts/quality/select_same_run_artifact_cli.py" in universe_selector["run"]
-    assert '--artifact-prefix "mutmut-universe-"' in universe_selector["run"]
-    assert '--artifact-prefix "mutmut-generation-base-"' not in universe_selector["run"]
-    download_step = next(
-        step
-        for step in mutation_job["steps"]
-        if step.get("name") == "Download selected same-run mutmut universe candidate"
-    )
-    assert download_step["with"] == {
-        "artifact-ids": "${{ steps.select_mutmut_universe.outputs.artifact_id }}",
-        "repository": "${{ github.repository }}",
-        "run-id": "${{ github.run_id }}",
-        "github-token": "${{ github.token }}",
-        "path": (
-            "mutmut-universe-candidates/"
-            "${{ steps.select_mutmut_universe.outputs.artifact_name }}"
-        ),
-    }
-    assert "pattern" not in download_step["with"]
-    assert "if-no-artifact-found" not in download_step["with"]
-    stats_upload = next(
-        step
-        for step in stats_job["steps"]
-        if step.get("name") == "Upload mutmut stats shard"
-    )
-    stats_stage = next(
-        step
-        for step in stats_job["steps"]
-        if step.get("name") == "Stage isolated mutmut stats artifact"
-    )
-    assert "mutmut-stats-upload/mutmut-stats.json" in stats_stage["run"]
-    assert "mutmut-stats-upload/mutmut-stats-artifact.json" in stats_stage["run"]
-    assert stats_upload["with"]["name"] == (
-        "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}"
-    )
-    assert stats_upload["with"]["path"] == "mutmut-stats-upload"
-    assert stats_upload["with"]["retention-days"] == 30
-    exact_upload = next(
-        step
-        for step in mutation_job["steps"]
-        if step.get("name") == "Upload incremental mutation evidence"
-    )
-    assert exact_upload["with"]["name"] == (
-        "mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
-        "group-${{ matrix.group_id }}"
-    )
-    assert "scripts/merge_mutmut_stats.py" not in mutation_text
-    assert "mutants/mutmut-stats.json" in mutation_text
-    assert "mutants/mutmut-incremental-plan/shard-" in mutation_text
-    assert "python -m scripts.mutmut_retry_artifacts select-universe" in mutation_text
-    producer_text = "\n".join(
-        step.get("run", "") for step in universe_job["steps"] if isinstance(step, dict)
-    )
-    assert "scripts/merge_mutmut_stats.py" in producer_text
-    assert "scripts/plan_mutmut_shards.py" in producer_text
-    assert "--allow-empty-shards" in producer_text
-    assert "python -m scripts.mutmut_retry_artifacts select-stats" in producer_text
-    assert "python -m scripts.mutmut_retry_artifacts create-universe" in producer_text
-    assert "--include-helm-dependencies" in producer_text
-    assert "--reuse-generated-universe" in producer_text
-    universe_generation_selector = next(
-        step
-        for step in universe_job["steps"]
-        if step.get("name") == "Select retry-safe mutmut generation base"
-    )
-    assert "--expected-mode generation" in universe_generation_selector["run"]
-    assert "mutmut-generation-selection.json" in universe_generation_selector["run"]
-    universe_generation_remote_selector = next(
-        step
-        for step in universe_job["steps"]
-        if step.get("name") == "Select immutable same-run mutmut generation base"
-    )
-    assert (
-        '--artifact-prefix "mutmut-generation-base-"'
-        in universe_generation_remote_selector["run"]
-    )
-    assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in producer_text
-    assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in mutation_text
-    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in producer_text
-    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in mutation_text
-    universe_upload = next(
-        step
-        for step in universe_job["steps"]
-        if step.get("name") == "Upload central mutmut universe"
-    )
-    assert universe_upload["if"] == "steps.mutation_scope.outputs.has_python == 'true'"
-    assert universe_upload["with"]["name"] == (
-        "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}"
-    )
-    assert "mutmut-universe-artifact.json" in universe_upload["with"]["path"]
-    assert (
-        "charts/university-ecosystem/charts/redis-20.13.4.tgz"
-        in universe_upload["with"]["path"]
-    )
-    assert (
-        "charts/university-ecosystem/charts/nats-8.5.4.tgz"
-        in universe_upload["with"]["path"]
-    )
-    empty_upload = next(
-        step
-        for step in universe_job["steps"]
-        if step.get("name") == "Upload empty central mutmut universe"
-    )
-    assert empty_upload["if"] == "steps.mutation_scope.outputs.has_python != 'true'"
-    assert "charts/university-ecosystem/charts" not in empty_upload["with"]["path"]
-    assert universe_upload["with"]["include-hidden-files"] is True
-    assert universe_upload["with"]["retention-days"] == 30
-    assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
-    assert "mutation-tests-universe-base" in jobs["ci-success"]["needs"]
-    assert "mutation-tests-universe" in jobs["ci-success"]["needs"]
-    assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
-    assert (
-        "needs.mutation-tests-universe.result" in jobs["ci-success"]["steps"][0]["run"]
-    )
-
-
-def test_mutation_stats_wait_for_the_foundational_coverage_gate() -> None:
-    """Start stats only after foundational coverage is green.
-
-    Stats uses its own read-only checkout and its result is still required by
-    both the universe producer and ``ci-success``.  It consumes no output or
-    credentials from pre-commit; the dedicated scope job only determines
-    whether eight real legs or one explicit sentinel should be expanded, while
-    the base producer supplies the immutable mutmut source/metadata tree.  The
-    coverage gate is a phase barrier so expensive mutation work is not started
-    for a commit that cannot pass its foundational quality contract.
-    """
-
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    stats_job = workflow["jobs"]["mutation-tests-stats"]
-    universe_job = workflow["jobs"]["mutation-tests-universe"]
-    mutation_job = workflow["jobs"]["mutation-tests-incremental"]
-    ci_success = workflow["jobs"]["ci-success"]
-
-    assert stats_job["needs"] == [
-        "mutation-scope",
-        "mutation-tests-universe-base",
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "backend-tests",
-        "backend-type-check",
-        "coverage-policy-gate",
-    ]
-    assert workflow["permissions"] == "read-all"
-    assert "secrets" not in stats_job
-    assert universe_job["needs"] == [
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "mutation-tests-universe-base",
-        "mutation-tests-stats",
-        "coverage-policy-gate",
-    ]
-    assert mutation_job["needs"] == [
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "mutation-tests-stats",
-        "mutation-tests-universe",
-        "coverage-policy-gate",
-    ]
-    assert "mutation-tests-stats" in ci_success["needs"]
-    assert "needs.mutation-tests-stats.result" in ci_success["steps"][0]["run"]
-
-
-def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    jobs = workflow["jobs"]
-
-    assert jobs["frontend-tests"]["needs"] == ["e2e-wasm-build"]
-    assert "pre-commit-check" not in jobs["frontend-tests"]["needs"]
-    assert jobs["stryker-preflight"]["needs"] == [
-        "pre-commit-check",
-        "e2e-wasm-build",
-        "frontend-tests",
-    ]
-    assert jobs["stryker-preflight"]["if"] == (
-        "${{ github.event_name == 'pull_request' && "
-        "needs.pre-commit-check.result == 'success' && "
-        "needs.e2e-wasm-build.result == 'success' && "
-        "needs.frontend-tests.result == 'success' }}"
-    )
-    assert jobs["stryker-shards"]["needs"] == [
-        "stryker-preflight",
-        "coverage-policy-gate",
-        "pre-commit-security-and-types",
-    ]
-    assert jobs["stryker-shards"]["if"] == (
-        "${{ github.event_name == 'pull_request' && "
-        "needs.stryker-preflight.result == 'success' && "
-        "needs.coverage-policy-gate.result == 'success' && "
-        "needs.pre-commit-security-and-types.result == 'success' }}"
-    )
-    assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 6
-    assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
-    assert jobs["mutation-tests-stats"]["needs"] == [
-        "mutation-scope",
-        "mutation-tests-universe-base",
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "backend-tests",
-        "backend-type-check",
-        "coverage-policy-gate",
-    ]
-    assert jobs["mutation-tests-incremental"]["strategy"]["max-parallel"] == 10
-
-
-def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
-    """Avoid booting eight stats runners for a frontend-only change.
-
-    The scope resolver must be a direct dependency of the dynamic stats
-    matrix.  A false Python scope still emits one explicit sentinel entry so
-    the required job concludes successfully and the downstream universe can
-    publish its empty, fail-closed envelope.
-    """
-
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    jobs = workflow["jobs"]
-    scope = jobs["mutation-scope"]
-    stats = jobs["mutation-tests-stats"]
-
-    assert scope["outputs"] == {
-        "has_python": "${{ steps.scope.outputs.has_python }}",
-        "stats_matrix": "${{ steps.scope.outputs.stats_matrix }}",
-    }
-    assert scope["timeout-minutes"] == 5
-    assert stats["needs"] == [
-        "mutation-scope",
-        "mutation-tests-universe-base",
-        "pre-commit-check",
-        "pre-commit-security-and-types",
-        "backend-tests",
-        "backend-type-check",
-        "coverage-policy-gate",
-    ]
-    assert stats["strategy"]["matrix"] == (
-        "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
-    )
-    assert stats["strategy"]["fail-fast"] is False
-    scope_step = _step_named(scope, "Resolve changed Python scope")
-    scope_text = scope_step["run"]
-    assert scope_step["id"] == "scope"
-    assert "scripts/resolve_mutation_base.py" in scope_text
-    assert 'git diff --name-only "$COMPARE_BASE...HEAD"' in scope_text
-    assert "grep -E '^app/.*\\.py$'" in scope_text
-    assert "stats_matrix" in scope_text
-
-    stats_scope = _step_named(stats, "Detect changed Python source")
-    assert stats_scope["env"]["MATRIX_HAS_PYTHON"] == "${{ matrix.has_python }}"
-    assert "Mutation matrix Python scope disagrees" in stats_scope["run"]
-    ci_success = jobs["ci-success"]
-    assert "mutation-scope" in ci_success["needs"]
-    assert "needs.mutation-scope.result" in ci_success["steps"][0]["run"]
-
-
-def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards() -> (
-    None
-):
-    """Do not occupy scarce runners with plan entries proven empty.
-
-    The universe producer owns the attempt-bound complete 128-shard plan.  It
-    must validate that plan before emitting a dynamic matrix, and each consumer
-    must independently reject an output that disagrees with its local source
-    scope or plan.  This preserves exact mutation proof while avoiding a full
-    Python/Helm bootstrap for every empty fixed-matrix assignment.
-    """
-
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    universe_job = workflow["jobs"]["mutation-tests-universe"]
-    mutation_job = workflow["jobs"]["mutation-tests-incremental"]
-
-    assert universe_job["outputs"] == {
-        "mutation_matrix": "${{ steps.mutation_matrix.outputs.matrix }}",
-        "mutation_descriptor_count": (
-            "${{ steps.mutation_matrix.outputs.descriptor_count }}"
-        ),
-    }
-    matrix_step = _step_named(universe_job, "Build validated mutmut execution matrix")
-    assert matrix_step["id"] == "mutation_matrix"
-    assert "scripts/mutmut_shard_matrix.py" in matrix_step["run"]
-    assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
-    assert "--expected-shards 128" in matrix_step["run"]
-    assert "--target-groups 128" in matrix_step["run"]
-    assert "scripts/validate_mutmut_group_budgets.py" in matrix_step["run"]
-    assert "--output-manifest /tmp/mutmut-group-budgets.json" in matrix_step["run"]
-    assert '"include"' in matrix_step["run"]
-    assert "has_python" in matrix_step["run"]
-    assert "has_mutants" in matrix_step["run"]
-    assert "Preflight the exact execution budget" in matrix_step["run"]
-    assert "find mutants/mutmut-incremental-plan" in matrix_step["run"]
-    assert "--metadata-startup-reserve-seconds 120" in matrix_step["run"]
-    assert "--control-cycle-reserve-seconds 5" in matrix_step["run"]
-    assert "--max-timeout-seconds 20880" in matrix_step["run"]
-    assert "21,600 - 630 - 90" in matrix_step["run"]
-    assert '"${#nonempty_plan_files[@]}" -eq 0' in matrix_step["run"]
-    assert "descriptor_count=" in matrix_step["run"]
-    assert '"$descriptor_count" -gt 128' in matrix_step["run"]
-    assert "Mutation matrix capacity" in matrix_step["run"]
-    assert (
-        'matrix_summary="Fully validated 128 logical assignments; up to 128 budget-validated physical groups"'
-        in matrix_step["run"]
-    )
-    assert (
-        'matrix_summary="No-Python sentinel: one explicit non-mutant descriptor '
-        '(not a 128-assignment plan)"' in matrix_step["run"]
-    )
-    assert (
-        'echo "Validated Python scope contains no nonempty mutation shards; '
-        'emitting the non-mutant sentinel."' in matrix_step["run"]
-    )
-    assert (
-        'matrix_summary="Validated Python scope has no mutants; one explicit '
-        'non-mutant sentinel"' in matrix_step["run"]
-    )
-    assert (
-        'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] '
-        '&& [ "$descriptor_count" -ne 1 ]; then' in matrix_step["run"]
-    )
-    assert 'echo "- $matrix_summary"' in matrix_step["run"]
-    assert 'echo "- $descriptor_summary"' in matrix_step["run"]
-    assert "coverage phase barrier" in matrix_step["run"]
-
-    assert mutation_job["strategy"]["matrix"] == (
-        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
-    )
-    assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 10
-    selection_step = _step_named(
-        mutation_job, "Validate selected mutmut execution matrix entry"
-    )
-    assert selection_step["id"] == "mutation_shard"
-    selection_text = selection_step["run"]
-    assert "scripts/mutmut_shard_matrix.py" in selection_text
-    assert "--expected-shards 128" in selection_text
-    assert selection_step["env"] == {
-        "LOCAL_HAS_PYTHON": "${{ steps.mutation_scope.outputs.has_python }}",
-        "MATRIX_HAS_PYTHON": "${{ matrix.has_python }}",
-        "MATRIX_HAS_MUTANTS": "${{ matrix.has_mutants }}",
-        "MATRIX_GROUP_ID": "${{ matrix.group_id }}",
-        "MATRIX_LOGICAL_SHARDS": "${{ join(matrix.logical_shards, ',') }}",
-        "MATRIX_SELECTED_COUNT": "${{ matrix.selected_count }}",
-        "MATRIX_SELECTION_SHA256": "${{ matrix.selection_sha256 }}",
-        "MATRIX_GROUP_SHA256": "${{ matrix.group_sha256 }}",
-        "MATRIX_ESTIMATED_LOAD_MICROS": "${{ matrix.estimated_load_micros }}",
-        "MUTMUT_TARGET_GROUPS": "128",
-    }
-    assert '"$MATRIX_GROUP_ID"' in selection_text
-    assert '"$MATRIX_LOGICAL_SHARDS"' in selection_text
-    assert "validate-group" in selection_text
-    assert "--target-groups" in selection_text
-    assert '"$MATRIX_HAS_PYTHON"' in selection_text
-    assert '"$MATRIX_HAS_MUTANTS"' in selection_text
-    assert "MATRIX_SELECTION_SHA256" in selection_text
-    assert "disagrees with local mutation scope" in selection_text
-
-    execution_step = _step_named(
-        mutation_job, "Run incremental mutmut (blocking, stats-derived budget)"
-    )
-    assert execution_step["env"] == {
-        "MATRIX_GROUP_ID": "${{ matrix.group_id }}",
-        "MATRIX_LOGICAL_SHARDS": "${{ join(matrix.logical_shards, ',') }}",
-        "MATRIX_SELECTED_COUNT": "${{ matrix.selected_count }}",
-        "MATRIX_SELECTION_SHA256": "${{ matrix.selection_sha256 }}",
-        "MATRIX_GROUP_SHA256": "${{ matrix.group_sha256 }}",
-        "MATRIX_ESTIMATED_LOAD_MICROS": "${{ matrix.estimated_load_micros }}",
-    }
-    assert 'test -n "$MATRIX_LOGICAL_SHARDS"' in execution_step["run"]
-    assert '"$MATRIX_SELECTED_COUNT"' in execution_step["run"]
-    assert '"$MATRIX_SELECTION_SHA256"' in execution_step["run"]
-
-    required_nonempty = (
-        "steps.mutation_scope.outputs.has_python == 'true' && "
-        "steps.mutation_shard.outputs.has_mutants == 'true'"
-    )
-    for name in (
-        "Set up Python",
-        "Install uv",
-        "Install dependencies",
-        "Set up Helm",
-        "Resolve Helm chart dependencies",
-        "Run incremental mutmut (blocking, stats-derived budget)",
-    ):
-        assert _step_named(mutation_job, name)["if"] == required_nonempty
-
-
-def test_incremental_mutmut_planner_and_validator_share_budget_contract() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    universe_job = workflow["jobs"]["mutation-tests-universe"]
-    plan_step = _step_named(universe_job, "Merge and plan central mutmut universe")
-    script = plan_step["run"]
-
-    assert "scripts/plan_mutmut_shards.py" in script
-    assert "--num-shards 128" in script
-    assert "--max-children 3" in script
-    assert "--control-cycle-reserve-seconds 5" in script
-    assert "--metadata-startup-reserve-seconds 120" in script
-    assert "--max-timeout-seconds 20880" in script
-    assert "--reuse-generated-universe" in script
-
-
-def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
-    """Mutation fan-out must reuse immutable packages, never execution evidence.
-
-    A PR mutation run starts up to eight stats workers and permits up to ten
-    exact-mutant workers in the mutmut execution family (plus six Stryker
-    workers).  These are workflow-local operational budgets; no GitHub-global
-    semaphore owns admission when companion workflows overlap.  The package cache is keyed
-    by the locked dependency graph; the per-run mutmut universe and execution
-    proofs remain attempt-scoped artifacts and are deliberately not part of that
-    cache.
-    """
-
-    workflows_and_jobs = (
-        (
-            CI_WORKFLOW_PATH,
-            (
-                "mutation-tests-stats",
-                "mutation-tests-universe",
-                "mutation-tests-incremental",
-            ),
-        ),
-        (
-            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
-            ("manual-mutation-stats", "manual-mutation-tests"),
-        ),
-    )
-
-    expected_cache = {
-        "enable-cache": True,
-        "cache-dependency-glob": "uv.lock",
-    }
-    for workflow_path, job_names in workflows_and_jobs:
-        jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
-        for job_name in job_names:
-            install_uv = next(
-                step
-                for step in jobs[job_name]["steps"]
-                if step.get("name") == "Install uv"
-            )
-            assert install_uv["with"] == expected_cache
 
 
 def test_reusable_node_cache_never_restores_stale_node_modules() -> None:
@@ -3102,1145 +2467,49 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
     assert "seq 0 7" in require_stats["run"]
 
 
-def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() -> None:
-    # Pull-request mutation uses the same six-hour envelope as manual evidence.
-    # The dynamic timeout reserves ten minutes for proof/score/upload after
-    # timeout's 30-second KILL grace, and fails instead of under-budgeting.
-    pr_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    pr_job = pr_workflow["jobs"]["mutation-tests-incremental"]
-    pr_deadline = pr_job["steps"][0]["run"]
-    pr_run_step = next(
-        step
-        for step in pr_job["steps"]
-        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
-    )
-    assert pr_job["timeout-minutes"] == 360
-    assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"' in (
-        pr_deadline
-    )
-    assert "--max-timeout-seconds 20970" in pr_run_step["run"]
-    assert "--control-cycle-reserve-seconds 5" in pr_run_step["run"]
-    assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600" in pr_run_step["run"]
-    assert (
-        "required 600-second post-run/upload reserve and 30-second KILL grace"
-        in pr_run_step["run"]
-    )
-    assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
-    assert 360 * 60 - 20_970 - 30 == 600
-
-    # The configured cap is derived, not an arbitrary increase: the exact
-    # six-hour envelope reserves 600 seconds for post-run evidence after
-    # timeout's 30-second KILL grace. The live deadline check starts before
-    # setup and refuses to truncate evidence when setup consumes headroom.
-    assert "20,970" in pr_run_step["run"]
-    assert "21,600 - 600 - 30" in pr_run_step["run"]
-
-    workflows = (
-        (
-            CI_WORKFLOW_PATH,
-            "mutation-tests-incremental",
-            "Run incremental mutmut (blocking, stats-derived budget)",
-            "Upload incremental mutation evidence",
-            360,
-            21600,
-            20970,
-            600,
-        ),
-        (
-            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
-            "manual-mutation-tests",
-            "Run manual incremental mutmut (blocking, stats-derived budget)",
-            "Upload manual mutation evidence",
-            360,
-            21600,
-            20970,
-            600,
-        ),
-    )
-    for (
-        workflow_path,
-        job_name,
-        run_step_name,
-        upload_step_name,
-        timeout_minutes,
-        deadline_seconds,
-        max_timeout_seconds,
-        post_run_reserve_seconds,
-    ) in workflows:
-        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-        job = workflow["jobs"][job_name]
-        deadline_step = job["steps"][0]
-        assert deadline_step["name"] == "Record mutmut job deadline"
-        assert deadline_step["shell"] == "bash"
-        deadline_script = deadline_step["run"]
-        assert 'MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"' in deadline_script
-        assert (
-            'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + '
-            f'{deadline_seconds}))"' in deadline_script
-        )
-        assert 'echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"' in (
-            deadline_script
-        )
-        assert '>> "$GITHUB_ENV"' in deadline_script
-        run_script = next(
-            step["run"] for step in job["steps"] if step.get("name") == run_step_name
-        )
-        assert "--max-timeout-seconds 20970" in run_script
-        assert "live deadline check" in run_script
-
-        run_step = next(
-            step for step in job["steps"] if step.get("name") == run_step_name
-        )
-        run_script = run_step["run"]
-
-        assert job["timeout-minutes"] == timeout_minutes
-        assert f"--max-timeout-seconds {max_timeout_seconds}" in run_script
-        assert (
-            "MUTMUT_EVIDENCE_DIR="
-            "mutants/mutmut-exact-evidence"  # pragma: allowlist secret
-        ) in run_script
-        assert '--execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"' in run_script
-        assert 'if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then' in (
-            run_script
-        )
-        assert (
-            f"MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS={post_run_reserve_seconds}"
-            in run_script
-        )
-        assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in run_script
-        assert 'MUTMUT_CURRENT_EPOCH="$(date -u +%s)"' in run_script
-        assert (
-            'MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH '
-            '- MUTMUT_CURRENT_EPOCH))"'
-        ) in run_script
-        assert (
-            'MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS '
-            "- MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS "
-            '- MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"'
-        ) in run_script
-        assert 'MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"' in (run_script)
-        assert (
-            'MUTMUT_TIMEOUT_SECONDS="$MUTMUT_REMAINING_TIMEOUT_SECONDS"' in run_script
-        )
-        assert "refusing to run incomplete mutation evidence" in run_script
-        assert (
-            'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
-            "uv run python scripts/run_mutmut_with_stats.py --max-children 3 "
-            "--reuse-generated-universe "
-            '"${MUTANT_NAMES[@]}" 2>&1 '
-            '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
-        ) in run_script
-        assert (
-            'tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"\n'
-            'pipeline_status=("${PIPESTATUS[@]}")'
-        ) in run_script
-        assert 'mutmut_exit_code="${pipeline_status[0]}"' in run_script
-        assert 'tee_exit_code="${pipeline_status[1]}"' in run_script
-        failure_finalizer_definition = run_script.index(
-            "finalize_incomplete_mutmut_evidence()"
-        )
-        failure_finalizer_call = run_script.index(
-            'finalize_incomplete_mutmut_evidence "$exit_code"',
-            failure_finalizer_definition,
-        )
-        assert (
-            '--finalize-incomplete-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
-            in run_script
-        )
-        assert '--mutation-exit-code "$mutmut_exit_code"' in run_script
-        assert '--tee-exit-code "$tee_exit_code"' in run_script
-        assert failure_finalizer_definition < failure_finalizer_call
-        assert (
-            failure_finalizer_definition
-            < run_script.index("trap on_mutation_step_exit EXIT")
-            < run_script.index("--prepare-exact-execution")
-        )
-        assert (
-            'if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then'
-            in run_script
-        )
-        assert (
-            failure_finalizer_definition
-            < run_script.index(
-                'test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json"',
-                failure_finalizer_definition,
-            )
-            < failure_finalizer_call
-        )
-        assert (
-            failure_finalizer_definition
-            < run_script.index(
-                'test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"',
-                failure_finalizer_definition,
-            )
-            < failure_finalizer_call
-        )
-        assert 'if [ "$tee_exit_code" -ne 0 ]; then' in run_script
-        assert 'exit "$tee_exit_code"' in run_script
-        assert 'test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json"' in run_script
-        assert 'test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"' in run_script
-
-        upload_step = next(
-            step for step in job["steps"] if step.get("name") == upload_step_name
-        )
-        assert upload_step["if"].startswith(
-            "always() && steps.mutation_scope.outputs.has_python == 'true'"
-        )
-        assert "mutants/mutmut-exact-evidence/" in upload_step["with"]["path"]
-        assert upload_step["with"]["if-no-files-found"] == "error"
-
-        workflow_text = workflow_path.read_text(encoding="utf-8")
-        assert f"{post_run_reserve_seconds:,} seconds" in workflow_text
-        assert "30-second KILL grace" in workflow_text
-
-
-def test_full_map_survivor_confirmation_regenerates_the_mutmut_universe() -> None:
-    """The survivor confirmation pass must not reuse the generated universe.
-
-    ``validate_universe_manifest`` pins the per-mutant ``.meta`` digests and the
-    stats digest recorded when the planner generated the universe.  By the time
-    a reduced-map survivor is confirmed, the primary run has written its exit
-    codes back into ``mutants/**/*.meta`` and the workflow has deliberately
-    copied the full map over ``mutants/mutmut-stats.json``, so both digests have
-    moved.  Passing ``--reuse-generated-universe`` to the confirmation therefore
-    aborts with "mutmut universe metadata fingerprint mismatch; refusing reuse"
-    before a single survivor is re-executed, which failed 66 execution groups in
-    run 35470088045.  ``nightly-full-gate.yml`` omits the flag for the same
-    reason; see ``test_scheduled_workflow_regressions``.
-
-    The primary run keeps the flag: its manifest is still the one the planner
-    wrote, so reuse there remains both valid and fail-closed.
-    """
-
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    job = workflow["jobs"]["mutation-tests-incremental"]
-    run_script = next(
-        step
-        for step in job["steps"]
-        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
-    )["run"]
-
-    primary, _, confirmation = run_script.partition(
-        "Primary reduced-map survivors requiring full-map confirmation"
-    )
-    assert confirmation, "survivor confirmation stage is missing from the run script"
-
-    # The primary reduced-map run still reuses the planner-created universe.
-    assert "--reuse-generated-universe" in primary
-
-    # The confirmation re-runs each survivor alone, against the restored full
-    # map, and regenerates rather than reusing.
-    assert "cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json" in confirmation
-    assert "--stats mutants/mutmut-stats-full.json" in confirmation
-    assert (
-        'uv run python scripts/run_mutmut_with_stats.py --max-children 3 "$survivor"'
-        in confirmation
-    )
-    # Ignore shell comments: the rationale above the invocation deliberately
-    # names the flag, so only executable lines may be searched for it.
-    confirmation_commands = [
-        line for line in confirmation.splitlines() if not line.lstrip().startswith("#")
-    ]
-    assert not any(
-        "--reuse-generated-universe" in line for line in confirmation_commands
-    )
-    assert "Confirmation must NOT reuse the generated universe" in confirmation
-
-    # The 100% gate must score the confirmed export, never the primary one.
-    assert run_script.index(
-        "mutants/mutmut-primary-cicd-stats.json"
-    ) < run_script.index("--output mutants/mutmut-cicd-stats.json")
-    assert run_script.index(
-        "--output mutants/mutmut-cicd-stats.json"
-    ) < run_script.index("scripts/mutmut_ci_gate.py")
-
-
-def test_full_map_survivor_confirmation_degrades_only_the_watchdog_it_must() -> None:
-    """Only survivor confirmation may lower mutmut's 15x watchdog multiplier.
-
-    The full map charges a survivor the union of every test mapped to its
-    function.  For ``app/core/logging.py``'s PII helpers that is ~1355 tests
-    (~1335s), deriving 21,611s against GitHub's hard 21,600-second job maximum,
-    which failed 58 of 128 execution groups in run 35488190240; the whole-suite
-    hubs derive 97,567s.  No reserve tuning closes a gap above the platform
-    limit, so the confirmation resolves the largest multiplier that still fits
-    and never less than 2.
-
-    The reduction must stay scoped.  The primary run, the planner and the group
-    validator all plan against mutmut's own watchdog and must keep the module
-    default, or their budgets would stop bounding real wall cost.
-    """
-
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    consumer = workflow["jobs"]["mutation-tests-incremental"]
-    producer = workflow["jobs"]["mutation-tests-universe"]
-    run_script = _step_named(
-        consumer, "Run incremental mutmut (blocking, stats-derived budget)"
-    )["run"]
-
-    primary, _, confirmation = run_script.partition(
-        "Primary reduced-map survivors requiring full-map confirmation"
-    )
-    assert confirmation, "survivor confirmation stage is missing from the run script"
-
-    def commands(script: str) -> str:
-        """Drop shell comments: the rationale deliberately names the flags."""
-
-        return "\n".join(
-            line for line in script.splitlines() if not line.lstrip().startswith("#")
-        )
-
-    # Exactly one degraded multiplier, and only on the confirmation budget call.
-    assert re.findall(r"--execution-multiplier\s+(\S+)", commands(confirmation)) == [
-        "auto"
-    ]
-    assert re.findall(
-        r"--min-execution-multiplier\s+(\d+)", commands(confirmation)
-    ) == ["2"]
-
-    # A reduced cap is only legitimate per-survivor; a batch would multiply each
-    # hub function's union and blow the envelope it was lowered to fit.
-    assert '--selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt"' in commands(
-        confirmation
-    )
-
-    # Everything that plans against mutmut's own watchdog keeps the default.
-    assert "--execution-multiplier" not in commands(primary)
-    for step_name in (
-        "Merge and plan central mutmut universe",
-        "Build validated mutmut execution matrix",
-    ):
-        assert "--execution-multiplier" not in commands(
-            _step_named(producer, step_name)["run"]
-        )
-
-    # A preempted confirmation must fail the job before anything is scored.
-    assert "exit 124" in confirmation
-    assert confirmation.index("exit 124") < confirmation.index(
-        "scripts/mutmut_ci_gate.py"
-    )
-
-
-@pytest.mark.parametrize(
-    ("workflow_path", "job_name", "step_name"),
-    [
-        (
-            CI_WORKFLOW_PATH,
-            "mutation-tests-incremental",
-            "Run incremental mutmut (blocking, stats-derived budget)",
-        ),
-        (
-            FULL_BACKEND_MUTATION_WORKFLOW_PATH,
-            "mutation-tests-full",
-            "Plan and run exact full mutation shard",
-        ),
-    ],
-)
-def test_survivor_confirmation_budget_is_capped_by_the_live_deadline(
-    workflow_path: Path, job_name: str, step_name: str
-) -> None:
-    """The budget must be derived against the time the survivor actually has.
-
-    The watchdog bound is an upper bound on a child's wall cost, not an
-    estimate of it.  Run 35517610350 measured every ``app/core/logging.py``
-    confirmation deriving ~18,460s and finishing in 1,211-1,555s, so charging
-    the static ceiling against a shrinking deadline refused survivors that fit
-    with hours to spare (groups 23 and 26 each confirmed two and then refused
-    a third).  Deriving against the remaining deadline lets the existing
-    auto-degradation fit a survivor into what is left of the job.
-    """
-
-    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    run_script = _step_named(workflow["jobs"][job_name], step_name)["run"]
-    _, _, confirmation = run_script.partition(
-        "Primary reduced-map survivors requiring full-map confirmation"
-    )
-    assert confirmation, "survivor confirmation stage is missing from the run script"
-
-    remaining = confirmation.index("FULL_MAP_REMAINING_TIMEOUT_SECONDS=")
-    cap = confirmation.index("FULL_MAP_CONFIRMATION_CAP_SECONDS=")
-    derive = confirmation.index("scripts/mutmut_shard_budget.py")
-
-    # The deadline must be read, and the cap clamped to it, before the budget
-    # helper runs -- otherwise the derivation cannot degrade to fit.
-    assert remaining < cap < derive
-    assert '--max-timeout-seconds "$FULL_MAP_CONFIRMATION_CAP_SECONDS"' in confirmation
-    assert "--max-timeout-seconds 20970" not in confirmation
-
-    # The clamp must lower the static ceiling, never raise it.
-    assert (
-        'if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt '
-        '"$FULL_MAP_CONFIRMATION_CAP_SECONDS" ]; then' in confirmation
-    )
-
-    # A survivor that does not fit even at the floor multiplier must fail
-    # closed rather than run unbounded: the helper's non-zero exit is caught.
-    assert "refusing unconfirmed evidence" in confirmation
-    assert "full-map survivor confirmation cannot fit" in confirmation
-    assert "even at the minimum execution multiplier" in confirmation
-
-
-def test_universe_producer_proves_every_function_stays_confirmable() -> None:
-    """The sweep turns a 128-job matrix failure into one named producer failure.
-
-    Run 35488190240 discovered an underivable confirmation budget only after 58
-    consumer jobs had each spent hours reaching it.  The producer already holds
-    the merged full map, so it can prove the property once, and at the stricter
-    producer cap so that anything clearing it also clears the consumer's.
-    """
-
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    producer = workflow["jobs"]["mutation-tests-universe"]
-    plan_step = _step_named(producer, "Merge and plan central mutmut universe")["run"]
-
-    assert "scripts/validate_mutmut_confirmation_budgets.py" in plan_step
-    assert "--stats mutants/mutmut-stats-full.json" in plan_step
-    assert "--min-execution-multiplier 2" in plan_step
-    # The sweep must gate the plan, not trail it.
-    assert plan_step.index("validate_mutmut_confirmation_budgets.py") < plan_step.index(
-        "scripts/plan_mutmut_shards.py"
-    )
-
-
-def test_incremental_mutation_workflows_allow_empty_shards_and_validate_failures() -> (
+def test_mutation_execution_deadlines_and_evidence_are_owned_by_scheduled_lanes() -> (
     None
 ):
-    workflows = (
-        (
-            CI_WORKFLOW_PATH,
-            "mutation-tests-incremental",
-            "Run incremental mutmut (blocking, stats-derived budget)",
-            "run_incremental_mutmut",
-            "Validate incremental mutation evidence artifact",
-            "Upload incremental mutation evidence",
-        ),
-        (
-            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
-            "manual-mutation-tests",
-            "Run manual incremental mutmut (blocking, stats-derived budget)",
-            "run_manual_incremental_mutmut",
-            "Validate manual mutation evidence artifact",
-            "Upload manual mutation evidence",
-        ),
+    manual = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-
-    for (
-        workflow_path,
-        job_name,
-        run_step_name,
-        run_step_id,
-        validation_step_name,
-        upload_step_name,
-    ) in workflows:
-        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-        job = workflow["jobs"][job_name]
-        run_step = next(
-            step for step in job["steps"] if step.get("name") == run_step_name
-        )
-        run_script = run_step["run"]
-
-        assert run_step["id"] == run_step_id
-        empty_shard_index = run_script.index('if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then')
-        if workflow_path == CI_WORKFLOW_PATH:
-            # The dynamically selected PR entry was independently proven
-            # nonempty before any toolchain install. A later empty plan is a
-            # provenance violation, not a legitimate no-op.
-            assert (
-                "Validated nonempty mutation matrix entry became empty."
-                in run_script[empty_shard_index:]
-            )
-            assert "exit 1" in run_script[empty_shard_index:]
-            selection_step = _step_named(
-                job, "Validate selected mutmut execution matrix entry"
-            )
-            assert selection_step["id"] == "mutation_shard"
-        else:
-            # The manual workflow still creates its fixed matrix directly, so
-            # each empty assignment is a valid no-op after local planning.
-            empty_output_index = run_script.index(
-                'echo "has_mutants=false" >> "$GITHUB_OUTPUT"', empty_shard_index
-            )
-            assert (
-                empty_shard_index
-                < empty_output_index
-                < run_script.index("exit 0", empty_output_index)
-            )
-        assert 'echo "has_mutants=true" >> "$GITHUB_OUTPUT"' in run_script
-
-        assert "trap on_mutation_step_exit EXIT" in run_script
-        assert (
-            'if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then'
-            in run_script
-        )
-        assert '--failure-exit-code "$failure_exit_code"' in run_script
-        assert '--failure-reason "$MUTMUT_FAILURE_REASON"' in run_script
-
-        validation_step = next(
-            step for step in job["steps"] if step.get("name") == validation_step_name
-        )
-        artifact_condition = (
-            "always() && steps.mutation_scope.outputs.has_python == 'true' && "
-            f"steps.{run_step_id}.outputs.has_mutants == 'true'"
-        )
-        assert validation_step["if"] == artifact_condition
-        for filename in (
-            "selected-mutants.json",
-            "selected-results.json",
-            "execution-proof.json",
-        ):
-            assert (
-                f'test -s "mutants/mutmut-exact-evidence/{filename}"'
-                in validation_step["run"]
-            )
-
-        upload_step = next(
-            step for step in job["steps"] if step.get("name") == upload_step_name
-        )
-        assert upload_step["if"] == artifact_condition
-        assert job["steps"].index(run_step) < job["steps"].index(validation_step)
-        assert job["steps"].index(validation_step) < job["steps"].index(upload_step)
-
-
-def test_dispatchable_workflows_never_emit_required_ci_contexts() -> None:
-    workflow_root = REPOSITORY_ROOT / ".github" / "workflows"
-    collisions: list[str] = []
-
-    for workflow_path in sorted(workflow_root.glob("*.yml")):
-        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-        raw_triggers = workflow.get("on", workflow.get(True))
-        if isinstance(raw_triggers, str):
-            dispatchable = raw_triggers == "workflow_dispatch"
-        elif isinstance(raw_triggers, list):
-            dispatchable = "workflow_dispatch" in raw_triggers
-        else:
-            assert isinstance(raw_triggers, dict)
-            dispatchable = "workflow_dispatch" in raw_triggers
-        if not dispatchable:
-            continue
-        for job_id, job in workflow["jobs"].items():
-            if not isinstance(job, dict):
-                continue
-            name = job.get("name", job_id)
-            if not isinstance(name, str):
-                collisions.append(f"{workflow_path.name}:{job_id}:non-string-name")
-                continue
-            try:
-                name = _job_context_for_event(
-                    workflow_path, job_id, name, "workflow_dispatch"
-                )
-            except AssertionError:
-                collisions.append(f"{workflow_path.name}:{job_id}:{name}")
-                continue
-            for required_context in REQUIRED_CI_CONTEXTS:
-                # GitHub matches status contexts exactly.  A manual workflow
-                # must use a distinct full context, not merely avoid a shared
-                # substring such as the underlying benchmark label.
-                if required_context == name:
-                    collisions.append(f"{workflow_path.name}:{job_id}:{name}")
-                    break
-
-    assert not collisions, (
-        f"A workflow_dispatch run must not emit a required status context: {collisions}"
+    manual_job = manual["jobs"]["manual-mutation-tests"]
+    nightly = yaml.safe_load(
+        FULL_BACKEND_MUTATION_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
+    nightly_job = nightly["jobs"]["mutation-tests-full"]
 
-
-def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
-    workflow = yaml.safe_load(QUALITY_HISTORY_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    triggers = _workflow_triggers(workflow)
-    assert triggers["schedule"][0]["cron"] == "30 2 * * *"
-    assert triggers["repository_dispatch"]["types"] == ["run-quality-history"]
-    assert "workflow_dispatch" not in triggers
-    assert workflow["permissions"]["actions"] == "read"
-    assert workflow["permissions"]["contents"] == "read"
-    assert workflow["jobs"]["archive"]["permissions"] == {
-        "actions": "read",
-        "contents": "write",
-        "pull-requests": "write",
-    }
-    text = "\n".join(
-        step.get("run", "")
-        for step in workflow["jobs"]["archive"]["steps"]
-        if isinstance(step, dict)
+    assert (
+        "mutation-tests-incremental"
+        not in yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"]
     )
-    assert "gh run download" in text
-    assert "docs/testing/quality-history" in text
-    assert "artifacts/quality/history" not in text
-    assert 'history_path="docs/testing/quality-history/${head_sha}.json"' in text
-    assert "cmp --silent" in text
-    assert "generate_dashboard.py" in text
-    assert "git push --set-upstream origin" in text
-    assert "gh pr create" in text
-
-
-def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
-    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    job = workflow["jobs"]["miri"]
-    assert job["timeout-minutes"] == 60
-    run_text = "\n".join(
-        str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict)
+    assert manual_job["timeout-minutes"] == 360
+    assert (
+        "MUTMUT_JOB_DEADLINE_EPOCH"
+        in _step_named(manual_job, "Record mutmut job deadline")["run"]
     )
-    assert "cargo +nightly miri setup" in run_text
-    assert "cargo +nightly miri test --locked" in run_text
-    assert "--test-threads=1" in run_text
-    assert "frontend/rust-crypto/Cargo.toml" in run_text
-    assert "components: miri" in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
-
-
-def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
-    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
-    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    assert "workflow_dispatch" not in _workflow_triggers(workflow)
-    assert workflow["jobs"]["ws-hub-regression"]["timeout-minutes"] == 20
-    assert workflow["jobs"]["rust-native-regression"]["timeout-minutes"] == 30
-    _assert_paired_gate_variant(
-        workflow, workflow_path=workflow_path, job_id="ws-hub-regression"
-    )
-    _assert_paired_gate_variant(
-        workflow, workflow_path=workflow_path, job_id="rust-native-regression"
-    )
-
-
-def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
-    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    backend_job = ci_workflow["jobs"]["backend-tests"]
-    matrix = backend_job["strategy"]["matrix"]["include"]
-    assert [entry["shard"] for entry in matrix] == [0, 1, 2, 3]
-    assert all(entry["python-version"] == "3.14" for entry in matrix)
-    assert backend_job["with"]["shard-id"] == "${{ matrix.shard }}"
-    assert backend_job["with"]["num-shards"] == 4
-
-    policy_job = ci_workflow["jobs"]["coverage-policy-gate"]
-    policy_text = "\n".join(
-        step.get("run", "") for step in policy_job["steps"] if isinstance(step, dict)
-    )
-    download_steps = [
-        step
-        for step in policy_job["steps"]
-        if step.get("uses", "").startswith("actions/download-artifact")
+    manual_run = _step_named(
+        manual_job, "Run manual incremental mutmut (blocking, stats-derived budget)"
+    )["run"]
+    assert "execution-proof.json" in manual_run
+    assert "scripts/mutmut_ci_gate.py" in manual_run
+    nightly_run = _step_named(nightly_job, "Plan and run exact full mutation shard")[
+        "run"
     ]
-    python_download = next(
-        step
-        for step in download_steps
-        if "backend_shard_0.artifact_id" in str(step.get("with", {}))
-    )
-    assert python_download["with"]["merge-multiple"] is False
-    assert "coverage combine" in policy_text
-    assert "--python-xml coverage.xml" in policy_text
-    assert (
-        "--rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json"
-        in policy_text
-    )
-    rust_tests_job = ci_workflow["jobs"]["rust-tests"]
-    rust_crypto_step = next(
-        step
-        for step in rust_tests_job["steps"]
-        if step.get("name", "").startswith("rust-crypto")
-        and "coverage" in step.get("name", "")
-    )
-    assert "cargo llvm-cov --locked --all-targets" in rust_crypto_step["run"]
-
-    backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    inputs = _workflow_triggers(backend_workflow)["workflow_call"]["inputs"]
-    assert inputs["run-unit-tests"]["default"] is True
-    assert inputs["shard-id"]["default"] == -1
-    assert inputs["num-shards"]["default"] == 1
-    assert inputs["integration-shard-id"]["default"] == -1
-    assert inputs["integration-num-shards"]["default"] == 1
-    assert inputs["integration-test-pattern"]["default"] == "tests/integration/"
-    run_step = next(
-        step
-        for step in backend_workflow["jobs"]["unit-tests"]["steps"]
-        if step.get("name") == "Run pytest"
-    )
-    # Caller-controlled workflow inputs must cross the shell boundary through
-    # environment variables, never interpolation into PowerShell source.
-    assert "$env:TEST_PATTERN" in run_step["run"]
-    assert "$env:PARALLEL_WORKERS" in run_step["run"]
-    assert "$env:FAIL_FAST" in run_step["run"]
-    assert "$env:SHARD_ID" in run_step["run"]
-    assert "$env:NUM_SHARDS" in run_step["run"]
-    assert "$env:COVERAGE_THRESHOLD" in run_step["run"]
-    assert "${{ inputs.test-pattern }}" not in run_step["run"]
-    assert "${{ inputs.coverage-threshold }}" not in run_step["run"]
-    assert run_step["env"] == {
-        "TEST_PATTERN": "${{ inputs.test-pattern }}",
-        "PARALLEL_WORKERS": "${{ inputs.parallel-workers }}",
-        "FAIL_FAST": "${{ inputs.fail-fast }}",
-        "SHARD_ID": "${{ inputs.shard-id }}",
-        "NUM_SHARDS": "${{ inputs.num-shards }}",
-        "COVERAGE_THRESHOLD": "${{ inputs.coverage-threshold }}",
-        "PYTEST_SHARD_MANIFEST": "artifacts/coverage/python/pytest-shard-${{ inputs.shard-id }}.json",
-    }
-    integration_run_step = next(
-        step
-        for step in backend_workflow["jobs"]["integration-tests"]["steps"]
-        if step.get("name") == "Run integration tests"
-    )
-    integration_job = backend_workflow["jobs"]["integration-tests"]
-    unit_job = backend_workflow["jobs"]["unit-tests"]
-    # Unit authentication paths still construct the revocation-aware session
-    # service.  An explicit non-development URL keeps failures deterministic
-    # and prevents the fail-closed client from raising a configuration error
-    # before the test's transport mocks are reached.
-    assert unit_job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
-    assert integration_job["env"]["RUN_INTEGRATION_TESTS"] == "1"
-    assert integration_job["env"]["REVOCATION_REDIS_URL"] == (
-        "redis://localhost:6380/0"
-    )
-    revocation_redis = integration_job["services"]["revocation-redis"]
-    assert "6380:6379" in {str(port) for port in revocation_redis["ports"]}
-    assert "INTEGRATION_SHARD_ID" in integration_run_step["run"]
-    assert "INTEGRATION_NUM_SHARDS" in integration_run_step["run"]
-    assert "$env:INTEGRATION_TEST_PATTERN" in integration_run_step["run"]
-    for postgres_test_path in (
-        "tests/test_events_localization.py",
-        "tests/test_migrations_runtime.py",
-        "tests/test_query_plans.py",
-    ):
-        assert postgres_test_path in integration_run_step["run"]
-    assert '"${{ inputs.integration-test-pattern }}"' not in integration_run_step["run"]
-    assert integration_run_step["env"] == {
-        "INTEGRATION_SHARD_ID": "${{ inputs.integration-shard-id }}",
-        "INTEGRATION_NUM_SHARDS": "${{ inputs.integration-num-shards }}",
-        "INTEGRATION_TEST_PATTERN": "${{ inputs.integration-test-pattern }}",
-    }
-    assert backend_workflow["jobs"]["integration-tests"]["timeout-minutes"] == 60
-    integration_steps = backend_workflow["jobs"]["integration-tests"]["steps"]
-    image_prep_step = next(
-        step
-        for step in integration_steps
-        if step.get("name") == "Pre-pull testcontainer images with bounded retries"
-    )
-    image_prep_text = image_prep_step["run"]
-    assert (
-        "nats:2.10.25-alpine@sha256:"
-        "3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"  # pragma: allowlist secret
-        in image_prep_text
-    )
-    assert (
-        "postgres:15-alpine@sha256:"
-        "fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b"  # pragma: allowlist secret
-        in image_prep_text
-    )
-    assert "redis:7-alpine" in image_prep_text
-    assert "pgvector/pgvector:pg17" in image_prep_text
-    assert "docker image inspect" in image_prep_text
-    assert "docker pull" in image_prep_text
-    assert "$maxAttempts = 5" in image_prep_text
-    assert "Start-Sleep" in image_prep_text
-    assert (
-        yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"][
-            "backend-tests"
-        ]["with"]["integration-test-pattern"]
-        == "tests/integration/"
-    )
-    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert (
-        nightly["jobs"]["backend-integration"]["with"]["integration-test-pattern"]
-        == "tests/integration/"
-    )
+    assert "--verify-exact-execution" in nightly_run
+    assert "mutmut-full-plan" in nightly_run
+    assert "Validate full mutation shard evidence artifact" in str(nightly_job["steps"])
 
 
-def test_reusable_quality_jobs_have_bounded_execution() -> None:
-    backend = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert backend["jobs"]["unit-tests"]["timeout-minutes"] == 45
-    assert backend["jobs"]["integration-tests"]["timeout-minutes"] == 60
-
-    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert {
-        name: frontend["jobs"][name]["timeout-minutes"]
-        for name in (
-            "unit-tests",
-            "lint",
-            "build",
-            "bundle-analysis",
-            "lighthouse-shards",
-            "lighthouse",
-        )
-    } == {
-        "unit-tests": 45,
-        "lint": 30,
-        "build": 45,
-        "bundle-analysis": 15,
-        "lighthouse-shards": 20,
-        "lighthouse": 10,
-    }
-
-    lighthouse_shards = frontend["jobs"]["lighthouse-shards"]
-    assert lighthouse_shards["strategy"]["fail-fast"] is False
-    assert [
-        entry["shard"] for entry in lighthouse_shards["strategy"]["matrix"]["include"]
-    ] == [
-        "core",
-        "content",
-        "realtime",
-        "fallback",
-    ]
-    assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
-    assert lighthouse_shards["env"]["SKIP_BUILD"] == "1"
-    assert lighthouse_shards["env"]["LHCI_USE_SSR_PREVIEW"] == "1"
-    assert lighthouse_shards["env"]["LHCI_SSR_PREVIEW_PORT"] == "4175"
-    assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
-    lighthouse_bundle = next(
-        step
-        for step in frontend["jobs"]["build"]["steps"]
-        if step.get("name") == "Upload Lighthouse bundle"
+def test_dispatchable_mutation_evidence_is_not_a_required_ci_context() -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    manual = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    assert lighthouse_bundle["with"]["name"] == "frontend-lhci-dist"
-    lighthouse_build = next(
-        step
-        for step in frontend["jobs"]["build"]["steps"]
-        if step.get("name") == "Build Lighthouse bundle"
-    )
-    assert lighthouse_build["env"] == {"VITE_LHCI": "true", "SKIP_WASM_BUILD": "1"}
-    lighthouse_download = next(
-        step
-        for step in lighthouse_shards["steps"]
-        if step.get("name") == "Download Lighthouse bundle"
-    )
-    assert lighthouse_download["with"]["name"] == "frontend-lhci-dist"
-    shard_upload = next(
-        step
-        for step in lighthouse_shards["steps"]
-        if step.get("name") == "Upload Lighthouse shard reports"
-    )
-    assert shard_upload["with"]["include-hidden-files"] is True
-    assert shard_upload["with"]["name"] == (
-        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}"
-    )
-    assert shard_upload["with"]["if-no-files-found"] == "error"
-    assert not any(
-        step.get("name") == "Install wasm-pack" for step in lighthouse_shards["steps"]
-    )
-
-    lighthouse_aggregate = frontend["jobs"]["lighthouse"]
-    assert lighthouse_aggregate["needs"] == "lighthouse-shards"
-    assert "always()" in lighthouse_aggregate["if"]
-    assert "!cancelled()" in lighthouse_aggregate["if"]
-    assert lighthouse_aggregate["name"] == "Lighthouse Audit"
-    shard_guard = next(
-        step
-        for step in lighthouse_aggregate["steps"]
-        if step.get("name") == "Verify all Lighthouse shards passed"
-    )
-    assert shard_guard["working-directory"] == "${{ github.workspace }}"
-    merge_text = "\n".join(
-        step.get("run", "")
-        for step in lighthouse_aggregate["steps"]
-        if isinstance(step, dict)
-    )
-    assert 'printf -v report_name "lhr-%02d.json" "$index"' in merge_text
-    assert "expected_shards=(core content realtime fallback)" in merge_text
-    assert '"$total" -ne 30' in merge_text
-    download_shards = next(
-        step
-        for step in lighthouse_aggregate["steps"]
-        if step.get("name") == "Download Lighthouse shard reports"
-    )
-    assert download_shards["with"]["pattern"] == (
-        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-*"
-    )
-    assert "if-no-artifact-found" not in download_shards["with"]
-    merged_upload = next(
-        step
-        for step in lighthouse_aggregate["steps"]
-        if step.get("name") == "Upload Lighthouse retry evidence"
-    )
-    assert merged_upload["with"]["name"] == (
-        "lighthouse-reports-attempt-${{ github.run_attempt }}"
-    )
-    assert merged_upload["with"]["include-hidden-files"] is True
-
-    go_lint_workflow = yaml.safe_load(GO_LINT_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    go_lint_job_action = next(
-        step
-        for step in go_lint_workflow["jobs"]["golangci-lint"]["steps"]
-        if step.get("uses", "").startswith("golangci/golangci-lint-action@")
-    )
-    assert go_lint_job_action["with"]["install-mode"] == "binary"
-    assert go_lint_job_action["with"]["version"] == "v2.13.2"
-
-    go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert go["jobs"]["test"]["timeout-minutes"] == 120
-    assert go["jobs"]["lint"]["timeout-minutes"] == 20
-    go_lint_action = next(
-        step
-        for step in go["jobs"]["lint"]["steps"]
-        if step.get("uses", "").startswith("golangci/golangci-lint-action@")
-    )
-    assert go_lint_action["with"]["verify"] is False
-    assert go_lint_action["with"]["install-mode"] == "binary"
-    assert go_lint_action["with"]["version"] == "v2.13.2"
-
-    security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert {
-        name: security["jobs"][name]["timeout-minutes"]
-        for name in (
-            "pip-audit",
-            "npm-audit",
-            "docker-security",
-            "govulncheck",
-            "sbom",
-            "detect-secrets-baseline",
-            "semgrep",
-        )
-    } == {
-        "pip-audit": 20,
-        "npm-audit": 25,
-        "docker-security": 30,
-        "govulncheck": 20,
-        "sbom": 15,
-        "detect-secrets-baseline": 15,
-        "semgrep": 20,
-    }
-
-    semgrep_steps = security["jobs"]["semgrep"]["steps"]
-    semgrep_run = next(
-        step for step in semgrep_steps if step.get("name") == "Run Semgrep SAST"
-    )
-    semgrep_run_text = semgrep_run["run"]
-    assert "semgrep scan --config auto \\\n" in semgrep_run_text
-    assert "--baseline-commit" not in semgrep_run_text
-    assert "--error" in semgrep_run_text
-    assert "--sarif --sarif-output=semgrep.sarif" in semgrep_run_text
-    assert "SEMGREP_SCAN_STATUS" in semgrep_run_text
-    assert any(
-        step.get("name") == "Fail if Semgrep reported findings or scan errors"
-        and step.get("if") == "always()"
-        for step in semgrep_steps
-    )
-    semgrep_gate = next(
-        step
-        for step in semgrep_steps
-        if step.get("name") == "Fail if Semgrep reported findings or scan errors"
-    )
-    assert "validate_semgrep_sarif.py" in semgrep_gate["run"]
-    assert "security/semgrep-suppression-policy.json" in semgrep_gate["run"]
-    assert '--scanner-status "$scan_status"' in semgrep_gate["run"]
-    semgrep_upload = next(
-        step
-        for step in semgrep_steps
-        if step.get("name") == "Upload SARIF to GitHub Advanced Security"
-    )
-    assert "continue-on-error" not in semgrep_upload
-
-
-def test_frontend_unit_aggregate_publishes_hidden_junit_reports() -> None:
-    """The aggregate job must not silently drop reports from a dot-directory.
-
-    ``actions/upload-artifact`` excludes hidden files by default.  The unit
-    aggregate downloads shard reports into ``.vitest-reports``; without the
-    explicit opt-in the job can pass while publishing no JUnit evidence.
-    """
-    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    upload = next(
-        step
-        for step in frontend["jobs"]["unit-tests"]["steps"]
-        if step.get("name") == "Upload Vitest report"
-    )
-    assert upload["with"]["include-hidden-files"] is True
-    assert upload["with"]["if-no-files-found"] == "error"
-    shard_upload = next(
-        step
-        for step in frontend["jobs"]["unit-tests-shard"]["steps"]
-        if step.get("name") == "Upload Vitest shard report"
-    )
-    assert shard_upload["with"]["if-no-files-found"] == "error"
-    assert (
-        shard_upload["with"]["name"]
-        == "frontend-vitest-report-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}"
-    )
-    aggregate_download = next(
-        step
-        for step in frontend["jobs"]["unit-tests"]["steps"]
-        if step.get("name") == "Download Vitest shard reports"
-    )
-    assert (
-        aggregate_download["with"]["pattern"]
-        == "frontend-vitest-report-shard-*-attempt-${{ github.run_attempt }}"
-    )
-    aggregate_upload = next(
-        step
-        for step in frontend["jobs"]["unit-tests"]["steps"]
-        if step.get("name") == "Upload Vitest report"
-    )
-    assert (
-        aggregate_upload["with"]["name"]
-        == "frontend-vitest-report-attempt-${{ github.run_attempt }}"
-    )
-
-
-def test_semgrep_upload_uses_policy_filtered_sarif_and_keeps_raw_gate() -> None:
-    security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    steps = security["jobs"]["semgrep"]["steps"]
-    prepare = next(
-        step
-        for step in steps
-        if step.get("name") == "Prepare policy-filtered SARIF for GitHub"
-    )
-    upload = next(
-        step
-        for step in steps
-        if step.get("name") == "Upload SARIF to GitHub Advanced Security"
-    )
-    gate = next(
-        step
-        for step in steps
-        if step.get("name") == "Fail if Semgrep reported findings or scan errors"
-    )
-
-    assert "--prepare-github-upload semgrep-github.sarif" in prepare["run"]
-    assert "--report semgrep.sarif" in prepare["run"]
-    assert "security/semgrep-suppression-policy.json" in prepare["run"]
-    assert upload["if"] == "always()"
-    assert upload["with"]["sarif_file"] == "semgrep-github.sarif"
-    assert "--report semgrep.sarif" in gate["run"]
-    assert '--scanner-status "$scan_status"' in gate["run"]
-    assert steps.index(prepare) < steps.index(upload) < steps.index(gate)
-
-
-def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
-    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    shard_job = workflow["jobs"]["unit-tests-shard"]
-    aggregate_job = workflow["jobs"]["unit-tests"]
-
-    assert shard_job["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
-    shard_text = "\n".join(str(step.get("run", "")) for step in shard_job["steps"])
-    assert "npm run test:unit-ci -- --shard=${{ matrix.shard }}/4" in shard_text
-    shard_artifacts = "\n".join(
-        str(step.get("with", {}).get("name", ""))
-        for step in shard_job["steps"]
-        if isinstance(step, dict)
-    )
-    assert "frontend-coverage-shard-${{ matrix.shard }}" in shard_artifacts
-    assert aggregate_job["needs"] == "unit-tests-shard"
-    assert aggregate_job["if"] == "${{ always() }}"
-
-    aggregate_steps = aggregate_job["steps"]
-    aggregate_checkout = next(
-        step
-        for step in aggregate_steps
-        if step.get("uses", "").startswith("actions/checkout@")
-    )
-    assert aggregate_checkout["with"]["fetch-depth"] == 0
-    failed_shard_guard = next(
-        step
-        for step in aggregate_steps
-        if step.get("name") == "Fail if a test shard failed"
-    )
-    assert failed_shard_guard["working-directory"] == "${{ github.workspace }}"
-    assert aggregate_steps.index(failed_shard_guard) < aggregate_steps.index(
-        aggregate_checkout
-    )
-    merge_step = next(
-        step
-        for step in aggregate_steps
-        if step.get("name") == "Merge frontend coverage shards"
-    )
-    assert (
-        REPOSITORY_ROOT / "frontend" / "scripts" / "merge-vitest-coverage.mjs"
-    ).is_file()
-    assert "scripts/merge-vitest-coverage.mjs" in merge_step["run"]
-    assert "--input=.coverage-shards" in merge_step["run"]
-    assert "--output=coverage" in merge_step["run"]
-    assert "--expected-shards=4" in merge_step["run"]
-    assert any(
-        step.get("with", {}).get("pattern")
-        == "frontend-coverage-shard-*-attempt-${{ github.run_attempt }}"
-        for step in aggregate_steps
-        if isinstance(step, dict)
-    )
-    assert any(
-        step.get("with", {}).get("name")
-        == "frontend-coverage-attempt-${{ github.run_attempt }}"
-        for step in aggregate_steps
-        if isinstance(step, dict)
-    )
-
-
-def test_weekly_duration_refresh_is_a_reviewable_bot_pr() -> None:
-    workflow_path = (
-        REPOSITORY_ROOT / ".github" / "workflows" / "weekly-test-durations.yml"
-    )
-    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    assert _workflow_triggers(workflow)["schedule"][0]["cron"] == "0 4 * * 1"
-    triggers = _workflow_triggers(workflow)
-    assert triggers["repository_dispatch"]["types"] == ["run-weekly-test-durations"]
-    assert "workflow_dispatch" not in triggers
-    assert workflow["permissions"]["contents"] == "read"
-    assert workflow["jobs"]["refresh"]["permissions"] == {
-        "actions": "read",
-        "contents": "write",
-        "pull-requests": "write",
-    }
-    step_text = "\n".join(
-        step.get("run", "")
-        for step in workflow["jobs"]["refresh"]["steps"]
-        if isinstance(step, dict)
-    )
-    assert "update_test_durations.py" in step_text
-    assert "gh pr create" in step_text
-
-
-def test_weekly_duration_refresh_uses_bounded_complete_junit_shards() -> None:
-    workflow_path = (
-        REPOSITORY_ROOT / ".github" / "workflows" / "weekly-test-durations.yml"
-    )
-    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    shard_job = workflow["jobs"]["refresh-shard"]
-    aggregate_job = workflow["jobs"]["refresh"]
-
-    assert shard_job["strategy"] == {
-        "fail-fast": False,
-        "max-parallel": 4,
-        "matrix": {"shard": [0, 1, 2, 3]},
-    }
-    assert shard_job["timeout-minutes"] == 45
-    shard_run = _step_named(shard_job, "Run the measurable test suite")["run"]
-    for argument in (
-        "--no-cov",
-        "--ignore=tests/performance",
-        "--ignore=tests/chaos",
-        "--ignore=tests/test_schemathesis_api.py",
-        "--shard-id=${{ matrix.shard }}",
-        "--num-shards=4",
-        "--junitxml=pytest-report.xml",
-    ):
-        assert argument in shard_run
-    shard_upload = _step_named(shard_job, "Upload shard JUnit report")
-    assert (
-        shard_upload["with"]["name"]
-        == "weekly-test-duration-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}"
-    )
-    assert shard_upload["with"]["if-no-files-found"] == "error"
-
-    assert aggregate_job["needs"] == "refresh-shard"
-    assert aggregate_job["if"] == "${{ always() && github.ref == 'refs/heads/main' }}"
-    failed_shard_guard = _step_named(aggregate_job, "Fail if a duration shard failed")
-    checkout_index = next(
-        index
-        for index, step in enumerate(aggregate_job["steps"])
-        if step.get("uses", "").startswith("actions/checkout@")
-    )
-    assert aggregate_job["steps"].index(failed_shard_guard) < checkout_index
-    assert failed_shard_guard["if"] == "${{ needs.refresh-shard.result != 'success' }}"
-    download = _step_named(aggregate_job, "Download shard JUnit reports")
-    assert (
-        download["with"]["pattern"]
-        == "weekly-test-duration-shard-*-attempt-${{ github.run_attempt }}"
-    )
-    merge = _step_named(aggregate_job, "Merge shard JUnit reports")
-    assert "scripts/quality/merge_junit_reports.py" in merge["run"]
-    assert "--expected-shards 4" in merge["run"]
-    rewrite = _step_named(aggregate_job, "Rewrite duration map")
-    assert "update_test_durations.py" in rewrite["run"]
-    # The weekly report intentionally excludes performance, chaos, and
-    # Schemathesis tests.  Replacement mode would silently erase their
-    # historical estimates and make future shard planning less accurate.
-    assert "--replace" not in rewrite["run"]
-    merged_upload = _step_named(aggregate_job, "Upload merged JUnit report")
-    assert "${{ github.run_id }}" in merged_upload["with"]["name"]
-    assert merged_upload["with"]["if-no-files-found"] == "error"
+    assert "workflow_dispatch" in _workflow_triggers(manual)
+    assert not any("mutation" in job_id or "stryker" in job_id for job_id in ci["jobs"])
+    assert "manual-frontend-mutation-aggregate" in manual["jobs"]
+    assert "manual-mutation-tests" in manual["jobs"]
 
 
 def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
@@ -4318,12 +2587,23 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     )
     assert "test_s3_storage_integration.py" in cell_text
     assert "test_spicedb_integration.py" in cell_text
-    assert jobs["browser-matrix"]["strategy"]["matrix"]["browser"] == [
+    browser_entries = jobs["browser-matrix"]["strategy"]["matrix"]["include"]
+    assert {entry["browser"] for entry in browser_entries} == {
         "chromium",
         "firefox",
         "webkit",
         "mobile-webkit",
-    ]
+    }
+    assert [
+        entry["shard-index"]
+        for entry in browser_entries
+        if entry["browser"] == "chromium"
+    ] == [1, 2, 3, 4]
+    assert all(
+        entry["shard-total"] == 4
+        for entry in browser_entries
+        if entry["browser"] == "chromium"
+    )
     assert "always()" in jobs["notify-failure"]["if"]
     assert "mutation-tests-full" in jobs["notify-failure"]["needs"]
     assert "mutation-tests-full-stats" not in jobs["notify-failure"]["needs"]
@@ -4638,11 +2918,12 @@ def test_rust_fuzz_keeps_the_required_pr_context_out_of_manual_and_scheduled_run
 
 
 def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
-    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    jobs = ci_workflow["jobs"]
-    mutation_job = jobs["mutation-tests-incremental"]
+    manual_workflow = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    jobs = manual_workflow["jobs"]
+    mutation_job = jobs["manual-mutation-tests"]
     assert mutation_job["timeout-minutes"] == 360
-    assert "mutation-tests-incremental" in jobs["ci-success"]["needs"]
     deadline_step = mutation_job["steps"][0]
     assert deadline_step["name"] == "Record mutmut job deadline"
     assert (
@@ -4657,8 +2938,8 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert (
-        "needs.mutation-tests-incremental.result"
-        in jobs["ci-success"]["steps"][0]["run"]
+        "mutation-tests-incremental"
+        not in yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"]
     )
     export_index = mutation_text.index("scripts/export_mutmut_shard_stats.py")
     gate_index = mutation_text.index("scripts/mutmut_ci_gate.py")
@@ -4988,65 +3269,23 @@ def test_pr_quality_gates_enforce_contract_policy_values() -> None:
     assert 'main(["--min-score", "100"])' in mutation_gate
 
 
-def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:
-    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    performance_job = ci_workflow["jobs"]["performance-gate"]
-    selector_step = next(
-        step
-        for step in performance_job["steps"]
-        if step.get("name") == "Select immutable same-run Lighthouse evidence candidate"
-    )
-    assert selector_step["id"] == "select_lighthouse_results"
-    assert selector_step["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    selector_run = selector_step["run"]
-    for invariant in (
-        "set -euo pipefail",
-        "scripts/quality/select_same_run_artifact_cli.py",
-        '--artifact-prefix "lighthouse-reports-attempt-"',
-        '--artifact-suffix ""',
-        "--artifact-name-layout attempt",
-        "--attempt-policy current-or-earlier",
-    ):
-        assert invariant in selector_run
-    download_step = next(
-        step
-        for step in performance_job["steps"]
-        if step.get("name") == "Download selected Lighthouse results"
-    )
-    assert download_step["with"] == {
-        "artifact-ids": "${{ steps.select_lighthouse_results.outputs.artifact_id }}",
-        "repository": "${{ github.repository }}",
-        "run-id": "${{ github.run_id }}",
-        "github-token": "${{ github.token }}",
-        "path": (
-            "artifacts/lighthouse/candidates/"
-            "${{ steps.select_lighthouse_results.outputs.artifact_name }}"
-        ),
-    }
-    assert "pattern" not in download_step["with"]
-    assert "continue-on-error" not in download_step
-    lighthouse_selection = "\n".join(
-        step.get("run", "")
-        for step in performance_job["steps"]
-        if isinstance(step, dict)
-    )
-    assert "scripts/quality/select_lighthouse_artifacts_cli.py" in lighthouse_selection
-    assert "--candidate-root" in lighthouse_selection
-    assert "--destination-root" in lighthouse_selection
+def test_scheduled_lhci_linux_keeps_threshold_and_route_privacy_checks() -> None:
+    workflow = yaml.safe_load(LHCI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["lhci"]
+    run = next(step for step in job["steps"] if step.get("name") == "Run Lighthouse CI")
+    assert run["run"] == "npm run lhci"
+
+    runner = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+    assert '"lhci assert"' in runner
+    assert "assertLhciRoutePolicy" in runner
+
+    lighthouse_config = LIGHTHOUSE_CONFIG_PATH.read_text(encoding="utf-8")
     assert (
-        "--config-input .github/workflows/reusable-frontend-tests.yml"
-        in lighthouse_selection
+        '"categories:performance": ["error", { minScore: 0.95 }]' in lighthouse_config
     )
-    threshold_step = next(
-        step
-        for step in performance_job["steps"]
-        if step.get("name") == "Enforce Lighthouse thresholds"
+    assert (
+        '"categories:accessibility": ["error", { minScore: 0.95 }]' in lighthouse_config
     )
-    assert threshold_step["env"]["LHCI_SKIP_PREPARE"] == "1"
-    threshold_command = threshold_step["run"]
-    assert "--config=../.lighthouserc.js" in threshold_command
-    assert "--preset=" not in threshold_command
-    assert "--budgetsFile=" not in threshold_command
 
 
 def test_lighthouse_config_uses_supported_budget_path_and_audit() -> None:
@@ -5155,8 +3394,10 @@ def test_lhci_ci_uses_route_specific_ssr_preview_without_lowering_budgets() -> N
 
 
 def test_chaos_job_provisions_real_s3_through_toxiproxy() -> None:
-    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    chaos_job = ci_workflow["jobs"]["chaos-tests"]
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    chaos_job = nightly_workflow["jobs"]["chaos-tests"]
     minio_service = chaos_job["services"]["minio"]
     assert (
         minio_service["image"]
@@ -5195,9 +3436,15 @@ def test_chaos_job_provisions_real_s3_through_toxiproxy() -> None:
 
 def test_actionlint_documents_github_service_command_compatibility() -> None:
     config = yaml.safe_load(ACTIONLINT_CONFIG_PATH.read_text(encoding="utf-8"))
-    ignores = config["paths"][".github/workflows/ci.yml"]["ignore"]
+    paths = config["paths"]
+    nightly_ignores = paths[".github/workflows/nightly-full-gate.yml"]["ignore"]
 
-    assert 'unexpected key "command" for "services" section' in ignores
+    assert ".github/workflows/ci.yml" not in paths
+    assert 'unexpected key "command" for "services" section' in nightly_ignores
+    assert (
+        "docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax"
+        in (ACTIONLINT_CONFIG_PATH.read_text(encoding="utf-8"))
+    )
 
 
 def test_stryker_duration_bounds_track_the_shard_job_cap() -> None:
@@ -5213,8 +3460,8 @@ def test_stryker_duration_bounds_track_the_shard_job_cap() -> None:
     the next change to the cap fails locally instead of four hours into CI.
     """
 
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    cap_minutes = workflow["jobs"]["stryker-shards"]["timeout-minutes"]
+    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    cap_minutes = workflow["jobs"]["frontend-mutation-shards"]["timeout-minutes"]
     cap_ms = cap_minutes * 60 * 1000
 
     script = (REPOSITORY_ROOT / "frontend" / "scripts" / "run-stryker.mjs").read_text(
@@ -5240,650 +3487,93 @@ def test_stryker_duration_bounds_track_the_shard_job_cap() -> None:
     # and the cap, so an overrun is reported by the runner rather than by
     # GitHub cancelling the job.
     configured = int(
-        workflow["jobs"]["stryker-shards"]["env"]["STRYKER_SHARD_TIMEOUT_MS"]
+        workflow["jobs"]["frontend-mutation-shards"]["env"]["STRYKER_SHARD_TIMEOUT_MS"]
     )
     assert configured < shard_timeout_bound
     assert configured < cap_ms
 
 
-def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
-    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    manual_workflow = yaml.safe_load(
+def test_frontend_mutation_evidence_is_complete_on_nightly_and_manual_lanes() -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    manual = yaml.safe_load(
         MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    nightly_workflow = yaml.safe_load(
-        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
-    )
-    jobs = ci_workflow["jobs"]
-    mutation_preflight = jobs["stryker-preflight"]
-    assert mutation_preflight["needs"] == [
-        "pre-commit-check",
-        "e2e-wasm-build",
-        "frontend-tests",
-    ]
-    assert mutation_preflight["if"] == (
-        "${{ github.event_name == 'pull_request' && "
-        "needs.pre-commit-check.result == 'success' && "
-        "needs.e2e-wasm-build.result == 'success' && "
-        "needs.frontend-tests.result == 'success' }}"
-    )
-    assert mutation_preflight["permissions"] == {
-        "contents": "read",
-        "actions": "read",
-    }
-    assert mutation_preflight["env"] == {
-        "STRYKER_SHARD_COUNT": "64",
-        "STRYKER_PREFLIGHT_MODE": "generate",
-        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
-        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
-    }
-    preflight_checkout = next(
-        step for step in mutation_preflight["steps"] if step.get("name") == "Checkout"
-    )
-    assert preflight_checkout["with"]["persist-credentials"] is False
-    preflight_run = next(
-        step["run"]
-        for step in mutation_preflight["steps"]
-        if step.get("name") == "Generate canonical immutable Stryker preflight"
-    )
-    assert preflight_run == "npm run test:mutation"
-    preflight_node_setup = next(
-        step
-        for step in mutation_preflight["steps"]
-        if step.get("name") == "Setup Node.js"
-    )
-    assert preflight_node_setup["with"]["node-version"] == "24.15.0"
-    preflight_upload = next(
-        step
-        for step in mutation_preflight["steps"]
-        if step.get("name") == "Upload immutable Stryker preflight"
-    )
-    assert preflight_upload["with"]["name"] == (
-        "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}"
-    )
-    assert preflight_upload["with"]["path"] == (
-        "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json"
-    )
-    assert preflight_upload["with"]["overwrite"] is False
-
-    mutation_shards = jobs["stryker-shards"]
-    mutation_condition = mutation_shards["if"]
-    assert "github.event_name == 'pull_request'" in mutation_condition
-    assert "workflow_dispatch" not in mutation_condition
-    assert mutation_shards["name"].endswith("/64")
-    assert mutation_shards["strategy"]["fail-fast"] is False
-    assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
-    assert mutation_shards["strategy"]["max-parallel"] == 6
-    assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
-    assert mutation_shards["timeout-minutes"] == 270
-    # The in-process runner deadline must stay strictly below the job cap so
-    # an overrunning shard reports itself and still uploads evidence instead
-    # of being cancelled silently by GitHub (run 35327250942 shard 61/64).
-    shard_timeout_ms = int(mutation_shards["env"]["STRYKER_SHARD_TIMEOUT_MS"])
-    assert shard_timeout_ms < mutation_shards["timeout-minutes"] * 60 * 1000
-    assert mutation_shards["needs"] == [
-        "stryker-preflight",
-        "coverage-policy-gate",
-        "pre-commit-security-and-types",
-    ]
-    assert mutation_shards["if"] == (
-        "${{ github.event_name == 'pull_request' && "
-        "needs.stryker-preflight.result == 'success' && "
-        "needs.coverage-policy-gate.result == 'success' && "
-        "needs.pre-commit-security-and-types.result == 'success' }}"
-    )
-    assert "pre-commit-check" in jobs["ci-success"]["needs"]
-    assert "stryker-preflight" in jobs["ci-success"]["needs"]
-    assert mutation_shards["env"] == {
-        "STRYKER_SHARD_COUNT": "64",
-        "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
-        "STRYKER_CONCURRENCY": "4",
-        "STRYKER_SHARD_TIMEOUT_MS": "15300000",
-        "STRYKER_PREFLIGHT_ARTIFACT": "required",
-        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
-        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
-    }
-    preflight_selector = next(
-        step
-        for step in mutation_shards["steps"]
-        if step.get("name") == "Select immutable same-run Stryker preflight candidate"
-    )
-    assert preflight_selector["id"] == "select_stryker_preflight"
-    assert preflight_selector["uses"] == (
-        "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3"
-    )
-    assert preflight_selector["env"] == {
-        "ARTIFACT_PREFIX": "frontend-mutation-preflight-",
-        "ARTIFACT_SUFFIX": "${{ github.sha }}",
-        "ATTEMPT_POLICY": "current-or-earlier",
-        "ALLOW_EMPTY": "false",
-        "SOURCE_SHA": "${{ github.event.pull_request.head.sha }}",
-        "TESTED_SHA": "${{ github.sha }}",
-        "RUN_ATTEMPT": "${{ github.run_attempt }}",
-        "PR_BRANCH": "${{ github.event.pull_request.head.ref }}",
-    }
-    assert preflight_selector["with"]["github-token"] == "${{ github.token }}"
-    assert "validSha.test(sourceSha)" in preflight_selector["with"]["script"]
-    assert "validSha.test(testedSha)" in preflight_selector["with"]["script"]
-    assert mutation_shards["steps"].index(preflight_selector) < mutation_shards[
-        "steps"
-    ].index(
-        next(
-            step for step in mutation_shards["steps"] if step.get("name") == "Checkout"
-        )
-    )
-    preflight_download = next(
-        step
-        for step in mutation_shards["steps"]
-        if step.get("name") == "Download selected Stryker preflight candidate"
-    )
-    assert preflight_download["with"] == {
-        "artifact-ids": "${{ steps.select_stryker_preflight.outputs.artifact_id }}",
-        "repository": "${{ github.repository }}",
-        "run-id": "${{ github.run_id }}",
-        "github-token": "${{ github.token }}",
-        "path": "${{ runner.temp }}/stryker-preflight-candidate/${{ steps.select_stryker_preflight.outputs.artifact_name }}",
-        "digest-mismatch": "error",
-    }
-    assert "pattern" not in preflight_download["with"]
-    shard_checkout = next(
-        step for step in mutation_shards["steps"] if step.get("name") == "Checkout"
-    )
-    assert shard_checkout["with"]["persist-credentials"] is False
-    preflight_validation = next(
-        step
-        for step in mutation_shards["steps"]
-        if step.get("name") == "Validate immutable Stryker preflight before execution"
-    )
-    assert preflight_validation["working-directory"] == "frontend"
-    assert preflight_validation["env"] == {"STRYKER_PREFLIGHT_MODE": "validate"}
-    assert preflight_validation["run"] == "npm run test:mutation"
-    shard_node_setup = next(
-        step for step in mutation_shards["steps"] if step.get("name") == "Setup Node.js"
-    )
-    assert shard_node_setup["with"]["node-version"] == "24.15.0"
-    fresh_shard_step = next(
-        step
-        for step in mutation_shards["steps"]
-        if step.get("name") == "Run fresh Stryker shard"
-    )
-    shard_run = fresh_shard_step["run"]
-    assert shard_run == "npm run test:mutation"
-    assert (
-        mutation_shards["steps"].index(preflight_download)
-        < mutation_shards["steps"].index(preflight_validation)
-        < mutation_shards["steps"].index(fresh_shard_step)
+    ci_jobs = ci["jobs"]
+    assert not any("mutation" in job_id or "stryker" in job_id for job_id in ci_jobs)
+    assert not any(
+        token
+        in _step_named(ci_jobs["ci-success"], "Check all jobs passed")["run"].lower()
+        for token in ("mutation", "stryker")
     )
 
-    assert "stryker-shard-replay" not in jobs
-    mutation_aggregate = jobs["stryker-aggregate"]
-    assert mutation_aggregate["needs"] == [
-        "stryker-preflight",
-        "stryker-shards",
-        "coverage-policy-gate",
-        "pre-commit-security-and-types",
-    ]
-    assert mutation_aggregate["if"] == (
-        "${{ always() && !cancelled() && github.event_name == 'pull_request' "
-        "&& needs.stryker-preflight.result != 'skipped' "
-        "&& needs.coverage-policy-gate.result == 'success' "
-        "&& needs.pre-commit-security-and-types.result == 'success' }}"
-    )
-    assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
-        "reports/mutation/external"
-    )
-    assert mutation_aggregate["env"]["STRYKER_PREFLIGHT_ARTIFACT"] == "required"
-    aggregate_node_setup = next(
-        step
-        for step in mutation_aggregate["steps"]
-        if step.get("name") == "Setup Node.js"
-    )
-    assert aggregate_node_setup["with"]["node-version"] == "24.15.0"
-    aggregate_selector = next(
-        step
-        for step in mutation_aggregate["steps"]
-        if step.get("name") == "Select immutable same-run Stryker preflight candidate"
-    )
-    assert aggregate_selector["id"] == "select_stryker_preflight"
-    assert aggregate_selector["env"] == preflight_selector["env"]
-    assert aggregate_selector["with"] == preflight_selector["with"]
-    aggregate_preflight_download = next(
-        step
-        for step in mutation_aggregate["steps"]
-        if step.get("name") == "Download selected Stryker preflight candidate"
-    )
-    assert aggregate_preflight_download["with"] == preflight_download["with"]
-    aggregate_shard_download = next(
-        step
-        for step in mutation_aggregate["steps"]
-        if step.get("name") == "Download all same-run Stryker shard candidates"
-    )
-    assert aggregate_shard_download["with"] == {
-        "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
-        "path": "${{ runner.temp }}/stryker-shard-candidates",
-        "merge-multiple": False,
-        "digest-mismatch": "error",
-    }
-    assert "name" not in aggregate_shard_download["with"]
-    aggregate_checkout = next(
-        step for step in mutation_aggregate["steps"] if step.get("name") == "Checkout"
-    )
-    assert aggregate_checkout["with"]["persist-credentials"] is False
-    aggregate_run = next(
-        step["run"]
-        for step in mutation_aggregate["steps"]
-        if step.get("name") == "Aggregate and verify fresh frontend mutation evidence"
-    )
-    assert aggregate_run.splitlines() == [
-        "npm run test:mutation",
-        "npm run test:mutation:verify",
-    ]
-    assert "stryker-aggregate" in jobs["ci-success"]["needs"]
-    result_check = jobs["ci-success"]["steps"][0]["run"]
-    assert "needs.stryker-aggregate.result" in result_check
-    mutation_roundtrip = jobs["stryker-evidence-roundtrip"]
-    assert mutation_roundtrip["needs"] == "stryker-aggregate"
-    roundtrip_checkout = next(
-        step for step in mutation_roundtrip["steps"] if step.get("name") == "Checkout"
-    )
-    assert roundtrip_checkout["with"]["persist-credentials"] is False
-    roundtrip_node_setup = next(
-        step
-        for step in mutation_roundtrip["steps"]
-        if step.get("name") == "Setup Node.js"
-    )
-    assert roundtrip_node_setup["with"]["node-version"] == "24.15.0"
-    assert mutation_roundtrip["env"] == {
-        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates",
-        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
-        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
-    }
-    roundtrip_selector = next(
-        step
-        for step in mutation_roundtrip["steps"]
-        if step.get("name")
-        == "Select immutable same-run validated Stryker evidence candidate"
-    )
-    assert roundtrip_selector["id"] == "select_stryker_validated"
-    assert roundtrip_selector["uses"] == preflight_selector["uses"]
-    assert roundtrip_selector["env"] == {
-        **preflight_selector["env"],
-        "ARTIFACT_PREFIX": "frontend-mutation-validated-",
-        "ARTIFACT_SUFFIX": "",
-    }
-    assert roundtrip_selector["with"] == preflight_selector["with"]
-    roundtrip_download = next(
-        step
-        for step in mutation_roundtrip["steps"]
-        if step.get("name") == "Download selected immutable Stryker evidence candidate"
-    )
-    assert roundtrip_download["with"] == {
-        "artifact-ids": "${{ steps.select_stryker_validated.outputs.artifact_id }}",
-        "repository": "${{ github.repository }}",
-        "run-id": "${{ github.run_id }}",
-        "github-token": "${{ github.token }}",
-        "path": "${{ runner.temp }}/stryker-validated-candidate/${{ steps.select_stryker_validated.outputs.artifact_name }}",
-        "digest-mismatch": "error",
-    }
-    assert "pattern" not in roundtrip_download["with"]
-    assert "stryker-evidence-roundtrip" in jobs["ci-success"]["needs"]
-    assert "needs.stryker-evidence-roundtrip.result" in result_check
-
-    manual_jobs = manual_workflow["jobs"]
-    manual_preflight = manual_jobs["manual-frontend-mutation-preflight"]
-    assert "needs" not in manual_preflight
-    assert manual_preflight["timeout-minutes"] == 30
-    assert manual_preflight["env"] == {
-        "STRYKER_SHARD_COUNT": "64",
-        "STRYKER_PREFLIGHT_MODE": "generate",
-    }
-    assert manual_preflight["permissions"] == {"contents": "read"}
-    manual_preflight_install = next(
-        index
-        for index, step in enumerate(manual_preflight["steps"])
-        if step.get("name") == "Install frontend dependencies"
-    )
-    manual_typecheck = manual_preflight["steps"][manual_preflight_install + 1]
-    assert manual_typecheck == {
-        "name": "Type-check frontend before mutation evidence",
-        "working-directory": "frontend",
-        "run": "npm run typecheck",
-    }
-    manual_preflight_upload = next(
-        step
-        for step in manual_preflight["steps"]
-        if step.get("name") == "Upload immutable Stryker preflight"
-    )
-    assert manual_preflight_upload["with"] == {
-        "name": (
-            "frontend-mutation-preflight-${{ github.run_id }}-"
-            "${{ github.run_attempt }}-${{ github.sha }}"
+    for workflow, prefix, max_parallel, aggregate_id, aggregate_name, roundtrip_id in (
+        (
+            nightly,
+            "frontend-mutation",
+            8,
+            "frontend-mutation-tests-full",
+            "Aggregate and verify nightly frontend mutation evidence",
+            "frontend-mutation-roundtrip",
         ),
-        "path": (
-            "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json"
+        (
+            manual,
+            "manual-frontend-mutation",
+            20,
+            "manual-frontend-mutation-aggregate",
+            "Aggregate and verify manual frontend mutation evidence",
+            "manual-frontend-mutation-roundtrip",
         ),
-        "if-no-files-found": "error",
-        "overwrite": False,
-        "retention-days": 30,
-    }
-
-    manual_shards = manual_jobs["manual-frontend-mutation-shards"]
-    assert manual_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
-    assert manual_shards["name"].endswith("/64)")
-    assert manual_shards["strategy"]["max-parallel"] == 20
-    assert manual_shards["timeout-minutes"] == 270
-    assert manual_shards["needs"] == "manual-frontend-mutation-preflight"
-    assert manual_shards["env"] == {
-        "STRYKER_SHARD_COUNT": "64",
-        "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
-        "STRYKER_CONCURRENCY": "4",
-        "STRYKER_SHARD_TIMEOUT_MS": "15300000",
-        "STRYKER_PREFLIGHT_ARTIFACT": "required",
-    }
-    assert manual_shards["permissions"] == {"contents": "read", "actions": "read"}
-    assert "manual-frontend-mutation-shard-replay" not in manual_jobs
-    manual_aggregate = manual_jobs["manual-frontend-mutation-aggregate"]
-    assert manual_aggregate["needs"] == [
-        "manual-frontend-mutation-preflight",
-        "manual-frontend-mutation-shards",
-    ]
-    assert manual_aggregate["if"] == "${{ always() && !cancelled() }}"
-    assert manual_aggregate["env"] == {
-        "STRYKER_SHARD_COUNT": "64",
-        "STRYKER_AGGREGATE_ROOT": "reports/mutation/external",
-        "STRYKER_CONCURRENCY": "4",
-        "STRYKER_PREFLIGHT_ARTIFACT": "required",
-    }
-    assert (
-        manual_aggregate["name"] == "Manual Mutation Evidence (frontend Stryker 100%)"
-    )
-
-    nightly_jobs = nightly_workflow["jobs"]
-    nightly_preflight = nightly_jobs["frontend-mutation-preflight"]
-    assert "needs" not in nightly_preflight
-    assert nightly_preflight["timeout-minutes"] == 30
-    assert nightly_preflight["env"] == {
-        "STRYKER_SHARD_COUNT": "64",
-        "STRYKER_PREFLIGHT_MODE": "generate",
-    }
-    assert nightly_preflight["permissions"] == {"contents": "read"}
-    nightly_preflight_install = next(
-        index
-        for index, step in enumerate(nightly_preflight["steps"])
-        if step.get("name") == "Install frontend dependencies"
-    )
-    nightly_typecheck = nightly_preflight["steps"][nightly_preflight_install + 1]
-    assert nightly_typecheck == manual_typecheck
-    nightly_preflight_upload = next(
-        step
-        for step in nightly_preflight["steps"]
-        if step.get("name") == "Upload immutable Stryker preflight"
-    )
-    assert nightly_preflight_upload["with"] == manual_preflight_upload["with"]
-
-    nightly_shards = nightly_jobs["frontend-mutation-shards"]
-    assert nightly_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
-    assert nightly_shards["name"].endswith("/64")
-    assert nightly_shards["strategy"]["max-parallel"] == 8
-    assert nightly_shards["timeout-minutes"] == 270
-    assert nightly_shards["needs"] == "frontend-mutation-preflight"
-    assert nightly_shards["env"] == manual_shards["env"]
-    assert nightly_shards["permissions"] == {"contents": "read", "actions": "read"}
-    assert "frontend-mutation-shard-replay" not in nightly_jobs
-    nightly_aggregate = nightly_jobs["frontend-mutation-tests-full"]
-    assert nightly_aggregate["needs"] == [
-        "frontend-mutation-preflight",
-        "frontend-mutation-shards",
-    ]
-    assert nightly_aggregate["if"] == (
-        "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}"
-    )
-    assert nightly_aggregate["env"] == manual_aggregate["env"]
-    manual_roundtrip = manual_jobs["manual-frontend-mutation-roundtrip"]
-    assert manual_roundtrip["needs"] == "manual-frontend-mutation-aggregate"
-    nightly_roundtrip = nightly_jobs["frontend-mutation-roundtrip"]
-    assert nightly_roundtrip["needs"] == "frontend-mutation-tests-full"
-    nightly_failure_needs = nightly_jobs["notify-failure"]["needs"]
-    assert "frontend-mutation-preflight" in nightly_failure_needs
-    assert "frontend-mutation-shards" in nightly_failure_needs
-    assert "frontend-mutation-shard-replay" not in nightly_failure_needs
-    assert "frontend-mutation-tests-full" in nightly_failure_needs
-    assert "frontend-mutation-roundtrip" in nightly_failure_needs
-
-    for roundtrip_job in (manual_roundtrip, nightly_roundtrip):
-        selector = next(
-            step
-            for step in roundtrip_job["steps"]
-            if step.get("name")
-            == "Select immutable same-run validated Stryker evidence candidate"
-        )
-        assert '--artifact-prefix "frontend-mutation-validated-"' in selector["run"]
-        assert "--attempt-policy current-or-earlier" in selector["run"]
-        download = next(
-            step
-            for step in roundtrip_job["steps"]
-            if "Download validated" in step.get("name", "")
-        )
-        assert download["with"] == {
-            "artifact-ids": "${{ steps.select_stryker_validated.outputs.artifact_id }}",
-            "repository": "${{ github.repository }}",
-            "run-id": "${{ github.run_id }}",
-            "github-token": "${{ github.token }}",
-            "path": (
-                "frontend/reports/mutation/validated-candidates/"
-                "${{ steps.select_stryker_validated.outputs.artifact_name }}"
-            ),
-        }
-        assert roundtrip_job["permissions"] == {
-            "contents": "read",
-            "actions": "read",
-        }
-        assert roundtrip_job["env"] == {
-            "STRYKER_VALIDATED_CANDIDATE_ROOT": (
-                "reports/mutation/validated-candidates"
-            )
-        }
-        verification = next(
-            step["run"]
-            for step in roundtrip_job["steps"]
-            if "Re-verify" in step.get("name", "")
-        )
-        assert verification == "npm run test:mutation:verify"
-
-    for aggregate_job in (
-        mutation_aggregate,
-        manual_aggregate,
-        nightly_aggregate,
     ):
-        validated_upload = next(
-            step
-            for step in aggregate_job["steps"]
-            if step.get("name", "").startswith("Upload validated")
-        )
-        uploaded_paths = validated_upload["with"]["path"]
-        assert "frontend/reports/mutation/external/**/mutation.json" in uploaded_paths
+        jobs = workflow["jobs"]
+        assert "workflow_dispatch" in _workflow_triggers(
+            workflow
+        ) or "schedule" in _workflow_triggers(workflow)
+        shards_id = f"{prefix}-shards"
+        shards = jobs[shards_id]
+        assert shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+        assert shards["strategy"]["max-parallel"] == max_parallel
+        aggregate = jobs[aggregate_id]
+        assert shards_id in aggregate["needs"]
         assert (
-            "frontend/reports/mutation/external/**/SHARD_EVIDENCE.json"
-            in uploaded_paths
+            _step_named(aggregate, aggregate_name)["run"].count("test:mutation:verify")
+            == 1
         )
-        assert validated_upload["with"]["if-no-files-found"] == "error"
-        assert "success()" in validated_upload["if"]
-        assert "github.run_attempt" in validated_upload["with"]["name"]
-
-    for workflow_path in (
-        CI_WORKFLOW_PATH,
-        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
-        NIGHTLY_FULL_WORKFLOW_PATH,
-    ):
-        workflow_text = workflow_path.read_text(encoding="utf-8")
-        assert "npm run test:mutation --" not in workflow_text
-        assert "npm run test:mutation:verify" in workflow_text
-
-    manual_download = next(
-        step
-        for step in manual_aggregate["steps"]
-        if "Download all manual frontend mutation shards" in step.get("name", "")
-    )
-    assert manual_download["with"] == {
-        "pattern": "manual-frontend-mutation-shard-${{ github.run_id }}-*",
-        "path": "frontend/reports/mutation/external",
-        "merge-multiple": False,
-    }
-    nightly_download = next(
-        step
-        for step in nightly_aggregate["steps"]
-        if "Download all nightly frontend mutation shards" in step.get("name", "")
-    )
-    assert nightly_download["with"] == {
-        "pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-*",
-        "path": "frontend/reports/mutation/external",
-        "merge-multiple": False,
-    }
-
-    for workflow_path, shard_job, aggregate_job in (
-        (
-            ".github/workflows/manual-mutation-evidence.yml",
-            manual_shards,
-            manual_aggregate,
-        ),
-        (".github/workflows/nightly-full-gate.yml", nightly_shards, nightly_aggregate),
-    ):
-        for job in (shard_job, aggregate_job):
-            selector = next(
-                step
-                for step in job["steps"]
-                if step.get("name")
-                == "Select immutable same-run Stryker preflight candidate"
-            )
-            assert f'--workflow-path "{workflow_path}"' in selector["run"]
-            assert '--artifact-prefix "frontend-mutation-preflight-"' in selector["run"]
-            assert "--attempt-policy current-or-earlier" in selector["run"]
-            validation = next(
-                step
-                for step in job["steps"]
-                if step.get("name") == "Verify selected Stryker preflight payload"
-            )
-            assert "set -euo pipefail" in validation["run"]
-
-        immutable_validation = next(
-            step
-            for step in shard_job["steps"]
-            if step.get("name")
-            == "Validate immutable Stryker preflight before execution"
+        roundtrip = jobs[roundtrip_id]
+        assert roundtrip["needs"] == aggregate_id
+        assert any(
+            "Re-verify downloaded" in step.get("name", "")
+            for step in roundtrip["steps"]
         )
-        assert immutable_validation["env"] == {"STRYKER_PREFLIGHT_MODE": "validate"}
-        assert immutable_validation["run"] == "npm run test:mutation"
 
-    for shard_job in (mutation_shards, manual_shards, nightly_shards):
-        shard_cache = next(
-            step
-            for step in shard_job["steps"]
-            if "Cache successful" in step.get("name", "")
-        )
-        assert shard_cache["uses"].startswith("actions/cache/save@")
-        assert shard_cache["with"]["path"] == "frontend/reports/mutation/shards"
-        assert "github.run_id" in shard_cache["with"]["key"]
-        assert "github.sha" in shard_cache["with"]["key"]
-        assert "github.run_attempt" not in shard_cache["with"]["key"]
-
-    for shard_job in (mutation_shards, manual_shards, nightly_shards):
-        restore = next(
-            step
-            for step in shard_job["steps"]
-            if step.get("name") == "Restore exact successful shard"
-        )
-        assert restore["uses"].startswith("actions/cache/restore@")
-        assert restore["with"]["fail-on-cache-miss"] is False
-        assert "github.run_id" in restore["with"]["key"]
-        assert "github.sha" in restore["with"]["key"]
-        assert "github.run_attempt" not in restore["with"]["key"]
-        producer_upload = next(
-            step
-            for step in shard_job["steps"]
-            if "Upload current-attempt shard evidence" in step.get("name", "")
-        )
-        assert producer_upload["if"] == "${{ always() }}"
-        assert "github.run_id" in producer_upload["with"]["name"]
-        assert "github.run_attempt" in producer_upload["with"]["name"]
-
-    frontend_workflow = yaml.safe_load(
-        (
-            REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
-        ).read_text(encoding="utf-8")
-    )
-    unit_steps = frontend_workflow["jobs"]["unit-tests"]["steps"]
-    diff_step = next(
-        step
-        for step in unit_steps
-        if step.get("name") == "Check differential frontend coverage"
-    )
-    assert "--fail-under=100" in diff_step["run"]
-    coverage_step = next(
-        step for step in unit_steps if step.get("name") == "Upload coverage artifacts"
-    )
-    assert coverage_step["with"]["name"] == (
-        "frontend-coverage-attempt-${{ github.run_attempt }}"
-    )
-
-    ci_coverage_gate = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))[
-        "jobs"
-    ]["coverage-policy-gate"]
-    staging_step = next(
-        step
-        for step in ci_coverage_gate["steps"]
-        if step.get("name") == "Stage trusted Codecov reports"
-    )
-    assert "frontend/coverage/lcov.info" in staging_step["run"]
-
-
-def test_frontend_mutation_required_context_is_fail_closed() -> None:
-    """Keep the legacy ruleset context bound to both validated artifacts."""
-
-    jobs = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"]
-    context_job = jobs["frontend-mutation-required-context"]
-
-    assert context_job["name"] == "Incremental Mutation Tests (frontend)"
-    assert context_job["needs"] == [
-        "stryker-aggregate",
-        "stryker-evidence-roundtrip",
-    ]
-    assert context_job["if"] == (
-        "${{ always() && !cancelled() && github.event_name == 'pull_request' "
-        "&& needs.stryker-aggregate.result != 'skipped' }}"
-    )
-    assert context_job["permissions"] == {}
-    assert context_job["timeout-minutes"] == 5
-
-    assert len(context_job["steps"]) == 1
-    gate = context_job["steps"][0]
-    assert gate["name"] == "Require validated frontend mutation evidence"
-    assert gate["shell"] == "bash"
-    assert gate["run"].splitlines() == [
-        "set -euo pipefail",
-        'aggregate_result="${{ needs.stryker-aggregate.result }}"',
-        'roundtrip_result="${{ needs.stryker-evidence-roundtrip.result }}"',
-        'if [[ "$aggregate_result" != "success" || "$roundtrip_result" != "success" ]]; then',
-        '  echo "::error::Frontend mutation evidence is not fully validated " \\',
-        '    "(aggregate=$aggregate_result, roundtrip=$roundtrip_result)."',
-        "  exit 1",
-        "fi",
-        'echo "Frontend mutation evidence is complete and round-trip verified."',
-    ]
-
-    ci_success = jobs["ci-success"]
-    assert "frontend-mutation-required-context" in ci_success["needs"]
-    ci_gate = ci_success["steps"][0]["run"]
     assert (
-        'assert_event_result "frontend-mutation-required-context" '
-        '"${{ needs.frontend-mutation-required-context.result }}" "success"' in ci_gate
+        nightly["jobs"]["frontend-mutation-preflight"]["if"]
+        == "${{ github.ref == 'refs/heads/main' }}"
     )
     assert (
-        'assert_event_result "frontend-mutation-required-context" '
-        '"${{ needs.frontend-mutation-required-context.result }}" "skipped"' in ci_gate
+        manual["jobs"]["manual-frontend-mutation-aggregate"]["name"]
+        == "Manual Mutation Evidence (frontend Stryker 100%)"
     )
+    assert (
+        nightly["jobs"]["frontend-mutation-tests-full"]["name"]
+        == "Full frontend mutation score (100%)"
+    )
+
+
+def test_former_frontend_mutation_required_context_is_not_a_required_gate() -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert "frontend-mutation-required-context" not in ci["jobs"]
+    assert "stryker-aggregate" not in ci["jobs"]["ci-success"]["needs"]
+    catalog_text = json.dumps(
+        json.loads(
+            (REPOSITORY_ROOT / "quality/ci-check-catalog.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    assert "Incremental Mutation Tests (frontend)" not in catalog_text
+    assert "Full frontend mutation score (100%)" in catalog_text
+    assert "Manual Mutation Evidence (frontend Stryker 100%)" in catalog_text
 
 
 def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> None:
@@ -8693,11 +6383,12 @@ def test_persistent_pytest_reset_jobs_use_explicit_narrow_opt_in() -> None:
     assert pytest_step["env"][marker] == "1"
 
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
     schemathesis = _provenance_step(
-        ci["jobs"]["schemathesis-api-tests-shard"],
+        nightly["jobs"]["schemathesis-api-tests-shard"],
         "Run Schemathesis conformance tests",
     )
-    chaos = _provenance_step(ci["jobs"]["chaos-tests"], "Run chaos tests")
+    chaos = _provenance_step(nightly["jobs"]["chaos-tests"], "Run chaos tests")
     asan = _provenance_step(
         ci["jobs"]["rust-ffi-asan"], "Run FFI tests under ASan / LSan"
     )
@@ -8715,8 +6406,8 @@ def test_persistent_pytest_reset_jobs_use_explicit_narrow_opt_in() -> None:
     )
     assert nightly_chaos["env"][marker] == "1"
 
-    assert CI_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 4
-    assert NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 2
+    assert CI_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 2
+    assert NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 5
     assert BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 1
     db_perf_path = REPOSITORY_ROOT / ".github" / "workflows" / "db-perf-gate.yml"
     assert db_perf_path.read_text(encoding="utf-8").count(marker) == 1

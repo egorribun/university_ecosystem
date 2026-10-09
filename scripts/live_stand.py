@@ -56,7 +56,8 @@ WORKTREE = REPO_ROOT.parent / WORKTREE_NAME
 IN_PLACE_MODE = False
 SOURCE_SHA: str | None = None
 PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION = 7
-IN_PLACE_OWNER_SCHEMA_VERSION = 9
+PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION = 9
+IN_PLACE_OWNER_SCHEMA_VERSION = 11
 IN_PLACE_STATE_PARENT = "ue-live-acceptance"
 IN_PLACE_STATE_PATTERN = re.compile(r"^run-[A-Za-z0-9-]{1,80}$")
 IN_PLACE_BUILD_SOURCE_PATHS = (
@@ -123,7 +124,25 @@ LIVE_PORT_SPECS = (
     ("PYROSCOPE", "pyroscope", 4040),
     ("CADDY_HTTP", "caddy", 80),
     ("CADDY_HTTPS", "caddy", 443),
+    ("MINIO", "minio", 9000),
     ("MAILPIT", "mailpit", 8025),
+)
+PRE_MINIO_PUBLISHED_PORT_NAMES = (
+    "BACKEND",
+    "FRONTEND",
+    "POSTGRES",
+    "GATEWAY",
+    "WS_HUB",
+    "TEMPORAL_GRPC",
+    "TEMPORAL_WEB",
+    "IMGPROXY",
+    "GRAFANA",
+    "PROMETHEUS",
+    "ALLOY",
+    "PYROSCOPE",
+    "CADDY_HTTP",
+    "CADDY_HTTPS",
+    "MAILPIT",
 )
 LEGACY_PUBLISHED_PORTS = {
     "BACKEND": 8000,
@@ -142,6 +161,7 @@ LEGACY_PUBLISHED_PORTS = {
     "CADDY_HTTPS": 443,
     "MAILPIT": MAILPIT_PORT,
 }
+DEFAULT_PUBLISHED_PORTS = {**LEGACY_PUBLISHED_PORTS, "MINIO": 19000}
 PORT_RANGE = (20000, 45000)
 PORT_BIND_HOST = "127.0.0.1"
 VAPID_FILE = Path(".secrets") / "live-vapid.json"
@@ -150,7 +170,8 @@ STAND_FILE = Path(".secrets") / "live-stand.json"
 PROJECT_PREFIX = "ue-live-"
 PROJECT_PATTERN = re.compile(r"^ue-live-[0-9a-f]{16}$")
 PREVIOUS_STACK_OWNER_SCHEMA_VERSION = 6
-OWNER_SCHEMA_VERSION = 8
+PRE_MINIO_OWNER_SCHEMA_VERSION = 8
+OWNER_SCHEMA_VERSION = 10
 RESOURCE_OWNER_SCHEMA_VERSION = 5
 PREVIOUS_OWNER_SCHEMA_VERSION = 4
 VOLUME_OWNER_SCHEMA_VERSION = 3
@@ -543,6 +564,8 @@ def _owner_schema_is_supported(schema_version: int) -> bool:
         RESOURCE_OWNER_SCHEMA_VERSION,
         PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }
@@ -866,10 +889,12 @@ def _require_owned_docker_daemon(owner: StandOwner) -> None:
         raise StandError("different Docker daemon detected; refusing lifecycle command")
 
 
-def _validate_published_ports(
-    ports: Mapping[str, object], *, allow_privileged: bool = False
+def _validate_port_map(
+    ports: Mapping[str, object],
+    expected: Sequence[str],
+    *,
+    allow_privileged: bool,
 ) -> tuple[tuple[str, int], ...]:
-    expected = tuple(name for name, _service, _target in LIVE_PORT_SPECS)
     if set(ports) != set(expected):
         raise StandError("live port map does not match the published service inventory")
     result: list[tuple[str, int]] = []
@@ -884,6 +909,21 @@ def _validate_published_ports(
     if len({port for _name, port in result}) != len(result):
         raise StandError("live port map contains duplicate host ports")
     return tuple(result)
+
+
+def _validate_published_ports(
+    ports: Mapping[str, object], *, allow_privileged: bool = False
+) -> tuple[tuple[str, int], ...]:
+    expected = tuple(name for name, _service, _target in LIVE_PORT_SPECS)
+    return _validate_port_map(ports, expected, allow_privileged=allow_privileged)
+
+
+def _validate_pre_minio_published_ports(
+    ports: Mapping[str, object], *, allow_privileged: bool = False
+) -> tuple[tuple[str, int], ...]:
+    return _validate_port_map(
+        ports, PRE_MINIO_PUBLISHED_PORT_NAMES, allow_privileged=allow_privileged
+    )
 
 
 def _published_port_names_for_services(
@@ -1168,6 +1208,19 @@ def load_stand_owner(worktree: Path) -> StandOwner:
             )
         )
         or (
+            schema_version == PRE_MINIO_OWNER_SCHEMA_VERSION
+            and (IN_PLACE_MODE or set(data) != stack_resource_keys)
+        )
+        or (
+            schema_version == PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION
+            and (
+                not IN_PLACE_MODE
+                or set(data) != in_place_stack_keys
+                or not isinstance(data.get("source_sha"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}", data["source_sha"])
+            )
+        )
+        or (
             schema_version == OWNER_SCHEMA_VERSION
             and (IN_PLACE_MODE or set(data) != stack_resource_keys)
         )
@@ -1193,13 +1246,34 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         RESOURCE_OWNER_SCHEMA_VERSION,
         PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
         raw_ports = data["published_ports"]
         if not isinstance(raw_ports, dict):
-            raise StandError(f"invalid port map in ownership metadata: {marker}")
-        port_map = dict(_validate_published_ports(raw_ports))
+            raise StandError(f"invalid ownership metadata: {marker}")
+        if schema_version in {
+            VOLUME_OWNER_SCHEMA_VERSION,
+            PREVIOUS_OWNER_SCHEMA_VERSION,
+            RESOURCE_OWNER_SCHEMA_VERSION,
+            PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+            PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+            PRE_MINIO_OWNER_SCHEMA_VERSION,
+            PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+        }:
+            try:
+                port_map = dict(_validate_pre_minio_published_ports(raw_ports))
+            except StandError:
+                if schema_version in {
+                    PRE_MINIO_OWNER_SCHEMA_VERSION,
+                    PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+                }:
+                    raise StandError(f"invalid ownership metadata: {marker}") from None
+                raise
+        else:
+            port_map = dict(_validate_published_ports(raw_ports))
     else:
         port_map = LEGACY_PUBLISHED_PORTS.copy()
     daemon_fingerprint: str | None = None
@@ -1208,6 +1282,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         RESOURCE_OWNER_SCHEMA_VERSION,
         PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1226,6 +1302,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         RESOURCE_OWNER_SCHEMA_VERSION,
         PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1248,19 +1326,31 @@ def load_stand_owner(worktree: Path) -> StandOwner:
                     "invalid resumable Compose resource fingerprint in ownership metadata"
                 )
             resume_compose_resource_fingerprint = raw_resume_fingerprint
-            if schema_version in {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}:
+            if schema_version in {
+                PRE_MINIO_OWNER_SCHEMA_VERSION,
+                PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+                OWNER_SCHEMA_VERSION,
+                IN_PLACE_OWNER_SCHEMA_VERSION,
+            }:
                 raw_resume_schema = data.get("resume_compose_resource_schema_version")
+                valid_resume_schemas = {
+                    RESOURCE_OWNER_SCHEMA_VERSION,
+                    PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
+                    PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+                    PRE_MINIO_OWNER_SCHEMA_VERSION,
+                    PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+                }
+                if schema_version in {
+                    OWNER_SCHEMA_VERSION,
+                    IN_PLACE_OWNER_SCHEMA_VERSION,
+                }:
+                    valid_resume_schemas.update(
+                        {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}
+                    )
                 if raw_resume_schema is not None and (
                     not isinstance(raw_resume_schema, int)
                     or isinstance(raw_resume_schema, bool)
-                    or raw_resume_schema
-                    not in {
-                        RESOURCE_OWNER_SCHEMA_VERSION,
-                        PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
-                        PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
-                        OWNER_SCHEMA_VERSION,
-                        IN_PLACE_OWNER_SCHEMA_VERSION,
-                    }
+                    or raw_resume_schema not in valid_resume_schemas
                 ):
                     raise StandError(
                         "invalid resumable Compose resource schema in ownership metadata"
@@ -1284,7 +1374,11 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     source_sha = (
         data.get("source_sha")
         if schema_version
-        in {PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}
+        in {
+            PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+            PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+            IN_PLACE_OWNER_SCHEMA_VERSION,
+        }
         else None
     )
     try:
@@ -1311,6 +1405,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         RESOURCE_OWNER_SCHEMA_VERSION,
         PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1320,6 +1416,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         RESOURCE_OWNER_SCHEMA_VERSION,
         PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1328,6 +1426,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         RESOURCE_OWNER_SCHEMA_VERSION,
         PREVIOUS_STACK_OWNER_SCHEMA_VERSION,
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
@@ -1336,11 +1436,21 @@ def load_stand_owner(worktree: Path) -> StandOwner:
             payload["resume_compose_resource_fingerprint"] = (
                 resume_compose_resource_fingerprint
             )
-            if schema_version in {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}:
+            if schema_version in {
+                PRE_MINIO_OWNER_SCHEMA_VERSION,
+                PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+                OWNER_SCHEMA_VERSION,
+                IN_PLACE_OWNER_SCHEMA_VERSION,
+            }:
                 payload["resume_compose_resource_schema_version"] = (
                     resume_compose_resource_schema_version
                 )
-    if schema_version in {OWNER_SCHEMA_VERSION, IN_PLACE_OWNER_SCHEMA_VERSION}:
+    if schema_version in {
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+        OWNER_SCHEMA_VERSION,
+        IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
         stack = data.get("stack")
         raw_roots = data.get("service_roots")
         raw_selected = data.get("selected_services")
@@ -1393,6 +1503,7 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         selected_services = ()
     if schema_version in {
         PREVIOUS_IN_PLACE_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
         IN_PLACE_OWNER_SCHEMA_VERSION,
     }:
         payload["source_sha"] = source_sha
@@ -1400,7 +1511,19 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     if not isinstance(signature, str) or not hmac.compare_digest(
         signature, _owner_signature(payload, _owner_signing_key(create=False))
     ):
+        if schema_version in {
+            PRE_MINIO_OWNER_SCHEMA_VERSION,
+            PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+        }:
+            raise StandError(f"invalid ownership metadata: {marker}") from None
         raise StandError("ownership metadata signature is invalid")
+    if schema_version in {
+        PRE_MINIO_OWNER_SCHEMA_VERSION,
+        PRE_MINIO_IN_PLACE_OWNER_SCHEMA_VERSION,
+    }:
+        raise StandError(
+            f"live stand ownership uses pre-MINIO schema {schema_version}; preserve its data and use the matching previous live_stand.py CLI for stop/teardown before upgrading this stand"
+        )
     return StandOwner(
         repository=str(marker_repository),
         worktree=str(marker_worktree),
@@ -1768,7 +1891,7 @@ def _invalidate_stand_owner_compose_resources(
 def stand_environment(
     keys: dict[str, str],
     project_name: str,
-    published_ports: Mapping[str, int] = LEGACY_PUBLISHED_PORTS,
+    published_ports: Mapping[str, int] = DEFAULT_PUBLISHED_PORTS,
 ) -> dict[str, str]:
     _validate_project_name(project_name)
     ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
@@ -1791,11 +1914,16 @@ def stand_environment(
 
 def compose_control_environment(
     project_name: str,
-    published_ports: Mapping[str, int] = LEGACY_PUBLISHED_PORTS,
+    published_ports: Mapping[str, int] = DEFAULT_PUBLISHED_PORTS,
 ) -> dict[str, str]:
     """Build a secret-free environment for read/stop/remove Compose commands."""
     _validate_project_name(project_name)
-    ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
+    if set(published_ports) == set(PRE_MINIO_PUBLISHED_PORT_NAMES):
+        ports = dict(
+            _validate_pre_minio_published_ports(published_ports, allow_privileged=True)
+        )
+    else:
+        ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
     env = os.environ.copy()
     env["COMPOSE_PROJECT_NAME"] = project_name
     env["LIVE_BASE_URL"] = _stand_base_url(ports)
@@ -3828,6 +3956,7 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/email-otp-verification.live.spec.ts",
     "tests/e2e-live/events-scroll-restoration.live.spec.ts",
     "tests/e2e-live/events-tab-keyboard.live.spec.ts",
+    "tests/e2e-live/footer-bottom-navigation.live.spec.ts",
     "tests/e2e-live/map-gesture-isolation.live.spec.ts",
     "tests/e2e-live/map-zoom-longtask.live.spec.ts",
     "tests/e2e-live/messenger-a11y.live.spec.ts",
@@ -3846,6 +3975,7 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/not-found-i18n.live.spec.ts",
     "tests/e2e-live/notification-in-app.live.spec.ts",
     "tests/e2e-live/notification-preferences.live.spec.ts",
+    "tests/e2e-live/notification-topics-delivery.live.spec.ts",
     "tests/e2e-live/password-reset.live.spec.ts",
     "tests/e2e-live/profile-csrf.live.spec.ts",
     "tests/e2e-live/profile-persistence.live.spec.ts",
