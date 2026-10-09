@@ -66,11 +66,13 @@ async function verifyNewsWidths(
   await expect.poll(() => new URL(page.url()).pathname).toBe("/news")
   await expect(page.locator("html")).toHaveAttribute("lang", locale.language)
   await expect(page.getByRole("heading", { name: locale.listHeading, exact: true })).toBeVisible()
+  await waitForLayout(page)
 
   const scienceFilter = page.getByRole("button", { name: locale.categoryOption })
   await scienceFilter.click()
   await expect.poll(() => new URL(page.url()).searchParams.get("cat")).toBe("science")
   await expect(scienceFilter).toHaveAttribute("aria-current", "page")
+  await waitForLayout(page)
 
   const heading = page.getByRole("heading", { name: locale.listHeading, exact: true })
   const seededArticle = page.getByRole("link", { name: locale.articleTitle })

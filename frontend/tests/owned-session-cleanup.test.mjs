@@ -25,14 +25,18 @@ vi.mock("../scripts/live-e2e-credentials.mjs", () => ({
   requireLiveAdminPassword: () => "synthetic-only-unused",
 }))
 
-vi.mock("./e2e-live/http-status-diagnostic", () => ({
-  reportLiveHttpStatus(project, check, status) {
-    state.statusReports.push([project, check, status])
-  },
-  reportLiveRateLimitRetry(project, check, retryAfter, decision, remainingMs) {
-    state.retryReports.push([project, check, retryAfter, decision, remainingMs])
-  },
-}))
+vi.mock("./e2e-live/http-status-diagnostic", async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    reportLiveHttpStatus(project, check, status) {
+      state.statusReports.push([project, check, status])
+    },
+    reportLiveRateLimitRetry(project, check, retryAfter, decision, remainingMs) {
+      state.retryReports.push([project, check, retryAfter, decision, remainingMs])
+    },
+  }
+})
 
 vi.mock("@playwright/test", () => {
   const expectMock = () => ({

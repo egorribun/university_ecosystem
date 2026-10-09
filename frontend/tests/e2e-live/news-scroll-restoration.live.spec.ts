@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, type Locator, type Page } from "@playwright/test"
 import { loginAs, test } from "./fixtures"
 
 const NEWS_LOCALIZATIONS = {
@@ -17,6 +17,78 @@ const NEWS_LOCALIZATIONS = {
     articleTitle: "ГУУ вошёл в топ-20 лучших университетов страны",
   },
 } as const
+
+async function waitForStablePosition(target: Locator, language: "en" | "ru", phase: string) {
+  let previousPosition: { scrollY: number; top: number } | null = null
+  let stableSamples = 0
+
+  await expect
+    .poll(
+      async () => {
+        const sample = await target.evaluate((element) => {
+          const top = Math.round(element.getBoundingClientRect().top)
+          let activePositionMotionCount = 0
+          let current: Element | null = element
+
+          while (current) {
+            for (const animation of current.getAnimations()) {
+              const effect = animation.effect as KeyframeEffect | null
+              if (effect?.target !== current) continue
+
+              const transitionProperty = Reflect.get(animation, "transitionProperty")
+              const changesPositionProperty = (property: string) =>
+                property === "transform" || property === "translate"
+              const affectsPosition =
+                (typeof transitionProperty === "string" &&
+                  transitionProperty
+                    .split(",")
+                    .some((property) => changesPositionProperty(property.trim()))) ||
+                (effect?.getKeyframes() ?? []).some((keyframe) =>
+                  ["transform", "translate"].some((property) =>
+                    Object.prototype.hasOwnProperty.call(keyframe, property)
+                  )
+                )
+              if (affectsPosition && (animation.pending || animation.playState === "running")) {
+                activePositionMotionCount += 1
+              }
+            }
+            current = current.parentElement
+          }
+
+          return {
+            activePositionMotionCount,
+            scrollY: Math.round(window.scrollY),
+            top,
+          }
+        })
+
+        const samePosition =
+          previousPosition !== null &&
+          sample.scrollY === previousPosition.scrollY &&
+          sample.top === previousPosition.top
+        if (sample.activePositionMotionCount === 0) {
+          stableSamples = samePosition ? stableSamples + 1 : 1
+        } else {
+          stableSamples = 0
+        }
+        previousPosition = { scrollY: sample.scrollY, top: sample.top }
+
+        return sample.activePositionMotionCount === 0 && stableSamples >= 3
+      },
+      { message: language + " position should settle before " + phase }
+    )
+    .toBe(true)
+}
+
+async function movePointerAwayAndSettlePosition(
+  page: Page,
+  target: Locator,
+  language: "en" | "ru",
+  phase: string
+) {
+  await page.mouse.move(0, 0)
+  await waitForStablePosition(target, language, phase)
+}
 
 async function switchLanguageThroughSettings(page: Page, language: "en" | "ru") {
   await page.goto("/settings")
@@ -127,6 +199,7 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBe(targetScrollY)
   await expect(selectedNews).toBeInViewport()
 
+  await movePointerAwayAndSettlePosition(page, selectedNews, language, "News baseline capture")
   const selectedHref = await selectedNews.getAttribute("href")
   expect(selectedHref).toMatch(/^\/news\/[0-9a-f-]+$/u)
   const selectedUrl = new URL(selectedHref ?? "", page.url())
@@ -145,6 +218,7 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   await expect(detailHeading).toBeVisible()
   await page.evaluate(() => document.fonts.ready.then(() => undefined))
   await page.evaluate(() => window.scrollTo({ top: 320, behavior: "instant" }))
+  await movePointerAwayAndSettlePosition(page, detailHeading, language, "detail baseline capture")
   const originalDetailPosition = await detailHeading.evaluate((heading) => ({
     scrollY: Math.round(window.scrollY),
     top: Math.round(heading.getBoundingClientRect().top),
@@ -165,6 +239,7 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   const restoredNews = page.getByRole("link", { name: locale.articleTitle })
   await expect(restoredNews).toBeVisible()
   await expect(restoredNews).toHaveAttribute("href", selectedHref ?? "")
+  await movePointerAwayAndSettlePosition(page, restoredNews, language, "first Back")
   await expect
     .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
       message: `${language} Back should restore the News feed scroll position`,
@@ -181,6 +256,7 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
     exact: true,
   })
   await expect(restoredDetailHeading).toBeVisible()
+  await movePointerAwayAndSettlePosition(page, restoredDetailHeading, language, "Forward")
   await expect
     .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
       message: `${language} Forward should restore the News article reading position`,
@@ -201,6 +277,12 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   )
   const restoredNewsAfterForward = page.getByRole("link", { name: locale.articleTitle })
   await expect(restoredNewsAfterForward).toBeVisible()
+  await movePointerAwayAndSettlePosition(
+    page,
+    restoredNewsAfterForward,
+    language,
+    "Back after Forward"
+  )
   await expect
     .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
       message: `${language} Back after Forward should return to the same News feed position`,
