@@ -404,7 +404,7 @@ class AuthService:
             raise_validation_error("errors.users.invalid_password", locale)
 
         normalized_email = str(payload.email).strip().lower()
-        adapter = TypeAdapter(EmailStr)
+        adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
         try:
             validated_email = adapter.validate_python(normalized_email)
         except ValueError:
