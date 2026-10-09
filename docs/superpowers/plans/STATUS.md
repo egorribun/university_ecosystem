@@ -30,15 +30,17 @@
 
 ## Текущий source и проверки
 
-- `00b9865fdf79f8efb73a53509550d69ee7c65ba8` отправлен обычным push;
-  HEAD=origin/egorribun=PR1306 head. Checkout после push чистый.
+- Code checkpoint `12f72031eeab3bd09f13aac4fa45fa4457f3bf5a` отправлен обычным push;
+  HEAD=origin/egorribun=PR1306 head на этом checkpoint; checkout после push чистый.
   Обязательные commit/pre-push hooks PASS, `.secrets.baseline` повторно staged.
 - Этот follow-up восстановил шесть nullable Schedule PATCH inputs: обязательные
   storage поля получают только ненулевые updates, optional clear сохраняется.
   Focused24/OpenAPI18/MSW3 PASS; semantic schema diff ровно на этих шести полях.
 - Frozen-RC uv/npm caching отключено, включая setup-node automatic caching.
-  Однако свежий CodeQL `37873409087/a1` оставляет два HIGH alerts3382/3383:
-  caller-selected SHA выполняется в write-capable cache scope.
+  CodeQL `37876450427/a1` завершил все пять language analyses успешно,
+  но required GHAS check113646340681 оставляет два HIGH alerts3382/3383.
+  Current instances относятся к PR merge94a6a6b; cache-mode:none уже действует.
+  Query-model gap проверяется отдельно; gate остаётся открытым.
   Job-level cache-mode:none и workflow/security contracts14/14 PASS.
   Actionlint временно pinned на reviewed upstream PR745 commit5dc52e8, архив проверен
   по SHA-256; pre-commit/CI одинаковый source, Go1.26.9, actual repo lint PASS.
@@ -62,9 +64,9 @@
   [Runbook](../../runbooks/database-backup-restore.md) описывает quiesce/resume.
 - Финальный preflight Caddy/cache package10/10 PASS; peak54,0%/free14,65 GiB.
   Obsolete services.command lint exception удалён, прочие правила сохранены.
-- Свежие hosted runs на00b: Matrix37873409435/a1, Security/SBOM37873409138/a1,
-  CodeQL37873409087/a1. Snapshot76:68 success/2 failure/2 pending/4 absent.
-  Shard1:3908 PASS/17 skips/2 stale assertions; loop-name/v2-format retarget13/13 PASS,
+- Свежий Matrix37876450739/a1 на12f: snapshot76 —61 success/6 pending/2 failure/7 absent.
+  MD047 в STATUS исправлен, local markdownlint PASS; свежий hosted gate ещё ожидается.
+  Предыдущий shard1:3908 PASS/17 skips/2 stale assertions; retarget13/13 PASS,
   независимый review CLEAR. Fresh hosted gate и бюджет15 минут ещё не подтверждены.
 - Core00b с COMPOSE_PARALLEL_LIMIT=1 завершился build exit1, guard не сработал:
   peak60,1%, free12,68 GiB. Caddy требует ca-certificates20260611-r0,
@@ -73,10 +75,14 @@
   postcheck подписанного project: containers0/volumes0/networks0.
   CA pin20260909-r0: focused contract и install в том же builder image PASS;
   Git pin/digests сохранены, четыре owned image tags удалены, shared cache сохранён.
+- Core12f остановлен guard при87,3%/free4,03 GiB во время параллельной Bake build.
+  Caddy apk errors нет; COMPOSE_PARALLEL_LIMIT=1 не ограничил Bake solver.
+  Owner stop/teardown exit0; containers0/volumes0/networks0, четыре owned tags удалены.
+  Ограниченный временный builder готовится; E2E/seed/restore ещё не запускались.
 - Private SEC-03 probe проверен независимо CLEAR, native dispatch snippet подготовлен;
   runtime/key rotation не доказаны. Visual collectors подготовлены, screenshots ещё нет.
   Пустой Home требует fresh Core до global-feed seed; admin-only existing seeder
-  нуждается в roster-only synthetic prerequisites и отдельном peer review.
+  использует roster-only synthetic prerequisites; private three-run operation peer CLEAR.
   Shared feeds не очищать, новый stand ради screenshot не создавать.
 
 ## Проверенные предыдущие checkpoints
