@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -60,7 +61,10 @@ async def test_seeded_peers_are_readable_by_admin_directory_with_fresh_sessions(
                 )
             ).all()
             assert len(audit_rows) == 2
-            assert all(len(row.signature) == 64 for row in audit_rows)
+            assert all(
+                re.fullmatch(r"v2:[0-9a-f]{64}", row.signature or "")
+                for row in audit_rows
+            )
     finally:
         app.state.dishka_container = previous_container
         await production_container.close()

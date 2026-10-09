@@ -2189,7 +2189,7 @@ def test_caddy_plugin_dependency_is_version_pinned() -> None:
     assert "ARG XCADDY_VERSION=v0.4.5" in dockerfile
     assert "go install" in dockerfile
     assert "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}" in dockerfile
-    assert "ca-certificates=20260611-r0" in dockerfile
+    assert "ca-certificates=20260909-r0" in dockerfile
     assert "git=2.54.0-r0" in dockerfile
     assert "github.com/mholt/caddy-ratelimit@v0.1.0" in dockerfile
     assert not re.search(

@@ -11,6 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
+PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 SECURITY_AUDIT = WORKFLOWS / "reusable-security-audit.yml"
 STANDALONE_SECURITY_WORKFLOWS = {
     "checkov.yml": "checkov",
@@ -24,7 +25,8 @@ DETECT_SECRETS_SCAN_EXCLUSION = (
     r"^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$"
 )
 
-ACTIONLINT_SHA256 = "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"  # pragma: allowlist secret -- release checksum
+ACTIONLINT_SOURCE_SHA = "5dc52e8daa4ef51bfd76a648128474bd41d65df0"  # pragma: allowlist secret -- immutable upstream source revision
+ACTIONLINT_ARCHIVE_SHA256 = "908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"  # pragma: allowlist secret -- source archive checksum
 HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret -- release checksum
 SHELLCHECK_SHA256 = "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"  # pragma: allowlist secret -- release checksum
 CARGO_BINSTALL_SCRIPT_COMMIT = "5aafaaca52423a22d83a812fa3ca77492e2895db"  # pragma: allowlist secret -- immutable installer commit
@@ -47,16 +49,53 @@ def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> None:
-    """Every downloaded scanner is verified before it can execute."""
+    """Scanner builds and downloaded artifacts are pinned before execution."""
 
     jobs = _workflow(CI)["jobs"]
 
     actionlint_run = _step(jobs["actionlint"], "Install and Run actionlint")["run"]
+    pre_commit = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))
+    actionlint_repo = next(
+        repo
+        for repo in pre_commit["repos"]
+        if repo.get("repo") == "https://github.com/rhysd/actionlint"
+    )
+    assert actionlint_repo["rev"] == ACTIONLINT_SOURCE_SHA
+
+    checkout = jobs["actionlint"]["steps"][0]
+    assert checkout["with"]["persist-credentials"] is False
+    go_setup = _step(jobs["actionlint"], "Set up Go for source-pinned actionlint")
+    assert go_setup["uses"] == (
+        "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+    )
+    assert go_setup["with"]["go-version"] == "1.26.9"
+    assert go_setup["with"]["cache"] is False
+
+    assert f'actionlint_source_sha="{ACTIONLINT_SOURCE_SHA}"' in actionlint_run
+    assert f'actionlint_archive_sha256="{ACTIONLINT_ARCHIVE_SHA256}"' in actionlint_run
     assert "raw.githubusercontent.com" not in actionlint_run
     assert "bash <(" not in actionlint_run
-    assert 'actionlint_version="1.7.12"' in actionlint_run
-    assert ACTIONLINT_SHA256 in actionlint_run
+    assert (
+        "https://api.github.com/repos/rhysd/actionlint/tarball/${actionlint_source_sha}"
+        in actionlint_run
+    )
     assert "sha256sum --check --strict" in actionlint_run
+    assert "tar --extract --gzip" in actionlint_run
+    assert 'test "$(go env GOVERSION)" = "go1.26.9"' in actionlint_run
+    assert "go build -buildvcs=false -trimpath" in actionlint_run
+    assert (
+        "-X github.com/rhysd/actionlint.version=${actionlint_source_sha}"
+        in actionlint_run
+    )
+    assert 'grep -Fqx "$actionlint_source_sha"' in actionlint_run
+    assert '"$RUNNER_TEMP/actionlint" -color -shellcheck ""' in actionlint_run
+    source_checkout = actionlint_run.index('cd "$actionlint_source_dir"')
+    source_build = actionlint_run.index("go build -buildvcs=false -trimpath")
+    repo_checkout = actionlint_run.index('cd "$GITHUB_WORKSPACE"')
+    workflow_lint = actionlint_run.index(
+        '"$RUNNER_TEMP/actionlint" -color -shellcheck ""'
+    )
+    assert source_checkout < source_build < repo_checkout < workflow_lint
     assert "curl --fail" in actionlint_run
     assert "--proto '=https'" in actionlint_run
     assert "--tlsv1.2" in actionlint_run

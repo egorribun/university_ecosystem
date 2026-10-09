@@ -3437,17 +3437,23 @@ def test_chaos_job_provisions_real_s3_through_toxiproxy() -> None:
     )
 
 
-def test_actionlint_documents_github_service_command_compatibility() -> None:
+def test_actionlint_uses_native_github_service_command_validation() -> None:
     config = yaml.safe_load(ACTIONLINT_CONFIG_PATH.read_text(encoding="utf-8"))
     paths = config["paths"]
     nightly_ignores = paths[".github/workflows/nightly-full-gate.yml"]["ignore"]
+    config_text = ACTIONLINT_CONFIG_PATH.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    service_commands = [
+        service.get("command")
+        for job in workflow["jobs"].values()
+        for service in (job.get("services") or {}).values()
+    ]
 
+    assert any(service_commands)
     assert ".github/workflows/ci.yml" not in paths
-    assert 'unexpected key "command" for "services" section' in nightly_ignores
-    assert (
-        "docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax"
-        in (ACTIONLINT_CONFIG_PATH.read_text(encoding="utf-8"))
-    )
+    assert nightly_ignores == ["SC2009", "SC2046", "SC2086", "SC2128", "SC2129"]
+    assert 'unexpected key "command" for "services" section' not in config_text
+    assert "actionlint v1.7.12" not in config_text
 
 
 def test_stryker_duration_bounds_track_the_shard_job_cap() -> None:

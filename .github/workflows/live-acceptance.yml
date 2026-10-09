@@ -211,6 +211,7 @@ jobs:
     needs: validate-frozen-rc
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    cache-mode: none
     permissions:
       contents: read
     defaults:

@@ -68,7 +68,7 @@ def test_chaos_configures_proxy_before_fail_closed_tests_and_keeps_reset_safety(
     configure = next(
         step for step in steps if step.get("name") == "Configure ToxiProxy proxies"
     )
-    assert "for attempt in {1..30}" in configure["run"]
+    assert "for _attempt in {1..30}" in configure["run"]
     assert "curl --fail --silent http://localhost:9000/status" in configure["run"]
     assert "--request POST http://localhost:8474/proxies" in configure["run"]
 

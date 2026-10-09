@@ -188,6 +188,9 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     assert "^[0-9a-f]{40}$" in validation_script
     frozen = jobs["frozen-rc-full-smoke"]
     assert frozen["needs"] == "validate-frozen-rc"
+    assert frozen.get("cache-mode") == "none", (
+        "caller-selected frozen-RC code must have no default-branch cache access"
+    )
     frozen_uv = next(
         step
         for step in frozen["steps"]

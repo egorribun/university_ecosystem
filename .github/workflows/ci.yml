@@ -362,19 +362,40 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go for source-pinned actionlint
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache: false
+
       - name: Install and Run actionlint
         run: |
           set -euo pipefail
-          actionlint_version="1.7.12"
-          actionlint_sha256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"  # pragma: allowlist secret
-          actionlint_archive="$RUNNER_TEMP/actionlint_${actionlint_version}_linux_amd64.tar.gz"
+          actionlint_source_sha="5dc52e8daa4ef51bfd76a648128474bd41d65df0"
+          actionlint_archive_sha256="908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"  # pragma: allowlist secret
+          actionlint_archive="$RUNNER_TEMP/actionlint-source.tar.gz"
+          actionlint_source_dir="$RUNNER_TEMP/actionlint-source"
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
             --output "$actionlint_archive" \
-            "https://github.com/rhysd/actionlint/releases/download/v${actionlint_version}/actionlint_${actionlint_version}_linux_amd64.tar.gz"
-          printf '%s  %s\n' "$actionlint_sha256" "$actionlint_archive" \
+            "https://api.github.com/repos/rhysd/actionlint/tarball/${actionlint_source_sha}"
+          printf '%s  %s\n' "$actionlint_archive_sha256" "$actionlint_archive" \
             | sha256sum --check --strict
-          tar --extract --file "$actionlint_archive" --directory "$RUNNER_TEMP"
+          mkdir "$actionlint_source_dir"
+          tar --extract --gzip --file "$actionlint_archive" \
+            --directory "$actionlint_source_dir" --strip-components=1
+          cd "$actionlint_source_dir"
+          test "$(go env GOVERSION)" = "go1.26.9"
+          go build -buildvcs=false -trimpath \
+            -ldflags "-X github.com/rhysd/actionlint.version=${actionlint_source_sha}" \
+            -o "$RUNNER_TEMP/actionlint" ./cmd/actionlint
+          version_output="$("$RUNNER_TEMP/actionlint" -version)"
+          printf '%s\n' "$version_output"
+          printf '%s\n' "$version_output" | grep -Fqx "$actionlint_source_sha"
+          cd "$GITHUB_WORKSPACE"
           "$RUNNER_TEMP/actionlint" -color -shellcheck ""
 
 

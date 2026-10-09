@@ -1,7 +1,3 @@
-# GitHub's workflow schema supports `jobs.<job_id>.services.<service_id>.command`
-# (https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idservicesservice_idcommand),
-# but actionlint v1.7.12 does not model that key and reports a false syntax
-# error. Keep the exception scoped to the nightly workflow and exact message.
 paths:
   .github/workflows/contract-validation.yml:
     ignore:
@@ -20,7 +16,6 @@ paths:
       - 'SC2034'
   .github/workflows/nightly-full-gate.yml:
     ignore:
-      - 'unexpected key "command" for "services" section'
       - 'SC2009'
       - 'SC2046'
       - 'SC2086'

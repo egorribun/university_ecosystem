@@ -20,7 +20,7 @@ ARG XCADDY_VERSION
 # immutable module version and Caddy's vulnerable transitive modules are
 # replaced with their fixed releases without adding them as Caddy plugins.
 RUN apk add --no-cache \
-      ca-certificates=20260611-r0 \
+      ca-certificates=20260909-r0 \
       git=2.54.0-r0 \
     && GOBIN=/usr/local/bin go install \
       github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}
