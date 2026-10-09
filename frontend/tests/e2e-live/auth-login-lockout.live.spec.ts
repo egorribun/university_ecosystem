@@ -89,7 +89,8 @@ test("synthetic account reaches account lockout after the configured failed-logi
     const uiFailureResponse = await uiFailureResponsePromise
     expect(uiFailureResponse.status(), "the real login form rejects wrong credentials").toBe(401)
     await expect(page).toHaveURL(/\/login$/u)
-    await expect(page.getByRole("alert")).toBeVisible()
+    const visibleLoginError = page.locator("form").getByRole("alert").filter({ hasText: /\S/u })
+    await expect(visibleLoginError).toBeVisible()
 
     await loginWith(page, email, password)
     const identityResponse = await page.request.get("/api/v1/users/me")

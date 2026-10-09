@@ -27,7 +27,85 @@
   Без embeddings key текстовый поиск доступен, semantic UI выключен,
   direct semantic-only API сообщает недоступность без нулевых векторов.
 
-## Последний опубликованный package и CI
+## Текущий checkpoint: опубликованный SHA14c2 и следующие исправления
+
+- Опубликован `14c2f5ae179dbd2550f06d59bb77aacc742a0b7e` на `egorribun` в PR1306.
+  Weather/bookmarks hydration package прошёл обычные hooks/push и preflight10/10.
+- Matrix37897949258/a1 завершён за51m07s. Все76 required contexts найдены;
+  исходно73 SUCCESS/3 FAILURE. Backend:14337 cases,14238 PASS/99 skips/0 failures/errors.
+  После отдельно разрешённого владельцем dismissal только alerts3382/3383
+  (`false positive`, audit comment) CodeQL113716129357 подтверждён SUCCESS:
+  теперь74 SUCCESS/2 FAILURE — coverage policy и зависимый CI Success.
+  Ruleset8335285 до/после идентичен; все76 contexts сохранены. Полного green нет.
+- Frontend artifact11602690121 привязан к этому run/head:2 statements/6 branch arms
+  пропущены только в AdminAuditFeature. Новый test-only case и navbar boundary tests
+  прошли focused29/29; audit coverage68/68 statements,104/104 branch arms,
+  17/17 functions,61/61 lines. Это диагностический scoped run, не полный hosted gate.
+- Actual Linux Home-empty12/12 записан до global seed. Axe serious/critical0 относится
+  только к включённым правилам: private collector отключал часть AA rules без
+  согласованного исключения, поэтому полного accessibility PASS нет. Новые Home/general
+  copies сохраняют WCAG A/AA и threshold0 без этих overrides; actual run ещё нужен.
+  Тот же disabled-rules block удалён из tracked authenticated visual audit;
+  Node syntax PASS, WCAG tags/serious-critical threshold и routes сохранены.
+  Owner approval отсутствует: на768px найдено перекрытие navbar, а1440px snapshot
+  снят до завершения News animation. Drawer до1024px и bounded animation settling
+  подготовлены/reviewed; navbar unit checks PASS. Новый visual packet ещё нужен.
+- Два existing navbar/footer live specs согласованы с drawer при1024px и tablet
+  при1025px; сохранены44px, keyboard/focus/scroll-lock и geometry assertions.
+  ESLint/Prettier PASS; число declarations сохранено, actual browser rerun открыт.
+- Existing membership-revocation spec теперь проверяет две независимые сессии:
+  initial WS delivery обеим → exact room revoke notices → отсутствие следующего
+  group message до reload → reconnect/rejoin attempts/REST denial → повторная
+  проверка доставки. Room eviction не объявляется transport close; notices/remaining
+  delivery обязательны. ESLint/Prettier PASS, actual current-image runtime ещё открыт.
+- Fresh source14c2 Core:23 containers/4 one-shot exit0/14 healthy/10 signed loopback
+  bindings; up/readiness PASS. Canonical full runner уже выполнил global demo seed.
+  Этот superseded Core затем удалён canonical owner-checked teardown: exit0,
+  containers/networks/volumes0, private failure evidence/state directory сохранены,
+  guardfalse (peak56,6%/free13,83 GiB). Следующий source требует нового Core state.
+- Full live pass1 остановлен resource guard при RAM87,3%/free4,05 GiB.
+  Итог198 cases отсутствует; cleanup receipt остаётся unconfirmed, несмотря на
+  отсутствие записанного PID/его descendants в последующем read-only снимке.
+  Private artifacts содержат56 error contexts, включая25 retry folders.
+  Повторяющийся React418 и oversized attachment500 разобраны и исправлены ниже;
+  подтверждение исправлений на свежем image ещё требуется.
+  Все эти ошибки нельзя объявлять доказанным resource cascade. Два full PASS открыты.
+- Последующий real SSR→hydrate RED подтвердил timezone15:00/18:00 mismatch и
+  различный состав списка около полуночи. DateBullet/EventsCard используют общий
+  принцип UTC server snapshot → browser-local post-hydration; final focused28/28 PASS,
+  scoped coverage89/89 statements,57/57 branches,37/37 functions,83/83 lines.
+  Непрерывный guard: peak57,4%/free13,54 GiB. Это ещё не current-image live PASS.
+- Upload RED подтвердил, что TaskGroup оборачивал ожидаемый HTTP413 в ExceptionGroup.
+  Исправление восстанавливает только homogeneous HTTP errors, сохраняет mixed/internal
+  groups и cleanup. API413/no persisted message, timeout, nested-group/slot и partial
+  cleanup проверены27/27 под непрерывным guard (peak57,3%/free13,57 GiB).
+- Lockout/email-verification и две PWA ошибки разобраны как defects live specs:
+  form-scoped alert, раскрытие email accordion до ожидания ответа, localized title
+  и JS marker после reload. Real API/Mailpit/MFA/cache assertions и timeouts сохраняются;
+  actual browser rerun ещё нужен. Stories hidden/visible transition на headless shell
+  не достигнут;20 cycles/memory plateau и реальная pause/resume остаются открытыми.
+- Два credentialless Windows probes дали0/3 реальных visibility transitions на
+  default headless shell. Full Chromium channel не запустился (`spawn UNKNOWN`),
+  причина OS не доказана. Network requests0; browser configuration не менялась.
+  Linux no-network capability probe full Chromium headless и headed/Xvfb завершён:
+  каждый20 cycles,0/40 expected visibility pairs, requests0, оба browser/context закрыты,
+  exact owned container удалён. Реальная причина ещё исследуется; product PASS нет.
+- SEC-03 на текущем Core: persisted production probe PASS (canonical_v2/configured
+  key/UTC fields/one PostgreSQL row/logout401); native verifier dispatch PASS.
+  Rotation и native signing этими probes не проверялись. SMTP hosted real PG17+
+  Mailpit integration job113714252292:1/1 PASS; deadline/cancellation unit tests PASS.
+- Current Rust-P3-03 PR-head parity подтверждена: producer113713539701,
+  artifact11601332318, все6 Rust inputs совпадают с14c2. Финальные release images,
+  signatures/SBOM/provenance и performance claims этим не подтверждаются.
+- JUnit14337 cases дают проверенный duration refresh без удаления истории.
+  Updater merge-mode ошибочно учитывал bookkeeping полностью skipped файлов;
+  RED воспроизведён, minimal fix GREEN17/17. Current cap2 и quality floors сохранены;
+  target15m остаётся открытым — одно обновление весов не доказывает этот бюджет.
+- Final local fast preflight всего29-file package:10/10 PASS за81,966s; process exit0,
+  все35 source/config inputs стабильны, оставшихся recorded owned processes0.
+  Непрерывный guard: peak58,9%/free13,07 GiB. Это не hosted coverage/live acceptance.
+
+## Сохранённые CI и package проверки предыдущих checkpoint
 
 - MFA checkpoint `fcdda2a0b33332ace6f5a1f54747ec023f41f94d` опубликован в PR1306;
   обычные commit/pre-push hooks PASS, `.secrets.baseline` повторно staged.
@@ -62,7 +140,8 @@
 - Наfcdda все пять CodeQL analyses PASS. GHAS check113698844614 FAIL только по HIGH
   alerts3382/3383; missing-configuration diagnosis не актуален. Read-only triage
   подтвердил cache-mode query-model gap; отдельное разрешение на запись решения
-  по двум alerts ожидается. Suppressions/dismissal не добавлялись.
+  по двум alerts на том checkpoint ожидалось. Последующее разрешение и exact dismissal
+  выполнены только для3382/3383; текущий результат описан выше.
 - Frozen-RC uv/npm/setup-node caching отключено; contracts14/14 PASS.
   Actionlint pinned на reviewed upstream PR745 commit5dc52e8 с проверенным SHA-256;
   unmerged provenance сохранён; repo lint PASS, один unchanged HTTP helper FAIL.
@@ -76,17 +155,19 @@
   root/peer review и обычные hooks PASS. Новый hosted coverage gate ещё открыт.
 - MFA package сохраняет198 cases/59 specs: real sibling ticket/Go WS остаётся OPEN
   до OTP verify, затем ожидается4401/Session revoked, siblingREST401/current session retained.
-  Typecheck/lint/format/3 contracts/198 collection PASS; root/peer review CLEAR, runtime NOT RUN.
+  Typecheck/lint/format/3 contracts/198 collection PASS; root/peer review CLEAR.
+  Последующий full198 attempt остановлен guard; отдельный runtime outcome остаётся unresolved.
 
-## Core и фактические runtime доказательства
+## Сохранённые Core и runtime доказательства предыдущих checkpoint
 
 - Fresh Corefcdda: up exit0/guardfalse, peak74,8%/free8,01 GiB. Schema11/source/
   daemon/projection/readiness PASS;23 containers/4 one-shot exit0/14 healthy/
   10 signed loopback bindings. Admin-only seed выполнен один раз; feeds/schedule/chats пусты.
   Core штатно stopped с сохранением данных на время weather fix; cross-SHA rebind запрещён.
-- SEC-03 current persisted probe дошёл до SQL parsing, но итог FAIL: boolean `::text`
+- Исторический SEC-03 persisted probe дошёл до SQL parsing, но итог FAIL: boolean `::text`
   возвращал true/false при parser t/f. Private one-line correction reviewed, ещё не выполнена;
-  persisted acceptance остаётся открыта. Старые native receipts не заменяют её.
+  тогда persisted acceptance оставалась открыта. Этот parser failure superseded последующим
+  current14c2 persisted PASS выше; старые native receipts отдельно не заменяли её.
 - Исторический Core679 resume exit0/guardfalse, peak80,3%/free6,27 GiB;
   source/schema11/daemon/projection/23 containers/4 one-shot exit0/14 healthy/
   10 signed bindings и edge/backend readiness/Mailpit search PASS.
@@ -103,8 +184,10 @@
   browser/captures. Exact idle server удалён, failure receipts сохранены. Internal bridge/
   loopback/native exact-origin exposeNetwork adapter подготовлен; runtime ещё открыт.
   Auth/admin ACL и LHCI build-before-collect исправлены/reviewed; actual runs открыты.
+  Последующий bridge/Home14c2 PASS описан выше; expired owned browser server retired.
 - Live Chromium collection перечислила198 cases/59 specs,99 desktop+99 mobile;
-  полный current-SHA browser run NOT RUN. Screenshots/owner approval/Linux baselines, SMTP/MFA,
+  на том checkpoint полный run NOT RUN; позднее14c2 attempt был guard-aborted, итог открыт.
+  Screenshots/owner approval/Linux baselines, SMTP/MFA,
   logout/revocation/product E2E и coordinated DB/S3 restore ещё открыты.
   Home-empty снимать до global-feed seed; shared feeds не очищать.
 - Owned bounded builder: Bake parallelism1/CPU2/RAM4 GiB/swap0, реальные limits
@@ -126,8 +209,12 @@
 
 ## Следующий checkpoint
 
-- Опубликовать reviewed weather/bookmarks hydration fixes обычными hooks/push; заморозить source.
+- Опубликовать проверенный navbar/audit/duration/upload/timezone/spec package
+  обычными hooks/push, заморозить source.
   Свежие76 contexts и честное измерение critical path; ожидаемый4401 не считать PASS до runtime.
+- Продолжить Linux browser visibility диагностику: реальный переход hidden/visible
+  обязателен до проверки story pause/resume; credentialless capability probe не заменяет
+  20 actual story viewer cycles.
 - Owner-checked Core на clean SHA: Home12 до canonical seed; persisted SEC-03 до
   full E2E из-за bounded audit inventory; два полных последовательных198 passes,
   stop/start/seed persistence, реальные all-topic push/SMTP/MFA/WS scenarios.
@@ -140,10 +227,10 @@
 ## Ресурсы и сохранность
 
 - Один heavy workload: startup RAM≤75%/free≥8 GiB, runtime guard85%/4 GiB.
-  Запрошено, но ещё не разрешено исключение только для serial Linux screenshots
+  Владелец отдельно разрешил исключение только для serial Linux screenshots:
   startup≤80%/free≥6 GiB с1 GiB/2 CPU browser cap; остальные thresholds сохраняются.
 - Свежая resource check перед запуском; удалять лишь доказанно owned временные
   ресурсы. Чужие процессы/env/data, shared Docker/WSL/caches и backups сохранять.
-  Weekly Codex usage85%/remaining15%; free reset1 доступен, не использован.
+  Weekly Codex usage92%/remaining8%; free reset1 доступен, не использован.
 - Git history/migrations/private rescue bundle сохранить; session logs и superseded
   snapshots не возвращать в indexes. Новые branch/worktree не создавать.

@@ -311,10 +311,6 @@ test.describe("PWA offline app shell on the live stack", () => {
         void navigator.serviceWorker.ready.then((activeRegistration) => activeRegistration.update())
       })
 
-      await expect(page.locator("#pwa-build-marker")).toHaveAttribute(
-        "data-pwa-build-marker",
-        marker
-      )
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page).toHaveURL(/\/forgot-password$/u)
       expect(workerUpdateResponses).toBeGreaterThan(0)

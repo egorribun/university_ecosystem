@@ -584,11 +584,11 @@
 
 /*
  * The SSR navbar intentionally renders the desktop branch before the client
- * knows the viewport. At phone widths, hide only those desktop-only pieces so
+ * knows the viewport. At drawer widths, hide only those desktop-only pieces so
  * the unhydrated shell cannot overlap its 44px touch targets. Hydration then
- * replaces them with the mobile actions/drawer branch.
+ * replaces them with the compact actions/drawer branch through tablet width.
  */
-@media (max-width: 767px) {
+@media (max-width: 1024px) {
   .vt-navbar .navbar-desktop-nav,
   .vt-navbar .navbar-brand-name,
   .vt-navbar .navbar-user-name,

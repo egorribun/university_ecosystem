@@ -264,6 +264,41 @@ describe("AdminAuditFeature closure", () => {
     expect(screen.getAllByTitle("audit.details.integrityUnknown")).toHaveLength(3)
   })
 
+  it("fails closed for malformed legacy metadata and shows empty-field details", async () => {
+    const logs = [
+      makeLog({ id: 25, signature_scheme: "legacy_json_array_v1", is_valid: false }),
+      makeLog({
+        id: 26,
+        signature_scheme: "legacy_json_array_v1",
+        unauthenticated_fields: undefined,
+      }),
+      makeLog({ id: 27, signature_scheme: "legacy_pipe_v1", is_valid: false }),
+      makeLog({
+        id: 28,
+        signature_scheme: "legacy_pipe_v1",
+        authenticated_fields: undefined,
+      }),
+      makeLog({ id: 29, signature_scheme: "unsigned", is_valid: true }),
+      makeLog({
+        id: 30,
+        signature_scheme: "canonical_v2",
+        authenticated_fields: [],
+        unauthenticated_fields: [],
+      }),
+    ]
+    auditQuery.result = { data: { items: logs, total: logs.length }, isPending: false }
+
+    const user = userEvent.setup()
+    renderFeature()
+
+    expect(screen.getAllByTitle("audit.details.integrityInvalid")).toHaveLength(3)
+    expect(screen.getAllByTitle("audit.details.integrityUnknown")).toHaveLength(2)
+    expect(screen.queryByTitle("audit.details.integrityUnsigned")).not.toBeInTheDocument()
+
+    await user.click(document.getElementById("audit-row-toggle-30")!)
+    expect(screen.getAllByText("audit.details.noFields")).toHaveLength(2)
+  })
+
   it("keeps the table visible while refreshing a populated page", () => {
     const logs = [makeLog()]
     auditQuery.result = { data: { items: logs, total: 101 }, isPending: true }

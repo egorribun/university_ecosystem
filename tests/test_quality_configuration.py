@@ -538,7 +538,7 @@ def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> 
                 <testcase file='tests/test_alpha.py' time='0.25' />
                 <testcase file='tests/test_alpha.py' time='0.75' />
                 <testcase classname='tests.test_beta' name='test_value' time='2.0' />
-                <testcase file='tests/test_skipped.py' time='0' />
+                <testcase file='tests/test_skipped.py' time='0'><skipped /></testcase>
               </testsuite>
             </testsuites>""",
             encoding="utf-8",
@@ -555,10 +555,9 @@ def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> 
     assert payload["durations"] == {
         "tests/test_alpha.py": 1.0,
         "tests/test_beta.py": 2.0,
-        "tests/test_skipped.py": 0.0,
         "tests/test_stale.py": 9.0,
     }
-    assert payload["default_duration_seconds"] == 1.0
+    assert payload["default_duration_seconds"] == 1.5
 
 
 def test_test_duration_updater_maps_classified_junit_classnames_to_module_files() -> (

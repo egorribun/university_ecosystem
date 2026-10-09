@@ -19,9 +19,12 @@ async function ensureServiceWorkerControlsPage(page: Page) {
 }
 
 type Language = "en" | "ru"
-const offlineLocaleCopy: Record<Language, { signIn: string; signUp: string; name: string }> = {
-  en: { signIn: "Sign in", signUp: "Sign up", name: "Name" },
-  ru: { signIn: "Вход", signUp: "Регистрация", name: "Имя" },
+const offlineLocaleCopy: Record<
+  Language,
+  { signIn: string; signUp: string; name: string; title: string }
+> = {
+  en: { signIn: "Sign in", signUp: "Sign up", name: "Name", title: "GUU Ecosystem" },
+  ru: { signIn: "Вход", signUp: "Регистрация", name: "Имя", title: "Экосистема ГУУ" },
 }
 
 for (const language of ["en", "ru"] as const) {
@@ -96,7 +99,7 @@ for (const language of ["en", "ru"] as const) {
       await expect(page.getByRole("heading", { name: copy.signUp })).toBeVisible()
       await expect(page.getByRole("textbox", { name: copy.name })).toBeVisible()
       await expect(page.getByRole("textbox", { name: "E-mail" })).toBeVisible()
-      expect(await page.title()).toBe("GUU Ecosystem")
+      expect(await page.title()).toBe(copy.title)
 
       const visibleText = await page.locator("body").innerText()
       expect(visibleText).not.toMatch(/\b(?:auth|common|system):[\w.]+/u)

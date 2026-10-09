@@ -231,7 +231,34 @@ test("tablet overflow navigation is keyboard operable and restores focus on Esca
 
   const navbar = page.locator("nav.vt-navbar")
   await expect(navbar).toBeVisible()
-  await expect(page.locator('button[aria-controls="mobile-drawer"]')).toHaveCount(0)
+  const drawerTrigger = page.locator('button[aria-controls="mobile-drawer"]')
+  await expect(drawerTrigger).toBeVisible()
+  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false")
+  await expect(navbar.locator(".navbar-desktop-nav")).toHaveCount(0)
+  const drawerTriggerSize = await drawerTrigger.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { width: rect.width, height: rect.height }
+  })
+  expect(drawerTriggerSize.width).toBeGreaterThanOrEqual(44)
+  expect(drawerTriggerSize.height).toBeGreaterThanOrEqual(44)
+
+  const previousBodyOverflow = await page.evaluate(() => document.body.style.overflow)
+  await drawerTrigger.click()
+  const drawer = page.getByRole("dialog")
+  await expect(drawer).toBeVisible()
+  await expect(drawer).toHaveAttribute("aria-modal", "true")
+  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "true")
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden")
+  await page.keyboard.press("Escape")
+  await expect(drawer).toBeHidden()
+  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false")
+  await expect(drawerTrigger).toBeFocused()
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe(previousBodyOverflow)
+
+  await page.setViewportSize({ width: 1025, height: 900 })
+  await expect(drawerTrigger).toHaveCount(0)
   await expect(navbar.locator(".navbar-desktop-nav")).toBeVisible()
 
   const overflowTrigger = navbar.locator('.navbar-desktop-overflow button[aria-haspopup="menu"]')

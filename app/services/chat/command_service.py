@@ -314,8 +314,32 @@ class ChatMessageDispatcher:
                     async with asyncio.TaskGroup() as tg:
                         for u in uploads:
                             tg.create_task(_upload_task(u))
-                except* TimeoutError:
-                    raise_validation_error("errors.files.upload_timeout", locale)
+                except ExceptionGroup as upload_errors:
+                    # TaskGroup groups failures from its workers. Restore the
+                    # normal client-error contract only when every leaf is a
+                    # known HTTPException; mixed/internal failures must remain
+                    # grouped so an upload rejection cannot hide a real defect.
+                    leaves: list[BaseException] = []
+                    # Use a LIFO stack while preserving the original first-leaf order.
+                    pending: list[BaseException] = list(
+                        reversed(upload_errors.exceptions)
+                    )
+                    while pending:
+                        error = pending.pop()
+                        if isinstance(error, ExceptionGroup):
+                            pending.extend(reversed(error.exceptions))
+                        else:
+                            leaves.append(error)
+
+                    if leaves and all(
+                        isinstance(error, TimeoutError) for error in leaves
+                    ):
+                        raise_validation_error("errors.files.upload_timeout", locale)
+                    if leaves and all(
+                        isinstance(error, HTTPException) for error in leaves
+                    ):
+                        raise cast(HTTPException, leaves[0]) from None
+                    raise
 
         except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleans up partial uploads then re-raises (reviewed TD-27-04)
             # Phase 1 failure: clean up any partial uploads and release slot.

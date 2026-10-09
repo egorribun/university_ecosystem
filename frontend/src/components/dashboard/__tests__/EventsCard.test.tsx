@@ -1,7 +1,7 @@
 import { createElement } from "react"
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const {
@@ -111,6 +111,16 @@ function renderCard() {
   )
 }
 
+function EventsCardWithProvidedQueryResult() {
+  const queryResult = useQuery({
+    queryKey: ["events-card-provided-query-result"],
+    queryFn: async () => EVENTS,
+    initialData: EVENTS,
+  })
+
+  return <EventsCard queryResult={queryResult} />
+}
+
 describe("EventsCard", () => {
   beforeEach(() => {
     eventsState.current = {
@@ -177,6 +187,26 @@ describe("EventsCard", () => {
     renderCard()
     expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
     expect(screen.queryByRole("list")).not.toBeInTheDocument()
+  })
+
+  it("renders the supplied query result independently of the dashboard hook", async () => {
+    const user = userEvent.setup()
+    eventsState.current = {
+      data: [],
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+    }
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={qc}>
+        <EventsCardWithProvidedQueryResult />
+      </QueryClientProvider>
+    )
+    await user.click(screen.getByRole("button", { name: "dashboard:scope.week" }))
+
+    expect(screen.getByText("Hackathon 2026")).toBeInTheDocument()
   })
 
   it("marks the card aria-busy while events load", () => {

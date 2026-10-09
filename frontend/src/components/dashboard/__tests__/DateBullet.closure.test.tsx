@@ -101,6 +101,7 @@ describe("DateBullet closure branches", () => {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     })
     expect(screen.getByLabelText("ariaDatePublished:FORMATTED DATE")).toBeInTheDocument()
   })

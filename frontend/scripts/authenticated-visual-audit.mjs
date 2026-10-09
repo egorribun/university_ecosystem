@@ -602,20 +602,6 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
           type: "tag",
           values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"],
         },
-        rules: {
-          "color-contrast": { enabled: false },
-          "color-contrast-enhanced": { enabled: false },
-          region: { enabled: false },
-          "landmark-one-main": { enabled: false },
-          "landmark-no-duplicate-banner": { enabled: false },
-          "landmark-no-duplicate-contentinfo": { enabled: false },
-          "landmark-no-duplicate-main": { enabled: false },
-          "landmark-unique": { enabled: false },
-          "page-has-heading-one": { enabled: false },
-          "frame-title": { enabled: false },
-          "frame-tested": { enabled: false },
-          "scrollable-region-focusable": { enabled: false },
-        },
       }
 
       console.log(`[${routePath}] before-axeRun timeout-ms=${axeTimeoutMs}`)

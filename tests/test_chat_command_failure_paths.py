@@ -209,7 +209,7 @@ async def test_send_message_existing_idempotency_entry_is_not_overwritten(
 
 
 # ---------------------------------------------------------------------------
-# send_message — upload TimeoutError maps to errors.files.upload_timeout (L278)
+# send_message — upload TimeoutError maps to errors.files.upload_timeout
 # ---------------------------------------------------------------------------
 
 
@@ -228,16 +228,111 @@ async def test_send_message_upload_timeout_maps_to_400(monkeypatch):
 
     dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(HTTPException) as excinfo:
         await dispatcher.send_message(
             chat.id, user, "with file", [MagicMock(size=10)], "en"
         )
 
-    leaves = _leaves(excinfo.value)
-    assert any(
-        isinstance(leaf, HTTPException) and leaf.status_code == 400 for leaf in leaves
-    )
+    assert excinfo.value.status_code == 400
     uow.chats.create_message.assert_not_called()
+
+
+async def test_send_message_uses_first_original_http_failure_from_upload_group(
+    monkeypatch,
+):
+    monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
+    _patch_ws(monkeypatch)
+
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+
+    first_file, second_file = MagicMock(size=10), MagicMock(size=10)
+    first_error = HTTPException(status_code=413, detail="first upload rejected")
+    second_error = HTTPException(status_code=415, detail="second upload rejected")
+    second_started = asyncio.Event()
+
+    async def process_upload(upload, *_args, **_kwargs):
+        if upload is first_file:
+            await second_started.wait()
+            raise first_error
+        second_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            raise second_error from None
+
+    attachment_svc = _mock_attachment_service()
+    attachment_svc.process_upload = AsyncMock(side_effect=process_upload)
+    dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await dispatcher.send_message(
+            chat.id, user, "with files", [first_file, second_file], "en"
+        )
+
+    assert excinfo.value is first_error
+    assert excinfo.value.status_code == 413
+    uow.chats.create_message.assert_not_called()
+
+
+async def test_send_message_preserves_mixed_nested_upload_group_and_releases_slot(
+    monkeypatch,
+):
+    monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
+    cache = await _patch_cache(monkeypatch)
+    _patch_ws(monkeypatch)
+
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+
+    first_file, second_file = MagicMock(size=10), MagicMock(size=10)
+    first_error = HTTPException(status_code=413, detail="first upload rejected")
+    nested_error = ExceptionGroup(
+        "nested upload failure",
+        [
+            HTTPException(status_code=415, detail="second upload rejected"),
+            RuntimeError("scanner failure"),
+        ],
+    )
+    second_started = asyncio.Event()
+
+    async def process_upload(upload, *_args, **_kwargs):
+        if upload is first_file:
+            await second_started.wait()
+            raise first_error
+        second_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            raise nested_error from None
+
+    attachment_svc = _mock_attachment_service()
+    attachment_svc.process_upload = AsyncMock(side_effect=process_upload)
+    dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
+
+    try:
+        with pytest.raises(ExceptionGroup) as excinfo:
+            await dispatcher.send_message(
+                chat.id,
+                user,
+                "with files",
+                [first_file, second_file],
+                "en",
+                idempotency_key="mixed-upload-failure",
+            )
+
+        assert excinfo.value.exceptions == (first_error, nested_error)
+        assert nested_error.exceptions[1].args == ("scanner failure",)
+        assert not await cache.keys("idm:msg:*")
+        uow.chats.create_message.assert_not_called()
+    finally:
+        await cache.aclose()
 
 
 # ---------------------------------------------------------------------------

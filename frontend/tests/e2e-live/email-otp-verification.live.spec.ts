@@ -88,15 +88,19 @@ test("email verification retries, rotates its code on resend, and rejects replay
 
     await loginWith(page, address, password)
     await page.goto("/settings?tab=2")
-    const startChallengeResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname.endsWith("/auth/mfa/email/verification/start")
-    )
-    await page
-      .getByRole("button", { name: /Verify email first|Сначала подтвердить почту/iu })
-      .click()
-    const started = await startChallengeResponse
+    await page.getByRole("button", { name: /Коды по электронной почте/iu }).click()
+    const verifyEmailButton = page.getByRole("button", {
+      name: /Verify email first|Сначала подтвердить почту/iu,
+    })
+    await expect(verifyEmailButton).toBeVisible()
+    const [started] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname.endsWith("/auth/mfa/email/verification/start")
+      ),
+      verifyEmailButton.click(),
+    ])
     expect(started.status()).toBe(200)
     const initialChallenge = (await started.json()) as {
       challenge_token?: unknown

@@ -26,8 +26,8 @@ type ChatDeleteResult = { chat_id: string; deleted_attachments: number }
 type GroupMessageEvent = { chatId: string; content: string }
 type SocketObservation = {
   connections: number
-  closedConnections: number
   roomJoins: string[]
+  roomRevocations: string[]
   newMessages: GroupMessageEvent[]
 }
 
@@ -52,6 +52,21 @@ function findRoomJoins(value: unknown): string[] {
   return [...rooms, ...Object.values(value).flatMap(findRoomJoins)]
 }
 
+function findRoomRevocations(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(findRoomRevocations)
+  if (!isRecord(value)) return []
+
+  const rooms: string[] = []
+  if (
+    value.type === "error" &&
+    value.code === "room_access_revoked" &&
+    typeof value.room === "string"
+  ) {
+    rooms.push(value.room)
+  }
+  return [...rooms, ...Object.values(value).flatMap(findRoomRevocations)]
+}
+
 function findNewMessages(value: unknown): GroupMessageEvent[] {
   if (Array.isArray(value)) return value.flatMap(findNewMessages)
   if (!isRecord(value)) return []
@@ -68,26 +83,55 @@ function findNewMessages(value: unknown): GroupMessageEvent[] {
   return [...events, ...Object.values(value).flatMap(findNewMessages)]
 }
 
+function countRoomMessages(socket: SocketObservation, roomId: string): number {
+  return socket.newMessages.filter((event) => event.chatId === roomId).length
+}
+
 function observeSocket(page: Page): SocketObservation {
   const observation: SocketObservation = {
     connections: 0,
-    closedConnections: 0,
     roomJoins: [],
+    roomRevocations: [],
     newMessages: [],
   }
   page.on("websocket", (socket) => {
     observation.connections += 1
-    socket.on("close", () => {
-      observation.closedConnections += 1
-    })
     socket.on("framesent", (frame) => {
       observation.roomJoins.push(...findRoomJoins(parseSocketFrame(frame.payload)))
     })
     socket.on("framereceived", (frame) => {
-      observation.newMessages.push(...findNewMessages(parseSocketFrame(frame.payload)))
+      const payload = parseSocketFrame(frame.payload)
+      observation.roomRevocations.push(...findRoomRevocations(payload))
+      observation.newMessages.push(...findNewMessages(payload))
     })
   })
   return observation
+}
+
+async function sendGroupTextMessage(page: Page, groupId: string, content: string): Promise<void> {
+  const responsePromise = page.waitForResponse((response) => {
+    const request = response.request()
+    return (
+      request.method() === "POST" &&
+      new URL(response.url()).pathname === `/api/v1/chats/${groupId}/messages`
+    )
+  })
+  await page.locator("#chat-message-input").fill(content)
+  await page.locator("#chat-send-btn").click()
+  const response = await responsePromise
+  expect(response.ok()).toBe(true)
+}
+
+async function expectSocketMessage(
+  socket: SocketObservation,
+  groupId: string,
+  content: string
+): Promise<void> {
+  await expect
+    .poll(() =>
+      socket.newMessages.some((event) => event.chatId === groupId && event.content === content)
+    )
+    .toBe(true)
 }
 
 async function currentUser(page: Page): Promise<LiveUser> {
@@ -284,19 +328,24 @@ test.describe("live Messenger membership revocation", () => {
     try {
       const removedContext = await browser.newContext(contextOptions)
       contexts.push(removedContext)
+      const removedSecondContext = await browser.newContext(contextOptions)
+      contexts.push(removedSecondContext)
       const remainingContext = await browser.newContext(contextOptions)
       contexts.push(remainingContext)
       const adminContext = await browser.newContext(contextOptions)
       contexts.push(adminContext)
       const removedPage = await removedContext.newPage()
+      const removedSecondPage = await removedSecondContext.newPage()
       const remainingPage = await remainingContext.newPage()
       adminPage = await adminContext.newPage()
       const ownerSocket = observeSocket(page)
       const removedSocket = observeSocket(removedPage)
+      const removedSecondSocket = observeSocket(removedSecondPage)
       const remainingSocket = observeSocket(remainingPage)
 
       await loginAs(page, "student")
       await loginAs(removedPage, "teacher")
+      await loginAs(removedSecondPage, "teacher")
       await loginWith(
         remainingPage,
         GROUP_CHAT_ACCOUNTS.secondMember.email,
@@ -306,10 +355,13 @@ test.describe("live Messenger membership revocation", () => {
 
       const owner = await currentUser(page)
       const removedUser = await currentUser(removedPage)
+      const removedSecondUser = await currentUser(removedSecondPage)
       const remainingUser = await currentUser(remainingPage)
       const cleanupActor = await currentUser(adminPage)
       expect(owner.role).toBe("student")
       expect(removedUser.role).toBe("teacher")
+      expect(removedSecondUser.role).toBe("teacher")
+      expect(removedSecondUser.id === removedUser.id).toBe(true)
       expect(remainingUser.role).toBe("student")
       expect(cleanupActor.role).toBe("admin")
       expect(new Set([owner.id, removedUser.id, remainingUser.id, cleanupActor.id]).size).toBe(4)
@@ -327,10 +379,13 @@ test.describe("live Messenger membership revocation", () => {
 
       await page.goto(`/messenger/${groupId}`)
       await removedPage.goto(`/messenger/${groupId}`)
+      await removedSecondPage.goto(`/messenger/${groupId}`)
       await remainingPage.goto(`/messenger/${groupId}`)
-      await expect
-        .poll(() => removedSocket.roomJoins.filter((room) => room === groupId).length)
-        .toBeGreaterThan(0)
+      for (const socket of [removedSocket, removedSecondSocket]) {
+        await expect
+          .poll(() => socket.roomJoins.filter((room) => room === groupId).length)
+          .toBeGreaterThan(0)
+      }
 
       const messageContent = `membership-revocation-message-${randomUUID()}`
       const attachmentContent = Buffer.from(`membership-revocation-file-${randomUUID()}`, "utf8")
@@ -356,6 +411,9 @@ test.describe("live Messenger membership revocation", () => {
       const messageResponse = await messageResponsePromise
       expect(messageResponse.ok()).toBe(true)
       const message = (await messageResponse.json()) as LiveMessage
+      for (const socket of [removedSocket, removedSecondSocket]) {
+        await expectSocketMessage(socket, groupId, messageContent)
+      }
       const attachment = message.attachments[0]
       if (!attachment) throw new Error("uploaded message did not return attachment metadata")
       attachmentUploaded = true
@@ -394,6 +452,11 @@ test.describe("live Messenger membership revocation", () => {
       expect(memberReactors.some((reactor) => reactor.user_id === remainingUser.id)).toBe(true)
       expect((await memberReads[3]!.body()).equals(attachmentContent)).toBe(true)
 
+      const removedSocketBaselines = [removedSocket, removedSecondSocket].map((socket) => ({
+        socket,
+        connections: socket.connections,
+        roomJoins: socket.roomJoins.filter((room) => room === groupId).length,
+      }))
       const removal = await sameOriginMutation(
         page,
         `/api/v1/chats/${groupId}/participants/${removedUser.id}`,
@@ -408,79 +471,114 @@ test.describe("live Messenger membership revocation", () => {
         })
         .toBe(true)
 
-      const initialConnectionCount = removedSocket.connections
-      const initialClosedConnectionCount = removedSocket.closedConnections
-      const initialRoomJoinCount = removedSocket.roomJoins.filter((room) => room === groupId).length
-      expect(initialConnectionCount).toBeGreaterThan(0)
-      expect(initialRoomJoinCount).toBeGreaterThan(0)
-      await removedPage.reload()
-      await expect
-        .poll(() => removedSocket.closedConnections)
-        .toBeGreaterThan(initialClosedConnectionCount)
-      await expect.poll(() => removedSocket.connections).toBeGreaterThan(initialConnectionCount)
-      await expect
-        .poll(() => removedSocket.roomJoins.filter((room) => room === groupId).length)
-        .toBeGreaterThan(initialRoomJoinCount)
+      // Room revocation is a server control notice; it does not close the transport.
+      for (const { socket, connections, roomJoins } of removedSocketBaselines) {
+        expect(connections).toBeGreaterThan(0)
+        expect(roomJoins).toBeGreaterThan(0)
+        await expect
+          .poll(() => socket.roomRevocations.filter((room) => room === groupId).length)
+          .toBeGreaterThan(0)
+      }
+
+      const postRevocationMessageBaselines = [removedSocket, removedSecondSocket].map((socket) => ({
+        socket,
+        messages: countRoomMessages(socket, groupId),
+      }))
+
+      const preReconnectRevocationMessage = `membership-revocation-old-sockets-denied-${randomUUID()}`
+      await sendGroupTextMessage(page, groupId, preReconnectRevocationMessage)
+      for (const socket of [ownerSocket, remainingSocket]) {
+        await expectSocketMessage(socket, groupId, preReconnectRevocationMessage)
+      }
+      for (const memberPage of [page, remainingPage]) {
+        await expect(
+          memberPage.getByText(preReconnectRevocationMessage, { exact: true })
+        ).toBeVisible()
+      }
+      for (const { socket, messages } of postRevocationMessageBaselines) {
+        expect(countRoomMessages(socket, groupId)).toBe(messages)
+        expect(
+          socket.newMessages.some(
+            (event) => event.chatId === groupId && event.content === preReconnectRevocationMessage
+          )
+        ).toBe(false)
+      }
+
+      const removedSocketReconnectBaselines = [removedSocket, removedSecondSocket].map(
+        (socket) => ({
+          socket,
+          connections: socket.connections,
+          roomJoins: socket.roomJoins.filter((room) => room === groupId).length,
+        })
+      )
+      await Promise.all([removedPage.reload(), removedSecondPage.reload()])
+      for (const { socket, connections, roomJoins } of removedSocketReconnectBaselines) {
+        await expect.poll(() => socket.connections).toBeGreaterThan(connections)
+        await expect
+          .poll(() => socket.roomJoins.filter((room) => room === groupId).length)
+          .toBeGreaterThan(roomJoins)
+      }
+      // The hub silently drops an unauthorized JOIN. A real denied REST read
+      // plus no room data after the control notice proves the removed user
+      // cannot regain access; the outbound JOIN is only an attempted rejoin.
       await expect(removedPage.locator("#chat-message-input")).toHaveCount(0)
       await expect(removedPage.getByText(messageContent, { exact: true })).toHaveCount(0)
+      await expect(removedSecondPage.locator("#chat-message-input")).toHaveCount(0)
+      await expect(removedSecondPage.getByText(messageContent, { exact: true })).toHaveCount(0)
 
       const postRevocationAttempt = `membership-revocation-denied-send-${randomUUID()}`
-      const revokedSend = await sameOriginMutation(
-        removedPage,
-        `/api/v1/chats/${groupId}/messages`,
-        "POST",
-        { content: postRevocationAttempt }
-      )
-      expect(isDenied(revokedSend.status)).toBe(true)
+      for (const revokedPage of [removedPage, removedSecondPage]) {
+        const revokedSend = await sameOriginMutation(
+          revokedPage,
+          `/api/v1/chats/${groupId}/messages`,
+          "POST",
+          { content: postRevocationAttempt }
+        )
+        expect(isDenied(revokedSend.status)).toBe(true)
+      }
 
-      const revokedReads = await Promise.all([
-        removedPage.request.get(`/api/v1/chats/${groupId}`),
-        removedPage.request.get(`/api/v1/chats/${groupId}/messages?limit=100`),
-        removedPage.request.get(reactorsPath),
-        removedPage.request.get(attachmentUrl),
-      ])
-      expect(revokedReads.every((response) => isDenied(response.status()))).toBe(true)
-      const revokedBodies = await Promise.all(revokedReads.map((response) => response.body()))
-      expect(revokedBodies.some((body) => body.includes(Buffer.from(messageContent)))).toBe(false)
-      expect(revokedBodies.some((body) => body.includes(attachmentContent))).toBe(false)
-      expect(revokedReads[3]!.headers()["content-disposition"]).toBeUndefined()
+      for (const revokedPage of [removedPage, removedSecondPage]) {
+        const revokedReads = await Promise.all([
+          revokedPage.request.get(`/api/v1/chats/${groupId}`),
+          revokedPage.request.get(`/api/v1/chats/${groupId}/messages?limit=100`),
+          revokedPage.request.get(reactorsPath),
+          revokedPage.request.get(attachmentUrl),
+        ])
+        expect(revokedReads.every((response) => isDenied(response.status()))).toBe(true)
+        const revokedBodies = await Promise.all(revokedReads.map((response) => response.body()))
+        expect(revokedBodies.some((body) => body.includes(Buffer.from(messageContent)))).toBe(false)
+        expect(revokedBodies.some((body) => body.includes(attachmentContent))).toBe(false)
+        expect(revokedReads[3]!.headers()["content-disposition"]).toBeUndefined()
+      }
 
       const ownerSnapshotResponse = await page.request.get(`/api/v1/chats/${groupId}`)
       expect(ownerSnapshotResponse.ok()).toBe(true)
       const ownerSnapshot = (await ownerSnapshotResponse.json()) as LiveGroup
       expectOwnedGroup(ownerSnapshot, groupId, groupName, owner.id, remainingParticipants)
 
-      const postRevocationMessage = `membership-revocation-remains-live-${randomUUID()}`
-      const remainingMessageResponsePromise = page.waitForResponse((response) => {
-        const request = response.request()
-        return (
-          request.method() === "POST" &&
-          new URL(response.url()).pathname === `/api/v1/chats/${groupId}/messages`
-        )
-      })
-      await page.locator("#chat-message-input").fill(postRevocationMessage)
-      await page.locator("#chat-send-btn").click()
-      const remainingMessageResponse = await remainingMessageResponsePromise
-      expect(remainingMessageResponse.ok()).toBe(true)
+      const postRevocationMessage = `membership-revocation-reconnected-denied-${randomUUID()}`
+      await sendGroupTextMessage(page, groupId, postRevocationMessage)
 
       for (const socket of [ownerSocket, remainingSocket]) {
-        await expect
-          .poll(() =>
-            socket.newMessages.some(
-              (event) => event.chatId === groupId && event.content === postRevocationMessage
-            )
-          )
-          .toBe(true)
+        await expectSocketMessage(socket, groupId, postRevocationMessage)
       }
       for (const memberPage of [page, remainingPage]) {
         await expect(memberPage.getByText(messageContent, { exact: true })).toBeVisible()
+        await expect(
+          memberPage.getByText(preReconnectRevocationMessage, { exact: true })
+        ).toBeVisible()
         await expect(memberPage.getByText(postRevocationMessage, { exact: true })).toBeVisible()
       }
-      expect(
-        removedSocket.newMessages.some(
-          (event) => event.chatId === groupId && event.content === postRevocationMessage
-        )
-      ).toBe(false)
+      for (const socket of [removedSocket, removedSecondSocket]) {
+        expect(
+          socket.newMessages.some(
+            (event) => event.chatId === groupId && event.content === postRevocationMessage
+          )
+        ).toBe(false)
+      }
+      for (const { socket, messages } of postRevocationMessageBaselines) {
+        expect(countRoomMessages(socket, groupId)).toBe(messages)
+      }
 
       const authorizedHistories = await Promise.all([
         page.request.get(`/api/v1/chats/${groupId}/messages?limit=100`),
@@ -492,6 +590,9 @@ test.describe("live Messenger membership revocation", () => {
           items: { content: string }[]
         }
         expect(history.items.some((item) => item.content === messageContent)).toBe(true)
+        expect(history.items.some((item) => item.content === preReconnectRevocationMessage)).toBe(
+          true
+        )
         expect(history.items.some((item) => item.content === postRevocationMessage)).toBe(true)
       }
     } finally {

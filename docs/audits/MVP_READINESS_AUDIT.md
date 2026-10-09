@@ -194,6 +194,19 @@ snapshot выше сохранён как история. Последующий
 завершён с76/76 surfaced contexts:73 SUCCESS/3 FAILURE (coverage policy gate,
 CodeQL/GHAS alerts, CI Success); полного hosted green ещё нет.
 
+На опубликованном14c2f5ae179dbd2550f06d59bb77aacc742a0b7e run37897949258/a1
+завершён за51m07s, исходно73/76 required SUCCESS. В последующем явном ответе
+владелец разрешил dismissal только alerts3382/3383 как `false positive` с audit
+comment. Root повторно проверил source/workflow blob, CodeQL2.27.1 rule и все
+instances (только PR1306), выполнил эти два dismissal и подтвердил
+CodeQL113716129357 SUCCESS. Ruleset8335285 до/после идентичен, все76 contexts
+сохранены; coverage gate и зависимый CI Success остаются FAIL (74/76 SUCCESS).
+Это не подтверждение полного green или release readiness.
+
+Отдельно владелец разрешил startup RAM≤80%/free≥6 GiB только для одиночных
+Linux screenshot-прогонов с browser cap1 GiB/2 CPU; runtime guard85%/4 GiB
+неизменен. Для остальных heavy workloads сохраняются75%/8 GiB.
+
 Для MFA владелец поручил выбрать «лучший вариант». Root выбрал сохранение
 существующего ADR-006 tombstone-first boundary: защищённый отказ прежде DB
 commit с документированным conservative sibling logout при rollback.

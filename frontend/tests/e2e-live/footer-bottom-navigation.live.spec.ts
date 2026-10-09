@@ -44,7 +44,7 @@ async function verifyFooterDoesNotOverlapBottomNavigation(page: Page): Promise<v
   ).toBeLessThanOrEqual(geometry.navTop + 1)
 }
 
-test("bottom navigation fits phone widths, keeps 44px targets, and yields at tablet width", async ({
+test("bottom navigation fits phones and the navbar drawer works at the tablet boundary", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -88,10 +88,18 @@ test("bottom navigation fits phone widths, keeps 44px targets, and yields at tab
 
   await page.setViewportSize({ width: 1024, height: 900 })
   await expect(bottomNavigation).toBeHidden()
-  await expect(page.locator('button[aria-controls="mobile-drawer"]')).toHaveCount(0)
   const navbar = page.locator("nav.vt-navbar")
   await expect(navbar).toBeVisible()
-  await expect(navbar.locator(".navbar-desktop-nav")).toBeVisible()
+  const drawerTrigger = page.locator('button[aria-controls="mobile-drawer"]')
+  await expect(drawerTrigger).toBeVisible()
+  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false")
+  await expect(navbar.locator(".navbar-desktop-nav")).toHaveCount(0)
+  const drawerTriggerSize = await drawerTrigger.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { width: rect.width, height: rect.height }
+  })
+  expect(drawerTriggerSize.width).toBeGreaterThanOrEqual(44)
+  expect(drawerTriggerSize.height).toBeGreaterThanOrEqual(44)
   const shell = await navbar.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     return {
