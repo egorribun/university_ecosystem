@@ -203,7 +203,7 @@ sequenceDiagram
 | **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | Policy target: 100%; fresh-SHA evidence required |
 | **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Implemented; fresh-SHA evidence required |
 | **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Implemented; fresh-SHA evidence required |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Implemented; fresh-SHA evidence required |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Distributed tracing, metrics, profiling & log aggregation | Implemented; fresh-SHA evidence required |
 
 ## 🚀 Rapid Onboarding
 
@@ -242,7 +242,7 @@ for every runtime and Prometheus target:
 
 ### **Python (Core API)**
 ```bash
-uv sync            # Sync Python 3.14 dependencies
+uv sync --frozen   # Sync Python 3.14 dependencies from the checked-in lock
 uv run pytest      # Run the full pytest suite
 uv run ruff check app/      # Run Ruff linter
 uv run ruff format app/     # Format Python codebase
@@ -273,7 +273,7 @@ make test-integration # Run ADR-022 Testcontainers suite
 
 ## 🔭 Observability & Continuous Monitoring
 
-The platform includes a production-ready observability stack:
+The platform includes an integrated observability stack:
 - **OpenTelemetry & Tempo**: End-to-end distributed tracing across Go microservices and FastAPI.
 - **Prometheus**: Real-time metrics including L1 cache hit/miss rates (`cache_l1_hits_total`).
 - **Pyroscope**: Continuous CPU/Memory profiling (`grafana/pyroscope:1.19.1`).

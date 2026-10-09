@@ -121,8 +121,8 @@ plan, rather than restoring the previous certification gate.
 On 2026-10-09 the owner also confirmed moving the full four-shard Chromium
 suite and Lighthouse to scheduled/manual execution while retaining live
 Chromium PR smoke. Preserve their full scenarios and assertions. The owner
-authorized removing only the 14 existing Q1/Q4 contexts listed in the
-[readiness audit](../audits/MVP_READINESS_AUDIT.md) from main ruleset `8335285`,
+authorized removing only the 14 existing Q1/Q4 contexts listed
+[below](#authorized-required-context-removals) from main ruleset `8335285`,
 after the corresponding workflow diff is complete, reviewed and checked.
 In a subsequent explicit approval on the same date, the owner authorized
 removing exactly one additional context, `Security Audit / Semgrep SAST`, after
@@ -131,6 +131,34 @@ blocking and Semgrep stays in pre-commit. The expected count is 91 to 76;
 all other protection rules and contexts remain unchanged. This is not bypass
 permission. The migration and the 15-minute budget are not yet implemented or
 verified by that authorization.
+
+### Authorized required-context removals
+
+The exact scope of the 2026-10-09 authorization for ruleset `8335285` is:
+
+| Stage | Exact context |
+| --- | --- |
+| Q1 | `Incremental Mutation Tests (frontend)` |
+| Q4 | `E2E Tests (shard 1/4) / E2E Tests (chromium)` |
+| Q4 | `E2E Tests (shard 2/4) / E2E Tests (chromium)` |
+| Q4 | `E2E Tests (shard 3/4) / E2E Tests (chromium)` |
+| Q4 | `E2E Tests (shard 4/4) / E2E Tests (chromium)` |
+| Q4 | `Frontend Tests / Lighthouse Audit` |
+| Q4 | `Frontend Tests / Lighthouse Audit (content)` |
+| Q4 | `Frontend Tests / Lighthouse Audit (core)` |
+| Q4 | `Frontend Tests / Lighthouse Audit (fallback)` |
+| Q4 | `Frontend Tests / Lighthouse Audit (realtime)` |
+| Q4 | `Schemathesis - API Schema Conformance` |
+| Q4 | `Chaos Loadtest Orchestrator` |
+| Q4 | `SQLMap Scan` |
+| Q4 | `TruffleHog Scan` |
+
+The subsequent approval adds only `Security Audit / Semgrep SAST` to this list.
+This records the approved boundary, not a fresh ruleset readback or permission
+to remove other contexts. Preserve every other rule, blocking CodeQL, coverage,
+Gitleaks, migration and supply-chain gates. Do not emit compatibility checks
+that report success in place of the removed protection. Current execution and
+ruleset evidence belong in [STATUS](../superpowers/plans/STATUS.md).
 
 Q4 includes SQLMap and TruffleHog trigger/catalog/required-profile migration.
 DAST is already weekly/manual and Sonar is already advisory; preserve those

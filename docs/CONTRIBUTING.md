@@ -44,7 +44,9 @@ The command runs frontend typecheck/lint, backend mypy/Ruff, the repository
 harness and focused CI-contract tests concurrently. It waits for every check,
 writes one bounded JSON report, and exits non-zero on any failure, launch
 error or timeout. This is an early-feedback aid only; it never replaces the
-full CI matrix, coverage/mutation gates or SHA-bound release evidence.
+required CI matrix, current coverage floors or SHA-bound release evidence.
+Under ADR-047 Q1, full mutmut and Stryker runs remain nightly/manual evidence
+and are outside the MVP blocking release gate.
 
 ---
 

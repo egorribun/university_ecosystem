@@ -108,6 +108,11 @@ For event-driven background workers (`outbox-worker`, `file-processor`, `backend
   production may enable event-driven scaling while keeping hibernation
   disabled.
 
+The referenced `values.dev-secrets.yaml` and `values.prod-secrets.yaml` files are
+operator-provided private overlays; they are not shipped in this repository. Keep
+them outside version control and provide them from the operator deployment workspace
+when running these examples.
+
 ## Verification & Validation Method
 
 1. **Helm Lint**: provide the gateway secret plus the file-processor RSA public key, MinIO credentials, and Temporal API key required by the chart.

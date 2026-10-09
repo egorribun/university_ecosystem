@@ -1,27 +1,18 @@
-"""SpiceDB streaming Watch API integration.
+"""SpiceDB Watch stream for permission-cache invalidation and session control.
 
-MOD-W5-04 (audit 2026-03-13): Replace per-request CheckPermission gRPC calls
-with a long-lived Watch stream that pushes relationship/permission changes to
-the application.  The Watch listener invalidates entries in the grace-period
-cache (``app.auth.rbac._permission_cache``) so that subsequent checks are
-re-evaluated against SpiceDB rather than served from a stale entry.
+``PermissionChecker.check_permission`` normally attempts a live
+``CheckPermission`` call and caches successful responses. It uses a cached result
+only when the call fails or the circuit breaker is open, within permission-specific
+stale-age limits; an ``admin`` ALLOW result requires a live grant.
 
-Architecture
-------------
-The Watch stream is started as a background asyncio task during application
-lifespan (``start_permission_watch``).  It streams *all* relationship changes
-from SpiceDB and invalidates matching permission cache entries.  This is safe
-even when the cache contains partial state because ``rbac.check_permission``
-always falls back to a live gRPC call on cache miss.
+Each configured API process runs its own listener. Relationship updates evict
+matching entries from that process-local cache, attempt Redis ``auth:perms``
+invalidation for the affected user, and attempt a signed ``ws_hub.control``
+disconnect. Redis invalidation and WebSocket-hub publication are best-effort.
 
-Fault tolerance
----------------
-- The watcher reconnects with exponential back-off (1 s → 60 s) on any error.
-- During reconnect, the grace-period cache (TTL = 60 s) continues to serve
-  the last-known result, preventing a thundering herd on SpiceDB.
-- On reconnect the cache is **fully cleared** so that the first request after
-  reconnect always hits SpiceDB — this avoids serving permanently stale data
-  if permissions changed during the outage window.
+If a Watch stream ends or errors, the listener clears its local cache before
+reconnecting with exponential back-off. Live permission checks remain the
+normal authorization path.
 """
 
 from __future__ import annotations

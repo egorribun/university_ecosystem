@@ -1,6 +1,6 @@
 # University Ecosystem: полный цикл приёмки и выпуска MVP v1.0.0
 
-Редакция 5 от 2026-10-09 (Europe/Istanbul). Единственный действующий план,
+Редакция 6 от 2026-10-10 (Europe/Istanbul). Единственный действующий план,
 объединяющий прежний мастер-план и решение коммита
 `60a886529c6e89176e2d53395268ca6279805cb4` с уточнениями владельца в этой беседе.
 Основание качества — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
@@ -22,7 +22,7 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   admin bypass, force-push и общие изменения branch protection не разрешены.
   Исключение владельца от 2026-10-09: после готового reviewed CI diff и проверок
   можно убрать только 14 Q1/Q4 contexts из ruleset `8335285`, перечисленных в
-  [итоговом аудите](../../audits/MVP_READINESS_AUDIT.md); остальные правила сохранить.
+  [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#authorized-required-context-removals); остальные правила сохранить.
   Последующим явным ответом владелец разрешил ещё ровно один context,
   `Security Audit / Semgrep SAST`, после reviewed scanner de-dup diff и проверок;
   CodeQL остаётся blocking, Semgrep — в pre-commit, остальные76 contexts сохранить.
@@ -57,10 +57,10 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   блокируют MVP, отдельно согласовать включение Q3; не снижать их молча.
 - Q1 обязателен до MVP: мутации исключаются из release gate и перестают запускаться
   как PR/main blocking lane; полные mutmut/Stryker остаются nightly/manual.
-  Q1/Q4 source migration и разрешённое обновление protections внедрены;
-  PR acceptance подтверждена наf14f497e: Matrix37946889584/a1 SUCCESS,
-  exact-head join76/76 required SUCCESS. Для следующих SHA проверки обновляются;
-  main-push/release proof ещё открыты. Не работать ради global mutation score.
+  Q1/Q4 source migration и разрешённое обновление protections внедрены.
+  Каждый новый SHA требует свежих required-check results; текущий checkpoint и
+  CI evidence находятся в [STATUS](STATUS.md). Main-push/release proof ещё открыты.
+  Не работать ради global mutation score.
 - Q4 также обязателен до MVP: Schemathesis, DAST, chaos, cross-browser E2E и kind
   переходят в scheduled/manual lanes; PR сохраняет lint/types/unit/contracts,
   API drift, coverage и необходимую security-проверку. Live Chromium smoke остаётся
@@ -70,6 +70,10 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
 - Уточнение владельца 2026-10-09: полный Chromium из четырёх шардов и Lighthouse
   также переходят в scheduled/manual; PR сохраняет живой Chromium smoke.
   Полные сценарии/существующие assertions сохраняются в новых lanes.
+  `Owned live acceptance (pull_request)` остаётся advisory/non-required:
+  три последовательных успешных smoke и измерение ресурсов/бюджета являются
+  обязательными предпосылками повышения; до них required не включать.
+  Само выполнение предпосылок не расширяет разрешённую границу ruleset.
 - Q2 (nightly mutation regression более 1 процентного пункта, dashboard) и Q3
   (coverage ratchet) — `v1.1`. Nightly сигналы могут оставаться красными на прежнем
   пороге до Q2; они не дают основания подменять результат или считать регрессию
@@ -172,7 +176,8 @@ STATUS ≤150 строк: результаты, следующий шаг и к�
   checkout и runtime ограничен. Focused165 PASS, verifier28/28, inventory0,
   relevant preflight10/10 и независимый review CLEAR. Не внедрять повторно;
   новые failures проверять по текущему SHA. Наличие hooks не означает
-  автоматической Codex-интеграции; детали в readiness audit.
+  автоматической Codex-интеграции; границы запуска описаны в
+  [AGENTS.md](../../../AGENTS.md), раздел 8.
 - Сохранить один Codex goal без произвольного token budget. Его прежняя
   формулировка включала сертификацию kind; это этап v1.1, а критерии MVP теперь
   задаются этим планом. Не объявлять всю прежнюю сертификацию завершённой при
@@ -215,10 +220,10 @@ STATUS ≤150 строк: результаты, следующий шаг и к�
   Исправить новые дефекты и предупреждения, включая устаревшие Python API;
   не маскировать проблемы пропусками.
 - Повторно проверить Python и Go advisories после согласованного обновления locks.
-  Credential-shaped текст в `AUDIT_PLATFORM_FULL.md` не считать примером без
-  проверки происхождения. После подтверждения исторического значения безопасно
-  заретушировать его, не добавлять в baseline, а после `detect-secrets`/pre-commit
-  повторно stage `.secrets.baseline` согласно `AGENTS.md`.
+  Credential-shaped текст в исторических материалах не копировать в текущие
+  документы или baseline. После `detect-secrets`/pre-commit повторно stage
+  `.secrets.baseline` согласно `AGENTS.md`; Git history и приватный rescue bundle
+  сохраняют исторические материалы по [retention policy](../../audits/INDEX.md#legacy-archive-cleanup-and-recovery).
 - **SEC-03 / audit signing key:** в Git history семи revisions `security.py`
   обнаружен исторический `AUDIT_LOG_SECRET` HMAC signing-key default; его значение
   удалено из текущего отчёта. Пользователь подтвердил, что этот default применялся
@@ -292,7 +297,7 @@ STATUS ≤150 строк: результаты, следующий шаг и к�
 
 ### Блок 2. Мигрировать и удалить устаревшую документацию
 
-**Текущее состояние:** к HEAD `cfbf5f6200619a800dff9ecf4533b909544d1efb`
+**Завершённый checkpoint очистки:** к HEAD `cfbf5f6200619a800dff9ecf4533b909544d1efb`
 каталоги `docs/audits/archive/` и `docs/superpowers/plans/archive/` уже удалены из
 рабочего дерева; Git history не переписывалась. Value-free inventory на rescue SHA
 `d0aad7c296facd79b3d41b037bc4160f5b3132be` содержит 120 путей; повторная read-only
@@ -312,11 +317,11 @@ persistent storage. Полную Git history bundle и далее хранить
 конкретной задачи восстановления.
 
 **Credential checkpoint:** value-free inventory нашёл девять
-Chromatic project-token-shaped упоминаний в `AUDIT_WAVE121.md`,
-`AUDIT_WAVE123.md` и `AUDIT_WAVE201.md`. Пользователь подтвердил reset токена;
+Chromatic project-token-shaped упоминаний в трёх исторических отчётах.
+Пользователь подтвердил reset токена;
 GitHub metadata подтверждает обновление repository secret
 `CHROMATIC_PROJECT_TOKEN` в `2026-09-30T10:08:36Z`. Секретное значение не читалось.
-Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь подтвердил как
+Seeded-admin пароль из исторического отчёта пользователь подтвердил как
 использовавшийся только в одноразовой CI-базе. Admin smoke должен использовать
 отдельный случайный пароль на каждый прогон, передавать его только нужным шагам и
 не включать значение в логи или artifacts. Текущий Chromatic workflow намеренно
@@ -370,14 +375,15 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   artifact на каноническом builder, связав evidence с exact final SHA. Не
   реализовывать уже имеющийся экспорт повторно и не утверждать parity по локальному
   артефакту с другого SHA.
-- **Audit ledger:** проверить все 63 ID платформенного аудита на актуальном
-  состоянии. Для каждого сохранить ID, final classification (актуален, закрыт с
+- **Audit ledger:** [компактный реестр](../../audits/INDEX.md#findings-ledger) сохраняет
+  все 63 ID платформенного аудита, aliases, основания и ссылки на текущие исходники.
+  Проверить каждый ID на актуальном RC. Для каждого сохранить final classification (актуален, закрыт с
   evidence, заменён согласованным решением либо только исторический), краткое
   основание, SHA/run/artifact и следующий владелец/шаг, если он открыт. Для MVP
   допустим перенос некритичного пункта в v1.1 с владельцем; P0/P1 security не переносить. Особо
-  проверить MIG-PASS-01, BE-02 и RUST-P3-03. Удалить `AUDIT_PLATFORM_FULL.md`
-  только после переноса ledger и проверки всех IDs; текущие статусы не наследовать
-  из старых снимков.
+  проверить MIG-PASS-01, BE-02 и RUST-P3-03. Исторический полный отчёт удалён после
+  сверки точного набора 63 ID и переноса требований; RC revalidation остаётся
+  открытой. Текущие статусы не наследовать из старых снимков.
 - **Сверка требований Messenger W208–W211 завершена:** живые критерии групп,
   авторизации/cache/WS, персонального unread, reply и group notifications уже
   перенесены в Block 4. Пересылка сообщения также остаётся live-критерием, чтобы
@@ -386,20 +392,20 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   требует нового доказательства. «Seen by N» реализован, однако отсутствует в ТЗ
   и не является MVP gate; W209 auto-delete при составе <3 и отдельные roster WS
   frames также не добавлять без изменения scope. FAB/date separators оценивать в
-  общем visual review, не создавать отдельные продуктовые gates. После переноса
-  rationale классифицировать W210/W211 как исторические документы без текущей
-  роли и решить их хранение вместе с прочей документацией вне archive.
-- Для оставшихся документов вне archive применимые решения перенести сюда, в ADR
-  или runbooks; удалять документ только после проверки ссылок, переноса уникальных
-  требований и подтверждения, что у него нет самостоятельной долговечной роли.
-- Найти и заменить literal citations на удаляемые `AUDIT_WAVE*`, старые handoff и
-  абсолютные пользовательские пути в workflows, коде, тестах, индексах и
-  инструкциях. Оставлять лишь короткое rationale, которое нужно поддерживать;
-  переносить долговечные шаги в ADR/runbook, не переписывать старые отчёты целиком.
-- Обновить `docs/README.md`, `docs/audits/INDEX.md`, AGENTS index reference и
-  документационную политику: перечислить текущие документы, retention/rescue
-  policy, bundle restore instructions. Удалить старое обещание держать все отчёты
-  в archive и устаревший allowlist 12 исторических broken links.
+  общем visual review, не создавать отдельные продуктовые gates. Rationale
+  W210/W211 перенесён; исторические копии без текущей роли удалены из working tree.
+- Общая сверка документации завершена: применимые решения перенесены сюда, в ADR,
+  runbooks и компактный audit ledger. Superseded audits и одноразовый session prompt
+  удалены после переноса уникальных требований; актуальная и историческая evidence
+  разграничены. Ссылки на удалённые документы не являются текущими инструкциями.
+- `docs/README.md`, `docs/audits/INDEX.md` и AGENTS index reference согласованы:
+  указаны canonical ownership, retention/rescue policy и bundle restore instructions.
+  Обещание хранить все отчёты в archive и allowlist исторических broken links удалены.
+- При следующих изменениях переносить долговечные шаги в ADR/runbook и обновлять
+  canonical source перед сводками/переводами. Удалять документ только после проверки
+  ссылок, переноса уникальных требований и подтверждения, что у него нет
+  самостоятельной долговечной роли. Не добавлять старые handoff или абсолютные
+  пользовательские пути в текущие инструкции.
 - Повторно удалять или восстанавливать архивы не нужно: пути уже отсутствуют в
   текущем HEAD. Сохранять тесты поведения link checker, строгую проверку документов
   и оба режима checker (`--include-archives` — диагностический для restore); не
@@ -628,8 +634,8 @@ nightly/manual activation после merge проверить отдельно, 
 
 ### Блок 6. Переход CI сейчас, quality closure в v1.1
 
-- Выполнить Q1 и Q4 ADR-047 в отдельных reviewable пакетах. Проверить весь путь
-  зависимостей, результаты, event filters, special assertions, release rationale
+- Q1/Q4 ADR-047 интегрированы в reviewable пакетах. Сохранять согласованность
+  зависимостей, результатов, event filters, special assertions, release rationale
   и catalog/contracts. Оставшиеся gates fail closed: ошибка, missing evidence
   или неожиданный skip не становятся PASS. Branch protection менять только
   в точной границе исходных14 contexts и отдельно разрешённого
@@ -850,8 +856,9 @@ ownership вместе с проверками:
 ## Продолжение сессии
 
 Прочитать root/domain AGENTS, этот план, ADR-047, STATUS и ТЗ; проверить branch,
-HEAD/remotes/CI и owned ресурсы. Продолжить critical path: Q1/Q4, product/security
-fixes, Core acceptance, visual/restore, RC и выпуск. Не открывать новые mutation,
+HEAD/remotes/CI и owned ресурсы. Продолжить ближайший незавершённый шаг из STATUS:
+required CI, product/security fixes, Core acceptance, visual/restore, RC и выпуск.
+Не открывать новые mutation,
 kind и массовые cleanup очереди ради старого checklist. После контрольной точки
 обновить короткий STATUS; старые handoffs и локальные результаты не являются
 доказательством текущего SHA. Сохранять чужие env/data/backups, migration history,

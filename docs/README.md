@@ -29,6 +29,7 @@ handoffs are intentionally not part of the canonical index.
 - [Kubernetes notes](../k8s/README.md)
 - [Database backup and restore runbook](runbooks/database-backup-restore.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
+- [Observability configuration and reference examples](observability/README.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 
@@ -42,17 +43,13 @@ handoffs are intentionally not part of the canonical index.
   release gate after Q1. Current coverage floors remain enforced until Q3.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
-- [MVP readiness audit](audits/MVP_READINESS_AUDIT.md) — the final preparation
-  review, open acceptance gaps and the approved Q1/Q4 ruleset boundary.
-- [Next-session prompt (Russian)](superpowers/plans/NEXT_SESSION_PROMPT.md) — the
-  current continuation request; refresh its source and CI pointers before work.
 - [Quality dashboard](testing/dashboard.md)
 - [CI check catalog runbook](testing/ci-check-catalog-runbook.md)
 - [i18n gate](testing/i18n-gate.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Project audit prompt (Russian)](superpowers/plans/AUDIT_PROMPT.md) — review template.
+- [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
 Legacy audit and plan archives have been reconciled against the master plan,
@@ -60,3 +57,24 @@ ADRs, tests, and workflow contracts, then removed from the working tree without
 rewriting Git history. The audit index records the private rescue bundle,
 verification evidence, and recovery procedure; archive contents are not current
 implementation guidance.
+
+## Documentation ownership
+
+| Subject | Canonical source |
+| --- | --- |
+| Product requirements | [MVP requirements](superpowers/plans/University_Ecosystem_MVP.md) |
+| Priorities, acceptance and v1.1 backlog | [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) |
+| Current checkpoint and next actions | [STATUS](superpowers/plans/STATUS.md) |
+| Architecture and policy decisions | [ADRs](adr/README.md) |
+| Enforced quality and check inventory | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
+| Operator procedures | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/) |
+| Finding traceability and historical retention | [Audit index](audits/INDEX.md) |
+
+Update the canonical source before adjusting summaries or translations. Keep
+commands, versions and configuration descriptions aligned with executable
+configuration. Change a generated document through its generator and verify
+the output. Record runtime results with their source revision and scope; a
+historical pass does not certify a later checkout. Retain useful procedures
+and decisions while removing superseded handoffs and duplicate snapshots.
+The vendored skill catalog under `.agents/skills/` retains upstream guidance;
+current task and repository instructions determine how it applies here.

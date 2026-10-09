@@ -355,5 +355,4 @@ this online revision.
 - [`quality/model-default-policy.json`](../../quality/model-default-policy.json)
 - [`scripts/quality/audit_model_defaults.py`](../../scripts/quality/audit_model_defaults.py)
 - [`tests/test_model_default_policy.py`](../../tests/test_model_default_policy.py)
-- `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding BE-02 (user-owned audit
-  artifact; tracked historical ledger, not a release certificate)
+- [BE-02 in the findings ledger](../audits/INDEX.md#findings-ledger) (historical classification; not release evidence).

@@ -123,11 +123,13 @@ for the MVP release; the current plan is
    - Other components keep their current contract floors until ADR-047 stage Q3 replaces
      them with a no-decrease ratchet and a 90% patch floor for changed lines.
 2. **Mutation Testing**:
-   - ADR-047 stage Q1 moves full `mutmut` (Python backend) and Stryker (TypeScript frontend)
-     to nightly/manual signals outside the release gate. Until Q1 lands, the existing CI
-     dependencies remain enforced; do not spend MVP effort on raising the mutation score.
+   - ADR-047 stage Q1 keeps full `mutmut` (Python backend) and Stryker (TypeScript frontend)
+     in nightly/manual lanes outside the MVP release gate. The Q1/Q4 source migration is
+     integrated; every new source SHA still needs its own required-check evidence.
+     Do not spend MVP effort on raising the global mutation score.
    - The nightly no-regression check is planned for stage Q2; it is not implemented by
-     adopting this policy. Q1 and the heavy-lane migration in Q4 are required before MVP.
+     adopting this policy. Keep the integrated Q1/Q4 migration in force and verify
+     the remaining required checks for the current MVP source.
    - A proven equivalent mutant goes to `quality/mutation-exclusions.json` with owner,
      evidence and an expiry date; quarantine and manual `Killed` reclassification stay
      forbidden.
@@ -142,13 +144,16 @@ for the MVP release; the current plan is
    - `semgrep-sast` (Static Application Security Testing).
    - `renovate-config-validator` (validates dependency update configurations).
 
+   The additional `trivy-fs-scan` hook (`trivyfs-docker`) runs only at the manual
+   stage. Hosted Trivy image scans are configured separately in CI.
+
 ---
 
 ## 5. Merge Policy
 
 - Use the ordinary pull-request flow and required checks for changes to `main`.
 - Admin bypass, force-push, and general changes to branch protection are outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
-- On 2026-10-09 the owner explicitly authorized removing the 14 Q1/Q4 required check contexts listed in [the readiness audit](docs/audits/MVP_READINESS_AUDIT.md), from main ruleset `8335285`, after the corresponding CI diff is complete, reviewed and checked. The owner subsequently approved removing exactly one additional context, `Security Audit / Semgrep SAST`, after the reviewed scanner de-duplication change passes its checks. CodeQL remains blocking and Semgrep remains in pre-commit. Preserve every other rule and context; this permission does not authorize bypass, further context removals, or early promotion of advisory live smoke.
+- On 2026-10-09 the owner explicitly authorized removing the 14 Q1/Q4 required check contexts listed in [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md#authorized-required-context-removals), from main ruleset `8335285`, after the corresponding CI diff is complete, reviewed and checked. The owner subsequently approved removing exactly one additional context, `Security Audit / Semgrep SAST`, after the reviewed scanner de-duplication change passes its checks. CodeQL remains blocking and Semgrep remains in pre-commit. Preserve every other rule and context; this permission does not authorize bypass, further context removals, or early promotion of advisory live smoke.
 
 ---
 

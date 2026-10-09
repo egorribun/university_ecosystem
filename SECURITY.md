@@ -75,7 +75,7 @@ If you discover a vulnerability, please report it privately so we can address it
 ## 🚨 Dependency Audit & Vulnerability Reporting
 
 - **Automated Dependency Audits**: CI runs `npm audit` on `frontend/package-lock.json`, `pip audit` on Python packages, and `govulncheck` on Go services.
-- **Automated Scanners**: Pre-commit and CI pipelines run **Semgrep**, **Trivy**, **Bandit**, and **Gitleaks** with `.secrets.baseline` integrity checks.
+- **Automated Scanners**: Local pre-commit runs Semgrep (Docker-backed), Bandit, Gitleaks, and detect-secrets against `.secrets.baseline`. Hosted CI skips only the Semgrep hook, runs the other named hooks, performs Trivy image scans, and runs CodeQL analysis.
 - **Reporting Vulnerabilities**: Submit a private GitHub Security Advisory via the repository's **Security** tab.
 
 ### Response SLA (MOD-W8-03)

@@ -152,17 +152,13 @@ The current boundary is protected by:
   startup and checkpoint feedback after successful and failed dispatch;
 - `app/core/lifespan.py` and `app/core/di/infrastructure.py`, which show the
   sole production worker wiring;
-- `docs/audits/AUDIT_BE_DEFAULTS_CDC_2026-09-08.md`, which records the full
-  lifecycle graph and the required integration evidence.
+- [BE-08 in the findings ledger](../audits/INDEX.md#findings-ledger) records the historical classification; it is not a release certificate.
 
 The focused CDC suite must remain green on every current-SHA certification;
 green hermetic tests do not substitute for the integration gates above.
 
-## Related decisions and audits
+## Related decisions
 
 - [ADR-003: Background Jobs](ADR-003-background-jobs.md)
 - [ADR-004: Notification System](ADR-004-notification-system.md)
 - [ADR-022: Go Services Integration Testing with Testcontainers](ADR-022-go-services-integration-testing-with-testcontainers.md)
-- [`AUDIT_BE_DEFAULTS_CDC_2026-09-08.md`](../audits/AUDIT_BE_DEFAULTS_CDC_2026-09-08.md)
-- `AUDIT_PLATFORM_FULL.md`, Finding BE-08 (user-owned audit artifact;
-  tracked historical ledger, not a release certificate)

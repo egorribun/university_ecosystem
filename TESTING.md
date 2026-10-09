@@ -13,10 +13,10 @@ must not duplicate its thresholds as a second policy source.
 - Current patch coverage and per-component floors stay enforced until the
   separately approved Q3 migration; unsupported counters retain their current
   contract representation.
-- [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md) makes mutation testing
-  a nightly/manual signal after Q1. Until Q1 lands, existing mutation gates
-  remain enforced. Global 100% mutation closure is no longer an MVP task;
-  Q1/Q4 must land before release, and Q2/Q3 remain deferred.
+- [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md) Q1/Q4 migrations are
+  integrated. Full mutation runs remain nightly/manual and do not block release;
+  global 100% mutation closure is not an MVP task. Q2/Q3 follow-up is deferred
+  to v1.1; required PR/main checks and current coverage floors remain blocking.
 - Tier 0 code must remain fully covered for every metric its source report can
   represent.
 - Unsupported counters are reported as unsupported, never converted to a

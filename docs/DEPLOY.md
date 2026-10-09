@@ -16,9 +16,11 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Field Core Web Vitals (field CWV) и их сертификация находятся вне MVP: приёмка
   не использует внешнее staging/production или измерения на реальных устройствах,
   а canonical release frontend не включает сбор field CWV. Для MVP применяются
-  локальные Lighthouse/CI проверки и Compose/kind-приёмка. Ручная сертификация в
-  `cwv-field-certification.yml` и production-only certificate guard остаются для
-  будущих внешних развёртываний; они не являются предусловием выпуска `v1.0.0`.
+  локальные Lighthouse/CI проверки и текущие Compose/Core-проверки. Полная
+  приёмка опубликованных образов в kind остаётся планом v1.1 и не является
+  текущим сертификатом. Ручная сертификация в `cwv-field-certification.yml` и
+  production-only certificate guard остаются для будущих внешних развёртываний;
+  они не являются предусловием выпуска `v1.0.0`.
 - Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
@@ -192,14 +194,17 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 
 ### Офлайн-режим PWA
 
-- Service Worker кеширует SPA-shell (`_shell.html`) и выдаёт его для любых SPA-навигаций при
-  отсутствии сети; если shell недоступен, отдаётся `offline.html` из precache.
-- Запросы к API для расписания, новостей и событий (`/api/schedule`, `/api/news`,
-  `/api/events`) работают по стратегии stale-while-revalidate: при сбое сети
-  возвращаются сохранённые ответы, а при их отсутствии — пустые офлайн-плейсхолдеры
-  с заголовками `X-Offline-Fallback`/`X-Offline-Resource`.
-- Эндпоинты медиа/статических файлов остаются в NetworkFirst с ограничением размера кеша
-  (24 часа, до 200 записей).
+- При ошибке сетевой навигации Service Worker возвращает precache SPA-shell
+  (`_shell.html`); если shell недоступен, обработчик возвращает ошибку. Отдельную
+  страницу `offline.html` можно открыть напрямую, но это не навигационный fallback.
+- Кешируемые GET-запросы в `/api/` используют NetworkFirst-кеш в области текущей
+  сессии только после подтверждения её Service Worker. Предел — 100 записей и один
+  час; запросы без подтверждённой идентичности и с `no-store` идут в сеть без этого
+  кеша. Worker не создаёт пустые API-плейсхолдеры и заголовки
+  `X-Offline-Fallback`/`X-Offline-Resource`.
+- Ресурсы `/static/` используют StaleWhileRevalidate (100 записей, семь дней).
+  Для явных `/media/` действуют правила публичного или приватного кеша сессии,
+  а обычные изображения используют CacheFirst (200 записей, 30 дней).
 - Интерактивная карта и её lazy-чанки MapLibre намеренно не входят в install-time precache:
   это удерживает манифест ниже консервативного лимита CacheStorage. Offline-shell и
   общая fallback-страница остаются доступными без сети; маршрут карты (включая

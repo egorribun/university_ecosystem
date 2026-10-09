@@ -17,9 +17,11 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
   MVP: acceptance does not use external staging/production or measurements from
   physical devices, and the canonical release frontend does not enable field
   collection. MVP performance acceptance uses local Lighthouse/CI checks and
-  Compose/kind acceptance. The manual `cwv-field-certification.yml` workflow and
-  production-only certificate guard remain for future external deployments; they
-  are not prerequisites for the `v1.0.0` release.
+  current Compose/Core checks. Full published-image kind acceptance remains
+  planned for v1.1 and is not current certification evidence. The manual
+  `cwv-field-certification.yml` workflow and production-only certificate guard
+  remain for future external deployments; they are not prerequisites for the
+  `v1.0.0` release.
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/static` and `/storage` assets.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The `redis` backend and a URI supplied from a protected store through environment variables enable shared storage for middleware and sensitive endpoints; keep credentials out of URLs and shell history. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
@@ -190,15 +192,17 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 
 ### Offline PWA behaviour
 
-- The Service Worker caches the SPA shell (`_shell.html`) and serves it for navigation
-  requests while offline; when the shell is unavailable it falls back to `offline.html`
-  from the precache.
-- API calls for schedules, news, and events (`/api/schedule`, `/api/news`, `/api/events`)
-  use a stale-while-revalidate strategy. Cached responses are reused during outages and
-  empty offline placeholders are returned with `X-Offline-Fallback`/`X-Offline-Resource`
-  headers when nothing is cached yet.
-- Media and backend static assets keep the NetworkFirst strategy with a bounded cache
-  (24 hours, up to 200 entries).
+- When a navigation request fails, the Service Worker returns the precached SPA shell
+  (`_shell.html`); if that shell is unavailable, the handler returns an error. The
+  separately precached `offline.html` can be opened directly but is not this fallback.
+- Cacheable GET requests under `/api/` use a session-scoped NetworkFirst cache only
+  after the worker confirms the current session. The cache is limited to 100 entries
+  for one hour; requests without confirmed identity and `no-store` requests go to the
+  network without this cache. The worker does not synthesize empty API placeholders or
+  `X-Offline-Fallback`/`X-Offline-Resource` headers.
+- `/static/` assets use StaleWhileRevalidate (100 entries, seven days). Explicit
+  `/media/` requests use public or session-private cache rules, and generic image
+  requests use CacheFirst (200 entries, 30 days).
 - The interactive map and its lazy MapLibre chunks are intentionally excluded from the
   install-time precache so the manifest stays below a conservative CacheStorage budget.
   The offline shell and generic fallback page remain usable without a network; the map

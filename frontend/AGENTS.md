@@ -220,6 +220,6 @@ Use the standardized `useDebounced` hook from `@/hooks/useDebounced` with strate
 | `useMutation` result object in hook dependencies | Breaks referential stability, causes infinite re-renders   | Depend only on `mut.mutate`                       |
 | Reading `ref.current` during render              | Violates React Compiler contract                           | Extract primitives or store in `useState`         |
 | Monolithic import of `jspdf` / `MapLibre`        | Blows past 500 KB bundle budget                            | Use dynamic `import()` or `React.lazy()`          |
-| Interactive controls < 44x44px                   | Violates WCAG 2.2 AA target size criteria                  | Set minimum dimension `min-w-[44px] min-h-[44px]` |
+| Interactive controls < 44x44px                   | Violates the project's 44px minimum target size            | Set minimum dimension `min-w-[44px] min-h-[44px]` |
 | Unguarded Framer Motion animations               | Induces motion sickness for vestibular disorder users      | Gate animation props on `prefers-reduced-motion`  |
 | Blob URLs created during render                  | Memory leaks and unpredictable garbage collection          | Allocate in effects/handlers; revoke on unmount   |

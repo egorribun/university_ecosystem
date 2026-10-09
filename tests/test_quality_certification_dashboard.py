@@ -83,6 +83,37 @@ def test_dashboard_surfaces_missing_evidence_and_expiry(tmp_path: Path) -> None:
     assert "never interpreted as a passing score" in output
 
 
+def test_dashboard_distinguishes_configured_mutation_value_from_release_gate() -> None:
+    dashboard = _load_script("generate_dashboard")
+    output = dashboard.render_dashboard(
+        [],
+        {
+            "policy": {"patch_coverage": 100, "viable_mutant_score": 100},
+            "exclusions": [],
+            "quarantines": [],
+        },
+        today=date(2026, 10, 10),
+    )
+
+    assert "Configured current patch-coverage floor: **100%**" in output
+    assert "Tier 0 keeps 100% coverage" in output
+    assert "component floors remain blocking until" in output
+    assert "90% non-Tier 0 patch floor are not implemented" in output
+    assert "Configured viable-mutation score value: **100%**" in output
+    assert "nightly/manual lanes" in output
+    assert "mutation jobs from the MVP release gate" in output
+    assert "Q2 nightly regression check" in output
+    assert "planned, not implemented" in output
+    assert "No certified quality snapshot is currently published" in output
+    assert "MVP master plan" in output and "O1–O8" in output
+    assert "A release certification record requires" in output
+    assert "Trusted Codecov Upload" in output
+    assert "mutation jobs are not among them" in output
+    assert "mutation gates" not in output
+    assert "CI_CAPACITY_AUDIT_2026-09-08.md" not in output
+    assert "AUDIT_BE_DEFAULTS_CDC_2026-09-08.md" not in output
+
+
 def test_certification_cli_hashes_every_file_in_report_directory(
     tmp_path: Path, monkeypatch
 ) -> None:

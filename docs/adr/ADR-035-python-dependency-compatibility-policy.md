@@ -133,5 +133,4 @@ installation, vulnerability, SBOM and provenance gates.
 - [`uv.lock`](../../uv.lock)
 - [`tests/test_dependency_resolution_policy.py`](../../tests/test_dependency_resolution_policy.py)
 - [`docs/DEPENDENCY_COOLDOWN_EMERGENCY.md`](../DEPENDENCY_COOLDOWN_EMERGENCY.md)
-- `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding SEC-09 (user-owned audit
-  artifact; tracked historical ledger, not a release certificate)
+- [SEC-09 in the findings ledger](../audits/INDEX.md#findings-ledger) (historical classification; not release evidence).

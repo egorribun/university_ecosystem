@@ -1,9 +1,9 @@
 """Keep current authored Markdown links resolvable and test checker behavior.
 
-The unit tests pin ``scripts/docs/check_markdown_links.py`` behavior. The
-default authored-docs check excludes the legacy audit archive while its
-requirements transfer is in progress; archive inclusion remains covered by a
-temporary-directory behavior test rather than a repository-specific allowlist.
+The unit tests pin ``scripts/docs/check_markdown_links.py`` behavior. Legacy
+archives have been retired from the working tree. Archive inclusion remains a
+diagnostic mode for restored snapshots, covered by a temporary-directory test
+rather than a repository-specific allowlist.
 """
 
 from __future__ import annotations

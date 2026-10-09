@@ -69,8 +69,7 @@ helper `tests/minio_chaos_client.py`.
   real `FRONTEND_ORIGIN(S)`/`APP_BASE_URL` settings.
 - **Generated MSW handlers** (`frontend/src/tests/mocks/generated/`) stay
   as contract-gated developer tooling.
-- **Feature-flag scaffold** stays (see above); `.agents/` stays as repository
-  tooling.
+- **`.agents/`** stays as repository tooling.
 
 ## Consequences
 

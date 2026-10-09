@@ -31,7 +31,7 @@ class RedisSessionService:
     """
     Manages active session state in Redis for high-performance authentication.
 
-    Key Schema: session:{jti} -> Hash
+    Key Schema: session:v2:{jti} -> Hash
     """
 
     KEY_PREFIX = "session:v2:"
