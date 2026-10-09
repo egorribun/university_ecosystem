@@ -364,6 +364,85 @@ async def test_seed_owned_matching_source_content_backfills_translation_only_onc
 
 
 @pytest.mark.asyncio
+async def test_archived_demo_events_are_past_inactive_ordered_and_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 10, 9, 12, tzinfo=UTC)
+    monkeypatch.setattr(seed_demo_data, "_event_now_utc", lambda: now)
+    user = SimpleNamespace(id=uuid4())
+    database = DemoContentSession([])
+
+    await seed_demo_data.seed_archived_events(database, user)
+    rows = [row for row in database.content_rows if isinstance(row, Event)]
+    rows.sort(key=lambda row: row.starts_at)
+
+    assert len(seed_demo_data.ARCHIVE_EVENTS_DATA) == 9
+    assert len(rows) == 9
+    assert all(row.created_by == user.id for row in rows)
+    assert all(row.is_active is False for row in rows)
+    assert all(seed_demo_data._event_datetime_utc(row.ends_at) < now for row in rows)
+    assert [row.title for row in rows] == [
+        item["title"] for item in seed_demo_data.ARCHIVE_EVENTS_DATA
+    ]
+    assert rows[-1].title == "Архив: Выпускной вечер 2026"
+    assert rows[-1].title_en == "Archive: Class of 2026 graduation ceremony"
+
+    await seed_demo_data.seed_archived_events(database, user)
+    assert len(database.added) == 9
+    assert len([row for row in database.content_rows if isinstance(row, Event)]) == 9
+
+
+@pytest.mark.asyncio
+async def test_archived_demo_event_seed_preserves_foreign_natural_key_collision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 10, 9, 12, tzinfo=UTC)
+    monkeypatch.setattr(seed_demo_data, "_event_now_utc", lambda: now)
+    item = seed_demo_data.ARCHIVE_EVENTS_DATA[0]
+    foreign = SimpleNamespace(
+        title=item["title"],
+        starts_at=item["starts_at"],
+        ends_at=item["ends_at"],
+        created_by=uuid4(),
+        is_active=True,
+        description="user-owned event copy",
+        title_en=None,
+    )
+    database = DemoContentSession([foreign])
+    user = SimpleNamespace(id=uuid4())
+
+    await seed_demo_data.seed_archived_events(database, user)
+
+    owned = [
+        row
+        for row in database.added
+        if isinstance(row, Event) and row.created_by == user.id
+    ]
+    assert len(owned) == len(seed_demo_data.ARCHIVE_EVENTS_DATA) - 1
+    assert foreign.created_by != user.id
+    assert foreign.is_active is True
+    assert foreign.description == "user-owned event copy"
+    assert foreign.title_en is None
+
+
+@pytest.mark.asyncio
+async def test_archived_demo_event_seed_rejects_end_at_now_before_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = seed_demo_data.ARCHIVE_EVENTS_DATA[0]
+    now = seed_demo_data._event_datetime_utc(item["ends_at"])
+    monkeypatch.setattr(seed_demo_data, "_event_now_utc", lambda: now)
+    database = DemoContentSession([])
+
+    with pytest.raises(
+        RuntimeError, match="demo archive event dates must remain in the past"
+    ):
+        await seed_demo_data.seed_archived_events(database, SimpleNamespace(id=uuid4()))
+
+    assert database.added == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("user_row_creator", ["other", None])
 async def test_schedule_seed_skips_natural_key_collision_without_mutation_or_duplicate(
     user_row_creator: str | None,

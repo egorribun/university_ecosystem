@@ -9,6 +9,7 @@ test("Enter opens the lesson in the keyboard-selected schedule grid cell", async
 
   await loginAs(page, "student")
   await page.goto("/schedule")
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/schedule")
 
   const grid = page.getByRole("grid")
   await expect(grid).toBeVisible()

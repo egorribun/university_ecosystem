@@ -58,8 +58,9 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
 - Q1 обязателен до MVP: мутации исключаются из release gate и перестают запускаться
   как PR/main blocking lane; полные mutmut/Stryker остаются nightly/manual.
   Q1/Q4 source migration и разрешённое обновление protections внедрены;
-  hosted acceptance ещё открыта: run37886084026/a1 завершён с coverage/CodeQL
-  failures. Не продолжать работу ради глобального 100% mutation score.
+  PR acceptance подтверждена наf14f497e: Matrix37946889584/a1 SUCCESS,
+  exact-head join76/76 required SUCCESS. Для следующих SHA проверки обновляются;
+  main-push/release proof ещё открыты. Не работать ради global mutation score.
 - Q4 также обязателен до MVP: Schemathesis, DAST, chaos, cross-browser E2E и kind
   переходят в scheduled/manual lanes; PR сохраняет lint/types/unit/contracts,
   API drift, coverage и необходимую security-проверку. Live Chromium smoke остаётся

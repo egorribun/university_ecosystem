@@ -4223,6 +4223,17 @@ _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
 _PLAYWRIGHT_HTTP_STATUS_LIMIT = 32
 
 
+_PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
+    r"UE_LIVE_RETRY_V1 project=(?P<project>desktop|mobile) "
+    r"check=(?P<check>auth-logout|password-reset-replay) "
+    r"retry_after_seconds=(?P<retry_after>invalid|[1-9]|[1-5][0-9]|60) "
+    r"decision=(?P<decision>retry|declined-header|declined-deadline) "
+    r"remaining_ms=(?P<remaining>0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|60000)"
+)
+_PLAYWRIGHT_RETRY_DECISION_LIMIT = 32
+_PlaywrightRetryDecision = tuple[str, str, int | None, str, int]
+
+
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
     """Accept only complete stdout protocol records; discard all other content."""
     statuses: list[tuple[str, str, int]] = []
@@ -4249,6 +4260,39 @@ def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
             if len(statuses) == _PLAYWRIGHT_HTTP_STATUS_LIMIT:
                 break
     return statuses
+
+
+def _live_playwright_retry_decisions(output: str) -> list[_PlaywrightRetryDecision]:
+    """Accept only bounded retry-decision records from the live E2E helper."""
+    decisions: list[_PlaywrightRetryDecision] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 160 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_RETRY_DECISION_LINE.fullmatch(line)
+        if match is None:
+            continue
+
+        retry_after_text = match["retry_after"]
+        retry_after = None if retry_after_text == "invalid" else int(retry_after_text)
+        decision = match["decision"]
+        if (retry_after is None) != (decision == "declined-header"):
+            continue
+        remaining_ms = int(match["remaining"])
+        if decision == "retry" and remaining_ms == 0:
+            continue
+        record: _PlaywrightRetryDecision = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            match["check"],
+            retry_after,
+            decision,
+            remaining_ms,
+        )
+        if record not in decisions:
+            decisions.append(record)
+            if len(decisions) == _PLAYWRIGHT_RETRY_DECISION_LIMIT:
+                break
+    return decisions
 
 
 _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
@@ -4781,6 +4825,7 @@ def _run_live_playwright(
         )
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
+    retry_decisions = _live_playwright_retry_decisions(stdout)
     page_errors = _live_playwright_page_errors(stdout)
     profile_save_diagnostics = _live_playwright_profile_save_diagnostics(stdout)
     # A header from one stream must never authorize frames from the other.
@@ -4849,6 +4894,14 @@ def _run_live_playwright(
     for project, check, status in http_statuses:
         print(
             f"live E2E HTTP project={project} check={check} status={status}",
+            flush=True,
+        )
+    for project, check, retry_after, decision, remaining_ms in retry_decisions:
+        retry_after_label = "invalid" if retry_after is None else str(retry_after)
+        print(
+            f"live E2E retry project={project} check={check} "
+            f"retry_after_seconds={retry_after_label} decision={decision} "
+            f"remaining_ms={remaining_ms}",
             flush=True,
         )
     for project, check, current_page, error_type, count in page_errors:

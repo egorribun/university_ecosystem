@@ -4,6 +4,7 @@ test("Events status tabs are keyboard navigable", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await loginAs(page, "student")
   await page.goto("/events")
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/events")
 
   const tablist = page.getByRole("tablist", { name: /Мероприятия|Events/u })
   const activeTab = tablist.getByRole("tab", { name: /Актуальные|Upcoming/u })

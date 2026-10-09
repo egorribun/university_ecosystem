@@ -106,6 +106,14 @@ test("live News history acceptance uses a stable read-only demo article", () => 
   assert.match(spec, /categoryOption: \/Наука\/u/u)
   assert.match(spec, /categoryOption: \/Science\/u/u)
   assert.match(spec, /getByRole\("heading", \{ name: locale\.listHeading, exact: true \}\)/u)
+  assert.ok(spec.includes("listHeading: /^(?:University news|University news ?[0-9]+)$/u"))
+  assert.ok(
+    spec.includes("listHeading: /^(?:Новости университета|Новости университета ?[0-9]+)$/u")
+  )
+  assert.match(
+    spec,
+    /expect\.poll\(\(\) => new URL\(page\.url\(\)\)\.pathname\)\.toBe\(["']\/news["']\)/u
+  )
   assert.match(spec, /toHaveAttribute\("lang", locale\.language\)/u)
   assert.match(spec, /getByRole\("button", \{ name: locale\.categoryOption \}\)/u)
   assert.match(spec, /searchParams\.get\("cat"\)/u)

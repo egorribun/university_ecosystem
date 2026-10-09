@@ -710,6 +710,28 @@ _DAY_BASE = {
 }
 
 
+# Nine localized archive rows keep the acceptance target in the third desktop
+# grid row (four columns) while reusing reviewed demo copy and its English
+# translations. The graduation row sorts last in the API's ascending archive
+# order. These fixed dates remain past and are independent of the upcoming
+# event-batch anchor.
+ARCHIVE_EVENT_ANCHOR = _dt(2024, 1, 1, 15, 0)
+ARCHIVE_EVENT_SOURCES = (*EVENTS_DATA[:8], EVENTS_DATA[-1])
+ARCHIVE_EVENTS_DATA = []
+for _archive_index, _archive_source in enumerate(ARCHIVE_EVENT_SOURCES):
+    _archive_start = ARCHIVE_EVENT_ANCHOR + timedelta(days=7 * _archive_index)
+    ARCHIVE_EVENTS_DATA.append(
+        {
+            **_archive_source,
+            "title": f"Архив: {_archive_source['title']}",
+            "title_en": f"Archive: {_archive_source['title_en']}",
+            "starts_at": _archive_start,
+            "ends_at": _archive_start
+            + (_archive_source["ends_at"] - _archive_source["starts_at"]),
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Seed functions
 # ---------------------------------------------------------------------------
@@ -1327,6 +1349,58 @@ async def seed_events(db: AsyncSession, user: User) -> None:
     print(f"  ✓ Events: {len(EVENTS_DATA)} events")
 
 
+async def seed_archived_events(db: AsyncSession, user: User) -> None:
+    """Seed a collision-preserving, localized historical Events collection."""
+    now = _event_datetime_utc(_event_now_utc())
+    created = 0
+    for item in ARCHIVE_EVENTS_DATA:
+        starts_at = _event_datetime_utc(item["starts_at"])
+        ends_at = _event_datetime_utc(item["ends_at"])
+        if ends_at >= now:
+            raise RuntimeError("demo archive event dates must remain in the past")
+
+        existing_seed = await db.scalar(
+            select(Event).where(
+                Event.title == item["title"],
+                Event.starts_at == starts_at,
+                Event.created_by == user.id,
+            )
+        )
+        if existing_seed is not None:
+            _backfill_event_translations(existing_seed, item)
+            continue
+
+        natural_key_collision = await db.scalar(
+            select(Event).where(
+                Event.title == item["title"],
+                Event.starts_at == starts_at,
+            )
+        )
+        if natural_key_collision is not None:
+            continue
+
+        db.add(
+            Event(
+                title=item["title"],
+                title_en=item["title_en"],
+                description=item["description"],
+                description_en=item["description_en"],
+                location=item["location"],
+                location_en=item["location_en"],
+                event_type=item["event_type"],
+                event_type_en=item["event_type_en"],
+                starts_at=starts_at,
+                ends_at=ends_at,
+                image_url=item["image_url"],
+                is_active=False,
+                created_by=user.id,
+            )
+        )
+        created += 1
+    await db.flush()
+    print(f"  ✓ Events archive: {created} synthetic archived events")
+
+
 async def seed_schedule(db, group: Group, user: User) -> None:
     rows = 0
     existing_rows = await db.scalars(
@@ -1394,6 +1468,7 @@ async def main() -> None:
             await seed_news(db, user)
             await seed_stories(db, user)
             await seed_events(db, user)
+            await seed_archived_events(db, user)
             await seed_schedule(db, group, user)
             if _is_live_stand_demo_target(target_project):
                 peer = await seed_demo_peer_user(db, group)

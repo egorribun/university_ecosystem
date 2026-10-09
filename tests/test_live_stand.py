@@ -1942,6 +1942,67 @@ def test_live_playwright_http_status_auth_session_cap_requires_exact_forbidden_s
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("check", ["auth-logout", "password-reset-replay"])
+@pytest.mark.parametrize("retry_after", [1, 40, 60])
+@pytest.mark.parametrize("decision", ["retry", "declined-deadline"])
+def test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions(
+    project: str, check: str, retry_after: int, decision: str
+) -> None:
+    row = (
+        f"UE_LIVE_RETRY_V1 project={project} check={check} "
+        f"retry_after_seconds={retry_after} decision={decision} remaining_ms=12345\n"
+    )
+    assert live_stand._live_playwright_retry_decisions(row) == [
+        (project, check, retry_after, decision, 12345)
+    ]
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+def test_live_playwright_retry_diagnostic_accepts_invalid_header_decline(
+    project: str,
+) -> None:
+    row = (
+        f"UE_LIVE_RETRY_V1 project={project} check=auth-logout "
+        "retry_after_seconds=invalid decision=declined-header remaining_ms=0\n"
+    )
+    assert live_stand._live_playwright_retry_decisions(row) == [
+        (project, "auth-logout", None, "declined-header", 0)
+    ]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        "UE_LIVE_RETRY_V1 project=private check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=private retry_after_seconds=1 decision=retry remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=0 decision=retry remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=61 decision=retry remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=01 decision=retry remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=declined-header remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=invalid decision=declined-deadline remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=60001\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=99999\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=10 credential\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=0\n",
+    ],
+)
+def test_live_playwright_retry_diagnostics_reject_malformed_records(row: str) -> None:
+    assert live_stand._live_playwright_retry_decisions(row) == []
+
+
+def test_live_playwright_retry_diagnostics_deduplicate_and_bound_records() -> None:
+    output = "".join(
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout "
+        f"retry_after_seconds=1 decision=retry remaining_ms={remaining}\n"
+        for remaining in range(1, 41)
+    )
+    records = live_stand._live_playwright_retry_decisions(output + output)
+    assert records == [
+        ("desktop", "auth-logout", 1, "retry", remaining) for remaining in range(1, 33)
+    ]
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize("newline", [chr(10), chr(13) + chr(10)])
 @pytest.mark.parametrize(
     ("check", "status"),
@@ -2047,6 +2108,12 @@ def test_live_playwright_emits_only_bounded_http_statuses(
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-logout status=401\n"
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-session-preflight status=403\n"
     )
+    retry_sentinels = (
+        "UE_LIVE_RETRY_V1 project=mobile check=auth-logout "
+        "retry_after_seconds=40 decision=retry remaining_ms=30000\n"
+        "UE_LIVE_RETRY_V1 project=desktop check=password-reset-replay "
+        "retry_after_seconds=invalid decision=declined-header remaining_ms=0\n"
+    )
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
         return_code,
@@ -2054,6 +2121,7 @@ def test_live_playwright_emits_only_bounded_http_statuses(
             "private-title https://private.invalid/?token=private-token\n"
             + sentinel * 20
             + auth_sentinels
+            + retry_sentinels
             + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=403\n"
             + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-users status="
         ).encode(),
@@ -2080,6 +2148,8 @@ def test_live_playwright_emits_only_bounded_http_statuses(
         "live E2E HTTP project=desktop check=auth-logout status=401",
         "live E2E HTTP project=desktop check=auth-session-preflight status=403",
         "live E2E HTTP project=mobile check=admin-feature-flags status=403",
+        "live E2E retry project=mobile check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=30000",
+        "live E2E retry project=desktop check=password-reset-replay retry_after_seconds=invalid decision=declined-header remaining_ms=0",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""

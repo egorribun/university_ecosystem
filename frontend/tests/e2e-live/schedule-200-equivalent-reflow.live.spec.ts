@@ -12,6 +12,7 @@ test("schedule reflows and remains keyboard-usable at a 200%-equivalent CSS view
   await page.setViewportSize({ width: 720, height: 450 })
   await loginAs(page, "student")
   await page.goto("/schedule")
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/schedule")
 
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
   const dayTabs = page.getByRole("tablist")

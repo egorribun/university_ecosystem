@@ -5,14 +5,14 @@ const NEWS_LOCALIZATIONS = {
   en: {
     languageOption: /English|Английский/u,
     language: "en",
-    listHeading: "News",
+    listHeading: /^(?:University news|University news ?[0-9]+)$/u,
     categoryOption: /Science/u,
     articleTitle: "GUU ranks among the country's top 20 universities",
   },
   ru: {
     languageOption: /Русский|Russian/u,
     language: "ru",
-    listHeading: "Новости",
+    listHeading: /^(?:Новости университета|Новости университета ?[0-9]+)$/u,
     categoryOption: /Наука/u,
     articleTitle: "ГУУ вошёл в топ-20 лучших университетов страны",
   },
@@ -66,6 +66,7 @@ async function verifyLanguagePersistsAfterReload(page: Page, language: "en" | "r
 async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   const locale = NEWS_LOCALIZATIONS[language]
   await page.goto("/news")
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/news")
   await expect(page.locator("html")).toHaveAttribute("lang", locale.language)
   await expect(page.getByRole("heading", { name: locale.listHeading, exact: true })).toBeVisible()
 

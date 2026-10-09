@@ -33,7 +33,10 @@ test("real authenticated core-route axe acceptance checks serious and critical f
   assert.match(spec, /blocking\.map\(\s*\(\{\s*impact,\s*id\s*\}/u)
   assert.doesNotMatch(spec, /page\.route\(|routeFromHAR|useMockApi/u)
   assert.doesNotMatch(spec, /JSON\.stringify\(blocking[\s\S]{0,100}(?:html|nodes|failureSummary)/u)
-  assert.match(fixtures, /export async function loginAs\(page: Page, role: Role\)/u)
+  assert.match(
+    fixtures,
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+  )
   assert.match(config, /name:\s*["']desktop["']/u)
   assert.match(config, /name:\s*["']mobile["']/u)
   assert.match(config, /trace:\s*["']off["']/u)

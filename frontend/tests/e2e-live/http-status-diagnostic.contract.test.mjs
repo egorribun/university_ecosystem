@@ -16,7 +16,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { reportLiveHttpStatus } from ${JSON.stringify(helperUrl.href)};\nimport { reportLiveProfileSaveFailure } from ${JSON.stringify(profileHelperUrl.href)};\n${calls}`,
+      `import { reportLiveHttpStatus, reportLiveRateLimitRetry } from ${JSON.stringify(helperUrl.href)};\nimport { reportLiveProfileSaveFailure } from ${JSON.stringify(profileHelperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -102,6 +102,62 @@ test("session-cap diagnostics accept only the forbidden status", () => {
   )
 })
 
+test("retry decisions emit only finite delay, decision, and remaining-budget values", () => {
+  const calls = [
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 40, "retry", 60000)',
+    'reportLiveRateLimitRetry("mobile", "password-reset-replay", 60, "declined-deadline", 12345)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", null, "declined-header", 0)',
+  ].join("\n")
+  assert.equal(
+    reportInChild(calls),
+    [
+      "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=60000\n",
+      "UE_LIVE_RETRY_V1 project=mobile check=password-reset-replay retry_after_seconds=60 decision=declined-deadline remaining_ms=12345\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=invalid decision=declined-header remaining_ms=0\n",
+    ].join("")
+  )
+})
+
+test("retry decision diagnostics reject unbounded and inconsistent runtime values", () => {
+  const privateValue = {
+    toString() {
+      throw new Error("private-value")
+    },
+  }
+  const calls = [
+    'reportLiveRateLimitRetry("private-project", "auth-logout", 1, "retry", 1000)',
+    'reportLiveRateLimitRetry("desktop", "private-check", 1, "retry", 1000)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 0, "retry", 1000)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 61, "retry", 1000)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 1.5, "retry", 1000)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", "private-header", "retry", 1000)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 1, "declined-header", 1000)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", null, "declined-deadline", 1000)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", 0)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", 60001)',
+    `reportLiveRateLimitRetry("desktop", "auth-logout", ${JSON.stringify(privateValue)}, "retry", 1000)`,
+  ].join("\n")
+  assert.equal(reportInChild(calls), "")
+})
+
+test("retry diagnostics deduplicate and cap at thirty-two records", () => {
+  const output = reportInChild(
+    Array.from(
+      { length: 40 },
+      (_, remaining) =>
+        `reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", ${remaining})`
+    ).join("\n")
+  )
+  assert.equal(
+    output,
+    Array.from(
+      { length: 32 },
+      (_, index) =>
+        `UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=${index + 1}\n`
+    ).join("")
+  )
+})
+
 test("HTTP diagnostics retain a differing replay status after eight initial records", () => {
   const initial = ["desktop", "mobile"].flatMap((project) =>
     ["admin-users", "admin-feature-flags", "admin-feature-flags-ui", "password-reset-replay"].map(
@@ -130,7 +186,7 @@ test("HTTP diagnostic helper has no browser, response, environment, or artifact 
     source,
     /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\b(?:page|browser|context|response|request|URL)\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
   )
-  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
+  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 2)
 })
 
 test("the real Playwright list reporter preserves stdout protocol without browser fixtures", async (t) => {

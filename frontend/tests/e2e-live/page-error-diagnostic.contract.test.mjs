@@ -358,10 +358,21 @@ test("reset diagnostic wiring preserves the hard page error and replay assertion
   assert.match(fixtures, /testInfo\.title ===/u)
   assert.ok(fixtures.includes(resetTitle))
   assert.match(fixtures, /\.endsWith\("\/tests\/e2e-live\/password-reset\.live\.spec\.ts"\)/u)
-  assert.match(
-    spec,
-    /reportLiveHttpStatus\(testInfo\.project\.name, "password-reset-replay", replayResult\.status\(\)\)\s*expect\(replayResult\.status\(\), "a consumed reset token must be rejected by the API"\)\.toBe\(400\)/u
+  assert.ok(spec.includes("const firstReplayStatus = firstReplayResult.status()"))
+  assert.ok(spec.includes("let replayStatus = firstReplayStatus"))
+  assert.ok(spec.includes("if (firstReplayStatus === 429)"))
+  const firstReplayReport = spec.indexOf(
+    'reportLiveHttpStatus(testInfo.project.name, "password-reset-replay", firstReplayStatus)'
   )
+  const retriedReplayReport = spec.indexOf(
+    'reportLiveHttpStatus(testInfo.project.name, "password-reset-replay", replayStatus)'
+  )
+  const hardReplayAssertion = spec.indexOf(
+    'expect(replayStatus, "a consumed reset token must be rejected by the API").toBe(400)'
+  )
+  assert.ok(firstReplayReport >= 0)
+  assert.ok(retriedReplayReport > firstReplayReport)
+  assert.ok(hardReplayAssertion > retriedReplayReport)
 })
 
 test("auth role fixture wires diagnostics only to its exact denied-role tests", async () => {

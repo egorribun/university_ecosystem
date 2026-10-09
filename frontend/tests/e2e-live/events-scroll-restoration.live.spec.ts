@@ -9,14 +9,14 @@ const EVENT_LOCALES = [
     languageOption: /Русский|Russian/u,
     listHeading: "Мероприятия",
     archiveTab: /Прошедшие|Past events/u,
-    eventTitle: /Выпускной вечер 2026/u,
+    eventTitle: /^Архив: Выпускной вечер 2026$/u,
   },
   {
     code: "en",
     languageOption: /Английский|English/u,
     listHeading: "Events",
     archiveTab: /Прошедшие|Past events/u,
-    eventTitle: /Class of 2026 graduation ceremony/u,
+    eventTitle: /^Archive: Class of 2026 graduation ceremony$/u,
   },
 ] as const
 
@@ -90,6 +90,7 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
     .toContain(`ue:language=${locale.code}`)
 
   await page.goto("/events")
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/events")
   await expect(page.locator("html")).toHaveAttribute("lang", locale.code)
   await expect(page.getByRole("heading", { name: locale.listHeading })).toBeVisible()
 
@@ -99,8 +100,8 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
   await expect(page).toHaveURL(/\/events\?tab=archive$/u)
   const archiveUrl = page.url()
 
-  // This synthetic event is seeded in both locales. The test only reads its
-  // details and browser history; it never registers, edits, or deletes it.
+  // This seeded archive event is the last item in chronological order. The
+  // test reads its details and history without changing or registering it.
   const selectedEvent = page.getByRole("link", { name: locale.eventTitle })
   await expect(selectedEvent).toBeVisible()
   await page.evaluate(() => document.fonts.ready.then(() => undefined))

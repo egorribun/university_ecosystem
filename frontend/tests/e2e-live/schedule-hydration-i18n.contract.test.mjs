@@ -30,12 +30,16 @@ const [spec, config, authRoute, scheduleRoute, schedulePage, scheduleHeader, hyd
 test("schedule hydration acceptance exercises real RU and EN document requests", () => {
   assert.match(spec, /loginAs\(page,\s*["']student["']\)/u)
   assert.match(spec, /page\.goto\(["']\/schedule["']/u)
+  assert.ok(spec.includes('new URL(page.url()).pathname).toBe("/schedule")'))
   assert.match(spec, /name:\s*["']ue:language["']/u)
   assert.match(spec, /localStorage\.setItem\(["']ue:language["']/u)
   assert.match(spec, /Russian schedule SSR markup hydrates without raw i18n keys/u)
   assert.match(spec, /English schedule SSR markup hydrates without raw i18n keys/u)
   assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|page\.request/u)
-  assert.match(fixtures, /export async function loginAs\(page: Page, role: Role\)/u)
+  assert.match(
+    fixtures,
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+  )
 })
 
 test("schedule assertions cover server markup, hydration, real content, and translation keys", () => {

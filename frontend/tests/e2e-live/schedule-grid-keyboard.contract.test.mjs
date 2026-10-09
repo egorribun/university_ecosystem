@@ -18,6 +18,7 @@ test("schedule grid keyboard acceptance uses the real seeded desktop route", () 
   assert.match(spec, /testInfo\.project\.name\s*!==\s*["']desktop["']/u)
   assert.match(spec, /loginAs\(page,\s*["']student["']\)/u)
   assert.match(spec, /page\.goto\(["']\/schedule["']\)/u)
+  assert.ok(spec.includes('new URL(page.url()).pathname).toBe("/schedule")'))
   assert.match(spec, /getByRole\(["']grid["']\)/u)
   assert.match(spec, /locator\('\[id\^="lesson-card-"\]'\)/u)
   assert.match(spec, /press\(["']ArrowLeft["']\)[\s\S]*press\(["']Enter["']\)/u)
@@ -33,7 +34,10 @@ test("schedule grid keyboard acceptance uses the real seeded desktop route", () 
   )
   assert.doesNotMatch(spec, /page\.route\(|routeFromHAR|mock(?:ed)?Api/u)
 
-  assert.match(fixtures, /export async function loginAs\(page: Page, role: Role\)/u)
+  assert.match(
+    fixtures,
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+  )
   assert.match(scheduleRoute, /createFileRoute\(["']\/_auth\/schedule["']\)/u)
   assert.match(scheduleRoute, /scheduleGroupsQueryOptions/u)
   assert.match(scheduleRoute, /pageScheduleQueryOptions/u)

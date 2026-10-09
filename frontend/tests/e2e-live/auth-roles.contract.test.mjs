@@ -45,15 +45,24 @@ test("role authentication uses the real login form and does not intercept auth t
 
   assert.ok(loginHelpers, "login helper implementation is present in the shared fixture")
   assert.match(
-    loginHelpers,
-    /export async function submitLogin\([\s\S]*?page\.goto\(["']\/login["']\)/u
+    fixtures,
+    /export async function submitLogin\(\s*page: Page,\s*email: string,\s*password: string,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{[\s\S]*?await page\.goto\(["']\/login["'],\s*operationOptions\(45_000\)\)/u
   )
-  assert.match(loginHelpers, /getByRole\(["']textbox["'][\s\S]*?\.fill\(email\)/u)
-  assert.match(loginHelpers, /getByLabel\(["']Пароль["'][\s\S]*?\.fill\(password\)/u)
-  assert.match(loginHelpers, /getByRole\(["']button["'][\s\S]*?\.click\(\)/u)
   assert.match(
     loginHelpers,
-    /export async function loginAs\(page: Page, role: Role\)[\s\S]*?ROLES\[role\]\.email[\s\S]*?ROLES\[role\]\.password/u
+    /getByRole\(["']textbox["'][\s\S]*?\.fill\(email,\s*operationOptions\(15_000\)\)/u
+  )
+  assert.match(
+    loginHelpers,
+    /getByLabel\(["']Пароль["'][\s\S]*?\.fill\(password,\s*operationOptions\(15_000\)\)/u
+  )
+  assert.match(
+    loginHelpers,
+    /getByRole\(["']button["'][\s\S]*?\.click\(operationOptions\(15_000\)\)/u
+  )
+  assert.match(
+    loginHelpers,
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
   )
   assert.doesNotMatch(loginHelpers, /page\.route\(|routeWebSocket|\.fulfill\(|useMockApi/u)
 })

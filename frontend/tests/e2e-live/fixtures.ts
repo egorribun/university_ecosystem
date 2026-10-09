@@ -3,9 +3,11 @@ import {
   request,
   test as base,
   type APIRequestContext,
+  type Browser,
   type Page,
   type Request,
   type Response,
+  type TestInfo,
 } from "@playwright/test"
 import {
   createLivePageErrorDiagnostics,
@@ -13,7 +15,7 @@ import {
   isLiveAuthRoleDenialScenario,
 } from "./page-error-diagnostic"
 import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
-import { reportLiveHttpStatus } from "./http-status-diagnostic"
+import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 
 /**
  * Accounts created by scripts/seed_demo_data.py and scripts/seed_admin_data.py
@@ -72,14 +74,47 @@ if (
 }
 const MAILPIT_URL = mailpitURL.toString().replace(/\/$/, "")
 
-/** Submits the login form without asserting where it lands. */
-export async function submitLogin(page: Page, email: string, password: string): Promise<void> {
-  await page.goto("/login")
-  await page.getByRole("textbox", { name: "E-mail" }).fill(email)
-  await page.getByLabel("Пароль", { exact: true }).fill(password)
-  await page.getByRole("button", { name: "Войти" }).click()
+const LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS = 5_000
+const LIVE_OWNED_CLEANUP_OPERATION_MARGIN_MS = 250
+
+export function liveDeadlineBoundedTimeoutMs(
+  deadlineAtMs: number,
+  maximumMs: number,
+  nowMs = performance.now()
+): number | null {
+  if (!Number.isFinite(deadlineAtMs) || !Number.isFinite(maximumMs) || maximumMs < 1) return null
+  const remainingMs = Math.floor(deadlineAtMs - nowMs - LIVE_OWNED_CLEANUP_OPERATION_MARGIN_MS)
+  return Number.isFinite(remainingMs) && remainingMs >= 1 ? Math.min(maximumMs, remainingMs) : null
 }
 
+function ownedCleanupOperationTimeout(deadlineAtMs: number, maximumMs: number): number {
+  const timeoutMs = liveDeadlineBoundedTimeoutMs(deadlineAtMs, maximumMs)
+  if (timeoutMs === null) throw new Error("Owned cleanup deadline exhausted")
+  return timeoutMs
+}
+
+/** Submits the login form without asserting where it lands. */
+export async function submitLogin(
+  page: Page,
+  email: string,
+  password: string,
+  cleanupDeadlineAtMs?: number,
+  maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS
+): Promise<void> {
+  const operationOptions = (normalMaximumMs: number) =>
+    cleanupDeadlineAtMs === undefined
+      ? undefined
+      : {
+          timeout: ownedCleanupOperationTimeout(
+            cleanupDeadlineAtMs,
+            Math.min(normalMaximumMs, maximumOperationTimeoutMs)
+          ),
+        }
+  await page.goto("/login", operationOptions(45_000))
+  await page.getByRole("textbox", { name: "E-mail" }).fill(email, operationOptions(15_000))
+  await page.getByLabel("Пароль", { exact: true }).fill(password, operationOptions(15_000))
+  await page.getByRole("button", { name: "Войти" }).click(operationOptions(15_000))
+}
 type OwnedSessionCookie = {
   accessToken: string
   csrfToken: string | null
@@ -91,13 +126,29 @@ type OwnedLoginLease = {
   sessions: OwnedSessionCookie[]
 }
 
+type OwnedSessionCleanupCallback = (browser: Browser, deadlineAtMs: number) => Promise<void>
+
 type OwnedSessionScope = {
   leases: OwnedLoginLease[]
   issuedTokens: Set<string>
   captureFailed: boolean
+  cleanupCallbacks: OwnedSessionCleanupCallback[]
 }
 
+const MAX_OWNED_SESSION_CLEANUP_CALLBACKS = 1
 let activeOwnedSessionScope: OwnedSessionScope | undefined
+
+export function registerOwnedSessionCleanup(callback: OwnedSessionCleanupCallback): void {
+  const scope = activeOwnedSessionScope
+  if (!scope) throw new Error("Owned resource cleanup requires the owned-session fixture")
+  if (
+    typeof callback !== "function" ||
+    scope.cleanupCallbacks.length >= MAX_OWNED_SESSION_CLEANUP_CALLBACKS
+  ) {
+    throw new Error("Owned resource cleanup registration limit exceeded")
+  }
+  scope.cleanupCallbacks.push(callback)
+}
 
 type OwnedAuthStatusCheck =
   "auth-login" | "auth-session-cap" | "auth-logout" | "auth-session-preflight"
@@ -110,7 +161,7 @@ function reportOwnedAuthStatus(check: OwnedAuthStatusCheck, status: number): voi
   }
 }
 
-function ownedSessionOrigin(): string {
+export function ownedSessionOrigin(): string {
   const configured = process.env.LIVE_BASE_URL
   if (!configured) throw new Error("LIVE_BASE_URL is required for owned session cleanup")
 
@@ -177,10 +228,162 @@ async function statusOnly(
   }
 }
 
-async function cleanupOwnedSessionScope(scope: OwnedSessionScope): Promise<string[]> {
+const LIVE_SENSITIVE_WINDOW_SECONDS = 60
+const LIVE_RETRY_MARGIN_MS = 250
+const LIVE_MAX_RETRY_TEST_TIMEOUT_MS = 60_000
+const LIVE_OWNED_SESSION_CLEANUP_TIMEOUT_MS = 60_000
+const LIVE_OWNED_SESSION_SETUP_RESERVE_MS = 250
+const LIVE_OWNED_SESSION_DISPOSE_RESERVE_MS = 500
+const LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS = 5_000
+
+export function parseLiveRateLimitRetryAfter(value: string | undefined): number | null {
+  if (!value || !/^[1-9][0-9]*$/u.test(value)) return null
+  const seconds = Number(value)
+  return Number.isSafeInteger(seconds) && seconds <= LIVE_SENSITIVE_WINDOW_SECONDS ? seconds : null
+}
+
+export function liveRateLimitRetryFitsDeadline(
+  deadlineAtMs: number,
+  delaySeconds: number,
+  requestBudgetMs: number,
+  reserveMs = 0,
+  nowMs = performance.now()
+): boolean {
+  if (!Number.isSafeInteger(delaySeconds) || delaySeconds < 0) return false
+  if (!Number.isFinite(deadlineAtMs) || !Number.isFinite(nowMs)) return false
+  if (!Number.isFinite(requestBudgetMs) || requestBudgetMs < 0) return false
+  if (!Number.isFinite(reserveMs) || reserveMs < 0) return false
+  const neededMs = delaySeconds * 1000 + requestBudgetMs + reserveMs + LIVE_RETRY_MARGIN_MS
+  const remainingMs = deadlineAtMs - nowMs
+  return Number.isFinite(remainingMs) && neededMs <= remainingMs
+}
+
+/**
+ * Uses TestInfo's slot deadline from pinned @playwright/test 1.63.0. The API is
+ * private and deliberately fails closed on an upgrade or an unexpected shape.
+ */
+export function liveTestSlotDeadlineAtMs(
+  testInfo: TestInfo,
+  nowMs = performance.now()
+): number | null {
+  if (!Number.isFinite(nowMs)) return null
+  const timeoutMs = testInfo.timeout
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > LIVE_MAX_RETRY_TEST_TIMEOUT_MS) {
+    return null
+  }
+  let deadlineMethod: unknown
+  try {
+    deadlineMethod = Reflect.get(testInfo, "_deadline")
+  } catch {
+    return null
+  }
+  if (typeof deadlineMethod !== "function") return null
+
+  let slot: unknown
+  try {
+    slot = Reflect.apply(deadlineMethod, testInfo, [])
+  } catch {
+    return null
+  }
+  if (typeof slot !== "object" || slot === null || Array.isArray(slot)) return null
+  const values = slot as { deadline?: unknown; timeout?: unknown }
+  if (
+    typeof values.deadline !== "number" ||
+    !Number.isFinite(values.deadline) ||
+    values.timeout !== timeoutMs ||
+    values.deadline <= nowMs ||
+    values.deadline > nowMs + timeoutMs + 1
+  ) {
+    return null
+  }
+  return values.deadline
+}
+
+export type LiveRateLimitRetryDecision = "retry" | "declined-header" | "declined-deadline"
+
+export function assessLiveRateLimitRetry(
+  testInfo: TestInfo,
+  delaySeconds: number | null,
+  requestBudgetMs: number,
+  reserveMs: number,
+  nowMs = performance.now()
+): { decision: LiveRateLimitRetryDecision; deadlineAtMs: number | null } {
+  if (
+    delaySeconds === null ||
+    !Number.isSafeInteger(delaySeconds) ||
+    delaySeconds < 0 ||
+    delaySeconds > LIVE_SENSITIVE_WINDOW_SECONDS
+  ) {
+    return { decision: "declined-header", deadlineAtMs: null }
+  }
+  const deadlineAtMs = liveTestSlotDeadlineAtMs(testInfo, nowMs)
+  if (
+    deadlineAtMs === null ||
+    !liveRateLimitRetryFitsDeadline(deadlineAtMs, delaySeconds, requestBudgetMs, reserveMs, nowMs)
+  ) {
+    return { decision: "declined-deadline", deadlineAtMs }
+  }
+  return { decision: "retry", deadlineAtMs }
+}
+
+export async function waitForLiveRateLimitRetry(delaySeconds: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, delaySeconds * 1000 + LIVE_RETRY_MARGIN_MS)
+  })
+}
+
+async function statusAndRetryAfter(
+  responsePromise: Promise<Awaited<ReturnType<APIRequestContext["get"]>>>
+): Promise<{ status: number; retryAfter: string | undefined }> {
+  const response = await responsePromise
+  try {
+    return { status: response.status(), retryAfter: response.headers()["retry-after"] }
+  } finally {
+    await response.dispose()
+  }
+}
+
+async function runOwnedSessionCleanupCallbacks(
+  scope: OwnedSessionScope,
+  browser: Browser,
+  deadlineAtMs: number
+): Promise<string[]> {
   const failures: string[] = []
-  for (const lease of scope.leases) {
+  const existingSessions = scope.leases.reduce((total, lease) => total + lease.sessions.length, 0)
+  const plannedSessions = existingSessions + scope.cleanupCallbacks.length
+  const plannedLeases = scope.leases.length + scope.cleanupCallbacks.length
+  const leaseCleanupReserveMs =
+    plannedSessions * 3 * LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS +
+    plannedLeases * LIVE_OWNED_SESSION_DISPOSE_RESERVE_MS +
+    LIVE_OWNED_SESSION_SETUP_RESERVE_MS
+  const callbackDeadlineAtMs = deadlineAtMs - leaseCleanupReserveMs
+
+  for (const callback of scope.cleanupCallbacks) {
+    try {
+      if (callbackDeadlineAtMs <= performance.now()) {
+        throw new Error("Owned resource cleanup has no reserved time")
+      }
+      await callback(browser, callbackDeadlineAtMs)
+    } catch {
+      failures.push("owned-resource-cleanup")
+    }
+  }
+  return failures
+}
+
+async function cleanupOwnedSessionScope(
+  scope: OwnedSessionScope,
+  deadlineAtMs: number,
+  testInfo: TestInfo
+): Promise<string[]> {
+  const failures: string[] = []
+  const totalSessions = scope.leases.reduce((total, lease) => total + lease.sessions.length, 0)
+  let processedSessions = 0
+  for (let leaseIndex = 0; leaseIndex < scope.leases.length; leaseIndex += 1) {
+    const lease = scope.leases[leaseIndex]
+    if (!lease) continue
     for (const session of lease.sessions) {
+      processedSessions += 1
       try {
         const beforeLogout = await statusOnly(
           lease.api.get(new URL("/api/v1/users/me", ownedSessionOrigin()).toString(), {
@@ -188,7 +391,10 @@ async function cleanupOwnedSessionScope(scope: OwnedSessionScope): Promise<strin
               Authorization: "Bearer " + session.accessToken,
             },
             maxRedirects: 0,
-            timeout: 5000,
+            timeout: ownedCleanupOperationTimeout(
+              deadlineAtMs,
+              LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS
+            ),
           })
         )
         if (beforeLogout === 401) continue
@@ -202,23 +408,87 @@ async function cleanupOwnedSessionScope(scope: OwnedSessionScope): Promise<strin
           continue
         }
 
-        const logoutStatus = await statusOnly(
+        const csrfToken = session.csrfToken
+        const cookieHeader = session.cookieHeader
+        const logoutRequest = () =>
           lease.api.post(new URL("/api/v1/auth/logout", ownedSessionOrigin()).toString(), {
             headers: {
-              Cookie: session.cookieHeader,
-              "X-CSRF-Token": session.csrfToken,
+              Cookie: cookieHeader,
+              "X-CSRF-Token": csrfToken,
             },
             maxRedirects: 0,
-            timeout: 5000,
+            timeout: ownedCleanupOperationTimeout(
+              deadlineAtMs,
+              LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS
+            ),
           })
-        )
+        const firstLogout = await statusAndRetryAfter(logoutRequest())
+        let logoutStatus = firstLogout.status
+        if (logoutStatus === 429) {
+          reportOwnedAuthStatus("auth-logout", logoutStatus)
+          const retryAfter = parseLiveRateLimitRetryAfter(firstLogout.retryAfter)
+          const futureSessionCount = totalSessions - processedSessions
+          const remainingRequestBudgetMs = 2 * 5000 + futureSessionCount * 3 * 5000
+          const remainingDisposeReserveMs =
+            (scope.leases.length - leaseIndex) * LIVE_OWNED_SESSION_DISPOSE_RESERVE_MS
+          let retryDecision: "retry" | "declined-header" | "declined-deadline" =
+            retryAfter === null ? "declined-header" : "declined-deadline"
+          if (
+            retryAfter !== null &&
+            liveRateLimitRetryFitsDeadline(
+              deadlineAtMs,
+              retryAfter,
+              remainingRequestBudgetMs,
+              remainingDisposeReserveMs
+            )
+          ) {
+            await waitForLiveRateLimitRetry(retryAfter)
+            if (
+              liveRateLimitRetryFitsDeadline(
+                deadlineAtMs,
+                0,
+                remainingRequestBudgetMs,
+                remainingDisposeReserveMs
+              )
+            ) {
+              retryDecision = "retry"
+              reportLiveRateLimitRetry(
+                testInfo.project.name,
+                "auth-logout",
+                retryAfter,
+                retryDecision,
+                Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now())))
+              )
+              logoutStatus = await statusOnly(logoutRequest())
+            } else {
+              reportLiveRateLimitRetry(
+                testInfo.project.name,
+                "auth-logout",
+                retryAfter,
+                retryDecision,
+                Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now())))
+              )
+            }
+          } else {
+            reportLiveRateLimitRetry(
+              testInfo.project.name,
+              "auth-logout",
+              retryAfter,
+              retryDecision,
+              Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now())))
+            )
+          }
+        }
         const afterLogout = await statusOnly(
           lease.api.get(new URL("/api/v1/users/me", ownedSessionOrigin()).toString(), {
             headers: {
               Authorization: "Bearer " + session.accessToken,
             },
             maxRedirects: 0,
-            timeout: 5000,
+            timeout: ownedCleanupOperationTimeout(
+              deadlineAtMs,
+              LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS
+            ),
           })
         )
         if (logoutStatus !== 200) {
@@ -279,7 +549,8 @@ function isOwnedLoginRequest(candidate: Request, origin: string): boolean {
 async function createOwnedLoginLease(
   loginRequest: Request,
   origin: string,
-  scope: OwnedSessionScope
+  scope: OwnedSessionScope,
+  cleanupDeadlineAtMs?: number
 ): Promise<OwnedLoginLease> {
   const userAgent = await loginRequest.headerValue("user-agent")
   const acceptLanguage = await loginRequest.headerValue("accept-language")
@@ -301,7 +572,10 @@ async function createOwnedLoginLease(
       "Accept-Language": acceptLanguage,
     },
     ignoreHTTPSErrors: true,
-    timeout: 5000,
+    timeout:
+      cleanupDeadlineAtMs === undefined
+        ? LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS
+        : ownedCleanupOperationTimeout(cleanupDeadlineAtMs, LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS),
   })
   const lease: OwnedLoginLease = { api, sessions: [] }
   scope.leases.push(lease)
@@ -313,7 +587,8 @@ async function captureOwnedLoginSession(
   scope: OwnedSessionScope,
   origin: string,
   previousTokens: Set<string>,
-  lease: OwnedLoginLease | undefined
+  lease: OwnedLoginLease | undefined,
+  cleanupDeadlineAtMs?: number
 ): Promise<boolean> {
   let cookies: Array<{ name: string; value: string }>
   try {
@@ -360,7 +635,13 @@ async function captureOwnedLoginSession(
       lease.api.get(new URL("/api/v1/users/me", origin).toString(), {
         headers: { Authorization: "Bearer " + token },
         maxRedirects: 0,
-        timeout: 5000,
+        timeout:
+          cleanupDeadlineAtMs === undefined
+            ? LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS
+            : ownedCleanupOperationTimeout(
+                cleanupDeadlineAtMs,
+                LIVE_OWNED_SESSION_REQUEST_TIMEOUT_MS
+              ),
       })
     )
     if (preflight !== 200) {
@@ -373,7 +654,13 @@ async function captureOwnedLoginSession(
   return true
 }
 
-export async function loginWith(page: Page, email: string, password: string): Promise<void> {
+export async function loginWith(
+  page: Page,
+  email: string,
+  password: string,
+  cleanupDeadlineAtMs?: number,
+  maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS
+): Promise<void> {
   const scope = activeOwnedSessionScope
   if (!scope) throw new Error("Live login requires the owned-session cleanup fixture")
   const origin = ownedSessionOrigin()
@@ -402,7 +689,7 @@ export async function loginWith(page: Page, email: string, password: string): Pr
       return
     }
     observedLoginRequest = candidate
-    leasePromise = createOwnedLoginLease(candidate, origin, scope).then(
+    leasePromise = createOwnedLoginLease(candidate, origin, scope, cleanupDeadlineAtMs).then(
       (created) => {
         lease = created
       },
@@ -447,8 +734,17 @@ export async function loginWith(page: Page, email: string, password: string): Pr
     }
     if (!captureSetupFailed) {
       try {
-        await submitLogin(page, email, password)
-        await expect(page).toHaveURL(/\/dashboard$/)
+        await submitLogin(page, email, password, cleanupDeadlineAtMs, maximumOperationTimeoutMs)
+        const dashboardExpectation =
+          cleanupDeadlineAtMs === undefined
+            ? expect
+            : expect.configure({
+                timeout: ownedCleanupOperationTimeout(
+                  cleanupDeadlineAtMs,
+                  Math.min(15_000, maximumOperationTimeoutMs)
+                ),
+              })
+        await dashboardExpectation(page).toHaveURL(/\/dashboard$/)
       } catch (error) {
         primaryFailure = error
         hasPrimaryFailure = true
@@ -479,7 +775,14 @@ export async function loginWith(page: Page, email: string, password: string): Pr
       scope.captureFailed = true
     }
     try {
-      captured = await captureOwnedLoginSession(page, scope, origin, previousTokens, lease)
+      captured = await captureOwnedLoginSession(
+        page,
+        scope,
+        origin,
+        previousTokens,
+        lease,
+        cleanupDeadlineAtMs
+      )
     } catch {
       scope.captureFailed = true
     }
@@ -490,8 +793,19 @@ export async function loginWith(page: Page, email: string, password: string): Pr
   }
 }
 
-export async function loginAs(page: Page, role: Role): Promise<void> {
-  await loginWith(page, ROLES[role].email, ROLES[role].password)
+export async function loginAs(
+  page: Page,
+  role: Role,
+  cleanupDeadlineAtMs?: number,
+  maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS
+): Promise<void> {
+  await loginWith(
+    page,
+    ROLES[role].email,
+    ROLES[role].password,
+    cleanupDeadlineAtMs,
+    maximumOperationTimeoutMs
+  )
 }
 
 /**
@@ -558,8 +872,8 @@ export const test = base.extend<{
 }>({
   ownedSessionCleanup: [
     // Playwright requires a destructured fixture argument even without dependencies.
-    // eslint-disable-next-line no-empty-pattern
-    async ({}, runTest, testInfo) => {
+    async ({ browser }, runTest, testInfo) => {
+      const fixtureSetupStartedAt = performance.now()
       if (activeOwnedSessionScope) {
         throw new Error("Owned-session cleanup fixture scope overlapped")
       }
@@ -567,19 +881,32 @@ export const test = base.extend<{
         leases: [],
         issuedTokens: new Set<string>(),
         captureFailed: false,
+        cleanupCallbacks: [],
       }
       activeOwnedSessionScope = scope
       const failures: string[] = []
       let primaryTestFailure: unknown
       let hasPrimaryTestFailure = false
+      const fixtureSetupElapsedMs = performance.now() - fixtureSetupStartedAt
       try {
         await runTest()
       } catch (error) {
         primaryTestFailure = error
         hasPrimaryTestFailure = true
       } finally {
+        const cleanupDeadlineAtMs =
+          performance.now() +
+          Math.max(
+            0,
+            LIVE_OWNED_SESSION_CLEANUP_TIMEOUT_MS -
+              fixtureSetupElapsedMs -
+              LIVE_OWNED_SESSION_SETUP_RESERVE_MS
+          )
         try {
-          failures.push(...(await cleanupOwnedSessionScope(scope)))
+          failures.push(
+            ...(await runOwnedSessionCleanupCallbacks(scope, browser, cleanupDeadlineAtMs))
+          )
+          failures.push(...(await cleanupOwnedSessionScope(scope, cleanupDeadlineAtMs, testInfo)))
         } catch {
           failures.push("cleanup")
         } finally {
@@ -589,7 +916,7 @@ export const test = base.extend<{
       if (failures.length > 0) {
         testInfo.annotations.push({
           type: "owned-session-cleanup",
-          description: "One or more owned sessions could not be revoked and verified",
+          description: "One or more owned resources or sessions could not be cleaned and verified",
         })
         if (!hasPrimaryTestFailure && testInfo.errors.length === 0) {
           throw new Error("Owned live session cleanup could not be verified")
@@ -597,7 +924,7 @@ export const test = base.extend<{
       }
       if (hasPrimaryTestFailure) throw primaryTestFailure
     },
-    { auto: true },
+    { auto: true, timeout: LIVE_OWNED_SESSION_CLEANUP_TIMEOUT_MS },
   ],
   pageErrors: [
     async ({ page }, use, testInfo) => {

@@ -47,15 +47,23 @@ test("live Events tabs prove the real keyboard and accessible selection contract
     /role="tabpanel"[\s\S]*?id="events-tabpanel"[\s\S]*?aria-labelledby=\{`events-tab-\$\{tab\}`\}/u
   )
   assert.match(feature, /const tab = \(searchParams\.tab as EventTabKey\) \|\| "active"/u)
-  assert.match(feature, /const setTab = useCallback\(\(v: string\) => handleURLChange\("tab", v\)/u)
+  assert.match(
+    feature,
+    /const setTab = useCallback\(\s*\(v: EventTabKey\) => handleURLChange\("tab", v === "active" \? "" : v\)/u
+  )
+  assert.match(header, /onTabChange: \(t: EventTabKey\) => void/u)
   assert.match(russianEvents, /"active": "Актуальные"/u)
   assert.match(russianEvents, /"archive": "Прошедшие"/u)
   assert.match(russianEvents, /"my": "Мои события"/u)
-  assert.match(fixtures, /export async function loginAs\(page: Page, role: Role\)/u)
+  assert.match(
+    fixtures,
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+  )
   assert.match(fixtures, /student:\s*\{/u)
 
   assert.match(spec, /test\("Events status tabs are keyboard navigable"/u)
   assert.match(spec, /await loginAs\(page, "student"\)/u)
+  assert.ok(spec.includes('new URL(page.url()).pathname).toBe("/events")'))
   assert.match(spec, /await page\.goto\("\/events"\)/u)
   assert.match(spec, /getByRole\("tablist",\s*\{\s*name: \/Мероприятия\|Events\/u\s*\}\)/u)
   for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) {

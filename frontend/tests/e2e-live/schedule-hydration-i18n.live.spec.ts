@@ -40,6 +40,7 @@ async function assertScheduleHydratesInLanguage(
   try {
     const response = await page.goto("/schedule", { waitUntil: "domcontentloaded" })
     expect(response?.status()).toBe(200)
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/schedule")
     expect(response?.headers()["content-type"] ?? "").toContain("text/html")
 
     const serverMarkup = await response?.text()

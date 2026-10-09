@@ -12,7 +12,7 @@ reviewed scanner de-dup diff и проверок; CodeQL остаётся blocki
 
 Ты — root-оркестратор для репозитория `C:\Users\egorribun\Documents\university_ecosystem`. Работай только в одном checkout на `egorribun`, в текущем PR #1306. Не создавай новые ветки и worktree. Root владеет всеми Git-операциями: stage, hooks, commit, push, PR и обычный merge; root также единственный владелец правок canonical `MVP_MASTER_PLAN.md`, `STATUS.md`, `AGENTS.md`, ADR-047 и readiness audit. Разрешённое число итоговых GHCR images — ровно шесть, через уже существующий main-only producer; не переписывай его ради упрощения проверки.
 
-В самом начале освежи рабочее состояние: `git status`, текущий branch/HEAD/upstream, PR и его проверки, завершённые/активные GitHub Actions, доступность `gh` и точные применимые инструкции `AGENTS.md`. Последний опубликованный ориентир — HEAD `89cb50a4e543ce6bcfc55082244343c82940c83f`, PR #1306; minimal live-contract correction описана в `STATUS.md`. Root может добавить commit после подготовки этого сообщения, поэтому не требуй именно этого SHA. Последние проверенные run IDs `37922189757` (matrix/CI) и `37922189320` (Owned Live Acceptance) — указатели для обновления статуса, а не доказательства для нового HEAD.
+В самом начале освежи рабочее состояние: `git status`, текущий branch/HEAD/upstream, PR и его проверки, завершённые/активные GitHub Actions, доступность `gh` и точные применимые инструкции `AGENTS.md`. Последний проверенный опубликованный ориентир — HEAD `f14f497ee9df0ddf30ac64e19a1808633ee2a6fb`, PR #1306; checkpoint описан ниже и в `STATUS.md`. Root может добавить commit после подготовки этого сообщения, поэтому не требуй именно этого SHA. Последние проверенные run IDs `37946889584` (matrix/CI) и `37946889184` (Owned Live Acceptance) — указатели для обновления статуса, а не доказательства для нового HEAD.
 
 Commit message для maintenance используй без wave, например `fix(quality): ...`, `test(contracts): ...` или `docs(quality): ...`. Никогда не добавляй `Co-Authored-By`. После запуска `detect-secrets` или pre-commit всегда заново stage `.secrets.baseline`, даже если он выглядит неизменённым.
 
@@ -40,50 +40,87 @@ Commit message для maintenance используй без wave, наприме
 5. По ADR-006 принято направление: сохранить durable tombstone и WebSocket revoke до commit, консервативный rollback с logout siblings документировать. Не меняй этот ordering; независимо проверь failure paths и зафиксируй фактические guarantees/limits. Не превращай тест или непросмотренный сценарий в доказательство безопасности.
 6. Исторический audit зафиксировал ruleset `8335285`, enforcement ACTIVE и91 required context. Разрешённые14 contexts плюс отдельно разрешённый `Security Audit / Semgrep SAST` уже удалены после code/contracts/review: текущий проверенный набор76. Остальные rules сохранены, CodeQL blocking, Semgrep в pre-commit. Q4 boundary: четыре full Chromium shards и LHCI scheduled/manual, PR live Chromium smoke сохраняется. Не повторяй выполненные removals и не меняй остальные protection rules. Любое дополнительное protection изменение требует отдельного разрешения. Admin bypass и фиктивные compatibility PASS запрещены.
 
-## Обновление checkpoint после публикацииddbbc84d
+## Проверенный checkpoint послеf14 и ближайший порядок
 
-HEAD/origin/PR1306 проверены наddbbc84d8444fa06aee1485fb1ddc0d1ca308d1f.
-Это более новый ориентир, чем89cb50a4 выше; обычные hooks/commit/push пакета
-owned live-session cleanup и navbar gap прошли. Fresh Core up/readiness и
-admin-only seed PASS; новый Linux Home12 технически12/12, serious/critical axe0,
-exact-session cleanup complete. Владелец явно утвердил именно новый пакет;
-замечание RU/light/1440 к расстоянию карта кампуса → Messenger закрыто.
-Не предлагай старый отклонённый пакет повторно.
-Одобренные12 Linux PNG и curated approval/SHA-256 metadata сохранены в
-`frontend/visual-baselines/live/home-empty/` как manual comparison baseline;
-не подменяй ими иной fixture существующего mocked Windows snapshot test.
+Владелец запросил безопасную паузу после текущего checked commit/push.
+Новые live/runtime очереди не запускались; продолжение только по его явному
+поручению. Сверить actual goal/Git/PR: self-SHA этого документа не закрепляется.
 
-CI37940158490/a1 наddbbc84d обнаружил false positive anti-pattern checker:
-три ожидаемые строковые формы `test.skip(` в tests/test_live_stand.py.
-Minimal test-only correction сохраняет scanner и exact8 skip identities;
-root13/13 skip contracts, исходный CI checker и Ruff check/format PASS.
-Публикация correction и свежие exact-head checks ещё нужны. Snapshot14:10 UTC:
-67 required SUCCESS,1 FAILURE,2 in progress,6 absent; это не current CI PASS.
-Coreddbbc84d retired canonical teardown/resume: containers/networks/volumes0/0/0,
-source stable, owned children0. Новый commit требует свежего уникального Core
-state: readiness → admin-only seed → Home/affected acceptance → SEC-03 →
-targeted affected scenarios → два full190+exact8. Одобрение Home12 не закрывает
-остальные328 visual captures, native stories20, restore или выпуск.
+Последний independently verified опубликованный HEAD/origin/PR1306:
+`f14f497ee9df0ddf30ac64e19a1808633ee2a6fb`. Git/PR могут содержать следующий
+commit; сверить актуальные значения. Minimal skip-string correction, owned
+session cleanup и approved Home baselines уже опубликованы обычными hooks/push.
 
-## Старт новой сессии и ближайший порядок
+- Matrix37946889584/a1 SUCCESS: exact-head/ruleset join16:35 UTC76/76 required
+  SUCCESS, missing/duplicate/bad/wrong-head/integration-mismatch0.
+  All-job span44m53s/required Matrix43m33s; target15m открыт, backend cap2 сохранён.
+  Это evidence дляf14, не для нового SHA. Q1/Q4 migration/protection DONE.
+- Advisory Owned Live37946889184/a1 FAIL:15 PASS/3 FAIL/2 expected skips;
+  logout429→200/reset replay429. Старый run не сохранял Retry-After.
+  Не менять auth caps/лимит5/min и не повышать advisory context до required.
+- Coref14 startup/readiness/admin-only seed/canonical demo seed PASS;
+  persisted SEC-03 API/PG canonical-v2/signature/logout→sameBearer401 PASS
+  в узкой границе, без key rotation/native signing certification.
+- Coref14 canonical teardown16:42–16:45 UTC PASS: containers/networks/volumes
+  0/0/0, source stable, owned children0, resource/time guardfalse.
+  Private state/env/evidence сохранены. Новый SHA требует нового unique state.
+- Владелец явно утвердил новый Home12 наddbbc84d (RU/EN, light/dark,
+  390/768/1440); единственное замечание navbar gap закрыто. Approved12 PNG
+  byte-for-byte и curated provenance сохранены в
+  `frontend/visual-baselines/live/home-empty/`. Не спрашивать повторно и не
+  выдавать freshf14 technical12/12 за approval иных байтов.
+- Targeted News/Events/Schedule наf14:1 PASS/14 FAIL/1 expected skip за3m28s,
+  source stable/no resource stop/owned children0; fullf14 не запускался.
+  Source-proven News heading/count drift, missing archive row и default Events
+  tab URL исправлены пакетом послеf14; Schedule production defect не доказан.
+- Reviewed RetryV3 сохраняет исходный60s body deadline и assertions;
+  только один429 retry при строгом Retry-After1..60 и достаточном реальном
+  Playwright slot deadline с cleanup reserve. Уникальный reset-account DELETE
+  в существующем owned cleanup slot; logout200→sameBearer401 обязателен.
+  V2 deadline bug отклонён. Сначала интегрированные tests/preflight/hooks.
+- Native StoryV7 actual:1 warmup+20 measured, hidden7002ms,
+  heap delta263892≤524288 bytes, focus/storywrites0/logout401/cleanup PASS.
+  Итог INCOMPLETE: DOM unstable, reduced-motion progress>0 probe противоречит
+  production progress0. V8 исправляет predicate/добавляет bounded numeric DOM
+  series, exact DOM gate сохраняется; proof/SHA/state pins обновить перед run.
+  V4/V5/V6 incomplete receipts сохраняются, не повторять без нового evidence.
+- Push educationf14 0/12 eligible: actual permission denied. Credentialless
+  normal-profile/OTR diagnostic подготовлен; не grant/requestPermission/mock.
+  LHCI V12 driver/seeded-DM UUID discovery и paired restore сохранены приватно.
+  Ни один prepared operator не считается runtime PASS.
+-63 ledger IDs исторически60 CLOSED/2 DECLINED/1 OPEN(BE-02), source/test review
+  21 P0/P1 без нового дефекта. Runtime certification каждой строки не заявлена.
+  BE-02 deployed catalog/upgrade/rollback —v1.1.
 
-Не начинай с нового harness. Inventory/hook bindings, bounded test hygiene, schedule conflict/self-exclusion, semantic unavailable/no-zero, Handlebars/dependency fixes и Q1/Q4 уже интегрированы. Weather/bookmarks SSR fixes опубликованы на14c2. Не повторяй их: сначала сверь текущий diff и свежий CI.
+На паузе: Native V9 static root review/hash/ACL PASS, runtime unrun. LHCI driver
+V12 нельзя запускать до исправления hardcoded old proof-root, обязательной
+freshness по seed guard.finishedUtc и derived Compose count. Paired snapshot V5
+draft требует root review; он не выполняет restore. Push comparison parent draft
+не прошёл AST/Ruff и explicit file ACL checks. Точные private paths/hash/status
+сохранены в `pause-checkpoint-*.json` под приватным rootreceipt:
+`C:\Temp\ue-mvp-root-20261009-7013fd5453f545c4bdf6abc7f24736c7\rootreceipt`.
+Не выдавать drafts за PASS; старые Core proofs истекли и source/state не заменяют.
 
-Пакет navbar drawer boundary, AdminAudit coverage, duration merge-mode, upload HTTP ExceptionGroup, timezone SSR, двухсессионного membership revoke и existing live specs/axe collector опубликован наdf068410. Minimal live-contract correction опубликована на89cb50a4; не повторяй её. Matrix89 дал76/76 required SUCCESS, но full local Core run FAILED76/114/8. Reviewed пакет поверх89 исправляет единственное замечание владельца Home RU/light/1440 (gap карта кампуса → Messenger), запрещает nominal visual PASS при прозрачном loaded Morph и устраняет owned server-session leaks в live fixtures. Finite skipped-identity accounting отличает190 применимых cases от8 намеренных project-axis skips. Root checks:1234 Python CLI tests,155 Node live contracts,7 постоянных fixture behavior cases PASS; navbar29/100%, visual collector19 PASS. Preflight8/10 с исправленными lint/format и final frontend3/3 rerun; обычные hooks/push подтверждать отдельно. Сначала проверь diff/STATUS: пакет может быть уже опубликован. Заверши обычную публикацию при необходимости, затем заморозь source. Scoped results не равны полному hosted/live PASS.
+Не повторять уже интегрированные inventory/hook/schedule/semantic/upload/auth/
+SSR/navbar/membership/Q1/Q4 fixes. Full Core89 FAIL76/114/8 за30m29s;
+session leak не доказан причиной всех114. Full14c2 resource-aborted с cleanup
+UNCONFIRMED сохраняется. Superseded Core14c2/df/89/dd/f14 удалены canonical
+teardown; receipts/Git history приватно сохранены.
 
-Назначай независимые области по оставшемуся critical path: CI/проверка exact-head evidence и browser visibility capability; frontend/visual/accessibility; backend/security/data/restore review. Root интегрирует, проверяет каждого агента и единолично управляет Git, Docker и heavy slot. Не сохраняй старые назначения лишь ради занятости.
+Пакет послеf14 интегрирован: root Python1286/1286, Vitest64/64 и Node158/158
+PASS; preflight initial8/10, final frontend types/lint/format3/3 PASS,
+Ruff4 paths/437 Markdown links PASS. Старые integration FAIL сохранены,
+не выдаются за PASS. Ordinary hooks/restage baseline/commit/push проверить по
+actual Git/PR и private checkpoint receipt. Новый hosted CI ещё не подтверждён.
 
-## Проверенный checkpoint и незавершённая приёмка
-
-- Matrix37922189757/a1 на89cb50a4 SUCCESS:76 required exact-head SUCCESS, missing/duplicate/bad0. Advisory Owned Live37922189320 SUCCESS — ограниченный auth/roles/reset hosted smoke, не198-case acceptance. Critical path41m16s; target15m не достигнут, backend cap2 сохранён.
-- Core89 up/readiness PASS (23 services/4 init exit0/14 healthy/10 signed ports), admin-only seed один раз, persisted SEC-03 PASS в узкой API/PG/signature/logout→sameBearer401 границе. Key rotation/native signing не доказаны.
-- Linux Home-empty V11 technical12/12 PASS, serious/critical axe0, loaded Morph content visible/settled. Owner approvalfalse/baseline updatefalse: единственное замечание RU/light/1440 — карта кампуса и Messenger почти склеены. Reviewed gap/long-name fix и dashboard readiness gate требуют нового source-bound packet; старый пакет повторно не предлагать.
-- Canonical full Core run89 за30m29s:76 passed/114 failed/8 skipped, exit2/source stable/no resource abort/owned children0. Это FAIL. Не называй все failures resource или cap cascade. Source review обнаружил отсутствие server logout после закрытия browser context; counts probe завершился child_failed при owner/source/inventory unchanged и не дал допустимых counts.
-- Core89 retired canonical owner-checked teardown: containers/networks/volumes0, private receipts/state сохранены. Старые14c2/df Core уже retired; не повторяй удаления. Новый clean SHA требует свежего уникального state, без cross-SHA rebind существующего Core. Порядок: readiness → admin-only fixture один раз → Home-empty12 до global seed → persisted SEC-03 до canonical full E2E. Shared feeds не очищай.
-- Native visibility capability подтверждена: Linux full Chromium153.0.8010.12 direct-CDP V3 actual3/3 hidden/visible cycles, same native window/context, no-network/credentialless, cleanup confirmed. Предыдущий V2 diagnostic-incomplete (0 cycles) сохранён; first newWindow:false при no-startup-window исправлен по exact pinned Chromium source. Capability не закрывает20 actual Story Viewer cycles/memory plateau; Playwright focus emulation не должна подменять реальную visibility.
-- Source collection198 =190 применимых cases +8 намеренных project-axis skips. Не считать skips passes: successful full acceptance требует190 PASS, exact8 source-bound expected identities, failures/flaky/interrupted/did-not-run0. Любой неожиданный skip — FAIL; runtime identity accounting нужно проверить.
-- Visual owner approval/Linux baselines, all-topic real Web Push, два последовательных полных Core passes, stop/start persistence, auth/session/data review/63 audit IDs, isolated DB/S3 restore и frozen-RC full smoke ещё открыты. Chromatic billing не включать. Старый14c2 full attempt был resource-aborted/unconfirmed cleanup; не переписывай историю.
-- Scoped navbar fix:29/29 tests и100% четырёх coverage metrics UserMenu/DesktopNav; visual collector contracts19/19 PASS. Это local scoped results, не новый current-image acceptance. STATUS/diff/Git/CI обновлять по фактам после следующего checkpoint.
+После явного возобновления: verify published clean SHA/Git/CI → fresh Core/
+readiness/admin-only seed/Home comparison/SEC-03/demo seed → affected targeted
+specs → два consecutive full passes. Full success:190 PASS+exact8 source/project
+expected skips, failures/flaky/interrupted/did-not-run0. Unexpected skip —FAIL.
+Затем native Stories, все согласованные visual packets/approval/LHCI, all-topic
+real Push/auth/MFA/WS, stop/start persistence, security/data/isolated restore,
+frozen-RC full smoke и обычный выпуск. Наличие подготовленного script или
+исторического green не закрывает current-SHA acceptance.
 
 ## Исполнение MVP по bounded пакетам
 

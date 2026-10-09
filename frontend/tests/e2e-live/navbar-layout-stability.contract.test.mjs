@@ -39,7 +39,10 @@ test("live navbar stability measures real scroll-driven layout shifts", () => {
   assert.match(spec, /window\.scrollTo\(0,\s*0\)/u)
   assert.doesNotMatch(spec, /page\.route\(|routeFromHAR|useMockApi/u)
   assert.doesNotMatch(spec, /page\.request\.(?:post|put|patch|delete)\(/u)
-  assert.match(fixtures, /export async function loginAs\(page: Page, role: Role\)/u)
+  assert.match(
+    fixtures,
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+  )
 })
 
 test("navbar CLS observation includes font and image stabilization", () => {

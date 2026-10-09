@@ -34,10 +34,14 @@ test("schedule reflow runs as a real desktop 200%-equivalent viewport scenario",
   assert.match(spec, /200%-equivalent CSS viewport/u)
   assert.match(spec, /loginAs\(page,\s*["']student["']\)/u)
   assert.match(spec, /page\.goto\(["']\/schedule["']\)/u)
+  assert.ok(spec.includes('new URL(page.url()).pathname).toBe("/schedule")'))
   assert.doesNotMatch(spec, /page\.route\(|routeFromHAR|useMockApi|mock(?:ed)?Api/u)
   assert.doesNotMatch(spec, /page\.request\.(?:post|put|patch|delete)\(/u)
 
-  assert.match(fixtures, /export async function loginAs\(page: Page, role: Role\)/u)
+  assert.match(
+    fixtures,
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+  )
   assert.match(route, /createFileRoute\(["']\/_auth\/schedule["']\)/u)
   assert.match(route, /scheduleGroupsQueryOptions/u)
   assert.match(route, /pageScheduleQueryOptions/u)

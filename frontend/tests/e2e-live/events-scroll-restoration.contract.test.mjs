@@ -24,6 +24,11 @@ const appearanceUrl = new URL(
 const englishEventsUrl = new URL("../../src/i18n/locales/en/events.json", import.meta.url)
 const russianEventsUrl = new URL("../../src/i18n/locales/ru/events.json", import.meta.url)
 const repositoryUrl = new URL("../../../app/repositories/event_repository.py", import.meta.url)
+const listUrl = new URL("../../src/features/events/components/EventsList.tsx", import.meta.url)
+const cardViewUrl = new URL(
+  "../../src/components/events/EventCard/EventCardView.tsx",
+  import.meta.url
+)
 
 const [
   spec,
@@ -38,6 +43,8 @@ const [
   englishEventsSource,
   russianEventsSource,
   repository,
+  eventList,
+  eventCardView,
 ] = await Promise.all([
   readFile(specUrl, "utf8"),
   readFile(configUrl, "utf8"),
@@ -51,6 +58,8 @@ const [
   readFile(englishEventsUrl, "utf8"),
   readFile(russianEventsUrl, "utf8"),
   readFile(repositoryUrl, "utf8"),
+  readFile(listUrl, "utf8"),
+  readFile(cardViewUrl, "utf8"),
 ])
 
 test("live Events history acceptance covers the seeded archive in RU and EN", () => {
@@ -61,6 +70,20 @@ test("live Events history acceptance covers the seeded archive in RU and EN", ()
   assert.match(seededEvent, /"starts_at": _dt\(2026, 6, 28/u)
   assert.match(seededEvent, /"ends_at": _dt\(2026, 6, 28/u)
   assert.match(seed, /"title": "Class of 2026 graduation ceremony"/u)
+  assert.match(seed, /ARCHIVE_EVENT_ANCHOR = _dt\(2024, 1, 1, 15, 0\)/u)
+  assert.match(seed, /ARCHIVE_EVENT_SOURCES = \(\*EVENTS_DATA\[:8\], EVENTS_DATA\[-1\]\)/u)
+  assert.match(seed, /title": f"Архив: \{_archive_source\['title'\]\}"/u)
+  assert.match(seed, /title_en": f"Archive: \{_archive_source\['title_en'\]\}"/u)
+  assert.match(seed, /async def seed_archived_events/u)
+  const archiveSeeder = seed.slice(
+    seed.indexOf("async def seed_archived_events"),
+    seed.indexOf("async def seed_schedule")
+  )
+  assert.match(archiveSeeder, /if ends_at >= now:[\s\S]*?raise RuntimeError/u)
+  assert.match(archiveSeeder, /Event\.created_by == user\.id/u)
+  assert.match(archiveSeeder, /natural_key_collision is not None:[\s\S]*?continue/u)
+  assert.match(archiveSeeder, /is_active=False/u)
+  assert.match(seed, /await seed_archived_events\(db, user\)/u)
 
   const englishEvents = JSON.parse(englishEventsSource)
   const russianEvents = JSON.parse(russianEventsSource)
@@ -70,6 +93,9 @@ test("live Events history acceptance covers the seeded archive in RU and EN", ()
   assert.equal(russianEvents.tabs.archive, "Прошедшие")
   assert.match(feature, /tab === "archive" \? false/u)
   assert.match(repository, /if is_active is False:[\s\S]*?Event\.ends_at < now/u)
+  assert.match(repository, /order_by\(Event\.starts_at\.asc\(\), Event\.id\.asc\(\)\)/u)
+  assert.match(eventList, /xl:grid-cols-4/u)
+  assert.match(eventCardView, /h-48 sm:h-52/u)
 
   assert.match(appearance, /name="language"/u)
   assert.match(appearance, /setLanguage\(value as SupportedLanguage\)/u)
@@ -81,10 +107,15 @@ test("live Events history acceptance covers the seeded archive in RU and EN", ()
   assert.match(spec, /const EVENT_LOCALES = \[/u)
   assert.match(spec, /code: "ru"/u)
   assert.match(spec, /languageOption: \/Русский\|Russian/u)
-  assert.match(spec, /eventTitle: \/Выпускной вечер 2026/u)
+  assert.match(spec, /eventTitle: \/\^Архив: Выпускной вечер 2026\$\/u/u)
+  assert.match(spec, /eventTitle: \/\^Archive: Class of 2026 graduation ceremony\$\/u/u)
+  assert.match(
+    spec,
+    /expect\.poll\(\(\) => new URL\(page\.url\(\)\)\.pathname\)\.toBe\(["']\/events["']\)/u
+  )
   assert.match(spec, /code: "en"/u)
   assert.match(spec, /languageOption: \/Английский\|English/u)
-  assert.match(spec, /eventTitle: \/Class of 2026 graduation ceremony/u)
+  assert.match(spec, /eventTitle: \/\^Archive: Class of 2026 graduation ceremony\$\/u/u)
   assert.match(spec, /async function selectLanguageThroughSettings/u)
   assert.match(spec, /getByRole\("radio", \{ name: locale\.languageOption \}\)/u)
   assert.match(spec, /await page\.reload\(\)/u)
