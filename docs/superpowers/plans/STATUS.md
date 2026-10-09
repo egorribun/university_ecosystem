@@ -29,9 +29,9 @@
 
 ## Последний опубликованный package и CI
 
-- Checkpoint `679d503e68344747d471b0377f6eef1b124ccc5b` опубликован в PR1306;
+- Coverage checkpoint `9d44f2b3e52190dadf1171e0fee1a08a2f3797b9` опубликован в PR1306;
   обычные commit/pre-push hooks PASS, `.secrets.baseline` повторно staged.
-  Следующий test/docs package готовится отдельно; его hosted CI ещё не запускался.
+  Matrix37891315450/a1 выполняется; последующий MFA acceptance package проверен локально.
 - Два P1 GraphQL/Python WS DB fallback при mandatory revocation outage
   воспроизведены20 RED cases; fix и actual GraphQL context проверены121/121 PASS.
   Оба production-модуля100% line/branch; root/независимый P1 review CLEAR.
@@ -68,8 +68,11 @@
   не запускались. Ранние10/10 receipts относятся к своим прежним packages.
   Local Node154/cleanup54 и WASM555 PASS/1 planned skip/0 FAIL — локальные receipts,
   не свежая hosted acceptance на679.
-- Следующий test/docs package: full preflight10/10 PASS (81,22s), scoped Ruff/check
-  format PASS; root и peer review CLEAR. Commit/push и новый hosted run ещё впереди.
+- Package9d44: full preflight10/10 PASS (81,22s), scoped Ruff/check format PASS;
+  root/peer review и обычные hooks PASS. Новый hosted coverage gate ещё открыт.
+- MFA package сохраняет198 cases/59 specs: real sibling ticket/Go WS остаётся OPEN
+  до OTP verify, затем ожидается4401/Session revoked, siblingREST401/current session retained.
+  Typecheck/lint/format/3 contracts/198 collection PASS; root/peer review CLEAR, runtime NOT RUN.
 
 ## Core и фактические runtime доказательства
 
@@ -79,8 +82,9 @@
   bindings совпадают с подписанными. Edge/backend readiness/Mailpit search PASS.
 - Existing admin-only seed выполнен один раз. После stop/start read-only transaction
   подтвердила точный roster10 users/1 admin/2 teachers; news/stories/events/schedules/
-  chats пусты. Перед coverage edit owner-checked stop exit0, running0;
-  данные/volumes сохранены. Teardown этого state не выполнялся.
+  chats пусты. Stop сохранил данные; после нового SHA superseded synthetic Core
+  удалён canonical owner-checked teardown: exit0, containers/volumes/networks0.
+  Receipts сохранены; cross-SHA rebind запрещён, следующий Core будет свежим.
 - Actual frontend image679: main JS168786 bytes/164,83 KiB при existing raw budget
   500 KiB; Linux Node24.19.0, asset/image hashes сохранены приватно. Это только main
   raw chunk; transfer budgets/Lighthouse scores этим не доказаны.
@@ -115,8 +119,8 @@
 
 ## Следующий checkpoint
 
-- Опубликовать reviewed coverage regression package обычными hooks/commit/push;
-  свежие76 contexts и честное измерение critical path. Затем заморозить source.
+- Опубликовать reviewed MFA package обычными hooks/push; заморозить source.
+  Свежие76 contexts и честное измерение critical path; ожидаемый4401 не считать PASS до runtime.
 - Owner-checked Core на clean SHA: Home12 до canonical seed; persisted SEC-03 до
   full E2E из-за bounded audit inventory; два полных последовательных198 passes,
   stop/start/seed persistence, реальные all-topic push/SMTP/MFA/WS scenarios.
