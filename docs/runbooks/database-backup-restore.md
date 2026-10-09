@@ -72,11 +72,42 @@ uv run python scripts/backup_db.py restore --manifest-key database/university-20
 
 The `snapshot` command creates schema-v3 paired snapshots. Before invoking it,
 pause all application writes to PostgreSQL and the configured application S3
-bucket, and keep them paused until the command reports success. Then run:
+bucket, and keep them paused until the command reports success.
+
+For an owned Core live stand, use its existing private state directory and the
+clean checkout at the stand's source SHA:
+
+```powershell
+$stateDirectory = 'C:\Temp\ue-live-acceptance\run-<id>'
+uv run python scripts/live_stand.py quiesce --in-place --state-dir $stateDirectory
+```
+
+This command verifies the signed owner, Docker daemon, current Compose service
+selection and container identities before and after stopping all selected
+services except PostgreSQL and MinIO. Both stores must remain running and
+healthy. It preserves the owner marker and data volumes. Missing, duplicated or
+changed containers, unhealthy stores, a failed stop or a service still running
+cause a nonzero result; the command does not restart services after failure.
+Investigate the observed state before continuing.
+
+The command verifies only this stand's containers. Separately pause operator
+scripts and external clients that can write through the stores' published ports,
+confirm that no application writer sessions remain in PostgreSQL, and maintain
+that window through the snapshot. Then run:
 
 ```powershell
 uv run python scripts/backup_db.py snapshot --confirm-source-quiesced
 ```
+
+After the snapshot has reported success, resume the same owned Core stand with:
+
+```powershell
+uv run python scripts/live_stand.py up --stack core --ref HEAD --in-place --state-dir $stateDirectory
+```
+
+The existing `up` path checks the owner and source binding and reuses verified
+owned volumes. It may reallocate published ports; read the resulting live URLs.
+Do not use `teardown` to resume, since it removes owned data resources.
 
 The required flag is an operator attestation; the script cannot pause or prove
 that external writers have stopped. It records the confirmation timestamp,

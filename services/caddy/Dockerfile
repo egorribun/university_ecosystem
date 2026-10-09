@@ -10,7 +10,7 @@ ARG CADDY_VERSION=2.11.4
 ARG XCADDY_VERSION=v0.4.5
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM golang:1.26.6-alpine3.24@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS builder
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS builder
 
 ARG CADDY_VERSION
 ARG XCADDY_VERSION
@@ -27,8 +27,8 @@ RUN apk add --no-cache \
 RUN xcaddy build v${CADDY_VERSION} \
     --output /usr/bin/caddy \
     --with github.com/mholt/caddy-ratelimit@v0.1.0 \
-    --replace golang.org/x/net=golang.org/x/net@v0.56.0 \
-    --replace golang.org/x/text=golang.org/x/text@v0.39.0 \
+    --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
+    --replace golang.org/x/text=golang.org/x/text@v0.42.0 \
     --replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2 \
     --replace golang.org/x/crypto=golang.org/x/crypto@v0.56.0 \
     --replace go.opentelemetry.io/otel/sdk=go.opentelemetry.io/otel/sdk@v1.45.0 \

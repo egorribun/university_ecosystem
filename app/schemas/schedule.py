@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 
-from pydantic import Field, model_validator
-from pydantic.json_schema import SkipJsonSchema
+from pydantic import model_validator
 
 from app.schemas.common import BaseModel, OrmModel
 
@@ -28,18 +28,25 @@ class ScheduleCreate(ScheduleBase):
 
 
 class ScheduleUpdate(BaseModel):
-    group_id: uuid.UUID | SkipJsonSchema[None] = Field(default_factory=lambda: None)
-    subject: str | SkipJsonSchema[None] = Field(default_factory=lambda: None)
+    # Keep nullable input types for older PATCH clients. Explicit null means
+    # "leave unchanged" for fields that must be stored as non-null.
+    group_id: uuid.UUID | None = None
+    subject: str | None = None
     teacher: str | None = None
     room: str | None = None
-    weekday: str | SkipJsonSchema[None] = Field(default_factory=lambda: None)
-    start_time: datetime | SkipJsonSchema[None] = Field(default_factory=lambda: None)
-    end_time: datetime | SkipJsonSchema[None] = Field(default_factory=lambda: None)
-    parity: str | SkipJsonSchema[None] = Field(default_factory=lambda: None)
+    weekday: str | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    parity: str | None = None
     lesson_type: str | None = None
 
-    @model_validator(mode="after")
-    def _reject_null_storage_fields(self) -> ScheduleUpdate:
+    @model_validator(mode="before")
+    @classmethod
+    def _ignore_null_storage_fields(cls, value: object) -> object:
+        if not isinstance(value, Mapping):
+            return value
+
+        normalized = dict(value)
         required_fields = (
             "group_id",
             "subject",
@@ -48,16 +55,10 @@ class ScheduleUpdate(BaseModel):
             "end_time",
             "parity",
         )
-        explicitly_null = [
-            field
-            for field in required_fields
-            if field in self.model_fields_set and getattr(self, field) is None
-        ]
-        if explicitly_null:
-            raise ValueError(
-                "Schedule fields cannot be null: " + ", ".join(explicitly_null)
-            )
-        return self
+        for field in required_fields:
+            if field in normalized and normalized[field] is None:
+                normalized.pop(field)
+        return normalized
 
 
 class ScheduleOut(OrmModel, ScheduleBase):

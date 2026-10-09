@@ -711,7 +711,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in {1..30}; do
+          for _attempt in {1..30}; do
             if curl --fail --silent http://localhost:9000/status >/dev/null; then break; fi
             sleep 2
           done

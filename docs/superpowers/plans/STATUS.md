@@ -16,7 +16,7 @@
 - Q1 и весь Q4 обязательны до MVP: мутации, Schemathesis, DAST, chaos,
   full Chromium/Lighthouse, cross-browser и kind переходят в scheduled/manual.
   Live Chromium smoke, security и fail-closed оставшиеся checks сохраняются.
-  Source diff проверен локально; commit/push и hosted подтверждение ещё впереди.
+  Source checkpoint `0fc7af03` отправлен в существующий PR; hosted gate ещё открыт.
 - Tier 0 — 100%; остальные действующие coverage floors также сохраняются до Q3.
   Если они блокируют MVP, перенос Q3 согласуется отдельно. Q2/Q3 — `v1.1`.
 - Полный mutation score, три сопоставимых полных CI-прогона, kind certification,
@@ -31,7 +31,57 @@
 - ADR-006: сохранить durable tombstone/WS revoke до commit; rollback может
   консервативно разлогинить sibling sessions; local failure paths PASS, live открыт.
 
-## Текущий refresh и аудит подготовки
+## Текущая контрольная точка
+
+- `0fc7af03b7f403ba6c77a2aaf26602f9e60927b4` отправлен обычным push в
+  `origin/egorribun`. Полный обязательный pre-commit и frontend pre-push PASS;
+  после hooks `.secrets.baseline` повторно staged, дерево checkpoint чистое.
+- Ruleset8335285 обновлён после проверок: ровно разрешённые14+1 contexts удалены,
+  91 → 76. Свежий GET подтвердил сохранение остальных contexts и всех правил.
+- CI этого SHA обнаружил реальные blockers: шесть nullable Schedule PATCH
+  полей сужены; frozen-RC workflow выполняет caller-selected code с общими
+  caches; Go compiler и `x/net` требуют security patches. Pre-commit упал на
+  unused ShellCheck variable, WASM — на двух устаревших workflow/auth contracts.
+  Причины подтверждены hosted logs; локальные исправления сохраняют gates.
+- Core этого SHA собран и поднят, но процесс запуска остановлен resource guard
+  при RAM85,4%/free4,64 GiB. E2E/seed НЕ ЗАПУСКАЛИСЬ. Owner-checked stop
+  сохранил данные, затем teardown удалил только подписанные synthetic resources;
+  проверено отсутствие containers/volumes/networks этого project. Общий Docker,
+  WSL, чужие процессы и caches сохранены. Следующий run требует свежего state-dir.
+- Schedule compatibility fix локально: 24 PASS, включая Mapping input,
+  null-only no-op и соседние изменения. API schema сохраняет nullable inputs,
+  обязательные storage поля получают только ненулевые updates. Это ещё не
+  hosted compatibility PASS; generated contracts обновляются вместе с source.
+- Follow-up source: frozen-RC uv/npm caching отключено, включая автоматический
+  npm cache; Go CI/builders1.26.9, fuzz1.27.2, `x/net`0.60.0 и необходимые
+  `x/text`0.42.0 overrides. Module language floor1.26.4 и runtime images сохранены.
+  Независимый review CLEAR; точные пять module graphs/checksums проверены.
+- Финальный working-tree preflight 10/10 PASS, включая 337 contracts;
+  peak RAM 52,3%, min free 15,17 GiB. OpenAPI18/MSW3, workflow3,
+  исходные focused Node154 и cleanup-focused54 PASS;
+  полный `npm run test:wasm`: 556 total,555 PASS,1 planned skip,0 FAIL.
+  Semantic diff generated OpenAPI ограничен ровно шестью nullable Schedule полями.
+  Эти результаты ещё требуют commit/push и свежего hosted подтверждения.
+- Windows Go scan выбранным compiler1.26.9: все9 workspace modules exit0,
+  импортируемых/достижимых уязвимостей0. Один advisory GO-2026-5932 повторён
+  в трёх module graphs: затронутый OpenPGP не импортируется, исправленной
+  версии нет. Это не заменяет Linux hosted scan.
+- Существующий live CLI расширен `quiesce` только для in-place Core текущего SHA:
+  остановка остальных проверенных Core containers сохраняет healthy PostgreSQL/MinIO,
+  signed marker и volumes. Owner/daemon/projection/container identities проверены
+  до и после control; external writers требуют отдельного подтверждения оператора.
+  Focused19 и общий CLI1265/1265 PASS; peak RAM47,7%, min free16,62 GiB.
+  Независимый review CLEAR. Исправлены исторические v4/v5 test fixtures,
+  production-проверки портов и current-MINIO fail-closed сохранены.
+  [Runbook](../../runbooks/database-backup-restore.md) описывает quiesce/resume;
+  фактический coordinated snapshot/isolated restore ещё не выполнен.
+- Authenticated visual collectors отзывают только созданные ими sessions и
+  проверяют 401 для прежнего token перед закрытием contexts/browser. Recovery
+  после частичного login, обновлённые CSRF cookies, несколько contexts и
+  сохранение primary/cleanup failures покрыты; независимый review CLEAR.
+  Это локальные checks, фактические browser captures ещё не выполнены.
+
+## Исходный refresh и аудит подготовки
 
 - Refresh source: `851c4763ff431232cc4bf3cbfc416823bfd0fce3` = origin/egorribun;
   main/merge-base `6fa133b57f62c554162876d4e6d8349f8060fce9`, divergence0/1267.
@@ -43,8 +93,10 @@
 - Owned Live `37848497910/a1` на refresh SHA: SUCCESS,18 PASS/2 planned skips,
   artifacts0. Smoke остаётся auth/reset, полная Core traceability ещё открыта.
   Упоминание `--stack core` в contract output не доказывает выбор Core при `up`;
-  tracked workflow нуждается в явных stack/state-dir и отдельном full smoke.
-- Fresh ruleset8335285 ACTIVE,91 contexts; разрешённые14+1 ещё не удалялись.
+  На этом исходном refresh tracked workflow ещё требовал явных stack/state-dir
+  и отдельного full smoke; source checkpoint выше уже содержит этот переход.
+- На исходном refresh ruleset8335285 ACTIVE,91 contexts; изменение14+1 выполнено
+  на новой контрольной точке выше.
   Владелец явно одобрил Semgrep de-dup: CodeQL blocking, Semgrep pre-commit.
   Q1/Q4 и бюджет15 минут пока не подтверждены hosted evidence.
 
@@ -121,7 +173,8 @@
 - Q1/Q4: 20 модулей/402 PASS до Semgrep; затем 428 PASS и scoped rerun 1 PASS;
   catalog 59/183, actionlint PASS. Перенос не подтверждён hosted/default branch.
 - Fresh preflight 10/10 PASS (337 contracts); live CLI/Core: 1189 PASS.
-  PowerShell: 16 PASS/1 platform skip, peer CLEAR; Core runtime ещё не запускался.
+  PowerShell: 16 PASS/1 platform skip, peer CLEAR; Core runtime остановлен guard,
+  полная продуктовая E2E приёмка ещё не запускалась.
 - Schedule/semantic regressions PASS; root vector/adjacent mocks 82 PASS;
   unused event analytics удалён после проверки потребителей. Auth fail-closed
   review: 74 PASS; durable email-change tombstone failure paths PASS.

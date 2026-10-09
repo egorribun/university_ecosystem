@@ -15,6 +15,7 @@ Usage::
     python scripts/live_stand.py e2e [--mode smoke|full]  # reseed and run live Playwright safely
     python scripts/live_stand.py status             # read-only status
     python scripts/live_stand.py stop               # stop containers; preserve data
+    python scripts/live_stand.py quiesce --in-place --state-dir <owned-temp-run>  # stop Core writers; retain stores
     python scripts/live_stand.py teardown           # remove only this run's Compose data
 
 ``down`` remains a compatibility alias for ``stop``. ``teardown`` preserves
@@ -211,6 +212,7 @@ LIVE_CORE_EXPECTED_SERVICES = (
     "tempo-healthprobe",
     "ws-hub",
 )
+LIVE_CORE_QUIESCE_DATA_STORES = frozenset({"minio", "postgres"})
 DAEMON_FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
 SEED_SCRIPTS = (
@@ -307,6 +309,17 @@ class ComposeResourceEvidence:
     stack: str = LIVE_STACK_FULL
     service_roots: tuple[str, ...] = ()
     selected_services: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CoreContainerRecord:
+    """Verified runtime identity and state for one selected Core container."""
+
+    service: str
+    identity: str
+    running: bool
+    status: str | None
+    health: str | None
 
 
 def _stand_base_url(published_ports: Mapping[str, int]) -> str:
@@ -2830,19 +2843,23 @@ def _network_has_container_references(network_id: str) -> bool:
     return False
 
 
-def _verify_core_container_record(
-    container_id: str, owner: StandOwner, evidence: ComposeResourceEvidence
-) -> tuple[str, bool]:
-    record = _docker_inspect_object(
-        ["inspect", container_id], "cannot verify live Core container identity"
-    )
+def _core_container_record_from_inspect(
+    container_id: str,
+    owner: StandOwner,
+    evidence: ComposeResourceEvidence,
+    record: dict[str, object],
+) -> CoreContainerRecord:
     config = record.get("Config")
     labels = config.get("Labels") if isinstance(config, dict) else None
+    service = (
+        labels.get("com.docker.compose.service") if isinstance(labels, dict) else None
+    )
     if (
         record.get("Id") != container_id
         or not isinstance(labels, dict)
         or labels.get("com.docker.compose.project") != owner.project_name
-        or labels.get("com.docker.compose.service") not in evidence.managed_services
+        or not isinstance(service, str)
+        or service not in evidence.managed_services
     ):
         raise StandError(
             "live Core container is not owned by the signed service closure"
@@ -2890,8 +2907,18 @@ def _verify_core_container_record(
         )
     state = record.get("State")
     running = state.get("Running") if isinstance(state, dict) else None
-    if not isinstance(running, bool):
+    status = state.get("Status") if isinstance(state, dict) else None
+    raw_health = state.get("Health") if isinstance(state, dict) else None
+    if not isinstance(running, bool) or (
+        status is not None and not isinstance(status, str)
+    ):
         raise StandError("live Core container state is ambiguous")
+    if raw_health is None:
+        health = None
+    elif isinstance(raw_health, dict) and isinstance(raw_health.get("Status"), str):
+        health = raw_health["Status"]
+    else:
+        raise StandError("live Core container health state is ambiguous")
     identity = {
         "id": container_id,
         "name": name,
@@ -2903,7 +2930,162 @@ def _verify_core_container_record(
     digest = hashlib.sha256(
         json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    return digest, running
+    return CoreContainerRecord(
+        service=service,
+        identity=digest,
+        running=running,
+        status=status,
+        health=health,
+    )
+
+
+def _verify_core_container_record(
+    container_id: str, owner: StandOwner, evidence: ComposeResourceEvidence
+) -> tuple[str, bool]:
+    record = _docker_inspect_object(
+        ["inspect", container_id], "cannot verify live Core container identity"
+    )
+    inspected = _core_container_record_from_inspect(
+        container_id, owner, evidence, record
+    )
+    return inspected.identity, inspected.running
+
+
+def _core_quiesce_container_inventory(
+    owner: StandOwner, evidence: ComposeResourceEvidence
+) -> dict[str, CoreContainerRecord]:
+    """Require one verified container for every service in the signed Core projection."""
+    selected = owner.selected_services
+    selected_set = set(selected)
+    if (
+        owner.stack != LIVE_STACK_CORE
+        or evidence.stack != LIVE_STACK_CORE
+        or not selected
+        or len(selected_set) != len(selected)
+        or evidence.selected_services != selected
+        or set(evidence.managed_services) != selected_set
+        or not LIVE_CORE_QUIESCE_DATA_STORES <= selected_set
+    ):
+        raise StandError("signed Core service projection is incomplete for quiesce")
+
+    records: dict[str, CoreContainerRecord] = {}
+    service_to_id: dict[str, str] = {}
+    for container_id in _project_container_ids(owner.project_name):
+        raw_record = _docker_inspect_object(
+            ["inspect", container_id], "cannot verify live Core container identity"
+        )
+        inspected = _core_container_record_from_inspect(
+            container_id, owner, evidence, raw_record
+        )
+        if inspected.service not in selected_set:
+            raise StandError(
+                "live Core container is outside the signed service selection"
+            )
+        if inspected.service in service_to_id:
+            raise StandError("live Core service has multiple owned containers")
+        service_to_id[inspected.service] = container_id
+        records[container_id] = inspected
+    if set(service_to_id) != selected_set:
+        raise StandError("live Core container inventory is incomplete")
+    return records
+
+
+def _assert_core_container_identity_unchanged(
+    before: dict[str, CoreContainerRecord],
+    after: dict[str, CoreContainerRecord],
+) -> None:
+    before_identity = {
+        container_id: (record.service, record.identity)
+        for container_id, record in before.items()
+    }
+    after_identity = {
+        container_id: (record.service, record.identity)
+        for container_id, record in after.items()
+    }
+    if before_identity != after_identity:
+        raise StandError("live Core container inventory changed during quiesce")
+
+
+def _require_core_data_stores_healthy(
+    records: dict[str, CoreContainerRecord], stage: str
+) -> None:
+    by_service = {record.service: record for record in records.values()}
+    if any(
+        not (
+            by_service[service].running
+            and by_service[service].status == "running"
+            and by_service[service].health == "healthy"
+        )
+        for service in LIVE_CORE_QUIESCE_DATA_STORES
+    ):
+        raise StandError(f"Core data stores must be running and healthy {stage}")
+
+
+def _quiesce_locked() -> None:
+    """Stop owned Core writers while retaining healthy owned data stores."""
+    _require_worktree()
+    owner = load_stand_owner(WORKTREE)
+    if owner.stack != LIVE_STACK_CORE:
+        raise StandError("quiesce is supported only for Core stands")
+    _require_owned_docker_daemon(owner)
+    evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+    before = _core_quiesce_container_inventory(owner, evidence)
+    _require_core_data_stores_healthy(before, "before quiesce")
+    stop_services = tuple(
+        service
+        for service in owner.selected_services
+        if service not in LIVE_CORE_QUIESCE_DATA_STORES
+    )
+    if not stop_services:
+        raise StandError("signed Core service selection has no writable services")
+
+    # Resolve owner, daemon and Compose evidence again after inspection and
+    # immediately before the control operation.
+    _require_worktree()
+    if load_stand_owner(WORKTREE) != owner:
+        raise StandError("live stand ownership metadata changed before quiesce")
+    _require_owned_docker_daemon(owner)
+    current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+    if current_evidence != evidence:
+        raise StandError("resolved Compose resources changed before quiesce")
+    pre_stop = _core_quiesce_container_inventory(owner, current_evidence)
+    _assert_core_container_identity_unchanged(before, pre_stop)
+    _require_core_data_stores_healthy(pre_stop, "before quiesce")
+
+    env = compose_control_environment(owner.project_name, dict(owner.published_ports))
+    command = compose_command("stop", *stop_services, project_name=owner.project_name)
+    try:
+        _run(command, cwd=WORKTREE, env=env)
+    except (OSError, subprocess.CalledProcessError):
+        raise StandError("failed to stop owned Core services") from None
+
+    _require_worktree()
+    if load_stand_owner(WORKTREE) != owner:
+        raise StandError("live stand ownership metadata changed after quiesce")
+    _require_owned_docker_daemon(owner)
+    current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+    if current_evidence != evidence:
+        raise StandError("resolved Compose resources changed after quiesce")
+    after = _core_quiesce_container_inventory(owner, current_evidence)
+    _assert_core_container_identity_unchanged(before, after)
+    _require_core_data_stores_healthy(after, "after quiesce")
+    for record in after.values():
+        if record.service not in LIVE_CORE_QUIESCE_DATA_STORES and (
+            record.running or record.status != "exited"
+        ):
+            raise StandError("selected Core services remain active after quiesce")
+    print(
+        "owned Core containers quiesced; postgres and minio remain healthy; "
+        "external writers are not verified"
+    )
+
+
+def quiesce() -> None:
+    """Stop owned Core services while preserving its healthy Postgres and MinIO stores."""
+    if not IN_PLACE_MODE:
+        raise StandError("quiesce requires an in-place Core stand")
+    with stand_lifecycle_lock():
+        _quiesce_locked()
 
 
 def _assert_core_owner_unchanged(owner: StandOwner) -> None:
@@ -4927,7 +5109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="TRACKED_SPEC",
         help="diagnostic-only rerun; serial full-suite specs may depend on earlier cases",
     )
-    for command_name in ("status", "stop", "down", "teardown"):
+    for command_name in ("status", "stop", "down", "quiesce", "teardown"):
         command_parser = commands.add_parser(command_name)
         add_state_options(command_parser)
     args = parser.parse_args(argv)
@@ -4954,6 +5136,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             status()
         elif args.command in {"stop", "down"}:
             stop()
+        elif args.command == "quiesce":
+            quiesce()
         elif args.command == "teardown":
             teardown()
         else:

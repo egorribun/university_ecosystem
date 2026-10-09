@@ -2349,11 +2349,11 @@ export type ScheduleUpdate = {
   /**
    * End Time
    */
-  end_time?: string
+  end_time?: string | null
   /**
    * Group Id
    */
-  group_id?: string
+  group_id?: string | null
   /**
    * Lesson Type
    */
@@ -2361,7 +2361,7 @@ export type ScheduleUpdate = {
   /**
    * Parity
    */
-  parity?: string
+  parity?: string | null
   /**
    * Room
    */
@@ -2369,11 +2369,11 @@ export type ScheduleUpdate = {
   /**
    * Start Time
    */
-  start_time?: string
+  start_time?: string | null
   /**
    * Subject
    */
-  subject?: string
+  subject?: string | null
   /**
    * Teacher
    */
@@ -2381,7 +2381,7 @@ export type ScheduleUpdate = {
   /**
    * Weekday
    */
-  weekday?: string
+  weekday?: string | null
 }
 
 /**

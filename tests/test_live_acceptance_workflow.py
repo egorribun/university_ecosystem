@@ -188,6 +188,37 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     assert "^[0-9a-f]{40}$" in validation_script
     frozen = jobs["frozen-rc-full-smoke"]
     assert frozen["needs"] == "validate-frozen-rc"
+    frozen_uv = next(
+        step
+        for step in frozen["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    )
+    assert frozen_uv["with"].get("enable-cache") is False, (
+        "caller-selected frozen-RC code must not restore or save a shared uv cache"
+    )
+    frozen_node = next(
+        step
+        for step in frozen["steps"]
+        if step.get("uses", "").startswith("actions/setup-node@")
+    )
+    assert "cache" not in frozen_node["with"]
+    assert "cache-dependency-path" not in frozen_node["with"]
+    assert frozen_node["with"]["package-manager-cache"] is False
+
+    core_uv = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    )
+    assert core_uv["with"].get("enable-cache") is True
+    core_node = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/setup-node@")
+    )
+    assert core_node["with"].get("cache") == "npm"
+    assert "package-manager-cache" not in core_node["with"]
+
     frozen_checkout = next(
         step
         for step in frozen["steps"]

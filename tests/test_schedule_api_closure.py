@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import sys
 import uuid
+from collections import UserDict
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from types import ModuleType, SimpleNamespace
+from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock
 
 import dishka.integrations.fastapi as _dishka_fastapi
 import pytest
 from fastapi import HTTPException, status
-from pydantic import ValidationError
 from starlette.responses import Response
 
 _MISSING = object()
@@ -285,9 +285,32 @@ async def test_update_schedule_success_permission_and_missing(monkeypatch):
     "field",
     ("group_id", "subject", "weekday", "start_time", "end_time", "parity"),
 )
-def test_schedule_update_rejects_explicit_null_for_required_storage_fields(field):
-    with pytest.raises(ValidationError):
-        schemas.ScheduleUpdate.model_validate({field: None})
+def test_schedule_update_treats_explicit_null_required_fields_as_omitted(field):
+    data = schemas.ScheduleUpdate.model_validate({field: None})
+
+    assert field not in data.model_fields_set
+    assert data.model_dump(exclude_unset=True) == {}
+
+
+def test_schedule_update_direct_model_input_keeps_nulls_omitted():
+    direct = schemas.ScheduleUpdate(group_id=None, subject=None, teacher=None)
+
+    assert direct.model_dump(exclude_unset=True) == {"teacher": None}
+    assert schemas.ScheduleUpdate.model_validate(direct) is direct
+    assert direct.model_dump(exclude_unset=True) == {"teacher": None}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (UserDict({"subject": None}), MappingProxyType({"subject": None})),
+    ids=("user-dict", "mapping-proxy"),
+)
+def test_schedule_update_omits_null_storage_fields_from_mapping_inputs(payload):
+    data = schemas.ScheduleUpdate.model_validate(payload)
+
+    assert "subject" not in data.model_fields_set
+    assert data.model_dump(exclude_unset=True) == {}
+    assert payload["subject"] is None
 
 
 def test_schedule_update_keeps_omitted_fields_partial_and_nullable_fields_clearable():
@@ -304,7 +327,7 @@ def test_schedule_update_keeps_omitted_fields_partial_and_nullable_fields_cleara
     }
 
 
-def test_schedule_update_json_schema_is_optional_but_non_nullable_for_storage_fields():
+def test_schedule_update_json_schema_preserves_nullable_optional_storage_fields():
     schema = schemas.ScheduleUpdate.model_json_schema()
     properties = schema["properties"]
     required_fields = (
@@ -319,10 +342,8 @@ def test_schedule_update_json_schema_is_optional_but_non_nullable_for_storage_fi
     assert not set(required_fields).intersection(schema.get("required", []))
     for field in required_fields:
         field_schema = properties[field]
-        assert "default" not in field_schema
-        assert field_schema.get("type") != "null"
-        assert all(
-            branch.get("type") != "null" for branch in field_schema.get("anyOf", [])
+        assert any(
+            branch.get("type") == "null" for branch in field_schema.get("anyOf", [])
         )
 
     for field in ("teacher", "room", "lesson_type"):

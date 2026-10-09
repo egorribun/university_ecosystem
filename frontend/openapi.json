@@ -4066,14 +4066,28 @@
         "additionalProperties": false,
         "properties": {
           "end_time": {
-            "format": "date-time",
-            "title": "End Time",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
           },
           "group_id": {
-            "format": "uuid",
-            "title": "Group Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
           },
           "lesson_type": {
             "anyOf": [
@@ -4087,8 +4101,15 @@
             "title": "Lesson Type"
           },
           "parity": {
-            "title": "Parity",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parity"
           },
           "room": {
             "anyOf": [
@@ -4102,13 +4123,27 @@
             "title": "Room"
           },
           "start_time": {
-            "format": "date-time",
-            "title": "Start Time",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
           },
           "subject": {
-            "title": "Subject",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
           },
           "teacher": {
             "anyOf": [
@@ -4122,8 +4157,15 @@
             "title": "Teacher"
           },
           "weekday": {
-            "title": "Weekday",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekday"
           }
         },
         "title": "ScheduleUpdate",

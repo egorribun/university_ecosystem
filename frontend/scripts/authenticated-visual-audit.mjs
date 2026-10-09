@@ -55,7 +55,7 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
-import { loginBrowserContext } from "./visual-smoke-auth.mjs"
+import { loginBrowserContext, withOwnedSessionCleanup } from "./visual-smoke-auth.mjs"
 import {
   classifyAuthenticatedAuditSummaries,
   requestFailureRecord,
@@ -411,6 +411,11 @@ class RS256Error extends Error {
   }
 }
 
+function setVisualExitCode(error, code) {
+  Object.defineProperty(error, "visualExitCode", { value: code, configurable: true })
+  return error
+}
+
 async function checkJwksEndpoint() {
   // The backend publishes one RSA JWKS at /.well-known/jwks.json
   // (app/api/well_known.py). Temporal fetches it via TEMPORAL_JWT_KEY_SOURCE1
@@ -444,14 +449,15 @@ async function checkJwksEndpoint() {
   return jwks
 }
 
-async function performLogin(context) {
+async function performLogin(context, ownSession) {
   console.log("→ API login: POST /api/v1/auth/login/json")
-  const { cookies, cookieJar } = await loginBrowserContext({
+  const { cookies, cookieJar, ownedSession } = await loginBrowserContext({
     context,
     origin: ORIGIN,
     email: TEST_EMAIL,
     password: TEST_PASSWORD,
   })
+  ownSession(ownedSession)
   const accessTokenValue = cookieJar.get("access_token_v2")
 
   const { header, payload } = decodeJwtUnverified(accessTokenValue)
@@ -850,173 +856,178 @@ async function main() {
   // structure, not browser-specific quirks).
   const browser = await chromium.launch({ headless: true })
 
-  const context = await browser.newContext({
-    viewport: {
-      width: captureMatrix?.widths[0] ?? 1280,
-      height: captureMatrix?.height ?? 800,
+  await withOwnedSessionCleanup({
+    browser,
+    createContext: () =>
+      browser.newContext({
+        viewport: {
+          width: captureMatrix?.widths[0] ?? 1280,
+          height: captureMatrix?.height ?? 800,
+        },
+      }),
+    origin: ORIGIN,
+    onCleanupFailure: () => console.error("Owned session or browser cleanup failed."),
+    run: async ({ context, ownSession }) => {
+      const page = await context.newPage()
+      page.setDefaultTimeout(30_000)
+      page.setDefaultNavigationTimeout(30_000)
+
+      let loginResult
+      try {
+        loginResult = await performLogin(context, ownSession)
+        if (captureMatrix) await verifySyntheticStudent(context)
+      } catch (err) {
+        if (err instanceof RS256Error) throw setVisualExitCode(err, 3)
+        throw setVisualExitCode(err, 1)
+      }
+
+      await writeFile(
+        path.join(outputDir, "login.json"),
+        JSON.stringify(createAuthenticatedLoginSidecar(loginResult), null, 2)
+      )
+
+      if (captureMatrix) {
+        await writeFile(
+          path.join(outputDir, "matrix.json"),
+          JSON.stringify(
+            {
+              evidenceKind: "real-authenticated-browser-no-route-mocks",
+              sourceSha: captureMatrix.sourceSha,
+              origin: captureMatrix.origin,
+              routes,
+              locales: captureMatrix.locales,
+              themes: captureMatrix.themes,
+              widths: captureMatrix.widths,
+              height: captureMatrix.height,
+              screenshots: true,
+            },
+            null,
+            2
+          )
+        )
+      }
+
+      await page.close()
+
+      const summaries = []
+      const configurations = captureMatrix
+        ? captureMatrix.locales.flatMap((locale) =>
+            captureMatrix.themes.flatMap((theme) =>
+              captureMatrix.widths.map((width) => ({
+                mode: captureMatrix.mode,
+                locale,
+                theme,
+                width,
+                height: captureMatrix.height,
+              }))
+            )
+          )
+        : [null]
+      for (const captureConfig of configurations) {
+        if (captureConfig) await setStudentCapturePreferences(context, captureConfig)
+        for (const route of routes) {
+          console.log(
+            `→ ${route}${captureConfig ? ` [${captureConfig.locale}/${captureConfig.theme}/${captureConfig.width}x${captureConfig.height}]` : ""}`
+          )
+          const routePage = await context.newPage()
+          routePage.setDefaultTimeout(45_000)
+          routePage.setDefaultNavigationTimeout(45_000)
+          const result = await auditRoute(
+            routePage,
+            route,
+            outputDir,
+            captureConfig,
+            captureMatrix?.sourceSha ?? sourceSha
+          )
+          await routePage.close()
+          summaries.push(result)
+          const glyph =
+            result.httpStatus === 200 &&
+            !result.redirectedToLogin &&
+            !result.axeError &&
+            result.axeViolationCount === 0 &&
+            result.captureConfigMatches !== false &&
+            (!captureConfig || Boolean(result.screenshotPath))
+              ? "✓"
+              : "✗"
+          console.log(
+            `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} axe_viol=${result.axeViolationCount}${captureConfig ? ` config=${result.captureConfigMatches ? "verified" : "failed"} screenshot=${result.screenshotPath ? "yes" : "no"}` : ""}`
+          )
+        }
+      }
+
+      printSummary(summaries)
+
+      const {
+        failedRoutes: failed,
+        hydrationIssues,
+        axeErrors,
+        axeIssues,
+        runtimeIssues,
+      } = classifyAuthenticatedAuditSummaries(summaries)
+      const visualConfigurationIssues = summaries.filter(
+        (summary) =>
+          summary.captureConfigMatches === false || (captureMatrix && !summary.screenshotPath)
+      )
+
+      if (failed.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${failed.length}/${summaries.length} routes failed (non-200 OR redirected to /login)`
+          ),
+          1
+        )
+      }
+      if (hydrationIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(`${hydrationIssues.length}/${summaries.length} routes had hydration errors`),
+          2
+        )
+      }
+      if (axeErrors.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${axeErrors.length}/${summaries.length} routes did not complete axe analysis; inspect private sidecars`
+          ),
+          5
+        )
+      }
+      if (axeIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${axeIssues.length}/${summaries.length} routes had critical/serious axe violations; inspect private sidecars`
+          ),
+          5
+        )
+      }
+      if (runtimeIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${runtimeIssues.length}/${summaries.length} routes had console/page errors or failed network requests; inspect private sidecars`
+          ),
+          6
+        )
+      }
+      if (visualConfigurationIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${visualConfigurationIssues.length}/${summaries.length} captures failed requested locale/theme/viewport verification or screenshot capture; inspect private sidecars`
+          ),
+          7
+        )
+      }
+      console.log(
+        captureMatrix
+          ? `\n✓ All ${summaries.length} authenticated matrix captures passed on source ${captureMatrix.sourceSha}`
+          : `\n✓ All ${summaries.length} routes passed: HTTP 200 + 0 hydration errors + 0 axe critical/serious violations`
+      )
     },
   })
-  const page = await context.newPage()
-  page.setDefaultTimeout(30_000)
-  page.setDefaultNavigationTimeout(30_000)
-
-  let loginResult
-  try {
-    loginResult = await performLogin(context)
-    if (captureMatrix) await verifySyntheticStudent(context)
-  } catch (err) {
-    if (err instanceof RS256Error) {
-      console.error(`✗ RS256 ASSERTION FAILED: ${err.message}`)
-      await context.close()
-      await browser.close()
-      process.exit(3)
-    }
-    console.error(`✗ LOGIN FAILED: ${redactDiagnostic(err.message)}`)
-    await context.close()
-    await browser.close()
-    process.exit(1)
-  }
-
-  await writeFile(
-    path.join(outputDir, "login.json"),
-    JSON.stringify(createAuthenticatedLoginSidecar(loginResult), null, 2)
-  )
-
-  if (captureMatrix) {
-    await writeFile(
-      path.join(outputDir, "matrix.json"),
-      JSON.stringify(
-        {
-          evidenceKind: "real-authenticated-browser-no-route-mocks",
-          sourceSha: captureMatrix.sourceSha,
-          origin: captureMatrix.origin,
-          routes,
-          locales: captureMatrix.locales,
-          themes: captureMatrix.themes,
-          widths: captureMatrix.widths,
-          height: captureMatrix.height,
-          screenshots: true,
-        },
-        null,
-        2
-      )
-    )
-  }
-
-  await page.close()
-
-  const summaries = []
-  const configurations = captureMatrix
-    ? captureMatrix.locales.flatMap((locale) =>
-        captureMatrix.themes.flatMap((theme) =>
-          captureMatrix.widths.map((width) => ({
-            mode: captureMatrix.mode,
-            locale,
-            theme,
-            width,
-            height: captureMatrix.height,
-          }))
-        )
-      )
-    : [null]
-  for (const captureConfig of configurations) {
-    if (captureConfig) await setStudentCapturePreferences(context, captureConfig)
-    for (const route of routes) {
-      console.log(
-        `→ ${route}${captureConfig ? ` [${captureConfig.locale}/${captureConfig.theme}/${captureConfig.width}x${captureConfig.height}]` : ""}`
-      )
-      const routePage = await context.newPage()
-      routePage.setDefaultTimeout(45_000)
-      routePage.setDefaultNavigationTimeout(45_000)
-      const result = await auditRoute(
-        routePage,
-        route,
-        outputDir,
-        captureConfig,
-        captureMatrix?.sourceSha ?? sourceSha
-      )
-      await routePage.close()
-      summaries.push(result)
-      const glyph =
-        result.httpStatus === 200 &&
-        !result.redirectedToLogin &&
-        !result.axeError &&
-        result.axeViolationCount === 0 &&
-        result.captureConfigMatches !== false &&
-        (!captureConfig || Boolean(result.screenshotPath))
-          ? "✓"
-          : "✗"
-      console.log(
-        `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} axe_viol=${result.axeViolationCount}${captureConfig ? ` config=${result.captureConfigMatches ? "verified" : "failed"} screenshot=${result.screenshotPath ? "yes" : "no"}` : ""}`
-      )
-    }
-  }
-
-  await context.close()
-  await browser.close()
-
-  printSummary(summaries)
-
-  const {
-    failedRoutes: failed,
-    hydrationIssues,
-    axeErrors,
-    axeIssues,
-    runtimeIssues,
-  } = classifyAuthenticatedAuditSummaries(summaries)
-  const visualConfigurationIssues = summaries.filter(
-    (summary) =>
-      summary.captureConfigMatches === false || (captureMatrix && !summary.screenshotPath)
-  )
-
-  if (failed.length > 0) {
-    console.error(
-      `\n✗ ${failed.length}/${summaries.length} routes failed (non-200 OR redirected to /login)`
-    )
-    process.exit(1)
-  }
-  if (hydrationIssues.length > 0) {
-    console.error(`\n✗ ${hydrationIssues.length}/${summaries.length} routes had hydration errors`)
-    process.exit(2)
-  }
-  if (axeErrors.length > 0) {
-    console.error(
-      `\n✗ ${axeErrors.length}/${summaries.length} routes did not complete axe analysis`
-    )
-    console.error("  See sidecar JSON in the selected output directory for the exact axe errors.")
-    process.exit(5)
-  }
-  if (axeIssues.length > 0) {
-    console.error(
-      `\n✗ ${axeIssues.length}/${summaries.length} routes had critical/serious axe violations`
-    )
-    console.error("  See sidecar JSON in the selected output directory for full details.")
-    process.exit(5)
-  }
-  if (runtimeIssues.length > 0) {
-    console.error(
-      `\n✗ ${runtimeIssues.length}/${summaries.length} routes had console/page errors or failed network requests`
-    )
-    console.error("  See sidecar JSON in the selected output directory for route details.")
-    process.exit(6)
-  }
-  if (visualConfigurationIssues.length > 0) {
-    console.error(
-      `\n✗ ${visualConfigurationIssues.length}/${summaries.length} captures failed requested locale/theme/viewport verification or screenshot capture`
-    )
-    console.error("  See private sidecar JSON in the selected output directory for details.")
-    process.exit(7)
-  }
-  console.log(
-    captureMatrix
-      ? `\n✓ All ${summaries.length} authenticated matrix captures passed on source ${captureMatrix.sourceSha}`
-      : `\n✓ All ${summaries.length} routes passed: HTTP 200 + 0 hydration errors + 0 axe critical/serious violations`
-  )
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch((err) => {
     console.error("Fatal error:", redactDiagnostic(err.message))
-    process.exit(1)
+    process.exitCode = Number.isInteger(err?.visualExitCode) ? err.visualExitCode : 1
   })
 }

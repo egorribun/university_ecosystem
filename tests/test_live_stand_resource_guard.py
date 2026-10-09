@@ -34,6 +34,23 @@ def _valid_published_ports() -> dict[str, int]:
     }
 
 
+def _pre_minio_published_ports() -> dict[str, int]:
+    current = _valid_published_ports()
+    return {name: current[name] for name in live_stand.PRE_MINIO_PUBLISHED_PORT_NAMES}
+
+
+def _matches_published_port_environment(
+    environment: dict[str, str], ports: dict[str, int]
+) -> bool:
+    return all(
+        environment.get(
+            "LIVE_MAILPIT_PORT" if name == "MAILPIT" else f"LIVE_HOST_PORT_{name}"
+        )
+        == str(port)
+        for name, port in ports.items()
+    )
+
+
 def _install_hermetic_stand(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -171,8 +188,10 @@ def _install_hermetic_stand(
             environment["LIVE_VAPID_PRIVATE_KEY"]
             == live_stand.COMPOSE_INSPECTION_PLACEHOLDER
         )
-        assert environment["LIVE_HOST_PORT_BACKEND"] == str(
-            _valid_published_ports()["BACKEND"]
+        assert _matches_published_port_environment(
+            environment, _valid_published_ports()
+        ) or _matches_published_port_environment(
+            environment, _pre_minio_published_ports()
         )
 
         compose_text = (worktree / "docker-compose.full.yml").read_text(
@@ -271,7 +290,7 @@ def _write_v4_owner_marker(worktree: Path, owner: live_stand.StandOwner) -> None
         "repository": owner.repository,
         "worktree": owner.worktree,
         "project_name": owner.project_name,
-        "published_ports": dict(owner.published_ports),
+        "published_ports": _pre_minio_published_ports(),
         "daemon_fingerprint": owner.daemon_fingerprint,
     }
     marker = {
@@ -295,7 +314,7 @@ def _write_v5_owner_marker(
         "repository": owner.repository,
         "worktree": owner.worktree,
         "project_name": owner.project_name,
-        "published_ports": dict(owner.published_ports),
+        "published_ports": _pre_minio_published_ports(),
         "daemon_fingerprint": owner.daemon_fingerprint,
         "compose_resource_fingerprint": (
             owner.compose_resource_fingerprint if fingerprint is None else fingerprint
@@ -935,6 +954,7 @@ def test_old_v5_owner_marker_without_resume_field_remains_readable(
 
     loaded = live_stand.load_stand_owner(worktree)
     assert loaded.schema_version == live_stand.RESOURCE_OWNER_SCHEMA_VERSION
+    assert dict(loaded.published_ports) == _pre_minio_published_ports()
     assert loaded.compose_resource_fingerprint is not None
     assert loaded.resume_compose_resource_fingerprint is None
 
@@ -1374,6 +1394,14 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
             _write_v5_owner_marker(worktree, created_owner, fingerprint=fingerprint)
         else:
             assert existing_reservation_schema == live_stand.OWNER_SCHEMA_VERSION
+        if existing_reservation_schema in {
+            live_stand.PREVIOUS_OWNER_SCHEMA_VERSION,
+            live_stand.RESOURCE_OWNER_SCHEMA_VERSION,
+        }:
+            assert (
+                dict(live_stand.load_stand_owner(worktree).published_ports)
+                == _pre_minio_published_ports()
+            )
 
     def fake_run(
         command: list[str], *, cwd: Path, env: dict[str, str] | None = None

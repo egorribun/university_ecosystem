@@ -367,7 +367,7 @@ def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:
         setup_go = next(
             step for step in jobs[job_name]["steps"] if step.get("name") == "Set up Go"
         )
-        assert setup_go["with"]["go-version"] == "1.26.6"
+        assert setup_go["with"]["go-version"] == "1.26.9"
         assert "go-version-file" not in setup_go["with"]
 
     for job_name in ("sbom-python", "sbom-go", "sbom-rust"):

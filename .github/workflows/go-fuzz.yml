@@ -29,14 +29,14 @@ jobs:
         with:
           # Pin the toolchain containing the fix for golang/go#75804, which
           # could misreport an exact fuzztime deadline as a test failure.
-          go-version: "1.27.1"
+          go-version: "1.27.2"
           cache: true
 
       - name: Run Fuzz Test
         run: |
           cd services/file-processor
           # Keep one fuzz worker: the default GOMAXPROCS-sized pool can OOM
-          # the runner. Go 1.27.1 contains the upstream fix for
+          # the runner. Go 1.27.2 contains the upstream fix for
           # golang/go#75804, so retain the full bounded smoke budget without
           # masking or ignoring failures.
           go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=20s -parallel=1 ./internal/middleware

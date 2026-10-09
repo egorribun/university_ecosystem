@@ -23,7 +23,7 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
-import { loginBrowserContext } from "./visual-smoke-auth.mjs"
+import { loginBrowserContext, withOwnedSessionCleanup } from "./visual-smoke-auth.mjs"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -407,14 +407,15 @@ async function checkJwksEndpoint() {
   return { rsaKeyCount: rsaKeys.length, totalKeyCount: jwks.keys.length }
 }
 
-async function performLogin(context, credentials) {
+async function performLogin(context, credentials, ownSession) {
   console.log("-> API login: POST /api/v1/auth/login/json")
-  const { cookies, cookieJar } = await loginBrowserContext({
+  const { cookies, cookieJar, ownedSession } = await loginBrowserContext({
     context,
     origin: ORIGIN,
     email: credentials.email,
     password: credentials.password,
   })
+  ownSession(ownedSession)
   const accessTokenValue = cookieJar.get("access_token_v2")
 
   const jwtHeader = decodeJwtHeader(accessTokenValue)
@@ -425,6 +426,11 @@ async function performLogin(context, credentials) {
 
   console.log(`OK Login OK; browser context holds ${cookies.length} cookies`)
   return { cookieCount: cookies.length, jwtAlgorithm: jwtHeader.alg }
+}
+
+function setVisualExitCode(error, code) {
+  Object.defineProperty(error, "visualExitCode", { value: code, configurable: true })
+  return error
 }
 
 async function setSmokeTheme(page, theme, { beforeNavigation = false } = {}) {
@@ -926,117 +932,112 @@ async function main() {
     browser = await chromium.launch({ headless: true })
   }
 
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-  })
-  const page = await context.newPage()
-  page.setDefaultTimeout(30_000)
-  page.setDefaultNavigationTimeout(30_000)
+  await withOwnedSessionCleanup({
+    browser,
+    createContext: () => browser.newContext({ viewport: { width: 1280, height: 800 } }),
+    origin: ORIGIN,
+    onCleanupFailure: () => console.error("Owned session or browser cleanup failed."),
+    run: async ({ context, ownSession }) => {
+      const page = await context.newPage()
+      page.setDefaultTimeout(30_000)
+      page.setDefaultNavigationTimeout(30_000)
 
-  let loginResult
-  try {
-    loginResult = await performLogin(context, credentials)
-  } catch (err) {
-    credentials.password = ""
-    if (err instanceof RS256Error) {
-      console.error(`X RS256 ASSERTION FAILED: ${err.message}`)
-      await context.close()
-      await browser.close()
-      process.exit(3)
-    }
-    console.error(`X LOGIN FAILED: ${err.message}`)
-    await context.close()
-    await browser.close()
-    process.exit(1)
-  }
-  credentials.password = ""
+      let loginResult
+      try {
+        loginResult = await performLogin(context, credentials, ownSession)
+      } catch (err) {
+        credentials.password = ""
+        throw setVisualExitCode(err, err instanceof RS256Error ? 3 : 1)
+      }
+      credentials.password = ""
 
-  await writeFile(
-    path.join(metaDir, "login.json"),
-    JSON.stringify(
-      {
-        loginVerified: true,
-        cookieCount: loginResult.cookieCount,
-        jwtAlgorithm: loginResult.jwtAlgorithm,
-      },
-      null,
-      2
-    )
-  )
+      await writeFile(
+        path.join(metaDir, "login.json"),
+        JSON.stringify(
+          {
+            loginVerified: true,
+            cookieCount: loginResult.cookieCount,
+            jwtAlgorithm: loginResult.jwtAlgorithm,
+          },
+          null,
+          2
+        )
+      )
 
-  const summaries = []
-  for (const locale of locales) {
-    console.log(`-> locale ${locale}: set ue:language cookie + localStorage; reload /dashboard`)
-    const beforeNavigation = page.url() === "about:blank"
-    await setSmokeLocale(page, locale, { beforeNavigation })
-    let adminSession
-    try {
-      adminSession = await bootstrapAdminSession(page, locale)
-    } catch (error) {
-      console.error(`X ADMIN SESSION BOOTSTRAP FAILED for locale ${locale}: ${error.name}`)
-      await context.close()
-      await browser.close()
-      process.exit(1)
-    }
-    for (const route of ADMIN_ROUTES) {
-      for (const theme of themes) {
-        for (const width of widths) {
-          const captureConfig = captureMatrix
-            ? { mode: captureMatrix.mode, locale, theme, width, height: captureHeight }
-            : null
-          console.log(`-> ${route} [${locale}/${theme}/${width}x${captureHeight}]`)
-          const result = await smokeAdminRoute(
-            page,
-            route,
-            locale,
-            theme,
-            runDir,
-            adminSession,
-            captureConfig,
-            sourceSha
-          )
-          summaries.push(result)
-          const glyph = isAdminCaptureSuccessful(result) ? "OK" : "X"
-          console.log(
-            `   ${glyph} bootstrap_http=${result.bootstrapHttpStatus} final=${result.finalPath || "n/a"} page=${result.pageReadiness.ready ? "verified" : "invalid"} ss=${result.screenshotPath ? "yes" : "no"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount}`
-          )
+      const summaries = []
+      for (const locale of locales) {
+        console.log(`-> locale ${locale}: set ue:language cookie + localStorage; reload /dashboard`)
+        const beforeNavigation = page.url() === "about:blank"
+        await setSmokeLocale(page, locale, { beforeNavigation })
+        let adminSession
+        try {
+          adminSession = await bootstrapAdminSession(page, locale)
+        } catch (error) {
+          console.error(`X ADMIN SESSION BOOTSTRAP FAILED for locale ${locale}: ${error.name}`)
+          throw setVisualExitCode(error, 1)
+        }
+        for (const route of ADMIN_ROUTES) {
+          for (const theme of themes) {
+            for (const width of widths) {
+              const captureConfig = captureMatrix
+                ? { mode: captureMatrix.mode, locale, theme, width, height: captureHeight }
+                : null
+              console.log(`-> ${route} [${locale}/${theme}/${width}x${captureHeight}]`)
+              const result = await smokeAdminRoute(
+                page,
+                route,
+                locale,
+                theme,
+                runDir,
+                adminSession,
+                captureConfig,
+                sourceSha
+              )
+              summaries.push(result)
+              const glyph = isAdminCaptureSuccessful(result) ? "OK" : "X"
+              console.log(
+                `   ${glyph} bootstrap_http=${result.bootstrapHttpStatus} final=${result.finalPath || "n/a"} page=${result.pageReadiness.ready ? "verified" : "invalid"} ss=${result.screenshotPath ? "yes" : "no"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount}`
+              )
+            }
+          }
         }
       }
-    }
-  }
 
-  await context.close()
-  await browser.close()
+      printSummary(summaries)
 
-  printSummary(summaries)
+      const failed = summaries.filter((summary) => !isAdminCaptureSuccessful(summary))
+      const hydrationIssues = summaries.filter((s) => s.hydrationErrorCount > 0)
+      const screenshotsCaptured = summaries.filter((s) => s.screenshotPath).length
 
-  const failed = summaries.filter((summary) => !isAdminCaptureSuccessful(summary))
-  const hydrationIssues = summaries.filter((s) => s.hydrationErrorCount > 0)
-  const screenshotsCaptured = summaries.filter((s) => s.screenshotPath).length
-
-  if (failed.length > 0 || summaries.length !== expectedCaptureCount) {
-    console.error(
-      `\nX ${failed.length} failed capture(s); completed ${summaries.length}/${expectedCaptureCount} expected locale/route/theme combinations`
-    )
-    process.exit(1)
-  }
-  if (hydrationIssues.length > 0) {
-    console.error(`\nX ${hydrationIssues.length}/${summaries.length} captures had hydration errors`)
-    process.exit(2)
-  }
-  console.log(
-    `\nOK All ${summaries.length} admin captures verified /dashboard bootstrap, requested URL, locale, main landmark, admin theme, and route heading`
-  )
-  console.log(
-    captureMatrix
-      ? `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured (${captureMatrix.sourceSha}) to private output`
-      : `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured to ${path.relative(PROJECT_ROOT, runDir)}/`
-  )
+      if (failed.length > 0 || summaries.length !== expectedCaptureCount) {
+        throw setVisualExitCode(
+          new Error(
+            `${failed.length} failed capture(s); completed ${summaries.length}/${expectedCaptureCount} expected locale/route/theme combinations`
+          ),
+          1
+        )
+      }
+      if (hydrationIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(`${hydrationIssues.length}/${summaries.length} captures had hydration errors`),
+          2
+        )
+      }
+      console.log(
+        `\nOK All ${summaries.length} admin captures verified /dashboard bootstrap, requested URL, locale, main landmark, admin theme, and route heading`
+      )
+      console.log(
+        captureMatrix
+          ? `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured (${captureMatrix.sourceSha}) to private output`
+          : `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured to ${path.relative(PROJECT_ROOT, runDir)}/`
+      )
+    },
+  })
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch((err) => {
-    console.error("Fatal error:", err)
-    process.exit(1)
+    console.error("Fatal error: admin visual capture failed.")
+    process.exitCode = Number.isInteger(err?.visualExitCode) ? err.visualExitCode : 1
   })
 }

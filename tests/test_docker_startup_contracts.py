@@ -2203,11 +2203,11 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
     full_caddy = _compose("docker-compose.full.yml")["services"]["caddy"]
 
-    assert "golang:1.26.6-alpine3.24@sha256:" in dockerfile
+    assert "golang:1.26.9-alpine3.24@sha256:" in dockerfile
     assert "caddy:2.11.4-alpine@sha256:" in dockerfile
     assert "ARG CADDY_VERSION=2.11.4" in dockerfile
-    assert "--replace golang.org/x/net=golang.org/x/net@v0.56.0" in dockerfile
-    assert "--replace golang.org/x/text=golang.org/x/text@v0.39.0" in dockerfile
+    assert "--replace golang.org/x/net=golang.org/x/net@v0.60.0" in dockerfile
+    assert "--replace golang.org/x/text=golang.org/x/text@v0.42.0" in dockerfile
     assert (
         "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
     )
@@ -2449,8 +2449,8 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
 
     assert (
         (
-            "golang:1.26.6-alpine3.24@sha256:"
-            "af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df"  # pragma: allowlist secret
+            "golang:1.26.9-alpine3.24@sha256:"
+            "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"  # pragma: allowlist secret
         )
         in dockerfile
     )
@@ -2467,8 +2467,8 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
 
 def test_go_service_builders_use_the_patched_repository_toolchain() -> None:
     expected = (
-        "golang:1.26.6-alpine3.24@sha256:"
-        "af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df"  # pragma: allowlist secret
+        "golang:1.26.9-alpine3.24@sha256:"
+        "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"  # pragma: allowlist secret
     )
 
     for relative_path in (
@@ -2500,8 +2500,8 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
     for dependency in (
         "github.com/spiffe/go-spiffe/v2@v2.7.0",
         "google.golang.org/grpc@v1.83.2",
-        "golang.org/x/net@v0.58.0",
-        "golang.org/x/text@v0.41.0",
+        "golang.org/x/net@v0.60.0",
+        "golang.org/x/text@v0.42.0",
     ):
         assert dependency in health_probe
     assert "go mod download" in health_probe

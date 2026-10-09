@@ -8,7 +8,6 @@ import path from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { runInNewContext } from "node:vm"
 import yaml from "js-yaml"
 import {
   PRESENTATION_IGNORER,
@@ -5232,260 +5231,91 @@ test("historical Stryker costs are bound to the exact source SHA, config, and vi
   )
 })
 
-test("pre-checkout Stryker selector binds source SHA, tested SHA, attempt, and digest", async (t) => {
+test("nightly Stryker preflight selection binds SHA, run attempt, and immutable selector output", async () => {
   const workflow = yaml.load(
-    await readFile(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8")
+    await readFile(
+      new URL("../../.github/workflows/nightly-full-gate.yml", import.meta.url),
+      "utf8"
+    )
   )
-  const script = workflow.jobs["stryker-preflight"].steps[0].with.script
+  const producer = workflow.jobs["frontend-mutation-preflight"]
+  const generation = producer.steps.find(
+    ({ name }) => name === "Generate canonical immutable Stryker preflight"
+  )
+  const upload = producer.steps.find(({ name }) => name === "Upload immutable Stryker preflight")
+  assert.equal(producer.if, "${{ github.ref == 'refs/heads/main' }}")
+  assert.equal(generation.run, "npm run test:mutation")
+
+  const runId = "42"
+  const runAttempt = "2"
   const sourceSha = "a".repeat(40)
-  const testedSha = "b".repeat(40)
-  const prior = {
-    id: 17,
-    name: `frontend-mutation-historical-costs-42-1-${testedSha}`,
-    size_in_bytes: 1024,
-    expired: false,
-    digest: `sha256:${"c".repeat(64)}`,
-    workflow_run: { id: 42, head_sha: sourceSha },
-  }
-  const current = { ...prior, id: 18, name: `frontend-mutation-historical-costs-42-2-${testedSha}` }
-  const execute = async ({
-    runHeadSha = sourceSha,
-    artifacts = [prior, current],
-    catalog = async () => ({ total_count: artifacts.length, artifacts }),
-    env = {},
-    now = () => 0,
-    requests = [],
-    diagnostics = [],
-    outputs = new Map(),
-  } = {}) => {
-    await runInNewContext(`(async () => {\n${script}\n})()`, {
-      context: { repo: { owner: "example", repo: "university" }, runId: 42 },
-      Date: { now },
-      process: {
-        env: {
-          ARTIFACT_PREFIX: "frontend-mutation-historical-costs-",
-          ARTIFACT_SUFFIX: testedSha,
-          ATTEMPT_POLICY: "earlier",
-          ALLOW_EMPTY: "true",
-          SOURCE_SHA: sourceSha,
-          TESTED_SHA: testedSha,
-          RUN_ATTEMPT: "2",
-          PR_BRANCH: "egorribun",
-          ...env,
-        },
-      },
-      github: {
-        rest: {
-          actions: {
-            getWorkflowRun: async () => ({
-              data: {
-                id: 42,
-                run_attempt: 2,
-                head_sha: runHeadSha,
-                event: "pull_request",
-                path: ".github/workflows/ci.yml",
-                head_branch: "egorribun",
-                repository: { full_name: "example/university" },
-              },
-            }),
-            listWorkflowRunArtifacts: async (request) => {
-              requests.push(request)
-              return { data: await catalog(request) }
-            },
-          },
-        },
-      },
-      core: {
-        setOutput: (key, value) => outputs.set(key, value),
-        warning: (message) => diagnostics.push(message),
-      },
-    })
-    return outputs
-  }
+  const testedSha = sourceSha
+  const artifactNameTemplate = upload.with.name
+  assert.equal(
+    artifactNameTemplate,
+    "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}"
+  )
+  const artifactName = artifactNameTemplate
+    .replace("${{ github.run_id }}", runId)
+    .replace("${{ github.run_attempt }}", runAttempt)
+    .replace("${{ github.sha }}", testedSha)
+  assert.equal(artifactName, `frontend-mutation-preflight-${runId}-${runAttempt}-${testedSha}`)
 
-  const selected = await execute()
-  assert.equal(selected.get("artifact_id"), "17")
-  assert.equal(selected.get("artifact_name"), prior.name)
-  assert.equal(selected.get("artifact_digest"), prior.digest)
-  assert.equal(selected.get("producer_attempt"), "1")
-  await assert.rejects(execute({ runHeadSha: testedSha }), /workflow identity mismatch/u)
-  await assert.rejects(
-    execute({ artifacts: [{ ...prior, workflow_run: { id: 42, head_sha: testedSha } }] }),
-    /candidate provenance is invalid/u
+  const shards = workflow.jobs["frontend-mutation-shards"]
+  const selector = shards.steps.find(
+    ({ name }) => name === "Select immutable same-run Stryker preflight candidate"
+  )
+  assert.equal(selector.id, "select_stryker_preflight")
+  assert.equal(selector.env.GH_TOKEN, "${{ github.token }}")
+  assert.ok(selector.run.includes("scripts/quality/select_same_run_artifact_cli.py"))
+  for (const argument of [
+    '--run-id "${{ github.run_id }}"',
+    '--consumer-run-attempt "${{ github.run_attempt }}"',
+    '--commit-sha "${{ github.sha }}"',
+    '--run-head-sha "${{ github.sha }}"',
+    '--workflow-path ".github/workflows/nightly-full-gate.yml"',
+    '--artifact-prefix "frontend-mutation-preflight-"',
+    '--artifact-suffix "${{ github.sha }}"',
+    "--attempt-policy current-or-earlier",
+  ]) {
+    assert.ok(selector.run.includes(argument), argument)
+  }
+  assert.equal(sourceSha, testedSha)
+
+  const download = shards.steps.find(
+    ({ name }) => name === "Download selected Stryker preflight candidate"
+  )
+  assert.equal(
+    download.with["artifact-ids"],
+    "${{ steps.select_stryker_preflight.outputs.artifact_id }}"
+  )
+  assert.equal(download.with.repository, "${{ github.repository }}")
+  assert.equal(download.with["run-id"], "${{ github.run_id }}")
+  assert.equal(download.with["github-token"], "${{ github.token }}")
+  assert.equal(
+    download.with.path,
+    "frontend/reports/mutation/preflight-candidates/${{ steps.select_stryker_preflight.outputs.artifact_name }}"
+  )
+  const verification = shards.steps.find(
+    ({ name }) => name === "Verify selected Stryker preflight payload"
+  )
+  assert.equal(
+    verification.env.ARTIFACT_NAME,
+    "${{ steps.select_stryker_preflight.outputs.artifact_name }}"
   )
 
-  const unrelated = Array.from({ length: 100 }, (_, index) => ({ name: `other-${index}` }))
-  await t.test("restarts the complete catalog after uploads shift later pages", async () => {
-    let artifacts = [prior, ...unrelated]
-    const requests = []
-    const diagnostics = []
-    const outputs = await execute({
-      env: { ATTEMPT_POLICY: "current-or-earlier" },
-      requests,
-      diagnostics,
-      catalog: async ({ page }) => {
-        if (requests.length === 2) artifacts = [current, ...artifacts]
-        return {
-          total_count: artifacts.length,
-          artifacts: artifacts.slice((page - 1) * 100, page * 100),
-        }
-      },
-    })
-    assert.equal(outputs.get("artifact_id"), "18")
-    assert.equal(outputs.get("producer_attempt"), "2")
-    assert.deepEqual(
-      requests.map(({ page }) => page),
-      [1, 2, 1, 2]
-    )
-    assert.ok(
-      requests.every(({ per_page, request }) => per_page === 100 && request.timeout === 5000)
-    )
-    assert.match(diagnostics.join("\n"), /scan=1 page=2.*previous_total=101 total=102/u)
-    assert.equal(diagnostics.join("\n").includes(prior.name), false)
-  })
-
-  await t.test("persistent valid count churn exhausts a bounded number of scans", async () => {
-    const requests = []
-    const outputs = new Map()
-    await assert.rejects(
-      execute({
-        requests,
-        outputs,
-        catalog: async ({ page }) => ({
-          total_count: page === 1 ? 101 : 102,
-          artifacts: page === 1 ? [prior, ...unrelated.slice(0, 99)] : unrelated.slice(98),
-        }),
-      }),
-      /same-run artifact catalog did not stabilize.*scans=3/u
-    )
-    assert.deepEqual(
-      requests.map(({ page }) => page),
-      [1, 2, 1, 2, 1, 2]
-    )
-    assert.equal(outputs.size, 0)
-  })
-
-  await t.test("restarts share the original 120-second selector budget", async () => {
-    let time = 0
-    const requests = []
-    const outputs = new Map()
-    await assert.rejects(
-      execute({
-        requests,
-        outputs,
-        now: () => time,
-        catalog: async ({ page }) => {
-          time = page === 1 ? 119000 : 120000
-          return {
-            total_count: page === 1 ? 101 : 102,
-            artifacts: page === 1 ? [prior, ...unrelated.slice(0, 99)] : unrelated.slice(98),
-          }
-        },
-      }),
-      /same-run selector budget exhausted/u
-    )
-    assert.deepEqual(
-      requests.map(({ request }) => request.timeout),
-      [5000, 1000]
-    )
-    assert.equal(outputs.size, 0)
-  })
-
-  for (const [label, response, error] of [
-    ["missing response", null, /catalog is malformed/u],
-    ["string count", { total_count: "101", artifacts: [] }, /catalog is malformed/u],
-    ["negative count", { total_count: -1, artifacts: [] }, /catalog is malformed/u],
-    ["fractional count", { total_count: 101.5, artifacts: [] }, /catalog is malformed/u],
-    ["excessive count", { total_count: 10001, artifacts: [] }, /catalog is malformed/u],
-    ["missing page", { total_count: 102 }, /catalog is malformed/u],
-    ["non-array page", { total_count: 102, artifacts: {} }, /catalog is malformed/u],
-    [
-      "oversized page",
-      { total_count: 102, artifacts: [...unrelated, prior] },
-      /catalog is malformed/u,
-    ],
-    ["empty partial page", { total_count: 102, artifacts: [] }, /catalog is partial/u],
-    ["unchanged empty partial page", { total_count: 101, artifacts: [] }, /catalog is partial/u],
-    ["too many records", { total_count: 101, artifacts: [prior, current] }, /catalog is partial/u],
-    [
-      "too many records during drift",
-      { total_count: 102, artifacts: unrelated.slice(0, 3) },
-      /catalog is partial/u,
-    ],
-  ]) {
-    await t.test(`${label} is not retried as catalog churn`, async () => {
-      const requests = []
-      const outputs = new Map()
-      await assert.rejects(
-        execute({
-          requests,
-          outputs,
-          catalog: async ({ page }) =>
-            page === 1 ? { total_count: 101, artifacts: unrelated } : response,
-        }),
-        error
-      )
-      assert.deepEqual(
-        requests.map(({ page }) => page),
-        [1, 2]
-      )
-      assert.equal(outputs.size, 0)
-    })
-  }
-
-  await t.test("partial catalogs still stop at the 100-page bound", async () => {
-    const requests = []
-    await assert.rejects(
-      execute({
-        requests,
-        catalog: async () => ({ total_count: 101, artifacts: [{ name: "other" }] }),
-      }),
-      /catalog exceeds page bound/u
-    )
-    assert.equal(requests.length, 100)
-  })
-
-  await t.test("empty catalogs obey the explicit historical-cost policy", async () => {
-    assert.equal((await execute({ artifacts: [] })).get("has_candidate"), "false")
-    await assert.rejects(
-      execute({ artifacts: [], env: { ALLOW_EMPTY: "false" } }),
-      /candidate is absent/u
-    )
-    await assert.rejects(
-      execute({ artifacts: [], env: { ARTIFACT_PREFIX: "frontend-mutation-preflight-" } }),
-      /selector identity is invalid/u
-    )
-  })
-
-  await t.test(
-    "stable catalogs retain digest, attempt, provenance, and duplicate rejection",
-    async () => {
-      for (const artifacts of [
-        [{ ...prior, digest: "sha256:invalid" }],
-        [{ ...prior, name: `frontend-mutation-historical-costs-42-3-${testedSha}` }],
-        [{ ...prior, name: `frontend-mutation-historical-costs-43-1-${testedSha}` }],
-        [{ ...prior, name: `frontend-mutation-historical-costs-42-1-${sourceSha}` }],
-        [{ ...prior, workflow_run: { id: 43, head_sha: sourceSha } }],
-        [{ ...prior, expired: true }],
-        [{ ...prior, size_in_bytes: 0 }],
-        [{ ...prior, id: 0 }],
-        [prior, { ...prior, id: 19 }],
-        [prior, { ...current, id: prior.id }],
-      ]) {
-        const requests = []
-        const outputs = new Map()
-        await assert.rejects(
-          execute({ artifacts, requests, outputs }),
-          /provenance is invalid|foreign or malformed provenance/u
-        )
-        assert.equal(requests.length, 1)
-        assert.equal(outputs.size, 0)
-      }
-      assert.equal((await execute({ artifacts: [current] })).get("has_candidate"), "false")
-    }
+  const validatePayload = shards.steps.find(
+    ({ name }) => name === "Validate immutable Stryker preflight before execution"
+  )
+  assert.equal(validatePayload["working-directory"], "frontend")
+  assert.equal(validatePayload.env.STRYKER_PREFLIGHT_MODE, "validate")
+  assert.equal(validatePayload.run, "npm run test:mutation")
+  assert.ok(shards.steps.indexOf(validatePayload) > shards.steps.indexOf(verification))
+  assert.ok(
+    shards.steps.indexOf(validatePayload) <
+      shards.steps.findIndex(({ name }) => name === "Run fresh nightly Stryker shard")
   )
 })
-
 test("offline cross-run replan consumes immutable baseline without rerunning instrumenter", async () => {
   const {
     buildEvidenceIdentity,

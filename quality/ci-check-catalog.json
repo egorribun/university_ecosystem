@@ -3407,7 +3407,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.6\",\"description\":\"Go version\",\"required\":false,\"type\":\"string\"},\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"node-cache-hit\":{\"description\":\"Whether Node.js cache was hit\",\"value\":\"${{ jobs.cache.outputs.node-cache-hit }}\"},\"python-cache-hit\":{\"description\":\"Whether Python cache was hit\",\"value\":\"${{ jobs.cache.outputs.python-cache-hit }}\"}}}"
+          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.9\",\"description\":\"Go version\",\"required\":false,\"type\":\"string\"},\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"node-cache-hit\":{\"description\":\"Whether Node.js cache was hit\",\"value\":\"${{ jobs.cache.outputs.node-cache-hit }}\"},\"python-cache-hit\":{\"description\":\"Whether Python cache was hit\",\"value\":\"${{ jobs.cache.outputs.python-cache-hit }}\"}}}"
         }
       ],
       "jobs": {
@@ -3758,7 +3758,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.6\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
+          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.9\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
         }
       ],
       "jobs": {
@@ -3793,7 +3793,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"coverage-canonical-path\":{\"description\":\"Repository-relative path used after artifact download\",\"required\":true,\"type\":\"string\"},\"coverage-component\":{\"description\":\"Canonical quality-contract component for this report\",\"required\":true,\"type\":\"string\"},\"coverage-threshold\":{\"default\":80,\"description\":\"Minimum Go test coverage percentage\",\"required\":false,\"type\":\"number\"},\"go-version\":{\"default\":\"1.26.6\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"run-mutation-diagnostic\":{\"default\":false,\"description\":\"Run the bounded advisory mutation diagnostic (scheduled/manual only)\",\"required\":false,\"type\":\"boolean\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
+          "guard": "{\"inputs\":{\"coverage-canonical-path\":{\"description\":\"Repository-relative path used after artifact download\",\"required\":true,\"type\":\"string\"},\"coverage-component\":{\"description\":\"Canonical quality-contract component for this report\",\"required\":true,\"type\":\"string\"},\"coverage-threshold\":{\"default\":80,\"description\":\"Minimum Go test coverage percentage\",\"required\":false,\"type\":\"number\"},\"go-version\":{\"default\":\"1.26.9\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"run-mutation-diagnostic\":{\"default\":false,\"description\":\"Run the bounded advisory mutation diagnostic (scheduled/manual only)\",\"required\":false,\"type\":\"boolean\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
         }
       ],
       "jobs": {

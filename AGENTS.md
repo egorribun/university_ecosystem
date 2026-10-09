@@ -5,7 +5,7 @@ Welcome to the **University Ecosystem Platform** repository. This document defin
 Subsystem-specific rules are hierarchically partitioned into domain `AGENTS.md` files:
 - **Backend Domain (`app/`)**: [`app/AGENTS.md`](app/AGENTS.md) — Python 3.14, FastAPI, SQLAlchemy 2.0 async (`lazy="noload"`), Dishka DI, Argon2id, Outbox pattern.
 - **Frontend Domain (`frontend/`)**: [`frontend/AGENTS.md`](frontend/AGENTS.md) — React 19, TypeScript strict, TanStack Router/Query, Zustand, Valibot-only, SSR, ARIA standards.
-- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.26.4+ (CI pins 1.26.6; fuzz jobs may use 1.27.1), `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
+- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.26.4+ (CI pins 1.26.9; fuzz jobs may use 1.27.2), `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
 
 ---
 
@@ -157,7 +157,7 @@ for the MVP release; the current plan is
 - **Base Images**:
   - Python backend: `python:3.14-slim-bookworm`
   - Frontend SSR: `node:24-alpine` (running on port 3000)
-  - Go microservices: digest-pinned `golang:1.26.6-alpine` builders and a `distroless/static-debian12` runtime; `file-processor` also ships `grpc_health_probe`
+  - Go microservices: digest-pinned `golang:1.26.9-alpine` builders and a `distroless/static-debian12` runtime; `file-processor` also ships `grpc_health_probe`
 - **Healthcheck Standards**:
   - Backend: `/health/ready` (FastAPI readiness probe)
   - File processor: `grpc_health_probe -addr=:50051`

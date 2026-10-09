@@ -199,6 +199,61 @@ async def test_update_schedule_uses_changed_group_and_skips_empty_teacher_lookup
 
 
 @pytest.mark.asyncio
+async def test_update_schedule_ignores_null_storage_fields_and_keeps_adjacent_updates():
+    schedule_id = uuid.uuid4()
+    current = _schedule(uuid.uuid4())
+    current.id = schedule_id
+    updated = _schedule(current.group_id)
+    updated.id = schedule_id
+    updated.room = "202"
+    updated.teacher = None
+    uow = _uow()
+    uow.schedules.get = AsyncMock(return_value=current)
+    uow.schedules.get_by_group = AsyncMock(return_value=[current])
+    uow.schedules.get_by_teacher = AsyncMock(return_value=[current])
+    uow.schedules.update = AsyncMock(return_value=updated)
+    optimizer = MagicMock()
+    optimizer.detect_conflicts = AsyncMock(return_value=[])
+    service = ScheduleService(uow, optimizer)
+    data = ScheduleUpdate.model_validate(
+        {
+            "group_id": None,
+            "subject": None,
+            "weekday": None,
+            "start_time": None,
+            "end_time": None,
+            "parity": None,
+            "teacher": None,
+            "room": "202",
+        }
+    )
+    audit = AsyncMock()
+
+    with patch("app.services.audit_service.get_secure_audit_service") as factory:
+        factory.return_value.record_domain_event = audit
+        result = await service.update_schedule(schedule_id, data)
+
+    assert result is updated
+    uow.schedules.get_by_group.assert_awaited_once_with(current.group_id)
+    uow.schedules.get_by_teacher.assert_not_awaited()
+    target, existing = optimizer.detect_conflicts.await_args.args
+    assert target == ScheduleItemInternal(
+        id=schedule_id,
+        weekday=current.weekday,
+        start_time=current.start_time,
+        end_time=current.end_time,
+        parity=current.parity,
+        room="202",
+        teacher=None,
+    )
+    assert existing == []
+    assert data.model_dump(exclude_unset=True) == {"teacher": None, "room": "202"}
+    uow.schedules.update.assert_awaited_once_with(schedule_id, data)
+    audit.assert_awaited_once()
+    uow.commit.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_update_schedule_rejects_conflict_before_update_audit_or_commit():
     schedule_id = uuid.uuid4()
     group_id = uuid.uuid4()

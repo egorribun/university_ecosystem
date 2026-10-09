@@ -443,9 +443,11 @@ test("admin smoke rejects missing or blank TEST_PASSWORD and uses the supplied r
 
 test("admin smoke clears the password before either login failure path", async () => {
   const source = await readFile(new URL("admin-visual-smoke.mjs", import.meta.url), "utf8")
-  const loginCall = source.indexOf("loginResult = await performLogin(context, credentials)")
+  const loginCall = source.indexOf(
+    "loginResult = await performLogin(context, credentials, ownSession)"
+  )
   const catchStart = source.indexOf("} catch (err) {", loginCall)
-  const catchEnd = source.indexOf('\n  }\n  credentials.password = ""', catchStart)
+  const catchEnd = source.indexOf('\n      }\n      credentials.password = ""', catchStart)
   assert.ok(
     loginCall >= 0 && catchStart > loginCall && catchEnd > catchStart,
     "the admin login failure handler must remain identifiable"
@@ -464,15 +466,10 @@ test("admin smoke clears the password before either login failure path", async (
   )
 
   const clearIndex = failureHandler.indexOf('credentials.password = ""')
-  for (const failureMarker of [
-    "X RS256 ASSERTION FAILED",
-    "X LOGIN FAILED",
-    "process.exit(3)",
-    "process.exit(1)",
-  ]) {
+  for (const failureMarker of ["throw setVisualExitCode(err, err instanceof RS256Error ? 3 : 1)"]) {
     assert.ok(
       failureHandler.indexOf(failureMarker) > clearIndex,
-      "the password must be cleared before login failure logging and exit"
+      "the password must be cleared before propagating the login failure into cleanup"
     )
   }
 })
