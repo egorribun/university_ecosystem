@@ -12,7 +12,7 @@ reviewed scanner de-dup diff и проверок; CodeQL остаётся blocki
 
 Ты — root-оркестратор для репозитория `C:\Users\egorribun\Documents\university_ecosystem`. Работай только в одном checkout на `egorribun`, в текущем PR #1306. Не создавай новые ветки и worktree. Root владеет всеми Git-операциями: stage, hooks, commit, push, PR и обычный merge; root также единственный владелец правок canonical `MVP_MASTER_PLAN.md`, `STATUS.md`, `AGENTS.md`, ADR-047 и readiness audit. Разрешённое число итоговых GHCR images — ровно шесть, через уже существующий main-only producer; не переписывай его ради упрощения проверки.
 
-В самом начале освежи рабочее состояние: `git status`, текущий branch/HEAD/upstream, PR и его проверки, завершённые/активные GitHub Actions, доступность `gh` и точные применимые инструкции `AGENTS.md`. Последний проверенный опубликованный ориентир — HEAD `f14f497ee9df0ddf30ac64e19a1808633ee2a6fb`, PR #1306; checkpoint описан ниже и в `STATUS.md`. Root может добавить commit после подготовки этого сообщения, поэтому не требуй именно этого SHA. Последние проверенные run IDs `37946889584` (matrix/CI) и `37946889184` (Owned Live Acceptance) — указатели для обновления статуса, а не доказательства для нового HEAD.
+В самом начале освежи рабочее состояние: `git status`, текущий branch/HEAD/upstream, PR и его проверки, завершённые/активные GitHub Actions, доступность `gh` и точные применимые инструкции `AGENTS.md`. Последний проверенный опубликованный ориентир — HEAD `c06d4d23723b90639ef9696587e1bb77daeb50db`, PR #1306; checkpoint описан ниже и в `STATUS.md`. Root может добавить commit после подготовки этого сообщения, поэтому не требуй именно этого SHA. Run IDs `37966963034` (matrix/CI, pending на18:11 UTC) и `37966962319` (advisory Owned Live, contract preflight FAIL) — указатели для обновления статуса, а не доказательства для нового HEAD. Последний полный required green относится кf14 и Matrix37946889584.
 
 Commit message для maintenance используй без wave, например `fix(quality): ...`, `test(contracts): ...` или `docs(quality): ...`. Никогда не добавляй `Co-Authored-By`. После запуска `detect-secrets` или pre-commit всегда заново stage `.secrets.baseline`, даже если он выглядит неизменённым.
 
@@ -28,7 +28,7 @@ Commit message для maintenance используй без wave, наприме
 - Данные только синтетические. Не используй реальные аккаунты/пользовательские данные, не выводи credentials, cookies, tokens, HMAC keys, `.env`, VAPID keys или сырые чувствительные логи. Храни чувствительные доказательства в приватной директории за пределами checkout. Не коммить временные receipts, секреты, screenshots с реальными данными и backup-артефакты. Reviewed visual baselines на синтетических fixtures сохранять в предусмотренных tracked путях после утверждения владельца.
 - Для live стенда используй только `scripts/live_stand.py` и уже проверенный owner-checked lifecycle. Перед запуском изучи `--help` и актуальные контракты. Каждая команда CLI `up/status/seed/e2e/stop/teardown` должна указывать один и тот же свежий уникальный `--state-dir` — дочернюю директорию `C:\Temp\ue-live-acceptance\run-<GUID>` — и работать с тем же clean SHA. Для MVP явно выбирай `up --stack core`; E2E `--mode` — отдельное понятие. Перед seed/E2E проверь подписанного владельца, source, daemon, Compose inventory/resources и readiness. Credentials создаёт/использует CLI из принадлежащего ему состояния, не передавай секреты вручную в аргументах/выводе. Остановка должна сохранить данные; teardown удаляет только доказанно принадлежащие этому run синтетические ресурсы.
 - Core — основная продуктовая приёмка; full — отдельный smoke на frozen RC. Compose closure вычисляй из текущей проверенной модели, не закрепляй число сервисов из старых отчётов. Требуй readiness всех выбранных сервисов: корректное завершение one-shot init jobs, health long-running сервисов и отдельные функциональные probes, включая Mailpit и revocation Redis. Не подменяй полный результат наличием контейнеров или одним HTTP 200.
-- Локальные версии, замеченные при последнем аудите, были Python 3.14.7 и Node 24.21; Go 1.27.1/Rust 1.98.1 отличались от канонических Go 1.26.6/Rust 1.97.1. Сверяй реальные pinned versions CI/lock-файлов перед выводом; не называй локальную среду эквивалентной CI. Python-скрипты запускай без изменения окружения (`uv run --no-sync`), npm — по lockfile (`npm ci`, только если зависимости реально отсутствуют), не обновляй lockfiles/менеджеры пакетов без необходимости и отдельного review.
+- Локальный refresh подтвердил Python 3.14.7, Node24.21, Go1.27.1/Rust1.98.1; актуальный CI pins Go1.26.9 (fuzz1.27.2), канонический Rust сверять по source/lock. Не называй локальную среду эквивалентной CI. Python-скрипты запускай без изменения окружения (`uv run --no-sync`), npm — по lockfile (`npm ci`, только если зависимости реально отсутствуют), не обновляй lockfiles/менеджеры пакетов без необходимости и отдельного review.
 - После каждого значимого этапа пиши краткий прогресс root/пользователю: проверенные факты, SHA, конкретный результат, остающийся риск и следующий checkpoint. Не проси повторного разрешения на обычные обратимые шаги, уже явно разрешённые этим поручением.
 
 ## Неизменяемые продуктовые и quality-границы
@@ -42,12 +42,20 @@ Commit message для maintenance используй без wave, наприме
 
 ## Проверенный checkpoint послеf14 и ближайший порядок
 
-Владелец запросил безопасную паузу после текущего checked commit/push.
-Новые live/runtime очереди не запускались; продолжение только по его явному
-поручению. Сверить actual goal/Git/PR: self-SHA этого документа не закрепляется.
+Безопасная пауза после checked commit/push c06 завершена; владелец явно
+возобновил работу, actual goal active. Новые live/runtime очереди ещё не
+запускались. Сверить actual goal/Git/PR: self-SHA документа не закрепляется.
+
+На c06 advisory37966962319/a1 упал до Docker: automatic owned cleanup добавил
+eager browser dependency в browser-free page-error contract. Production cleanup
+сохраняется; минимальный test-only override проходит private absent-browser
+RED15 PASS/1 FAIL→GREEN16/16. Root integrated полный Node suite browser-absent
+158/158 PASS18:16 UTC; обычные hooks/commit/push и новый unique Core на новом
+clean SHA ещё требуются. Matrix37966963034/a1
+на18:11 UTC active:70/76 required SUCCESS,2 active/4 final contexts pending.
 
 Последний independently verified опубликованный HEAD/origin/PR1306:
-`f14f497ee9df0ddf30ac64e19a1808633ee2a6fb`. Git/PR могут содержать следующий
+`c06d4d23723b90639ef9696587e1bb77daeb50db`. Git/PR могут содержать следующий
 commit; сверить актуальные значения. Minimal skip-string correction, owned
 session cleanup и approved Home baselines уже опубликованы обычными hooks/push.
 

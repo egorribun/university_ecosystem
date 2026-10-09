@@ -3,8 +3,16 @@
 Срез на 2026-10-09 (Europe/Istanbul).
 [Мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md),
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) действуют.
-Выпуск `v1.0.0` не подтверждён. Владелец запросил безопасную паузу после
-текущей контрольной точки; продолжение только по его явному поручению.
+Выпуск `v1.0.0` не подтверждён. Владелец явно возобновил автономную работу;
+goal active, branch `egorribun`, checkout один.
+
+Опубликованный checkpoint: `c06d4d23723b90639ef9696587e1bb77daeb50db`,
+HEAD/origin/PR совпадают, обычные hooks/commit/push PASS. Matrix37966963034/a1
+на18:11 UTC выполняется:70/76 required SUCCESS,2 active/4 final aggregates pending.
+Advisory37966962319/a1 FAIL до Docker: browser-free page-error contract запросил
+Chromium через automatic cleanup fixture. Live/API/Retry-After/cleanup не запускались.
+Test-only isolation: private RED15/1→GREEN16/16; root integrated browser-absent
+Node158/158 PASS18:16 UTC,0 skips/children. Новый clean-SHA Core ещё требуется.
 
 ## Решения и границы
 
@@ -134,8 +142,8 @@
 
 - Один heavy workload: startup RAM≤75%/free≥8GiB, runtime stop≥85%/free<4GiB.
   Только serial Linux screenshots: owner exception≤80%/≥6GiB, browser1GiB/2CPU.
-- Root check17:27 UTC:RAM59,1%/free13,02GiB; новые local guards без abort,
-  source stable/owned children0. Owned builder stopped, Core0/0/0 подтверждены.
-  Usage16:44 UTC:11% weekly consumed,89% remaining, ordinary usage allowed.
+- Root refresh18:07 UTC:RAM31,8%/free21,70GiB; builder stopped, active containers0.
+  Builder cap4GiB/no swap/2CPU подтверждён; прежний Core0/0/0, новый ещё не запущен.
+  Usage при возобновлении:14% weekly consumed,86% remaining, ordinary usage allowed.
 - Удалять только доказанно owned ресурсы; shared Docker/WSL/caches,
   чужие процессы/env/data/backups, Git/migrations/private rescue bundle сохранять.

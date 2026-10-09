@@ -418,7 +418,10 @@ test("the actual automatic fixture emits only reset counts and still fails uncau
     import { EventEmitter } from "node:events";
     import { test as base } from ${JSON.stringify(fileURLToPath(fixtureUrl))};
     import { reportLiveHttpStatus } from ${JSON.stringify(fileURLToPath(new URL("./http-status-diagnostic.ts", import.meta.url)))};
-    const test = base.extend({ page: async ({}, use) => { const page = new EventEmitter(); page.currentUrl = "https://private.invalid/reset-password?token=private-token#private-fragment"; page.url = () => page.currentUrl; await use(page); } });
+    const test = base.extend({
+      ownedSessionCleanup: [async ({}, use) => { await use(); }, { auto: true }],
+      page: async ({}, use) => { const page = new EventEmitter(); page.currentUrl = "https://private.invalid/reset-password?token=private-token#private-fragment"; page.url = () => page.currentUrl; await use(page); },
+    });
   `
   await writeFile(
     path.join(testDir, "password-reset.live.spec.ts"),
