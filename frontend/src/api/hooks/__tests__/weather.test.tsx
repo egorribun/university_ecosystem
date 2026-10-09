@@ -141,4 +141,15 @@ describe("weatherQueryOptions queryFn execution", () => {
     const opts = weatherQueryOptions(COORDS)
     expect(opts.placeholderData()).toBeUndefined()
   })
+
+  it("can defer session cache placeholders until after client hydration", () => {
+    readWeatherCacheMock.mockReturnValue({ data: WEATHER_STUB })
+
+    const opts = weatherQueryOptions(COORDS, undefined, {
+      allowSessionCachePlaceholder: false,
+    })
+
+    expect(opts.placeholderData()).toBeUndefined()
+    expect(readWeatherCacheMock).not.toHaveBeenCalled()
+  })
 })

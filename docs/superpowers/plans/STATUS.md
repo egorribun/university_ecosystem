@@ -29,9 +29,15 @@
 
 ## Последний опубликованный package и CI
 
-- Coverage checkpoint `9d44f2b3e52190dadf1171e0fee1a08a2f3797b9` опубликован в PR1306;
+- MFA checkpoint `fcdda2a0b33332ace6f5a1f54747ec023f41f94d` опубликован в PR1306;
   обычные commit/pre-push hooks PASS, `.secrets.baseline` повторно staged.
-  Matrix37891315450/a1 выполняется; последующий MFA acceptance package проверен локально.
+  Matrix37893211061/a1 ещё не подтверждён как полный PASS. Hosted live Core
+  run37893210706/a1 FAIL: auth-roles, desktop, React hydration418 при dashboard navigation.
+- Weather sessionStorage давал server skeleton/client badge; bookmarks localStorage —
+  server0/client1. Real renderToString/hydrateRoot воспроизвёл оба RED; fixes сохраняют
+  cache после hydration. Weather120/120 в семи модулях (10,76s), bookmarks55/55
+  в шести (10,08s), guardfalse; root/peer review CLEAR. Final package preflight10/10 PASS
+  после static probes correction; guardfalse, peak66,7%/free10,58 GiB. Hosted smoke открыт.
 - Два P1 GraphQL/Python WS DB fallback при mandatory revocation outage
   воспроизведены20 RED cases; fix и actual GraphQL context проверены121/121 PASS.
   Оба production-модуля100% line/branch; root/независимый P1 review CLEAR.
@@ -49,25 +55,23 @@
   не покрыты в schedule schema, audit service и embedding event handlers.
   Regression bundle167/167 PASS. Все app/quality/pyproject byte-identical tested merge;
   combine четырёх shards и свежего local coverage даёт100%,0 missing/partial.
-  Это diagnostic; новый hosted gate ещё не запущен, исходный100% floor сохранён.
+  Это diagnostic; свежий hosted full gate ещё не подтверждён, исходный100% floor сохранён.
 - Цель blocking CI15 минут открыта: backend cap2 даёт два этапа; terminal shard
   занимает19m54s сам по себе. Полный green JUnit нужен до duration reweighting;
   cap2 сохранён, retries/фиктивные PASS не добавлялись.
-- На679 все пять CodeQL analyses PASS. GHAS check113676546272 FAIL только по HIGH
+- Наfcdda все пять CodeQL analyses PASS. GHAS check113698844614 FAIL только по HIGH
   alerts3382/3383; missing-configuration diagnosis не актуален. Read-only triage
   подтвердил cache-mode query-model gap; отдельное разрешение на запись решения
   по двум alerts ожидается. Suppressions/dismissal не добавлялись.
 - Frozen-RC uv/npm/setup-node caching отключено; contracts14/14 PASS.
   Actionlint pinned на reviewed upstream PR745 commit5dc52e8 с проверенным SHA-256;
-  unmerged provenance явно сохранён. Repo lint PASS, один unchanged HTTP helper FAIL.
+  unmerged provenance сохранён; repo lint PASS, один unchanged HTTP helper FAIL.
 - Go CI/builders1.26.9, fuzz1.27.2, x/net0.60.0 и нужные x/text0.42.0 overrides.
   Windows scan9 modules exit0/reachable vulnerabilities0; unimported OpenPGP
   GO-2026-5932 остаётся в трёх graphs без fixed version. Linux hosted gate отдельный.
-- Package679 preflight9/10:337 contracts и остальные gates PASS; единственный
-  Prettier failure исправлен и полный format:check отдельно PASS. Все10 повторно
-  не запускались. Ранние10/10 receipts относятся к своим прежним packages.
-  Local Node154/cleanup54 и WASM555 PASS/1 planned skip/0 FAIL — локальные receipts,
-  не свежая hosted acceptance на679.
+- Исторический package679 preflight9/10:337 contracts PASS; Prettier исправлен,
+  полный format:check отдельно PASS, повторного10/10 не было. Local Node154/
+  cleanup54/WASM555 PASS/1 planned skip/0 FAIL не являются hosted acceptance.
 - Package9d44: full preflight10/10 PASS (81,22s), scoped Ruff/check format PASS;
   root/peer review и обычные hooks PASS. Новый hosted coverage gate ещё открыт.
 - MFA package сохраняет198 cases/59 specs: real sibling ticket/Go WS остаётся OPEN
@@ -76,28 +80,31 @@
 
 ## Core и фактические runtime доказательства
 
-- Core679 поднят и затем возобновлён в том же owned state; resume exit0/guardfalse,
-  peak80,3%/free6,27 GiB. Source/owner schema11/daemon/projection проверены;
-  23 containers, четыре one-shot exit0, все14 healthchecks healthy,10/10 loopback
-  bindings совпадают с подписанными. Edge/backend readiness/Mailpit search PASS.
+- Fresh Corefcdda: up exit0/guardfalse, peak74,8%/free8,01 GiB. Schema11/source/
+  daemon/projection/readiness PASS;23 containers/4 one-shot exit0/14 healthy/
+  10 signed loopback bindings. Admin-only seed выполнен один раз; feeds/schedule/chats пусты.
+  Core штатно stopped с сохранением данных на время weather fix; cross-SHA rebind запрещён.
+- SEC-03 current persisted probe дошёл до SQL parsing, но итог FAIL: boolean `::text`
+  возвращал true/false при parser t/f. Private one-line correction reviewed, ещё не выполнена;
+  persisted acceptance остаётся открыта. Старые native receipts не заменяют её.
+- Исторический Core679 resume exit0/guardfalse, peak80,3%/free6,27 GiB;
+  source/schema11/daemon/projection/23 containers/4 one-shot exit0/14 healthy/
+  10 signed bindings и edge/backend readiness/Mailpit search PASS.
 - Existing admin-only seed выполнен один раз. После stop/start read-only transaction
   подтвердила точный roster10 users/1 admin/2 teachers; news/stories/events/schedules/
-  chats пусты. Stop сохранил данные; после нового SHA superseded synthetic Core
-  удалён canonical owner-checked teardown: exit0, containers/volumes/networks0.
-  Receipts сохранены; cross-SHA rebind запрещён, следующий Core будет свежим.
-- Actual frontend image679: main JS168786 bytes/164,83 KiB при existing raw budget
-  500 KiB; Linux Node24.19.0, asset/image hashes сохранены приватно. Это только main
-  raw chunk; transfer budgets/Lighthouse scores этим не доказаны.
-- SEC-03 native dispatch679 PASS: genuine extension/builtin verifier, один positive
-  canonical_v2 вызов; owner/health/inventory до/после неизменны, stderr пуст.
-  API/DB calls0/persistent rows0; persisted audit/signing/rotation остаются открыты.
+  chats пусты. Stop сохранил данные; superseded synthetic Core удалён canonical
+  owner-checked teardown: exit0, containers/volumes/networks0; receipts сохранены.
+- Image679 main JS168786 bytes/164,83 KiB при raw budget500 KiB; Linux Node24.19.0,
+  hashes сохранены. Только raw chunk: transfer budgets/Lighthouse этим не доказаны.
+- SEC-03 native679 PASS: genuine extension/builtin verifier, один positive canonical_v2;
+  owner/health/inventory неизменны, stderr пуст; API/DB calls0/persistent rows0.
 - Official Playwright1.63.0 Linux image/digest и Chromium revision1243 проверены.
-  Credentialless host-network probe достиг подписанного Caddy. Chromium не запускался;
-  idle server удалён после доказательства ownership, image сохранён.
-  Home/push/general collectors и minimal auth/admin invocation прошли review;
-  LHCI private adapter подготовлен, пропущенный build найден review и исправляется.
+  Current container→Caddy probe PASS; Windows→host-network WS refused до credentials/
+  browser/captures. Exact idle server удалён, failure receipts сохранены. Internal bridge/
+  loopback/native exact-origin exposeNetwork adapter подготовлен; runtime ещё открыт.
+  Auth/admin ACL и LHCI build-before-collect исправлены/reviewed; actual runs открыты.
 - Live Chromium collection перечислила198 cases/59 specs,99 desktop+99 mobile;
-  browser execution NOT RUN. Screenshots/owner approval/Linux baselines, SMTP/MFA,
+  полный current-SHA browser run NOT RUN. Screenshots/owner approval/Linux baselines, SMTP/MFA,
   logout/revocation/product E2E и coordinated DB/S3 restore ещё открыты.
   Home-empty снимать до global-feed seed; shared feeds не очищать.
 - Owned bounded builder: Bake parallelism1/CPU2/RAM4 GiB/swap0, реальные limits
@@ -119,7 +126,7 @@
 
 ## Следующий checkpoint
 
-- Опубликовать reviewed MFA package обычными hooks/push; заморозить source.
+- Опубликовать reviewed weather/bookmarks hydration fixes обычными hooks/push; заморозить source.
   Свежие76 contexts и честное измерение critical path; ожидаемый4401 не считать PASS до runtime.
 - Owner-checked Core на clean SHA: Home12 до canonical seed; persisted SEC-03 до
   full E2E из-за bounded audit inventory; два полных последовательных198 passes,
@@ -137,6 +144,6 @@
   startup≤80%/free≥6 GiB с1 GiB/2 CPU browser cap; остальные thresholds сохраняются.
 - Свежая resource check перед запуском; удалять лишь доказанно owned временные
   ресурсы. Чужие процессы/env/data, shared Docker/WSL/caches и backups сохранять.
-  Weekly Codex usage83%/remaining17%; free reset1 доступен, не использован.
+  Weekly Codex usage85%/remaining15%; free reset1 доступен, не использован.
 - Git history/migrations/private rescue bundle сохранить; session logs и superseded
   snapshots не возвращать в indexes. Новые branch/worktree не создавать.
