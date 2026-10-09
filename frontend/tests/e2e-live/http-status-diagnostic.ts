@@ -1,21 +1,40 @@
-// Bound both projects × four checks × two attempts (CI retries once).
+// Bound both projects × eight checks × two attempts (CI retries once).
 const emittedRecords = new Set<string>()
-const MAX_RECORDS = 16
+const MAX_RECORDS = 32
+
+export type LiveHttpStatusCheck =
+  | "admin-users"
+  | "admin-feature-flags"
+  | "admin-feature-flags-ui"
+  | "password-reset-replay"
+  | "auth-login"
+  | "auth-session-cap"
+  | "auth-logout"
+  | "auth-session-preflight"
+
+const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
+  "admin-users",
+  "admin-feature-flags",
+  "admin-feature-flags-ui",
+  "password-reset-replay",
+  "auth-login",
+  "auth-session-cap",
+  "auth-logout",
+  "auth-session-preflight",
+])
 
 export function reportLiveHttpStatus(
   project: string,
-  check: "admin-users" | "admin-feature-flags" | "admin-feature-flags-ui" | "password-reset-replay",
+  check: LiveHttpStatusCheck,
   status: number
 ): void {
   if (
     (project !== "desktop" && project !== "mobile") ||
-    (check !== "admin-users" &&
-      check !== "admin-feature-flags" &&
-      check !== "admin-feature-flags-ui" &&
-      check !== "password-reset-replay") ||
+    !LIVE_HTTP_STATUS_CHECKS.has(check) ||
     !Number.isInteger(status) ||
     status < 100 ||
     status > 599 ||
+    (check === "auth-session-cap" && status !== 403) ||
     emittedRecords.size >= MAX_RECORDS
   ) {
     return

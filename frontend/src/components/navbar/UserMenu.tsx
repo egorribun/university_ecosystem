@@ -45,13 +45,14 @@ export const UserMenu = ({
   const profileTitle = t("navigation:aria.openProfile")
   const profileNameLabel = user?.full_name ? `${profileTitle}: ${user.full_name}` : profileTitle
 
+  const rootPlacement = isCompact ? "ml-auto gap-2" : "ml-3 flex-1 justify-end gap-3"
   const dur = prefersReducedMotion ? "duration-0" : "duration-500"
   const ease = "ease-[var(--ease-premium)]"
 
   if (loading) {
     return (
       <div
-        className="ml-auto flex items-center gap-3"
+        className={cn("flex min-w-0 items-center whitespace-nowrap", rootPlacement)}
         role="status"
         aria-busy="true"
         aria-label={t("common:aria.loadingUserMenu")}
@@ -67,11 +68,11 @@ export const UserMenu = ({
   return (
     <div
       className={cn(
-        "ml-auto flex min-w-0 items-center whitespace-nowrap",
+        "flex min-w-0 items-center whitespace-nowrap",
+        rootPlacement,
         "transition-[transform,opacity]",
         dur,
-        ease,
-        isCompact ? "gap-2" : "gap-3"
+        ease
       )}
     >
       <MessengerButton />
@@ -79,7 +80,7 @@ export const UserMenu = ({
 
       <div
         className={cn(
-          "flex items-center",
+          "flex min-w-0 items-center",
           "transition-[transform,opacity]",
           dur,
           ease,
@@ -114,7 +115,7 @@ export const UserMenu = ({
         {/* User name — instant hide/show, no visible fade */}
         <div
           className={cn(
-            "navbar-user-name overflow-hidden",
+            "navbar-user-name min-w-0 overflow-hidden",
             isCompact ? "max-w-0 opacity-0" : "max-w-48 opacity-100"
           )}
         >
@@ -123,7 +124,7 @@ export const UserMenu = ({
             onClick={() => go("/profile")}
             aria-label={profileNameLabel}
             title={profileTitle}
-            className="m-0 min-h-11 cursor-pointer whitespace-nowrap border-none bg-transparent p-0 font-bold tracking-tight text-base text-text-primary transition-colors hover:text-brand"
+            className="m-0 min-h-11 max-w-full cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap border-none bg-transparent p-0 font-bold tracking-tight text-base text-text-primary transition-colors hover:text-brand"
           >
             {user.full_name}
           </button>
@@ -135,7 +136,7 @@ export const UserMenu = ({
           type="button"
           className={cn(
             "flex items-center justify-center rounded-2xl text-text-primary cursor-pointer border-none",
-            "size-11 transition-[transform,opacity,background-color]",
+            "size-11 shrink-0 transition-[transform,opacity,background-color]",
             dur,
             ease,
             "hover:bg-(--bg-surface-hover)/(--opacity-soft)",

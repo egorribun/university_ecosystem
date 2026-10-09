@@ -4202,7 +4202,8 @@ _PLAYWRIGHT_FRAME_LOCATION = re.compile(
 )
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay) "
+    r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
+    r"auth-login|auth-session-cap|auth-logout|auth-session-preflight) "
     r"status=(?P<status>[1-5][0-9]{2})"
 )
 _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
@@ -4212,10 +4213,14 @@ _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
         "admin-feature-flags",
         "admin-feature-flags-ui",
         "password-reset-replay",
+        "auth-login",
+        "auth-session-cap",
+        "auth-logout",
+        "auth-session-preflight",
     )
 }
-# Both projects × four checks × two attempts (CI retries once).
-_PLAYWRIGHT_HTTP_STATUS_LIMIT = 16
+# Both projects × eight checks × two attempts (CI retries once).
+_PLAYWRIGHT_HTTP_STATUS_LIMIT = 32
 
 
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
@@ -4229,10 +4234,15 @@ def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
         match = _PLAYWRIGHT_HTTP_STATUS_LINE.fullmatch(line)
         if match is None:
             continue
+        check = _PLAYWRIGHT_HTTP_STATUS_CHECKS[match["check"]]
+        status = int(match["status"])
+        # The producer emits this row only after the exact API detail check.
+        if check == "auth-session-cap" and status != 403:
+            continue
         record = (
             _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            _PLAYWRIGHT_HTTP_STATUS_CHECKS[match["check"]],
-            int(match["status"]),
+            check,
+            status,
         )
         if record not in statuses:
             statuses.append(record)
@@ -4387,6 +4397,113 @@ def _live_playwright_counts(output: str) -> dict[str, int]:
             kind = match.group("kind").replace(" ", "_")
             counts[kind] = counts.get(kind, 0) + int(match.group("count"))
     return counts
+
+
+_PlaywrightSkipIdentity = tuple[str, str, int]
+_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES: tuple[_PlaywrightSkipIdentity, ...] = (
+    ("desktop", "tests/e2e-live/auth-roles.live.spec.ts", 36),
+    ("mobile", "tests/e2e-live/auth-roles.live.spec.ts", 36),
+    ("mobile", "tests/e2e-live/navbar-layout-stability.live.spec.ts", 174),
+    ("mobile", "tests/e2e-live/schedule-grid-keyboard.live.spec.ts", 5),
+    ("mobile", "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts", 5),
+    ("mobile", "tests/e2e-live/map-gesture-isolation.live.spec.ts", 178),
+    ("mobile", "tests/e2e-live/map-gesture-isolation.live.spec.ts", 209),
+    ("desktop", "tests/e2e-live/map-gesture-isolation.live.spec.ts", 248),
+)
+_PLAYWRIGHT_SKIPPED_ROW_PREFIX = re.compile(r"^  - {2,4}[1-9][0-9]{0,2} ")
+_PLAYWRIGHT_SKIPPED_ROW_HEADER = re.compile(
+    r"^  - {2,4}(?P<index>[1-9][0-9]{0,2}) "
+    r"\[(?P<project>desktop|mobile)\] \u203a "
+    r"(?P<source>[^ :\t]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
+    r"(?P<column>[1-9][0-9]{0,4}) \u203a (?=.)"
+)
+_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 198
+_PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT = 8192
+_PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT = 4096
+
+
+def _live_playwright_skipped_identities(
+    output: str, *, cwd: Path
+) -> tuple[list[_PlaywrightSkipIdentity], int, bool]:
+    """Extract bounded allowlisted skip identities, never test titles or reasons."""
+    identities: list[_PlaywrightSkipIdentity] = []
+    rejected_rows = 0
+    overflow = False
+    seen_indexes: set[int] = set()
+    source_cache: dict[str, list[str]] = {}
+    try:
+        frontend_root = cwd.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return identities, 0, True
+
+    position = 0
+    scanned_lines = 0
+    while True:
+        line_end = output.find("\n", position)
+        if line_end < 0:
+            break  # Only complete reporter rows are accepted.
+        if scanned_lines >= _PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT:
+            overflow = True
+            break
+        line = output[position:line_end]
+        position = line_end + 1
+        scanned_lines += 1
+        if line.endswith("\r"):
+            line = line[:-1]
+        if _PLAYWRIGHT_SKIPPED_ROW_PREFIX.match(line) is None:
+            continue
+        if len(line) > _PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT or not line.isprintable():
+            rejected_rows += 1
+            continue
+        match = _PLAYWRIGHT_SKIPPED_ROW_HEADER.match(line)
+        if match is None:
+            rejected_rows += 1
+            continue
+        index = int(match["index"])
+        source = _PLAYWRIGHT_FAILURE_SOURCES.get(match["source"])
+        project = _PLAYWRIGHT_FAILURE_PROJECTS.get(match["project"])
+        line_number = int(match["line"])
+        column = int(match["column"])
+        if (
+            index > _PLAYWRIGHT_SKIP_IDENTITY_LIMIT
+            or index in seen_indexes
+            or source is None
+            or project is None
+        ):
+            rejected_rows += 1
+            continue
+        seen_indexes.add(index)
+        if source not in source_cache:
+            try:
+                source_path = frontend_root / source
+                if source_path.is_symlink():
+                    raise OSError("skip source is a symlink")
+                resolved_source = source_path.resolve(strict=True)
+                if (
+                    not resolved_source.is_relative_to(frontend_root)
+                    or not resolved_source.is_file()
+                ):
+                    raise OSError("skip source is outside the frontend root")
+                source_cache[source] = resolved_source.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            except (OSError, RuntimeError, UnicodeError):
+                rejected_rows += 1
+                continue
+        source_lines = source_cache[source]
+        if line_number > len(source_lines):
+            rejected_rows += 1
+            continue
+        declaration = source_lines[line_number - 1]
+        indentation = len(declaration) - len(declaration.lstrip())
+        if not declaration.lstrip().startswith("test(") or column != indentation + 1:
+            rejected_rows += 1
+            continue
+        if len(identities) >= _PLAYWRIGHT_SKIP_IDENTITY_LIMIT:
+            overflow = True
+            break
+        identities.append((project, source, line_number))
+    return identities, rejected_rows, overflow
 
 
 def _live_playwright_failure_locations(
@@ -4646,6 +4763,22 @@ def _run_live_playwright(
     stderr = (completed.stderr or b"").decode("utf-8", errors="replace")
     output = "\n".join((stdout, stderr))
     counts = _live_playwright_counts(output)
+    canonical_full_run = mode == "full" and not selected_specs
+    skip_identities: list[_PlaywrightSkipIdentity] = []
+    skip_rejected_rows = 0
+    skip_overflow = False
+    skip_accounting_passed = False
+    if canonical_full_run and return_code == 0:
+        skip_identities, skip_rejected_rows, skip_overflow = (
+            _live_playwright_skipped_identities(stdout, cwd=cwd)
+        )
+        skip_accounting_passed = (
+            _live_playwright_counts(stdout)
+            == {"passed": 190, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
+            and not skip_rejected_rows
+            and not skip_overflow
+            and sorted(skip_identities) == sorted(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
+        )
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
     page_errors = _live_playwright_page_errors(stdout)
@@ -4685,6 +4818,23 @@ def _run_live_playwright(
             if name in counts
         )
         print(f"live E2E counts {count_summary}", flush=True)
+    for project, source, line_number in skip_identities:
+        print(
+            f"live E2E skipped project={project} source={source} line={line_number}",
+            flush=True,
+        )
+    if canonical_full_run and return_code == 0:
+        if skip_accounting_passed:
+            print(
+                f"live E2E skip accounting=verified count={len(skip_identities)}",
+                flush=True,
+            )
+        else:
+            print(
+                f"live E2E skip accounting=failed observed={len(skip_identities)} "
+                f"rejected={skip_rejected_rows} overflow={str(skip_overflow).lower()}",
+                flush=True,
+            )
     for project, source, line_number, kind in failure_locations:
         print(
             f"live E2E failure project={project} source={source} line={line_number} kind={kind}",
@@ -4738,10 +4888,16 @@ def _run_live_playwright(
                 f"route={route} page_error_count={page_error_count_text} page_error={page_error}",
                 flush=True,
             )
-    outcome = "passed" if return_code == 0 else "failed"
+    outcome = (
+        "passed"
+        if return_code == 0 and (not canonical_full_run or skip_accounting_passed)
+        else "failed"
+    )
     print(f"live E2E outcome={outcome} exit_code={return_code}", flush=True)
     if return_code != 0:
         raise StandError(f"live Playwright E2E failed with exit code {return_code}")
+    if canonical_full_run and not skip_accounting_passed:
+        raise StandError("live Playwright E2E skip identity accounting failed")
 
 
 def _e2e_locked(

@@ -1506,6 +1506,238 @@ def test_live_playwright_counts_accept_numeric_durations(duration: str) -> None:
     }
 
 
+_LIVE_SKIP_SOURCE_RULES = (
+    (
+        "tests/e2e-live/auth-roles.live.spec.ts",
+        "testInfo.project.name !== project",
+        ("desktop", "mobile"),
+        1,
+    ),
+    (
+        "tests/e2e-live/navbar-layout-stability.live.spec.ts",
+        'testInfo.project.name !== "desktop"',
+        ("mobile",),
+        1,
+    ),
+    (
+        "tests/e2e-live/schedule-grid-keyboard.live.spec.ts",
+        'testInfo.project.name !== "desktop"',
+        ("mobile",),
+        1,
+    ),
+    (
+        "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts",
+        'testInfo.project.name !== "desktop"',
+        ("mobile",),
+        1,
+    ),
+    (
+        "tests/e2e-live/map-gesture-isolation.live.spec.ts",
+        "page.viewportSize()?.width ?? 0) < 640",
+        ("mobile",),
+        2,
+    ),
+    (
+        "tests/e2e-live/map-gesture-isolation.live.spec.ts",
+        "page.viewportSize()?.width ?? 0) >= 640",
+        ("desktop",),
+        1,
+    ),
+)
+
+
+def _source_derived_live_skip_identities() -> list[tuple[str, str, int]]:
+    identities: list[tuple[str, str, int]] = []
+    for source, marker, projects, expected_matches in _LIVE_SKIP_SOURCE_RULES:
+        lines = (ROOT / "frontend" / source).read_text(encoding="utf-8").splitlines()
+        matches = [index for index, line in enumerate(lines) if marker in line]
+        assert len(matches) == expected_matches
+        if source.endswith("auth-roles.live.spec.ts"):
+            assert all(
+                lines.count(f'    project: "{project}",') == 1 for project in projects
+            )
+        for match_index in matches:
+            if source.endswith("auth-roles.live.spec.ts"):
+                assert (
+                    lines[match_index].strip() == "testInfo.project.name !== project,"
+                )
+                assert lines[match_index - 1].strip() == "test.skip("
+            else:
+                expression = (
+                    f"test.skip(({marker},"
+                    if marker.startswith("page.viewportSize")
+                    else f"test.skip({marker},"
+                )
+                assert lines[match_index].strip().startswith(expression)
+            declarations = [
+                index
+                for index in range(match_index)
+                if lines[index].lstrip().startswith("test(")
+            ]
+            assert declarations
+            for project in projects:
+                identities.append((project, source, declarations[-1] + 1))
+    return sorted(identities)
+
+
+def _live_skip_reporter_rows(
+    identities: Sequence[tuple[str, str, int]], *, title: str
+) -> str:
+    rows: list[str] = []
+    for index, (project, source, line_number) in enumerate(identities, start=1):
+        declaration = (
+            (ROOT / "frontend" / source)
+            .read_text(encoding="utf-8")
+            .splitlines()[line_number - 1]
+        )
+        column = len(declaration) - len(declaration.lstrip()) + 1
+        rows.append(
+            f"  -  {index:>3} [{project}] \u203a "
+            f"{source}:{line_number}:{column} \u203a {title}\n"
+        )
+    return "".join(rows)
+
+
+def test_live_playwright_skip_map_matches_current_project_guard_declarations() -> None:
+    assert _source_derived_live_skip_identities() == sorted(
+        live_stand._PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES
+    )
+
+
+def test_live_playwright_verifies_exact_full_suite_skip_identities(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    identities = sorted(live_stand._PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
+    private_title = "private skip title token=do-not-print"
+    stdout = (
+        _live_skip_reporter_rows(identities, title=private_title)
+        + "190 passed (3m)\n8 skipped\n"
+    ).encode("utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess,
+        "run",
+        lambda *_args, **_kwargs: completed,
+    )
+
+    live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
+
+    printed = capsys.readouterr()
+    expected_output = [
+        "+ " + " ".join(live_stand._live_e2e_command()),
+        "live E2E counts passed=190 skipped=8",
+        *(
+            f"live E2E skipped project={project} source={source} line={line_number}"
+            for project, source, line_number in identities
+        ),
+        "live E2E skip accounting=verified count=8",
+        "live E2E outcome=passed exit_code=0",
+    ]
+    assert printed.out.splitlines() == expected_output
+    assert printed.err == ""
+    assert private_title not in printed.out + printed.err
+    assert completed.stdout == completed.stderr == b""
+
+
+@pytest.mark.parametrize("extra_summary", ["flaky", "interrupted"])
+def test_live_playwright_canonical_full_rejects_flaky_or_interrupted_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    extra_summary: str,
+) -> None:
+    identities = sorted(live_stand._PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
+    newline = chr(10)
+    stdout = (
+        _live_skip_reporter_rows(identities, title="private title")
+        + f"190 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
+    ).encode("utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+
+    with pytest.raises(live_stand.StandError, match="skip identity accounting"):
+        live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
+
+    printed = capsys.readouterr()
+    assert "skip accounting=verified" not in printed.out
+    assert "live E2E outcome=failed exit_code=0" in printed.out
+    assert "private title" not in printed.out
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_live_playwright_canonical_full_rejects_missing_or_duplicate_skip_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mutation: str,
+) -> None:
+    identities = sorted(live_stand._PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
+    observed = (
+        identities[:-1] if mutation == "missing" else [*identities, identities[0]]
+    )
+    newline = chr(10)
+    stdout = (
+        _live_skip_reporter_rows(observed, title="private title")
+        + f"190 passed{newline}8 skipped{newline}"
+    ).encode("utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+
+    with pytest.raises(live_stand.StandError, match="skip identity accounting"):
+        live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
+
+    printed = capsys.readouterr()
+    expected_count = 7 if mutation == "missing" else 9
+    assert f"skip accounting=failed observed={expected_count} " in printed.out
+    assert "private title" not in printed.out
+
+
+def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    identities = sorted(live_stand._PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
+    substituted = list(identities)
+    substituted[-1] = substituted[0]
+    private_title = "private skip title token=do-not-print"
+    stdout = (
+        _live_skip_reporter_rows(substituted, title=private_title)
+        + "190 passed (3m)\n8 skipped\n"
+    ).encode("utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess,
+        "run",
+        lambda *_args, **_kwargs: completed,
+    )
+
+    with pytest.raises(live_stand.StandError, match="skip identity accounting"):
+        live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
+
+    printed = capsys.readouterr()
+    assert "live E2E counts passed=190 skipped=8" in printed.out
+    assert (
+        "live E2E skip accounting=failed observed=8 rejected=0 overflow=false"
+        in printed.out
+    )
+    assert "live E2E outcome=failed exit_code=0" in printed.out
+    assert "verified count=8" not in printed.out
+    assert printed.err == ""
+    assert private_title not in printed.out + printed.err
+    assert completed.stdout == completed.stderr == b""
+
+
 @pytest.mark.parametrize(
     ("project", "route", "newline"),
     [("desktop", "profile", "\n"), ("mobile", "other", "\r\n")],
@@ -1677,6 +1909,59 @@ def test_live_playwright_http_status_accepts_only_fixed_domains(
 
 
 @pytest.mark.parametrize(
+    "check",
+    ["auth-login", "auth-logout", "auth-session-preflight"],
+)
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("status", [100, 200, 403, 500, 599])
+def test_live_playwright_http_status_accepts_auth_status_checks(
+    project: str, check: str, status: int
+) -> None:
+    sentinel = (
+        f"UE_LIVE_HTTP_STATUS_V1 project={project} check={check} status={status}\n"
+    )
+    assert live_stand._live_playwright_http_statuses(sentinel) == [
+        (project, check, status)
+    ]
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+def test_live_playwright_http_status_auth_session_cap_requires_exact_forbidden_status(
+    project: str,
+) -> None:
+    accepted = (
+        f"UE_LIVE_HTTP_STATUS_V1 project={project} check=auth-session-cap status=403\n"
+    )
+    assert live_stand._live_playwright_http_statuses(accepted) == [
+        (project, "auth-session-cap", 403)
+    ]
+    for status in (200, 401, 429, 500):
+        rejected = accepted.replace("status=403", f"status={status}")
+        assert live_stand._live_playwright_http_statuses(rejected) == []
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("newline", [chr(10), chr(13) + chr(10)])
+@pytest.mark.parametrize(
+    ("check", "status"),
+    [
+        ("auth-login", 401),
+        ("auth-session-cap", 403),
+        ("auth-logout", 401),
+        ("auth-session-preflight", 403),
+    ],
+)
+def test_live_playwright_auth_status_rows_accept_lf_and_crlf(
+    project: str, newline: str, check: str, status: int
+) -> None:
+    row = (
+        f"UE_LIVE_HTTP_STATUS_V1 project={project} check={check} status={status}"
+        + newline
+    )
+    assert live_stand._live_playwright_http_statuses(row) == [(project, check, status)]
+
+
+@pytest.mark.parametrize(
     "line",
     [
         "UE_LIVE_HTTP_STATUS_V1 project=private-project check=admin-users status=200\n",
@@ -1689,6 +1974,10 @@ def test_live_playwright_http_status_accepts_only_fixed_domains(
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=２００\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200 private-token\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200 \n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-session-cap status=403 detail=too_many_sessions\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-login status=401 extra=private\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-session-cap status=429\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-login status=401\x1b[0m\n",
         " UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
         "title UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=200",
@@ -1717,7 +2006,7 @@ def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
         for status in range(100, 600)
     )
     assert live_stand._live_playwright_http_statuses(output) == [
-        ("desktop", "admin-users", status) for status in range(100, 116)
+        ("desktop", "admin-users", status) for status in range(100, 132)
     ]
 
 
@@ -1751,12 +2040,19 @@ def test_live_playwright_emits_only_bounded_http_statuses(
     return_code: int,
 ) -> None:
     sentinel = "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=503\n"
+    auth_sentinels = (
+        "UE_LIVE_HTTP_STATUS_V1 project=mobile check=auth-login status=401\n"
+        "UE_LIVE_HTTP_STATUS_V1 project=mobile check=auth-session-cap status=403\n"
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-logout status=401\n"
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=auth-session-preflight status=403\n"
+    )
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
         return_code,
         stdout=(
             "private-title https://private.invalid/?token=private-token\n"
             + sentinel * 20
+            + auth_sentinels
             + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=403\n"
             + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-users status="
         ).encode(),
@@ -1778,6 +2074,10 @@ def test_live_playwright_emits_only_bounded_http_statuses(
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         "live E2E HTTP project=desktop check=admin-users status=503",
+        "live E2E HTTP project=mobile check=auth-login status=401",
+        "live E2E HTTP project=mobile check=auth-session-cap status=403",
+        "live E2E HTTP project=desktop check=auth-logout status=401",
+        "live E2E HTTP project=desktop check=auth-session-preflight status=403",
         "live E2E HTTP project=mobile check=admin-feature-flags status=403",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
@@ -2014,10 +2314,12 @@ def test_live_playwright_preserves_control_characters_before_diagnostic_validati
         return run((sys.executable, "-c", child_source), **kwargs)
 
     monkeypatch.setattr(live_stand.subprocess, "run", run_actual_child)
-    live_stand._run_live_playwright(cwd=tmp_path, environment=dict(os.environ))
+    live_stand._run_live_playwright(
+        cwd=tmp_path, environment=dict(os.environ), mode="smoke"
+    )
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
-        "+ " + " ".join(live_stand._live_e2e_command()),
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         "live E2E HTTP project=mobile check=admin-feature-flags status=503",
         "live E2E page error project=mobile check=password-reset page=reset-password type=type-error count=1",
         "live E2E outcome=passed exit_code=0",

@@ -1,5 +1,5 @@
-import { expect, test, type Browser, type Request } from "@playwright/test"
-import { freshPassword, loginAs, stubBreachedPasswordLookup } from "./fixtures"
+import { type Browser, type Request } from "@playwright/test"
+import { expect, freshPassword, loginAs, stubBreachedPasswordLookup, test } from "./fixtures"
 
 function isRegistrationPost(request: Request): boolean {
   return request.method() === "POST" && new URL(request.url()).pathname.endsWith("/auth/register")

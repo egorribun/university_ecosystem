@@ -12,9 +12,10 @@
  *   2. API login + JWT validation (alg=RS256 + payload claims) — same as wave137.
  *   3. Open fresh page per route (W129 §Honesty `new_page` workaround).
  *   4. Navigate + wait for domcontentloaded + 1500ms hydration settle.
- *   5. Run axe-core scan (legacy mode for WebKit safety; WCAG 2.0/2.1/2.2 AA).
- *   6. Filter violations to critical+serious.
- *   7. Capture enhanced sidecar JSON: HTTP status + console + axe violations.
+ *   5. Require dashboard card content to be loaded and visually settled before capture.
+ *   6. Run axe-core scan (legacy mode for WebKit safety; WCAG 2.0/2.1/2.2 AA).
+ *   7. Filter violations to critical+serious.
+ *   8. Capture enhanced sidecar JSON: HTTP status + console + axe violations.
  *
  * LHCI numerical perf measurement is intentionally NOT in this script —
  * `npm run lhci:windows` (W120 SW1) already does that against VITE_LHCI=true
@@ -46,6 +47,7 @@
  *   4: JWKS returned 0 keys (backend RSA key not loaded)
  *   5: critical or serious axe violations found
  *   6: console/page errors or failed subresource/API requests detected
+ *   8: dashboard loaded content did not become visible and settled
  */
 
 import { Buffer } from "node:buffer"
@@ -484,6 +486,68 @@ async function performLogin(context, ownSession) {
  * settle. Returns an enhanced result that includes
  * `axeViolations` + `axeViolationCount`.
  */
+function dashboardCardsAreVisible() {
+  const selectors = [".vt-dash-schedule", ".vt-dash-news", ".vt-dash-events"]
+  const identityTransform = (value) => {
+    if (value === "none") return true
+    try {
+      return new globalThis.DOMMatrixReadOnly(value).isIdentity
+    } catch {
+      return false
+    }
+  }
+
+  return selectors.every((selector) => {
+    const card = globalThis.document.querySelector(selector)
+    const animatedAncestor = card?.parentElement
+    const content = card?.querySelector('.skeleton-morph-content[data-loaded="true"]')
+    if (!card || !animatedAncestor || !content || content.getAttribute("data-loaded") !== "true") {
+      return false
+    }
+
+    const cardMotionSettled = [animatedAncestor, card].every((element) => {
+      const style = globalThis.window.getComputedStyle(element)
+      const opacity = Number.parseFloat(style.opacity)
+      return Number.isFinite(opacity) && opacity >= 0.999 && identityTransform(style.transform)
+    })
+    const contentStyle = globalThis.window.getComputedStyle(content)
+    const contentOpacity = Number.parseFloat(contentStyle.opacity)
+    const contentVisible =
+      Number.isFinite(contentOpacity) &&
+      contentOpacity >= 0.999 &&
+      contentStyle.display !== "none" &&
+      contentStyle.visibility === "visible" &&
+      content.getClientRects().length > 0
+    return cardMotionSettled && contentVisible
+  })
+}
+
+export function canCaptureAuthenticatedScreenshot({
+  captureConfig,
+  visualConfigurationMatches,
+  routePath,
+  httpStatus,
+  redirectedToLogin,
+  finalUrl,
+  dashboardCardsVisible,
+}) {
+  return Boolean(
+    captureConfig &&
+    visualConfigurationMatches &&
+    httpStatus === 200 &&
+    !redirectedToLogin &&
+    finalUrl &&
+    new URL(finalUrl).pathname === routePath &&
+    (routePath !== "/dashboard" || dashboardCardsVisible === true)
+  )
+}
+
+export function findDashboardReadinessIssues(summaries) {
+  return summaries.filter(
+    (summary) => summary.path === "/dashboard" && summary.dashboardCardsVisible !== true
+  )
+}
+
 async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {
   const consoleMessages = []
   const networkRequests = []
@@ -526,6 +590,8 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
   let axeError = null
   let visualConfigurationMatches = captureConfig ? false : null
   let visualConfigurationError = null
+  let dashboardCardsVisible = routePath === "/dashboard" ? false : null
+  let dashboardReadinessError = null
   let screenshotPath = null
 
   // emulateMedia + reducedMotion settles Framer Motion at end-state for
@@ -582,6 +648,15 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         browserState.height === captureConfig.height
       if (!visualConfigurationMatches) {
         visualConfigurationError = "requested_locale_theme_or_viewport_not_active"
+      }
+    }
+
+    if (routePath === "/dashboard") {
+      try {
+        await page.waitForFunction(dashboardCardsAreVisible, undefined, { timeout: 30_000 })
+        dashboardCardsVisible = true
+      } catch {
+        dashboardReadinessError = "dashboard_cards_not_visible_or_settled"
       }
     }
 
@@ -661,12 +736,15 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     finalUrl && (finalUrl.endsWith("/login") || finalUrl.includes("/login?"))
 
   if (
-    captureConfig &&
-    visualConfigurationMatches &&
-    httpStatus === 200 &&
-    !redirectedToLogin &&
-    finalUrl &&
-    new URL(finalUrl).pathname === routePath
+    canCaptureAuthenticatedScreenshot({
+      captureConfig,
+      visualConfigurationMatches,
+      routePath,
+      httpStatus,
+      redirectedToLogin,
+      finalUrl,
+      dashboardCardsVisible,
+    })
   ) {
     const filename = `${buildAuthenticatedCaptureBasename(routePath, captureConfig)}.png`
     screenshotPath = path.join(outDir, filename)
@@ -698,6 +776,8 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         networkFailures,
         failedNetworkRequests,
         axeError: redactDiagnostic(axeError),
+        dashboardCardsVisible,
+        dashboardReadinessError,
         axeViolationCount: axeViolations.length,
         axeViolations: axeViolations.map((violation) => ({
           id: violation.id,
@@ -741,6 +821,8 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     navError: navError ? redactDiagnostic(navError.message) : null,
     captureConfigMatches: visualConfigurationMatches,
     captureConfigError: visualConfigurationError,
+    dashboardCardsVisible,
+    dashboardReadinessError,
     screenshotPath: screenshotPath ? path.basename(screenshotPath) : null,
   }
 }
@@ -933,6 +1015,7 @@ async function main() {
             !result.axeError &&
             result.axeViolationCount === 0 &&
             result.captureConfigMatches !== false &&
+            result.dashboardCardsVisible !== false &&
             (!captureConfig || Boolean(result.screenshotPath))
               ? "✓"
               : "✗"
@@ -968,6 +1051,18 @@ async function main() {
         throw setVisualExitCode(
           new Error(`${hydrationIssues.length}/${summaries.length} routes had hydration errors`),
           2
+        )
+      }
+      const dashboardReadinessIssues = findDashboardReadinessIssues(summaries)
+      if (dashboardReadinessIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            dashboardReadinessIssues.length +
+              "/" +
+              summaries.length +
+              " dashboard captures did not prove all loaded cards visible and settled"
+          ),
+          8
         )
       }
       if (axeErrors.length > 0) {

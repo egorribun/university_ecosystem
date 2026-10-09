@@ -4,12 +4,15 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import vm from "node:vm"
 
 import {
   buildAuthenticatedCaptureBasename,
   createAuthenticatedCaptureMetadata,
   createAuthenticatedLoginSidecar,
   createAuthenticatedCaptureRunDirectory,
+  canCaptureAuthenticatedScreenshot,
+  findDashboardReadinessIssues,
   parseAuthenticatedVisualCaptureMatrix,
   parseAuthenticatedVisualRoutes,
 } from "./authenticated-visual-audit.mjs"
@@ -269,6 +272,79 @@ test("authenticated matrix preflight and filenames stay outside the legacy artif
       width: 1440,
     }),
     "dashboard_en_light_w1440"
+  )
+})
+
+test("dashboard capture rejects loaded skeleton content that is still transparent", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("function dashboardCardsAreVisible() {")
+  const end = source.indexOf("\n\nexport function canCaptureAuthenticatedScreenshot", start)
+  assert.notEqual(start, -1)
+  assert.notEqual(end, -1)
+  const cards = new Map()
+  const predicate = vm.runInNewContext(`(${source.slice(start, end).trim()})`, {
+    document: { querySelector: (selector) => cards.get(selector) ?? null },
+    window: { getComputedStyle: (element) => element.style },
+  })
+
+  for (const name of ["schedule", "news", "events"]) {
+    const content = {
+      style: { opacity: "0", display: "block", visibility: "visible" },
+      getAttribute: (attribute) => (attribute === "data-loaded" ? "true" : null),
+      getClientRects: () => [{}],
+    }
+    cards.set(`.vt-dash-${name}`, {
+      style: { opacity: "1", transform: "none" },
+      parentElement: { style: { opacity: "1", transform: "none" } },
+      querySelector: (selector) =>
+        selector === '.skeleton-morph-content[data-loaded="true"]' ? content : null,
+      content,
+    })
+  }
+
+  const wrapperOnlyProof = [...cards.values()].every(
+    (card) => card.style.opacity === "1" && card.parentElement.style.opacity === "1"
+  )
+  assert.equal(wrapperOnlyProof, true)
+  assert.equal(predicate(), false)
+
+  for (const card of cards.values()) card.content.style.opacity = "1"
+  assert.equal(predicate(), true)
+})
+
+test("unready dashboard summaries fail aggregation and cannot produce a screenshot", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  assert.match(source, /canCaptureAuthenticatedScreenshot\(/u)
+  assert.match(source, /findDashboardReadinessIssues\(summaries\)/u)
+
+  const unready = { path: "/dashboard", dashboardCardsVisible: false }
+  const screenshotOptions = {
+    captureConfig: {},
+    visualConfigurationMatches: true,
+    routePath: "/dashboard",
+    httpStatus: 200,
+    redirectedToLogin: false,
+    finalUrl: "http://localhost/dashboard",
+    dashboardCardsVisible: false,
+  }
+  assert.deepEqual(findDashboardReadinessIssues([unready]), [unready])
+  assert.equal(canCaptureAuthenticatedScreenshot(screenshotOptions), false)
+  assert.equal(
+    canCaptureAuthenticatedScreenshot({ ...screenshotOptions, dashboardCardsVisible: true }),
+    true
+  )
+  assert.deepEqual(
+    findDashboardReadinessIssues([
+      { path: "/dashboard", dashboardCardsVisible: true },
+      { path: "/news", dashboardCardsVisible: null },
+    ]),
+    []
   )
 })
 

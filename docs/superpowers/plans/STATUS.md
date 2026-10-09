@@ -27,7 +27,66 @@
   Без embeddings key текстовый поиск доступен, semantic UI выключен,
   direct semantic-only API сообщает недоступность без нулевых векторов.
 
-## Текущий checkpoint: опубликованный df068410
+## Текущий checkpoint: опубликованный89cb50a4 и следующий пакет
+
+- Последний проверенный опубликованный ориентир до этого пакета:
+  HEAD/origin/PR1306:89cb50a4e543ce6bcfc55082244343c82940c83f.
+  Minimal membership contract correction опубликована обычными hooks/push;
+  live-contract suite154/154 PASS. Пакет ниже подготовлен поверх него;
+  его текущую публикацию и точный SHA сверять по Git/PR, без повторения исправлений.
+- Matrix37922189757/a1 SUCCESS: exact-head join ruleset8335285 подтвердил
+  все76 required SUCCESS, missing/duplicate/bad0. Advisory Owned Live37922189320
+  SUCCESS — ограниченный hosted auth/roles/reset smoke, не полный Core.
+  Matrix critical path41m16s; target15m открыт, backend cap2 сохранён.
+- Core89 up/readiness PASS:23 services,4 initializer exit0,14 healthy checks,
+  10 signed loopback ports. Admin-only seed выполнен один раз до Home;
+  persisted SEC-03 PASS (API/PG row, canonical v2 signature fields, logout/same
+  Bearer401). Key rotation и native signing этим не доказаны.
+- Linux Home-empty V11:12/12 RU/EN × light/dark ×390/768/1440 технически PASS,
+  содержимое трёх loaded Morph cards visible/settled, serious/critical axe0.
+  Owner approvalfalse: единственное замечание RU/light/1440 — маленький отступ
+  между картой кампуса и Messenger. Baselines не обновлялись.
+- Canonical full Core run89:198 declared, passed76/failed114/skipped8 за30m29s,
+  exit2/source stable/resource guardfalse, peak75,77%/free7,71 GiB,
+  recorded owned children0. Это FAIL. Безопасные diagnostics не устанавливают
+  причину всех114 ошибок. В fixtures найден server-session leak после закрытия
+  browser context; reviewed cleanup добавлен без изменения auth cap и logout
+  limiter5/minute per user/path. Фактический burst429 не доказан; fixture
+  отклоняет его без retry и сохраняет исходную ошибку теста.
+- Read-only session-count diagnostics не дали допустимых counts. Последний
+  operator подтвердил owner/source/compose inventory unchanged, но child_failed;
+  query rollback не подтверждён. Причина исторических114 failures не доказана.
+- Core89 retired canonical owner-checked teardown: exit0/source stable,
+  containers/networks/volumes0, recorded owned children0; private state/evidence
+  сохранены. Следующий SHA требует нового уникального Core state.
+- Native full Chromium153 direct-CDP capability V3 PASS:3/3 настоящих
+  hidden/visible cycles, same window/context, requests0, no OOM/guard,
+  owned process group empty/profile removed, exact container удалён.
+  Это credentialless capability;20 actual Story Viewer cycles ещё открыты.
+- Reviewed navbar gap/long-name fix и loaded-dashboard capture gate применены:
+  navbar29/29 PASS, UserMenu/DesktopNav100% line/statement/branch/function;
+  visual collector contracts19/19 PASS. Новый source-bound Linux packet,
+  owner approval и hosted gate для следующего commit ещё нужны.
+- Итоговые scoped проверки пакета: полный tests/test_live_stand.py1234/1234
+  PASS за2m24s,0 failures/errors/skips; Node live contracts155/155 PASS за7s;
+  семь постоянных Vitest behavior cases PASS. Они проверяют exact new token,
+  CSRF/nonce, same-Bearer401, закрытый context, ошибку dashboard assertion,
+  unchanged/ambiguous token,429 без retry и сохранение primary error/scope reset.
+- Fast preflight пакета сначала8/10 за84s: lint/format нового fixture исправлены
+  с переносом final throws за finally и обычным форматированием. После final
+  test transfer frontend-typecheck/lint/format rerun3/3 PASS за35s; восемь
+  проверок исходного preflight также PASS. Source stable/guardfalse/owned
+  children0. Ruff check/format Python paths PASS. Обычные hooks/push ещё проверить.
+- Source accounting198 =190 применимых cases +8 ожидаемых project-axis skips;
+  skips не считаются passes. Два успешных Core runs требуют190 PASS,
+  exact8 ожидаемых identities,0 failures/flaky/interrupted/did-not-run;
+  неожиданный skip не принимается. Finite runtime identity accounting реализован
+  и unit-checked; full live run с ним ещё не выполнен.
+- Same-run JUnit timing review подтвердил: cap2 suite-wall lower bound32m27s;
+  одна перестановка shards не достигает15m. Private duration-map candidate не
+  принят: proxy gain2,14%, shard3 header/testcase count mismatch5. Gates/cap2 сохранены.
+
+## Сохранённый checkpointdf068410 (исторический срез)
 
 - Пакет29 файлов опубликован обычными hooks/commit/push как
   `df068410c812737a7f592440cf2d6ced86035c84`; HEAD/origin/PR1306 совпали,
@@ -241,20 +300,21 @@
 
 ## Следующий checkpoint
 
-- Проверить и опубликовать minimal live-contract correction обычными hooks/push,
-  заморозить следующий source; пакет navbar/audit/duration/upload/timezone уже наdf068410.
-  Свежие76 contexts и честное измерение critical path; ожидаемый4401 не считать PASS до runtime.
-- Продолжить Linux browser visibility диагностику: реальный переход hidden/visible
-  обязателен до проверки story pause/resume; credentialless capability probe не заменяет
-  20 actual story viewer cycles.
-- Owner-checked Core на clean SHA: Home12 до canonical seed; persisted SEC-03 до
-  full E2E из-за bounded audit inventory; два полных последовательных198 passes,
-  stop/start/seed persistence, реальные all-topic push/SMTP/MFA/WS scenarios.
-- Утвердить actual RU/EN/light/dark/Linux visual packets, затем tracked baselines;
-  stories20/reduced motion/a11y и ключевые Lighthouse routes, прочие bundle ratchets.
-- Закрыть независимый auth/session/data review, все63 audit IDs и coordinated restore;
-  P0/P1 нельзя переносить. Frozen-RC full smoke → ordinary merge/main checks → ровно
-  шесть source-bound images/signing/SBOM/provenance/WASM parity → accurate release notes.
+- Завершить reviewed fixture-owned session cleanup и finite skipped-identity
+  accounting, сохранив auth caps/assertions/timeouts и quality floors.
+  Scoped checks/fast preflight/hooks, restage baseline, commit/push;
+  заморозить новый clean SHA и проверить свежие76 required contexts.
+- Fresh owner-checked Core: readiness → admin-only seed один раз → исправленный
+  Home12 до global seed → persisted SEC-03 → targeted affected scenarios →
+  два последовательных Core passes с точным applicable/skip accounting.
+- Real Story Viewer20 cycles/memory plateau native-tab механизмом;
+  capability3/3 не заменяет product acceptance. Stop/start сохраняет demo data.
+- Утвердить RU/EN/light/dark/Linux visual packets, затем tracked baselines;
+  реальные all-topic push/SMTP/MFA/WS, reduced motion/a11y и Lighthouse routes.
+- Закрыть auth/session/data review, все63 audit IDs и один coordinated DB/S3
+  restore. P0/P1 нельзя переносить. Frozen-RC full smoke → ordinary merge/
+  main checks → шесть source-bound images/signing/SBOM/provenance/WASM parity →
+  accurate release notes. Target15m открыт; cap2 не увеличивать.
 
 ## Ресурсы и сохранность
 
@@ -263,6 +323,7 @@
   startup≤80%/free≥6 GiB с1 GiB/2 CPU browser cap; остальные thresholds сохраняются.
 - Свежая resource check перед запуском; удалять лишь доказанно owned временные
   ресурсы. Чужие процессы/env/data, shared Docker/WSL/caches и backups сохранять.
-  Weekly Codex usage95%/remaining5%; free reset1 доступен, не использован.
+  Снимок Codex usage2026-10-09 13:05 UTC:2% consumed/98% remaining,
+  ordinary usage allowed; available free reset credits0. Это snapshot, не прогноз.
 - Git history/migrations/private rescue bundle сохранить; session logs и superseded
   snapshots не возвращать в indexes. Новые branch/worktree не создавать.

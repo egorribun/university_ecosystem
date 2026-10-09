@@ -11,6 +11,164 @@ declare global {
 
 const NAVBAR_CLS_LIMIT = 0.1
 
+async function assertDesktopNavbarSpacingMatrix(page: Page): Promise<void> {
+  const liveBaseUrl = process.env.LIVE_BASE_URL
+  if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
+
+  const context = page.context()
+  for (const locale of ["ru", "en"] as const) {
+    for (const theme of ["light", "dark"] as const) {
+      await context.addCookies([
+        { name: "ue:language", value: locale, url: liveBaseUrl },
+        { name: "ue-mode", value: theme, url: liveBaseUrl },
+      ])
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" })
+      await page.evaluate(
+        ({ selectedLocale, selectedTheme }) => {
+          localStorage.setItem("ue:language", selectedLocale)
+          localStorage.setItem("ue-mode", selectedTheme)
+        },
+        { selectedLocale: locale, selectedTheme: theme }
+      )
+
+      const response = await page.goto("/news", { waitUntil: "domcontentloaded" })
+      const preferenceLabel = locale + "/" + theme
+      expect(response?.status(), preferenceLabel + " route status").toBe(200)
+      await page.waitForFunction(() => window.__APP_HYDRATED === true)
+      await expect(page.locator("html"), preferenceLabel + " locale").toHaveAttribute(
+        "lang",
+        locale
+      )
+      await expect(page.locator("html"), preferenceLabel + " theme").toHaveAttribute(
+        "data-color-scheme",
+        theme
+      )
+      await page.evaluate(() => document.fonts.ready)
+
+      const navbar = page.locator("nav.vt-navbar")
+      await expect(navbar, preferenceLabel + " navbar").toBeVisible()
+      const mapLink = navbar.locator("#navbar-link-map")
+      const overflowTrigger = navbar.locator(
+        '.navbar-desktop-overflow button[aria-haspopup="menu"]'
+      )
+      const messenger = navbar.locator("#global-messenger-btn")
+      const settings = navbar.locator("#navbar-settings-btn")
+      const username = navbar.locator(".navbar-user-name button")
+
+      for (const width of [1440, 1349, 1350]) {
+        const label = preferenceLabel + "/" + width
+        await page.setViewportSize({ width, height: 900 })
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+            )
+        )
+        if (width < 1350) {
+          await expect(overflowTrigger, label + " tablet overflow").toBeVisible()
+          await expect(mapLink, label + " map moves to overflow").toHaveCount(0)
+        } else {
+          await expect(mapLink, label + " map link").toBeVisible()
+          await expect(overflowTrigger, label + " full navigation").toHaveCount(0)
+        }
+        await expect(messenger, label + " messenger action").toBeVisible()
+        await expect(settings, label + " settings action").toBeVisible()
+
+        const reference = width < 1350 ? overflowTrigger : mapLink
+        const referenceBox = await reference.boundingBox()
+        const messengerBox = await messenger.boundingBox()
+        const settingsBox = await settings.boundingBox()
+        const nameBox = await navbar.locator(".navbar-user-name").boundingBox()
+        const contentBox = await page.locator("nav.vt-navbar > div > div").boundingBox()
+        if (!referenceBox || !messengerBox || !settingsBox || !nameBox || !contentBox) {
+          throw new Error(label + " navbar geometry was unavailable")
+        }
+        const contentMetrics = await page
+          .locator("nav.vt-navbar > div > div")
+          .evaluate((element) => ({
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+          }))
+        expect(
+          messengerBox.x - (referenceBox.x + referenceBox.width),
+          label + " reserved nav-to-action gap"
+        ).toBeGreaterThanOrEqual(12)
+        expect(
+          nameBox.x + nameBox.width,
+          label + " username stays before the settings control"
+        ).toBeLessThanOrEqual(settingsBox.x + 1)
+        expect(
+          settingsBox.x + settingsBox.width,
+          label + " settings stays inside the action layout"
+        ).toBeLessThanOrEqual(contentBox.x + contentBox.width + 1)
+        expect(
+          contentMetrics.scrollWidth,
+          label + " navbar content does not overflow horizontally"
+        ).toBeLessThanOrEqual(contentMetrics.clientWidth + 1)
+
+        if (width >= 1350) {
+          // In-memory DOM text only; restore it before the next viewport or route.
+          const realName = await username.textContent()
+          try {
+            await username.evaluate((element) => {
+              element.textContent =
+                "Synthetic profile name longer than the desktop nav width ".repeat(3)
+            })
+            await page.evaluate(
+              () =>
+                new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+                )
+            )
+            const syntheticNameBox = await navbar.locator(".navbar-user-name").boundingBox()
+            const syntheticReferenceBox = await reference.boundingBox()
+            const syntheticMessengerBox = await messenger.boundingBox()
+            const syntheticSettingsBox = await settings.boundingBox()
+            const syntheticContentBox = await page
+              .locator("nav.vt-navbar > div > div")
+              .boundingBox()
+            const syntheticMetrics = await page
+              .locator("nav.vt-navbar > div > div")
+              .evaluate((element) => ({
+                clientWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+              }))
+            if (
+              !syntheticNameBox ||
+              !syntheticReferenceBox ||
+              !syntheticMessengerBox ||
+              !syntheticSettingsBox ||
+              !syntheticContentBox
+            ) {
+              throw new Error(label + " synthetic username geometry was unavailable")
+            }
+            expect(
+              syntheticMessengerBox.x - (syntheticReferenceBox.x + syntheticReferenceBox.width),
+              label + " long synthetic username preserves the nav-to-action gap"
+            ).toBeGreaterThanOrEqual(12)
+            expect(
+              syntheticNameBox.x + syntheticNameBox.width,
+              label + " long synthetic username stays before settings"
+            ).toBeLessThanOrEqual(syntheticSettingsBox.x + 1)
+            expect(
+              syntheticSettingsBox.x + syntheticSettingsBox.width,
+              label + " settings stays inside the action layout with long username"
+            ).toBeLessThanOrEqual(syntheticContentBox.x + syntheticContentBox.width + 1)
+            expect(
+              syntheticMetrics.scrollWidth,
+              label + " long synthetic username does not overflow the navbar"
+            ).toBeLessThanOrEqual(syntheticMetrics.clientWidth + 1)
+          } finally {
+            await username.evaluate((element, value) => {
+              element.textContent = value ?? ""
+            }, realName)
+          }
+        }
+      }
+    }
+  }
+}
+
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
 test("navbar compact-on-scroll keeps layout shift below 0.1", async ({ page }, testInfo) => {
@@ -111,6 +269,7 @@ test("navbar compact-on-scroll keeps layout shift below 0.1", async ({ page }, t
   expect(finalMetrics.top).toBeCloseTo(initialRect.top, 0)
   expect(finalMetrics.height).toBeCloseTo(initialRect.height, 0)
   expect(finalMetrics.cls).toBeLessThan(NAVBAR_CLS_LIMIT)
+  await assertDesktopNavbarSpacingMatrix(page)
 })
 
 async function navbarShellRect(page: Page): Promise<{ top: number; height: number }> {

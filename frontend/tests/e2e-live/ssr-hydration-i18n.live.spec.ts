@@ -1,5 +1,5 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test"
-import { loginAs } from "./fixtures"
+import { type BrowserContext, type Page } from "@playwright/test"
+import { expect, loginAs, test } from "./fixtures"
 
 type Language = "ru" | "en"
 
