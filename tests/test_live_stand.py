@@ -1942,6 +1942,65 @@ def test_live_playwright_http_status_auth_session_cap_requires_exact_forbidden_s
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize(
+    ("limit", "remaining", "expected_limit", "expected_remaining", "newline"),
+    [
+        ("1", "0", 1, 0, "\n"),
+        ("100000", "100000", 100000, 100000, "\r\n"),
+        ("invalid", "0", None, 0, "\n"),
+        ("5", "invalid", 5, None, "\r\n"),
+    ],
+)
+def test_live_playwright_rate_limit_metadata_accepts_bounded_logout_headers(
+    project: str,
+    limit: str,
+    remaining: str,
+    expected_limit: int | None,
+    expected_remaining: int | None,
+    newline: str,
+) -> None:
+    row = (
+        f"UE_LIVE_RATE_LIMIT_V1 project={project} check=auth-logout "
+        f"x_ratelimit_limit={limit} x_ratelimit_remaining={remaining}" + newline
+    )
+    assert live_stand._live_playwright_rate_limit_headers(row) == [
+        (project, expected_limit, expected_remaining)
+    ]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        "UE_LIVE_RATE_LIMIT_V1 project=private check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=password-reset-replay x_ratelimit_limit=5 x_ratelimit_remaining=0\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=0 x_ratelimit_remaining=0\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=100001 x_ratelimit_remaining=0\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=01 x_ratelimit_remaining=0\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=100001\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=01\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=6\n",
+        "private-token UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0 private-token\n",
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0",
+    ],
+)
+def test_live_playwright_rate_limit_metadata_rejects_malformed_or_unterminated_rows(
+    row: str,
+) -> None:
+    assert live_stand._live_playwright_rate_limit_headers(row) == []
+
+
+def test_live_playwright_rate_limit_metadata_deduplicates_and_caps_records() -> None:
+    rows = "".join(
+        "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout "
+        f"x_ratelimit_limit=100 x_ratelimit_remaining={remaining}\n"
+        for remaining in range(40)
+    )
+    records = live_stand._live_playwright_rate_limit_headers(rows + rows)
+    assert records == [("desktop", 100, remaining) for remaining in range(32)]
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize("check", ["auth-logout", "password-reset-replay"])
 @pytest.mark.parametrize("retry_after", [1, 40, 60])
 @pytest.mark.parametrize("decision", ["retry", "declined-deadline"])
@@ -2095,7 +2154,7 @@ def test_live_playwright_http_status_retains_retry_after_eight_initial_records()
 
 
 @pytest.mark.parametrize("return_code", [0, 1, 23])
-def test_live_playwright_emits_only_bounded_http_statuses(
+def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -2114,6 +2173,12 @@ def test_live_playwright_emits_only_bounded_http_statuses(
         "UE_LIVE_RETRY_V1 project=desktop check=password-reset-replay "
         "retry_after_seconds=invalid decision=declined-header remaining_ms=0\n"
     )
+    rate_limit_sentinel = (
+        "UE_LIVE_RATE_LIMIT_V1 project=mobile check=auth-logout "
+        "x_ratelimit_limit=5 x_ratelimit_remaining=0\n"
+        "UE_LIVE_RATE_LIMIT_V1 project=mobile check=auth-logout "
+        "x_ratelimit_limit=5 x_ratelimit_remaining=0 private-token\n"
+    )
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
         return_code,
@@ -2122,11 +2187,13 @@ def test_live_playwright_emits_only_bounded_http_statuses(
             + sentinel * 20
             + auth_sentinels
             + retry_sentinels
+            + rate_limit_sentinel
             + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-feature-flags status=403\n"
             + "UE_LIVE_HTTP_STATUS_V1 project=mobile check=admin-users status="
         ).encode(),
         stderr=(
             b"401\n"
+            b"UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=9 x_ratelimit_remaining=0\n"
             b"UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=500\n"
             b"private-body private-credential private-browser-state\n"
         ),
@@ -2150,6 +2217,7 @@ def test_live_playwright_emits_only_bounded_http_statuses(
         "live E2E HTTP project=mobile check=admin-feature-flags status=403",
         "live E2E retry project=mobile check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=30000",
         "live E2E retry project=desktop check=password-reset-replay retry_after_seconds=invalid decision=declined-header remaining_ms=0",
+        "live E2E rate-limit project=mobile check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""

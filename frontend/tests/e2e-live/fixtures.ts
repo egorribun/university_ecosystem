@@ -15,7 +15,11 @@ import {
   isLiveAuthRoleDenialScenario,
 } from "./page-error-diagnostic"
 import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
-import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
+import {
+  parseLiveRateLimitHeader,
+  reportLiveHttpStatus,
+  reportLiveRateLimitRetry,
+} from "./http-status-diagnostic"
 
 /**
  * Accounts created by scripts/seed_demo_data.py and scripts/seed_admin_data.py
@@ -334,10 +338,21 @@ export async function waitForLiveRateLimitRetry(delaySeconds: number): Promise<v
 
 async function statusAndRetryAfter(
   responsePromise: Promise<Awaited<ReturnType<APIRequestContext["get"]>>>
-): Promise<{ status: number; retryAfter: string | undefined }> {
+): Promise<{
+  status: number
+  retryAfter: string | undefined
+  xRateLimitLimit: number | null
+  xRateLimitRemaining: number | null
+}> {
   const response = await responsePromise
   try {
-    return { status: response.status(), retryAfter: response.headers()["retry-after"] }
+    const headers = response.headers()
+    return {
+      status: response.status(),
+      retryAfter: headers["retry-after"],
+      xRateLimitLimit: parseLiveRateLimitHeader(headers["x-ratelimit-limit"], "limit"),
+      xRateLimitRemaining: parseLiveRateLimitHeader(headers["x-ratelimit-remaining"], "remaining"),
+    }
   } finally {
     await response.dispose()
   }
@@ -457,7 +472,9 @@ async function cleanupOwnedSessionScope(
                 "auth-logout",
                 retryAfter,
                 retryDecision,
-                Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now())))
+                Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now()))),
+                firstLogout.xRateLimitLimit,
+                firstLogout.xRateLimitRemaining
               )
               logoutStatus = await statusOnly(logoutRequest())
             } else {
@@ -466,7 +483,9 @@ async function cleanupOwnedSessionScope(
                 "auth-logout",
                 retryAfter,
                 retryDecision,
-                Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now())))
+                Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now()))),
+                firstLogout.xRateLimitLimit,
+                firstLogout.xRateLimitRemaining
               )
             }
           } else {
@@ -475,7 +494,9 @@ async function cleanupOwnedSessionScope(
               "auth-logout",
               retryAfter,
               retryDecision,
-              Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now())))
+              Math.max(0, Math.min(60_000, Math.floor(deadlineAtMs - performance.now()))),
+              firstLogout.xRateLimitLimit,
+              firstLogout.xRateLimitRemaining
             )
           }
         }

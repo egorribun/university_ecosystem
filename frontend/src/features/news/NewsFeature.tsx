@@ -14,7 +14,7 @@ import { NewsHeader } from "./components/NewsHeader"
 import { NewsList } from "./components/NewsList"
 import { NewsFormDialog } from "./components/NewsFormDialog"
 import { NewsShortcutsOverlay } from "./components/NewsShortcutsOverlay"
-import { inferCategory, type NewsCategory } from "./categories"
+import { inferNewsCategory, type NewsCategory } from "./categories"
 
 export type SortMode = "newest" | "popular"
 
@@ -86,7 +86,7 @@ export const NewsFeature = () => {
     if (activeCategory === "saved") {
       list = list.filter((n) => bookmarks.has(n.id))
     } else if (activeCategory !== "all") {
-      list = list.filter((n) => inferCategory(n.title, n.content) === activeCategory)
+      list = list.filter((n) => inferNewsCategory(n) === activeCategory)
     }
 
     if (sortMode === "popular") {

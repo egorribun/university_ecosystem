@@ -124,9 +124,26 @@ test("live News history acceptance uses a stable read-only demo article", () => 
   assert.match(spec, /await page\.goForward\(\)/u)
   assert.match(spec, /originalPosition\.scrollY/u)
   assert.match(spec, /originalPosition\.top/u)
+  const feedScrollStart = spec.indexOf("const maxScrollY = await page.evaluate")
+  const feedScrollEnd = spec.indexOf("const selectedHref =", feedScrollStart)
+  const feedScrollSetup = spec.slice(feedScrollStart, feedScrollEnd)
+  assert.ok(feedScrollStart >= 0 && feedScrollEnd > feedScrollStart)
+  assert.match(feedScrollSetup, /scrollHeight - window\.innerHeight/u)
+  assert.match(feedScrollSetup, /maxScrollY[\s\S]*?toBeGreaterThan\(0\)/u)
+  assert.match(feedScrollSetup, /const targetScrollY = await selectedNews\.evaluate/u)
+  assert.match(feedScrollSetup, /window\.scrollTo\(\{ top: scrollY, behavior: "instant" \}\)/u)
+  assert.match(feedScrollSetup, /toBe\(targetScrollY\)/u)
+  assert.match(feedScrollSetup, /await expect\(selectedNews\)\.toBeInViewport\(\)/u)
+  assert.match(spec, /seeded News article position must be captured after a nonzero feed scroll/u)
   const detailEntryStart = spec.indexOf("await selectedNews.click()")
   const firstBackNavigation = spec.indexOf("await page.goBack()", detailEntryStart)
   const detailEntry = spec.slice(detailEntryStart, firstBackNavigation)
+  const firstBackTransition = spec.slice(
+    firstBackNavigation,
+    spec.indexOf("await page.goForward()")
+  )
+  assert.match(firstBackTransition, /await expect\(listHeading\)\.toBeVisible\(\)/u)
+  assert.match(firstBackTransition, /await expect\(restoredNews\)\.toBeVisible\(\)/u)
   assert.ok(
     detailEntry.includes('window.scrollTo({ top: 320, behavior: "instant" })'),
     "the live scenario creates a non-zero detail-page reading position"
@@ -139,6 +156,7 @@ test("live News history acceptance uses a stable read-only demo article", () => 
   const forwardNavigation = spec.indexOf("await page.goForward()")
   const finalBackNavigation = spec.indexOf("await page.goBack()", forwardNavigation)
   const forwardTransition = spec.slice(forwardNavigation, finalBackNavigation)
+  assert.match(forwardTransition, /await expect\(restoredDetailHeading\)\.toBeVisible\(\)/u)
   assert.ok(
     forwardTransition.includes("originalDetailPosition.scrollY") &&
       forwardTransition.includes("Forward should restore the News article reading position") &&
@@ -147,6 +165,8 @@ test("live News history acceptance uses a stable read-only demo article", () => 
     "Forward must restore both the detail scroll offset and the heading viewport position"
   )
   const afterForwardBack = spec.slice(finalBackNavigation)
+  assert.match(afterForwardBack, /await expect\(listHeading\)\.toBeVisible\(\)/u)
+  assert.match(afterForwardBack, /await expect\(restoredNewsAfterForward\)\.toBeVisible\(\)/u)
   assert.ok(
     afterForwardBack.includes("originalPosition.top") &&
       afterForwardBack.includes("getBoundingClientRect().top"),

@@ -68,7 +68,8 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   await page.goto("/news")
   await expect.poll(() => new URL(page.url()).pathname).toBe("/news")
   await expect(page.locator("html")).toHaveAttribute("lang", locale.language)
-  await expect(page.getByRole("heading", { name: locale.listHeading, exact: true })).toBeVisible()
+  const listHeading = page.getByRole("heading", { name: locale.listHeading, exact: true })
+  await expect(listHeading).toBeVisible()
 
   const beforeFilterScrollY = await page.evaluate(() => Math.round(window.scrollY))
   const scienceFilter = page.getByRole("button", { name: locale.categoryOption })
@@ -101,7 +102,30 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   await expect(selectedNews).toBeVisible()
   await expect(selectedNews).toContainText(locale.articleTitle)
   await page.evaluate(() => document.fonts.ready.then(() => undefined))
-  await selectedNews.scrollIntoViewIfNeeded()
+
+  const maxScrollY = await page.evaluate(() => {
+    const scrollElement = document.scrollingElement
+    return scrollElement ? Math.round(scrollElement.scrollHeight - window.innerHeight) : 0
+  })
+  expect(maxScrollY, `${language} News feed must have a real scrollable range`).toBeGreaterThan(0)
+  const targetScrollY = await selectedNews.evaluate((link) => {
+    const scrollElement = document.scrollingElement
+    const maximumScrollY = scrollElement
+      ? Math.round(scrollElement.scrollHeight - window.innerHeight)
+      : 0
+    const documentTop = window.scrollY + link.getBoundingClientRect().top
+    return Math.min(maximumScrollY, Math.max(1, Math.round(documentTop - window.innerHeight / 3)))
+  })
+  expect(
+    targetScrollY,
+    `${language} News feed target must require nonzero scrolling`
+  ).toBeGreaterThan(0)
+  await page.evaluate(
+    (scrollY) => window.scrollTo({ top: scrollY, behavior: "instant" }),
+    targetScrollY
+  )
+  await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBe(targetScrollY)
+  await expect(selectedNews).toBeInViewport()
 
   const selectedHref = await selectedNews.getAttribute("href")
   expect(selectedHref).toMatch(/^\/news\/[0-9a-f-]+$/u)
@@ -112,7 +136,7 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
   }))
   expect(
     originalPosition.scrollY,
-    `${language} seeded News article must be below the initial viewport`
+    `${language} seeded News article position must be captured after a nonzero feed scroll`
   ).toBeGreaterThan(0)
 
   await selectedNews.click()
@@ -133,11 +157,13 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
 
   await page.goBack()
   await expect(page).toHaveURL(listUrl)
+  await expect(listHeading).toBeVisible()
   await expect(page.getByRole("button", { name: locale.categoryOption })).toHaveAttribute(
     "aria-current",
     "page"
   )
   const restoredNews = page.getByRole("link", { name: locale.articleTitle })
+  await expect(restoredNews).toBeVisible()
   await expect(restoredNews).toHaveAttribute("href", selectedHref ?? "")
   await expect
     .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
@@ -150,16 +176,16 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
 
   await page.goForward()
   await expect(page).toHaveURL(selectedUrl.href)
-  await expect(page.getByRole("heading", { name: locale.articleTitle, exact: true })).toBeVisible()
+  const restoredDetailHeading = page.getByRole("heading", {
+    name: locale.articleTitle,
+    exact: true,
+  })
+  await expect(restoredDetailHeading).toBeVisible()
   await expect
     .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
       message: `${language} Forward should restore the News article reading position`,
     })
     .toBe(originalDetailPosition.scrollY)
-  const restoredDetailHeading = page.getByRole("heading", {
-    name: locale.articleTitle,
-    exact: true,
-  })
   await expect
     .poll(() =>
       restoredDetailHeading.evaluate((heading) => Math.round(heading.getBoundingClientRect().top))
@@ -168,17 +194,18 @@ async function verifyNewsHistoryForLanguage(page: Page, language: "en" | "ru") {
 
   await page.goBack()
   await expect(page).toHaveURL(listUrl)
+  await expect(listHeading).toBeVisible()
   await expect(page.getByRole("button", { name: locale.categoryOption })).toHaveAttribute(
     "aria-current",
     "page"
   )
+  const restoredNewsAfterForward = page.getByRole("link", { name: locale.articleTitle })
+  await expect(restoredNewsAfterForward).toBeVisible()
   await expect
     .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
       message: `${language} Back after Forward should return to the same News feed position`,
     })
     .toBe(originalPosition.scrollY)
-  const restoredNewsAfterForward = page.getByRole("link", { name: locale.articleTitle })
-  await expect(restoredNewsAfterForward).toBeVisible()
   await expect(restoredNewsAfterForward).toHaveAttribute("href", selectedHref ?? "")
   await expect
     .poll(() =>

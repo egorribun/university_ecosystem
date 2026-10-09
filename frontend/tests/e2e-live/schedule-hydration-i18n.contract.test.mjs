@@ -49,7 +49,11 @@ test("schedule assertions cover server markup, hydration, real content, and tran
   assert.match(spec, /data-ssr-auth=["']authenticated:student["']/u)
   assert.match(spec, /window\.__APP_HYDRATED\s*===\s*true/u)
   assert.match(spec, /getByRole\(["']heading["'],\s*\{\s*level:\s*1\s*\}\)/u)
-  assert.match(spec, /getByRole\(["']grid["']\)\.or\(page\.getByRole\(["']tablist["']\)\)/u)
+  assert.ok(spec.includes('const scheduleViewName = language === "ru" ? "Расписание" : "Schedule"'))
+  assert.ok(spec.includes('.getByRole("grid", { name: scheduleViewName, exact: true })'))
+  assert.ok(
+    spec.includes('.or(page.getByRole("tablist", { name: scheduleViewName, exact: true }))')
+  )
   assert.match(spec, /rawTranslationKey/u)
   assert.match(spec, /hydrationDiagnostics/u)
   assert.match(spec, /uncaughtPageErrors/u)

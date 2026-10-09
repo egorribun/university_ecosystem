@@ -4,7 +4,7 @@ import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { useBookmarks } from "@/hooks/useBookmarks"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { localizeField } from "@/utils/localize"
-import { inferCategory } from "@/features/news/categories"
+import { inferNewsCategory } from "@/features/news/categories"
 import { estimateReadingTime } from "@/utils/readingTime"
 import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
@@ -88,7 +88,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     [language, content, content_en]
   )
 
-  const category = useMemo(() => inferCategory(title, content), [title, content])
+  const category = useMemo(
+    () => inferNewsCategory({ title, content, title_en, content_en }),
+    [content, content_en, title, title_en]
+  )
   const readingTime = useMemo(() => estimateReadingTime(localizedContent), [localizedContent])
 
   const [sanitizedPreview, setSanitizedPreview] = useState("")

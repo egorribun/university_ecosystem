@@ -13,6 +13,9 @@ import {
   createAuthenticatedCaptureRunDirectory,
   canCaptureAuthenticatedScreenshot,
   findDashboardReadinessIssues,
+  findNewsReadinessIssues,
+  isAuthenticatedNewsCaptureReady,
+  parseAuthenticatedRemoteBrowserConnection,
   parseAuthenticatedVisualCaptureMatrix,
   parseAuthenticatedVisualRoutes,
 } from "./authenticated-visual-audit.mjs"
@@ -128,6 +131,7 @@ test("authenticated route preflight rejects unknown, sensitive, and URL-bearing 
   const invalidRoutes = [
     "/reset-password/" + opaqueResetToken,
     "/events?token=" + opaqueResetToken,
+    "/news?cat=science",
     "/news#" + opaqueResetToken,
     "/../schedule",
     "/unknown-route",
@@ -150,6 +154,44 @@ test("authenticated route preflight rejects unknown, sensitive, and URL-bearing 
   }
 })
 
+test("remote visual browser connection is optional by default and fail-closed when required", () => {
+  assert.equal(parseAuthenticatedRemoteBrowserConnection({}), null)
+  assert.throws(
+    () =>
+      parseAuthenticatedRemoteBrowserConnection({
+        VISUAL_REMOTE_CHROMIUM_REQUIRED: "1",
+      }),
+    (error) => {
+      assert.equal(error.message, "Required remote Chromium endpoint is missing")
+      return true
+    }
+  )
+
+  const connection = parseAuthenticatedRemoteBrowserConnection({
+    ORIGIN: "http://localhost:4174",
+    VISUAL_REMOTE_CHROMIUM_REQUIRED: "1",
+    VISUAL_REMOTE_CHROMIUM_WS_ENDPOINT: "ws://127.0.0.1:32123/playwright/session",
+  })
+  assert.deepEqual(connection, {
+    endpoint: "ws://127.0.0.1:32123/playwright/session",
+    exposeNetwork: "localhost:4174",
+  })
+
+  assert.throws(
+    () =>
+      parseAuthenticatedRemoteBrowserConnection({
+        ORIGIN: "http://localhost:4174",
+        VISUAL_REMOTE_CHROMIUM_REQUIRED: "1",
+        VISUAL_REMOTE_CHROMIUM_WS_ENDPOINT: "ws://127.0.0.1:32123/playwright/%2fsecret",
+      }),
+    (error) => {
+      assert.equal(error.message, "Remote Chromium endpoint is invalid")
+      assert.doesNotMatch(error.message, /secret/u)
+      return true
+    }
+  )
+})
+
 test("authenticated route allowlist preserves legacy routes and a seeded messenger UUID detail", () => {
   assert.deepEqual(parseAuthenticatedVisualRoutes({}), [
     "/dashboard",
@@ -166,6 +208,8 @@ test("authenticated route allowlist preserves legacy routes and a seeded messeng
     "/dashboard",
     "/events",
   ])
+
+  assert.deepEqual(parseAuthenticatedVisualRoutes({ ROUTES: "news" }), ["/news"])
 
   const seededChatRoute = "/messenger/0f8fad5b-d9cb-469f-a165-70867728950e"
   assert.deepEqual(parseAuthenticatedVisualRoutes({ ROUTES: seededChatRoute }), [seededChatRoute])
@@ -243,6 +287,7 @@ test("authenticated matrix preflight and filenames stay outside the legacy artif
   for (const sideEffect of [
     "console.log(",
     "checkJwksEndpoint()",
+    "connectAuthenticatedRemoteChromium(",
     "chromium.launch",
     "createAuthenticatedCaptureRunDirectory(",
     "writeFile(",
@@ -315,6 +360,107 @@ test("dashboard capture rejects loaded skeleton content that is still transparen
   assert.equal(predicate(), true)
 })
 
+test("News visual readiness requires a settled heading, default filter, and non-empty visible cards", () => {
+  const readyState = {
+    pathnameMatches: true,
+    headingMatches: true,
+    toolbarVisible: true,
+    activeFilterCount: 1,
+    activeFilterAll: true,
+    defaultFilterUrl: true,
+    visibleArticleCount: 2,
+    hasNextPageSkeleton: false,
+    hasRefetchIndicator: false,
+  }
+  assert.equal(isAuthenticatedNewsCaptureReady(readyState), true)
+  assert.equal(isAuthenticatedNewsCaptureReady({ ...readyState, activeFilterAll: false }), false)
+  assert.equal(isAuthenticatedNewsCaptureReady({ ...readyState, visibleArticleCount: 0 }), false)
+
+  const unready = {
+    path: "/news",
+    newsReadinessRequired: true,
+    newsReady: false,
+    newsArticleCount: 0,
+    newsActiveFilterState: "unexpected",
+  }
+  assert.deepEqual(findNewsReadinessIssues([unready]), [unready])
+  assert.deepEqual(
+    findNewsReadinessIssues([
+      {
+        ...unready,
+        newsReady: true,
+        newsArticleCount: 2,
+        newsActiveFilterState: "all",
+      },
+    ]),
+    []
+  )
+  assert.deepEqual(findNewsReadinessIssues([{ path: "/news", newsReadinessRequired: false }]), [])
+})
+
+test("News readiness bounds page evaluation and clips settle waits to its total deadline", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("async function waitForAuthenticatedNewsReady(page, locale) {")
+  const end = source.indexOf("\n\nexport function findNewsReadinessIssues", start)
+  assert.notEqual(start, -1)
+  assert.notEqual(end, -1)
+
+  const clock = { now: 100, timeoutDelays: [], cleared: [], waits: [], fireTimer: null }
+  let timerId = 0
+  const waitForReady = vm.runInNewContext("(" + source.slice(start, end).trim() + ")", {
+    Date: { now: () => clock.now },
+    Promise,
+    Number,
+    Math,
+    JSON,
+    authenticatedNewsStateInPage: () => null,
+    isAuthenticatedNewsCaptureReady: (state) => state?.ready === true,
+    setTimeout: (callback, delay) => {
+      const id = ++timerId
+      clock.timeoutDelays.push(delay)
+      if (clock.fireTimer) clock.fireTimer(callback, delay)
+      return id
+    },
+    clearTimeout: (id) => clock.cleared.push(id),
+  })
+
+  clock.fireTimer = (callback, delay) => {
+    clock.now += delay
+    callback()
+  }
+  const timedOut = await waitForReady({ evaluate: () => new Promise(() => {}) }, "en")
+  assert.equal(timedOut.ready, false)
+  assert.equal(timedOut.error, "news_heading_filter_or_nonempty_list_not_stable")
+  assert.deepEqual(clock.timeoutDelays, [30_000])
+  assert.equal(clock.cleared.length, 1)
+
+  clock.now = 100
+  clock.timeoutDelays = []
+  clock.cleared = []
+  clock.waits = []
+  clock.fireTimer = null
+  const clipped = await waitForReady(
+    {
+      evaluate: async () => {
+        clock.now = 29_900
+        return { ready: true, visibleArticleCount: 4, activeFilterAll: true }
+      },
+      waitForTimeout: async (milliseconds) => {
+        clock.waits.push(milliseconds)
+        clock.now += milliseconds
+      },
+    },
+    "ru"
+  )
+  assert.equal(clipped.ready, false)
+  assert.deepEqual(clock.timeoutDelays, [30_000])
+  assert.deepEqual(clock.waits, [200])
+  assert.equal(clock.cleared.length, 1)
+})
+
 test("unready dashboard summaries fail aggregation and cannot produce a screenshot", async () => {
   const source = await readFile(
     new URL("./authenticated-visual-audit.mjs", import.meta.url),
@@ -335,6 +481,26 @@ test("unready dashboard summaries fail aggregation and cannot produce a screensh
   }
   assert.deepEqual(findDashboardReadinessIssues([unready]), [unready])
   assert.equal(canCaptureAuthenticatedScreenshot(screenshotOptions), false)
+  assert.equal(
+    canCaptureAuthenticatedScreenshot({
+      ...screenshotOptions,
+      routePath: "/news",
+      finalUrl: "http://localhost/news",
+      newsReadinessRequired: true,
+      newsReady: false,
+    }),
+    false
+  )
+  assert.equal(
+    canCaptureAuthenticatedScreenshot({
+      ...screenshotOptions,
+      routePath: "/news",
+      finalUrl: "http://localhost/news",
+      newsReadinessRequired: true,
+      newsReady: true,
+    }),
+    true
+  )
   assert.equal(
     canCaptureAuthenticatedScreenshot({ ...screenshotOptions, dashboardCardsVisible: true }),
     true

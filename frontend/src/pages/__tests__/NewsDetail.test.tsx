@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   share: {} as Record<string, unknown>,
   shareNotify: (_message: string): void => undefined,
   relatedArticles: [] as unknown[],
+  relatedCategory: "general",
+  language: "en",
   t: (key: string) => key,
 }))
 
@@ -56,7 +58,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 vi.mock("@/contexts/LanguageContext", () => ({
-  useLanguage: () => ({ language: "en" }),
+  useLanguage: () => ({ language: mocks.language }),
 }))
 
 vi.mock("@/api/news", () => ({
@@ -92,7 +94,12 @@ vi.mock("@/hooks/useBookmarks", () => ({
   }),
 }))
 
-vi.mock("@/hooks/useRelatedNews", () => ({ useRelatedNews: () => mocks.relatedArticles }))
+vi.mock("@/hooks/useRelatedNews", () => ({
+  useRelatedNews: (_id: string, category: string) => {
+    mocks.relatedCategory = category
+    return mocks.relatedArticles
+  },
+}))
 vi.mock("@/hooks/useArticleNavigation", () => ({
   useArticleNavigation: () => mocks.articleNavigation,
 }))
@@ -267,6 +274,8 @@ describe("NewsDetail", () => {
       nextTitle: null,
     }
     mocks.relatedArticles = []
+    mocks.relatedCategory = "general"
+    mocks.language = "en"
     mocks.swipe = {}
     mocks.share = {
       sharing: false,
@@ -287,6 +296,36 @@ describe("NewsDetail", () => {
       vi.useRealTimers()
       vi.restoreAllMocks()
     }
+  })
+
+  it.each([
+    [
+      "ru",
+      "ГУУ вошёл в топ-20 лучших университетов страны",
+      "Научных публикаций стало больше; гранты и стипендии поддерживают исследования.",
+    ],
+    [
+      "en",
+      "GUU ranks among the country's top 20 universities",
+      "Research publications helped raise the result.",
+    ],
+  ] as const)("uses the stable Science category for %s detail data", (language, title, content) => {
+    mocks.language = language
+    mocks.query = {
+      isLoading: false,
+      isError: false,
+      data: {
+        ...article,
+        title,
+        content,
+        title_en: "GUU ranks among the country's top 20 universities",
+        content_en: "Research publications helped raise the result.",
+      },
+    }
+
+    render(<NewsDetail />)
+
+    expect(mocks.relatedCategory).toBe("science")
   })
 
   it("renders the loading skeleton without attempting the article layout", () => {

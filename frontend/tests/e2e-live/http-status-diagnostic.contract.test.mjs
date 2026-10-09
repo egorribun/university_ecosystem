@@ -16,7 +16,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { reportLiveHttpStatus, reportLiveRateLimitRetry } from ${JSON.stringify(helperUrl.href)};\nimport { reportLiveProfileSaveFailure } from ${JSON.stringify(profileHelperUrl.href)};\n${calls}`,
+      `import { parseLiveRateLimitHeader, reportLiveHttpStatus, reportLiveRateLimitRetry } from ${JSON.stringify(helperUrl.href)};\nimport { reportLiveProfileSaveFailure } from ${JSON.stringify(profileHelperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -102,7 +102,7 @@ test("session-cap diagnostics accept only the forbidden status", () => {
   )
 })
 
-test("retry decisions emit only finite delay, decision, and remaining-budget values", () => {
+test("retry decisions retain the original V1 five-field protocol", () => {
   const calls = [
     'reportLiveRateLimitRetry("desktop", "auth-logout", 40, "retry", 60000)',
     'reportLiveRateLimitRetry("mobile", "password-reset-replay", 60, "declined-deadline", 12345)',
@@ -112,19 +112,54 @@ test("retry decisions emit only finite delay, decision, and remaining-budget val
     reportInChild(calls),
     [
       "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=60000\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=invalid x_ratelimit_remaining=invalid\n",
       "UE_LIVE_RETRY_V1 project=mobile check=password-reset-replay retry_after_seconds=60 decision=declined-deadline remaining_ms=12345\n",
       "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=invalid decision=declined-header remaining_ms=0\n",
     ].join("")
   )
 })
 
-test("retry decision diagnostics reject unbounded and inconsistent runtime values", () => {
-  const privateValue = {
-    toString() {
-      throw new Error("private-value")
-    },
-  }
+test("logout header metadata uses a separate bounded protocol", () => {
   const calls = [
+    'const privateValue = { toString() { throw new Error("private-value") } }',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 40, "retry", 60000, parseLiveRateLimitHeader("5", "limit"), parseLiveRateLimitHeader("0", "remaining"))',
+    'reportLiveRateLimitRetry("mobile", "auth-logout", 33, "declined-deadline", 26463, parseLiveRateLimitHeader("05", "limit"), parseLiveRateLimitHeader("2", "remaining"))',
+    'reportLiveRateLimitRetry("mobile", "auth-logout", 33, "declined-deadline", 26463, parseLiveRateLimitHeader("5", "limit"), parseLiveRateLimitHeader("2", "remaining"))',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", 1000, parseLiveRateLimitHeader("100000", "limit"), parseLiveRateLimitHeader("100001", "remaining"))',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 2, "retry", 1002, parseLiveRateLimitHeader("0", "limit"), parseLiveRateLimitHeader("0", "remaining"))',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 2, "retry", 1003, parseLiveRateLimitHeader("100001", "limit"), parseLiveRateLimitHeader("1", "remaining"))',
+    'reportLiveRateLimitRetry("mobile", "auth-logout", 1, "retry", 1002, 5, privateValue)',
+    'reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", 1001, "private-limit", 2)',
+    'reportLiveRateLimitRetry("desktop", "password-reset-replay", 1, "retry", 1000, 5, 0)',
+  ].join("\n")
+  const output = reportInChild(calls)
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=60000\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0\n",
+      "UE_LIVE_RETRY_V1 project=mobile check=auth-logout retry_after_seconds=33 decision=declined-deadline remaining_ms=26463\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=mobile check=auth-logout x_ratelimit_limit=invalid x_ratelimit_remaining=2\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=mobile check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=2\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=1000\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=100000 x_ratelimit_remaining=invalid\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=2 decision=retry remaining_ms=1002\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=invalid x_ratelimit_remaining=0\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=2 decision=retry remaining_ms=1003\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=invalid x_ratelimit_remaining=1\n",
+      "UE_LIVE_RETRY_V1 project=mobile check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=1002\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=mobile check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=invalid\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=1001\n",
+      "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=invalid x_ratelimit_remaining=2\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=password-reset-replay retry_after_seconds=1 decision=retry remaining_ms=1000\n",
+    ].join("")
+  )
+  assert.doesNotMatch(output, /private-limit|private-value/u)
+})
+
+test("retry decision diagnostics reject unbounded and inconsistent runtime values", () => {
+  const calls = [
+    'const privateValue = { toString() { throw new Error("private-value") } }',
     'reportLiveRateLimitRetry("private-project", "auth-logout", 1, "retry", 1000)',
     'reportLiveRateLimitRetry("desktop", "private-check", 1, "retry", 1000)',
     'reportLiveRateLimitRetry("desktop", "auth-logout", 0, "retry", 1000)',
@@ -135,7 +170,7 @@ test("retry decision diagnostics reject unbounded and inconsistent runtime value
     'reportLiveRateLimitRetry("desktop", "auth-logout", null, "declined-deadline", 1000)',
     'reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", 0)',
     'reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", 60001)',
-    `reportLiveRateLimitRetry("desktop", "auth-logout", ${JSON.stringify(privateValue)}, "retry", 1000)`,
+    'reportLiveRateLimitRetry("desktop", "auth-logout", privateValue, "retry", 1000)',
   ].join("\n")
   assert.equal(reportInChild(calls), "")
 })
@@ -148,13 +183,16 @@ test("retry diagnostics deduplicate and cap at thirty-two records", () => {
         `reportLiveRateLimitRetry("desktop", "auth-logout", 1, "retry", ${remaining})`
     ).join("\n")
   )
+  const retryRecords = Array.from(
+    { length: 32 },
+    (_, index) =>
+      `UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=${index + 1}\n`
+  )
   assert.equal(
     output,
-    Array.from(
-      { length: 32 },
-      (_, index) =>
-        `UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=${index + 1}\n`
-    ).join("")
+    retryRecords[0] +
+      "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=invalid x_ratelimit_remaining=invalid\n" +
+      retryRecords.slice(1).join("")
   )
 })
 
@@ -180,13 +218,23 @@ test("HTTP diagnostics retain a differing replay status after eight initial reco
   )
 })
 
+test("logout fixture reads only Retry-After and the two rate-limit headers", async () => {
+  const source = await readFile(new URL("./fixtures.ts", import.meta.url), "utf8")
+  const headerReads = [...source.matchAll(/\bheaders\["([^"]+)"\]/gu)].map((match) => match[1])
+  assert.deepEqual(headerReads.sort(), [
+    "retry-after",
+    "x-ratelimit-limit",
+    "x-ratelimit-remaining",
+  ])
+})
+
 test("HTTP diagnostic helper has no browser, response, environment, or artifact access", async () => {
   const source = await readFile(helperUrl, "utf8")
   assert.doesNotMatch(
     source,
     /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\b(?:page|browser|context|response|request|URL)\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
   )
-  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 2)
+  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 3)
 })
 
 test("the real Playwright list reporter preserves stdout protocol without browser fixtures", async (t) => {

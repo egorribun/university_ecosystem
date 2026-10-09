@@ -242,6 +242,43 @@ describe("NewsFeature closure", () => {
     expect(screen.queryByText("Lecture schedule")).not.toBeInTheDocument()
   })
 
+  it("filters a mixed-keyword science article consistently across localized responses", () => {
+    const russianTitle = "ГУУ вошёл в топ-20 лучших университетов страны"
+    const englishTitle = "GUU ranks among the country's top 20 universities"
+    const russianContent =
+      "Научных публикаций стало больше; гранты и стипендии поддерживают исследования."
+    const englishContent = "Research publications helped raise the result."
+    const article: NewsItem = {
+      ...NEWS[0]!,
+      id: "bilingual-science",
+      title: russianTitle,
+      content: russianContent,
+      title_en: englishTitle,
+      content_en: englishContent,
+    }
+
+    state.debounced.current = ""
+    state.url.current = { params: { q: "", cat: "science", sort: "newest" } }
+
+    for (const localized of [
+      { language: "ru", title: russianTitle, content: russianContent },
+      { language: "en", title: englishTitle, content: englishContent },
+    ]) {
+      state.language.current = localized.language
+      state.query.current = {
+        ...state.query.current,
+        news: [{ ...article, title: localized.title, content: localized.content }],
+      }
+      const view = renderFeature()
+
+      expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
+      expect(screen.getByText(localized.title)).toBeInTheDocument()
+      view.unmount()
+    }
+
+    expect(state.query.current.fetchNextPage).toHaveBeenCalled()
+  })
+
   it("filters by an inferred non-saved category", () => {
     state.debounced.current = ""
     state.url.current = { params: { q: "", cat: "sport", sort: "newest" } }

@@ -4233,6 +4233,16 @@ _PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
 _PLAYWRIGHT_RETRY_DECISION_LIMIT = 32
 _PlaywrightRetryDecision = tuple[str, str, int | None, str, int]
 
+_PLAYWRIGHT_RATE_LIMIT_LINE = re.compile(
+    r"UE_LIVE_RATE_LIMIT_V1 project=(?P<project>desktop|mobile) "
+    r"check=auth-logout "
+    r"x_ratelimit_limit=(?P<limit>invalid|[1-9][0-9]{0,5}) "
+    r"x_ratelimit_remaining=(?P<remaining>invalid|0|[1-9][0-9]{0,5})"
+)
+_PLAYWRIGHT_RATE_LIMIT_MAX = 100_000
+_PLAYWRIGHT_RATE_LIMIT_RECORD_LIMIT = 32
+_PlaywrightRateLimit = tuple[str, int | None, int | None]
+
 
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
     """Accept only complete stdout protocol records; discard all other content."""
@@ -4293,6 +4303,43 @@ def _live_playwright_retry_decisions(output: str) -> list[_PlaywrightRetryDecisi
             if len(decisions) == _PLAYWRIGHT_RETRY_DECISION_LIMIT:
                 break
     return decisions
+
+
+def _live_playwright_rate_limit_headers(output: str) -> list[_PlaywrightRateLimit]:
+    """Accept only bounded logout-header records; never retain raw header text."""
+    records: list[_PlaywrightRateLimit] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 160 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_RATE_LIMIT_LINE.fullmatch(line)
+        if match is None:
+            continue
+
+        limit_text = match["limit"]
+        remaining_text = match["remaining"]
+        limit = None if limit_text == "invalid" else int(limit_text)
+        remaining = None if remaining_text == "invalid" else int(remaining_text)
+        if (
+            (limit is not None and not 1 <= limit <= _PLAYWRIGHT_RATE_LIMIT_MAX)
+            or (
+                remaining is not None
+                and not 0 <= remaining <= _PLAYWRIGHT_RATE_LIMIT_MAX
+            )
+            or (limit is not None and remaining is not None and remaining > limit)
+        ):
+            continue
+
+        record: _PlaywrightRateLimit = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            limit,
+            remaining,
+        )
+        if record not in records:
+            records.append(record)
+            if len(records) == _PLAYWRIGHT_RATE_LIMIT_RECORD_LIMIT:
+                break
+    return records
 
 
 _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
@@ -4826,6 +4873,7 @@ def _run_live_playwright(
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
     retry_decisions = _live_playwright_retry_decisions(stdout)
+    rate_limit_headers = _live_playwright_rate_limit_headers(stdout)
     page_errors = _live_playwright_page_errors(stdout)
     profile_save_diagnostics = _live_playwright_profile_save_diagnostics(stdout)
     # A header from one stream must never authorize frames from the other.
@@ -4902,6 +4950,14 @@ def _run_live_playwright(
             f"live E2E retry project={project} check={check} "
             f"retry_after_seconds={retry_after_label} decision={decision} "
             f"remaining_ms={remaining_ms}",
+            flush=True,
+        )
+    for project, limit, remaining in rate_limit_headers:
+        limit_label = "invalid" if limit is None else str(limit)
+        remaining_label = "invalid" if remaining is None else str(remaining)
+        print(
+            f"live E2E rate-limit project={project} check=auth-logout "
+            f"x_ratelimit_limit={limit_label} x_ratelimit_remaining={remaining_label}",
             flush=True,
         )
     for project, check, current_page, error_type, count in page_errors:

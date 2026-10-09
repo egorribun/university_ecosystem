@@ -52,7 +52,11 @@ async function assertScheduleHydratesInLanguage(
     await expect(page.locator("html")).toHaveAttribute("lang", language)
     await expect(page.getByRole("main")).toBeVisible()
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
-    await expect(page.getByRole("grid").or(page.getByRole("tablist"))).toBeVisible()
+    const scheduleViewName = language === "ru" ? "Расписание" : "Schedule"
+    const scheduleView = page
+      .getByRole("grid", { name: scheduleViewName, exact: true })
+      .or(page.getByRole("tablist", { name: scheduleViewName, exact: true }))
+    await expect(scheduleView).toBeVisible()
 
     const rawTranslationKey = await page.locator("#root").evaluate((root) => {
       const rawNamespaceKey = /\b[a-z][a-z0-9_-]*:[a-z][a-z0-9_.-]*\b/iu

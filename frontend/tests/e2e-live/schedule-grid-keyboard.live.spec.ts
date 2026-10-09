@@ -11,7 +11,7 @@ test("Enter opens the lesson in the keyboard-selected schedule grid cell", async
   await page.goto("/schedule")
   await expect.poll(() => new URL(page.url()).pathname).toBe("/schedule")
 
-  const grid = page.getByRole("grid")
+  const grid = page.getByRole("grid", { name: /^(?:Расписание|Schedule)$/u })
   await expect(grid).toBeVisible()
 
   const lessonCard = grid.locator('[id^="lesson-card-"]').first()

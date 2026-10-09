@@ -2,8 +2,10 @@
 const emittedRecords = new Set<string>()
 const MAX_RECORDS = 32
 const emittedRetryRecords = new Set<string>()
+const emittedRateLimitRecords = new Set<string>()
 // Bound retry decisions across both projects and all E2E retries.
 const MAX_RETRY_RECORDS = 32
+const MAX_RATE_LIMIT_RECORDS = 32
 
 export type LiveRateLimitRetryCheck = "auth-logout" | "password-reset-replay"
 export type LiveRateLimitRetryDecision = "retry" | "declined-header" | "declined-deadline"
@@ -56,12 +58,52 @@ export function reportLiveHttpStatus(
   }
 }
 
+export type LiveRateLimitHeaderKind = "limit" | "remaining"
+
+const MAX_LIVE_RATE_LIMIT_HEADER = 100_000
+
+export function parseLiveRateLimitHeader(
+  value: string | undefined,
+  kind: LiveRateLimitHeaderKind
+): number | null {
+  if (
+    typeof value !== "string" ||
+    (kind !== "limit" && kind !== "remaining") ||
+    !/^(?:0|[1-9][0-9]{0,5})$/u.test(value)
+  ) {
+    return null
+  }
+  const parsed = Number(value)
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed > MAX_LIVE_RATE_LIMIT_HEADER ||
+    (kind === "limit" && parsed === 0)
+  ) {
+    return null
+  }
+  return parsed
+}
+
+function formatLiveRateLimitHeader(value: unknown, minimum: number): string {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < minimum ||
+    value > MAX_LIVE_RATE_LIMIT_HEADER
+  ) {
+    return "invalid"
+  }
+  return String(value)
+}
+
 export function reportLiveRateLimitRetry(
   project: string,
   check: LiveRateLimitRetryCheck,
   retryAfterSeconds: number | null,
   decision: LiveRateLimitRetryDecision,
-  remainingMs: number
+  remainingMs: number,
+  xRateLimitLimit?: number | null,
+  xRateLimitRemaining?: number | null
 ): void {
   const validRetryAfter =
     retryAfterSeconds === null ||
@@ -77,20 +119,52 @@ export function reportLiveRateLimitRetry(
     (decision === "declined-deadline" && retryAfterSeconds === null) ||
     !Number.isSafeInteger(remainingMs) ||
     remainingMs < 0 ||
-    remainingMs > 60_000 ||
-    emittedRetryRecords.size >= MAX_RETRY_RECORDS
+    remainingMs > 60_000
   ) {
     return
+  }
+
+  let rateLimitRecord: string | null = null
+  if (check === "auth-logout") {
+    const limitText = formatLiveRateLimitHeader(xRateLimitLimit, 1)
+    let remainingText = formatLiveRateLimitHeader(xRateLimitRemaining, 0)
+    if (
+      limitText !== "invalid" &&
+      remainingText !== "invalid" &&
+      Number(remainingText) > Number(limitText)
+    ) {
+      remainingText = "invalid"
+    }
+    rateLimitRecord =
+      "UE_LIVE_RATE_LIMIT_V1 project=" +
+      project +
+      " check=auth-logout x_ratelimit_limit=" +
+      limitText +
+      " x_ratelimit_remaining=" +
+      remainingText +
+      "\n"
   }
 
   const record =
     `UE_LIVE_RETRY_V1 project=${project} check=${check} ` +
     `retry_after_seconds=${retryAfterSeconds ?? "invalid"} decision=${decision} ` +
     `remaining_ms=${remainingMs}\n`
-  if (emittedRetryRecords.has(record)) return
-  emittedRetryRecords.add(record)
+  const emitRetryRecord =
+    !emittedRetryRecords.has(record) && emittedRetryRecords.size < MAX_RETRY_RECORDS
+  const emitRateLimitRecord =
+    rateLimitRecord !== null &&
+    !emittedRateLimitRecords.has(rateLimitRecord) &&
+    emittedRateLimitRecords.size < MAX_RATE_LIMIT_RECORDS
+  if (!emitRetryRecord && !emitRateLimitRecord) return
+  if (emitRetryRecord) emittedRetryRecords.add(record)
+  if (rateLimitRecord !== null && emitRateLimitRecord) {
+    emittedRateLimitRecords.add(rateLimitRecord)
+  }
   try {
-    process.stdout.write(record)
+    if (emitRetryRecord) process.stdout.write(record)
+    if (rateLimitRecord !== null && emitRateLimitRecord) {
+      process.stdout.write(rateLimitRecord)
+    }
   } catch {
     // Retry diagnostics must not replace the live result.
   }

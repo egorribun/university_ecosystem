@@ -48,6 +48,7 @@
  *   5: critical or serious axe violations found
  *   6: console/page errors or failed subresource/API requests detected
  *   8: dashboard loaded content did not become visible and settled
+ *   9: News heading, default filter, or loaded article list did not settle
  */
 
 import { Buffer } from "node:buffer"
@@ -289,6 +290,79 @@ export function parseAuthenticatedVisualCaptureMatrix(
   }
 }
 
+export function parseAuthenticatedRemoteBrowserConnection(environment = process.env) {
+  const required = environment.VISUAL_REMOTE_CHROMIUM_REQUIRED
+  if (required !== undefined && required !== "0" && required !== "1") {
+    throw new Error("VISUAL_REMOTE_CHROMIUM_REQUIRED must be 0 or 1")
+  }
+
+  const endpointValue = environment.VISUAL_REMOTE_CHROMIUM_WS_ENDPOINT
+  if (typeof endpointValue !== "string" || endpointValue.length === 0) {
+    if (required === "1") {
+      throw new Error("Required remote Chromium endpoint is missing")
+    }
+    return null
+  }
+  if (endpointValue !== endpointValue.trim()) {
+    throw new Error("Remote Chromium endpoint is invalid")
+  }
+
+  let endpoint
+  try {
+    endpoint = new URL(endpointValue)
+  } catch {
+    throw new Error("Remote Chromium endpoint is invalid")
+  }
+  const endpointPath = endpoint.pathname.endsWith("/")
+    ? endpoint.pathname.slice(0, -1)
+    : endpoint.pathname
+  const endpointSegments = endpointPath.split("/").slice(1)
+  if (
+    endpoint.protocol !== "ws:" ||
+    endpoint.hostname !== "127.0.0.1" ||
+    !endpoint.port ||
+    endpoint.username !== "" ||
+    endpoint.password !== "" ||
+    endpoint.search !== "" ||
+    endpoint.hash !== "" ||
+    endpoint.pathname === "/" ||
+    endpoint.pathname.length > 512 ||
+    endpoint.pathname.includes("%") ||
+    endpoint.pathname.includes("\\") ||
+    endpointSegments.some((segment) => segment === "" || segment === "." || segment === "..") ||
+    !/^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*\/?$/u.test(endpoint.pathname) ||
+    endpointValue !== endpoint.href
+  ) {
+    throw new Error("Remote Chromium endpoint is invalid")
+  }
+
+  const originValue = environment.ORIGIN ?? "http://localhost"
+  let origin
+  try {
+    origin = new URL(originValue)
+  } catch {
+    throw new Error("Remote Chromium origin is invalid")
+  }
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.hostname.toLowerCase() !== "localhost" ||
+    !origin.port ||
+    origin.username !== "" ||
+    origin.password !== "" ||
+    origin.pathname !== "/" ||
+    origin.search !== "" ||
+    origin.hash !== "" ||
+    origin.origin !== originValue
+  ) {
+    throw new Error("Remote Chromium origin is invalid")
+  }
+
+  return {
+    endpoint: endpoint.href,
+    exposeNetwork: `localhost:${origin.port}`,
+  }
+}
+
 export function buildAuthenticatedCaptureBasename(routePath, captureConfig = null) {
   const route = safeFilename(routePath)
   if (!captureConfig) return route
@@ -479,6 +553,162 @@ async function performLogin(context, ownSession) {
   }
 }
 
+function authenticatedNewsStateInPage(locale) {
+  const normalize = (value) => (value ?? "").replace(/\s+/gu, " ").trim()
+  const isVisible = (element) => {
+    if (!element) return false
+    const style = globalThis.window.getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    return (
+      style.display !== "none" &&
+      style.visibility === "visible" &&
+      Number.parseFloat(style.opacity) >= 0.999 &&
+      rect.width > 0 &&
+      rect.height > 0
+    )
+  }
+
+  const heading = globalThis.document.querySelector("h1")
+  const headingPattern =
+    locale === "ru" ? /^Новости университета\s*\d*$/u : /^University news\s*\d*$/u
+  const headingMatches = isVisible(heading) && headingPattern.test(normalize(heading.innerText))
+  const toolbar = globalThis.document.querySelector('[role="toolbar"]')
+  const activeFilters = toolbar
+    ? Array.from(toolbar.querySelectorAll('button[aria-current="page"]'))
+    : []
+  const expectedAllLabel = locale === "ru" ? "Все" : "All"
+  const activeFilterAll =
+    activeFilters.length === 1 && normalize(activeFilters[0].innerText) === expectedAllLabel
+  const query = new URLSearchParams(globalThis.location.search)
+  const defaultFilterUrl =
+    !query.has("cat") && !query.has("q") && (!query.has("sort") || query.get("sort") === "newest")
+
+  const section = globalThis.document.querySelector("section[aria-label]")
+  const cards = section
+    ? Array.from(section.querySelectorAll('article[data-testid="news-card"]'))
+    : []
+  const visibleArticleCount = cards.filter((card) => {
+    const link = card.querySelector('h2 a[href^="/news/"]')
+    return isVisible(card) && isVisible(link) && normalize(link?.textContent).length > 0
+  }).length
+  const hasNextPageSkeleton = Boolean(
+    section &&
+    Array.from(section.querySelectorAll("article")).some(
+      (article) => article.getAttribute("data-testid") !== "news-card"
+    )
+  )
+  const hasRefetchIndicator = Boolean(
+    section &&
+    Array.from(section.children).some((element) => element.classList.contains("animate-pulse"))
+  )
+
+  return {
+    pathnameMatches: globalThis.location.pathname === "/news",
+    headingMatches,
+    toolbarVisible: isVisible(toolbar),
+    activeFilterCount: activeFilters.length,
+    activeFilterAll,
+    defaultFilterUrl,
+    visibleArticleCount,
+    hasNextPageSkeleton,
+    hasRefetchIndicator,
+  }
+}
+
+export function isAuthenticatedNewsCaptureReady(state) {
+  return Boolean(
+    state &&
+    state.pathnameMatches === true &&
+    state.headingMatches === true &&
+    state.toolbarVisible === true &&
+    state.activeFilterCount === 1 &&
+    state.activeFilterAll === true &&
+    state.defaultFilterUrl === true &&
+    Number.isInteger(state.visibleArticleCount) &&
+    state.visibleArticleCount > 0 &&
+    state.hasNextPageSkeleton === false &&
+    state.hasRefetchIndicator === false
+  )
+}
+
+async function waitForAuthenticatedNewsReady(page, locale) {
+  const deadline = Date.now() + 30_000
+  let previousSignature = null
+  let stableSamples = 0
+  let lastState = null
+
+  while (Date.now() < deadline) {
+    const remainingBeforeProbe = Math.max(0, deadline - Date.now())
+    if (remainingBeforeProbe === 0) break
+    const probeTimeout = "NEWS_READINESS_PROBE_TIMEOUT"
+    let timer
+    try {
+      lastState = await Promise.race([
+        page.evaluate(authenticatedNewsStateInPage, locale),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(probeTimeout), remainingBeforeProbe)
+        }),
+      ])
+    } catch (error) {
+      if (error === probeTimeout) break
+      throw error
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+    if (Date.now() >= deadline) break
+    if (isAuthenticatedNewsCaptureReady(lastState)) {
+      const signature = JSON.stringify([
+        lastState.pathnameMatches,
+        lastState.headingMatches,
+        lastState.activeFilterCount,
+        lastState.activeFilterAll,
+        lastState.defaultFilterUrl,
+        lastState.visibleArticleCount,
+        lastState.hasNextPageSkeleton,
+        lastState.hasRefetchIndicator,
+      ])
+      stableSamples = signature === previousSignature ? stableSamples + 1 : 1
+      previousSignature = signature
+      if (stableSamples >= 3) {
+        return {
+          ready: true,
+          articleCount: lastState.visibleArticleCount,
+          activeFilterState: "all",
+          error: null,
+        }
+      }
+    } else {
+      previousSignature = null
+      stableSamples = 0
+    }
+    const remainingAfterProbe = Math.max(0, deadline - Date.now())
+    const settleWaitMs = Math.min(250, remainingAfterProbe)
+    if (settleWaitMs === 0) break
+    await page.waitForTimeout(settleWaitMs)
+  }
+
+  return {
+    ready: false,
+    articleCount: Number.isInteger(lastState?.visibleArticleCount)
+      ? lastState.visibleArticleCount
+      : 0,
+    activeFilterState: lastState?.activeFilterAll ? "all" : "unexpected",
+    error: "news_heading_filter_or_nonempty_list_not_stable",
+  }
+}
+
+export function findNewsReadinessIssues(summaries) {
+  return summaries.filter(
+    (summary) =>
+      summary.path === "/news" &&
+      summary.newsReadinessRequired === true &&
+      (summary.newsReady !== true ||
+        summary.newsActiveFilterState !== "all" ||
+        !Number.isInteger(summary.newsArticleCount) ||
+        summary.newsArticleCount < 1)
+  )
+}
+
 /**
  * Per-route audit: navigate + console capture + axe-core scan.
  *
@@ -530,6 +760,8 @@ export function canCaptureAuthenticatedScreenshot({
   redirectedToLogin,
   finalUrl,
   dashboardCardsVisible,
+  newsReadinessRequired = false,
+  newsReady = null,
 }) {
   return Boolean(
     captureConfig &&
@@ -538,7 +770,8 @@ export function canCaptureAuthenticatedScreenshot({
     !redirectedToLogin &&
     finalUrl &&
     new URL(finalUrl).pathname === routePath &&
-    (routePath !== "/dashboard" || dashboardCardsVisible === true)
+    (routePath !== "/dashboard" || dashboardCardsVisible === true) &&
+    (!newsReadinessRequired || newsReady === true)
   )
 }
 
@@ -592,6 +825,11 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
   let visualConfigurationError = null
   let dashboardCardsVisible = routePath === "/dashboard" ? false : null
   let dashboardReadinessError = null
+  const newsReadinessRequired = Boolean(captureConfig && routePath === "/news")
+  let newsReady = newsReadinessRequired ? false : null
+  let newsArticleCount = newsReadinessRequired ? 0 : null
+  let newsActiveFilterState = newsReadinessRequired ? "unavailable" : null
+  let newsReadinessError = null
   let screenshotPath = null
 
   // emulateMedia + reducedMotion settles Framer Motion at end-state for
@@ -657,6 +895,19 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         dashboardCardsVisible = true
       } catch {
         dashboardReadinessError = "dashboard_cards_not_visible_or_settled"
+      }
+    }
+
+    if (newsReadinessRequired) {
+      try {
+        const readiness = await waitForAuthenticatedNewsReady(page, captureConfig.locale)
+        newsReady = readiness.ready
+        newsArticleCount = readiness.articleCount
+        newsActiveFilterState = readiness.activeFilterState
+        newsReadinessError = readiness.error
+      } catch {
+        newsReady = false
+        newsReadinessError = "news_readiness_probe_failed"
       }
     }
 
@@ -744,6 +995,8 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
       redirectedToLogin,
       finalUrl,
       dashboardCardsVisible,
+      newsReadinessRequired,
+      newsReady,
     })
   ) {
     const filename = `${buildAuthenticatedCaptureBasename(routePath, captureConfig)}.png`
@@ -778,6 +1031,11 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         axeError: redactDiagnostic(axeError),
         dashboardCardsVisible,
         dashboardReadinessError,
+        newsReadinessRequired,
+        newsReady,
+        newsArticleCount,
+        newsActiveFilterState,
+        newsReadinessError,
         axeViolationCount: axeViolations.length,
         axeViolations: axeViolations.map((violation) => ({
           id: violation.id,
@@ -823,6 +1081,11 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     captureConfigError: visualConfigurationError,
     dashboardCardsVisible,
     dashboardReadinessError,
+    newsReadinessRequired,
+    newsReady,
+    newsArticleCount,
+    newsActiveFilterState,
+    newsReadinessError,
     screenshotPath: screenshotPath ? path.basename(screenshotPath) : null,
   }
 }
@@ -855,11 +1118,23 @@ function printSummary(summaries) {
   console.log("=".repeat(120))
 }
 
+async function connectAuthenticatedRemoteChromium(connection) {
+  try {
+    return await chromium.connect(connection.endpoint, {
+      timeout: 30_000,
+      exposeNetwork: connection.exposeNetwork,
+    })
+  } catch {
+    throw new Error("Remote Chromium connection failed")
+  }
+}
+
 async function main() {
   const routes = parseAuthenticatedVisualRoutes(process.env)
   // Validate the complete optional matrix before creating output, making a
   // network request, or launching Chromium. The legacy run remains unchanged.
   const captureMatrix = parseAuthenticatedVisualCaptureMatrix()
+  const remoteBrowserConnection = parseAuthenticatedRemoteBrowserConnection(process.env)
   const outputRoot = captureMatrix?.outputDir ?? OUT_DIR
   let outputDir = outputRoot
   const sourceShaCandidate = process.env.SOURCE_SHA ?? process.env.GITHUB_SHA ?? null
@@ -922,7 +1197,9 @@ async function main() {
   // Trade-off: dist sw.js precache assumes "chrome" rendering but bundled
   // chromium is close enough for axe a11y purposes (axe scans the DOM
   // structure, not browser-specific quirks).
-  const browser = await chromium.launch({ headless: true })
+  const browser = remoteBrowserConnection
+    ? await connectAuthenticatedRemoteChromium(remoteBrowserConnection)
+    : await chromium.launch({ headless: true })
 
   await withOwnedSessionCleanup({
     browser,
@@ -960,6 +1237,10 @@ async function main() {
           JSON.stringify(
             {
               evidenceKind: "real-authenticated-browser-no-route-mocks",
+              browserTransport: remoteBrowserConnection
+                ? "playwright-websocket"
+                : "local-bundled-chromium",
+              remoteBrowserRequired: process.env.VISUAL_REMOTE_CHROMIUM_REQUIRED === "1",
               sourceSha: captureMatrix.sourceSha,
               origin: captureMatrix.origin,
               routes,
@@ -1016,6 +1297,7 @@ async function main() {
             result.axeViolationCount === 0 &&
             result.captureConfigMatches !== false &&
             result.dashboardCardsVisible !== false &&
+            (!result.newsReadinessRequired || result.newsReady === true) &&
             (!captureConfig || Boolean(result.screenshotPath))
               ? "✓"
               : "✗"
@@ -1051,6 +1333,18 @@ async function main() {
         throw setVisualExitCode(
           new Error(`${hydrationIssues.length}/${summaries.length} routes had hydration errors`),
           2
+        )
+      }
+      const newsReadinessIssues = findNewsReadinessIssues(summaries)
+      if (newsReadinessIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            newsReadinessIssues.length +
+              "/" +
+              summaries.length +
+              " News captures did not prove a stable non-empty list and default filter"
+          ),
+          9
         )
       }
       const dashboardReadinessIssues = findDashboardReadinessIssues(summaries)
