@@ -20,13 +20,14 @@ from app.core.db.schema_drift import (
 )
 from app.core.config import Settings
 import app.models as models
+from app.core.db.retained_table_metadata import build_migration_metadata
 
 _settings = Settings(_allow_missing=True)
 config: Config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = models.Base.metadata
+target_metadata = build_migration_metadata(models.Base.metadata)
 
 
 class _OfflineInspector:

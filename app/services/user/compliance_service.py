@@ -75,7 +75,7 @@ class UserComplianceService:
             raise PermissionDenied()
 
         # Fetch ORM user
-        db_user = await self.repo._get_orm(user_id)
+        db_user = await self.repo.get_orm_for_anonymization(user_id)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
@@ -102,18 +102,17 @@ class UserComplianceService:
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
-        # Export the public DTO only. Authentication challenges are counted
-        # separately and their bindings/digests are never serialized.
+        # Export the public DTO only. Challenge bindings and digests remain
+        # private; the account export includes only a count and safe metadata.
         profile = db_user.model_dump(exclude={"mfa_challenges"})
-
-        import asyncio
-
-        # PERF-010 (audit 2026-03-04): Gather independent I/O fetches concurrently
-        sessions_list, notifications_list, access_logs = await asyncio.gather(
-            self.repo.get_user_sessions(user_identity),
-            self.repo.get_user_notifications(user_identity),
-            self.repo.get_user_access_logs(user_identity, limit=2000),
+        challenge_count, enrollments = await self.repo.get_user_mfa_export_summary(
+            user_identity
         )
+
+        # These reads share one AsyncSession, which cannot be used concurrently.
+        sessions_list = await self.repo.get_user_sessions(user_identity)
+        notifications_list = await self.repo.get_user_notifications(user_identity)
+        access_logs = await self.repo.get_user_access_logs(user_identity, limit=2000)
 
         sessions = [
             {
@@ -139,20 +138,6 @@ class UserComplianceService:
                 "read_at": n.read_at,
             }
             for n in notifications_list
-        ]
-
-        challenge_count = len(getattr(db_user, "mfa_challenges", []))
-
-        enrollments = [
-            {
-                "id": e.id,
-                "label": e.label,
-                "is_active": e.is_active,
-                "confirmed_at": e.confirmed_at,
-                "revoked_at": e.revoked_at,
-                "created_at": e.created_at,
-            }
-            for e in getattr(db_user, "totp_enrollments", [])
         ]
 
         access_log_payload = [
@@ -200,7 +185,7 @@ class UserComplianceService:
 
         # Fetch ORM user
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity)
+        db_user = await self.repo.get_orm_for_anonymization(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 

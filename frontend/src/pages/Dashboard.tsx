@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { m } from "framer-motion"
+import { m, useAnimationControls } from "framer-motion"
 import "@/styles/tokens/dashboard.css"
 
 import { SEO } from "@/components/ui/SEO"
@@ -53,18 +53,6 @@ const E2E_MODE = import.meta.env.VITE_E2E_MODE === "1"
 // product cascade for real users, but make the audit build paint-ready from
 // the first client render (the same contract as the SSR shell).
 const LHCI_MODE = import.meta.env.VITE_LHCI === "true"
-
-/** Wave 54: Cascade reveal props — extracted to avoid 3x copy-paste (DESIGN-54-05)
- *  Ease [0.16, 1, 0.3, 1] = expo-out — snappy deceleration, no bounce. Intentional
- *  choice over spring for one-shot reveal (spring better suits interactive feedback). */
-function cascadeProps(delay: number, active: boolean, reduced: boolean) {
-  if (!active || reduced) return {}
-  return {
-    initial: { opacity: 0, transform: "translateY(var(--space-2))" },
-    animate: { opacity: 1, transform: "translateY(0)" },
-    transition: { duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] },
-  } as const
-}
 
 /** Wave 46: Card-shaped skeleton placeholders for SkeletonMorph */
 function ScheduleCardSkeleton() {
@@ -136,26 +124,71 @@ export default function Dashboard() {
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
-  const { hh, mm, dateStr, time } = useClock(locale)
+  const { hh, mm, dateStr, time, isReady: clockReady } = useClock(locale)
 
   // Wave 47: Weather-aware ambient particles
   const weatherResult = useWeather()
   const weatherAnimation = weatherResult.data?.animation ?? "none"
 
-  // Wave 48: Card reveal cascade — first load per session
-  const [showCascade, setShowCascade] = useState(() => {
-    if (LHCI_MODE) return false
-    if (typeof sessionStorage === "undefined") return false
-    return !sessionStorage.getItem(CASCADE_KEY)
-  })
+  // Keep the server and first browser render visible and identical. The
+  // session-scoped entrance starts through controls only after hydration.
+  const scheduleCascade = useAnimationControls()
+  const newsCascade = useAnimationControls()
+  const eventsCascade = useAnimationControls()
+  const cascadeMounted = useRef(false)
   useEffect(() => {
-    if (showCascade && typeof sessionStorage !== "undefined") {
-      sessionStorage.setItem(CASCADE_KEY, "1")
-      // Disable cascade flag after all 3 cards finish (last delay 0.3s + duration 0.5s = 0.8s)
-      const timer = setTimeout(() => setShowCascade(false), 1000)
-      return () => clearTimeout(timer)
+    cascadeMounted.current = true
+    return () => {
+      cascadeMounted.current = false
     }
-  }, [showCascade])
+  }, [])
+
+  useEffect(() => {
+    if (LHCI_MODE || typeof sessionStorage === "undefined") return
+
+    const cascade = [
+      { controls: scheduleCascade, delay: 0.1 },
+      { controls: newsCascade, delay: 0.2 },
+      { controls: eventsCascade, delay: 0.3 },
+    ]
+
+    if (prefersReducedMotion || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      for (const { controls } of cascade) {
+        controls.set({ opacity: 1, transform: "translateY(0)" })
+      }
+      return
+    }
+    if (sessionStorage.getItem(CASCADE_KEY)) return
+
+    sessionStorage.setItem(CASCADE_KEY, "1")
+
+    let cancelled = false
+    let completed = false
+    const animations = cascade.map(({ controls, delay }) => {
+      controls.set({ opacity: 0, transform: "translateY(var(--space-2))" })
+      return controls.start({
+        opacity: 1,
+        transform: "translateY(0)",
+        transition: { duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] },
+      })
+    })
+    void Promise.all(animations).then(() => {
+      if (!cancelled) completed = true
+    })
+
+    return () => {
+      cancelled = true
+      for (const { controls } of cascade) {
+        controls.stop()
+        if (cascadeMounted.current) {
+          controls.set({ opacity: 1, transform: "translateY(0)" })
+        }
+      }
+      if (!completed && sessionStorage.getItem(CASCADE_KEY) === "1") {
+        sessionStorage.removeItem(CASCADE_KEY)
+      }
+    }
+  }, [prefersReducedMotion, scheduleCascade, newsCascade, eventsCascade])
 
   // Wave 46: SkeletonMorph — shared query instances for loading state
   // React Query deduplicates, so no extra network requests
@@ -166,8 +199,8 @@ export default function Dashboard() {
   const newsQuery = useDashboardNews(language)
   const eventsQuery = useDashboardEvents()
   const scheduleLoaded = !scheduleQuery.isLoading
-  const newsLoaded = !newsQuery.isLoading
-  const eventsLoaded = !eventsQuery.isLoading
+  const newsLoaded = !newsQuery.isPending
+  const eventsLoaded = !eventsQuery.isPending
 
   const dashboardStoriesQuery = useDashboardStories()
   const stories = dashboardStoriesQuery.data ?? []
@@ -216,6 +249,7 @@ export default function Dashboard() {
             hh={hh}
             mm={mm}
             dateStr={dateStr}
+            isClockReady={clockReady}
             isNarrow={isNarrow}
             prefersReducedMotion={prefersReducedMotion}
             storiesSlot={
@@ -254,16 +288,16 @@ export default function Dashboard() {
           {/* Cards remain layout-stable while scrolling. */}
           <div className="mt-4 grid w-full grid-cols-12 gap-4 md:mt-5 md:gap-3.5 lg:gap-4 pb-24 md:pb-10">
             {/* Schedule card */}
-            <m.div
-              className="col-span-12 lg:col-span-4"
-              {...cascadeProps(0.1, showCascade, prefersReducedMotion)}
-            >
+            <m.div className="col-span-12 lg:col-span-4" animate={scheduleCascade}>
               <div
                 className={`vt-dash-schedule ${scheduleLoaded ? "" : "min-h-[400px]"}`}
-                aria-busy={!scheduleLoaded}
+                aria-busy={!scheduleLoaded || !clockReady}
               >
                 <WidgetErrorBoundary widgetName="ScheduleCard" showFallback>
-                  <SkeletonMorph loaded={scheduleLoaded} skeleton={<ScheduleCardSkeleton />}>
+                  <SkeletonMorph
+                    loaded={scheduleLoaded && clockReady}
+                    skeleton={<ScheduleCardSkeleton />}
+                  >
                     <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
                   </SkeletonMorph>
                 </WidgetErrorBoundary>
@@ -271,10 +305,7 @@ export default function Dashboard() {
             </m.div>
 
             {/* News card */}
-            <m.div
-              className="col-span-12 lg:col-span-4"
-              {...cascadeProps(0.2, showCascade, prefersReducedMotion)}
-            >
+            <m.div className="col-span-12 lg:col-span-4" animate={newsCascade}>
               <div
                 className={`vt-dash-news ${newsLoaded ? "" : "min-h-[400px]"}`}
                 aria-busy={!newsLoaded}
@@ -288,17 +319,14 @@ export default function Dashboard() {
             </m.div>
 
             {/* Events card */}
-            <m.div
-              className="col-span-12 lg:col-span-4"
-              {...cascadeProps(0.3, showCascade, prefersReducedMotion)}
-            >
+            <m.div className="col-span-12 lg:col-span-4" animate={eventsCascade}>
               <div
                 className={`vt-dash-events ${eventsLoaded ? "" : "min-h-[400px]"}`}
                 aria-busy={!eventsLoaded}
               >
                 <WidgetErrorBoundary widgetName="EventsCard" showFallback>
                   <SkeletonMorph loaded={eventsLoaded} skeleton={<EventsCardSkeleton />}>
-                    <EventsCard />
+                    <EventsCard queryResult={eventsQuery} />
                   </SkeletonMorph>
                 </WidgetErrorBoundary>
               </div>

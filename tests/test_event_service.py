@@ -13,6 +13,7 @@ from app.schemas.dtos.event import (
     EventSearchResultDTO,
 )
 from app.services.event_service import EventService
+from app.services.vector_service import SemanticSearchUnavailableError
 
 
 @pytest.fixture
@@ -87,6 +88,21 @@ async def test_get_events(event_service, mock_repo, mock_vector_service):
     kwargs = mock_repo.search_events.call_args.kwargs
     assert kwargs["search_query"] == "test"
     assert kwargs["query_embedding"] == [0.1, 0.2, 0.3]
+
+
+@pytest.mark.asyncio
+async def test_get_events_keeps_text_search_when_semantic_search_is_unavailable(
+    event_service, mock_repo, mock_vector_service
+):
+    mock_vector_service.get_embedding.side_effect = SemanticSearchUnavailableError(
+        "provider detail must not escape the text-search path"
+    )
+
+    await event_service.get_events(search="campus policy")
+
+    kwargs = mock_repo.search_events.await_args.kwargs
+    assert kwargs["search_query"] == "campus policy"
+    assert kwargs["query_embedding"] is None
 
 
 @pytest.mark.asyncio
@@ -592,8 +608,8 @@ async def test_get_event_detail_refreshes_secret_material(
 
     with (
         patch(
-            "app.services.event_service.attendance_tokens.ensure_secret_material",
-            return_value=True,
+            "app.services.event_service.attendance_tokens.secret_material_updates",
+            return_value={"qr_secret": "secret", "qr_hmac": "repaired"},
         ),
         patch(
             "app.services.event_service.attendance_tokens.issue_token",
@@ -602,7 +618,7 @@ async def test_get_event_detail_refreshes_secret_material(
     ):
         out = await event_service.get_event_detail(event_id, user_id)
 
-    # ensure_secret_material True -> the repo update + commit branch runs.
+    # Explicit repairs are persisted before token issuance.
     mock_repo.update_attendance.assert_awaited_once()
     mock_uow.commit.assert_awaited_once()
     assert out is not None

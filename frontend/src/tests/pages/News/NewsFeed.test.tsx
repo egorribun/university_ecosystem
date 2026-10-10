@@ -1,5 +1,5 @@
-import { screen } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient } from "@tanstack/react-query"
 import { HttpResponse, http } from "msw"
 
@@ -8,6 +8,8 @@ import { server } from "../../mocks/server"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import { AuthContext } from "@/contexts/AuthContext"
 import News from "@/pages/News"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 
 const baseUser: User = {
   id: "uuid-1",
@@ -87,6 +89,8 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
 // nor the News page mutate module state between runs) fixes the flake.
 describe("News page interaction", () => {
   beforeEach(() => {
+    acceptBrowserSessionGeneration()
+    useAuthStore.setState({ user: baseUser, loading: false })
     server.resetHandlers()
     server.use(
       http.get("*/news/*/interactions", () => {
@@ -98,6 +102,19 @@ describe("News page interaction", () => {
         })
       })
     )
+  })
+
+  afterEach(async () => {
+    try {
+      // Cards start lazy dialog imports even when closed. Finish them before
+      // teardown so module evaluation cannot outlive this suite's coverage.
+      await act(async () => {
+        await vi.dynamicImportSettled()
+      })
+    } finally {
+      cleanup()
+      useAuthStore.setState({ user: null, loading: true })
+    }
   })
 
   it("fetches and displays news list", async () => {

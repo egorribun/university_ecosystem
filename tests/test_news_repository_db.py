@@ -11,9 +11,12 @@ via create_all. Real users come from ``user_factory``.
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
+from app.core.events import register_event_listeners
+from app.models.domain_events import StoredEvent
 from app.repositories.news_repository import NewsRepository
 
 
@@ -93,3 +96,31 @@ async def test_list_news_marks_user_liked(news_repo_db, db_session, user_factory
     assert target.likes_count == 1
     # current_user_id branch populates is_liked_map.
     assert target.is_liked is True
+
+
+@pytest.mark.asyncio
+async def test_update_persists_headline_in_news_updated_outbox_event(
+    db_session: AsyncSession,
+) -> None:
+    await register_event_listeners()
+    news = models.News(title="Original headline", content="Article body")
+    db_session.add(news)
+    await db_session.flush()
+
+    updated_title = "Updated headline"
+    updated = await NewsRepository(db_session).update(news.id, {"title": updated_title})
+    assert updated is not None
+    assert updated.title == updated_title
+
+    await db_session.commit()
+    event = await db_session.scalar(
+        select(StoredEvent).where(
+            StoredEvent.aggregate_type == "News",
+            StoredEvent.aggregate_id == str(news.id),
+            StoredEvent.event_type == "news.updated",
+        )
+    )
+
+    assert event is not None
+    assert event.payload["news_id"] == str(news.id)
+    assert event.payload["title"] == updated_title

@@ -106,12 +106,100 @@ class TestDomainEventFromDict:
         event = MessageSent.from_dict(data)
         assert event.content_preview == "Hello..."
 
+    def test_message_deleted_from_dict_ignores_base_identity_fields(self):
+        from datetime import UTC, datetime
+
+        from app.core.events import MessageDeleted
+
+        supplied_event_id = "00000000-0000-4000-8000-000000000001"
+        supplied_occurred_at = "2001-02-03T04:05:06+00:00"
+        before = datetime.now(UTC)
+        event = MessageDeleted.from_dict(
+            {
+                "message_id": str(uuid.UUID("a1111111-1111-4111-8111-111111111111")),
+                "chat_id": str(uuid.UUID("b2222222-2222-4222-8222-222222222222")),
+                "event_id": supplied_event_id,
+                "occurred_at": supplied_occurred_at,
+            }
+        )
+        after = datetime.now(UTC)
+
+        assert event.message_id == uuid.UUID("a1111111-1111-4111-8111-111111111111")
+        assert event.chat_id == uuid.UUID("b2222222-2222-4222-8222-222222222222")
+        assert uuid.UUID(event.event_id) != uuid.UUID(supplied_event_id)
+        assert isinstance(event.occurred_at, datetime)
+        assert before <= event.occurred_at <= after
+
+    @pytest.mark.parametrize("event_name", ("message_edited", "participant_removed"))
+    def test_message_edit_and_participant_removal_ignore_reserved_envelope_fields(
+        self, event_name: str
+    ) -> None:
+        from datetime import UTC, datetime
+        from typing import Any
+
+        from app.core.events import (
+            ChatParticipantRemoved,
+            EventMetadata,
+            MessageEdited,
+        )
+
+        message_id = uuid.UUID("a1111111-1111-4111-8111-111111111111")
+        chat_id = uuid.UUID("b2222222-2222-4222-8222-222222222222")
+        user_id = uuid.UUID("c3333333-3333-4333-8333-333333333333")
+        supplied_event_id = "00000000-0000-4000-8000-000000000001"
+        payload: dict[str, Any] = {
+            "chat_id": str(chat_id),
+            "event_id": supplied_event_id,
+            "occurred_at": "2001-02-03T04:05:06+00:00",
+            "metadata": {
+                "correlation_id": "payload-controlled",
+                "causation_id": "payload-controlled",
+                "user_id": str(user_id),
+                "source": "payload",
+                "retry_count": 99,
+                "max_retries": 99,
+            },
+        }
+        before = datetime.now(UTC)
+
+        if event_name == "message_edited":
+            payload["message_id"] = str(message_id)
+            event = MessageEdited.from_dict(payload)
+            assert event.message_id == message_id
+            assert event.chat_id == chat_id
+        else:
+            payload["user_id"] = str(user_id)
+            event = ChatParticipantRemoved.from_dict(payload)
+            assert event.chat_id == str(chat_id)
+            assert event.user_id == str(user_id)
+            assert event.metadata == EventMetadata()
+
+        after = datetime.now(UTC)
+        assert uuid.UUID(event.event_id) != uuid.UUID(supplied_event_id)
+        assert isinstance(event.occurred_at, datetime)
+        assert before <= event.occurred_at <= after
+
     def test_chat_deleted_from_dict(self):
         from app.core.events import ChatDeleted
 
         data = {"chat_id": str(uuid.uuid4())}
         event = ChatDeleted.from_dict(data)
         assert event.chat_id is not None
+
+    def test_chat_participant_removed_from_dict(self):
+        from app.core.events import ChatParticipantRemoved
+
+        chat_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        event = ChatParticipantRemoved.from_dict(
+            {
+                "chat_id": str(chat_id),
+                "user_id": str(user_id),
+                "unexpected": "ignored",
+            }
+        )
+        assert event.chat_id == str(chat_id)
+        assert event.user_id == str(user_id)
 
 
 # ===========================================================================
@@ -428,7 +516,9 @@ class TestEventRegistry:
         assert cls is MessageSent
 
     def test_register_domain_event_adds_both_keys(self):
-        from app.core.events import _EVENT_REGISTRY, ChatDeleted
+        from app.core.events import _EVENT_REGISTRY, ChatDeleted, ChatParticipantRemoved
 
         assert "ChatDeleted" in _EVENT_REGISTRY
         assert ChatDeleted.EVENT_TYPE in _EVENT_REGISTRY
+        assert "ChatParticipantRemoved" in _EVENT_REGISTRY
+        assert ChatParticipantRemoved.EVENT_TYPE in _EVENT_REGISTRY

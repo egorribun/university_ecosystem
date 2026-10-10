@@ -17,6 +17,7 @@ import {
 } from "node:fs/promises"
 import { rmSync } from "node:fs"
 import os from "node:os"
+import { createRequire } from "node:module"
 import path from "node:path"
 import { performance } from "node:perf_hooks"
 import process from "node:process"
@@ -25,6 +26,9 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import {
   buildMutationInventory,
+  buildCanonicalCheckerToolchain,
+  assertCanonicalTypeScriptCheckerConfig,
+  canonicalTypeScriptCheckerConfig,
   generateInstrumenterPreflight,
   listPolicyFiles,
   mutantSignature,
@@ -35,6 +39,7 @@ import { createStrykerProgressContext } from "./stryker-progress-context.mjs"
 import { createStrykerDiagnosticOwner } from "./stryker-progress-diagnostic.mjs"
 
 const execFileAsync = promisify(execFile)
+const require = createRequire(import.meta.url)
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
 const outputRoot = path.join(frontendRoot, "reports", "mutation")
@@ -1282,6 +1287,7 @@ function assertShardReportConfig(report, files, id) {
   if (report?.schemaVersion !== "1.0" || !report.files || typeof report.files !== "object") {
     throw new Error(`Stryker ${id} report is missing or malformed`)
   }
+  assertCanonicalTypeScriptCheckerConfig(report.config)
   if (
     JSON.stringify(report.config?.mutate) !== JSON.stringify(files) ||
     report.config?.coverageAnalysis !== "perTest" ||
@@ -1416,6 +1422,7 @@ export function mergeShardReports({ shards, expectedPatterns, preflightByFile, s
     schemaVersion: "1.0",
     config: {
       mutate: expectedPatterns,
+      ...canonicalTypeScriptCheckerConfig,
       coverageAnalysis: "perTest",
       incremental: false,
       mutator: { plugins: null, excludedMutations: [] },
@@ -3136,15 +3143,39 @@ export async function captureEvidence(sourceFiles) {
 }
 
 async function readPackageVersion(relativePath) {
-  return JSON.parse(await readFile(path.join(frontendRoot, relativePath), "utf8")).version
+  return (await readPackageMetadata(relativePath)).version
+}
+
+async function readPackageMetadata(relativePath) {
+  return JSON.parse(await readFile(path.join(frontendRoot, relativePath), "utf8"))
 }
 
 async function readToolchain() {
-  const [stryker, instrumenter, vitest] = await Promise.all([
+  const [
+    stryker,
+    instrumenter,
+    vitest,
+    checkerPackage,
+    typescriptPackage,
+    packageManifest,
+    packageLock,
+  ] = await Promise.all([
     readPackageVersion("node_modules/@stryker-mutator/core/package.json"),
     readPackageVersion("node_modules/@stryker-mutator/instrumenter/package.json"),
     readPackageVersion("node_modules/vitest/package.json"),
+    readPackageMetadata("node_modules/@stryker-mutator/typescript-checker/package.json"),
+    readPackageMetadata("node_modules/typescript/package.json"),
+    readPackageMetadata("package.json"),
+    readPackageMetadata("package-lock.json"),
   ])
+  const checkerToolchain = buildCanonicalCheckerToolchain({
+    packageManifest,
+    packageLock,
+    checkerPackage,
+    typescriptPackage,
+    typescriptRuntimeVersion: require("typescript").version,
+    strykerCoreVersion: stryker,
+  })
   return {
     node: process.version,
     platform: process.platform,
@@ -3152,6 +3183,7 @@ async function readToolchain() {
     stryker,
     instrumenter,
     vitest,
+    ...checkerToolchain,
   }
 }
 
@@ -4623,11 +4655,14 @@ async function main() {
       report,
       expectedPatterns,
       preflightByFile,
+      toolchain,
     })
     const {
       stryker: strykerVersion,
       instrumenter: instrumenterVersion,
       vitest: vitestVersion,
+      typescriptChecker,
+      typescript,
     } = toolchain
     const preflight = {
       schemaVersion: "1.0",
@@ -4681,6 +4716,8 @@ async function main() {
           stryker: strykerVersion,
           instrumenter: instrumenterVersion,
           vitest: vitestVersion,
+          typescriptChecker,
+          typescript,
         },
         ...(windowsProcessHost ? { windowsProcessHost } : {}),
       },
@@ -4692,6 +4729,7 @@ async function main() {
       config: {
         path: "frontend/stryker.config.mjs",
         sha256: before.inputHashes["frontend/stryker.config.mjs"],
+        ...canonicalTypeScriptCheckerConfig,
         coverageAnalysis: "perTest",
         instrumenterOptions,
         concurrency: runnerConcurrency,

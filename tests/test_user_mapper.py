@@ -27,7 +27,7 @@ def test_map_user_orm_to_dict():
         about="about",
         telegram="tg",
         status="active",
-        achievements=[],
+        achievements="regional mathematics award",
         department="CS",
         position="junior",
     )
@@ -59,6 +59,30 @@ def test_map_user_orm_to_dict():
     assert res["id"] == 123
     assert res["email"] == "test@example.com"
     assert res["full_name"] == "John Doe"
+    assert res["avatar_url"] == "avatar"
+    assert res["cover_url"] == "cover"
+    assert res["about"] == "about"
+    assert res["telegram"] == "tg"
+    assert res["profile_status"] == "active"
+    assert res["achievements"] == "regional mathematics award"
+    assert res["profile_department"] == "CS"
+    assert res["position"] == "junior"
+    assert res["profile_detail"] == {
+        "about": "about",
+        "telegram": "tg",
+        "status": "active",
+        "achievements": "regional mathematics award",
+        "department": "CS",
+        "position": "junior",
+    }
+    assert res["education_path"] == {
+        "institute": "MIT",
+        "course": 3,
+        "education_level": "BSc",
+        "track": "SE",
+        "program": "Computer Science",
+        "record_book_number": "R1234",
+    }
     assert res["institute"] == "MIT"
     assert res["dnd_enabled"] is True
     assert res["spotify_connected"] is True
@@ -81,6 +105,16 @@ def test_map_user_orm_to_dict():
     res_none = map_user_orm_to_dict(user_none)
     assert res_none["id"] == 999
     assert res_none["full_name"] is None
+    assert res_none["avatar_url"] is None
+    assert res_none["cover_url"] is None
+    assert res_none["about"] is None
+    assert res_none["telegram"] is None
+    assert res_none["profile_status"] is None
+    assert res_none["achievements"] is None
+    assert res_none["profile_department"] is None
+    assert res_none["position"] is None
+    assert res_none["profile_detail"] is None
+    assert res_none["education_path"] is None
     assert res_none["institute"] is None
     assert res_none["dnd_enabled"] is False
     assert res_none["spotify_connected"] is False
@@ -115,6 +149,7 @@ def test_map_user_orm_to_public_dict():
     assert res["full_name"] == "John Doe"
     assert res["institute"] == "MIT"
     assert res["course"] == 3
+    assert "education_path" not in res
     # Verify private/MFA fields are not present
     assert "email" not in res
     assert "mfa_required" not in res

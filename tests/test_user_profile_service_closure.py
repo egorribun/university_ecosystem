@@ -109,6 +109,20 @@ async def test_get_users_strips_non_empty_full_name(profile_service):
 
 
 @pytest.mark.asyncio
+async def test_get_users_maps_legacy_search_to_full_name_for_non_admin(profile_service):
+    profile_service.repo.list_users.return_value = []
+    filters = SimpleNamespace(search="  Ada Lovelace  ", full_name=None)
+
+    await profile_service.get_users(
+        MagicMock(), SimpleNamespace(role="student"), filters
+    )
+
+    assert filters.full_name == "Ada Lovelace"
+    assert filters.search is None
+    profile_service.repo.list_users.assert_awaited_once_with(filters=filters)
+
+
+@pytest.mark.asyncio
 async def test_get_users_denies_unfiltered_non_admin_requests(profile_service):
     with pytest.raises(PermissionDenied):
         await profile_service.get_users(
@@ -116,6 +130,18 @@ async def test_get_users_denies_unfiltered_non_admin_requests(profile_service):
             SimpleNamespace(role="student"),
             SimpleNamespace(search=None, full_name=None),
         )
+
+
+@pytest.mark.asyncio
+async def test_get_users_denies_whitespace_search_for_non_admin(profile_service):
+    filters = SimpleNamespace(search="   ", full_name=None)
+
+    with pytest.raises(PermissionDenied):
+        await profile_service.get_users(
+            MagicMock(), SimpleNamespace(role="student"), filters
+        )
+
+    profile_service.repo.list_users.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -285,11 +311,11 @@ async def test_admin_reset_returns_fresh_mfa_dto_and_commits_notification_first(
     assert result.mfa_default_method is None
     assert result.email_mfa_enabled_at is None
     reset_mfa.assert_awaited_once_with(profile_service.repo.db, user=db_user)
-    assert events == ["reset", "notification", "commit", "publish"]
+    assert events == ["reset", "notification", "publish", "commit"]
 
 
 @pytest.mark.asyncio
-async def test_admin_reset_commit_failure_rolls_back_without_redis_publish(
+async def test_admin_reset_commit_failure_rolls_back_retaining_redis_revocation(
     profile_service,
 ) -> None:
     user_id = uuid4()
@@ -331,4 +357,4 @@ async def test_admin_reset_commit_failure_rolls_back_without_redis_publish(
 
     profile_service.notifications.send_security_notification.assert_awaited_once()
     profile_service.uow.rollback.assert_awaited_once()
-    publish.assert_not_awaited()
+    publish.assert_awaited_once()

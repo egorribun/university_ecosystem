@@ -24,9 +24,13 @@ if TYPE_CHECKING:
     _AnyUser = _models.User | UserAuthDTO | UserDTO
 
 import app.models as models
-from app.api.validation import raise_validation_error
+from app.api.validation import raise_unauthorized, raise_validation_error
 from app.auth.constants import MFA_METHOD_EMAIL_OTP
-from app.auth.mfa.lifecycle import refresh_user_mfa_preferences
+from app.auth.mfa.lifecycle import (
+    collect_mfa_session_revocations,
+    publish_mfa_session_revocations,
+    refresh_user_mfa_preferences,
+)
 from app.auth.security import (
     get_password_hash,
     validate_password_hibp,
@@ -400,7 +404,7 @@ class AuthService:
             raise_validation_error("errors.users.invalid_password", locale)
 
         normalized_email = str(payload.email).strip().lower()
-        adapter = TypeAdapter(EmailStr)
+        adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
         try:
             validated_email = adapter.validate_python(normalized_email)
         except ValueError:
@@ -537,6 +541,12 @@ class AuthService:
         )
 
         async with self.uow:
+            pending_revocations = await collect_mfa_session_revocations(
+                self.auth_repo.db,
+                user_id=db_user.id,
+                current_session_id=None,
+            )
+            await publish_mfa_session_revocations(pending_revocations)
             await self.uow.commit()
         await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
         await attach_pending_email(self.auth_repo.db, db_user)
@@ -566,11 +576,10 @@ class AuthService:
     ) -> tuple[bool, int]:
         locale = resolve_locale(request=request, user=user)
 
-        if not await verify_password(
-            payload.current_password, str(user.hashed_password)
-        ):
+        verified_hash = str(user.hashed_password)
+        if not await verify_password(payload.current_password, verified_hash):
             raise_validation_error("errors.users.invalid_password", locale)
-        if await verify_password(payload.new_password, str(user.hashed_password)):
+        if await verify_password(payload.new_password, verified_hash):
             raise_validation_error("errors.users.password_same", locale)
 
         try:
@@ -581,22 +590,37 @@ class AuthService:
         except ValueError as exc:
             raise_validation_error("errors.common.bad_request", locale, reason=str(exc))
 
-        await self.user_repo.update(user.id, {"hashed_password": hashed_password})
-
         active_session: models.ActiveSession | None = getattr(
             request.state, "active_session", None
         )
         current_session_id = active_session.id if active_session else None
 
-        if current_session_id is not None:
-            revoked = await self.session_repo.revoke_all_except(
-                user_id=user.id, current_session_id=current_session_id
-            )
-        else:
-            revoked = await self.session_repo.revoke_all_for_user(user_id=user.id)
-
         async with self.uow:
+            next_epoch = await self.user_repo.change_password_if_current(
+                user.id, expected_hash=verified_hash, new_hash=hashed_password
+            )
+            if next_epoch is None:
+                raise_unauthorized(locale, "errors.auth.credentials_invalid")
+            if current_session_id is not None:
+                await self.session_repo.update(
+                    current_session_id, {"mfa_epoch": next_epoch}
+                )
+                revoked = await self.session_repo.revoke_all_except(
+                    user_id=user.id, current_session_id=current_session_id
+                )
+            else:
+                revoked = await self.session_repo.revoke_all_for_user(user_id=user.id)
             await self.uow.commit()
+
+        if active_session is not None:
+            active_session.mfa_epoch = next_epoch
+            # PostgreSQL is authoritative; discard the stale cache epoch rather
+            # than granting fresh MFA or extending the current session lifetime.
+            from app.services.auth.redis_session import RedisSessionService
+
+            await RedisSessionService().invalidate_session_cache(
+                str(active_session.jti)
+            )
 
         # AUTH-4 (audit 2026-03): rotate CSRF token on password change to
         # invalidate any CSRF tokens captured before the privilege escalation.
@@ -606,6 +630,7 @@ class AuthService:
 
         if isinstance(user, models.User):
             user.hashed_password = hashed_password
+            user.mfa_epoch = next_epoch
 
         self.audit.log(
             "users.password.changed",

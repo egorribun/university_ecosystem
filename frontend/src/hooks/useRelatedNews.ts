@@ -1,7 +1,8 @@
 import { useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
 import { type NewsItem } from "@/api/news"
-import { inferCategory, type NewsCategory } from "@/features/news/categories"
+import { inferNewsCategory, type NewsCategory } from "@/features/news/categories"
 
 /**
  * Returns related news articles from the cached query data.
@@ -9,8 +10,10 @@ import { inferCategory, type NewsCategory } from "@/features/news/categories"
  */
 export function useRelatedNews(currentId: string, category: NewsCategory, limit = 3): NewsItem[] {
   const queryClient = useQueryClient()
+  const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
 
   return useMemo(() => {
+    if (!sessionIsCurrent) return []
     // Pull from all cached news list queries
     const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: NewsItem[] }> }>({
       queryKey: ["news", "list"],
@@ -36,15 +39,15 @@ export function useRelatedNews(currentId: string, category: NewsCategory, limit 
     }
 
     // Filter by same category, then by recent
-    const sameCategory = unique.filter((n) => inferCategory(n.title, n.content) === category)
+    const sameCategory = unique.filter((n) => inferNewsCategory(n) === category)
 
     // If not enough in same category, fill with recent from other categories
     if (sameCategory.length >= limit) return sameCategory.slice(0, limit)
 
     const remaining = unique
-      .filter((n) => inferCategory(n.title, n.content) !== category)
+      .filter((n) => inferNewsCategory(n) !== category)
       .slice(0, limit - sameCategory.length)
 
     return [...sameCategory, ...remaining].slice(0, limit)
-  }, [queryClient, currentId, category, limit])
+  }, [queryClient, currentId, category, limit, sessionIsCurrent])
 }

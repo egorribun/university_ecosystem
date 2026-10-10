@@ -1,8 +1,10 @@
 import type { ReactNode } from "react"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { User } from "@/types/User"
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
+import { LiveRegionProvider } from "@/components/ui/LiveRegionProvider"
 
 const {
   authState,
@@ -115,7 +117,11 @@ vi.mock("qrcode.react", () => ({
   QRCodeSVG: ({ value }: { value: string }) => <svg data-testid="qr-code" data-value={value} />,
 }))
 
-vi.mock("@/components/settings", () => {
+vi.mock("@/components/settings", async () => {
+  const { Alert: RealAlert, Snackbar: RealSnackbar } = await vi.importActual<
+    typeof import("@/components/settings/ui/Feedback")
+  >("@/components/settings/ui/Feedback")
+
   function Button({
     as,
     children,
@@ -158,25 +164,45 @@ vi.mock("@/components/settings", () => {
   const DialogTitle = ({ children }: { children?: ReactNode }) => <h2>{children}</h2>
   const DialogContent = ({ children }: { children?: ReactNode }) => <div>{children}</div>
   const DialogActions = ({ children }: { children?: ReactNode }) => <div>{children}</div>
-  const Alert = ({ children, onClose }: { children?: ReactNode; onClose?: () => void }) => (
-    <div>
-      <button type="button" aria-label="close alert" onClick={onClose} />
-      {children}
-    </div>
+  const Alert = ({
+    children,
+    onClose,
+    severity,
+  }: {
+    children?: ReactNode
+    onClose?: () => void
+    severity?: "info" | "error" | "warning" | "success"
+  }) => (
+    <>
+      <RealAlert severity={severity}>{children}</RealAlert>
+      {onClose && (
+        <button type="button" aria-label="close alert" onClick={onClose}>
+          close
+        </button>
+      )}
+    </>
   )
   const Snackbar = ({
     children,
     onClose,
     open,
+    autoHideDuration,
   }: {
     children?: ReactNode
     onClose?: () => void
     open: boolean
+    autoHideDuration?: number
   }) =>
     open ? (
       <div data-testid="snackbar">
         <button type="button" aria-label="close snackbar" onClick={onClose} />
-        {children}
+        <RealSnackbar
+          open={open}
+          onClose={onClose ?? (() => undefined)}
+          autoHideDuration={autoHideDuration}
+        >
+          {children}
+        </RealSnackbar>
       </div>
     ) : null
 
@@ -238,12 +264,14 @@ vi.mock("@/components/profile", () => {
 
   const ProfileEditor = (props: Record<string, unknown>) => {
     profileState.editor(props)
-    const { email, fullName, onCancel, onSave, saving, setFullName } = props as {
+    const { about, email, fullName, onCancel, onSave, saving, setAbout, setFullName } = props as {
       email: string
       fullName: string
+      about: string
       onCancel: () => void
       onSave: () => void
       saving: boolean
+      setAbout: (value: string) => void
       setFullName: (value: string) => void
     }
     return (
@@ -252,6 +280,11 @@ vi.mock("@/components/profile", () => {
           aria-label="full name"
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
+        />
+        <textarea
+          aria-label="about"
+          value={about}
+          onChange={(event) => setAbout(event.target.value)}
         />
         <input aria-label="email" value={email} readOnly />
         <span data-testid="saving-state">{String(saving)}</span>
@@ -316,6 +349,7 @@ const user = {
 describe("Profile behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    rotateBrowserSession()
     authState.user = user
     authState.loading = false
     authState.setUser.mockReset()
@@ -516,6 +550,33 @@ describe("Profile behavior", () => {
     })
   })
 
+  it.each(["logout", "switch"] as const)("ignores a delayed save after %s", async (transition) => {
+    let resolvePut!: (value: { data: User }) => void
+    const pending = new Promise<{ data: User }>((resolve) => {
+      resolvePut = resolve
+    })
+    apiState.put.mockReturnValueOnce(pending)
+    searchState.edit = "1"
+    const { rerender } = render(<Profile />)
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("true")
+    rotateBrowserSession()
+    authState.user =
+      transition === "switch" ? { ...user, id: "user-2", full_name: "Account B" } : null
+    rerender(<Profile />)
+    await act(async () => {
+      resolvePut({ data: user })
+      await pending
+    })
+    expect(authState.setUser).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("false")
+    expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue(
+      transition === "switch" ? "Account B" : ""
+    )
+  })
+
   it("initializes every editor field safely when optional profile records are absent", async () => {
     searchState.edit = "1"
     authState.user = {
@@ -666,6 +727,53 @@ describe("Profile behavior", () => {
     )
   })
 
+  it.each([
+    {
+      status: 422,
+      data: { detail: "About is too long" },
+      expectedMessage: "About is too long",
+    },
+    { status: 500, data: {}, expectedMessage: "profile:snackbar.error" },
+  ])(
+    "renders the scoped profile alert beside the global live region and retains the draft after a $status save failure",
+    async ({ status, data, expectedMessage }) => {
+      searchState.edit = "1"
+      apiState.put.mockRejectedValueOnce({ response: { status, data } })
+
+      render(
+        <LiveRegionProvider>
+          <Profile />
+        </LiveRegionProvider>
+      )
+      const profileFeedback = screen.getByTestId("profile-save-feedback")
+      fireEvent.change(screen.getByRole("textbox", { name: "full name" }), {
+        target: { value: "Ada draft" },
+      })
+      fireEvent.change(screen.getByRole("textbox", { name: "about" }), {
+        target: { value: "Unsubmitted profile text" },
+      })
+      fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+
+      const alert = await within(profileFeedback).findByRole("alert")
+      await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2))
+      expect(within(profileFeedback).getAllByRole("alert")).toHaveLength(1)
+      expect(alert).toBeVisible()
+      expect(alert).toHaveTextContent(expectedMessage)
+      expect(screen.getByTestId("profile-editor")).toBeInTheDocument()
+      expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("Ada draft")
+      expect(screen.getByRole("textbox", { name: "about" })).toHaveValue("Unsubmitted profile text")
+      await waitFor(() => expect(screen.getByTestId("saving-state")).toHaveTextContent("false"))
+      expect(apiState.put).toHaveBeenCalledWith(
+        "/users/me",
+        expect.objectContaining({
+          full_name: "Ada draft",
+          profile_detail: expect.objectContaining({ about: "Unsubmitted profile text" }),
+        })
+      )
+      expect(authState.setUser).not.toHaveBeenCalled()
+    }
+  )
+
   it("cancels edit mode and navigates back to the profile route", () => {
     render(<Profile />)
 
@@ -676,9 +784,14 @@ describe("Profile behavior", () => {
     expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
   })
 
-  it("omits now playing when Spotify is disconnected or data is empty", () => {
-    authState.user = { ...user, spotify_connected: false } as User
-    nowPlayingState.data = null
+  it.each([
+    [false, null],
+    [false, undefined],
+    [true, null],
+    [true, undefined],
+  ])("omits now playing with Spotify connected %s and no data (%s)", (spotifyConnected, data) => {
+    authState.user = { ...user, spotify_connected: spotifyConnected } as User
+    nowPlayingState.data = data
 
     render(<Profile />)
 
@@ -757,5 +870,37 @@ describe("Profile behavior", () => {
 
     expect(screen.getByTestId("profile-root")).toBeInTheDocument()
     expect(screen.getByTestId("profile-header")).toBeInTheDocument()
+  })
+  it("does not save while the origin session belongs to a different tab", () => {
+    searchState.edit = "1"
+    render(<Profile />)
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "other-tab", hash: null })
+    )
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    expect(apiState.put).not.toHaveBeenCalled()
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("false")
+  })
+
+  it("does not show account A's delayed save error in account B's editor", async () => {
+    let reject!: (reason: unknown) => void
+    const pending = new Promise<never>((_resolve, rejectPromise) => {
+      reject = rejectPromise
+    })
+    apiState.put.mockReturnValueOnce(pending)
+    searchState.edit = "1"
+    const { rerender } = render(<Profile />)
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    rotateBrowserSession()
+    authState.user = { ...user, id: "user-2", full_name: "Account B" }
+    rerender(<Profile />)
+    await act(async () => {
+      reject(new Error("Account A failed"))
+      await pending.catch(() => undefined)
+    })
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("Account B")
+    expect(screen.getByTestId("saving-state")).toHaveTextContent("false")
   })
 })

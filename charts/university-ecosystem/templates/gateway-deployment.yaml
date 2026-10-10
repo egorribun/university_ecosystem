@@ -68,6 +68,14 @@ spec:
           env:
             - name: GATEWAY_PORT
               value: "8080"
+            - name: RATE_LIMIT_RPS
+              value: {{ .Values.gateway.config.rateLimitRps | quote }}
+            - name: RATE_LIMIT_BURST
+              value: {{ .Values.gateway.config.rateLimitBurst | quote }}
+            - name: ALLOWED_ORIGINS
+              value: {{ include "university-ecosystem.frontendOrigin" . | quote }}
+            - name: GATEWAY_TRUSTED_PROXIES
+              value: {{ join "," .Values.gateway.config.trustedProxies | quote }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

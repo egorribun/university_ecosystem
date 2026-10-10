@@ -1,8 +1,15 @@
 import "fake-indexeddb/auto"
+import { IDBFactory } from "fake-indexeddb"
+import { MessageChannel } from "node:worker_threads"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { http, HttpResponse } from "msw"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import { server } from "@/tests/mocks/server"
+
+const routing = vi.hoisted(() => ({
+  registeredRoutes: [] as any[],
+  navigationRoute: undefined as any,
+}))
 
 vi.mock("workbox-precaching", () => ({
   cleanupOutdatedCaches: vi.fn(),
@@ -16,20 +23,18 @@ vi.mock("workbox-core", () => ({
 }))
 
 vi.mock("workbox-routing", () => {
-  const registeredRoutes: any[] = []
-  ;(globalThis as any).__registeredRoutes = registeredRoutes
   const NavigationRouteMock = vi.fn(function (this: any, strategy: any) {
     this.strategy = strategy
     this.handler = strategy
     this.match = vi.fn(() => true)
-    ;(globalThis as any).__navigationRouteMockInstance = this
+    routing.navigationRoute = this
   })
   return {
     registerRoute: vi.fn((match, handler) => {
       if (typeof match === "object" && match !== null && !handler) {
-        registeredRoutes.push(match)
+        routing.registeredRoutes.push(match)
       } else {
-        registeredRoutes.push({ match, handler })
+        routing.registeredRoutes.push({ match, handler })
       }
     }),
     NavigationRoute: NavigationRouteMock,
@@ -160,7 +165,7 @@ type ServiceWorkerTestingApi = {
   processPendingNavigations: () => Promise<void>
   processPendingReports: () => Promise<void>
   processAllQueues: () => Promise<void>
-  handleMediaRequest: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  handleMediaRequest: (input: RequestInfo | URL, event?: Event) => Promise<Response>
 }
 
 type SwModule = typeof import("@/sw")
@@ -231,42 +236,71 @@ const loadServiceWorker = async () => {
   if (!testing) {
     throw new Error("Service worker testing helpers were not registered")
   }
-  return testing
+  const api = await import("@/sw/api")
+  const scope = self as unknown as TestServiceWorkerScope
+  vi.stubGlobal("MessageChannel", MessageChannel)
+  scope.clients.get = vi.fn(
+    async () =>
+      ({
+        type: "window",
+        postMessage: (_data: unknown, ports: MessagePort[]) =>
+          ports[0]!.postMessage({
+            sessionHash: api.getSessionHash(),
+            sessionScope: api.getSessionCacheScope(),
+          }),
+      }) as unknown as WindowClient
+  )
+  return {
+    ...testing,
+    handleMediaRequest: (input: RequestInfo | URL) =>
+      testing.handleMediaRequest(input, { clientId: "controlled" } as FetchEvent),
+  }
 }
 
-let originalSelf: typeof globalThis
 let listeners: Map<string, ((event: Event) => void)[]>
 let swModule: SwModule | undefined
+const pendingEvents: Promise<unknown>[] = []
+const eventErrors: unknown[] = []
+
+const createWaitUntil = () =>
+  vi.fn((promise: Promise<unknown>) => {
+    // Keep ownership even when an assertion fails before the test awaits the
+    // event. Record rejections immediately and report them during teardown.
+    pendingEvents.push(promise.catch((error: unknown) => eventErrors.push(error)))
+    return promise
+  })
 
 beforeEach(async () => {
   vi.resetModules()
+  routing.registeredRoutes.length = 0
+  routing.navigationRoute = undefined
+  // Every worker fixture owns its queues, including records deliberately left
+  // pending by offline tests. Module resets do not clear IndexedDB databases.
+  vi.stubGlobal("indexedDB", new IDBFactory())
   const created = createServiceWorkerScope()
   listeners = created.listeners
-  originalSelf = self
-  Object.assign(globalThis as typeof globalThis & { self: TestServiceWorkerScope }, {
-    self: created.scope,
-  })
-  // Use vi.stubGlobal so Vitest tracks the stub and vi.unstubAllGlobals() in
-  // afterEach restores the original value — prevents leaks into sibling workers
-  // that share the same process (fixes flaky api.test.ts clearSessionCaches).
+  vi.stubGlobal("self", created.scope)
   vi.stubGlobal("caches", created.scope.caches)
   swModule = await import("@/sw")
-  // Explicitly initialize offline queue to ensure IndexedDB stores exist
-  // even if bootstrap fails due to mock issues
-  const offlineModule = await import("@/sw/offline")
-  await offlineModule.initOfflineQueue()
+  // Bootstrap starts asynchronously on import. Its testing API is installed
+  // only after both cache cleanup and IndexedDB initialization have finished.
+  await vi.waitFor(() => expect(created.scope.__SW_TESTING__).toBeDefined())
 }, 30_000)
 
 afterEach(async () => {
-  // Note: deleteDatabase() removed to prevent hook timeouts with fake-indexeddb
-  vi.restoreAllMocks()
-  vi.clearAllMocks()
-  // vi.stubGlobal("caches") in beforeEach is reverted here automatically.
-  vi.unstubAllGlobals()
-  Object.assign(globalThis as typeof globalThis & { self: typeof originalSelf }, {
-    self: originalSelf,
-  })
-  swModule = undefined
+  try {
+    await Promise.all(pendingEvents)
+    if (eventErrors.length) throw new AggregateError(eventErrors, "Service worker event failed")
+  } finally {
+    vi.restoreAllMocks()
+    vi.clearAllMocks()
+    vi.unstubAllGlobals()
+    pendingEvents.length = 0
+    eventErrors.length = 0
+    routing.registeredRoutes.length = 0
+    routing.navigationRoute = undefined
+    swModule = undefined
+  }
 })
 
 const getListener = (type: string) => {
@@ -296,7 +330,7 @@ const getQueueModules = () => {
 
 const dispatchSwMessage = async (data: Record<string, unknown>) => {
   const listener = getListener("message")
-  const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+  const waitUntil = createWaitUntil()
   listener({
     data,
     origin: self.location.origin,
@@ -386,7 +420,7 @@ describe("background sync integration", () => {
     scope.navigator.setOnline(true)
 
     const syncListener = getListener("sync")
-    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+    const waitUntil = createWaitUntil()
 
     const syncEvent = Object.assign(new Event("sync"), {
       tag: syncTags.navigation,
@@ -460,7 +494,7 @@ describe("service worker offline queues", () => {
     })
 
     const notificationClick = getListener("notificationclick")
-    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+    const waitUntil = createWaitUntil()
 
     await notificationClick({
       action: undefined,
@@ -514,7 +548,7 @@ describe("service worker offline queues", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
 
     const notificationClick = getListener("notificationclick")
-    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+    const waitUntil = createWaitUntil()
     const timestamp = Date.now()
 
     notificationClick({
@@ -563,7 +597,7 @@ describe("service worker push handling", () => {
     ])
 
     const pushListener = getListener("push")
-    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+    const waitUntil = createWaitUntil()
 
     pushListener({
       data: {
@@ -605,7 +639,7 @@ describe("service worker api cache controls", () => {
     await cache.put("https://example.com/api/news", new Response(JSON.stringify({ id: 1 })))
 
     const messageListener = getListener("message")
-    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+    const waitUntil = createWaitUntil()
     messageListener({
       data: { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
       origin: self.location.origin,
@@ -656,10 +690,14 @@ describe("service worker media cache controls", () => {
 
     const first = await sw.handleMediaRequest(mediaUrl)
     await expect(first.text()).resolves.toBe("private-response-1")
-    expect(scope.caches.__store.has("media-private:alpha")).toBe(true)
+    expect(
+      [...scope.caches.__store.keys()].some((name) => name.startsWith("media-private:alpha:"))
+    ).toBe(true)
 
     await dispatchSwMessage({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
-    expect(scope.caches.__store.has("media-private:alpha")).toBe(false)
+    expect(
+      [...scope.caches.__store.keys()].some((name) => name.startsWith("media-private:alpha:"))
+    ).toBe(false)
 
     await dispatchSwMessage({
       type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
@@ -673,7 +711,9 @@ describe("service worker media cache controls", () => {
     )
 
     await expect(sw.handleMediaRequest(mediaUrl)).rejects.toThrow()
-    const betaCache = await scope.caches.open("media-private:beta")
+    const betaCache = await scope.caches.open(
+      `media-private:${(await import("@/sw/api")).getSessionCacheScope()}`
+    )
     await expect(betaCache.match(mediaUrl)).resolves.toBeUndefined()
   })
 
@@ -697,13 +737,13 @@ describe("service worker media cache controls", () => {
 
     const first = await sw.handleMediaRequest(mediaUrl)
     await expect(first.text()).resolves.toBe("public-response")
-    expect(scope.caches.__store.has("media-public")).toBe(true)
+    expect(scope.caches.__store.has("media-public:v2")).toBe(true)
 
     const second = await sw.handleMediaRequest(mediaUrl)
     await expect(second.text()).resolves.toBe("public-response")
   })
 
-  test("signed media responses are cached publicly even during authenticated sessions", async () => {
+  test("signed media responses stay in the authenticated session namespace", async () => {
     const sw = await loadServiceWorker()
     const scope = self as unknown as TestServiceWorkerScope
     const mediaUrl = "https://example.com/media/signed.png"
@@ -723,8 +763,10 @@ describe("service worker media cache controls", () => {
 
     const first = await sw.handleMediaRequest(mediaUrl)
     await expect(first.text()).resolves.toBe("signed-media")
-    expect(scope.caches.__store.has("media-public")).toBe(true)
-    expect(scope.caches.__store.has("media-private:gamma")).toBe(false)
+    expect(scope.caches.__store.has("media-public:v2")).toBe(true)
+    expect(
+      [...scope.caches.__store.keys()].some((name) => name.startsWith("media-private:gamma:"))
+    ).toBe(true)
 
     server.use(
       http.get(mediaUrl, () => {
@@ -746,7 +788,9 @@ describe("service worker media cache controls", () => {
       sessionHash: "delta",
     })
 
-    const cache = await scope.caches.open("media-private:delta")
+    const cache = await scope.caches.open(
+      `media-private:${(await import("@/sw/api")).getSessionCacheScope()}`
+    )
     await cache.put(mediaUrl, new Response("cached-delta-val"))
 
     const response = await sw.handleMediaRequest(mediaUrl)
@@ -798,10 +842,10 @@ describe("service worker media cache controls", () => {
 
     // Redirect indexedDB.open calls from "notification-interactions" to testDbName
     const origOpen = globalThis.indexedDB.open
-    globalThis.indexedDB.open = function (name, version) {
+    vi.spyOn(globalThis.indexedDB, "open").mockImplementation(function (name, version) {
       const targetName = name === "notification-interactions" ? testDbName : name
       return origOpen.call(globalThis.indexedDB, targetName, version)
-    }
+    })
 
     // Call initOfflineQueue which upgrades the test database to version 4 and adds the index
     await offline.initOfflineQueue()
@@ -812,9 +856,6 @@ describe("service worker media cache controls", () => {
     const store = tx.objectStore(offline.STORES.REPORT)
     expect(store.indexNames.contains("dedupeKey")).toBe(true)
     db4.close()
-
-    // Restore original open function
-    globalThis.indexedDB.open = origOpen
   })
 
   test("processNewsInteractionQueue flushes items correctly on success/client errors", async () => {
@@ -859,11 +900,6 @@ describe("service worker media cache controls", () => {
     const clickListener = listeners.get("notificationclick")?.[0]
     expect(clickListener).toBeDefined()
 
-    let resolvePromiseA: any
-    const waitPromiseA = new Promise((resolve) => {
-      resolvePromiseA = resolve
-    })
-
     const event = {
       notification: {
         data: {
@@ -874,20 +910,14 @@ describe("service worker media cache controls", () => {
         },
         close: vi.fn(),
       },
-      waitUntil: vi.fn(async (promise) => {
-        try {
-          await promise
-        } finally {
-          resolvePromiseA()
-        }
-      }),
+      waitUntil: createWaitUntil(),
     }
 
     scope.navigator.setOnline(true)
     server.use(http.post("https://example.com/api/report-click", () => HttpResponse.error()))
 
     await clickListener!(event as any)
-    await waitPromiseA
+    await Promise.all(event.waitUntil.mock.calls.map(([promise]) => promise))
 
     const offline = await import("@/sw/offline")
     const reportsA = await offline.readPendingReports()
@@ -898,31 +928,20 @@ describe("service worker media cache controls", () => {
     const db = await idb.openDB("notification-interactions", 4)
     await db.clear(offline.STORES.REPORT)
 
-    let resolvePromiseB: any
-    const waitPromiseB = new Promise((resolve) => {
-      resolvePromiseB = resolve
-    })
-
     const eventB = {
       ...event,
-      waitUntil: vi.fn(async (promise) => {
-        try {
-          await promise
-        } finally {
-          resolvePromiseB()
-        }
-      }),
+      waitUntil: createWaitUntil(),
     }
 
     await clickListener!(eventB as any)
-    await waitPromiseB
+    await Promise.all(eventB.waitUntil.mock.calls.map(([promise]) => promise))
 
     const reportsB = await offline.readPendingReports()
     expect(reportsB.length).toBeGreaterThan(0)
   })
 
   test("NavigationRoute error handler returns the precached shell or Response.error", async () => {
-    const instance = (globalThis as any).__navigationRouteMockInstance
+    const instance = routing.navigationRoute
     expect(instance).toBeDefined()
     expect(instance.strategy).toBeDefined()
 
@@ -944,7 +963,7 @@ describe("service worker media cache controls", () => {
   })
 
   test("captured workbox routes match and handle requests correctly", async () => {
-    const registered = (globalThis as any).__registeredRoutes
+    const registered = routing.registeredRoutes
     expect(registered).toBeDefined()
     expect(registered.length).toBeGreaterThan(0)
 

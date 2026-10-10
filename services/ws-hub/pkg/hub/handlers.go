@@ -2,20 +2,17 @@ package hub
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
@@ -31,23 +28,19 @@ var _lastJWKSForceRefreshUnix atomic.Int64 // unix seconds, zero = never refresh
 
 const _jwksForceRefreshCooldown = 30 * time.Second
 
-var (
-	jwksForceRefreshCASFunc = func(old, updated int64) bool {
-		return _lastJWKSForceRefreshUnix.CompareAndSwap(old, updated)
-	}
-	rawJWKFunc = func(key jwk.Key, target interface{}) error {
-		return key.Raw(target)
-	}
-)
+var jwksForceRefreshCASFunc = func(old, updated int64) bool {
+	return _lastJWKSForceRefreshUnix.CompareAndSwap(old, updated)
+}
 
 type contextKey string
 
 const tenantIDKey contextKey = "tenant_id"
 
 type upgradeTicketIdentity struct {
-	UserID     string
-	TenantID   string
-	SessionJTI string
+	UserID           string
+	TenantID         string
+	SessionJTI       string
+	SessionExpiresAt time.Time
 }
 
 const (
@@ -155,7 +148,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	//   1. Client calls POST /ws/ticket (cookie-authenticated) → gets a 15s OTT ticket.
 	//   2. Client opens wss://host/ws?ticket=<ott>.
 	//   3. ws-hub validates the ticket via Redis GETDEL (atomic, single-use).
-	//   4. The ticket stores "{user_id}:{jti}"; we reject revoked JTI values.
+	//   4. The ticket stores "{user_id}:{jti}:{expires_at_unix}"; we reject revoked JTI values.
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {
 		h.Logger.WarnContext(setupCtx, "WebSocket connection rejected: missing upgrade ticket")
@@ -195,6 +188,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if h.stopped.Load() {
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	// CheckOrigin is configured on the package-level upgrader and validates
 	// the request Origin against the configured allow-list before upgrading.
@@ -213,21 +210,26 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	}
 
 	client := &Client{
-		ID:         newConnectionID(),
-		UserID:     identity.UserID,
-		SessionJTI: identity.SessionJTI,
-		Identity:   &ClientIdentity{TenantID: identity.TenantID},
-		Conn:       NewWebSocketSession(conn),
-		Rooms:      make(map[string]bool),
-		Send:       make(chan []byte, cfg.SendBufferSize),
-		Hub:        h,
-		ctx:        clientCtx,
-		cancel:     clientCancel,
+		ID:               newConnectionID(),
+		UserID:           identity.UserID,
+		SessionJTI:       identity.SessionJTI,
+		SessionExpiresAt: identity.SessionExpiresAt,
+		Identity:         &ClientIdentity{TenantID: identity.TenantID},
+		Conn:             NewWebSocketSession(conn),
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, cfg.SendBufferSize),
+		Hub:              h,
+		ctx:              clientCtx,
+		cancel:           clientCancel,
 	}
 
-	h.Register <- client
-	StartTrackedGoroutine(client.WritePump)
-	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
+	if !h.registerClient(client) {
+		client.cancelConnection()
+		client.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "hub is shutting down")
+		client.closeOnce.Do(func() { safeClose(client.Send) })
+		return
+	}
+	h.startClientPumps(client, clientCtx)
 }
 
 // HandleWebTransport upgrades HTTP/3 connections to WebTransport and registers clients.
@@ -278,6 +280,10 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if h.stopped.Load() {
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	sess, err := upgradeWTFunc(h.webTransportServer, w, r)
 	if err != nil {
@@ -291,37 +297,28 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	}
 
 	client := &Client{
-		ID:         newConnectionID(),
-		UserID:     identity.UserID,
-		SessionJTI: identity.SessionJTI,
-		Identity:   &ClientIdentity{TenantID: identity.TenantID},
-		Conn:       newWebTransportSessionFunc(sess),
-		Rooms:      make(map[string]bool),
-		Send:       make(chan []byte, cfg.SendBufferSize),
-		Hub:        h,
-		ctx:        clientCtx,
-		cancel:     clientCancel,
+		ID:               newConnectionID(),
+		UserID:           identity.UserID,
+		SessionJTI:       identity.SessionJTI,
+		SessionExpiresAt: identity.SessionExpiresAt,
+		Identity:         &ClientIdentity{TenantID: identity.TenantID},
+		Conn:             newWebTransportSessionFunc(sess),
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, cfg.SendBufferSize),
+		Hub:              h,
+		ctx:              clientCtx,
+		cancel:           clientCancel,
 	}
 
-	h.Register <- client
-	StartTrackedGoroutine(client.WritePump)
-	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
+	if !h.registerClient(client) {
+		client.cancelConnection()
+		client.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "hub is shutting down")
+		client.closeOnce.Do(func() { safeClose(client.Send) })
+		return
+	}
+	h.startClientPumps(client, clientCtx)
 }
 
-// validateUpgradeTicket atomically consumes a one-time WS upgrade ticket from
-// Redis and returns the associated userID. The tenantID result is currently
-// empty by contract and retained for older callers. Handlers use
-// validateUpgradeTicketIdentity so SessionJTI is retained after the upgrade.
-//
-// The ticket was issued by the Python backend (POST /ws/ticket) and stored as:
-//
-//	Key  : "ott:ws:{ticket}"
-//	Value: "{user_id}:{jti}"
-//	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
-//
-// GETDEL makes the ticket single-use: if two concurrent upgrade requests race
-// with the same ticket, only the first succeeds. The consumed JTI is then
-// checked against revoked:jti:{jti}; lookup failure rejects the upgrade.
 func validateTicketFormat(ticket string) error {
 	if len(ticket) != 64 {
 		// tickets are always 64-char hex strings (secrets.token_hex(32))
@@ -336,14 +333,22 @@ func validateTicketFormat(ticket string) error {
 	return nil
 }
 
-func parseTicketPayload(raw string) (string, string, error) {
-	// Canonical format: exactly "{user_id}:{jti}". Tenant identity is not part
-	// of the OTT until the issuer can resolve membership server-side.
+func parseTicketPayload(raw string) (upgradeTicketIdentity, error) {
+	// Exactly user:JTI:expiry. Reject legacy tickets (normally valid for 15 seconds)
+	// rather than creating a connection without an authoritative expiry.
 	parts := strings.Split(raw, ":")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("malformed ticket payload")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
+		return upgradeTicketIdentity{}, fmt.Errorf("malformed ticket payload")
 	}
-	return parts[0], parts[1], nil
+	expires, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || expires <= 0 || strconv.FormatInt(expires, 10) != parts[2] {
+		return upgradeTicketIdentity{}, fmt.Errorf("malformed ticket payload expiry")
+	}
+	expiresAt := time.Unix(expires, 0)
+	if !time.Now().Before(expiresAt) {
+		return upgradeTicketIdentity{}, fmt.Errorf("ticket session is expired")
+	}
+	return upgradeTicketIdentity{UserID: parts[0], SessionJTI: parts[1], SessionExpiresAt: expiresAt}, nil
 }
 
 func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
@@ -360,6 +365,18 @@ func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
 	return nil
 }
 
+// validateUpgradeTicketIdentity atomically consumes a one-time WS upgrade
+// ticket from Redis and returns the associated user ID and session JTI.
+//
+// The ticket was issued by the Python backend (POST /ws/ticket) and stored as:
+//
+//	Key  : "ott:ws:{ticket}"
+//	Value: "{user_id}:{jti}:{expires_at_unix}"
+//	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
+//
+// GETDEL makes the ticket single-use: if two concurrent upgrade requests race
+// with the same ticket, only the first succeeds. The consumed JTI is then
+// checked against revoked:jti:{jti}; lookup failure rejects the upgrade.
 func (h *Hub) validateUpgradeTicketIdentity(ctx context.Context, ticket string) (upgradeTicketIdentity, error) {
 	if h.redisClient == nil {
 		return upgradeTicketIdentity{}, fmt.Errorf("redis not available for ticket validation")
@@ -377,7 +394,7 @@ func (h *Hub) validateUpgradeTicketIdentity(ctx context.Context, ticket string) 
 		return upgradeTicketIdentity{}, fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
-	userID, jti, err := parseTicketPayload(raw)
+	identity, err := parseTicketPayload(raw)
 	if err != nil {
 		return upgradeTicketIdentity{}, err
 	}
@@ -385,75 +402,13 @@ func (h *Hub) validateUpgradeTicketIdentity(ctx context.Context, ticket string) 
 	// accepting a transport: Pub/Sub intentionally ignores malformed events,
 	// so treating such a JTI as valid could otherwise create a connection that
 	// no canonical revocation publisher can target.
-	if !isValidSessionRevocationJTI(jti) {
+	if !isValidSessionRevocationJTI(identity.SessionJTI) {
 		return upgradeTicketIdentity{}, fmt.Errorf("invalid session JTI in ticket payload")
 	}
-	if err := h.checkJTINotRevoked(ctx, jti); err != nil {
+	if err := h.checkJTINotRevoked(ctx, identity.SessionJTI); err != nil {
 		return upgradeTicketIdentity{}, err
 	}
-	return upgradeTicketIdentity{UserID: userID, SessionJTI: jti}, nil
-}
-
-func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
-	identity, err := h.validateUpgradeTicketIdentity(ctx, ticket)
-	if err != nil {
-		return "", "", err
-	}
-	return identity.UserID, identity.TenantID, nil
-}
-
-// extractAlgFromHeader reads the "alg" field from a JWT's base64url-encoded
-// header without fully parsing the token.  Returns an error if the header is
-// malformed or the alg claim is absent.
-func extractAlgFromHeader(tokenStr string) (string, error) {
-	parts := strings.SplitN(tokenStr, ".", 3)
-	if len(parts) != 3 {
-		return "", fmt.Errorf("malformed JWT: expected 3 parts, got %d", len(parts))
-	}
-	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return "", fmt.Errorf("malformed JWT header encoding: %w", err)
-	}
-	var header struct {
-		Alg string `json:"alg"`
-	}
-	if err := json.Unmarshal(headerJSON, &header); err != nil {
-		return "", fmt.Errorf("malformed JWT header JSON: %w", err)
-	}
-	if header.Alg == "" {
-		return "", fmt.Errorf("JWT header missing alg claim")
-	}
-	return header.Alg, nil
-}
-
-// ValidateToken verifies tokenStr by routing to the correct algorithm path
-// based on the token's own "alg" header claim.
-//
-// RZ-W14-02 (audit 2026-03-23 Wave 14): the previous implementation tried
-// RS256 first and fell back to HMAC on any RS256 failure.  An attacker who
-// could craft a token with alg=HS256 (signed with the known HMAC secret)
-// would be routed to HMAC validation after RS256 rejected it — a textbook
-// algorithm-confusion / downgrade attack.
-//
-// The fix: parse the alg header BEFORE validating, and commit to exactly one
-// path.  RS256 tokens never fall through to HMAC; HS256 tokens never attempt
-// RS256.  Any other algorithm is rejected immediately.
-func (h *Hub) ValidateToken(ctx context.Context, tokenStr string, secrets []string) (string, error) {
-	alg, err := extractAlgFromHeader(tokenStr)
-	if err != nil {
-		return "", fmt.Errorf("token header parse error: %w", err)
-	}
-
-	switch alg {
-	case "RS256":
-		// RS256 tokens must validate via JWKS — no HMAC fallback regardless of
-		// whether HMAC secrets are configured.
-		return h.validateRS256(ctx, tokenStr)
-	case "HS256":
-		return h.validateHMAC(tokenStr, secrets)
-	default:
-		return "", fmt.Errorf("unsupported JWT algorithm %q: only RS256 and HS256 are accepted", alg)
-	}
+	return identity, nil
 }
 
 // tryForceRefreshJWKS triggers an immediate JWKS refresh when a kid is not
@@ -472,95 +427,6 @@ func (h *Hub) tryForceRefreshJWKS(ctx context.Context) {
 	if _, err := h.jwksCache.Refresh(ctx, h.jwksURL); err != nil {
 		h.Logger.ErrorContext(ctx, "JWKS force-refresh failed", "err", err)
 	}
-}
-
-func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error) {
-	if h.jwksCache == nil || h.jwksURL == "" {
-		return "", fmt.Errorf("JWKS not configured")
-	}
-
-	keySet, err := h.jwksCache.Get(ctx, h.jwksURL)
-	if err != nil {
-		// RZ-W18-04 (audit 2026-03-23 Wave 18): no HMAC fallback occurs — this
-		// function returns the error immediately. Log message corrected.
-		h.Logger.ErrorContext(ctx, "JWKS fetch failed — RS256 validation cannot proceed",
-			"jwks_url", h.jwksURL, "err", err)
-		return "", err
-	}
-
-	// PERF-W15-03: keyFunc that triggers force-refresh on kid mismatch.
-	// On first parse attempt, if the kid is not found, we refresh and retry once.
-	kidMissed := false
-	keyFunc := func(t *jwt.Token) (interface{}, error) {
-		if t.Method != jwt.SigningMethodRS256 {
-			return nil, fmt.Errorf("unexpected signing method for JWKS: %v", t.Header["alg"])
-		}
-		kid, _ := t.Header["kid"].(string)
-		key, ok := keySet.LookupKeyID(kid)
-		if !ok {
-			kidMissed = true
-			return nil, fmt.Errorf("kid %q not found in JWKS", kid)
-		}
-		var pubKey interface{}
-		if err := rawJWKFunc(key, &pubKey); err != nil {
-			return nil, fmt.Errorf("failed to extract raw public key: %w", err)
-		}
-		return pubKey, nil
-	}
-
-	token, parseErr := jwt.Parse(tokenStr, keyFunc)
-
-	// kid not found → may be a key rotation — refresh and retry once.
-	if kidMissed {
-		h.tryForceRefreshJWKS(ctx)
-		if refreshedSet, getErr := h.jwksCache.Get(ctx, h.jwksURL); getErr == nil {
-			keySet = refreshedSet
-			kidMissed = false
-			token, parseErr = jwt.Parse(tokenStr, keyFunc)
-		}
-	}
-
-	if parseErr == nil && token.Valid {
-		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			if sub, ok := claims["sub"].(string); ok {
-				return sub, nil
-			}
-		}
-	}
-
-	if parseErr != nil {
-		// RZ-W19-03 (audit 2026-03-24 Wave 19): corrected misleading log message.
-		// No HMAC fallback occurs — RS256 failures are terminal (see line 248).
-		h.Logger.WarnContext(ctx, "RS256 JWT validation failed — rejecting token (no HMAC fallback)", "err", parseErr)
-	}
-	return "", fmt.Errorf("invalid RS256 token")
-}
-
-func (h *Hub) validateHMAC(tokenStr string, secrets []string) (string, error) {
-	if len(secrets) == 0 {
-		return "", jwt.ErrTokenSignatureInvalid
-	}
-
-	var lastErr error
-	for _, secret := range secrets {
-		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-			if t.Method != jwt.SigningMethodHS256 {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return []byte(secret), nil
-		})
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			if sub, ok := claims["sub"].(string); ok {
-				return sub, nil
-			}
-			return "", jwt.ErrTokenInvalidClaims
-		}
-	}
-	return "", lastErr
 }
 
 // upgradeWT wraps WebTransport srv.Upgrade to differentiate from gorilla.websocket.Upgrader.

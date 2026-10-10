@@ -1,77 +1,57 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import { renderHook } from "@testing-library/react"
 
 import { useActivityComparative, type ComparativeStats } from "./useActivityComparative"
 import type { AttendanceStats, GradeStats, ParticipationStats } from "@/features/activity/types"
 
 /**
- * Tests for the period-split client-side comparative hook.
+ * Tests for the server-trend based comparative hook.
  *
- * The hook splits the configured period in half and compares the current
- * half to the previous half. Time-of-day boundaries matter (the cutoff
- * uses end-of-day at 23:59:59.999 today minus halfDays), so all tests
- * pin a fake clock at a known UTC instant via `vi.setSystemTime`.
+ * The backend reports each metric for the selected window plus its `trend`
+ * against the preceding window of the same length, so the previous value is
+ * `current - trend` and the hook only derives the relative delta.
  */
 
-const FIXED_NOW = new Date("2026-05-15T12:00:00Z")
-//        ↑ today's end-of-day in any tz lands on 2026-05-15T23:59:59.999 local
-
-beforeEach(() => {
-  vi.useFakeTimers()
-  vi.setSystemTime(FIXED_NOW)
-})
-
-afterEach(() => {
-  vi.useRealTimers()
-})
-
-function makeAttendance(
-  records: Array<{ date: string; status: "present" | "absent" | "late" }>
-): AttendanceStats {
+function makeAttendance(percent: number, trend: number, total = 10): AttendanceStats {
   return {
-    percent: 0,
-    present: 0,
-    total: 0,
-    trend: 0,
-    periodLabel: "",
-    periodKey: "",
-    recent: records,
+    percent,
+    present: Math.round((percent / 100) * total),
+    total,
+    trend,
+    periodLabel: "30d",
+    periodKey: "30d",
+    recent: [],
   }
 }
 
-function makeGrades(records: Array<{ score: number; date: string }>): GradeStats {
+function makeGrades(average: number, trend: number, recentCount = 1): GradeStats {
   return {
-    average: 0,
-    scale: "100",
-    trend: 0,
-    recent: records.map((r) => ({ course: "x", score: r.score, date: r.date })),
+    average,
+    scale: "5",
+    trend,
+    recent: Array.from({ length: recentCount }, (_, index) => ({
+      course: `c${index}`,
+      score: average,
+      date: "2026-05-10",
+    })),
   }
 }
 
-function makeParticipation(records: Array<{ date: string }>): ParticipationStats {
-  return {
-    events: 0,
-    trend: 0,
-    recent: records.map((r) => ({ title: "x", date: r.date })),
-  }
+function makeParticipation(events: number, trend: number): ParticipationStats {
+  return { events, trend, recent: [] }
 }
 
 function run(
   attendance: AttendanceStats | null,
   grades: GradeStats | null,
-  participation: ParticipationStats | null,
-  period: "30d" | "90d" | "180d" = "30d"
+  participation: ParticipationStats | null
 ): ComparativeStats {
-  const { result } = renderHook(() =>
-    useActivityComparative(attendance, grades, participation, period)
-  )
+  const { result } = renderHook(() => useActivityComparative(attendance, grades, participation))
   return result.current
 }
 
-// ── Empty / missing inputs ──────────────────────────────────────────────────
-
 describe("useActivityComparative — empty input", () => {
-  it("returns zeroed stats and hasData=false for null inputs", () => {
+  it("reports no data and zeroed windows for null inputs", () => {
     const stats = run(null, null, null)
     expect(stats.hasData).toBe(false)
     expect(stats.attendance).toEqual({ current: 0, previous: 0, delta: 0 })
@@ -79,189 +59,57 @@ describe("useActivityComparative — empty input", () => {
     expect(stats.participation).toEqual({ current: 0, previous: 0, delta: 0 })
   })
 
-  it("returns zeroed stats and hasData=false for empty recent arrays", () => {
-    const stats = run(makeAttendance([]), makeGrades([]), makeParticipation([]))
-    expect(stats.hasData).toBe(false)
-  })
-
-  it("hasData=true when ANY recent array has entries", () => {
-    const stats = run(makeAttendance([{ date: "2026-05-14", status: "present" }]), null, null)
-    expect(stats.hasData).toBe(true)
+  it("treats a window with zero totals as having no data", () => {
+    expect(run(makeAttendance(0, 0, 0), makeGrades(0, 0, 0), makeParticipation(0, 0)).hasData).toBe(
+      false
+    )
   })
 })
 
-// ── Attendance: percent in current half vs previous half ────────────────────
-
-describe("useActivityComparative — attendance", () => {
-  it("computes 100% when all current-half records are present", () => {
-    // 30d period → halfDays=15 → midpoint at 2026-04-30 23:59:59.999 (local).
-    // Dates strictly AFTER midpoint are 'current half'.
-    const stats = run(
-      makeAttendance([
-        { date: "2026-05-14", status: "present" }, // current half
-        { date: "2026-05-10", status: "present" }, // current half
-        { date: "2026-04-20", status: "present" }, // previous half
-      ]),
-      null,
-      null
-    )
-    expect(stats.attendance.current).toBe(100)
-    expect(stats.attendance.previous).toBe(100)
-    expect(stats.attendance.delta).toBe(0)
+describe("useActivityComparative — hasData", () => {
+  it("is true when attendance has records", () => {
+    expect(run(makeAttendance(50, 0, 4), null, null).hasData).toBe(true)
   })
 
-  it("computes 50% when half are absent in current period", () => {
-    const stats = run(
-      makeAttendance([
-        { date: "2026-05-14", status: "present" },
-        { date: "2026-05-10", status: "absent" },
-        { date: "2026-04-20", status: "present" },
-        { date: "2026-04-15", status: "present" },
-      ]),
-      null,
-      null
-    )
-    expect(stats.attendance.current).toBe(50)
-    expect(stats.attendance.previous).toBe(100)
-    expect(stats.attendance.delta).toBe(-50) // 50% drop
+  it("is true when grades have recent entries", () => {
+    expect(run(null, makeGrades(4, 0), null).hasData).toBe(true)
   })
 
-  it("treats 'late' as not-present for current-rate calculation", () => {
-    const stats = run(
-      makeAttendance([
-        { date: "2026-05-14", status: "late" },
-        { date: "2026-05-12", status: "present" },
-      ]),
-      null,
-      null
-    )
-    expect(stats.attendance.current).toBe(50)
-  })
-
-  it("counts a previous-half absence without increasing the present total", () => {
-    const stats = run(
-      makeAttendance([
-        { date: "2026-05-14", status: "present" },
-        { date: "2026-04-20", status: "absent" },
-      ]),
-      null,
-      null
-    )
-    expect(stats.attendance.previous).toBe(0)
+  it("is true when participation has events", () => {
+    expect(run(null, null, makeParticipation(2, 0)).hasData).toBe(true)
   })
 })
 
-// ── Grades: average in current vs previous ──────────────────────────────────
-
-describe("useActivityComparative — grades", () => {
-  it("averages scores in each half", () => {
-    const stats = run(
-      null,
-      makeGrades([
-        { score: 90, date: "2026-05-14" }, // current
-        { score: 80, date: "2026-05-10" }, // current
-        { score: 70, date: "2026-04-15" }, // previous
-        { score: 60, date: "2026-04-10" }, // previous
-      ]),
-      null
-    )
-    expect(stats.grades.current).toBe(85)
-    expect(stats.grades.previous).toBe(65)
-    // delta = (85 - 65) / 65 * 100 ≈ 30.77
-    expect(stats.grades.delta).toBeCloseTo(30.77, 1)
+describe("useActivityComparative — previous window from the server trend", () => {
+  it("derives the previous attendance percent as current minus trend", () => {
+    const { attendance } = run(makeAttendance(80, 20), null, null)
+    expect(attendance.current).toBe(80)
+    expect(attendance.previous).toBe(60)
+    expect(attendance.delta).toBeCloseTo(33.333, 2)
   })
 
-  it("returns 0/0/0 when no grades fall in either half", () => {
-    const stats = run(null, makeGrades([]), null)
-    expect(stats.grades).toEqual({ current: 0, previous: 0, delta: 0 })
-  })
-})
-
-// ── Participation: event counts in current vs previous ─────────────────────
-
-describe("useActivityComparative — participation", () => {
-  it("counts events in each half", () => {
-    const stats = run(
-      null,
-      null,
-      makeParticipation([
-        { date: "2026-05-13" }, // current
-        { date: "2026-05-08" }, // current
-        { date: "2026-04-10" }, // previous
-      ])
-    )
-    expect(stats.participation.current).toBe(2)
-    expect(stats.participation.previous).toBe(1)
-    // delta = (2 - 1) / 1 * 100 = 100
-    expect(stats.participation.delta).toBe(100)
-  })
-})
-
-// ── Delta arithmetic edges ──────────────────────────────────────────────────
-
-describe("useActivityComparative — delta arithmetic", () => {
-  it("returns 100% delta when previous is 0 but current is positive", () => {
-    const stats = run(
-      null,
-      null,
-      makeParticipation([{ date: "2026-05-14" }]) // 1 current, 0 previous
-    )
-    expect(stats.participation.delta).toBe(100)
+  it("derives the previous grade average and a negative delta", () => {
+    const { grades } = run(null, makeGrades(4, -1), null)
+    expect(grades.previous).toBe(5)
+    expect(grades.delta).toBeCloseTo(-20, 5)
   })
 
-  it("returns 0% delta when both halves are 0", () => {
-    const stats = run(null, null, makeParticipation([]))
-    expect(stats.participation.delta).toBe(0)
+  it("derives the previous participation count", () => {
+    const { participation } = run(null, null, makeParticipation(5, 2))
+    expect(participation).toEqual({ current: 5, previous: 3, delta: (2 / 3) * 100 })
   })
 
-  it("returns negative delta when current < previous", () => {
-    const stats = run(
-      null,
-      null,
-      makeParticipation([
-        { date: "2026-04-10" }, // previous
-        { date: "2026-04-09" }, // previous
-        { date: "2026-04-08" }, // previous
-        { date: "2026-04-07" }, // previous
-      ])
-    )
-    // 0 current vs 4 previous → delta = (0 - 4) / 4 * 100 = -100
-    expect(stats.participation.delta).toBe(-100)
-  })
-})
-
-// ── Period scale: 90d / 180d ────────────────────────────────────────────────
-
-describe("useActivityComparative — period scaling", () => {
-  it("uses a wider midpoint for 90d", () => {
-    // 90d/2 = 45 days → midpoint at 2026-03-31 23:59:59.999 local.
-    const stats = run(
-      null,
-      null,
-      makeParticipation([
-        { date: "2026-05-01" }, // current half (after midpoint)
-        { date: "2026-04-15" }, // current half
-        { date: "2026-03-15" }, // previous half (before midpoint)
-      ]),
-      "90d"
-    )
-    expect(stats.participation.current).toBe(2)
-    expect(stats.participation.previous).toBe(1)
+  it("clamps the previous value at zero and reports a 100% delta", () => {
+    const { participation } = run(null, null, makeParticipation(3, 7))
+    expect(participation.previous).toBe(0)
+    expect(participation.delta).toBe(100)
   })
 
-  it("uses an even wider midpoint for 180d", () => {
-    // 180d/2 = 90 days → midpoint at 2026-02-14 23:59:59.999 local.
-    const stats = run(
-      null,
-      null,
-      makeParticipation([
-        { date: "2026-04-01" }, // current half
-        { date: "2026-03-01" }, // current half
-        { date: "2026-01-15" }, // previous half
-      ]),
-      "180d"
-    )
-    expect(stats.participation.current).toBe(2)
-    expect(stats.participation.previous).toBe(1)
+  it("reports zero delta when both windows are empty", () => {
+    expect(run(makeAttendance(0, 0, 3), null, null).attendance.delta).toBe(0)
+  })
+
+  it("reports zero delta for an unchanged value", () => {
+    expect(run(null, makeGrades(4.5, 0), null).grades.delta).toBe(0)
   })
 })

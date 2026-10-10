@@ -14,16 +14,21 @@ Verifies all subsystems of the Antigravity Developer Harness:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import py_compile
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parent
 AGENTS_DIR = REPO_ROOT / ".agents"
@@ -43,31 +48,53 @@ RUN_GLOBAL_CHECKS = os.environ.get("HARNESS_GLOBAL_CONFIG", "0") == "1"
 # ==============================================================================
 
 
-def run_hook_cli(
-    event: str, payload: dict[str, Any], timeout: int = 60
-) -> tuple[int, dict[str, Any], str]:
-    """Execute the hook runner CLI via subprocess with standard protojson I/O."""
-    runner_script = HOOKS_DIR / "runner.py"
-    input_str = json.dumps(payload, ensure_ascii=False)
+@contextmanager
+def isolated_hook_workspace() -> Iterator[Path]:
+    """Run mutating hook tests against copies, preserving the real gate state."""
+    with tempfile.TemporaryDirectory(prefix="harness-hooks-") as directory:
+        root = Path(directory)
+        hooks = root / ".agents" / "hooks"
+        hooks.mkdir(parents=True)
+        for source in HOOKS_DIR.glob("*.py"):
+            shutil.copyfile(source, hooks / source.name)
+        shutil.copyfile(AGENTS_DIR / "hooks.json", root / ".agents" / "hooks.json")
+        yield root
 
+
+def load_hook_module(name: str) -> Any:
+    """Load an evaluator for deterministic tests with patched tool processes."""
+    spec = importlib.util.spec_from_file_location(
+        f"harness_verification_{name}", HOOKS_DIR / f"{name}.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load hook {name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_hook_cli(
+    event: str,
+    payload: dict[str, Any],
+    timeout: int = 60,
+    *,
+    workspace: Path = REPO_ROOT,
+) -> tuple[int, dict[str, Any], str]:
+    """Execute the hook CLI and reject invalid/non-object protocol output."""
+    runner_script = workspace / ".agents" / "hooks" / "runner.py"
     proc = subprocess.run(  # noqa: S603
         [sys.executable, str(runner_script), event],
-        input=input_str,
+        input=json.dumps(payload, ensure_ascii=False),
         text=True,
+        encoding="utf-8",
         capture_output=True,
         timeout=timeout,
-        cwd=REPO_ROOT,
+        cwd=workspace,
     )
-
-    stdout_clean = proc.stdout.strip()
-    parsed_json: dict[str, Any] = {}
-    if stdout_clean:
-        try:
-            parsed_json = json.loads(stdout_clean)
-        except json.JSONDecodeError:
-            pass
-
-    return proc.returncode, parsed_json, proc.stderr
+    parsed = json.loads(proc.stdout)
+    if not isinstance(parsed, dict):
+        raise ValueError("Hook output must be a JSON object")
+    return proc.returncode, parsed, proc.stderr
 
 
 # ==============================================================================
@@ -142,6 +169,17 @@ class TestLifecycleHookRunner(unittest.TestCase):
         self.assertGreaterEqual(len(stop_handlers), 1)
         self.assertIn("command", stop_handlers[0])
 
+        for event, handlers in (
+            ("pre-tool", pre_tool[0]["hooks"]),
+            ("post-tool", post_tool[0]["hooks"]),
+            ("stop", stop_handlers),
+        ):
+            for handler in handlers:
+                self.assertEqual(
+                    handler["command"], f"python .agents/hooks/runner.py {event}"
+                )
+                self.assertTrue((REPO_ROOT / handler["command"].split()[1]).is_file())
+
     def test_pre_tool_use_protojson_contract(self) -> None:
         """Verify PreToolUse runner accepts camelCase payload and returns decision/reason."""
         payload = {
@@ -193,7 +231,8 @@ class TestLifecycleHookRunner(unittest.TestCase):
             "error": "",
             "fullyIdle": True,
         }
-        ret_code, resp, stderr = run_hook_cli("stop", payload, timeout=500)
+        with isolated_hook_workspace() as workspace:
+            ret_code, resp, stderr = run_hook_cli("stop", payload, workspace=workspace)
         self.assertEqual(ret_code, 0, f"Runner exited with non-zero code: {stderr}")
         self.assertIsInstance(resp, dict)
         self.assertIn("decision", resp)
@@ -369,6 +408,31 @@ class TestSafetyGates(unittest.TestCase):
         _, resp, _ = run_hook_cli("pre-tool", system_payload)
         self.assertEqual(resp.get("decision"), "deny")
 
+    def test_malformed_payloads_fail_closed_for_every_event(self) -> None:
+        """Invalid JSON and non-object inputs cannot silently authorize tools."""
+        with isolated_hook_workspace() as workspace:
+            runner = workspace / ".agents" / "hooks" / "runner.py"
+            for event, expected in (
+                ("pre-tool", "deny"),
+                ("post-tool", "deny"),
+                ("stop", "continue"),
+            ):
+                for raw in ("{", "[]", "null", '"text"'):
+                    with self.subTest(event=event, payload=raw):
+                        result = subprocess.run(  # noqa: S603
+                            [sys.executable, str(runner), event],
+                            input=raw,
+                            text=True,
+                            encoding="utf-8",
+                            capture_output=True,
+                            timeout=15,
+                            cwd=workspace,
+                        )
+                        self.assertEqual(result.returncode, 0)
+                        response = json.loads(result.stdout)
+                        self.assertEqual(response["decision"], expected)
+                        self.assertIn("Malformed hook input", response["reason"])
+
         # Critical security artifact -> ASK
         critical_payload = {
             "conversationId": "test-safety-conv",
@@ -418,76 +482,38 @@ class TestSafetyGates(unittest.TestCase):
 class TestPostToolUseTriggers(unittest.TestCase):
     """Test suite for PostToolUse automated formatting, linting, and gate state tracking."""
 
-    def test_python_file_edit_triggers_formatting_and_linting(self) -> None:
-        """Verify editing a Python file invokes formatting & py_compile and updates gate state."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", dir=str(REPO_ROOT), delete=False
-        ) as tmp:
-            tmp.write("def sample_function() -> int:\n    x = 1\n    return x\n")
-            tmp_path = Path(tmp.name)
-
-        try:
+    def _check_edit(self, suffix: str, evaluator: str, expected_linter: str) -> None:
+        """Assert dispatch and state recording without formatting working files."""
+        module = load_hook_module("post_tool_linter")
+        with isolated_hook_workspace() as workspace:
+            target = workspace / f"example{suffix}"
+            target.write_text("fixture\n", encoding="utf-8")
+            state_path = workspace / ".agents" / "hooks" / ".gate_state.json"
             payload = {
-                "conversationId": "test-post-tool-py",
-                "workspacePaths": [str(REPO_ROOT)],
-                "stepIdx": 1,
                 "toolCall": {
                     "name": "write_to_file",
-                    "args": {
-                        "TargetFile": str(tmp_path),
-                    },
-                },
+                    "args": {"TargetFile": str(target)},
+                }
             }
-            ret_code, resp, stderr = run_hook_cli("post-tool", payload)
-            self.assertEqual(ret_code, 0, f"PostToolUse failed: {stderr}")
-            self.assertEqual(resp, {})
+            with (
+                patch.object(module, "find_repo_root", return_value=workspace),
+                patch.object(module, "get_gate_state_path", return_value=state_path),
+                patch.object(module, evaluator, return_value=(True, "")) as check,
+            ):
+                self.assertEqual(module.evaluate_post_tool(payload), {})
+            check.assert_called_once_with(target, workspace)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["last_status"]["linter"], expected_linter)
+            self.assertIs(state["last_status"]["passed"], True)
 
-            # Verify .gate_state.json exists and recorded status
-            gate_state_file = HOOKS_DIR / ".gate_state.json"
-            self.assertTrue(gate_state_file.exists(), "Missing .gate_state.json")
-            with open(gate_state_file, encoding="utf-8") as f:
-                state = json.load(f)
-            self.assertIn("last_status", state)
-            self.assertEqual(state["last_status"]["linter"], "ruff/py_compile")
-        finally:
-            if tmp_path.exists():
-                tmp_path.unlink()
+    def test_python_file_edit_triggers_formatting_and_linting(self) -> None:
+        self._check_edit(".py", "format_and_lint_python", "ruff/py_compile")
 
     def test_typescript_file_edit_triggers_evaluation(self) -> None:
-        """Verify editing a TypeScript file executes check and returns `{}`."""
-        target_ts = REPO_ROOT / "frontend" / "src" / "test_dummy.ts"
-        payload = {
-            "conversationId": "test-post-tool-ts",
-            "workspacePaths": [str(REPO_ROOT)],
-            "stepIdx": 2,
-            "toolCall": {
-                "name": "write_to_file",
-                "args": {
-                    "TargetFile": str(target_ts),
-                },
-            },
-        }
-        ret_code, resp, _ = run_hook_cli("post-tool", payload)
-        self.assertEqual(ret_code, 0)
-        self.assertEqual(resp, {})
+        self._check_edit(".ts", "check_typescript", "tsc")
 
     def test_go_file_edit_triggers_evaluation(self) -> None:
-        """Verify editing a Go file in services/ triggers gofmt/govet and returns `{}`."""
-        target_go = REPO_ROOT / "services" / "gateway" / "main.go"
-        payload = {
-            "conversationId": "test-post-tool-go",
-            "workspacePaths": [str(REPO_ROOT)],
-            "stepIdx": 3,
-            "toolCall": {
-                "name": "replace_file_content",
-                "args": {
-                    "TargetFile": str(target_go),
-                },
-            },
-        }
-        ret_code, resp, _ = run_hook_cli("post-tool", payload)
-        self.assertEqual(ret_code, 0)
-        self.assertEqual(resp, {})
+        self._check_edit(".go", "format_and_check_go", "gofmt/govet")
 
 
 # ==============================================================================
@@ -499,76 +525,47 @@ class TestStopQualityGate(unittest.TestCase):
     """Test suite for Stop quality gate blocking on defects and allowing on clean state."""
 
     def test_stop_allows_on_clean_repository(self) -> None:
-        """Verify Stop hook returns `allow` when all checks pass on clean repository."""
-        # Ensure gate state is clean
-        gate_state_file = HOOKS_DIR / ".gate_state.json"
-        if gate_state_file.exists():
-            with open(gate_state_file, "w", encoding="utf-8") as f:
-                json.dump({"history": [], "last_status": {"passed": True}}, f)
-
-        payload = {
-            "conversationId": "test-stop-clean",
-            "workspacePaths": [str(REPO_ROOT)],
-            "executionNum": 1,
-            "terminationReason": "model_stop",
-            "error": "",
-            "fullyIdle": True,
-        }
-        ret_code, resp, stderr = run_hook_cli("stop", payload, timeout=500)
-        self.assertEqual(ret_code, 0, f"Stop hook failed: {stderr}")
-        self.assertEqual(
-            resp.get("decision"),
-            "allow",
-            f"Expected 'allow' on clean repo, got: {resp}",
-        )
-        self.assertIn("reason", resp)
+        """Every configured subsystem must pass; never reset the real state."""
+        module = load_hook_module("stop_quality_gate")
+        with (
+            patch.object(module, "check_gate_state_errors", return_value=(True, "")),
+            patch.object(
+                module, "check_python_subsystem", return_value=(True, "")
+            ) as python,
+            patch.object(
+                module, "check_frontend_subsystem", return_value=(True, "")
+            ) as frontend,
+            patch.object(
+                module, "check_services_subsystem", return_value=(True, "")
+            ) as services,
+        ):
+            result = module.evaluate_stop({})
+        self.assertEqual(result["decision"], "allow")
+        for check in (python, frontend, services):
+            check.assert_called_once_with(REPO_ROOT)
 
     def test_stop_blocks_when_gate_state_has_defect(self) -> None:
-        """Verify Stop hook returns `continue` when unresolved defects are present."""
-        gate_state_file = HOOKS_DIR / ".gate_state.json"
-        original_content = (
-            gate_state_file.read_text("utf-8") if gate_state_file.exists() else None
-        )
-
-        try:
-            # Simulate a recent failed edit in gate state
-            with open(gate_state_file, "w", encoding="utf-8") as f:
-                json.dump(
+        """Recorded failures stop evaluation before any heavyweight check."""
+        with isolated_hook_workspace() as workspace:
+            state_path = workspace / ".agents" / "hooks" / ".gate_state.json"
+            state_path.write_text(
+                json.dumps(
                     {
                         "history": [],
                         "last_status": {
                             "file": "app/broken_module.py",
                             "linter": "ruff/py_compile",
                             "passed": False,
-                            "output": "SyntaxError: invalid syntax on line 42",
+                            "output": "SyntaxError fixture",
                         },
-                    },
-                    f,
-                )
-
-            payload = {
-                "conversationId": "test-stop-failing",
-                "workspacePaths": [str(REPO_ROOT)],
-                "executionNum": 1,
-                "terminationReason": "model_stop",
-                "error": "",
-                "fullyIdle": True,
-            }
-            ret_code, resp, _ = run_hook_cli("stop", payload, timeout=240)
-            self.assertEqual(ret_code, 0)
-            self.assertEqual(
-                resp.get("decision"),
-                "continue",
-                f"Expected 'continue' when defect is recorded, got: {resp}",
+                    }
+                ),
+                encoding="utf-8",
             )
-            self.assertIn("Quality Gate Block", resp.get("reason", ""))
-        finally:
-            # Restore clean gate state
-            if original_content:
-                gate_state_file.write_text(original_content, encoding="utf-8")
-            else:
-                with open(gate_state_file, "w", encoding="utf-8") as f:
-                    json.dump({"history": [], "last_status": {"passed": True}}, f)
+            code, response, _ = run_hook_cli("stop", {}, workspace=workspace)
+        self.assertEqual(code, 0)
+        self.assertEqual(response["decision"], "continue")
+        self.assertIn("Quality Gate Block", response["reason"])
 
 
 # ==============================================================================
@@ -597,7 +594,20 @@ class TestHierarchicalRules(unittest.TestCase):
         """Verify root AGENTS.md enforces quality contract, commit conventions, and Git rules."""
         content = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("Quality & Zero-Warning Contract", content)
-        self.assertIn("100% Coverage Mandate", content)
+        self.assertIn("ADR-047", content)
+        self.assertIn("Tier 0 files", content)
+        self.assertIn("100% line", content)
+        self.assertIn("current contract floors until ADR-047 stage Q3", content)
+        self.assertIn("ADR-047 stage Q1 keeps full", content)
+        self.assertIn("nightly/manual lanes outside the MVP release gate", content)
+        self.assertIn("Q1/Q4 source migration is", content)
+        self.assertIn(
+            "integrated; every new source SHA still needs its own required-check evidence",
+            content,
+        )
+        self.assertIn("nightly no-regression check is planned for stage Q2", content)
+        self.assertIn("it is not implemented by", content)
+        self.assertIn("remaining required checks for the current MVP source", content)
         self.assertIn("feat(waveXX):", content)
         self.assertIn("Co-Authored-By", content)
         self.assertIn("NEVER", content)
@@ -725,16 +735,24 @@ class TestSubagentDefinitions(unittest.TestCase):
             # System prompt
             self.assertIn("systemPrompt", data)
             self.assertGreater(len(data["systemPrompt"]), 100)
+            for boundary in (
+                "current `egorribun` checkout",
+                "30-minute work budget",
+                "maximum of three concurrent GPT-6 Luna Max agents",
+                "files explicitly assigned",
+                "never stage, commit, or push",
+            ):
+                self.assertIn(boundary, data["systemPrompt"])
 
     def test_workspace_isolation_and_permission_assignments(self) -> None:
         """Verify explicit workspaceMode and permission assignments per role."""
         subagents = self.registry["subagents"]
 
-        # tdd_developer -> branch, read-write, terminal: allow
+        # tdd_developer -> shared checkout, assigned files only
         tdd = json.loads(
             (REPO_ROOT / subagents["tdd_developer"]["path"]).read_text("utf-8")
         )
-        self.assertEqual(tdd["workspaceMode"], "branch")
+        self.assertEqual(tdd["workspaceMode"], "share")
         self.assertEqual(tdd["permissions"]["fileSystem"], "read-write")
         self.assertEqual(tdd["permissions"]["terminal"], "allow")
 
@@ -885,12 +903,15 @@ def run_all_tests(*, repo_only: bool = True) -> int:
             suite.addTest(test)
 
     print("=" * 80)
-    print("ANTIGRAVITY DEVELOPER HARNESS COMPREHENSIVE VERIFICATION SUITE")
+    print("REPOSITORY HARNESS CONFIGURATION AND BEHAVIOR CHECKS")
     print("=" * 80)
     print(f"Repository Root : {REPO_ROOT}")
     print(f"Python Version  : {sys.version.split()[0]}")
     print(f"Test Suites (7) : {', '.join(c.__name__ for c in test_classes)}")
     print(f"Total Test Cases: {suite.countTestCases()}")
+    print(
+        "Tool processes are mocked in dispatch tests; this is not release certification."
+    )
     print("-" * 80)
 
     start_time = time.perf_counter()
@@ -914,7 +935,9 @@ def run_all_tests(*, repo_only: bool = True) -> int:
     print("=" * 80)
 
     if result.wasSuccessful():
-        print("ALL ANTIGRAVITY HARNESS SUBSYSTEMS VERIFIED SUCCESSFULLY (100% PASS)")
+        print(
+            "CONFIGURED HARNESS CHECKS PASSED; PRODUCT AND RELEASE ACCEPTANCE ARE SEPARATE"
+        )
         print("=" * 80)
         return 0
     else:

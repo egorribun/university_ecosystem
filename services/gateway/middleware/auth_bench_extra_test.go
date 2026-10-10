@@ -52,12 +52,12 @@ func BenchmarkJWKSValidation(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		pubKey, err := fetchJWKSPublicKey(b.Context(), client, server.URL)
+		keys, err := fetchJWKSKeySet(b.Context(), client, server.URL)
 		if err != nil {
 			b.Fatalf("unexpected error: %v", err)
 		}
-		if pubKey == nil {
-			b.Fatal("fetchJWKSPublicKey returned nil key")
+		if len(keys) == 0 {
+			b.Fatal("fetchJWKSKeySet returned no keys")
 		}
 	}
 }

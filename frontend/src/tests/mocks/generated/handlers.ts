@@ -365,6 +365,38 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.get(`${baseURL}/api/v1/admin/audit/time-travel`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getGetTimeTravelStateApiV1AdminAuditTimeTravelGet200Response(),
+        { status: 200 },
+      ],
+      [
+        await getGetTimeTravelStateApiV1AdminAuditTimeTravelGet422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[
+        next(`get /api/v1/admin/audit/time-travel`) % resultArray.length
+      ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.get(`${baseURL}/api/v1/auth/mfa/totp`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -989,6 +1021,56 @@ export const handlers = [
       resultArray[
         next(`delete /api/v1/events/attendance`) % resultArray.length
       ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/admin/audit`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [await getListAuditLogsApiV1AdminAuditGet200Response(), { status: 200 }],
+      [await getListAuditLogsApiV1AdminAuditGet422Response(), { status: 422 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/admin/audit`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/admin/feature-flags`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getListFeatureFlagsApiV1AdminFeatureFlagsGet200Response(),
+        { status: 200 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/admin/feature-flags`) % resultArray.length];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -2259,6 +2341,30 @@ export const handlers = [
 
     const [body, init] =
       resultArray[next(`post /api/v1/events`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.post(`${baseURL}/api/v1/grades`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [await getAssignGradeApiV1GradesPost201Response(), { status: 201 }],
+      [await getAssignGradeApiV1GradesPost422Response(), { status: 422 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`post /api/v1/grades`) % resultArray.length];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -3627,6 +3733,36 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.patch(`${baseURL}/api/v1/grades/:gradeId`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("patch")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getModifyGradeApiV1GradesGradeIdPatch200Response(),
+        { status: 200 },
+      ],
+      [
+        await getModifyGradeApiV1GradesGradeIdPatch422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`patch /api/v1/grades/:gradeId`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.patch(`${baseURL}/api/v1/news/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -4056,6 +4192,16 @@ export function getListAuditLogsAdminAuditGet200Response() {
         action: faker.lorem.words(),
         actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        authenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         context: faker.helpers.arrayElement([{}, null]),
         created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
@@ -4063,11 +4209,28 @@ export function getListAuditLogsAdminAuditGet200Response() {
         is_valid: faker.datatype.boolean(),
         resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
         resource_type: faker.lorem.words(),
+        signature_scheme: faker.helpers.arrayElement([
+          "canonical_v2",
+          "legacy_json_array_v1",
+          "legacy_pipe_v1",
+          "invalid",
+          "unsigned",
+        ]),
         subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         subject_user_id: faker.helpers.arrayElement([
           faker.string.uuid(),
           null,
         ]),
+        unauthenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
       }));
     })(),
@@ -4177,6 +4340,166 @@ export function getListFeatureFlagsAdminFeatureFlagsGet200Response() {
   })();
 }
 
+export function getListAuditLogsApiV1AdminAuditGet200Response() {
+  return {
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        action: faker.lorem.words(),
+        actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        authenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
+        context: faker.helpers.arrayElement([{}, null]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        is_valid: faker.datatype.boolean(),
+        resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        resource_type: faker.lorem.words(),
+        signature_scheme: faker.helpers.arrayElement([
+          "canonical_v2",
+          "legacy_json_array_v1",
+          "legacy_pipe_v1",
+          "invalid",
+          "unsigned",
+        ]),
+        subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        subject_user_id: faker.helpers.arrayElement([
+          faker.string.uuid(),
+          null,
+        ]),
+        unauthenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
+        user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    total: faker.number.int(),
+  };
+}
+
+export function getListAuditLogsApiV1AdminAuditGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetTimeTravelStateApiV1AdminAuditTimeTravelGet200Response() {
+  return {
+    aggregate_id: faker.string.uuid(),
+    aggregate_type: faker.lorem.words(),
+    chain_integrity_valid: faker.datatype.boolean(),
+    events_replayed: faker.number.int(),
+    state_at_timestamp: faker.helpers.arrayElement([{}, null]),
+    tampered_event_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    target_timestamp: faker.date.anytime().toISOString(),
+    version_at_timestamp: faker.helpers.arrayElement([
+      faker.number.int(),
+      null,
+    ]),
+  };
+}
+
+export function getGetTimeTravelStateApiV1AdminAuditTimeTravelGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getListFeatureFlagsApiV1AdminFeatureFlagsGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      config_path: faker.lorem.words(),
+      default: faker.datatype.boolean(),
+      description: faker.lorem.words(),
+      enabled: faker.datatype.boolean(),
+      evaluation_reason: faker.lorem.words(),
+      management: faker.lorem.words(),
+      name: faker.person.fullName(),
+      provider: faker.lorem.words(),
+    }));
+  })();
+}
+
 export function getGetCsrfCookieApiV1AuthCsrfCookieGet200Response() {
   return [...new Array(5).keys()]
     .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
@@ -4227,18 +4550,30 @@ export function getLoginApiV1AuthLoginPost200Response() {
         ]),
         education_path: faker.helpers.arrayElement([
           {
-            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            course: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
             education_level: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
               null,
             ]),
-            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            institute: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
+            program: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
             record_book_number: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
               null,
             ]),
-            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            track: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4288,7 +4623,10 @@ export function getLoginApiV1AuthLoginPost200Response() {
               new Date().toISOString().substring(11, 16),
               null,
             ]),
-            timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            timezone: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4298,15 +4636,30 @@ export function getLoginApiV1AuthLoginPost200Response() {
         ]),
         profile_detail: faker.helpers.arrayElement([
           {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            achievements: faker.helpers.arrayElement([
-              faker.lorem.words(),
+            about: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 4096 } }),
               null,
             ]),
-            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            achievements: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 2048 } }),
+              null,
+            ]),
+            department: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            position: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            status: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            telegram: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4480,18 +4833,30 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
         ]),
         education_path: faker.helpers.arrayElement([
           {
-            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            course: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
             education_level: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
               null,
             ]),
-            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            institute: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
+            program: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
             record_book_number: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
               null,
             ]),
-            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            track: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4541,7 +4906,10 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
               new Date().toISOString().substring(11, 16),
               null,
             ]),
-            timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            timezone: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4551,15 +4919,30 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
         ]),
         profile_detail: faker.helpers.arrayElement([
           {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            achievements: faker.helpers.arrayElement([
-              faker.lorem.words(),
+            about: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 4096 } }),
               null,
             ]),
-            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            achievements: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 2048 } }),
+              null,
+            ]),
+            department: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            position: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            status: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            telegram: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -5088,18 +5471,30 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
       education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
       education_path: faker.helpers.arrayElement([
         {
-          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          course: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 64 } }),
+            null,
+          ]),
           education_level: faker.helpers.arrayElement([
-            faker.lorem.words(),
+            faker.string.alpha({ length: { min: 0, max: 128 } }),
             null,
           ]),
-          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          institute: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 512 } }),
+            null,
+          ]),
+          program: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 512 } }),
+            null,
+          ]),
           record_book_number: faker.helpers.arrayElement([
-            faker.lorem.words(),
+            faker.string.alpha({ length: { min: 0, max: 64 } }),
             null,
           ]),
-          track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          track: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
         },
         null,
       ]),
@@ -5146,7 +5541,10 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
             new Date().toISOString().substring(11, 16),
             null,
           ]),
-          timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          timezone: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 64 } }),
+            null,
+          ]),
         },
         null,
       ]),
@@ -5156,12 +5554,30 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
       ]),
       profile_detail: faker.helpers.arrayElement([
         {
-          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          about: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 4096 } }),
+            null,
+          ]),
+          achievements: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 2048 } }),
+            null,
+          ]),
+          department: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
+          position: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
+          status: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
+          telegram: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 128 } }),
+            null,
+          ]),
         },
         null,
       ]),
@@ -8087,6 +8503,102 @@ export function getUploadEventFileApiV1EventsEventIdUploadFilePost422Response() 
   };
 }
 
+export function getAssignGradeApiV1GradesPost201Response() {
+  return {
+    assessment_type: faker.lorem.words(),
+    assigned_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    id: faker.string.uuid(),
+    score: faker.number.int(),
+    student_id: faker.string.uuid(),
+    subject: faker.lorem.words(),
+  };
+}
+
+export function getAssignGradeApiV1GradesPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getModifyGradeApiV1GradesGradeIdPatch200Response() {
+  return {
+    assessment_type: faker.lorem.words(),
+    assigned_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    id: faker.string.uuid(),
+    score: faker.number.int(),
+    student_id: faker.string.uuid(),
+    subject: faker.lorem.words(),
+  };
+}
+
+export function getModifyGradeApiV1GradesGradeIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
 export function getGetGroupsApiV1GroupsGet200Response() {
   return (() => {
     const arrayMin = 1;
@@ -10434,21 +10946,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           education_path: faker.helpers.arrayElement([
             {
-              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              course: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
+                null,
+              ]),
               education_level: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
                 null,
               ]),
               institute: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
                 null,
               ]),
-              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              program: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
+                null,
+              ]),
               record_book_number: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
                 null,
               ]),
-              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              track: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10464,18 +10985,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           profile_detail: faker.helpers.arrayElement([
             {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              about: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 4096 } }),
+                null,
+              ]),
               achievements: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 2048 } }),
                 null,
               ]),
               department: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
                 null,
               ]),
-              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              position: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              status: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              telegram: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10525,21 +11058,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           education_path: faker.helpers.arrayElement([
             {
-              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              course: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
+                null,
+              ]),
               education_level: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
                 null,
               ]),
               institute: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
                 null,
               ]),
-              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              program: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
+                null,
+              ]),
               record_book_number: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
                 null,
               ]),
-              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              track: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10589,7 +11131,10 @@ export function getGetUsersApiV1UsersGet200Response() {
                 new Date().toISOString().substring(11, 16),
                 null,
               ]),
-              timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              timezone: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10599,18 +11144,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           profile_detail: faker.helpers.arrayElement([
             {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              about: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 4096 } }),
+                null,
+              ]),
               achievements: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 2048 } }),
                 null,
               ]),
               department: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
                 null,
               ]),
-              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              position: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              status: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              telegram: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10737,18 +11294,30 @@ export function getCreateUserApiV1UsersPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -10795,19 +11364,40 @@ export function getCreateUserApiV1UsersPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -10960,18 +11550,30 @@ export function getMeApiV1UsersMeGet200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11018,19 +11620,40 @@ export function getMeApiV1UsersMeGet200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11113,18 +11736,30 @@ export function getUpdateMeApiV1UsersMePut200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11171,19 +11806,40 @@ export function getUpdateMeApiV1UsersMePut200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11299,18 +11955,30 @@ export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11357,19 +12025,40 @@ export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11452,18 +12141,30 @@ export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11510,19 +12211,40 @@ export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11638,18 +12360,30 @@ export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11696,19 +12430,40 @@ export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11791,18 +12546,30 @@ export function getUploadCoverApiV1UsersMeCoverPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11849,19 +12616,40 @@ export function getUploadCoverApiV1UsersMeCoverPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12017,18 +12805,30 @@ export function getChangeEmailApiV1UsersMeEmailPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12075,19 +12875,40 @@ export function getChangeEmailApiV1UsersMeEmailPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12203,18 +13024,30 @@ export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12261,19 +13094,40 @@ export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12505,18 +13359,30 @@ export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12563,19 +13429,40 @@ export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),

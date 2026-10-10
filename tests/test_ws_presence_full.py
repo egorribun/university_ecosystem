@@ -16,9 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.api.ws.auth import (
-    extract_bearer_token,
-    extract_token_from_subprotocol,
-    select_subprotocol,
     update_last_seen,
 )
 from app.api.ws.presence import (
@@ -34,66 +31,6 @@ from app.api.ws.presence import (
 # ===========================================================================
 # Auth helpers
 # ===========================================================================
-
-
-class TestExtractBearerToken:
-    def test_bearer_prefix(self):
-        assert extract_bearer_token("Bearer abc123") == "abc123"
-
-    def test_bare_token(self):
-        assert extract_bearer_token("abc123") == "abc123"
-
-    def test_none(self):
-        assert extract_bearer_token(None) is None
-
-    def test_empty(self):
-        assert extract_bearer_token("") is None
-
-    def test_multiple_parts(self):
-        assert extract_bearer_token("Bearer abc 123") is None
-
-    def test_case_insensitive(self):
-        assert extract_bearer_token("bearer TOKEN") == "TOKEN"
-
-
-class TestExtractTokenFromSubprotocol:
-    def test_access_token(self):
-        assert extract_token_from_subprotocol("access_token, eyJhbGc") == "eyJhbGc"
-
-    def test_bearer(self):
-        assert (
-            extract_token_from_subprotocol("bearer, jwt-token-here") == "jwt-token-here"
-        )
-
-    def test_authorization(self):
-        assert extract_token_from_subprotocol("authorization, tok") == "tok"
-
-    def test_no_match(self):
-        assert extract_token_from_subprotocol("chat, json") is None
-
-    def test_none(self):
-        assert extract_token_from_subprotocol(None) is None
-
-    def test_empty(self):
-        assert extract_token_from_subprotocol("") is None
-
-    def test_keyword_at_end(self):
-        """access_token at end with no following token returns None."""
-        assert extract_token_from_subprotocol("chat, access_token") is None
-
-
-class TestSelectSubprotocol:
-    def test_access_token(self):
-        assert select_subprotocol("access_token, chat") == "access_token"
-
-    def test_bearer(self):
-        assert select_subprotocol("bearer, json") == "bearer"
-
-    def test_none(self):
-        assert select_subprotocol(None) is None
-
-    def test_no_known(self):
-        assert select_subprotocol("chat, json") is None
 
 
 class TestUpdateLastSeen:

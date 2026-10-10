@@ -59,17 +59,15 @@ dependencies = [
   "opentelemetry-semantic-conventions>=0.62b0,<1.0",
   "orjson>=3.11.8,<4",                                # SEC-09: cap serializer API major upgrades
   "pgvector>=0.4.2,<1",                                # SEC-09: cap vector extension API major upgrades
-  "qdrant-client>=1.13.0,<2",                          # SEC-09: cap vector client major upgrades
   "pillow>=12.3.0,<13",                                # SEC-09: cap imaging API major upgrades
   "pillow-avif-plugin>=1.5.5,<2",  # TD-26-04: upper bound
-  "polars>=1.39.3,<2",                                # SEC-09: cap dataframe API major upgrades
   "prometheus-client>=0.25.0,<1",                      # SEC-09: cap metrics API major upgrades
   "protobuf>=6.33.6,<8",  # Shared compatible line: flagd 0.5.0, Authzed, and OTEL all require protobuf <7
   "psutil>=7.2.2,<8",                                  # SEC-09: cap process metrics API major upgrades
   "psycopg[binary]>=3.3.3,<4",                         # SEC-09: cap PostgreSQL driver major upgrades
   "pydantic>=2.12.0,<2.14.0",  # FIX-41-01: Python 3.14 Field.__init__(doc=) support requires 2.13+, but strawberry-graphql incompatible with 2.13.0+
   "pydantic-settings>=2.13.1,<3",
-  "pyjwt>=2.12.1,<3",                                  # SEC-09: cap JWT API major upgrades
+  "pyjwt>=2.15.1,<3",                                  # SEC-09: CVE-2026-101918 fix; cap JWT API major upgrades
   "pyotp>=2.9,<3",                                    # TD-06 (audit 2026-03-15): upper bound; Renovate will open PR for v3
   "pyroscope-io>=1.0.4,<2 ; sys_platform != 'win32'", # SEC-09: cap profiler API major upgrades
   "python-dotenv>=1.2.2,<2",                           # SEC-09: cap environment loader major upgrades
@@ -189,9 +187,9 @@ warn_unused_ignores = false
 # structlog optional import: pre-commit mypy 1.15 doesn't flag assignment, CI mypy does.
 
 [[tool.mypy.overrides]]
-module = ["app.services.minio_storage", "app.core.ssrf"]
+module = ["app.core.ssrf"]
 warn_unused_ignores = false
-# pre-commit mypy lacks minio stubs / full socket types; CI mypy has all deps installed.
+# pre-commit mypy lacks full socket types; CI mypy has all deps installed.
 
 [[tool.mypy.overrides]]
 module = ["app.services.webpush"]
@@ -227,7 +225,6 @@ module = [
   "openfeature.*",
   "pgvector.*",
   "asyncpg.*",
-  "polars",
   "httpx",
   "pillow_avif",
   "jwt",
@@ -252,7 +249,6 @@ module = [
   "clamd",
   "elasticsearch.*",
   "structlog.*",
-  "qdrant_client.*",
 ]
 ignore_missing_imports = true
 
@@ -297,7 +293,6 @@ ignore = [
 "app/core/exceptions/handlers.py" = ["S101"]  # assert isinstance() guard
 "app/cli/tests.py" = ["S603"]  # MOD-29-01: subprocess with hardcoded cmd list (not user input)
 "app/schemas/identity.py" = ["S105"]  # MOD-29-01: token_type="bearer" is not a password
-"app/utils/retry.py" = ["S311"]  # MOD-29-01: random.random() for jitter, not crypto
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
@@ -399,13 +394,16 @@ dev = [
   # (the watchdog reserve is intentionally six seconds; see [tool.mutmut]).
   "pytest-timeout>=2.4.0",
   "pytest-xdist>=3.8.0",
+  # The Gateway API helper parses Helm's multi-document render locally before
+  # any cluster write; kubectl client dry-run still requires API discovery.
+  "pyyaml==6.0.3",
   # RZ-30-05: ruff v0.15.x has regression (strips except parens → SyntaxError).
   # Pin to 0.14.x until upstream fix lands.  Pre-commit already pins 0.14.14.
   "ruff>=0.14.14,<0.17",
   "types-aiofiles>=25.1.0.20260409",
   # RZ-11 (audit 2026-03-05): virtualenv belongs here — it is developer tooling,
   # not a production runtime dependency.
-  "virtualenv>=21.2.1",
+  "virtualenv>=21.7.13",
   "types-requests>=2.33.0.20260408",
   "types-pyyaml>=6.0.12.20260408",
   "types-redis>=4.6.0.20241004",
@@ -437,11 +435,12 @@ dev = [
 
 # MOD-06 (audit Wave 11): dedicated security scanning group.
 # Install with: uv sync --group security
-# Used in CI/CD security audit job and pre-deployment gate.
+# Used for Python analysis and dependency audits. Semgrep runs in its separately
+# pinned CI container and pre-commit Docker hook; keeping its CLI dependency out
+# of this shared lock avoids its stale PyJWT cap constraining application auth.
 #   bandit   — Python SAST (AST-based, complements ruff's flake8-bandit rules)
-#   semgrep  — multi-language semantic SAST with OWASP/CVE rulesets
 #   pip-audit — dependency vulnerability scanner (OSV/PyPI Advisory DB)
-security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit==2.10.1"]
+security = ["bandit[toml]>=1.9.4", "pip-audit==2.10.1"]
 
 [tool.uv.workspace]
 members = ["native/rust_ext"]
@@ -454,7 +453,9 @@ exclude-newer = "7 days"
 # Security exception: cryptography 50.0.0 (uploaded 2026-07-31) fixes
 # CVE-2026-69247; keep the general reproducibility cutoff for every other
 # package while allowing patched security releases into the lockfile.
-exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", h2 = "2026-08-04T00:00:00Z", mcp = "2026-08-04T00:00:00Z" }
+# PyJWT 2.15.1 (uploaded 2026-09-28) fixes CVE-2026-101918; allow that
+# security release without weakening the global freshness cutoff.
+exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", h2 = "2026-08-04T00:00:00Z", mcp = "2026-08-04T00:00:00Z", pyjwt = "2026-09-29T00:00:00Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
@@ -464,7 +465,7 @@ environments = [
 # they bound the resolution without pretending app code imports them.
 constraint-dependencies = [
     "h2>=4.4.1,<5",  # fixes the h2 advisory in httpx's HTTP/2 transport
-    "urllib3>=2.7.0,<2.9",  # PY-P1-01: patched 2.7+ line; urllib3 v3 breaks transport APIs
+    "urllib3>=2.8.0,<2.9",  # PY-P1-01: patched 2.8+ line; urllib3 v3 breaks transport APIs
 ]
 override-dependencies = [
     "protobuf>=6.33.6,<8",
@@ -522,7 +523,8 @@ skips = [
 
 [tool.deptry]
 # Runtime dependency hygiene for the application package (CI: quality job).
-# Scripts, tests and tooling use the dev group and are not scanned.
+# Tests and tooling use the dev group and are not scanned. Production command
+# and operational imports outside app/ are documented below.
 known_first_party = ["app"]
 
 [tool.deptry.package_module_name_map]
@@ -534,7 +536,9 @@ pyroscope-io = "pyroscope"
 # email-validator - pydantic EmailStr; python-multipart - FastAPI forms;
 # gunicorn - production server command; python-dotenv - seed scripts in the
 # backend image; protobuf - flagd/Authzed gRPC runtime (feature-flag contract).
-DEP002 = ["aiosqlite", "email-validator", "gunicorn", "protobuf", "python-dotenv", "python-multipart"]
+# minio - read-only scripts/s3_cutover_preflight.py mounted into the backend
+# image by docs/runbooks/s3-seaweedfs-cutover.md; it must remain in --no-dev installs.
+DEP002 = ["aiosqlite", "email-validator", "gunicorn", "minio", "protobuf", "python-dotenv", "python-multipart"]
 # Framework internals imported alongside the frameworks that pin them.
 DEP003 = ["graphql", "pydantic_core"]
 
@@ -633,12 +637,17 @@ also_copy = [
     "infrastructure",
     "alembic",
     "alembic.ini",
+    # The owned-live authorization contracts load the canonical SpiceDB schema.
+    "schema.zed",
     "scripts",
     "Dockerfile.test",
     "Dockerfile.test.dockerignore",
     "Dockerfile.protogen",
     "backend.Dockerfile",
     "start-docker.ps1",
+    # The owned-live launcher fixture copies the authored NATS template.
+    # Copy its narrow parent so mutmut creates config/ in the isolated tree.
+    "config",
     # Docker resource-limit contract reads every supported Compose variant in
     # the isolated mutmut tree. Keep these authored assets alongside the full
     # stack so the baseline/stats pass cannot fail on a missing input path.
@@ -669,6 +678,9 @@ also_copy = [
     # raw Kubernetes tree; keep that documentation in the isolated baseline
     # so stats collection cannot fail before mutation execution.
     "k8s/README.md",
+    # Raw Gateway API contracts read the GatewayClass bootstrap manifest.
+    # Its narrow directory also creates the destination parent for mutmut.
+    "k8s/gateway-api",
     "k8s/backend",
     "k8s/frontend",
     # test_feature_flag_architecture_contract reads the flagd deployment,
@@ -692,24 +704,44 @@ also_copy = [
     "frontend/rust-crypto/fuzz/fuzz_targets",
     "frontend/rust-crypto/fuzz/Cargo.toml",
     "frontend/scripts",
+    "frontend/knip.json",
     "frontend/openapi.json",
     # Generated SDK/types and MSW handlers are asserted by auth contract tests
     # during mutmut's isolated baseline run; include their exact source roots
     # so the test cannot silently disappear from mutation inventory.
     "frontend/src/api",
     "frontend/src/api/generated",
+    # Repository-reference contracts inspect the authored TypeScript test.
+    # Copy its narrow parent because mutmut's file copier cannot create it.
+    "frontend/src/__tests__",
     # The WebSocket contract reads the frontend transport hook from the
     # isolated mutmut checkout; copy its parent before the exact module so
     # mutmut's file copier has a destination for the nested path.
     "frontend/src/hooks",
     "frontend/src/hooks/useChatWebSocket.ts",
+    # Knip asset contracts inspect setup, generated theme tokens, sanitizer
+    # imports, and Tailwind CSS. These source-only parents create the exact
+    # nested destinations without copying frontend build/dependency trees.
+    "frontend/src/setupTests.ts",
+    "frontend/src/theme",
+    "frontend/src/utils",
+    "frontend/src/styles",
     "frontend/src/tests/mocks",
     "frontend/src/tests/mocks/generated",
     "frontend/tests/e2e/utils",
     # test_frontend_knip_asset_contract reads the direct axe-core users.
     "frontend/tests/e2e/accessibility.spec.ts",
+    "frontend/tests/e2e/a11y-cdn-axe.spec.ts",
+    "frontend/tests/e2e/a11y-enhanced.spec.ts",
+    "frontend/tests/e2e/a11y-messenger.spec.ts",
     "frontend/tests/e2e/a11y-public.spec.ts",
+    "frontend/tests/e2e/schedule-view.spec.ts",
+    "frontend/tests/e2e/visual-regression.spec.ts",
+    "frontend/tests/e2e/events-history-scroll-restoration.spec.ts",
     "frontend/package.json",
+    # Peer-dependency and tool-invocation contracts read these exact inputs.
+    "frontend/package-lock.json",
+    "frontend/playwright.config.ts",
     "frontend/stryker.config.mjs",
     "frontend/vitest.config.ts",
     "sonar-project.properties",

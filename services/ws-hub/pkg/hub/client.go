@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/nats-io/nats.go"
 	"github.com/quic-go/webtransport-go"
@@ -34,23 +34,32 @@ type Client struct {
 	// full lifetime. It lets a canonical session-revocation event target one
 	// browser session without disconnecting the user's other devices.
 	SessionJTI string
-	Identity   *ClientIdentity
-	Conn       Session
-	Rooms      map[string]bool
-	Send       chan []byte
-	Hub        *Hub
-	mu         sync.Mutex
+	// SessionExpiresAt is the immutable cutoff from the authenticated OTT.
+	SessionExpiresAt time.Time
+	Identity         *ClientIdentity
+	Conn             Session
+	Rooms            map[string]bool
+	Send             chan []byte
+	Hub              *Hub
+	mu               sync.Mutex
 	// sessionGate serializes a revocation with an in-flight authorized action.
 	// It is never acquired while Hub.mu is held: DisconnectSession snapshots
 	// clients first, releases Hub.mu, and only then calls RevokeSession.
-	sessionGate        sync.RWMutex
-	sessionRevoked     atomic.Bool
-	writeMu            sync.Mutex
-	transportCloseOnce sync.Once
-	replayMu           sync.Mutex
-	replays            map[string]*roomReplayState
-	replayJoinLimiter  *rate.Limiter
-	closeOnce          sync.Once
+	sessionGate         sync.RWMutex
+	sessionRevoked      atomic.Bool
+	sessionCheckMu      sync.Mutex
+	sessionCheckedUntil time.Time
+	writeMu             sync.Mutex
+	transportCloseOnce  sync.Once
+	replayMu            sync.Mutex
+	replays             map[string]*roomReplayState
+	replayJoinLimiter   *rate.Limiter
+	closeOnce           sync.Once
+	// registrationWG bridges Run-loop admission and synchronous shutdown fallback.
+	// registrationStarted is one-shot; registrationAdmitted tracks gauge ownership.
+	registrationWG       sync.WaitGroup
+	registrationStarted  atomic.Bool
+	registrationAdmitted atomic.Bool
 	// ctx / cancel are tied to this connection's lifetime.
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -224,22 +233,9 @@ func isNormalCloseError(err error) bool {
 func (c *Client) cleanupReadPump() {
 	c.cancelConnection()
 	c.cancelAllRoomReplays()
-	c.Hub.msgLimiters.Delete(c.ID)
 	if c.Hub != nil {
-		hCtx := c.Hub.Context()
-		if hCtx != nil {
-			select {
-			case c.Hub.Unregister <- c:
-			case <-hCtx.Done():
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		} else {
-			select {
-			case c.Hub.Unregister <- c:
-			default:
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		}
+		c.Hub.msgLimiters.Delete(c.ID)
+		c.Hub.unregisterClient(c.ctx, c)
 	}
 	c.closeTransport("Failed to close session connection")
 }
@@ -271,6 +267,12 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 				"err", err)
 		}
 		return false
+	}
+	if c.rejectOversizedMessage(data) {
+		return true
+	}
+	if c.rejectRateLimitedMessage() {
+		return true
 	}
 
 	var msg Message
@@ -306,25 +308,9 @@ func (c *Client) authorizeAndHandleIncomingMessage(ctx context.Context, msg Mess
 	c.sessionGate.RLock()
 	defer c.sessionGate.RUnlock()
 
-	if c.sessionRevoked.Load() {
-		return errors.New("session is already revoked")
+	if err := c.authorizeSession(ctx, time.Now(), false); err != nil {
+		return err
 	}
-	if c.SessionJTI == "" {
-		return errors.New("connection is missing session ticket identity")
-	}
-	if c.Hub == nil || c.Hub.sessionRevocationCheck == nil {
-		return errors.New("session revocation checker is unavailable")
-	}
-
-	checkCtx, cancel := context.WithTimeout(ctx, sessionActionRevocationTimeout)
-	defer cancel()
-	if err := c.Hub.sessionRevocationCheck(checkCtx, c.SessionJTI); err != nil {
-		return errors.New("session revocation check rejected the action")
-	}
-	if c.sessionRevoked.Load() {
-		return errors.New("session was revoked while authorizing action")
-	}
-
 	c.handleIncomingMessage(ctx, msg, data)
 	return nil
 }
@@ -362,8 +348,6 @@ func (c *Client) handleIncomingMessage(ctx context.Context, msg Message, data []
 		c.handleJoin(ctx, msg)
 	case "leave":
 		c.handleLeave(msg)
-	case "message":
-		c.handleMessage(msg, data)
 	default:
 		// RZ-27-05: Log unknown message types for protocol drift detection.
 		UnknownMsgTypeTotal.Inc()
@@ -409,10 +393,17 @@ func mergeTopLevelJoinReplay(msg *Message, data []byte) {
 }
 
 func (c *Client) handleJoin(ctx context.Context, msg Message) {
-	if msg.Room == "" {
+	if msg.Room == "" || c.Hub == nil {
 		return
 	}
-	if !c.Hub.AuthorizeRoomJoin(ctx, c.UserID, msg.Room) {
+	// Serialize the authorization decision with membership revocation. Without
+	// this gate, a join authorized just before a removal could add the socket
+	// after the invalidation handler had already removed it from the room.
+	membershipLock := c.Hub.roomMembershipLock(c.UserID, msg.Room)
+	membershipLock.Lock()
+	defer membershipLock.Unlock()
+
+	if !c.Hub.authorizeRoomJoinLocked(ctx, c.UserID, msg.Room) {
 		AuthFailuresTotal.WithLabelValues("room_join_denied").Inc() // RZ-23-06: wire existing metric
 		c.Hub.Logger.WarnContext(ctx, "Unauthorized room join rejected",
 			"user", c.UserID,
@@ -514,10 +505,6 @@ func (c *Client) startRoomReplay(ctx context.Context, room string, lastSeq uint6
 	})
 }
 
-func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID string) {
-	_, _ = c.replayOfflineMessagesContext(c.ctx, room, lastSeq, lastMsgID)
-}
-
 func (c *Client) replayOfflineMessagesContext(
 	replayCtx context.Context,
 	room string,
@@ -607,16 +594,6 @@ func isExpectedOfflineReplayFetchError(err error) bool {
 
 func offlineReplayFetchCompleted(err error) bool {
 	return errors.Is(err, nats.ErrTimeout) || errors.Is(err, context.DeadlineExceeded)
-}
-
-func (c *Client) deliverOfflineMessages(msgs []*nats.Msg, lastSeq uint64, lastMsgID string) {
-	foundLastMsgID := (lastMsgID == "" || lastSeq > 0)
-	maxSequence := lastSeq
-	room := ""
-	if len(msgs) > 0 && msgs[0] != nil {
-		room, _ = strings.CutPrefix(msgs[0].Subject, "chat.")
-	}
-	c.deliverOfflineMessageBatch(c.ctx, room, msgs, lastMsgID, &foundLastMsgID, &maxSequence)
 }
 
 func (c *Client) deliverOfflineMessageBatch(
@@ -797,6 +774,9 @@ func (c *Client) deliverValidOfflineMessage(
 
 func (c *Client) sendReplayWithRetry(ctx context.Context, data []byte) bool {
 	for attempt := 0; attempt < offlineReplaySendTries; attempt++ {
+		if ctx.Err() != nil {
+			return false
+		}
 		if safeSend(c.Send, data) {
 			return true
 		}
@@ -812,6 +792,42 @@ func (c *Client) sendReplayWithRetry(ctx context.Context, data []byte) bool {
 		}
 	}
 	return false
+}
+
+const (
+	roomAccessRevokedCode   = "room_access_revoked"
+	roomAccessRevokedDetail = "Access to this chat was revoked"
+)
+
+func isRoomAccessRevokedNotice(data []byte, room string) bool {
+	expected, err := json.Marshal(map[string]string{
+		"type":   "error",
+		"room":   room,
+		"code":   roomAccessRevokedCode,
+		"detail": roomAccessRevokedDetail,
+	})
+	return err == nil && bytes.Equal(data, expected)
+}
+
+func queuedFrameRoom(data []byte) (string, bool) {
+	var frame struct {
+		Type string `json:"type"`
+		Room string `json:"room"`
+	}
+	if err := json.Unmarshal(data, &frame); err != nil || frame.Room == "" {
+		return "", false
+	}
+	if frame.Type == "error" && isRoomAccessRevokedNotice(data, frame.Room) {
+		return "", false
+	}
+	return frame.Room, true
+}
+
+func (c *Client) shouldDeliverRoomFrame(room string, scoped bool) bool {
+	if !scoped {
+		return true
+	}
+	return c.isInRoom(room)
 }
 
 func (c *Client) nakOfflineReplay(ctx context.Context, msg *nats.Msg) {
@@ -979,116 +995,78 @@ func (c *Client) failReplayConnection() {
 	if c.Hub == nil {
 		return
 	}
-	select {
-	case c.Hub.Unregister <- c:
-	default:
-		c.closeOnce.Do(func() { safeClose(c.Send) })
-	}
+	c.Hub.unregisterClient(c.ctx, c)
 }
 
 func (c *Client) handleLeave(msg Message) {
+	if msg.Room == "" || c.Hub == nil {
+		return
+	}
+	lock := c.Hub.roomMembershipLock(c.UserID, msg.Room)
+	lock.Lock()
+	defer lock.Unlock()
 	c.LeaveRoom(msg.Room)
 }
 
-// allowedMessageTypes is the client-to-hub command catalog. Read receipts are
-// deliberately absent: POST /api/v1/chats/{chat_id}/read is the canonical
-// receipt path, while ws-hub only transports room joins, leaves and messages.
+// allowedMessageTypes is the client-to-hub command catalog. Chat mutations,
+// read receipts, and typing are backend-owned; clients may only join or leave
+// rooms. This prevents an untrusted payload from impersonating a server event.
 var allowedMessageTypes = map[string]bool{
-	"join":    true,
-	"leave":   true,
-	"message": true,
+	"join":  true,
+	"leave": true,
 }
 
 func isAllowedMessageType(t string) bool {
 	return allowedMessageTypes[t]
 }
 
-//nolint:cyclop
-func (c *Client) handleMessage(msg Message, data []byte) {
-	// RZ-27-02: Reject oversized messages at ingress, matching the broadcast
-	// limit (RZ-23-05). Without this, messages between 60 KB and 64 KB are
-	// published to NATS but silently dropped at broadcast fan-out.
+func (c *Client) rejectOversizedMessage(data []byte) bool {
 	const maxIncomingBytes = 60 * 1024 // match maxBroadcastBytes in hub.go
-	if len(data) > maxIncomingBytes {
-		c.Hub.Logger.WarnContext(c.ctx, "Incoming message exceeds size limit, notifying client",
-			"client_id", c.ID, "size_bytes", len(data), "limit_bytes", maxIncomingBytes)
-		IncomingDropsTotal.Inc()
-		// RZ-31-02: Notify client so it can display a user-visible error.
-		// Follows the same pattern as rate-limit notification below (lines 166-171).
-		if notice, err := json.Marshal(map[string]string{
-			"type":   "error",
-			"code":   "message_too_large",
-			"detail": "message exceeds 60 KB limit",
-		}); err == nil {
-			select {
-			case c.Send <- notice:
-			default: // Send buffer full — client already overwhelmed.
-			}
+	if len(data) <= maxIncomingBytes {
+		return false
+	}
+	c.Hub.Logger.WarnContext(c.ctx, "Incoming message exceeds size limit, notifying client",
+		"client_id", c.ID, "size_bytes", len(data), "limit_bytes", maxIncomingBytes)
+	IncomingDropsTotal.Inc()
+	if notice, err := json.Marshal(map[string]string{
+		"type":   "error",
+		"code":   "message_too_large",
+		"detail": "message exceeds 60 KB limit",
+	}); err == nil {
+		select {
+		case c.Send <- notice:
+		default: // Send buffer full — client already overwhelmed.
 		}
-		return
 	}
+	return true
+}
 
-	if msg.Room == "" || !c.isInRoom(msg.Room) {
-		AuthFailuresTotal.WithLabelValues("room_message_denied").Inc()
-		c.Hub.Logger.WarnContext(c.ctx, "Unauthorized room message rejected",
-			"client_id", c.ID, "user_id", c.UserID, "room", msg.Room)
-		return
+// allowIncomingMessage consumes one token from the per-client bucket. Every
+// inbound frame costs a session-revocation check against Redis, so an
+// unthrottled client could turn a cheap join/leave flood into backend load.
+func (c *Client) allowIncomingMessage() bool {
+	if c.Hub == nil || c.Hub.clientMsgRateLimit <= 0 || c.Hub.clientMsgRateBurst <= 0 {
+		return true
 	}
-
-	// TD-W16-03 / RZ-W18-01: Use configurable rate limit fields copied to Hub struct.
-	raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
+	limiter, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
 		rate.NewLimiter(rate.Limit(c.Hub.clientMsgRateLimit), c.Hub.clientMsgRateBurst))
-	if !raw.(*rate.Limiter).Allow() {
-		c.Hub.Logger.WarnContext(c.ctx, "Client message rate limit exceeded — notifying client",
-			"client_id", c.ID,
-			"room", msg.Room)
-		if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
-			select {
-			case c.Send <- notice:
-			default:
-				// Send buffer full — client is already overwhelmed; drop silently.
-			}
-		}
-		return
-	}
+	return limiter.(*rate.Limiter).Allow()
+}
 
-	if c.Hub == nil || c.Hub.Nats == nil {
-		return
+// rejectRateLimitedMessage drops a frame that exceeds the per-client rate and
+// tells the client (frontend schema: {"type":"rate_limit_exceeded"}).
+func (c *Client) rejectRateLimitedMessage() bool {
+	if c.allowIncomingMessage() {
+		return false
 	}
-
-	// Sender identity is always derived from the authenticated connection.
-	// Publish the canonical structure rather than the original attacker bytes.
-	msg.From = c.UserID
-	canonicalData, err := json.Marshal(msg)
-	if err != nil {
-		c.Hub.Logger.ErrorContext(c.ctx, "Failed to encode canonical client message", "err", err)
-		return
-	}
-
-	msgID := uuid.New().String()
-	natsMsg := &nats.Msg{
-		Subject: "chat." + msg.Room,
-		Data:    canonicalData,
-		Header:  make(nats.Header),
-	}
-	natsMsg.Header.Set("Nats-Msg-Id", msgID)
-
-	if c.Hub.enableJetStream && c.Hub.js != nil {
-		if _, err := c.Hub.js.PublishMsgAsync(natsMsg); err != nil {
-			if c.Hub.Logger != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish async to JetStream", "err", err)
-			}
-		}
-	} else {
-		// Core NATS does not provide JetStream de-duplication and older servers
-		// may not negotiate headers. Publish the canonical payload without the
-		// JetStream-only Nats-Msg-Id header on the fallback transport.
-		if err := c.Hub.Nats.Publish(natsMsg.Subject, natsMsg.Data); err != nil {
-			if c.Hub.Logger != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish to NATS", "err", err)
-			}
+	IncomingDropsTotal.Inc()
+	if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
+		select {
+		case c.Send <- notice:
+		default: // Send buffer full — client already overwhelmed.
 		}
 	}
+	return true
 }
 
 func (c *Client) isInRoom(room string) bool {
@@ -1098,12 +1076,12 @@ func (c *Client) isInRoom(room string) bool {
 }
 
 // WritePump pumps messages from the hub to the session connection.
-//
-//nolint:gocognit,cyclop
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(writePumpPingInterval)
+	sessionTicker := time.NewTicker(sessionDeliveryRecheckInterval)
 	defer func() {
 		ticker.Stop()
+		sessionTicker.Stop()
 		c.Hub.msgLimiters.Delete(c.ID) // TD-24-05: clean limiter on WritePump exit too
 		c.closeTransport("Failed to close session connection in WritePump")
 	}()
@@ -1111,34 +1089,24 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case msg, ok := <-c.Send:
-			c.writeMu.Lock()
-			if c.Conn != nil {
-				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
-					c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
+			if err := c.writeQueuedMessage(msg, ok); err != nil {
+				if errors.Is(err, errSessionInactive) {
+					c.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
 				}
-			}
-			if !ok {
-				if c.Conn != nil {
-					if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil && c.Hub != nil && c.Hub.Logger != nil {
-						c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
-					}
-				}
-				c.writeMu.Unlock()
 				return
 			}
-
-			if c.Conn != nil {
-				if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-					c.writeMu.Unlock()
-					return
-				}
-			}
-			c.writeMu.Unlock()
-
 		case <-c.ctx.Done():
-			// RZ-26-08: context cancelled (ReadPump exited) — stop immediately
 			return
-
+		case <-sessionTicker.C:
+			// Idle and pong-only clients must not depend on receiving a Pub/Sub
+			// notice. This also bounds lifetime when no private frames are queued.
+			c.sessionGate.RLock()
+			err := c.authorizeSession(c.ctx, time.Now(), true)
+			c.sessionGate.RUnlock()
+			if err != nil {
+				c.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
+				return
+			}
 		case <-ticker.C:
 			c.writeMu.Lock()
 			if c.Conn != nil {
@@ -1153,6 +1121,59 @@ func (c *Client) WritePump() {
 			c.writeMu.Unlock()
 		}
 	}
+}
+
+// writeQueuedMessage is the shared delivery boundary for live broadcasts,
+// replay, and user notifications. The lock order matches inbound actions:
+// sessionGate -> room membership -> writeMu -> Hub.mu -> Client.mu.
+func (c *Client) writeQueuedMessage(msg []byte, ok bool) error {
+	c.sessionGate.RLock()
+	defer c.sessionGate.RUnlock()
+
+	var room string
+	var roomScoped bool
+	if ok {
+		room, roomScoped = queuedFrameRoom(msg)
+		if roomScoped && c.Hub != nil {
+			membershipLock := c.Hub.roomMembershipLock(c.UserID, room)
+			membershipLock.Lock()
+			defer membershipLock.Unlock()
+		}
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if ok {
+		// Check after all potentially blocking locks, immediately before the
+		// write; an expired cached verdict may not survive lock contention.
+		if err := c.authorizeSession(c.ctx, time.Now(), true); err != nil {
+			return errSessionInactive
+		}
+	}
+	if c.Conn != nil {
+		if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
+		}
+	}
+	if !ok {
+		return c.writeQueuedClose()
+	}
+	if !c.shouldDeliverRoomFrame(room, roomScoped) {
+		return nil
+	}
+	if c.Conn != nil {
+		return c.Conn.WriteMessage(websocket.TextMessage, msg)
+	}
+	return nil
+}
+
+// writeQueuedClose is called under writeMu after the outbound queue closes.
+func (c *Client) writeQueuedClose() error {
+	if c.Conn != nil {
+		if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
+		}
+	}
+	return io.EOF
 }
 
 // JoinRoom adds the client to the specified room.
@@ -1181,6 +1202,27 @@ func (c *Client) LeaveRoom(room string) {
 	if room == "" {
 		return
 	}
+	// Serialize membership removal with WritePump's final room authorization
+	// check. A frame already queued before revocation is then either written
+	// before the membership change or discarded after it, never after it.
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	c.leaveRoomLocked(room)
+}
+
+func (c *Client) revokeRoom(room string, notice []byte) {
+	if room == "" {
+		return
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if len(notice) > 0 {
+		_ = safeSend(c.Send, notice)
+	}
+	c.leaveRoomLocked(room)
+}
+
+func (c *Client) leaveRoomLocked(room string) {
 	c.cancelRoomReplay(room)
 
 	c.Hub.mu.Lock()
@@ -1206,20 +1248,7 @@ func (c *Client) Disconnect(closeCode int, reason string) {
 	c.closeTransportWithControlFrame(closeCode, reason)
 
 	if c.Hub != nil {
-		hCtx := c.Hub.Context()
-		if hCtx != nil {
-			select {
-			case c.Hub.Unregister <- c:
-			case <-hCtx.Done():
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		} else {
-			select {
-			case c.Hub.Unregister <- c:
-			default:
-				c.closeOnce.Do(func() { safeClose(c.Send) })
-			}
-		}
+		c.Hub.unregisterClient(c.ctx, c)
 	}
 }
 

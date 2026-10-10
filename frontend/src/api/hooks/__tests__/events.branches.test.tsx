@@ -1,3 +1,5 @@
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 /**
  * @fileoverview Wave session-15 branch top-up for `src/api/hooks/events.ts`.
  *
@@ -23,7 +25,7 @@
  * see controlled responses.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -93,6 +95,7 @@ const freshClient = () =>
   })
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: "feed-test-user" } as UserState, loading: false })
   allEventsMock.mockReset()
   myEventsMock.mockReset()
   getEventMock.mockReset()
@@ -100,6 +103,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
+  useAuthStore.setState({ user: null, loading: true })
   if (typeof window !== "undefined") window.localStorage.clear()
 })
 
@@ -421,7 +426,10 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
   it("seeds events from localStorage when no network response yet", async () => {
     const stored = [makeEvent("p1"), makeEvent("p2")]
     // key shape: events:list:<language>:<activity>; is_active=true → "active"
-    window.localStorage.setItem("events:list:ru:active", JSON.stringify(stored))
+    window.localStorage.setItem(
+      "events:list:account:feed-test-user:ru:active",
+      JSON.stringify(stored)
+    )
 
     // queryFn never resolves so placeholder is the only data source
     let resolveFn: (v: unknown) => void = () => {}
@@ -461,7 +469,7 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
   })
 
   it("returns no placeholder when stored items are empty/missing", async () => {
-    window.localStorage.setItem("events:list:ru:archive", JSON.stringify([]))
+    window.localStorage.setItem("events:list:account:feed-test-user:ru:archive", JSON.stringify([]))
     allEventsMock.mockResolvedValue(okPage([], null))
 
     const queryClient = freshClient()
@@ -473,7 +481,8 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 
-  it("uses distinct all/archive snapshots and preserves the infinite-page shape", () => {
+  it("uses distinct all/archive snapshots and preserves the infinite-page shape", async () => {
+    allEventsMock.mockResolvedValue(okPage([makeEvent("unexpected-fetch")]))
     const scenarios = [
       { is_active: null, activity: "all", id: "all-snapshot" },
       { is_active: false, activity: "archive", id: "archive-snapshot" },
@@ -481,7 +490,7 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
 
     for (const scenario of scenarios) {
       const stored = [makeEvent(scenario.id)]
-      const key = `events:list:ru:${scenario.activity}`
+      const key = `events:list:account:feed-test-user:ru:${scenario.activity}`
       window.localStorage.setItem(key, JSON.stringify(stored))
       const queryClient = freshClient()
       const { result, unmount } = renderHook(
@@ -490,6 +499,11 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
         { wrapper: makeWrapper(queryClient) }
       )
 
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      })
+      expect(allEventsMock).not.toHaveBeenCalled()
+      expect(result.current.fetchStatus).toBe("idle")
       expect(result.current.data).toEqual({
         pages: [
           {
@@ -510,7 +524,10 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
 
   it("does not create a placeholder for non-array or empty persisted values", () => {
     for (const value of [{ invalid: true }, []]) {
-      window.localStorage.setItem("events:list:ru:all", JSON.stringify(value))
+      window.localStorage.setItem(
+        "events:list:account:feed-test-user:ru:all",
+        JSON.stringify(value)
+      )
       const queryClient = freshClient()
       const { result, unmount } = renderHook(
         () => useEventsListQuery({ language: "ru", is_active: null }, { enabled: false }),
@@ -518,18 +535,18 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
       )
       expect(result.current.data).toBeUndefined()
       unmount()
-      window.localStorage.removeItem("events:list:ru:all")
+      window.localStorage.removeItem("events:list:account:feed-test-user:ru:all")
     }
   })
 
   it("placeholder swallows malformed JSON gracefully", async () => {
-    window.localStorage.setItem("events:list:ru:all", "{not-json")
+    window.localStorage.setItem("events:list:account:feed-test-user:ru:all", "{not-json")
     allEventsMock.mockResolvedValue(okPage([], null))
 
     const queryClient = freshClient()
     const { result } = await withExpectedConsole(
       "warn",
-      '[Storage] Failed to parse key "events:list:ru:all"',
+      '[Storage] Failed to parse key "events:list:account:feed-test-user:ru:all"',
       () =>
         renderHook(() => useEventsListQuery({ language: "ru", is_active: null }), {
           wrapper: makeWrapper(queryClient),
@@ -550,7 +567,7 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
       const queryClient = freshClient()
       const { result } = await withExpectedConsole(
         "warn",
-        '[Storage] Failed to parse key "events:list:ru:all"',
+        '[Storage] Failed to parse key "events:list:account:feed-test-user:ru:all"',
         () =>
           renderHook(() => useEventsListQuery({ language: "ru" }), {
             wrapper: makeWrapper(queryClient),

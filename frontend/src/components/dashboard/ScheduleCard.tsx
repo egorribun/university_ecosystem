@@ -112,9 +112,8 @@ export const ScheduleCard = memo(function ScheduleCard({
     ? dashboardScheduleQuery.isLoading && schedule.length === 0
     : false
 
-  // CQ-72-02: removed useMemo — nowParity() is microsecond-cheap (Date + arithmetic),
-  // and empty deps [] made it stale in long-lived tabs (wouldn't update after midnight)
-  const parity = nowParity()
+  // Keep parity on the same local clock snapshot as the schedule day and time.
+  const parity = nowParity(time)
   const todayIndex = time.getDay()
 
   // These arrays are tiny and are intentionally read on every render.  Keeping

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import socket
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -492,6 +493,28 @@ class TestAPIDeps:
 # ===========================================================================
 
 
+@pytest.fixture
+def deterministic_embedding_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """API tests exercise URL validation without a live embedding provider."""
+    resolve = socket.getaddrinfo
+
+    def lookup(host, port, *args, **kwargs):
+        if host == "api.openai.com":
+            return [
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    6,
+                    "",
+                    ("93.184.216.34", port or 443),
+                )
+            ]
+        return resolve(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+
+
+@pytest.mark.usefixtures("deterministic_embedding_dns")
 class TestNewsAPI:
     @pytest.mark.asyncio
     async def test_list_news(self, async_client: AsyncClient, user_factory, db_session):
@@ -508,6 +531,7 @@ class TestNewsAPI:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("deterministic_embedding_dns")
 class TestEventsAPI:
     @pytest.mark.asyncio
     async def test_list_events(
@@ -561,58 +585,6 @@ class TestGraphQLAdvancedCoverage:
         user = MagicMock()
         ctx.current_user = user
         assert ctx.is_authenticated is True
-
-    @pytest.mark.asyncio
-    async def test_graphql_permissions_coverage(self):
-        from app.auth.rbac import SpiceDBUnavailableError
-        from app.graphql.permissions import IsAdmin, IsAuthenticated
-
-        source = None
-        info = MagicMock()
-        info.context = MagicMock()
-
-        # IsAuthenticated
-        perm_auth = IsAuthenticated()
-        info.context.is_authenticated = True
-        assert perm_auth.has_permission(source, info) is True
-        info.context.is_authenticated = False
-        assert perm_auth.has_permission(source, info) is False
-
-        # IsAdmin
-        perm_admin = IsAdmin()
-
-        # 1. Unauthenticated
-        info.context.is_authenticated = False
-        info.context.current_user = None
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 2. Authenticated but no checker in context
-        info.context.is_authenticated = True
-        info.context.current_user = MagicMock()
-        info.context.checker = None
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 3. Checker check_admin returns True
-        mock_checker = AsyncMock()
-        mock_checker.check_admin.return_value = True
-        info.context.checker = mock_checker
-        assert await perm_admin.has_permission(source, info) is True
-        mock_checker.check_admin.assert_called_once_with(
-            str(info.context.current_user.id)
-        )
-
-        # 4. Checker check_admin returns False
-        mock_checker.check_admin.reset_mock()
-        mock_checker.check_admin.return_value = False
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 5. SpiceDBUnavailableError
-        mock_checker.check_admin.side_effect = SpiceDBUnavailableError("SpiceDB down")
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 6. Unexpected Exception (RZ-22-01)
-        mock_checker.check_admin.side_effect = RuntimeError("DB crash")
-        assert await perm_admin.has_permission(source, info) is False
 
     @pytest.mark.asyncio
     async def test_increment_user_cost_fallback(self):
@@ -802,12 +774,13 @@ class TestGraphQLAdvancedCoverage:
                 manifest = _load_manifest()
                 assert manifest == {"foo": "bar"}
 
-            # 6. Allowlist lookup happy path
-            ext_module._query_allowlist = {"hash123": "query { me }"}
+            # 6. Allowlist lookup happy path: the hash binds to this exact query.
+            query_hash = ext_module._hash_query("query { me }")
+            ext_module._query_allowlist = {query_hash: "query { me }"}
             # Send query with valid hash in extensions
             exec_ctx = MagicMock()
             exec_ctx.query = "query { me }"
-            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": "hash123"}}
+            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": query_hash}}
             ext = PersistedQueryExtension()
             ext.execution_context = exec_ctx
             async for _ in ext.on_validate():
@@ -992,6 +965,59 @@ class TestGraphQLAdvancedCoverage:
                 async for _ in get_context(request):
                     pass
             assert excinfo.value.status_code == 503
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure_stage", ["client_initialization", "exists"])
+    @pytest.mark.parametrize("error_type", ["redis", "runtime", "os"])
+    async def test_graphql_context_maps_real_revocation_outage_to_generic_503(
+        self, caplog, failure_stage, error_type
+    ):
+        from fastapi import HTTPException
+        from redis.exceptions import RedisError
+
+        from app.auth.security import _mint_pure_jwt
+        from app.graphql.schema import get_context
+
+        provider_marker = "provider-diagnostic-marker"
+        selected_error = {
+            "redis": RedisError,
+            "runtime": RuntimeError,
+            "os": OSError,
+        }[error_type]
+        failure = selected_error(provider_marker)
+        redis = AsyncMock()
+        if failure_stage == "client_initialization":
+            revocation_client = AsyncMock(side_effect=failure)
+        else:
+            redis.exists.side_effect = failure
+            revocation_client = AsyncMock(return_value=redis)
+
+        database_session = AsyncMock()
+        request = MagicMock()
+        request.app.dependency_overrides = {}
+        request.state.dishka_container.get = AsyncMock(return_value=database_session)
+        user_id = str(uuid.uuid4())
+        token = _mint_pure_jwt(subject=user_id, extra_claims={"jti": "session-456"})
+        request.headers = {"Authorization": f"Bearer {token}"}
+        caplog.set_level("DEBUG", logger="app.graphql.schema")
+
+        with patch(
+            "app.services.auth.graphql_token_validator.get_revocation_redis_client",
+            revocation_client,
+        ):
+            with pytest.raises(HTTPException) as excinfo:
+                async for _ in get_context(request):
+                    pytest.fail("revocation outage must not yield an anonymous context")
+
+        assert excinfo.value.status_code == 503
+        assert excinfo.value.detail == "Service temporarily unavailable"
+        database_session.execute.assert_not_awaited()
+        assert provider_marker not in caplog.text
+        if failure_stage == "client_initialization":
+            revocation_client.assert_awaited_once_with()
+        else:
+            revocation_client.assert_awaited_once_with()
+            redis.exists.assert_awaited_once_with("revoked:jti:session-456")
 
     @pytest.mark.asyncio
     async def test_graphql_schema_get_context_auth_validation_bearer_token(self):

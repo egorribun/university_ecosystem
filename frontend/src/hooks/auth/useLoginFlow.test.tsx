@@ -58,8 +58,10 @@ vi.mock("react-i18next", () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.login.mockResolvedValue(null)
-  mocks.submitMfaChallenge.mockResolvedValue(undefined)
-  mocks.resendEmailMfaChallenge.mockResolvedValue({
+  // A case may queue both actions but exercise only one. Clear unused once
+  // responses as well as call history before installing the next defaults.
+  mocks.submitMfaChallenge.mockReset().mockResolvedValue(undefined)
+  mocks.resendEmailMfaChallenge.mockReset().mockResolvedValue({
     method: "email_otp",
     challenge_token: "ct-email-rotated",
     challenge_expires_at: "2026-08-25T16:00:00Z",
@@ -277,6 +279,33 @@ describe("useLoginForm.onSubmit", () => {
     })
     await waitFor(() => expect(result.current.submitError).toBe("Invalid credentials"))
   })
+
+  it.each(["Could not validate credentials", "Не удалось подтвердить учётные данные"])(
+    "uses the UI's generic login message for a backend 401 (%s)",
+    async (detail) => {
+      const error = new AxiosError("Request failed with status code 401")
+      error.response = {
+        status: 401,
+        headers: {},
+        data: { detail },
+        statusText: "Unauthorized",
+        config: {} as never,
+      }
+      mocks.login.mockRejectedValue(error)
+      const { result } = renderHook(() => useLoginForm())
+      act(() => {
+        result.current.form.setValue("email", "a@b.dev")
+        result.current.form.setValue("password", "Password123!")
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      await waitFor(() => expect(result.current.submitError).toBe("auth:login.error"))
+      expect(mocks.navigate).not.toHaveBeenCalled()
+    }
+  )
 
   it("keeps the translated fallback when login rejects with a non-Error value", async () => {
     mocks.login.mockRejectedValue("authentication unavailable")

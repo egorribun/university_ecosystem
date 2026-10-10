@@ -8,12 +8,12 @@ import path from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { runInNewContext } from "node:vm"
 import yaml from "js-yaml"
 import {
   PRESENTATION_IGNORER,
   canonicalInstrumenterConfig,
 } from "./stryker-presentation-ignorer.mjs"
+import { canonicalTypeScriptCheckerConfig } from "./stryker-checker-config.mjs"
 
 const runnerUrl = new URL("./run-stryker.mjs", import.meta.url)
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*"]
@@ -836,81 +836,357 @@ test("actual Stryker configuration opts in only exact 1 while preserving release
       assert.equal(config.dryRunTimeoutMinutes, 30)
       assert.equal(config.incremental, false)
       assert.equal(config.coverageAnalysis, "perTest")
+      assert.deepEqual(config.checkers, ["typescript"])
+      assert.equal(config.tsconfigFile, "tsconfig.json")
+      assert.deepEqual(config.typescriptChecker, {
+        prioritizePerformanceOverAccuracy: false,
+        experimentalNativePreview: false,
+      })
       assert.deepEqual(config.mutator, { plugins: null, excludedMutations: [] })
       assert.deepEqual(config.ignorers, [PRESENTATION_IGNORER])
     }
 })
 
-test("formats Vitest null-prototype errors without weakening native String", async () => {
-  const safeStringModuleUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
-  const { formatSerializedError, safeString } = await import(safeStringModuleUrl)
-  const serialized = Object.create(null)
-  serialized.name = "TypeError"
-  serialized.message = "mutant callback failed"
-  serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
+test("actual Stryker configuration matches the shared checker contract", async () => {
+  const config = (await import(new URL("../stryker.config.mjs?checker-contract", import.meta.url)))
+    .default
+  const { canonicalTypeScriptCheckerConfig } = await import("./validate-stryker-inventory.mjs")
 
-  assert.equal(
-    formatSerializedError(serialized),
-    "TypeError: mutant callback failed\n    at mutant-test"
+  assert.deepEqual(
+    {
+      checkers: config.checkers,
+      tsconfigFile: config.tsconfigFile,
+      typescriptChecker: config.typescriptChecker,
+    },
+    canonicalTypeScriptCheckerConfig
   )
-  assert.equal(safeString(serialized), "TypeError: mutant callback failed\n    at mutant-test")
-  assert.equal(String(42), "42")
-  assert.equal(String(Symbol("native")), "Symbol(native)")
-  assert.equal(new safeString(42).valueOf(), "42")
-  assert.equal(new safeString(42) instanceof String, true)
-  assert.equal(safeString.raw({ raw: ["left", "right"] }, "-"), "left-right")
-
-  const throwingPrimitive = {
-    [Symbol.toPrimitive]() {
-      throw new Error("native conversion failure")
-    },
-  }
-  assert.throws(() => String(throwingPrimitive), /native conversion failure/u)
-
-  const throwingTypeErrorPrimitive = {
-    [Symbol.toPrimitive]() {
-      throw new TypeError("ordinary conversion failure")
-    },
-  }
-  assert.throws(() => safeString(throwingTypeErrorPrimitive), /ordinary conversion failure/u)
 })
 
-test("Stryker preload safely formats the child error object through NODE_OPTIONS", async () => {
-  const safeStringModulePath = fileURLToPath(
-    new URL("./stryker-safe-error-string.mjs", import.meta.url)
+test("pins the checker dependency and records the TypeScript alias and runtime separately", async () => {
+  const packageManifest = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8")
   )
-  const preloadOption = `--import=${pathToFileURL(safeStringModulePath).href}`
-  const childScript = String.raw`
-    const serialized = Object.create(null)
-    serialized.name = "TypeError"
-    serialized.message = "mutant callback failed"
-    serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
-    process.stdout.write(JSON.stringify({
-      formatted: String(serialized),
-      ordinary: String(42),
-      symbol: String(Symbol("native")),
-    }))
-  `
+  const packageLock = JSON.parse(
+    await readFile(new URL("../package-lock.json", import.meta.url), "utf8")
+  )
+  const checkerLock = packageLock.packages["node_modules/@stryker-mutator/typescript-checker"]
+  const typescriptLock = packageLock.packages["node_modules/typescript"]
+  const typescriptManifest = JSON.parse(
+    await readFile(new URL("../node_modules/typescript/package.json", import.meta.url), "utf8")
+  )
+  const { createRequire } = await import("node:module")
+  const typescriptRuntime = createRequire(import.meta.url)("typescript")
 
-  const { stdout } = await execFileAsync(
-    process.execPath,
-    ["--input-type=module", "-e", childScript],
+  assert.equal(packageManifest.devDependencies["@stryker-mutator/typescript-checker"], "10.0.0")
+  assert.equal(
+    packageLock.packages[""].devDependencies["@stryker-mutator/typescript-checker"],
+    "10.0.0"
+  )
+  assert.equal(checkerLock.version, "10.0.0")
+  assert.match(checkerLock.integrity, /^sha512-[A-Za-z0-9+/]+=*$/u)
+  assert.equal(packageManifest.devDependencies.typescript, "npm:@typescript/typescript6@^6.0.2")
+  assert.equal(
+    packageLock.packages[""].devDependencies.typescript,
+    packageManifest.devDependencies.typescript
+  )
+  assert.equal(typescriptLock.name, "@typescript/typescript6")
+  assert.equal(typescriptLock.version, "6.0.2")
+  assert.equal(typescriptManifest.name, "@typescript/typescript6")
+  assert.equal(typescriptManifest.version, typescriptLock.version)
+  assert.equal(typescriptRuntime.version, "6.0.3")
+})
+
+const adapterUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
+const utilUrl = import.meta.resolve("@stryker-mutator/util")
+const errorUrl = new URL("./errors.js", utilUrl).href
+const serializerUrl = import.meta.resolve("@vitest/utils/error")
+const strykerApiUrl = import.meta.resolve("@stryker-mutator/api/test-runner")
+const vitestRunnerUrl = new URL(
+  "./vitest-test-runner.js",
+  import.meta.resolve("@stryker-mutator/vitest-runner")
+).href
+const reporterUrl = new URL(
+  "./reporters/mutation-test-report-helper.js",
+  import.meta.resolve("@stryker-mutator/core")
+).href
+
+async function runChild(source, { enabled = "1", preload = adapterUrl, extraArgs = [] } = {}) {
+  return execFileAsync(process.execPath, [...extraArgs, "--input-type=module", "-e", source], {
+    env: {
+      ...process.env,
+      NODE_OPTIONS: preload ? `--import=${preload.href}` : "",
+      STRYKER_SHARD_RUN: enabled,
+    },
+    encoding: "utf8",
+    timeout: 10_000,
+  })
+}
+
+const applicationProbe = String.raw`
+  const results = []
+  const sentinel = new TypeError("Cannot convert object to primitive value")
+  const cases = [undefined, null, false, 0, 42, 42n, Symbol("native"), {}, [], new String("boxed")]
+  for (const value of cases) results.push(String(value))
+  for (const kind of ["badPrimitive", "matchingTypeError", "throwingGetter", "badMethods", "proxy"]) {
+    const events = []
+    let value
+    if (kind === "badPrimitive") value = { [Symbol.toPrimitive](hint) { events.push(hint); return {} } }
+    if (kind === "matchingTypeError") value = { [Symbol.toPrimitive](hint) { events.push(hint); throw sentinel } }
+    if (kind === "throwingGetter") value = { get [Symbol.toPrimitive]() { events.push("getter"); throw sentinel } }
+    if (kind === "badMethods") value = { toString() { events.push("toString"); return {} }, valueOf() { events.push("valueOf"); return {} } }
+    if (kind === "proxy") value = new Proxy({ [Symbol.toPrimitive]() { events.push("coerce"); return {} } }, { get(target, key, receiver) { events.push(typeof key === "symbol" ? key.description : key); return Reflect.get(target, key, receiver) } })
+    try { results.push({ kind, returned: String(value), events }) }
+    catch (error) { results.push({ kind, error: error.message, sentinel: error === sentinel, events }) }
+  }
+  try { results.push({ constructorSymbol: new String(Symbol("constructor")).valueOf() }) }
+  catch (error) { results.push({ constructorSymbolError: error.message }) }
+  const record = Object.assign(Object.create(null), { message: "ordinary object" })
+  try { results.push({ record: String(record) }) }
+  catch (error) { results.push({ recordError: error.message }) }
+  class StringSubclass extends String {}
+  const boxed = new StringSubclass(42)
+  results.push({ native: String === "".constructor, constructor: String.prototype.constructor === String, boxed: boxed.valueOf(), subclass: boxed instanceof StringSubclass, string: boxed instanceof String, raw: String.raw({raw:["a", "b"]}, "-"), noArgument: String(), explicitUndefined: new String(undefined).valueOf() })
+  process.stdout.write(JSON.stringify(results))
+`
+
+test("Stryker diagnostic preload preserves all native application String conversions", async () => {
+  const native = await runChild(applicationProbe, { preload: null })
+  const adapted = await runChild(applicationProbe)
+  assert.equal(adapted.stdout, native.stdout)
+})
+
+test("Stryker diagnostic preload is inactive without the producer flag", async () => {
+  for (const enabled of ["", "0", "true"]) {
+    const result = await runChild(
+      `
+      import { errorToString } from ${JSON.stringify(utilUrl)}
+      import { serializeError } from ${JSON.stringify(serializerUrl)}
+      let threw = false
+      try { errorToString(serializeError(new Error("unadapted"))) } catch { threw = true }
+      process.stdout.write(JSON.stringify({ native: String === "".constructor, threw }))
+    `,
+      { enabled }
+    )
+    assert.deepEqual(JSON.parse(result.stdout), { native: true, threw: true })
+  }
+})
+
+test("Stryker diagnostics preserve actual Vitest errors through structured cloning", async () => {
+  const result = await runChild(`
+    import assert from "node:assert/strict"
+    import { errorToString } from ${JSON.stringify(utilUrl)}
+    import { serializeError } from ${JSON.stringify(serializerUrl)}
+    const error = new TypeError("mutant callback failed")
+    error.stack = "TypeError: mutant callback failed\\n    at mutant-test"
+    const record = serializeError(error)
+    const plain = structuredClone(record)
+    assert.equal(Object.getPrototypeOf(record), null)
+    assert.equal(Object.getPrototypeOf(plain), Object.prototype)
+    assert.equal(typeof plain.toString, "string")
+    assert.equal(errorToString(record), error.stack)
+    assert.equal(errorToString(plain), error.stack)
+    assert.throws(() => String(record), TypeError)
+    assert.throws(() => String(plain), TypeError)
+    const normal = [undefined, null, false, 0, "", "failure", 42, Symbol("failure"), {}, error]
+    process.stdout.write(JSON.stringify(normal.map(errorToString)))
+  `)
+  const native = await runChild(
+    `
+    import { errorToString } from ${JSON.stringify(utilUrl)}
+    const error = new TypeError("mutant callback failed")
+    error.stack = "TypeError: mutant callback failed\\n    at mutant-test"
+    process.stdout.write(JSON.stringify([undefined, null, false, 0, "", "failure", 42, Symbol("failure"), {}, error].map(errorToString)))
+  `,
+    { preload: null }
+  )
+  assert.equal(result.stdout, native.stdout)
+})
+
+test("Stryker diagnostic fallback reads data without retrying coercion or invoking accessors", async () => {
+  const { formatStrykerErrorValue } = await import("./stryker-error-formatter.mjs")
+  let coercions = 0
+  let getters = 0
+  const value = {
+    [Symbol.toPrimitive]() {
+      coercions++
+      return {}
+    },
+    get stack() {
+      getters++
+      throw new Error("must not invoke stack getter")
+    },
+    name: "TypeError",
+    message: "original diagnostic",
+  }
+  assert.equal(formatStrykerErrorValue(value), "TypeError: original diagnostic")
+  assert.equal(coercions, 1)
+  assert.equal(getters, 0)
+  for (const [properties, expected] of [
+    [{ stack: "original stack", name: "Error", message: "message" }, "original stack"],
+    [{ message: "message" }, "message"],
+    [{ name: "Error" }, "Error"],
+    [{}, "<unserializable error object>"],
+  ])
+    assert.equal(formatStrykerErrorValue(Object.assign(Object.create(null), properties)), expected)
+  const events = []
+  const proxy = new Proxy(
+    {},
     {
-      cwd: path.dirname(safeStringModulePath),
-      env: {
-        ...process.env,
-        NODE_OPTIONS: preloadOption,
-        STRYKER_SHARD_RUN: "1",
+      get() {
+        events.push("get")
+        throw new Error("proxy coercion")
       },
-      encoding: "utf8",
+      getOwnPropertyDescriptor() {
+        events.push("descriptor")
+        throw new Error("must not inspect")
+      },
     }
   )
+  assert.equal(formatStrykerErrorValue(proxy), "<unserializable error object>")
+  assert.deepEqual(events, ["get"])
+})
 
-  assert.deepEqual(JSON.parse(stdout), {
-    formatted: "TypeError: mutant callback failed\n    at mutant-test",
-    ordinary: "42",
-    symbol: "Symbol(native)",
-  })
+test("Stryker diagnostic repair retains the real runner and RuntimeError report classification", async () => {
+  const result = await runChild(`
+    import assert from "node:assert/strict"
+    import { serializeError } from ${JSON.stringify(serializerUrl)}
+    import { VitestTestRunner } from ${JSON.stringify(vitestRunnerUrl)}
+    import { toMutantRunResult } from ${JSON.stringify(strykerApiUrl)}
+    import { MutationTestReportHelper } from ${JSON.stringify(reporterUrl)}
+    const error = new TypeError("actual unhandled error")
+    error.stack = "TypeError: actual unhandled error\\n    at mutation-fixture"
+    const runner = Object.create(VitestTestRunner.prototype)
+    runner.options = { vitest: { related: false } }
+    runner.ctx = {
+      config: {}, projects: [], start: async () => {},
+      state: { filesMap: new Map(), errorsSet: new Set([structuredClone(serializeError(error))]), getFiles: () => [] },
+    }
+    const dryRun = await runner.run()
+    assert.equal(dryRun.status, "error")
+    assert.match(dryRun.errorMessage, /actual unhandled error/)
+    const mutantRun = toMutantRunResult(dryRun)
+    const helper = Object.create(MutationTestReportHelper.prototype)
+    helper.partialResults = []
+    helper.reporter = { onMutantTested() {} }
+    const report = helper.reportMutantRunResult({ id: "1", location: { start: { line: 0, column: 0 }, end: { line: 0, column: 1 } } }, mutantRun)
+    assert.equal(report.status, "RuntimeError")
+    assert.equal(report.statusReason, dryRun.errorMessage)
+    process.stdout.write(JSON.stringify(report))
+  `)
+  assert.equal(JSON.parse(result.stdout).status, "RuntimeError")
+})
+
+test("Stryker diagnostic preload reaches inherited workers and nested processes", async () => {
+  const probe = `
+    import { errorToString } from ${JSON.stringify(utilUrl)}
+    import { serializeError } from ${JSON.stringify(serializerUrl)}
+    export const result = { native: String === "".constructor, formatted: errorToString(serializeError(new Error("inherited transport error"))) }
+  `
+  const result = await runChild(`
+    import { Worker } from "node:worker_threads"
+    import { once } from "node:events"
+    import { execFileSync } from "node:child_process"
+    const workerCode = ${JSON.stringify(probe)} + ';import {parentPort} from "node:worker_threads";parentPort.postMessage(result)'
+    const worker = new Worker(new URL('data:text/javascript,' + encodeURIComponent(workerCode)))
+    const [thread] = await once(worker, "message")
+    const processCode = ${JSON.stringify(probe)} + ';process.stdout.write(JSON.stringify(result))'
+    const child = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", processCode], {encoding:"utf8"}))
+    process.stdout.write(JSON.stringify({ thread, child }))
+  `)
+  for (const value of Object.values(JSON.parse(result.stdout))) {
+    assert.equal(value.native, true)
+    assert.match(value.formatted, /inherited transport error/)
+  }
+})
+
+test("Stryker diagnostic adapter rejects source and package drift", async () => {
+  const { rewriteStrykerErrorFormatter } = await import(adapterUrl)
+  const source = await readFile(new URL(errorUrl), "utf8")
+  assert.throws(
+    () => rewriteStrykerErrorFormatter(source, { name: "wrong", version: "10.0.0" }),
+    /requires/
+  )
+  assert.throws(
+    () =>
+      rewriteStrykerErrorFormatter(source, { name: "@stryker-mutator/util", version: "10.0.1" }),
+    /requires/
+  )
+  assert.throws(
+    () =>
+      rewriteStrykerErrorFormatter(`${source}\n`, {
+        name: "@stryker-mutator/util",
+        version: "10.0.0",
+      }),
+    /source changed/
+  )
+})
+
+test("Stryker diagnostic adapter rejects missing or malformed checksum records", async () => {
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-checksum-contract-"))
+  const fixtureAdapter = pathToFileURL(path.join(fixtureRoot, "stryker-safe-error-string.mjs"))
+  const fixtureChecksum = path.join(fixtureRoot, "stryker-util-errors.sha256")
+  const checksum = await readFile(new URL("./stryker-util-errors.sha256", import.meta.url), "utf8")
+  try {
+    await writeFile(fixtureAdapter, await readFile(adapterUrl, "utf8"))
+    await assert.rejects(
+      runChild("", { enabled: "0", preload: fixtureAdapter }),
+      /ENOENT.*stryker-util-errors\.sha256/su
+    )
+    for (const malformed of [
+      "",
+      checksum.slice(1),
+      checksum.toUpperCase(),
+      checksum.replace("  ", " "),
+      checksum.replace("dist/src/errors.js", "dist/src/other.js"),
+      checksum.replace("dist/src/errors.js", "../dist/src/errors.js"),
+      checksum + checksum,
+      checksum + "unexpected trailing data\n",
+    ]) {
+      await writeFile(fixtureChecksum, malformed)
+      await assert.rejects(
+        runChild("", { enabled: "0", preload: fixtureAdapter }),
+        /checksum record is malformed/u
+      )
+    }
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true })
+  }
+})
+
+test("Stryker diagnostic adapter refuses a formatter cached by an earlier preload", async () => {
+  await assert.rejects(
+    runChild(
+      `
+    await import(${JSON.stringify(errorUrl)})
+    await import(${JSON.stringify(adapterUrl.href)})
+  `,
+      { preload: null }
+    ),
+    /loaded before its adapter/
+  )
+})
+
+test("Stryker diagnostic adapter refuses load hooks that change the guarded module", async () => {
+  for (const change of [
+    'return { ...loaded, source: String(loaded.source) + "\\n" }',
+    'return { ...loaded, format: "commonjs" }',
+  ]) {
+    await assert.rejects(
+      runChild(
+        `
+      import { registerHooks } from "node:module"
+      registerHooks({ load(url, context, nextLoad) {
+        const loaded = nextLoad(url, context)
+        if (url !== ${JSON.stringify(errorUrl)}) return loaded
+        ${change}
+      } })
+      await import(${JSON.stringify(adapterUrl.href)})
+    `,
+        { preload: null }
+      ),
+      /source changed|module format changed/
+    )
+  }
 })
 
 test("Stryker child environment preserves NODE_OPTIONS and appends the trusted preload", async () => {
@@ -4843,6 +5119,7 @@ test("merges split mutation-range reports without duplicate or misplaced mutants
         schemaVersion: "1.0",
         config: {
           mutate: shard.files,
+          ...canonicalTypeScriptCheckerConfig,
           coverageAnalysis: "perTest",
           incremental: false,
           mutator: { plugins: null, excludedMutations: [] },
@@ -4954,75 +5231,91 @@ test("historical Stryker costs are bound to the exact source SHA, config, and vi
   )
 })
 
-test("pre-checkout Stryker selector binds source SHA, tested SHA, attempt, and digest", async () => {
+test("nightly Stryker preflight selection binds SHA, run attempt, and immutable selector output", async () => {
   const workflow = yaml.load(
-    await readFile(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8")
+    await readFile(
+      new URL("../../.github/workflows/nightly-full-gate.yml", import.meta.url),
+      "utf8"
+    )
   )
-  const script = workflow.jobs["stryker-preflight"].steps[0].with.script
-  const sourceSha = "a".repeat(40)
-  const testedSha = "b".repeat(40)
-  const prior = {
-    id: 17,
-    name: `frontend-mutation-historical-costs-42-1-${testedSha}`,
-    size_in_bytes: 1024,
-    expired: false,
-    digest: `sha256:${"c".repeat(64)}`,
-    workflow_run: { id: 42, head_sha: sourceSha },
-  }
-  const current = { ...prior, id: 18, name: `frontend-mutation-historical-costs-42-2-${testedSha}` }
-  const execute = async ({ runHeadSha = sourceSha, artifacts = [prior, current] } = {}) => {
-    const outputs = new Map()
-    await runInNewContext(`(async () => {\n${script}\n})()`, {
-      context: { repo: { owner: "example", repo: "university" }, runId: 42 },
-      process: {
-        env: {
-          ARTIFACT_PREFIX: "frontend-mutation-historical-costs-",
-          ARTIFACT_SUFFIX: testedSha,
-          ATTEMPT_POLICY: "earlier",
-          ALLOW_EMPTY: "true",
-          SOURCE_SHA: sourceSha,
-          TESTED_SHA: testedSha,
-          RUN_ATTEMPT: "2",
-          PR_BRANCH: "egorribun",
-        },
-      },
-      github: {
-        rest: {
-          actions: {
-            getWorkflowRun: async () => ({
-              data: {
-                id: 42,
-                run_attempt: 2,
-                head_sha: runHeadSha,
-                event: "pull_request",
-                path: ".github/workflows/ci.yml",
-                head_branch: "egorribun",
-                repository: { full_name: "example/university" },
-              },
-            }),
-            listWorkflowRunArtifacts: async () => ({
-              data: { total_count: artifacts.length, artifacts },
-            }),
-          },
-        },
-      },
-      core: { setOutput: (key, value) => outputs.set(key, value) },
-    })
-    return outputs
-  }
+  const producer = workflow.jobs["frontend-mutation-preflight"]
+  const generation = producer.steps.find(
+    ({ name }) => name === "Generate canonical immutable Stryker preflight"
+  )
+  const upload = producer.steps.find(({ name }) => name === "Upload immutable Stryker preflight")
+  assert.equal(producer.if, "${{ github.ref == 'refs/heads/main' }}")
+  assert.equal(generation.run, "npm run test:mutation")
 
-  const selected = await execute()
-  assert.equal(selected.get("artifact_id"), "17")
-  assert.equal(selected.get("artifact_name"), prior.name)
-  assert.equal(selected.get("artifact_digest"), prior.digest)
-  assert.equal(selected.get("producer_attempt"), "1")
-  await assert.rejects(execute({ runHeadSha: testedSha }), /workflow identity mismatch/u)
-  await assert.rejects(
-    execute({ artifacts: [{ ...prior, workflow_run: { id: 42, head_sha: testedSha } }] }),
-    /candidate provenance is invalid/u
+  const runId = "42"
+  const runAttempt = "2"
+  const sourceSha = "a".repeat(40)
+  const testedSha = sourceSha
+  const artifactNameTemplate = upload.with.name
+  assert.equal(
+    artifactNameTemplate,
+    "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}"
+  )
+  const artifactName = artifactNameTemplate
+    .replace("${{ github.run_id }}", runId)
+    .replace("${{ github.run_attempt }}", runAttempt)
+    .replace("${{ github.sha }}", testedSha)
+  assert.equal(artifactName, `frontend-mutation-preflight-${runId}-${runAttempt}-${testedSha}`)
+
+  const shards = workflow.jobs["frontend-mutation-shards"]
+  const selector = shards.steps.find(
+    ({ name }) => name === "Select immutable same-run Stryker preflight candidate"
+  )
+  assert.equal(selector.id, "select_stryker_preflight")
+  assert.equal(selector.env.GH_TOKEN, "${{ github.token }}")
+  assert.ok(selector.run.includes("scripts/quality/select_same_run_artifact_cli.py"))
+  for (const argument of [
+    '--run-id "${{ github.run_id }}"',
+    '--consumer-run-attempt "${{ github.run_attempt }}"',
+    '--commit-sha "${{ github.sha }}"',
+    '--run-head-sha "${{ github.sha }}"',
+    '--workflow-path ".github/workflows/nightly-full-gate.yml"',
+    '--artifact-prefix "frontend-mutation-preflight-"',
+    '--artifact-suffix "${{ github.sha }}"',
+    "--attempt-policy current-or-earlier",
+  ]) {
+    assert.ok(selector.run.includes(argument), argument)
+  }
+  assert.equal(sourceSha, testedSha)
+
+  const download = shards.steps.find(
+    ({ name }) => name === "Download selected Stryker preflight candidate"
+  )
+  assert.equal(
+    download.with["artifact-ids"],
+    "${{ steps.select_stryker_preflight.outputs.artifact_id }}"
+  )
+  assert.equal(download.with.repository, "${{ github.repository }}")
+  assert.equal(download.with["run-id"], "${{ github.run_id }}")
+  assert.equal(download.with["github-token"], "${{ github.token }}")
+  assert.equal(
+    download.with.path,
+    "frontend/reports/mutation/preflight-candidates/${{ steps.select_stryker_preflight.outputs.artifact_name }}"
+  )
+  const verification = shards.steps.find(
+    ({ name }) => name === "Verify selected Stryker preflight payload"
+  )
+  assert.equal(
+    verification.env.ARTIFACT_NAME,
+    "${{ steps.select_stryker_preflight.outputs.artifact_name }}"
+  )
+
+  const validatePayload = shards.steps.find(
+    ({ name }) => name === "Validate immutable Stryker preflight before execution"
+  )
+  assert.equal(validatePayload["working-directory"], "frontend")
+  assert.equal(validatePayload.env.STRYKER_PREFLIGHT_MODE, "validate")
+  assert.equal(validatePayload.run, "npm run test:mutation")
+  assert.ok(shards.steps.indexOf(validatePayload) > shards.steps.indexOf(verification))
+  assert.ok(
+    shards.steps.indexOf(validatePayload) <
+      shards.steps.findIndex(({ name }) => name === "Run fresh nightly Stryker shard")
   )
 })
-
 test("offline cross-run replan consumes immutable baseline without rerunning instrumenter", async () => {
   const {
     buildEvidenceIdentity,
@@ -5868,6 +6161,7 @@ test("rejects malformed candidate directories and duplicate producer attempts", 
 test("merges exact shard reports and namespaces otherwise colliding mutant ids", async () => {
   const { mergeShardReports } = await import(runnerUrl)
   const baseConfig = {
+    ...canonicalTypeScriptCheckerConfig,
     coverageAnalysis: "perTest",
     incremental: false,
     mutator: { plugins: null, excludedMutations: [] },
@@ -5902,10 +6196,34 @@ test("merges exact shard reports and namespaces otherwise colliding mutant ids",
   })
 
   assert.deepEqual(merged.config.mutate, expectedPatterns)
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.keys(canonicalTypeScriptCheckerConfig).map((key) => [key, merged.config[key]])
+    ),
+    canonicalTypeScriptCheckerConfig
+  )
   assert.equal(merged.config.incremental, false)
   assert.deepEqual(
     Object.values(merged.files).map(({ mutants }) => mutants[0].id),
     ["shard-000:0", "shard-001:0"]
+  )
+  assert.throws(
+    () =>
+      mergeShardReports({
+        expectedPatterns,
+        shards: [
+          {
+            id: "shard-000",
+            files: ["src/a.ts"],
+            report: {
+              schemaVersion: "1.0",
+              config: { ...baseConfig, checkers: [], mutate: ["src/a.ts"] },
+              files: { "src/a.ts": file("0", "false") },
+            },
+          },
+        ],
+      }),
+    /canonical TypeScript checker configuration/u
   )
 })
 

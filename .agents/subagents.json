@@ -7,7 +7,7 @@
     },
     "tdd_developer": {
       "path": ".agents/subagents/tdd_developer.json",
-      "workspaceMode": "branch"
+      "workspaceMode": "share"
     },
     "qa_e2e_tester": {
       "path": ".agents/subagents/qa_e2e_tester.json",

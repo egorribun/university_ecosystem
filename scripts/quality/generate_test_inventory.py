@@ -10,7 +10,15 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PRUNED_DIRECTORY_NAMES = frozenset(
-    {"node_modules", "dist", "build", "__pycache__", "stryker-tmp", ".stryker-tmp"}
+    {
+        "node_modules",
+        "dist",
+        "build",
+        "__pycache__",
+        "stryker-tmp",
+        ".stryker-tmp",
+        "mutants",
+    }
 )
 AUTHORED_HIDDEN_DIRECTORIES = frozenset({".github", ".husky"})
 
@@ -119,17 +127,36 @@ def scan_repository(mapping_config: dict[str, object]) -> list[dict[str, object]
     # Traverse with directory pruning. The inventory intentionally excludes
     # dependency/build/cache trees; pruning them before enumeration avoids
     # materializing hundreds of thousands of irrelevant paths on local runs.
+    agents_root = REPOSITORY_ROOT / ".agents"
+    authored_hooks_root = agents_root / "hooks"
     for root, dirnames, filenames in os.walk(REPOSITORY_ROOT):
         root_path = Path(root)
-        dirnames[:] = [
-            name
-            for name in dirnames
-            if not should_prune_directory(name)
-            # The root output tree contains reports and backup copies, not
-            # authored source (quality-contract.json source_roots). Preserve
-            # nested source modules named artifacts, e.g. app/artifacts.
-            and not (root_path == REPOSITORY_ROOT and name == "artifacts")
-        ]
+        if root_path == agents_root:
+            # Only hook implementations are authored references for the
+            # inventory; skills, agent metadata, and runtime state stay hidden.
+            dirnames[:] = [name for name in dirnames if name == "hooks"]
+            filenames[:] = []
+        elif root_path == REPOSITORY_ROOT:
+            dirnames[:] = [
+                name
+                for name in dirnames
+                if (name == ".agents" or not should_prune_directory(name))
+                # The root output tree contains reports and backup copies, not
+                # authored source (quality-contract.json source_roots). Preserve
+                # nested source modules named artifacts, e.g. app/artifacts.
+                and name != "artifacts"
+            ]
+        else:
+            dirnames[:] = [
+                name for name in dirnames if not should_prune_directory(name)
+            ]
+
+        if root_path == authored_hooks_root or authored_hooks_root in root_path.parents:
+            filenames[:] = [
+                filename
+                for filename in filenames
+                if filename.endswith(".py") and not filename.startswith(".")
+            ]
         for filename in filenames:
             path = root_path / filename
             relative_path = str(path.relative_to(REPOSITORY_ROOT)).replace("\\", "/")

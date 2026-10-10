@@ -114,11 +114,10 @@ async def test_grade_service_domain_events(db_session, user_factory):
     student = await user_factory(role="student", email="student-grade@example.com")
     teacher = await user_factory(role="teacher", email="teacher-grade@example.com")
 
-    grade_service = GradeService()
+    grade_service = GradeService(db_session)
 
     # Assign grade
     grade = await grade_service.assign_grade(
-        db_session,
         student_id=student.id,
         subject="Physics",
         score=90.0,
@@ -138,10 +137,11 @@ async def test_grade_service_domain_events(db_session, user_factory):
     assert ev1 is not None
     assert ev1.payload["score"] == 90.0
     assert ev1.payload["subject"] == "Physics"
+    assert ev1.payload["assigned_by"] == str(teacher.id)
+    assert ev1.metadata_["actor_id"] == str(teacher.id)
 
     # Modify grade
     await grade_service.modify_grade(
-        db_session,
         grade_id=grade.id,
         new_score=95.0,
         reason="Extra credit",
@@ -160,6 +160,8 @@ async def test_grade_service_domain_events(db_session, user_factory):
     assert ev2 is not None
     assert ev2.payload["old_score"] == 90.0
     assert ev2.payload["new_score"] == 95.0
+    assert ev2.payload["modified_by"] == str(teacher.id)
+    assert ev2.metadata_["actor_id"] == str(teacher.id)
 
 
 async def test_reconstruct_state_time_travel(db_session):

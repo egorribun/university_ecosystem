@@ -6,9 +6,17 @@ name: Manual Mutation Evidence
 on:
   workflow_dispatch: #checkov:skip=CKV_GHA_7:input is validated as a strict ancestor commit before use
     inputs:
-      mutation_base_sha:
-        description: "Full strict-ancestor commit SHA used to scope manual mutation evidence"
+      backend_scope:
+        description: Choose the default incremental backend evidence or full backend evidence.
         required: true
+        type: choice
+        default: incremental
+        options:
+          - incremental
+          - full
+      mutation_base_sha:
+        description: Required strict-ancestor SHA for incremental backend evidence; ignored in full mode.
+        required: false
         type: string
 
 permissions:
@@ -28,6 +36,7 @@ concurrency:
 
 jobs:
   manual-mutation-stats:
+    if: ${{ inputs.backend_scope == 'incremental' }}
     name: Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/8
     runs-on: ubuntu-24.04
     strategy:
@@ -40,6 +49,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -97,6 +107,7 @@ jobs:
           if-no-files-found: error
 
   manual-mutation-tests:
+    if: ${{ inputs.backend_scope == 'incremental' }}
     name: Manual Mutation Evidence (mutmut) / shard ${{ matrix.shard }}/128
     runs-on: ubuntu-24.04
     strategy:
@@ -130,6 +141,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -390,6 +402,52 @@ jobs:
   # Build the expensive instrumenter universe once for all 64 logical shards.
   # The immutable attempt/SHA-bound artifact is retained for GitHub's complete
   # failed-job rerun window so partial retries never recompute it independently.
+  manual-full-backend-scope-guard:
+    name: Manual full backend scope guard (non-required)
+    if: ${{ inputs.backend_scope == 'full' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify manual full scope is the trusted egorribun workflow source
+        shell: bash
+        env:
+          GITHUB_REF_VALUE: ${{ github.ref }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+          GITHUB_EVENT_NAME_VALUE: ${{ github.event_name }}
+          GITHUB_REPOSITORY_VALUE: ${{ github.repository }}
+          GITHUB_WORKFLOW_REF_VALUE: ${{ github.workflow_ref }}
+          GITHUB_WORKFLOW_SHA_VALUE: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_VALUE" == "refs/heads/egorribun" ]]
+          [[ "$GITHUB_EVENT_NAME_VALUE" == "workflow_dispatch" ]]
+          [[ "$GITHUB_SHA_VALUE" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_WORKFLOW_SHA_VALUE" == "$GITHUB_SHA_VALUE" ]]
+          [[ "$GITHUB_REPOSITORY_VALUE" == "egorribun/university_ecosystem" ]]
+          [[ "$GITHUB_WORKFLOW_REF_VALUE" == "egorribun/university_ecosystem/.github/workflows/manual-mutation-evidence.yml@refs/heads/egorribun" ]]
+
+  manual-full-helm-dependencies:
+    name: Manual full backend Helm dependencies (non-required)
+    if: ${{ inputs.backend_scope == 'full' }}
+    needs: manual-full-backend-scope-guard
+    uses: ./.github/workflows/reusable-helm-dependencies.yml
+    permissions:
+      contents: read
+    with:
+      source_sha: ${{ github.sha }}
+
+  manual-full-backend-mutation:
+    name: Manual full backend mutation evidence (non-required)
+    if: ${{ inputs.backend_scope == 'full' }}
+    needs: [manual-full-backend-scope-guard, manual-full-helm-dependencies]
+    uses: ./.github/workflows/reusable-full-backend-mutation.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      source_sha: ${{ github.sha }}
+      helm_artifact_name: ${{ needs.manual-full-helm-dependencies.outputs.artifact_name }}
+
   manual-frontend-mutation-preflight:
     name: Manual Mutation Evidence (frontend preflight universe)
     runs-on: ubuntu-24.04
@@ -415,6 +473,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --no-audit --no-fund
+
+      - name: Type-check frontend before mutation evidence
+        working-directory: frontend
+        run: npm run typecheck
 
       - name: Generate canonical immutable Stryker preflight
         working-directory: frontend

@@ -22,9 +22,12 @@ from urllib.parse import unquote
 # Vendored agent skill catalogs mirror upstream content, not project docs.
 VENDORED_PREFIXES = (".agents/skills/",)
 ARCHIVE_PREFIX = "docs/audits/archive/"
-# Dated evidence is never rewritten: only file targets are checked there, as a
-# heading anchor may legitimately describe a report's past layout.
-ANCHOR_EXEMPT_PREFIXES = ("docs/audits/", "docs/superpowers/plans/archive/")
+# Legacy archived evidence is not rewritten; its heading fragments may reflect
+# the report's original layout. Current audit/index docs are checked normally.
+ANCHOR_EXEMPT_PREFIXES = (
+    "docs/audits/archive/",
+    "docs/superpowers/plans/archive/",
+)
 REMOTE_PREFIXES = (
     "http://",
     "https://",

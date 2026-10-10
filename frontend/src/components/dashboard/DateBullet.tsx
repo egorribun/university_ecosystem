@@ -1,7 +1,21 @@
+import { useSyncExternalStore } from "react"
 import { useTranslation } from "react-i18next"
 import { Tooltip } from "@/components/ui/Tooltip"
 import { cn } from "@/utils/cn"
-import { pad } from "@/utils/scheduleUtils"
+
+const SERVER_TIME_ZONE = "UTC"
+
+function subscribeToTimeZone(): () => void {
+  return () => undefined
+}
+
+function getLocalTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+function getServerTimeZone(): string {
+  return SERVER_TIME_ZONE
+}
 
 interface DateBulletProps {
   date?: string
@@ -12,9 +26,10 @@ interface DateBulletProps {
 
 export function DateBullet({ date, locale, size }: DateBulletProps) {
   const { t } = useTranslation("common")
+  const timeZone = useSyncExternalStore(subscribeToTimeZone, getLocalTimeZone, getServerTimeZone)
   const d = date ? new Date(date) : null
-  const dd = d ? pad(d.getDate()) : "—"
-  const mmLabel = d ? new Intl.DateTimeFormat(locale, { month: "short" }).format(d) : "--"
+  const dd = d ? new Intl.DateTimeFormat(locale, { day: "2-digit", timeZone }).format(d) : "—"
+  const mmLabel = d ? new Intl.DateTimeFormat(locale, { month: "short", timeZone }).format(d) : "--"
   const fallback = t("dateUnknown")
   const full = d
     ? d.toLocaleString(locale, {
@@ -23,6 +38,7 @@ export function DateBullet({ date, locale, size }: DateBulletProps) {
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone,
       })
     : fallback
 

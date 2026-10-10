@@ -9,7 +9,6 @@ from sqlalchemy import and_, case, func, literal, select, true
 from sqlalchemy.orm import aliased
 
 import app.models as models
-from app.core.protocols import AsyncDatabaseSession
 from app.repositories.base import ReadOnlyRepository
 from app.schemas.dtos import UserDTO
 from app.schemas.dtos.analytics import ParticipationStatsDTO
@@ -154,22 +153,21 @@ class UserStatsRepository(ReadOnlyRepository[models.User, UserDTO]):
         result = await self.db.execute(stmt)
         return result.all()
 
-    async def get_grade_notifications(
+    async def get_grades(
         self,
         user_id: uuid.UUID | str,
         start_date: datetime,
         end_date: datetime,
-    ) -> Sequence[models.Notification]:
-        """Fetch grade notifications for a specific period."""
+    ) -> Sequence[models.Grade]:
+        """Fetch the student's grades assigned in ``[start_date, end_date)``."""
         stmt = (
-            select(models.Notification)
+            select(models.Grade)
             .where(
-                models.Notification.user_id == user_id,
-                models.Notification.type == "grade",
-                models.Notification.created_at >= start_date,
-                models.Notification.created_at < end_date,
+                models.Grade.student_id == user_id,
+                models.Grade.created_at >= start_date,
+                models.Grade.created_at < end_date,
             )
-            .order_by(models.Notification.created_at.desc())
+            .order_by(models.Grade.created_at.desc())
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
@@ -214,7 +212,3 @@ class UserStatsRepository(ReadOnlyRepository[models.User, UserDTO]):
             )
             for row in result.all()
         ]
-
-
-def get_user_stats_repository(db: AsyncDatabaseSession) -> UserStatsRepository:
-    return UserStatsRepository(db)

@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python hooks/runner.py pre-tool",
+            "command": "python .agents/hooks/runner.py pre-tool",
             "timeout": 15
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python hooks/runner.py post-tool",
+            "command": "python .agents/hooks/runner.py post-tool",
             "timeout": 120
           }
         ]
@@ -28,7 +28,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "python hooks/runner.py stop",
+        "command": "python .agents/hooks/runner.py stop",
         "timeout": 120
       }
     ]

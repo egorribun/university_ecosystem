@@ -47,29 +47,22 @@ vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt, srcRaw }: { alt: string; srcRaw: string }) => <img alt={alt} src={srcRaw} />,
 }))
 
-vi.mock("@/components/settings", () => ({
-  Alert: ({ children }: { children: React.ReactNode }) => <div role="alert">{children}</div>,
-  Button: ({
-    as: Component = "button",
-    children,
-    leadingIcon: _leadingIcon,
-    startIcon: _startIcon,
-    loading: _loading,
-    size: _size,
-    variant: _variant,
-    disabled: _disabled,
-    ...props
-  }: any) => <Component {...props}>{children}</Component>,
-  CircularProgress: () => <div aria-label="loading" />,
-  Divider: () => <hr />,
-  SectionCard: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
-  TextField: ({ label, multiline, ...props }: any) => (
-    <label>
-      {label}
-      {multiline ? <textarea {...props} /> : <input {...props} />}
-    </label>
-  ),
-}))
+vi.mock("@/components/settings", async () => {
+  const { Button } = await import("@/components/settings/ui/Form")
+  return {
+    Alert: ({ children }: { children: React.ReactNode }) => <div role="alert">{children}</div>,
+    Button,
+    CircularProgress: () => <div aria-label="loading" />,
+    Divider: () => <hr />,
+    SectionCard: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+    TextField: ({ label, multiline, ...props }: any) => (
+      <label>
+        {label}
+        {multiline ? <textarea {...props} /> : <input {...props} />}
+      </label>
+    ),
+  }
+})
 
 vi.mock("@/components/ui/Badge", () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
@@ -117,10 +110,12 @@ const localDateTimeToIso = (value: string) => new Date(value).toISOString()
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((settle) => {
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((settle, fail) => {
     resolve = settle
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 describe("StoriesAdmin", () => {
@@ -379,6 +374,131 @@ describe("StoriesAdmin", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("cover rejected")
     expect(mocks.createStory).not.toHaveBeenCalled()
   })
+
+  it("allows one cover update at a time and requires a new selection after saving", async () => {
+    const pendingUpload = deferred<{ url: string }>()
+    const pendingSave = deferred<void>()
+    const file = new File(["image"], "cover.png", { type: "image/png" })
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:item-cover")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    mocks.getStories.mockResolvedValue({ data: [story] })
+    mocks.uploadStoryCover.mockReturnValueOnce(pendingUpload.promise)
+    mocks.updateStory.mockReturnValueOnce(pendingSave.promise)
+
+    const { unmount } = render(<StoriesAdmin />)
+    await screen.findByText(story.title)
+    const updateCover = screen.getByRole("button", { name: "stories:list.actions.updateCover" })
+    const coverInput = screen.getByLabelText("stories:list.actions.pickCover")
+
+    expect(updateCover).toBeDisabled()
+    fireEvent.click(updateCover)
+    expect(mocks.uploadStoryCover).not.toHaveBeenCalled()
+
+    fireEvent.change(coverInput, { target: { files: [file] } })
+    expect(updateCover).toBeEnabled()
+    fireEvent.click(updateCover)
+
+    expect(updateCover).toBeDisabled()
+    expect(updateCover).toHaveAttribute("aria-busy", "true")
+    expect(mocks.uploadStoryCover).toHaveBeenCalledExactlyOnceWith(file)
+    expect(mocks.updateStory).not.toHaveBeenCalled()
+    fireEvent.click(updateCover)
+    expect(mocks.uploadStoryCover).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      pendingUpload.resolve({ url: "https://cdn.example/new.png" })
+      await pendingUpload.promise
+    })
+    expect(mocks.updateStory).toHaveBeenCalledExactlyOnceWith(story.id, {
+      cover_url: "https://cdn.example/new.png",
+    })
+    expect(updateCover).toBeDisabled()
+    expect(updateCover).toHaveAttribute("aria-busy", "true")
+    fireEvent.click(updateCover)
+    expect(mocks.uploadStoryCover).toHaveBeenCalledTimes(1)
+    expect(mocks.updateStory).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      pendingSave.resolve()
+      await pendingSave.promise
+    })
+    expect(mocks.getStories).toHaveBeenCalledTimes(2)
+    expect(updateCover).toBeDisabled()
+    expect(updateCover).not.toHaveAttribute("aria-busy")
+    expect(screen.queryByAltText("stories:list.coverAlt")).not.toBeInTheDocument()
+
+    fireEvent.change(coverInput, {
+      target: { files: [new File(["next"], "next.png", { type: "image/png" })] },
+    })
+    expect(updateCover).toBeEnabled()
+    unmount()
+    createObjectUrl.mockRestore()
+    revokeObjectUrl.mockRestore()
+  })
+
+  it.each(["upload", "save"])(
+    "keeps the selected cover available to retry after a failed %s",
+    async (failedStage) => {
+      const pendingUpload = deferred<{ url: string }>()
+      const pendingSave = deferred<void>()
+      const file = new File(["image"], "retry.png", { type: "image/png" })
+      const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:retry-cover")
+      const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+      mocks.getStories.mockResolvedValue({ data: [story] })
+      mocks.uploadStoryCover.mockReturnValueOnce(pendingUpload.promise)
+      if (failedStage === "save") mocks.updateStory.mockReturnValueOnce(pendingSave.promise)
+
+      const { unmount } = render(<StoriesAdmin />)
+      await screen.findByText(story.title)
+      const updateCover = screen.getByRole("button", {
+        name: "stories:list.actions.updateCover",
+      })
+      fireEvent.change(screen.getByLabelText("stories:list.actions.pickCover"), {
+        target: { files: [file] },
+      })
+      fireEvent.click(updateCover)
+      expect(updateCover).toBeDisabled()
+
+      await act(async () => {
+        if (failedStage === "upload") {
+          pendingUpload.reject(new Error("cover update failed"))
+        } else {
+          pendingUpload.resolve({ url: "https://cdn.example/retry.png" })
+          await pendingUpload.promise
+          pendingSave.reject(new Error("cover update failed"))
+        }
+      })
+
+      expect(screen.getByRole("alert")).toHaveTextContent("cover update failed")
+      expect(updateCover).toBeEnabled()
+      expect(updateCover).not.toHaveAttribute("aria-busy")
+      expect(screen.getByAltText("stories:list.coverAlt")).toHaveAttribute(
+        "src",
+        "blob:retry-cover"
+      )
+      expect(mocks.uploadStoryCover).toHaveBeenCalledExactlyOnceWith(file)
+      expect(mocks.updateStory).toHaveBeenCalledTimes(failedStage === "upload" ? 0 : 1)
+      expect(mocks.getStories).toHaveBeenCalledTimes(1)
+
+      mocks.uploadStoryCover.mockResolvedValueOnce({ url: "https://cdn.example/retried.png" })
+      mocks.updateStory.mockResolvedValueOnce(undefined)
+      fireEvent.click(updateCover)
+      await waitFor(() => {
+        expect(mocks.getStories).toHaveBeenCalledTimes(2)
+      })
+      expect(mocks.uploadStoryCover).toHaveBeenNthCalledWith(2, file)
+      expect(mocks.updateStory).toHaveBeenLastCalledWith(story.id, {
+        cover_url: "https://cdn.example/retried.png",
+      })
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(screen.queryByAltText("stories:list.coverAlt")).not.toBeInTheDocument()
+      expect(updateCover).toBeDisabled()
+      expect(updateCover).not.toHaveAttribute("aria-busy")
+      unmount()
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
+  )
 
   it("handles timer validation, cover update, and delete cancellation", async () => {
     const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:item-cover")

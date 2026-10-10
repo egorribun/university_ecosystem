@@ -12,7 +12,7 @@ WORKDIR /app
 RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-test,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl clang libclang-rt-14-dev \
+    build-essential curl clang libclang-rt-14-dev git \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash --create-home app
@@ -24,6 +24,12 @@ COPY --from=rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304
 ENV RUSTUP_HOME="/usr/local/rustup" \
     CARGO_HOME="/usr/local/cargo" \
     PATH="/usr/local/cargo/bin:$PATH"
+
+# Python quality contracts execute real Go benchmarks in this full test runner.
+# Match the isolated benchmark compiler and prevent implicit toolchain downloads.
+COPY --from=docker.io/library/golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c /usr/local/go /usr/local/go
+ENV GOTOOLCHAIN="local" \
+    PATH="/usr/local/go/bin:$PATH"
 
 # Install uv
 # Pin to the exact version required by pyproject.toml so ``uv sync --frozen``

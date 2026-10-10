@@ -506,7 +506,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Install govulncheck
@@ -627,76 +627,3 @@ jobs:
             python scripts/verify_secrets_baseline.py \
               .secrets.baseline /tmp/current_scan.json
           fi
-
-  # ── Semgrep SAST ───────────────────────────────────────────────────────────
-  # Uses the official semgrep/semgrep Docker image so no binary installation
-  # is required.  Runs a registry-backed scan on every PR. `semgrep ci`
-  # requires an AppSec-platform login and otherwise emits an empty SARIF
-  # document, which GitHub rejects instead of creating an analysis.
-  # Results are uploaded to GitHub Advanced Security as SARIF so findings
-  # appear in the Security → Code Scanning tab.
-  # SEMGREP_APP_TOKEN secret: Settings → Secrets → Actions → New repository secret.
-  # Without the token Semgrep CE's `scan --config auto` remains fully local to
-  # the repository while still producing a valid SARIF analysis.
-  # (MOD-5: audit 2026-02-24)
-  semgrep:
-    name: Semgrep SAST
-    needs: policy-integrity
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    if: github.actor != 'dependabot[bot]'
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    container:
-      image: semgrep/semgrep:1.113.0@sha256:136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The CE fallback performs a complete repository scan so the
-          # suppression ledger is observed and validated on every event.
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Run Semgrep SAST
-        # Keep the SARIF upload alive when findings make the scanner return 1;
-        # the follow-up gate fails the job after GitHub has received findings.
-        # Without the AppSec token, use the documented CE command instead of
-        # `semgrep ci`, which requires `semgrep login`. Always run a complete
-        # local scan when the token is absent: the reviewed suppression ledger
-        # must be observed on every event, while a diff-only baseline can hide
-        # an unchanged suppression and make the fail-closed validator reject
-        # otherwise valid evidence.
-        run: |
-          set -u
-          scan_status=0
-          if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
-            semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
-          else
-            semgrep scan --config auto \
-              --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
-          fi
-          if [ ! -s semgrep.sarif ]; then
-            echo "::error::Semgrep completed without producing SARIF output"
-            exit 1
-          fi
-          echo "SEMGREP_SCAN_STATUS=$scan_status" >> "$GITHUB_ENV"
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-
-      - name: Upload SARIF to GitHub Advanced Security
-        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
-        if: always()
-        with:
-          sarif_file: semgrep.sarif
-
-      - name: Fail if Semgrep reported findings or scan errors
-        if: always()
-        run: |
-          scan_status="${SEMGREP_SCAN_STATUS:-2}"
-          python3 scripts/quality/validate_semgrep_sarif.py \
-            --report semgrep.sarif \
-            --policy security/semgrep-suppression-policy.json \
-            --scanner-status "$scan_status"

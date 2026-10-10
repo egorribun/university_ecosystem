@@ -27,7 +27,7 @@ func TestListenOnce_CachesRevocationOnMessage(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	m.l1cache.Add("revoked:jti:abc", cacheEntry{exists: false, storedAt: time.Now()})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -68,7 +68,7 @@ func TestVerifySession_WarmNegativeCacheFailsClosedAfterRedisDisconnect(t *testi
 	})
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	oldRand := xfetchRandFunc
 	xfetchRandFunc = func() float64 { return 1 }
 	t.Cleanup(func() { xfetchRandFunc = oldRand })
@@ -98,7 +98,7 @@ func TestListenOnce_ReturnsWhenRedisHealthCheckFails(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	done := make(chan struct{})
@@ -129,7 +129,7 @@ func TestListenOnce_ReturnsWhenPubSubChannelCloses(t *testing.T) {
 	close(closedChannel)
 	pubSubChannelFunc = func(*redis.PubSub) <-chan *redis.Message { return closedChannel }
 
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	done := make(chan struct{})
 	go func() {
 		m.listenOnce(t.Context())
@@ -155,7 +155,7 @@ func TestListenOnce_HealthyRedisKeepsListenerRunning(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	go func() {
 		m.listenOnce(ctx)
 		close(done)
@@ -179,7 +179,7 @@ func TestListenOnce_HealthyRedisKeepsListenerRunning(t *testing.T) {
 }
 
 func TestListenForRevocations_NilRedisIsNoOp(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	// m.redis == nil guard returns immediately and spawns no goroutine.
 	m.ListenForRevocations(context.Background())
 }
@@ -201,7 +201,7 @@ func TestListenOnce_ReportsPubSubCloseFailure(t *testing.T) {
 		return errors.New("synthetic pubsub close failure")
 	}
 
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
@@ -235,7 +235,7 @@ func TestListenForRevocations_ProcessesThenReconnectsOnDisconnect(t *testing.T) 
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	m.l1cache.Add("revoked:jti:xyz", cacheEntry{exists: false, storedAt: time.Now()})
 
 	ctx, cancel := context.WithCancel(context.Background())

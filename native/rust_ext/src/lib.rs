@@ -131,6 +131,17 @@ struct ConflictMetadata {
     weekday: Option<Weekday>,
     weekday_fallback: Option<String>,
     parity: Option<String>,
+    time_window: (i128, i128),
+}
+
+/// Timetables recur by weekday and campus wall-clock time. Reference dates do
+/// not distinguish lessons; retain the duration, including overnight windows.
+/// Widen before subtraction so arbitrary FFI i64 timestamps cannot overflow.
+#[inline]
+fn recurring_time_window(item: &ScheduleItem) -> (i128, i128) {
+    let start = i128::from(item.start_time.rem_euclid(86400));
+    let end = start + i128::from(item.end_time) - i128::from(item.start_time);
+    (start, end)
 }
 
 #[inline]
@@ -143,6 +154,7 @@ fn conflict_metadata(item: &ScheduleItem) -> ConflictMetadata {
         weekday: parsed_weekday,
         weekday_fallback: parsed_weekday.is_none().then(|| weekday.to_owned()),
         parity: (!parity.eq_ignore_ascii_case("both")).then(|| parity.to_owned()),
+        time_window: recurring_time_window(item),
     }
 }
 
@@ -155,57 +167,103 @@ fn weekday_comparison_value(metadata: &ConflictMetadata) -> &str {
         .unwrap_or_default()
 }
 
+const WEEK_SECONDS: i128 = 7 * 86400;
+
 #[inline]
-fn check_conflict_with_metadata(
-    a: &ScheduleItem,
-    a_metadata: &ConflictMetadata,
-    b: &ScheduleItem,
-    b_metadata: &ConflictMetadata,
-) -> bool {
-    let same_weekday = match (a_metadata.weekday, b_metadata.weekday) {
-        (Some(w1), Some(w2)) => w1 == w2,
-        _ => weekday_comparison_value(a_metadata)
-            .eq_ignore_ascii_case(weekday_comparison_value(b_metadata)),
-    };
-    if !same_weekday {
+fn periodic_windows_overlap(a: (i128, i128), b: (i128, i128), period: i128) -> bool {
+    if a.0 >= a.1 || b.0 >= b.1 {
         return false;
     }
+    if a.1 - a.0 >= period || b.1 - b.0 >= period {
+        return true;
+    }
+    // Every caller normalizes starts into [0, period). For valid windows,
+    // b.end + period therefore always exceeds a.start.
+    (a.0 < b.1 && b.0 < a.1) || (b.0 + period < a.1) || (a.0 + period < b.1 && b.0 < a.1 + period)
+}
 
-    if let (Some(a_parity), Some(b_parity)) = (&a_metadata.parity, &b_metadata.parity) {
-        if !a_parity.eq_ignore_ascii_case(b_parity) {
+#[inline]
+fn parity_allows_week(parity: Option<&str>, week: i128) -> bool {
+    match parity {
+        Some(value) if value.eq_ignore_ascii_case("odd") => week == 0,
+        Some(value) if value.eq_ignore_ascii_case("even") => week == 1,
+        _ => true,
+    }
+}
+
+#[inline]
+fn check_conflict_with_metadata(
+    a_metadata: &ConflictMetadata,
+    b_metadata: &ConflictMetadata,
+) -> bool {
+    let (a_day, b_day) = match (a_metadata.weekday, b_metadata.weekday) {
+        (Some(a), Some(b)) => (a.num_days_from_monday(), b.num_days_from_monday()),
+        _ => {
+            // Preserve the legacy comparison for unknown custom weekday labels.
+            if !weekday_comparison_value(a_metadata)
+                .eq_ignore_ascii_case(weekday_comparison_value(b_metadata))
+            {
+                return false;
+            }
+            if let (Some(a), Some(b)) = (&a_metadata.parity, &b_metadata.parity) {
+                if !a.eq_ignore_ascii_case(b) {
+                    return false;
+                }
+            }
+            let (a_start, a_end) = a_metadata.time_window;
+            let (b_start, b_end) = b_metadata.time_window;
+            return a_start < a_end && b_start < b_end && a_start < b_end && b_start < a_end;
+        }
+    };
+    if let (Some(a), Some(b)) = (&a_metadata.parity, &b_metadata.parity) {
+        let known =
+            |value: &str| value.eq_ignore_ascii_case("odd") || value.eq_ignore_ascii_case("even");
+        if (!known(a) || !known(b)) && !a.eq_ignore_ascii_case(b) {
             return false;
         }
     }
-
-    a.start_time < a.end_time
-        && b.start_time < b.end_time
-        && a.start_time < b.end_time
-        && b.start_time < a.end_time
+    let a_window = (
+        a_metadata.time_window.0 + i128::from(a_day) * 86400,
+        a_metadata.time_window.1 + i128::from(a_day) * 86400,
+    );
+    let b_window = (
+        b_metadata.time_window.0 + i128::from(b_day) * 86400,
+        b_metadata.time_window.1 + i128::from(b_day) * 86400,
+    );
+    if a_metadata.parity.is_none() && b_metadata.parity.is_none() {
+        return periodic_windows_overlap(a_window, b_window, WEEK_SECONDS);
+    }
+    // Two-week cycles retain odd/even semantics across Sunday-to-Monday spillover.
+    for a_week in 0..2 {
+        if !parity_allows_week(a_metadata.parity.as_deref(), a_week) {
+            continue;
+        }
+        for b_week in 0..2 {
+            if parity_allows_week(b_metadata.parity.as_deref(), b_week)
+                && periodic_windows_overlap(
+                    (
+                        a_window.0 + a_week * WEEK_SECONDS,
+                        a_window.1 + a_week * WEEK_SECONDS,
+                    ),
+                    (
+                        b_window.0 + b_week * WEEK_SECONDS,
+                        b_window.1 + b_week * WEEK_SECONDS,
+                    ),
+                    2 * WEEK_SECONDS,
+                )
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 // Helper for conflict detection
 pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
     let a_metadata = conflict_metadata(a);
     let b_metadata = conflict_metadata(b);
-    check_conflict_with_metadata(a, &a_metadata, b, &b_metadata)
-}
-
-/// Helper to normalize a ScheduleItem's start/end timestamps onto a target date's midnight timestamp,
-/// preserving its time-of-day window and duration (e.g. for 1970 baseline time-of-day schedule items).
-fn normalize_item_for_date(item: &ScheduleItem, target_midnight: i64) -> ScheduleItem {
-    let tod_start = item.start_time.rem_euclid(86400);
-    let duration = item.end_time - item.start_time;
-
-    let norm_start = target_midnight + tod_start;
-    let norm_end = norm_start + duration;
-
-    ScheduleItem {
-        id: item.id,
-        weekday: item.weekday.clone(),
-        start_time: norm_start,
-        end_time: norm_end,
-        parity: item.parity.clone(),
-    }
+    check_conflict_with_metadata(&a_metadata, &b_metadata)
 }
 
 #[pyfunction(name = "detect_conflicts")]
@@ -363,7 +421,9 @@ pub fn batch_detect_conflicts(
             // the format emitted by the normal scheduler and avoids allocating metadata for
             // every item when no case/whitespace normalization is required. Non-canonical
             // inputs continue through the normalized path below.
+            let mut canonical_time_of_day = true;
             let canonical_fast_path = items.iter().all(|item| {
+                canonical_time_of_day &= item.start_time >= 0 && item.end_time <= 86400;
                 item.parity == "both"
                     && item.start_time < item.end_time
                     && matches!(
@@ -380,11 +440,13 @@ pub fn batch_detect_conflicts(
 
             let pair_count = std::sync::atomic::AtomicUsize::new(0);
             let limit_exceeded = std::sync::atomic::AtomicBool::new(false);
-            let conflicts: Vec<(ScheduleItem, ScheduleItem)> = if canonical_fast_path {
+            let conflicts: Vec<(ScheduleItem, ScheduleItem)> = if canonical_fast_path
+                && canonical_time_of_day
+            {
+                // Already-normalized, non-overnight lessons need no allocation
+                // or modulo in the pair loop. This is exactly the weekday/time
+                // specialization of the general recurring-window comparison.
                 if items.len() < PARALLEL_CONFLICT_THRESHOLD {
-                    // Rayon scheduling overhead dominates tiny batches, and the
-                    // direct String comparison avoids allocating a code vector for
-                    // this latency-sensitive path.
                     items
                         .iter()
                         .enumerate()
@@ -402,11 +464,7 @@ pub fn batch_detect_conflicts(
                         })
                         .collect()
                 } else {
-                    // Canonical inputs use one of seven fixed weekday strings.  Compare
-                    // a compact code in the O(n²) loop instead of repeatedly scanning
-                    // each String's bytes; the observable pair ordering and overlap
-                    // predicates remain unchanged.
-                    let weekday_codes: Vec<u8> = items
+                    let weekday_codes: Vec<_> = items
                         .iter()
                         .map(|item| canonical_weekday_code(&item.weekday))
                         .collect();
@@ -419,10 +477,59 @@ pub fn batch_detect_conflicts(
                                 items[i + 1..]
                                     .iter()
                                     .zip(weekday_codes[i + 1..].iter())
-                                    .filter(move |b| {
-                                        a_weekday == *b.1
-                                            && a.start_time < b.0.end_time
-                                            && b.0.start_time < a.end_time
+                                    .filter(move |(b, day)| {
+                                        a_weekday == **day
+                                            && a.start_time < b.end_time
+                                            && b.start_time < a.end_time
+                                    })
+                                    .filter_map(|(b, _)| {
+                                        record_conflict_pair(a, b, &pair_count, &limit_exceeded)
+                                    })
+                            })
+                            .collect()
+                    })
+                }
+            } else if canonical_fast_path {
+                let windows: Vec<_> = items
+                    .iter()
+                    .map(|item| {
+                        let (start, end) = recurring_time_window(item);
+                        let day = i128::from(canonical_weekday_code(&item.weekday)) * 86400;
+                        (day + start, day + end)
+                    })
+                    .collect();
+                if items.len() < PARALLEL_CONFLICT_THRESHOLD {
+                    // Normalize once outside the latency-sensitive pair loop.
+                    items
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(i, a)| {
+                            let a_window = windows[i];
+                            items[i + 1..]
+                                .iter()
+                                .zip(windows[i + 1..].iter())
+                                .filter(move |(_, b_window)| {
+                                    periodic_windows_overlap(a_window, **b_window, WEEK_SECONDS)
+                                })
+                                .filter_map(|(b, _)| {
+                                    record_conflict_pair(a, b, &pair_count, &limit_exceeded)
+                                })
+                        })
+                        .collect()
+                } else {
+                    // Week offsets and time normalization are precomputed for
+                    // the O(n²) pair loop, including overnight/week-boundary spans.
+                    pool.install(|| {
+                        items
+                            .par_iter()
+                            .enumerate()
+                            .flat_map_iter(|(i, a)| {
+                                let a_window = windows[i];
+                                items[i + 1..]
+                                    .iter()
+                                    .zip(windows[i + 1..].iter())
+                                    .filter(move |(_, b_window)| {
+                                        periodic_windows_overlap(a_window, **b_window, WEEK_SECONDS)
                                     })
                                     .filter_map(|(b, _)| {
                                         record_conflict_pair(a, b, &pair_count, &limit_exceeded)
@@ -445,8 +552,8 @@ pub fn batch_detect_conflicts(
                             items[i + 1..]
                                 .iter()
                                 .zip(metadata[i + 1..].iter())
-                                .filter(move |(b, b_metadata)| {
-                                    check_conflict_with_metadata(a, a_metadata, b, b_metadata)
+                                .filter(move |(_, b_metadata)| {
+                                    check_conflict_with_metadata(a_metadata, b_metadata)
                                 })
                                 .filter_map(|(b, _b_metadata)| {
                                     record_conflict_pair(a, b, &pair_count, &limit_exceeded)
@@ -556,12 +663,6 @@ fn find_optimal_slot_at(
             None => continue, // Skip unparseable weekday names.
         };
         let target_date = next_weekday(today, target_wd);
-        let target_midnight = target_date
-            .and_hms_opt(0, 0, 0)
-            .map(|ndt| Utc.from_utc_datetime(&ndt))
-            .map(|dt| dt.timestamp())
-            .unwrap_or(0);
-
         for hour in hours {
             let start_date_time = target_date
                 .and_hms_opt(hour, 0, 0)
@@ -586,43 +687,9 @@ fn find_optimal_slot_at(
                 parity: "both".to_string(),
             };
 
-            let candidate_day2 = if end_dt.date_naive() > start_dt.date_naive() {
-                Some(ScheduleItem {
-                    id: None,
-                    weekday: weekday_name(end_dt.weekday()).to_string(),
-                    start_time: start_dt.timestamp(),
-                    end_time: end_dt.timestamp(),
-                    parity: "both".to_string(),
-                })
-            } else {
-                None
-            };
-
-            let has_conflict = existing_schedule.iter().any(|item| {
-                if item.start_time < 31536000 {
-                    let norm_item = normalize_item_for_date(item, target_midnight);
-                    if check_conflict_proto(&candidate, &norm_item) {
-                        return true;
-                    }
-                    if let Some(c2) = &candidate_day2 {
-                        let norm_item_day2 = normalize_item_for_date(item, target_midnight + 86400);
-                        if check_conflict_proto(c2, &norm_item_day2) {
-                            return true;
-                        }
-                    }
-                    false
-                } else {
-                    if check_conflict_proto(&candidate, item) {
-                        return true;
-                    }
-                    if let Some(c2) = &candidate_day2 {
-                        if check_conflict_proto(c2, item) {
-                            return true;
-                        }
-                    }
-                    false
-                }
-            });
+            let has_conflict = existing_schedule
+                .iter()
+                .any(|item| check_conflict_proto(&candidate, item));
 
             if !has_conflict {
                 return Some(candidate);
@@ -2209,17 +2276,17 @@ mod tests {
             prop_assert_eq!(check_conflict_proto(&a, &b), check_conflict_proto(&b, &a));
         }
 
-        /// Different weekdays NEVER conflict regardless of times.
+        /// Different weekdays with non-overnight windows never conflict.
         #[test]
         fn prop_different_weekday_no_conflict(
             start_a in 0i64..86400i64, end_a in 1i64..86401i64,
             start_b in 0i64..86400i64, end_b in 1i64..86401i64,
         ) {
             let a = ScheduleItem { id: None, weekday: "monday".to_string(),
-                start_time: start_a, end_time: start_a + end_a,
+                start_time: start_a, end_time: start_a + end_a.min(86400 - start_a),
                 parity: "both".to_string() };
             let b = ScheduleItem { id: None, weekday: "tuesday".to_string(),
-                start_time: start_b, end_time: start_b + end_b,
+                start_time: start_b, end_time: start_b + end_b.min(86400 - start_b),
                 parity: "both".to_string() };
             prop_assert!(!check_conflict_proto(&a, &b));
         }
@@ -2830,5 +2897,282 @@ mod verification {
         let signature = hex::encode(sig_bytes);
 
         let _ = verify_audit_signature(vec![key_str], log_data, signature);
+    }
+}
+
+#[cfg(test)]
+mod recurring_schedule_regressions {
+    use super::*;
+
+    fn lesson(id: i32, reference_day: i64, start: i64, end: i64) -> ScheduleItem {
+        ScheduleItem {
+            id: Some(id),
+            weekday: "monday".to_owned(),
+            start_time: reference_day * 86400 + start,
+            end_time: reference_day * 86400 + end,
+            parity: "both".to_owned(),
+        }
+    }
+
+    #[test]
+    fn recurring_conflicts_ignore_reference_dates_and_retain_original_items() {
+        let first = lesson(1, 20_000, 9 * 3600, 10 * 3600);
+        let second = lesson(2, 20_007, 9 * 3600 + 1800, 11 * 3600);
+        assert!(check_conflict_proto(&first, &second));
+        let result = detect_conflicts(first.clone(), vec![second.clone()]);
+        assert!(result.is_ok());
+        let result = result.unwrap_or_default();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].start_time, second.start_time);
+        let pairs = batch_detect_conflicts(vec![first, second]);
+        assert_eq!(pairs.map(|items| items.len()).unwrap_or_default(), 1);
+    }
+
+    #[test]
+    fn recurring_normalized_and_parallel_batch_paths_ignore_reference_dates() {
+        let first = lesson(1, 20_000, 9 * 3600, 10 * 3600);
+        let second = lesson(2, 20_007, 9 * 3600 + 1800, 11 * 3600);
+        let normalized = ScheduleItem {
+            weekday: " MON ".to_owned(),
+            ..second.clone()
+        };
+        assert!(check_conflict_proto(&first, &normalized));
+        assert_eq!(
+            batch_detect_conflicts(vec![first.clone(), normalized])
+                .map(|pairs| pairs.len())
+                .unwrap_or_default(),
+            1
+        );
+        let mut items = vec![first, second];
+        for index in 2..PARALLEL_CONFLICT_THRESHOLD {
+            items.push(ScheduleItem {
+                weekday: "tuesday".to_owned(),
+                ..lesson(
+                    index as i32 + 1,
+                    20_000,
+                    index as i64 * 2,
+                    index as i64 * 2 + 1,
+                )
+            });
+        }
+        let pairs = batch_detect_conflicts(items).unwrap_or_default();
+        assert_eq!(
+            pairs.iter().map(|(a, b)| (a.id, b.id)).collect::<Vec<_>>(),
+            vec![(Some(1), Some(2))]
+        );
+    }
+
+    #[test]
+    fn recurring_slot_search_rejects_occupied_hour_from_any_reference_date() {
+        let existing = lesson(1, 20_000, 9 * 3600, 10 * 3600);
+        let slot = find_optimal_slot(60, vec![existing], vec![("monday".to_owned(), vec![9, 10])])
+            .unwrap_or_default();
+        assert!(slot.is_some());
+        assert_eq!(
+            slot.map(|value| value.start_time.rem_euclid(86400)),
+            Some(10 * 3600)
+        );
+    }
+
+    #[test]
+    fn recurring_overnight_spillover_blocks_next_weekday_and_batch() {
+        let overnight = lesson(1, 20_000, 23 * 3600, 25 * 3600);
+        let next_day = ScheduleItem {
+            weekday: "tuesday".to_owned(),
+            ..lesson(2, 20_008, 1800, 5400)
+        };
+        assert!(check_conflict_proto(&overnight, &next_day));
+        assert!(check_conflict_proto(&next_day, &overnight));
+        assert_eq!(
+            batch_detect_conflicts(vec![overnight.clone(), next_day])
+                .map(|pairs| pairs.len())
+                .unwrap_or_default(),
+            1
+        );
+        let slot = find_optimal_slot(
+            60,
+            vec![overnight],
+            vec![("tuesday".to_owned(), vec![0, 2])],
+        )
+        .unwrap_or_default();
+        assert_eq!(
+            slot.map(|item| item.start_time.rem_euclid(86400)),
+            Some(2 * 3600)
+        );
+    }
+
+    #[test]
+    fn recurring_sunday_spillover_respects_alternating_week_parity() {
+        let sunday = ScheduleItem {
+            weekday: "sunday".to_owned(),
+            parity: "odd".to_owned(),
+            ..lesson(1, 20_000, 23 * 3600, 25 * 3600)
+        };
+        let monday = ScheduleItem {
+            parity: "even".to_owned(),
+            ..lesson(2, 20_008, 1800, 5400)
+        };
+        assert!(check_conflict_proto(&sunday, &monday));
+        let same_odd_week = ScheduleItem {
+            parity: "odd".to_owned(),
+            ..monday
+        };
+        assert!(!check_conflict_proto(&sunday, &same_odd_week));
+    }
+
+    #[test]
+    fn recurring_multiday_slot_checks_intervening_weekdays() {
+        let tuesday = ScheduleItem {
+            weekday: "tuesday".to_owned(),
+            ..lesson(1, 20_000, 12 * 3600, 13 * 3600)
+        };
+        let slot = find_optimal_slot(
+            2 * 24 * 60,
+            vec![tuesday],
+            vec![
+                ("monday".to_owned(), vec![0]),
+                ("thursday".to_owned(), vec![0]),
+            ],
+        )
+        .unwrap_or_default();
+        assert_eq!(slot.map(|item| item.weekday), Some("thursday".to_owned()));
+    }
+
+    #[test]
+    fn recurring_full_cycle_windows_overlap_in_both_orders() {
+        let short = ScheduleItem {
+            weekday: "thursday".to_owned(),
+            ..lesson(1, 0, 1_000, 2_000)
+        };
+        let weekly = lesson(2, 0, 0, 7 * 86400);
+        assert!(check_conflict_proto(&weekly, &short));
+        assert!(check_conflict_proto(&short, &weekly));
+
+        let alternating_short = ScheduleItem {
+            parity: "even".to_owned(),
+            ..short.clone()
+        };
+        let fortnightly = ScheduleItem {
+            parity: "odd".to_owned(),
+            ..lesson(3, 0, 0, 14 * 86400)
+        };
+        assert!(check_conflict_proto(&fortnightly, &alternating_short));
+        assert!(check_conflict_proto(&alternating_short, &fortnightly));
+
+        let extreme = ScheduleItem {
+            start_time: i64::MIN,
+            end_time: i64::MAX,
+            ..weekly
+        };
+        assert!(check_conflict_proto(&extreme, &short));
+        assert!(check_conflict_proto(&short, &extreme));
+    }
+
+    #[test]
+    fn recurring_week_boundary_overlap_preserves_half_open_intervals() {
+        let sunday = ScheduleItem {
+            weekday: "sunday".to_owned(),
+            ..lesson(1, 20_000, 23 * 3600, 25 * 3600)
+        };
+        let monday = lesson(2, -7, 1_800, 5_400);
+        assert!(check_conflict_proto(&sunday, &monday));
+        assert!(check_conflict_proto(&monday, &sunday));
+
+        let touching = lesson(3, 14, 3_600, 7_200);
+        assert!(!check_conflict_proto(&sunday, &touching));
+        assert!(!check_conflict_proto(&touching, &sunday));
+    }
+
+    #[test]
+    fn recurring_custom_weekdays_preserve_label_and_parity_contracts() {
+        let first = ScheduleItem {
+            weekday: " CUSTOM_DAY ".to_owned(),
+            ..lesson(1, 20_000, 1_000, 2_000)
+        };
+        let second = ScheduleItem {
+            weekday: "custom_day".to_owned(),
+            ..lesson(2, -7, 1_500, 2_500)
+        };
+        assert!(check_conflict_proto(&first, &second));
+        for weekday in ["another_day", "monday"] {
+            let different = ScheduleItem {
+                weekday: weekday.to_owned(),
+                ..second.clone()
+            };
+            assert!(!check_conflict_proto(&first, &different));
+            assert!(!check_conflict_proto(&different, &first));
+        }
+        for (left, right, expected) in [
+            ("odd", "ODD", true),
+            ("odd", "even", false),
+            ("both", "odd", true),
+            ("odd", "both", true),
+            ("summer", " SUMMER ", true),
+            ("summer", "winter", false),
+        ] {
+            let left = ScheduleItem {
+                parity: left.to_owned(),
+                ..first.clone()
+            };
+            let right = ScheduleItem {
+                parity: right.to_owned(),
+                ..second.clone()
+            };
+            assert_eq!(check_conflict_proto(&left, &right), expected);
+            assert_eq!(check_conflict_proto(&right, &left), expected);
+        }
+    }
+
+    #[test]
+    fn recurring_custom_weekdays_reject_empty_inverted_and_touching_windows() {
+        let first = ScheduleItem {
+            weekday: "custom_day".to_owned(),
+            ..lesson(1, 0, 1_000, 2_000)
+        };
+        for (start, end) in [(1_500, 1_500), (2_000, 1_000), (2_000, 3_000), (0, 1_000)] {
+            let second = ScheduleItem {
+                start_time: start,
+                end_time: end,
+                ..first.clone()
+            };
+            assert!(!check_conflict_proto(&first, &second));
+            assert!(!check_conflict_proto(&second, &first));
+        }
+    }
+
+    #[test]
+    fn recurring_known_weekdays_preserve_custom_parity_compatibility() {
+        for (left, right, expected) in [
+            ("summer", " SUMMER ", true),
+            ("summer", "winter", false),
+            ("summer", "odd", false),
+            ("odd", "summer", false),
+            ("summer", "even", false),
+            ("both", "summer", true),
+            ("summer", "both", true),
+        ] {
+            let first = ScheduleItem {
+                parity: left.to_owned(),
+                ..lesson(1, 0, 1_000, 2_000)
+            };
+            let second = ScheduleItem {
+                parity: right.to_owned(),
+                ..lesson(2, 7, 1_500, 2_500)
+            };
+            assert_eq!(check_conflict_proto(&first, &second), expected);
+            assert_eq!(check_conflict_proto(&second, &first), expected);
+        }
+    }
+
+    #[test]
+    fn recurring_negative_reference_dates_preserve_batch_pairs() {
+        let first = lesson(1, -7, 1_000, 2_000);
+        let second = lesson(2, 7, 1_500, 2_500);
+        let touching = lesson(3, -14, 2_500, 3_500);
+        let pairs = batch_detect_conflicts(vec![first, second, touching]).unwrap_or_default();
+        assert_eq!(
+            pairs.iter().map(|(a, b)| (a.id, b.id)).collect::<Vec<_>>(),
+            vec![(Some(1), Some(2))]
+        );
     }
 }

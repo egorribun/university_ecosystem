@@ -9,6 +9,7 @@ module-level imports on news_events and are patched there.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -16,7 +17,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.core.config import settings
+from app.models import PushSubscription
+from app.services import webpush as webpush_module
 from app.services.notifications import core as notifications_core
+from app.services.notifications import delivery as notifications_delivery
 from app.services.notifications import news_events
 
 
@@ -386,3 +391,78 @@ async def test_news_and_event_translation_loops_handle_empty_localized_values(
     await news_events.notify_about_event(AsyncMock(), empty_event, locale="ru")
 
     assert fake_create.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("topic", "entity_kind", "entity_id_key", "template_fallback"),
+    [
+        ("news.published", "news", "newsId", False),
+        ("events.published", "event", "eventId", False),
+        ("news.published", "news", "newsId", True),
+        ("events.published", "event", "eventId", True),
+    ],
+)
+async def test_news_and_event_push_metadata_is_json_serializable(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+    topic: str,
+    entity_kind: str,
+    entity_id_key: str,
+    template_fallback: bool,
+) -> None:
+    """Producer metadata must survive the real Web Push JSON boundary."""
+    user = await user_factory()
+    entity = _make_news() if entity_kind == "news" else _make_event()
+    subscription = PushSubscription(
+        user_id=user.id,
+        endpoint="https://8.8.8.8/push-test",
+        p256dh="test-p256dh",
+        auth="test-auth",
+        created_at=datetime.now(UTC),
+        topics=[topic],
+    )
+    db_session.add(subscription)
+    await db_session.flush()
+
+    provider_payloads: list[dict[str, object]] = []
+    serialization_errors: list[str] = []
+    real_json_dumps = webpush_module.json_dumps
+
+    def _observe_json_dumps(value: object) -> str:
+        try:
+            return real_json_dumps(value)
+        except TypeError as exc:
+            serialization_errors.append(str(exc))
+            raise
+
+    def _capture_provider_send(**kwargs: object) -> None:
+        # This is the sole network boundary stub. `send_web_push`, its payload
+        # normalizer and JSON serializer remain production code.
+        provider_payloads.append(json.loads(str(kwargs["data"])))
+
+    monkeypatch.setattr(settings, "vapid_private_key", "test-private-key")
+    monkeypatch.setattr(settings, "vapid_subject", "mailto:test@example.com")
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(webpush_module, "webpush", _capture_provider_send)
+    monkeypatch.setattr(webpush_module, "json_dumps", _observe_json_dumps)
+    if template_fallback:
+        # Exercise the producer's existing no-template fallback, which builds
+        # owned entity IDs directly instead of using the template's string IDs.
+        monkeypatch.setattr(
+            news_events, "render_notification_template", lambda *a, **k: None
+        )
+    # The send result's follow-up database session is outside this test's
+    # transaction; delivery construction and sending stay real.
+    monkeypatch.setattr(webpush_module, "process_push_results", AsyncMock())
+
+    if entity_kind == "news":
+        created = await news_events.notify_about_news(db_session, entity)
+    else:
+        created = await news_events.notify_about_event(db_session, entity)
+
+    assert created == 1
+    assert serialization_errors == []
+    assert len(provider_payloads) == 1
+    assert provider_payloads[0]["data"][entity_id_key] == str(entity.id)

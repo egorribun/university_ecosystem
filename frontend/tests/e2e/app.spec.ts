@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./test"
-import { useMockApi } from "./utils/mockApi"
+import { MOCK_NEWS_ID, useMockApi } from "./utils/mockApi"
 import { gotoWithTransientRetry } from "./utils/navigation"
 
 const TEST_TIMEOUTS = {
@@ -21,6 +21,31 @@ const trackHydrationErrors = (page: Page): string[] => {
   })
   page.on("pageerror", (error) => capture(error.message))
   return errors
+}
+
+const expectPersistedNews = async (page: Page, owner: string, timeout: number) => {
+  // The fixture confirms this account and forces Russian on every document.
+  // A shared legacy entry or another account's snapshot must not satisfy this.
+  const cacheKey = `news:list:account:${encodeURIComponent(owner)}:ru`
+  await expect(async () => {
+    const cached = await page.evaluate((key) => localStorage.getItem(key), cacheKey)
+    expect(cached, `Expected a news snapshot for ${cacheKey}`).not.toBeNull()
+    const snapshot: unknown = JSON.parse(cached ?? "null")
+    expect(snapshot).toEqual(expect.any(Array))
+    expect(snapshot).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: MOCK_NEWS_ID, title: "Новость дня" })])
+    )
+    for (const item of snapshot as unknown[]) {
+      expect(item).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          title: expect.any(String),
+          content: expect.any(String),
+          created_at: expect.any(String),
+        })
+      )
+    }
+  }).toPass({ timeout })
 }
 
 test.describe("University ecosystem app", () => {
@@ -83,16 +108,8 @@ test.describe("University ecosystem app", () => {
     // The card's title link: a hover quick view repeats the title as a heading.
     await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
-    // Wait for the cache effect to run and verify it's saved
-    await expect(async () => {
-      const cached = await page.evaluate(
-        () => localStorage.getItem("news:list:ru") || localStorage.getItem("news:list:en")
-      )
-      if (!cached) throw new Error("news:list cache not found in localStorage")
-      const parsed = JSON.parse(cached)
-      if (!Array.isArray(parsed) || parsed.length === 0)
-        throw new Error("news:list is empty or invalid")
-    }).toPass({ timeout: TEST_TIMEOUTS.medium })
+    // Wait for the authenticated account's cache effect to persist the feed.
+    await expectPersistedNews(page, mock.state.profile.id, TEST_TIMEOUTS.medium)
 
     // The production cache deliberately batches localStorage writes and
     // flushes them when a tab becomes hidden. Reproduce that lifecycle edge
@@ -120,11 +137,8 @@ test.describe("University ecosystem app", () => {
     await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
     await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
-    // 2. Wait for localStorage to be populated
-    await expect(async () => {
-      const cached = await page.evaluate(() => localStorage.getItem("news:list:ru"))
-      if (!cached) throw new Error("news:list:ru not found")
-    }).toPass({ timeout: TEST_TIMEOUTS.short })
+    // 2. Verify the exact account's snapshot before testing the cold load.
+    await expectPersistedNews(page, mock.state.profile.id, TEST_TIMEOUTS.short)
 
     // Keep the document server and auth endpoints available while making only
     // the news API unavailable. A fresh document must hydrate from the cache,
@@ -265,10 +279,23 @@ test.describe("University ecosystem app", () => {
     const aboutInput = page.getByRole("textbox", { name: /О себе|About/i })
     const newBio = `Updated bio ${Date.now()}`
     await aboutInput.fill(newBio)
+    const saveResponsePromise = page.waitForResponse((response) => {
+      const request = response.request()
+      const url = new URL(response.url())
+      return request.method() === "PUT" && url.pathname === "/api/v1/users/me"
+    })
     await saveBtn.click()
 
-    await expect(page.getByText(newBio)).toBeVisible()
+    const saveResponse = await saveResponsePromise
+    expect(saveResponse.status()).toBe(200)
+    const savedProfile = await saveResponse.json()
+    expect(savedProfile).toMatchObject({
+      id: mock.state.profile.id,
+      profile_detail: { about: newBio },
+    })
+    await expect(aboutInput).toBeHidden()
+    await expect(page.getByText(newBio, { exact: true })).toBeVisible()
     await page.reload()
-    await expect(page.getByText(newBio)).toBeVisible()
+    await expect(page.getByText(newBio, { exact: true })).toBeVisible()
   })
 })

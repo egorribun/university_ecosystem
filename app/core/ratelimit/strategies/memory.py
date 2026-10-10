@@ -1,29 +1,43 @@
 from __future__ import annotations
 
-import asyncio
 import collections
 import math
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 
 from app.core.ratelimit.models import RateLimitInfo
 from app.core.ratelimit.utils import compose_identifier
 
 _LOCK_SHARD_COUNT = 256
-# MED-W19: Lazy-init asyncio.Lock objects instead of creating them at module
-# import time.  asyncio.Lock() must be created inside a running event loop;
-# instantiating them at import time causes DeprecationWarning in Python 3.10+
-# and a RuntimeError in Python 3.12+ when no event loop is running.
-_memory_locks: list[asyncio.Lock | None] = [None] * _LOCK_SHARD_COUNT
+# The shard locks protect process-wide state shared by every asyncio loop.
+# A thread lock is safe across sequential or concurrent loops; asyncio.Lock
+# binds to the first loop that contends for it and then fails on another loop.
+_memory_locks: list[threading.Lock] = [
+    threading.Lock() for _ in range(_LOCK_SHARD_COUNT)
+]
 _memory_windows: dict[str, collections.deque[float]] = {}
 
 
-def _shard_lock(key: str) -> asyncio.Lock:
+def _shard_lock(key: str) -> threading.Lock:
     idx = hash(key) & (_LOCK_SHARD_COUNT - 1)
-    lock = _memory_locks[idx]
-    if lock is None:
-        lock = asyncio.Lock()
-        _memory_locks[idx] = lock
-    return lock
+    return _memory_locks[idx]
+
+
+@contextmanager
+def _all_memory_locks() -> Iterator[None]:
+    """Lock every shard in a stable order for operations on the shared mapping."""
+    with ExitStack() as lock_stack:
+        for lock in _memory_locks:
+            lock_stack.enter_context(lock)
+        yield
+
+
+def _snapshot_memory_window_keys() -> list[str]:
+    """Return a stable key snapshot while requests may run on other threads."""
+    with _all_memory_locks():
+        return list(_memory_windows.keys())
 
 
 class MemorySlidingWindowStrategy:
@@ -40,7 +54,7 @@ class MemorySlidingWindowStrategy:
         now = time.time()
         cutoff = now - window_seconds
 
-        async with _shard_lock(key):
+        with _shard_lock(key):
             window = _memory_windows.setdefault(key, collections.deque())
 
             # Evict timestamps that have fallen outside the sliding window.
@@ -59,4 +73,5 @@ class MemorySlidingWindowStrategy:
 
 def clear_memory_state() -> None:
     """Clear all in-memory rate limit state (primarily for testing)."""
-    _memory_windows.clear()
+    with _all_memory_locks():
+        _memory_windows.clear()

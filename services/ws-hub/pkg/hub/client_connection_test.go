@@ -219,11 +219,13 @@ func TestClientWritePump_LogsWriteDeadlineErrorBeforeWriting(t *testing.T) {
 		writeObserved:    make(chan struct{}, 1),
 	}
 	client := &Client{
-		ID:   "write-deadline-client",
-		Conn: session,
-		Hub:  h,
-		Send: make(chan []byte, 1),
-		ctx:  ctx,
+		ID:               "write-deadline-client",
+		SessionJTI:       validSessionJTI,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		Conn:             session,
+		Hub:              h,
+		Send:             make(chan []byte, 1),
+		ctx:              ctx,
 	}
 	done := make(chan struct{})
 	go func() {
@@ -248,6 +250,45 @@ func TestClientWritePump_LogsWriteDeadlineErrorBeforeWriting(t *testing.T) {
 	require.Len(t, session.writeDeadlines, 1)
 	assert.Equal(t, websocket.TextMessage, session.writes[0].messageType)
 	assert.Equal(t, []byte("deadline-error-payload"), session.writes[0].data)
+}
+
+func TestClientWritePump_RoomWriteErrorReleasesMembershipLock(t *testing.T) {
+	h := setupTestHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	const userID = "11111111-1111-1111-1111-111111111111"
+	const roomID = "22222222-2222-2222-2222-222222222222"
+	session := &recordingSession{writeMessageErr: errors.New("room socket write failed")}
+	client := &Client{
+		ID:               "room-write-error-client",
+		SessionJTI:       validSessionJTI,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		UserID:           userID,
+		Rooms:            make(map[string]bool),
+		Conn:             session,
+		Send:             make(chan []byte, 1),
+		Hub:              h,
+		ctx:              ctx,
+	}
+	client.JoinRoom(roomID)
+	client.Send <- []byte(`{"type":"new_message","room":"22222222-2222-2222-2222-222222222222"}`)
+
+	done := make(chan struct{})
+	go func() {
+		client.WritePump()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("write pump did not exit after the room-scoped socket write failed")
+	}
+
+	lock := h.roomMembershipLock(userID, roomID)
+	require.True(t, tryLockForTest(lock), "write failure must release the room membership lock")
+	lock.Unlock()
+	require.Len(t, session.writes, 1)
+	assert.Equal(t, websocket.TextMessage, session.writes[0].messageType)
 }
 
 func TestClientWritePump_SendsHeartbeatAndStopsOnPingError(t *testing.T) {

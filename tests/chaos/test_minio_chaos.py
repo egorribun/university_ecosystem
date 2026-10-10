@@ -22,9 +22,9 @@ from sqlalchemy import text
 from starlette.datastructures import Headers
 
 import app.utils.files
-from app.services.minio_storage import MinIOClient
 from app.services.storage import S3Storage
 from app.services.user.media_service import UserMediaService
+from tests.minio_chaos_client import MinIOClient
 
 TOXIPROXY_URL = os.getenv("TOXIPROXY_URL", "http://localhost:8474").rstrip("/")
 MINIO_PROXY_ENDPOINT = os.getenv("MINIO_PROXY_ENDPOINT", "")

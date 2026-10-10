@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from functools import lru_cache
 from urllib.parse import urlparse
 
@@ -107,6 +107,84 @@ def get_spicedb_client() -> Client:
 # ---------------------------------------------------------------------------
 
 
+class _BearerTokenMetadata:
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def _authorize(
+        self, details: grpc.aio.ClientCallDetails
+    ) -> grpc.aio.ClientCallDetails:
+        # Keep duplicate and binary application metadata, without mutating the
+        # caller's Metadata object. The channel's configured PSK owns auth.
+        metadata = grpc.aio.Metadata(
+            ("authorization", f"Bearer {self._token}"),
+            *(item for item in (details.metadata or ()) if item[0] != "authorization"),
+        )
+        return details._replace(metadata=metadata)
+
+
+class _UnaryBearerTokenInterceptor(
+    _BearerTokenMetadata,
+    grpc.aio.UnaryUnaryClientInterceptor,  # type: ignore[misc]  # grpcio has no py.typed marker.
+):
+    async def intercept_unary_unary[Request, Response](
+        self,
+        continuation: Callable[
+            [grpc.aio.ClientCallDetails, Request],
+            Awaitable[grpc.aio.UnaryUnaryCall[Request, Response]],
+        ],
+        client_call_details: grpc.aio.ClientCallDetails,
+        request: Request,
+    ) -> grpc.aio.UnaryUnaryCall[Request, Response]:
+        return await continuation(self._authorize(client_call_details), request)
+
+
+class _StreamBearerTokenInterceptor(
+    _BearerTokenMetadata,
+    grpc.aio.UnaryStreamClientInterceptor,  # type: ignore[misc]  # grpcio has no py.typed marker.
+):
+    async def intercept_unary_stream[Request, Response](
+        self,
+        continuation: Callable[
+            [grpc.aio.ClientCallDetails, Request],
+            Awaitable[grpc.aio.UnaryStreamCall[Request, Response]],
+        ],
+        client_call_details: grpc.aio.ClientCallDetails,
+        request: Request,
+    ) -> grpc.aio.UnaryStreamCall[Request, Response]:
+        return await continuation(self._authorize(client_call_details), request)
+
+
+def create_async_spicedb_channel(
+    target: str,
+    token: str,
+    *,
+    use_ssl: bool,
+    options: Sequence[tuple[str, int]] | None = None,
+) -> grpc.aio.Channel:
+    """Authenticate unary and server-streaming RPCs on either transport.
+
+    Plaintext is only selected after the existing explicit dev-mode opt-in.
+    Call credentials require TLS or a local-only transport, so remote dev
+    services need metadata interceptors. Keep the interceptor kinds separate:
+    grpc.aio registers only the first matching kind of each instance.
+    """
+    if use_ssl:
+        from grpcutil import bearer_token_credentials
+
+        return grpc.aio.secure_channel(
+            target, bearer_token_credentials(token), options=options
+        )
+    return grpc.aio.insecure_channel(
+        target,
+        options=options,
+        interceptors=[
+            _UnaryBearerTokenInterceptor(token),
+            _StreamBearerTokenInterceptor(token),
+        ],
+    )
+
+
 _global_channel: grpc.aio.Channel | None = None
 # MED-W19: _global_channel_lock must be initialised lazily — asyncio.Lock()
 # created at module-import time binds to the importing thread's event loop and
@@ -133,7 +211,6 @@ async def get_async_spicedb_channel() -> AsyncIterator[object]:
     multiplexing across all requests and avoid connection thrashing.
     """
     global _global_channel
-    import grpc
 
     # MED-W19: Acquire the lock only for channel initialisation; release it
     # *before* yielding so that the lock is never held across the yield point.
@@ -154,17 +231,9 @@ async def get_async_spicedb_channel() -> AsyncIterator[object]:
                     ("grpc.http2.min_time_between_pings_ms", 10_000),
                 ]
 
-                if use_ssl:
-                    from grpcutil import bearer_token_credentials
-
-                    credentials = bearer_token_credentials(token)
-                    _global_channel = grpc.aio.secure_channel(
-                        target, credentials, options=_KEEPALIVE_OPTIONS
-                    )
-                else:
-                    _global_channel = grpc.aio.insecure_channel(
-                        target, options=_KEEPALIVE_OPTIONS
-                    )
+                _global_channel = create_async_spicedb_channel(
+                    target, token, use_ssl=use_ssl, options=_KEEPALIVE_OPTIONS
+                )
 
                 logger.debug(
                     "SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl

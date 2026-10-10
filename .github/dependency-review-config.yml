@@ -134,12 +134,14 @@ allow-dependencies-licenses:
   - "pkg:golang/github.com/quic-go/qpack"
   - "pkg:golang/github.com/quic-go/quic-go"
   - "pkg:golang/github.com/quic-go/webtransport-go"
+  # Dependency Review reports an unmapped composite marker for v1.20.1. Upstream tag v1.20.1 LICENSE applies BSD-3-Clause generally and gives file-scoped Apache-2.0 and MIT notices.
+  # Each underlying SPDX ID is already present in allow-licenses. Source: https://github.com/klauspost/compress/blob/v1.20.1/LICENSE (GitHub blob 87d55747778c572bda5a21a2e9ad4578b088e832).
+  # Scope this metadata exception to the exact version reported by current Dependency Review; do not waive later releases.
+  - "pkg:golang/github.com/klauspost/compress@1.20.1"
   - "pkg:golang/github.com/spiffe/go-spiffe/v2"
   - "pkg:golang/github.com/university-ecosystem/services/pkg/spiffe"
   - "pkg:golang/github.com/university-ecosystem/services/pkg/logging"
   - "pkg:golang/golang.org/x/sync"
-  - "pkg:pypi/portalocker"
-  - "pkg:pypi/qdrant-client"
   - "pkg:pypi/mmh3"
   - "pkg:cargo/ammonia"
   # typing-extensions 4.16.0 declares `License-Expression: PSF-2.0` in its

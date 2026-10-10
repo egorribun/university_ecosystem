@@ -115,6 +115,45 @@ class ScheduleService:
         sched = await self.repo.get(schedule_id)
         if not sched:
             raise ValueError(translate("errors.schedule.not_found"))
+
+        update_values = data.model_dump(exclude_unset=True)
+        group_id = update_values.get("group_id", sched.group_id)
+        teacher = update_values.get("teacher", sched.teacher)
+        existing_group = await self.repo.get_by_group(group_id)
+        existing_teacher: Sequence[ScheduleDTO] = []
+        if teacher:
+            existing_teacher = await self.repo.get_by_teacher(teacher)
+
+        all_existing = [
+            item for item in [*existing_group, *existing_teacher] if item.id != sched.id
+        ]
+        target = ScheduleItemInternal(
+            id=sched.id,
+            weekday=update_values.get("weekday", sched.weekday),
+            start_time=update_values.get("start_time", sched.start_time),
+            end_time=update_values.get("end_time", sched.end_time),
+            parity=update_values.get("parity", sched.parity) or "both",
+            room=update_values.get("room", sched.room),
+            teacher=teacher,
+        )
+        existing_items = [
+            ScheduleItemInternal(
+                id=item.id,
+                weekday=item.weekday,
+                start_time=item.start_time,
+                end_time=item.end_time,
+                parity=item.parity,
+                room=item.room,
+                teacher=item.teacher,
+            )
+            for item in all_existing
+        ]
+        conflicts = await self.optimizer.detect_conflicts(target, existing_items)
+        if conflicts:
+            from app.core.exceptions.domain import BusinessRuleViolation
+
+            raise BusinessRuleViolation(translate("errors.schedule.conflict"))
+
         # Snapshot before the update: the repository may mutate this object.
         previous_state = schedule_state(sched)
 

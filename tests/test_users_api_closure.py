@@ -4,13 +4,16 @@ import base64
 import hashlib
 import hmac
 import json
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+from starlette.datastructures import State
+from starlette.types import Scope
 
 from app.api import users as api
 from app.models.enums import UserRole
@@ -18,11 +21,26 @@ from app.schemas import schemas
 from tests.conftest import call_injected
 
 
-def _request(headers: dict[str, str] | None = None) -> SimpleNamespace:
-    return SimpleNamespace(
-        headers=headers or {},
-        state=SimpleNamespace(active_session=SimpleNamespace(signing_key="secret")),
-    )
+def _request(headers: dict[str, str] | None = None) -> Request[State]:
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (key.lower().encode("latin-1"), value.encode("latin-1"))
+            for key, value in (headers or {}).items()
+        ],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "state": {"active_session": SimpleNamespace(signing_key="secret")},
+    }
+    return Request(scope)
 
 
 def _user(*, role: UserRole = UserRole.STUDENT) -> SimpleNamespace:
@@ -45,8 +63,8 @@ def _signed_envelope(
     )
 
 
-def _patch_user_out(value: object):
-    return patch.object(api.schemas.UserOut, "model_validate", return_value=value)
+def _patch_user_out(value: object) -> AbstractContextManager[object]:
+    return patch.object(schemas.UserOut, "model_validate", return_value=value)
 
 
 def test_profile_cache_integrity_environment_and_validation_paths() -> None:
@@ -314,9 +332,10 @@ async def test_create_and_list_users_roles() -> None:
     bg = MagicMock()
     db = AsyncMock()
     public = object()
-    with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
+    with patch.object(schemas.UserPublicOut, "model_validate", return_value=public):
         result = await call_injected(
             api.get_users,
+            checker=_checker(),
             bg=bg,
             request=request,
             filters=schemas.UserSearchFilter(),
@@ -330,6 +349,7 @@ async def test_create_and_list_users_roles() -> None:
     with _patch_user_out(expected):
         result = await call_injected(
             api.get_users,
+            checker=_checker(is_admin=True),
             bg=MagicMock(),
             request=request,
             filters=schemas.UserSearchFilter(),
@@ -337,6 +357,102 @@ async def test_create_and_list_users_roles() -> None:
             provides={"UserProfileService": service, "AsyncDatabaseSession": db},
         )
     assert result == [expected]
+
+
+def _checker(*, is_admin: bool = False, unavailable: bool = False) -> SimpleNamespace:
+    from app.auth.rbac import SpiceDBUnavailableError
+
+    check_admin = AsyncMock(
+        side_effect=SpiceDBUnavailableError("down") if unavailable else None,
+        return_value=is_admin,
+    )
+    return SimpleNamespace(check_admin=check_admin)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "checker",
+    [_checker(is_admin=False), _checker(unavailable=True)],
+    ids=["spicedb-denies", "spicedb-unavailable"],
+)
+async def test_get_users_ignores_stale_admin_role_without_spicedb_admin(
+    checker: SimpleNamespace,
+) -> None:
+    service = MagicMock()
+    service.get_users = AsyncMock(return_value=[SimpleNamespace(id=uuid4())])
+    public = object()
+
+    with patch.object(schemas.UserPublicOut, "model_validate", return_value=public):
+        result = await call_injected(
+            api.get_users,
+            checker=checker,
+            bg=MagicMock(),
+            request=_request(),
+            filters=schemas.UserSearchFilter(),
+            current_user=_user(role=UserRole.ADMIN),
+            provides={
+                "UserProfileService": service,
+                "AsyncDatabaseSession": AsyncMock(),
+            },
+        )
+
+    assert result == [public]
+
+
+@pytest.mark.asyncio
+async def test_get_users_route_normalizes_legacy_search_before_service_query() -> None:
+    from app.services.user.profile_service import UserProfileService
+
+    repo = MagicMock()
+    repo.list_users = AsyncMock(return_value=[SimpleNamespace(id=uuid4())])
+    service = UserProfileService(MagicMock(users=repo), MagicMock(), AsyncMock())
+    filters = schemas.UserSearchFilter(search="  Teacher  ")
+    public = object()
+
+    with patch.object(schemas.UserPublicOut, "model_validate", return_value=public):
+        result = await call_injected(
+            api.get_users,
+            checker=_checker(),
+            bg=MagicMock(),
+            request=_request(),
+            filters=filters,
+            current_user=_user(),
+            provides={
+                "UserProfileService": service,
+                "AsyncDatabaseSession": AsyncMock(),
+            },
+        )
+
+    assert result == [public]
+    assert filters.full_name == "Teacher"
+    assert filters.search is None
+    repo.list_users.assert_awaited_once_with(filters=filters)
+
+
+@pytest.mark.asyncio
+async def test_get_users_route_rejects_blank_search_for_non_admin() -> None:
+    from app.core.exceptions.domain import PermissionDenied
+    from app.services.user.profile_service import UserProfileService
+
+    repo = MagicMock()
+    repo.list_users = AsyncMock(return_value=[SimpleNamespace(id=uuid4())])
+    service = UserProfileService(MagicMock(users=repo), MagicMock(), AsyncMock())
+
+    with pytest.raises(PermissionDenied):
+        await call_injected(
+            api.get_users,
+            checker=_checker(),
+            bg=MagicMock(),
+            request=_request(),
+            filters=schemas.UserSearchFilter(full_name="  "),
+            current_user=_user(),
+            provides={
+                "UserProfileService": service,
+                "AsyncDatabaseSession": AsyncMock(),
+            },
+        )
+
+    repo.list_users.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -411,3 +527,70 @@ async def test_get_groups_maps_service_results() -> None:
     result = await call_injected(api.get_groups, provides={"GroupService": service})
     assert result[0].id == group.id
     assert result[0].name == "Group"
+
+
+@pytest.mark.asyncio
+async def test_admin_user_list_uses_the_authenticated_subject_for_full_profiles() -> (
+    None
+):
+    from fastapi import BackgroundTasks, Request
+
+    from app.schemas.dtos.user import UserDTO
+
+    def make_user(*, role: UserRole, email: str) -> UserDTO:
+        return UserDTO(
+            id=uuid4(),
+            email=email,
+            role=role,
+            group_id=None,
+            is_active=True,
+            mfa_required=False,
+            mfa_default_method=None,
+            mfa_last_verified_at=None,
+            created_at=datetime.now(UTC),
+        )
+
+    class IdentityBoundChecker:
+        def __init__(self, granted_subject: str) -> None:
+            self.granted_subject = granted_subject
+
+        async def check_admin(
+            self, user_id: str | None, *, user: object | None = None
+        ) -> bool:
+            return user_id == self.granted_subject
+
+    class UserListService:
+        def __init__(self, users: list[UserDTO]) -> None:
+            self.users = users
+
+        async def get_users(
+            self,
+            request: Request,
+            current_user: UserDTO | None = None,
+            filters: schemas.UserSearchFilter | None = None,
+        ) -> list[UserDTO]:
+            return self.users
+
+    admin = make_user(role=UserRole.ADMIN, email="admin@example.com")
+    listed_user = make_user(role=UserRole.STUDENT, email="student@example.com")
+    checker = IdentityBoundChecker(str(admin.id))
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users", "headers": []}
+    )
+
+    result = await call_injected(
+        api.get_users,
+        checker=checker,
+        bg=BackgroundTasks(),
+        request=request,
+        filters=schemas.UserSearchFilter(),
+        current_user=admin,
+        provides={
+            "UserProfileService": UserListService([listed_user]),
+            "AsyncDatabaseSession": AsyncMock(),
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], schemas.UserOut)
+    assert result[0].email == listed_user.email

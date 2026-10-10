@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 
 from app.models.logs import DataAccessLog
 from app.schemas.dtos.audit import DataAccessLogDTO
@@ -27,10 +28,8 @@ from app.services.data_access import (
     _normalize_time,
     batch_log_data_access,
     cleanup_access_logs,
-    export_access_logs,
     export_access_logs_stream,
     log_data_access,
-    serialize_access_logs_csv,
 )
 
 
@@ -80,25 +79,8 @@ def test_normalize_time_none_naive_and_aware():
 # --------------------------------------------------------------------------- #
 
 
-def test_serialize_access_logs_csv_header_and_rows():
-    csv_str = serialize_access_logs_csv([_dto(action="read"), _dto(action="write")])
-    lines = csv_str.strip().splitlines()
-    assert lines[0].startswith("created_at,actor_user_id,subject_user_id,resource_type")
-    assert len(lines) == 3  # header + 2 rows
-    assert "read" in csv_str
-    assert "write" in csv_str
-
-
-def test_serialize_access_logs_csv_empty_is_header_only():
-    csv_str = serialize_access_logs_csv([])
-    assert csv_str.strip().splitlines() == [
-        "created_at,actor_user_id,subject_user_id,resource_type,resource_id,"
-        "action,ip_address,user_agent,context"
-    ]
-
-
 # --------------------------------------------------------------------------- #
-# log_data_access — commit-flag + ip/ua extraction (AsyncMock repo)            #
+# log_data_access — commit-flag + ip/ua extraction (AsyncMock secure service)  #
 # --------------------------------------------------------------------------- #
 
 
@@ -107,9 +89,9 @@ async def test_log_data_access_skips_commit_when_commit_false():
     db = MagicMock()
     db.commit = AsyncMock()
     fake_dto = MagicMock()
-    with patch("app.services.data_access.AuditRepository") as mock_repo_cls:
-        instance = mock_repo_cls.return_value
-        instance.create = AsyncMock(return_value=fake_dto)
+    with patch("app.services.audit_service.get_secure_audit_service") as get_service:
+        service = get_service.return_value
+        service.create_log = AsyncMock(return_value=fake_dto)
         result = await log_data_access(
             db,
             actor_user_id=uuid.uuid4(),
@@ -121,13 +103,12 @@ async def test_log_data_access_skips_commit_when_commit_false():
         )
 
     assert result is fake_dto
-    instance.create.assert_awaited_once()
-    created = instance.create.call_args.args[0]
+    service.create_log.assert_awaited_once()
+    created = service.create_log.call_args.kwargs
     assert created["resource_type"] == "user"
     assert created["action"] == "read"
     assert created["ip_address"] == "9.9.9.9"
     assert created["user_agent"] == "UA"
-    assert len(created["signature"]) == 64  # real HMAC-SHA256 hex digest
     db.commit.assert_not_awaited()
 
 
@@ -135,9 +116,9 @@ async def test_log_data_access_skips_commit_when_commit_false():
 async def test_log_data_access_handles_missing_client_and_commits():
     db = MagicMock()
     db.commit = AsyncMock()
-    with patch("app.services.data_access.AuditRepository") as mock_repo_cls:
-        instance = mock_repo_cls.return_value
-        instance.create = AsyncMock(return_value=MagicMock())
+    with patch("app.services.audit_service.get_secure_audit_service") as get_service:
+        service = get_service.return_value
+        service.create_log = AsyncMock(return_value=MagicMock())
         await log_data_access(
             db,
             actor_user_id=None,
@@ -148,7 +129,7 @@ async def test_log_data_access_handles_missing_client_and_commits():
             commit=True,
         )
 
-    created = instance.create.call_args.args[0]
+    created = service.create_log.call_args.kwargs
     assert created["ip_address"] == "unknown"  # request.client is None
     assert created["user_agent"] is None  # header absent
     db.commit.assert_awaited_once()
@@ -172,7 +153,7 @@ async def test_log_data_access_persists_and_signs(db_session, user_factory):
     assert dto.subject_user_id == subject.id
     assert dto.action == "update"
     assert dto.resource_id == "42"
-    assert dto.signature and len(dto.signature) == 64
+    assert dto.signature and dto.signature.startswith("v2:")
 
 
 # --------------------------------------------------------------------------- #
@@ -184,9 +165,9 @@ async def test_log_data_access_persists_and_signs(db_session, user_factory):
 async def test_batch_log_data_access_empty_is_noop():
     db = MagicMock()
     db.commit = AsyncMock()
-    with patch("app.services.data_access.AuditRepository") as mock_repo_cls:
+    with patch("app.services.audit_service.get_secure_audit_service") as get_service:
         await batch_log_data_access(db, entries=[], request=_request())
-        mock_repo_cls.assert_not_called()
+        get_service.assert_not_called()
     db.commit.assert_not_awaited()
 
 
@@ -194,9 +175,9 @@ async def test_batch_log_data_access_empty_is_noop():
 async def test_batch_log_data_access_builds_entries_and_honors_commit_flag():
     db = MagicMock()
     db.commit = AsyncMock()
-    with patch("app.services.data_access.AuditRepository") as mock_repo_cls:
-        instance = mock_repo_cls.return_value
-        instance.batch_create = AsyncMock()
+    with patch("app.services.audit_service.get_secure_audit_service") as get_service:
+        service = get_service.return_value
+        service.create_logs = AsyncMock()
         await batch_log_data_access(
             db,
             entries=[
@@ -207,31 +188,99 @@ async def test_batch_log_data_access_builds_entries_and_honors_commit_flag():
             commit=False,
         )
 
-    instance.batch_create.assert_awaited_once()
-    built = instance.batch_create.call_args.args[0]
+    service.create_logs.assert_awaited_once()
+    built = service.create_logs.call_args.kwargs["entries"]
     assert len(built) == 2
     assert all(entry["ip_address"] == "5.5.5.5" for entry in built)
-    assert all(len(entry["signature"]) == 64 for entry in built)
+    assert all(entry["user_agent"] == "batch-agent" for entry in built)
     db.commit.assert_not_awaited()
 
 
+# --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
-async def test_batch_log_data_access_persists_real_rows(db_session, user_factory):
-    actor = await user_factory()
+@pytest.mark.parametrize("commit", [True, False])
+async def test_batch_audit_commit_controls_durability(db_session, commit):
+    resource_id = str(uuid.uuid4())
     await batch_log_data_access(
         db_session,
         entries=[
-            {"actor_user_id": actor.id, "resource_type": "user", "action": "read"},
-            {"actor_user_id": actor.id, "resource_type": "news", "action": "list"},
+            {"resource_type": "profile", "resource_id": resource_id, "action": "read"}
         ],
         request=_request(),
-        commit=True,
+        commit=commit,
     )
-    logs = await export_access_logs(db_session, actor_user_id=actor.id)
-    assert len(logs) == 2
+    await db_session.rollback()
+
+    rows = (
+        (
+            await db_session.execute(
+                select(DataAccessLog).where(DataAccessLog.resource_id == resource_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == int(commit)
+    if commit:
+        assert rows[0].action == "read"
+        assert rows[0].signature and rows[0].signature.startswith("v2:")
 
 
-# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+@pytest.mark.parametrize("writer", ["single", "batch"])
+async def test_active_access_writers_use_verifiable_canonical_signatures(
+    db_session, user_factory, monkeypatch, writer: str
+):
+    from app.services.audit_service import SecureAuditService
+
+    secure_audit = SecureAuditService(signing_key=b"synthetic-access-audit-key")
+    monkeypatch.setattr(
+        "app.services.audit_service.get_secure_audit_service",
+        lambda: secure_audit,
+    )
+    actor = await user_factory(role="admin")
+    subject = await user_factory(role="student")
+    resource_id = f"sec03-{writer}-{uuid.uuid4()}"
+    context = {"field": "synthetic"}
+
+    if writer == "single":
+        await log_data_access(
+            db_session,
+            actor_user_id=actor.id,
+            subject_user_id=subject.id,
+            resource_type="profile",
+            resource_id=resource_id,
+            action="read",
+            context=context,
+            request=_request(host="192.0.2.10", user_agent="synthetic-agent"),
+            commit=False,
+        )
+    else:
+        await batch_log_data_access(
+            db_session,
+            entries=[
+                {
+                    "actor_user_id": actor.id,
+                    "subject_user_id": subject.id,
+                    "resource_type": "profile",
+                    "resource_id": resource_id,
+                    "action": "read",
+                    "context": context,
+                }
+            ],
+            request=_request(host="192.0.2.10", user_agent="synthetic-agent"),
+            commit=False,
+        )
+
+    log = await db_session.scalar(
+        select(DataAccessLog).where(DataAccessLog.resource_id == resource_id)
+    )
+    assert log is not None
+    assert log.signature is not None and log.signature.startswith("v2:")
+    assert log.signature == secure_audit._compute_signature(log)
+    assert secure_audit.verify_integrity(log) is True
+
+
 # cleanup_access_logs — retention guard + prune-returns-zero                   #
 # --------------------------------------------------------------------------- #
 
@@ -262,45 +311,6 @@ async def test_cleanup_access_logs_keeps_recent_rows(db_session, user_factory):
 # --------------------------------------------------------------------------- #
 # export_access_logs / _stream — filters + DTO + CSV-injection sanitize        #
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_export_access_logs_applies_filters(db_session, user_factory):
-    actor = await user_factory()
-    other = await user_factory()
-    now = datetime.now(UTC)
-    db_session.add_all(
-        [
-            DataAccessLog(
-                actor_user_id=actor.id,
-                resource_type="user",
-                action="read",
-                created_at=now,
-            ),
-            DataAccessLog(
-                actor_user_id=other.id,
-                resource_type="news",
-                action="list",
-                created_at=now,
-            ),
-        ]
-    )
-    await db_session.flush()
-
-    scoped = await export_access_logs(
-        db_session,
-        actor_user_id=actor.id,
-        start_at=now - timedelta(hours=1),
-        end_at=now + timedelta(hours=1),
-    )
-    assert [row.actor_user_id for row in scoped] == [actor.id]
-
-    # subject_user_id filter branch — no row has this subject, so it scopes to []
-    by_subject = await export_access_logs(db_session, subject_user_id=actor.id)
-    assert by_subject == []
-
-    everything = await export_access_logs(db_session, limit=10)
-    assert len(everything) == 2
 
 
 @pytest.mark.asyncio

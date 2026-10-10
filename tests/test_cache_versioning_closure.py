@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.cache_versioning import CacheVersionManager
-from app.deps.cache import RedisCache
+from app.deps.cache import MemoryCache, RedisCache
 
 
 def _redis_cache() -> MagicMock:
@@ -138,10 +138,10 @@ async def test_non_redis_and_disabled_fallbacks_and_deterministic_key():
         await manager.increment()
         await manager.reset()
 
-    enabled_non_redis = MagicMock()
-    enabled_non_redis.enabled = True
-    assert await manager.get_version(enabled_non_redis) == "0"
+    enabled_non_redis = MemoryCache()
+    original = await manager.get_version(enabled_non_redis)
     await manager.increment(enabled_non_redis)
+    assert await manager.get_version(enabled_non_redis) != original
     await manager.reset(enabled_non_redis)
 
     key = manager.build_cache_key(

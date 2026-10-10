@@ -80,6 +80,16 @@ def render_dashboard(
     if not rows:
         rows = ["| — | — | — | — | — | no snapshots |"]
 
+    snapshot_note = (
+        [
+            "No certified quality snapshot is currently published (`quality-history/` has",
+            "no normalized manifest). The empty trend row is therefore intentional and",
+            "must not be read as a pass.",
+            "",
+        ]
+        if not snapshots
+        else []
+    )
     policy = contract.get("policy", {})
     exclusions = contract.get("exclusions", [])
     quarantines = contract.get("quarantines", [])
@@ -95,9 +105,21 @@ def render_dashboard(
             "This file is generated from normalized quality manifests. A `—` means "
             "evidence was not observed; it is never interpreted as a passing score.",
             "",
+            *snapshot_note,
+            "Historical CI-capacity observations are diagnostic context only, not current",
+            "release evidence. The [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md)",
+            "defines future O1–O8 comparable-run evidence; historical measurements are not",
+            "a fresh baseline.",
+            "",
             f"Last rendered: `{today.isoformat()}`",
-            f"Required patch coverage: **{policy.get('patch_coverage', 'unknown')}%**",
-            f"Required viable mutation score: **{policy.get('viable_mutant_score', 'unknown')}%**",
+            f"Configured current patch-coverage floor: **{policy.get('patch_coverage', 'unknown')}%**",
+            "Tier 0 keeps 100% coverage. Current component floors remain blocking until",
+            "ADR-047 Q3.",
+            "The planned Q3 coverage ratchet and 90% non-Tier 0 patch floor are not implemented.",
+            f"Configured viable-mutation score value: **{policy.get('viable_mutant_score', 'unknown')}%**",
+            "ADR-047 Q1 keeps full mutmut/Stryker runs on nightly/manual lanes and removes",
+            "mutation jobs from the MVP release gate. The Q2 nightly regression check and",
+            "dashboard publication are planned, not implemented.",
             "",
             "## Coverage trend",
             "",
@@ -119,9 +141,27 @@ def render_dashboard(
             "",
             "## Interpretation",
             "",
-            "A release is certifiable only when the required-check matrix, the "
-            "coverage manifest, mutation gates, contract tests, and Tier0 evidence "
-            "all pass. This dashboard is trend evidence, not a bypass for CI.",
+            "A release certification record requires the exact required-check matrix, same-SHA",
+            "quality publication, current coverage floors and manifest, contract tests,",
+            "and required Tier 0 evidence pass. Mutation jobs do not block the MVP release",
+            "under ADR-047 Q1; their full runs remain nightly/manual evidence. Q2 mutation",
+            "regression publication and Q3 coverage changes are future stages. This dashboard",
+            "is trend evidence, not a bypass for CI.",
+            "",
+            "The auditable release-critical inventory is",
+            "[`quality/release-required-checks.json`](../../quality/release-required-checks.json).",
+            "It lists the stable `CI Success` aggregate, the same-SHA `Trusted Codecov Upload`,",
+            "and independent required security checks without duplicating every matrix entry.",
+            "The aggregate's prerequisites are defined in `.github/workflows/ci.yml` and",
+            "cataloged in `quality/ci-check-catalog.json`; mutation jobs are not among them",
+            "after ADR-047 Q1. A check may conclude `skipped` only when the exact event policy",
+            "explicitly sets `safe_to_skip: true` and documents a `skip_reason`; the protected",
+            "`push_main` policy currently permits no skips.",
+            "",
+            "The release workflow fetches every page of the exact release SHA's latest check",
+            "runs, verifies GitHub's declared total, and rejects foreign-SHA, missing, pending,",
+            "failed, skipped, or duplicate required-check evidence before signing a",
+            "certification record.",
             "",
         ]
     )

@@ -6,7 +6,6 @@ Provider: Optimizer
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -31,17 +30,19 @@ else:
     Pact = pact_lib.Pact
     match = pact_lib.match
 
-PACT_DIR = Path(__file__).parent / "pacts"
 CONSUMER_NAME = "university-backend"
 PROVIDER_NAME = "optimizer-service"
 
 
 @pytest.fixture(scope="module")
 def pact() -> Pact:
-    PACT_DIR.mkdir(parents=True, exist_ok=True)
+    """Consumer-only schema sentinel; no optimizer provider replay exists in CI.
+
+    Keep the interaction coverage without emitting an orphan provider artifact,
+    matching the other unreplayed consumer-only Pact fixtures.
+    """
     p = Pact(CONSUMER_NAME, PROVIDER_NAME)
     yield p.with_specification("V4")
-    p.write_file(PACT_DIR, overwrite=True)
 
 
 def test_detect_conflicts_grpc_contract(pact: Pact) -> None:

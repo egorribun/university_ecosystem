@@ -32,6 +32,9 @@ type Config struct {
 	Port       string
 	BackendURL string
 	RedisURL   string
+	// TrustedProxies lists the exact proxy IPs or CIDRs allowed to supply
+	// forwarded client-address headers. Empty disables forwarded-header trust.
+	TrustedProxies []string
 	// RevocationRedisURL is the canonical cross-service session-revocation
 	// store. It is deliberately separate from RedisURL, which owns rate-limit
 	// state and may use another logical database.
@@ -117,6 +120,7 @@ func loadFromEnvironment() *Config {
 		Port:               getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:         getEnv("BACKEND_URL", "http://backend:8000"),
 		RedisURL:           getEnv("REDIS_URL", "redis://redis:6379/3"),
+		TrustedProxies:     getEnvSlice("GATEWAY_TRUSTED_PROXIES", nil),
 		RevocationRedisURL: revocationRedisURL,
 		JWTSecret:          os.Getenv("JWT_SECRET"), // No default — fail secure
 		JWTAudience:        jwtAudience,
@@ -162,15 +166,8 @@ func loadFromEnvironment() *Config {
 }
 
 func validateConfig(cfg *Config) error {
-	if cfg.JWTSecret == "" {
-		// CRITICAL: Fail to start if no secret is provided.
-		return fmt.Errorf("JWT_SECRET environment variable is not set")
-	}
-	if cfg.RevocationRedisURL == "" {
-		return fmt.Errorf("REVOCATION_REDIS_URL environment variable must not be blank")
-	}
-	if cfg.JWTAudience == "" {
-		return fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
+	if err := validateRequestSettings(cfg); err != nil {
+		return err
 	}
 
 	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
@@ -200,6 +197,26 @@ func validateConfig(cfg *Config) error {
 		cfg.JWKSRefreshInterval = 300
 	}
 
+	return nil
+}
+
+func validateRequestSettings(cfg *Config) error {
+	if cfg.JWTSecret == "" {
+		// CRITICAL: Fail to start if no secret is provided.
+		return fmt.Errorf("JWT_SECRET environment variable is not set")
+	}
+	if cfg.RevocationRedisURL == "" {
+		return fmt.Errorf("REVOCATION_REDIS_URL environment variable must not be blank")
+	}
+	if cfg.JWTAudience == "" {
+		return fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
+	}
+	if cfg.RateLimitRPS <= 0 {
+		return fmt.Errorf("RATE_LIMIT_RPS must be greater than zero")
+	}
+	if cfg.RateLimitBurst <= 0 {
+		return fmt.Errorf("RATE_LIMIT_BURST must be greater than zero")
+	}
 	return nil
 }
 

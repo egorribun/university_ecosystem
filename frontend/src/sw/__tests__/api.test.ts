@@ -99,7 +99,7 @@ function makeRouteContext(pathname: string, method = "GET", cookie = "") {
     method,
     headers: cookie ? { Cookie: cookie } : {},
   })
-  return { url, request, event: {} as any }
+  return { url, request, event: { clientId: "controlled" } as any }
 }
 
 // ─── Import module ────────────────────────────────────────────────────────────
@@ -113,6 +113,35 @@ beforeEach(async () => {
   vi.resetModules()
   // Fresh import so initApiCaching re-registers all routes cleanly
   mod = await import("../api")
+  vi.stubGlobal(
+    "MessageChannel",
+    class {
+      port1 = {
+        onmessage: null as null | ((event: { data: unknown }) => void),
+        close: () => undefined,
+      }
+      port2 = {
+        postMessage: (data: unknown) => queueMicrotask(() => this.port1.onmessage?.({ data })),
+        close: () => undefined,
+      }
+    }
+  )
+  vi.stubGlobal("self", {
+    clients: {
+      get: async () => ({
+        type: "window",
+        postMessage: (_data: unknown, ports: MessagePort[]) =>
+          ports[0]!.postMessage({
+            sessionHash: mod.getSessionHash(),
+            sessionScope: mod.getSessionCacheScope(),
+          }),
+      }),
+    },
+  })
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("network"))
+  )
 })
 
 afterEach(() => {
@@ -165,6 +194,7 @@ describe("isOnline", () => {
 describe("clearSessionCaches", () => {
   it("deletes all session-prefixed and named caches", async () => {
     const { mock: cachesMock, deletedCaches } = createCachesMock([
+      "api-cache",
       "api-cache:user-42",
       "media-private:avatar",
       "api-news-cache",
@@ -174,8 +204,11 @@ describe("clearSessionCaches", () => {
     ])
     vi.stubGlobal("caches", cachesMock)
 
+    mod.setSessionHash("expired")
     await mod.clearSessionCaches()
 
+    expect(mod.getSessionHash()).toBeNull()
+    expect(deletedCaches).toContain("api-cache")
     expect(deletedCaches).toContain("api-cache:user-42")
     expect(deletedCaches).toContain("media-private:avatar")
     expect(deletedCaches).toContain("api-news-cache")
@@ -243,11 +276,11 @@ describe("initApiCaching — route matching", () => {
     })
 
     it("matches POST /api/news (non-GET news mutation)", () => {
-      expect(isRouteMatched("/api/news", "POST")).toBe(true)
+      expect(isRouteMatched("/api/news", "POST")).toBe(false)
     })
 
     it("matches DELETE /api/news/:id/like (non-GET)", () => {
-      expect(isRouteMatched("/api/news/5/like", "DELETE")).toBe(true)
+      expect(isRouteMatched("/api/news/5/like", "DELETE")).toBe(false)
     })
   })
 
@@ -324,24 +357,27 @@ describe("initApiCaching — route matching", () => {
       expect(isRouteMatched("/assets/logo.svg")).toBe(false)
     })
 
-    it("uses the session cookie to isolate the NetworkFirst cache", async () => {
+    it("uses the explicit session namespace rather than cookies", async () => {
+      mod.setSessionHash("confirmed-account")
       const response = await privateRouteHandler()(
         privateRouteContext("/api/schedule", "session=session-alpha; theme=dark")
       )
 
       expect(response.status).toBe(200)
-      expect(networkFirstOptions.at(-1)?.cacheName).toBe("api-cache:session-alpha")
+      expect(networkFirstOptions.at(-1)?.cacheName).toBe(`api-cache:${mod.getSessionCacheScope()}`)
     })
 
-    it("uses the shared API cache when no session cookie is present", async () => {
+    it("uses network only when no confirmed identity exists", async () => {
       const response = await privateRouteHandler()(privateRouteContext("/api/schedule"))
 
       expect(response.status).toBe(200)
-      expect(networkFirstOptions.at(-1)?.cacheName).toBe("api-cache")
+      expect(networkFirstOptions).toHaveLength(0)
+      expect(fetch).toHaveBeenCalledOnce()
     })
 
     it("returns a synthetic 504 when the strategy does not resolve in six seconds", async () => {
       vi.useFakeTimers()
+      mod.setSessionHash("session-timeout")
       networkFirstHandleResult = new Promise<Response>(() => undefined)
 
       const responsePromise = privateRouteHandler()(privateRouteContext("/api/schedule"))

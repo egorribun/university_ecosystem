@@ -278,6 +278,44 @@ func TestSetupRouter_AuthenticatedAdminRouteReachesProxy(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, response.StatusCode)
 }
 
+func TestSetupRouter_PasswordRecoveryRoutesArePublicOnlyForPOST(t *testing.T) {
+	var forwarded []string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = append(forwarded, r.Method+" "+r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(backend.Close)
+
+	router, cancel := newRouteBranchRouterWithUpstreams(t, backend.URL, "http://127.0.0.1:1")
+	t.Cleanup(cancel)
+
+	for _, path := range []string{"/api/v1/password/forgot", "/api/v1/password/reset"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, nil)
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusNoContent, recorder.Code, path)
+	}
+
+	for _, probe := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/password/forgot"},
+		{method: http.MethodPut, path: "/api/v1/password/reset"},
+		{method: http.MethodPost, path: "/api/v1/password/forgot/extra"},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(t.Context(), probe.method, probe.path, nil)
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code, probe.method+" "+probe.path)
+	}
+
+	assert.Equal(t, []string{
+		"POST /api/v1/password/forgot",
+		"POST /api/v1/password/reset",
+	}, forwarded)
+}
+
 func TestSetupRouter_WSProxyErrorHandlerReturnsBadGateway(t *testing.T) {
 	router, cancel := newRouteBranchRouter(t, "http://127.0.0.1:1")
 	t.Cleanup(cancel)

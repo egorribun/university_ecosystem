@@ -85,6 +85,257 @@ def test_start_script_uses_cryptographic_randomness_for_secrets() -> None:
     assert "HexLength" not in imgproxy_function
 
 
+def test_prepare_only_requires_live_stand_inputs_and_validates_vapid_shape() -> None:
+    script = _read("start-docker.ps1")
+    parameters = script[script.index("param(") : script.index("$ErrorActionPreference")]
+    assert "[switch]$PrepareOnly" in parameters
+
+    validation = script[
+        script.index("function Assert-PrepareOnlyLiveInputs") : script.index(
+            "function New-Secret"
+        )
+    ]
+    assert "docker-compose.live.yml" in validation
+    assert "COMPOSE_PROJECT_NAME" in validation
+    assert "ue-live-[0-9a-f]{16}" in validation
+    for port_name in (
+        "BACKEND",
+        "FRONTEND",
+        "POSTGRES",
+        "GATEWAY",
+        "WS_HUB",
+        "TEMPORAL_GRPC",
+        "TEMPORAL_WEB",
+        "IMGPROXY",
+        "GRAFANA",
+        "PROMETHEUS",
+        "ALLOY",
+        "PYROSCOPE",
+        "CADDY_HTTP",
+        "CADDY_HTTPS",
+        "MAILPIT",
+    ):
+        assert port_name in validation
+    assert "LIVE_VAPID_PUBLIC_KEY" in validation
+    assert "LIVE_VAPID_PRIVATE_KEY" in validation
+    assert "FromBase64String" in validation
+    assert "LIVE_BASE_URL" in validation
+
+
+def test_prepare_only_stops_after_local_configuration_and_skips_docker_startup() -> (
+    None
+):
+    script = _read("start-docker.ps1")
+    prerequisite = script[
+        script.index("# -- Prerequisite: Docker") : script.index("# -- Handle -Down")
+    ]
+    assert "if (-not $PrepareOnly)" in prerequisite
+    assert "docker info" in prerequisite
+
+    legacy_guard = script[
+        script.index(
+            "if (-not $PrepareOnly) {\n    Assert-LegacyS3VolumeGuard"
+        ) : script.index("# -- Generate secrets")
+    ]
+    assert "if (-not $PrepareOnly)" in legacy_guard
+
+    configuration = script[
+        script.index("# -- Generate secrets") : script.index("# -- Core resource guard")
+    ]
+    prepare_exit = configuration.index('Write-Ok "Live stand environment prepared')
+    prepare_branch = configuration.rfind("if ($PrepareOnly)", 0, prepare_exit)
+    assert prepare_branch >= 0
+    assert configuration.index("Ensure-ApplicationSecrets") < prepare_branch
+    assert configuration.index("Ensure-DockerConfigRevision") < prepare_branch
+    assert configuration.index("Write-WorkerEnvironmentFile") < prepare_branch
+    assert configuration.index("New-JwtRs256Key") < prepare_branch
+    assert configuration.index("New-TemporalServiceToken") < prepare_branch
+    assert "New-TemporalServiceToken -NoDockerFallback:$PrepareOnly" in configuration
+    assert configuration.index("Assert-PreparedLiveStandConfiguration") < prepare_exit
+    assert configuration.index("exit 0", prepare_exit) < len(configuration)
+
+    prepare_only_path = configuration[
+        prepare_branch : configuration.index("exit 0", prepare_exit)
+    ]
+    assert "docker compose" not in prepare_only_path
+    assert "migrations" not in prepare_only_path
+    assert prepare_exit < script.index("# -- Core resource guard")
+    assert prepare_exit < script.index("# -- Build")
+    assert prepare_exit < script.index("# -- Start services")
+
+
+def test_prepare_only_disables_docker_fallback_for_rsa_material() -> None:
+    script = _read("start-docker.ps1")
+    private_key_function = _powershell_function(
+        script, "New-JwtRs256Key", "New-JwtRs256PublicKey"
+    )
+    public_key_function = _powershell_function(
+        script, "New-JwtRs256PublicKey", "ConvertTo-Base64Url"
+    )
+
+    assert "[switch]$NoDockerFallback" in private_key_function
+    assert "[switch]$NoDockerFallback" in public_key_function
+    assert "-not $NoDockerFallback" in private_key_function
+    assert "-not $NoDockerFallback" in public_key_function
+    assert (
+        'New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem" '
+        "-NoDockerFallback:$PrepareOnly"
+    ) in script
+    assert (
+        'New-JwtRs256PublicKey -PrivateKeyPath ".secrets/jwt_rs256.pem" '
+        '-OutputPath ".secrets/jwt_rs256.pub.pem" -NoDockerFallback:$PrepareOnly'
+    ) in script
+
+
+def test_launcher_validates_resolved_compose_config_before_start_without_printing_it() -> (
+    None
+):
+    script = _read("start-docker.ps1")
+    validation = _powershell_function(
+        script, "Assert-ComposeConfiguration", "Resolve-LiveAcceptanceSelection"
+    )
+    assert (
+        "docker compose @ComposeArgs --env-file $EnvFile config --format json"
+        in validation
+    )
+    assert "2>$null" in validation
+    assert "$resolvedComposeModel = Assert-ComposeConfiguration" in script
+    assert (
+        "$configOutput = @(docker compose @ComposeArgs --env-file $EnvFile "
+        "config --format json 2>$null)" in validation
+    )
+    assert (
+        "$composeModel = ($configOutput -join [Environment]::NewLine) "
+        "| ConvertFrom-Json -ErrorAction Stop" in validation
+    )
+    assert "return $composeModel" in validation
+    assert "Write-Host" not in validation
+    assert "Write-Output" not in validation
+    assert "Out-File" not in validation
+    owner_validation = _powershell_function(
+        script, "Get-VerifiedLiveAcceptanceOwner", "Assert-LiveAcceptanceSelection"
+    )
+    assert (
+        "[string]$env:COMPOSE_PROJECT_NAME -cne "
+        "[string]$owner.project_name" in owner_validation
+    )
+
+    validation_call = script.rindex(
+        "Assert-ComposeConfiguration", 0, script.index("# -- Core resource guard")
+    )
+    prepare_exit = script.index(
+        "exit 0", script.index('Write-Ok "Live stand environment prepared')
+    )
+    core_guard = script.index("# -- Core resource guard")
+    build_start = script.index("# -- Build")
+    start_services = script.index("# -- Start services")
+    assert prepare_exit < validation_call < core_guard < build_start < start_services
+
+    token_minter = script[
+        script.index("function New-TemporalServiceToken") : script.index(
+            "function Assert-PreparedLiveStandConfiguration"
+        )
+    ]
+    assert "-not $NoDockerFallback" in token_minter
+
+
+def test_managed_compose_volume_preflight_is_read_only_and_owner_scoped() -> None:
+    script = _read("start-docker.ps1")
+    parameters = script[script.index("param(") : script.index("$ErrorActionPreference")]
+    assert "[switch]$AllowExistingOwnedVolumes" in parameters
+
+    preflight = _powershell_function(
+        script, "Assert-ManagedComposeVolumeOwnership", "Assert-ComposeConfiguration"
+    )
+    for contract in (
+        "docker volume ls --format",
+        "docker volume inspect",
+        "com.docker.compose.project",
+        "com.docker.compose.volume",
+        "AllowExistingOwnedVolumes",
+        "PSObject.Properties",
+    ):
+        assert contract in preflight
+    assert "throw" in preflight
+    assert "docker volume rm" not in preflight
+    assert "docker volume create" not in preflight
+    assert "Write-Host" not in preflight
+
+    configuration = _powershell_function(
+        script, "Assert-ComposeConfiguration", "Assert-LegacyS3VolumeGuard"
+    )
+    assert "ConvertFrom-Json" in configuration
+    assert "return $composeModel" in configuration
+    live_guard = script[
+        script.index("if ($AllowExistingOwnedVolumes)") : script.index(
+            "function New-Secret"
+        )
+    ]
+    assert '"docker-compose.live.yml"' in live_guard
+    assert "COMPOSE_PROJECT_NAME" in live_guard
+    assert "ue-live-[0-9a-f]{16}" in live_guard
+
+    config_call = script.rindex(
+        "$resolvedComposeModel = Assert-ComposeConfiguration",
+        0,
+        script.index("# -- Core resource guard"),
+    )
+    ownership_projection_start = script.index(
+        "$ownershipComposeModel = $resolvedComposeModel", config_call
+    )
+    ownership_projection_end = script.index(
+        "Assert-ManagedComposeVolumeOwnership -ComposeModel $ownershipComposeModel",
+        ownership_projection_start,
+    )
+    ownership_projection = script[ownership_projection_start:ownership_projection_end]
+    assert "if ($script:LiveAcceptanceCore)" in ownership_projection
+    assert "$ownershipComposeModel = Get-LiveAcceptanceVolumeProjection" in (
+        ownership_projection
+    )
+    assert "-ComposeModel $resolvedComposeModel" in ownership_projection
+    assert "-SelectedServices $script:LiveAcceptanceServices" in ownership_projection
+    ownership_call = ownership_projection_end
+    core_guard = script.index("# -- Core resource guard")
+    build_start = script.index("# -- Build")
+    start_services = script.index("# -- Start services")
+    assert (
+        config_call
+        < ownership_projection_start
+        < ownership_call
+        < core_guard
+        < build_start
+        < start_services
+    )
+
+
+def test_launcher_rejects_unowned_default_project_override_before_volume_probe() -> (
+    None
+):
+    script = _read("start-docker.ps1")
+    preflight = _powershell_function(
+        script, "Assert-ManagedComposeVolumeOwnership", "Assert-ComposeConfiguration"
+    )
+
+    guard = 'if (-not $isLiveStand -and $projectName -cne "university_ecosystem")'
+    assert guard in preflight
+    project_guard = preflight.index(guard)
+    volume_inventory = preflight.index("docker volume ls --format")
+    assert "$isLiveStand" in preflight
+    assert project_guard < volume_inventory
+
+
+def test_allow_existing_managed_volumes_requires_exact_compose_labels() -> None:
+    script = _read("start-docker.ps1")
+    preflight = _powershell_function(
+        script, "Assert-ManagedComposeVolumeOwnership", "Assert-ComposeConfiguration"
+    )
+    assert "-cne $projectName" in preflight
+    assert "-cne $volume.Key" in preflight
+    assert "-not $AllowExistingOwnedVolumes" in preflight
+    assert "2>$null" in preflight
+    assert "ConvertFrom-Json" in preflight
+
+
 def test_launcher_uses_the_prometheus_configured_metrics_identity() -> None:
     script = _read("start-docker.ps1")
     metrics_function = _powershell_function(
@@ -188,14 +439,41 @@ def test_launcher_generates_a_redacted_worker_environment_file() -> None:
 
     assert '$WorkerEnvFile = ".env.docker.workers"' in script
     assert "function Write-WorkerEnvironmentFile" in script
+    assert "function Ensure-MfaEmailKeyRings" in script
     assert "REVOCATION_REDIS_(?:URL|PASSWORD)" in script
+    assert "MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)" in script
+    assert "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" in script
     assert "Write-Utf8NoBom -Path $WorkerEnvFile" in script
 
-    invocation_start = script.index("# Fail closed if an existing local configuration")
+    key_ring_setup = _powershell_function(
+        script, "Ensure-MfaEmailKeyRings", "Assert-IndependentRedisCredentials"
+    )
+    for key_name in (
+        "MFA_EMAIL_OTP_HMAC_KEYS",
+        "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID",
+        "MFA_EMAIL_DELIVERY_KEKS",
+        "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID",
+    ):
+        assert key_name in key_ring_setup
+    assert "refusing to replace key material" in key_ring_setup
+    assert "foreach ($path in @($EnvFile, $EnvCompose))" in key_ring_setup
+    assert "fieldLines.Count -gt 1" in key_ring_setup
+    assert "valuesAgree" in key_ring_setup
+
+    worker_setup = _powershell_function(
+        script, "Write-WorkerEnvironmentFile", "Ensure-JwtEnvironment"
+    )
+    assert "MFA_EMAIL_DELIVERY_KEKS" not in worker_setup
+    assert "MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)" in worker_setup
+    assert "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" in worker_setup
+
+    invocation_start = script.index("# Give each application security domain")
     invocation_end = script.index("# -- Sync check")
     invocation = script[invocation_start:invocation_end]
     assert (
-        invocation.index("Assert-IndependentRedisCredentials")
+        invocation.index("Ensure-ApplicationSecrets")
+        < invocation.index("Ensure-MfaEmailKeyRings")
+        < invocation.index("Assert-IndependentRedisCredentials")
         < invocation.index("Ensure-JwtEnvironment")
         < invocation.index("Ensure-DockerConfigRevision")
         < invocation.index("Write-WorkerEnvironmentFile")
@@ -397,6 +675,26 @@ def test_storage_initialization_is_compose_managed_and_fail_fast() -> None:
     assert "docker run --rm --network $network" not in launcher
 
 
+def test_full_stack_image_volumes_are_owned_or_explicitly_ephemeral() -> None:
+    project = _compose("docker-compose.full.yml")
+    services = project["services"]
+
+    postgres_init_tmpfs = set(services["postgres-databases-init"].get("tmpfs", []))
+    assert "/var/lib/postgresql/data" in postgres_init_tmpfs
+
+    assert services["minio-init"].get("tmpfs") == ["/data"]
+
+    pyroscope_mounts = set(services["pyroscope"]["volumes"])
+    assert {
+        "pyroscope-data:/data",
+        "pyroscope-compactor-data:/data-compactor",
+        "pyroscope-metastore-data:/data-metastore",
+    }.issubset(pyroscope_mounts)
+    assert {"pyroscope-compactor-data", "pyroscope-metastore-data"}.issubset(
+        project["volumes"]
+    )
+
+
 def test_compose_wrappers_always_use_the_full_stack_env_file() -> None:
     for relative_path in ("scripts/dc.ps1", "scripts/dc.sh"):
         wrapper = _read(relative_path)
@@ -405,14 +703,21 @@ def test_compose_wrappers_always_use_the_full_stack_env_file() -> None:
         assert "docker-compose.full.yml" in wrapper
 
 
-def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack() -> (
+def test_start_script_waits_for_the_full_stack_without_auto_removing_containers() -> (
     None
 ):
     script = _read("start-docker.ps1")
-    services_start = script.index("$services = [ordered]@{")
-    services_block = script[services_start : script.index("do {", services_start)]
+    services_start = script.index("$fullReadiness = [ordered]@{")
+    services_end = script.index(
+        "\n}\n\nif ($script:LiveAcceptanceCore)", services_start
+    )
+    services_block = script[services_start:services_end]
+    selection_start = script.index(
+        "$services = Get-StartupReadinessInventory", services_end
+    )
+    selection_end = script.index("do {", selection_start)
+    selection_block = script[selection_start:selection_end]
 
-    assert "up -d --remove-orphans" in script
     assert "--force-recreate" not in script
     assert "ps --all" in script
     assert (
@@ -451,22 +756,58 @@ def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack()
     assert minio is not None
     assert 'type = "docker"' in minio.group(1)
     assert 'service = "minio"' in minio.group(1)
-    for name, url in {
-        "grafana": "http://localhost:3000/api/health",
-        "prometheus": "http://localhost:9090/-/healthy",
-        "frontend": "http://localhost:8081/login",
-        "site": "http://localhost/login",
+    for name, endpoint in {
+        "grafana": ("GRAFANA", 3000, "/api/health"),
+        "prometheus": ("PROMETHEUS", 9090, "/-/healthy"),
+        "frontend": ("FRONTEND", 8081, "/login"),
+        "site": ("CADDY_HTTP", 80, "/login"),
     }.items():
+        live_name, default_port, path = endpoint
         entry = re.search(rf"{name}\s+= @\{{([^\n]+)", services_block)
         assert entry is not None, name
         assert 'type = "http"' in entry.group(1), name
-        assert url in entry.group(1), name
+        assert (
+            f"url = (Get-LocalServiceUrl -Name {live_name} "
+            f'-DefaultPort {default_port} -Path "{path}")'
+        ) in entry.group(1), name
 
     assert "timeout = 20" in re.search(
         r"frontend\s+= @\{([^\n]+)", services_block
     ).group(1)
+    assert "-FullReadiness $fullReadiness" in selection_block
+    assert "-Core:$Core" in selection_block
+    assert "foreach ($name in $services.Keys)" in script[selection_end:]
     assert "Test-ServiceHttp -Url" in script
     assert "-Timeout $requestTimeout" in script
+
+
+def test_launcher_resolves_readiness_and_prometheus_ports_from_live_map() -> None:
+    script = _read("start-docker.ps1")
+    assert "function Get-LocalServiceUrl" in script
+    url_helper = _powershell_function(
+        script, "Get-LocalServiceUrl", "Wait-PrometheusTargets"
+    )
+    assert '$environmentName = if ($Name -ieq "MAILPIT") {' in url_helper
+    assert '"LIVE_MAILPIT_PORT"' in url_helper
+    assert '"LIVE_HOST_PORT_$Name"' in url_helper
+    assert "[Environment]::GetEnvironmentVariable($environmentName)" in url_helper
+    assert "$parsedPort -lt 1024 -or $parsedPort -gt 65535" in script
+    assert 'return "http://localhost:$($port)$Path"' in script
+    assert "Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090" in script
+    assert "Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080" in script
+    assert "Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081" in script
+    assert "Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083" in script
+    assert "Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80" in script
+    core_readiness = _powershell_function(
+        script,
+        "Get-LiveAcceptanceCoreReadinessInventory",
+        "Get-StartupReadinessInventory",
+    )
+    assert (
+        'Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path "/api/v1/info"'
+        in core_readiness
+    )
+    assert "http://localhost:8081/login" not in script
 
 
 def test_launcher_exposes_an_explicit_bounded_core_mode() -> None:
@@ -525,11 +866,14 @@ def test_launcher_exposes_an_explicit_bounded_core_mode() -> None:
     for service in excluded_services:
         assert f'"{service}"' not in core_block, service
 
-    # Full mode remains the default and must retain its historical all-service
-    # invocation; only the explicit core opt-in is allowed to scope the command.
+    # Full mode remains the default; only the explicit core opt-in scopes the
+    # command. Both modes leave orphan cleanup to an ownership-reviewed action.
     assert "if ($Core)" in script
-    assert "up -d --no-deps --remove-orphans" in script
-    assert "up -d --remove-orphans" in script
+    assert "up -d --no-deps gateway caddy" in script
+    assert "up -d $CoreBootstrapServices" in script
+    assert "up -d $CoreInitServices" in script
+    assert "up -d $coreApplicationServices" in script
+    assert "docker compose @ComposeArgs --env-file $EnvFile up -d\n" in script
 
 
 def test_core_mode_filters_optional_health_probes_and_prometheus_validation() -> None:
@@ -554,20 +898,37 @@ def test_core_mode_filters_optional_health_probes_and_prometheus_validation() ->
     ):
         assert f'"{service}"' in excluded_block, service
 
-    services_start = script.index("$services = [ordered]@{")
-    services_end = script.index("do {", services_start)
-    services_block = script[services_start:services_end]
-    assert "$services.Remove($name)" in services_block
+    selector_start = script.index("function Get-StartupReadinessInventory")
+    selector_end = script.index(
+        "\n}\n\nif ($script:LiveAcceptanceCore)", selector_start
+    )
+    selector = script[selector_start:selector_end]
+    assert "if ($LiveAcceptanceCore -and $Core)" in selector
+    assert "return $CoreReadiness" in selector
+    assert "foreach ($name in $CoreExcludedHealthServices)" in selector
+    assert "[void]$FullReadiness.Remove($name)" in selector
+    assert "return $FullReadiness" in selector
 
-    prometheus_start = script.rfind(
-        "if (-not $Core)",
-        0,
-        script.index('Write-Status "Validating Prometheus scrape targets..."'),
+    core_readiness = _powershell_function(
+        script,
+        "Get-LiveAcceptanceCoreReadinessInventory",
+        "Get-StartupReadinessInventory",
+    )
+    assert "prometheus = @{" not in core_readiness
+    assert "pyroscope = @{" not in core_readiness
+
+    prometheus_start = script.index(
+        "if (-not $Core -and -not $script:LiveAcceptanceCore)"
     )
     prometheus_block = script[
         prometheus_start : script.index("# -- Done", prometheus_start)
     ]
-    assert "if (-not $Core)" in prometheus_block
+    assert "Wait-PrometheusTargets" in prometheus_block
+    assert "elseif ($script:LiveAcceptanceCore)" in prometheus_block
+    assert (
+        "Skipping Prometheus target validation; Prometheus is outside the signed live Core closure."
+        in prometheus_block
+    )
     assert "Skipping Prometheus target validation in core mode" in prometheus_block
 
 
@@ -834,7 +1195,8 @@ def test_compose_files_do_not_claim_global_project_or_container_names() -> None:
         # the SeaweedFS volume (`<project>_seaweedfs_data`) and the legacy
         # MinIO volume guard resolve the same names from any checkout or
         # detached worktree. COMPOSE_PROJECT_NAME and `-p` still override it
-        # (the live stand runs as `ue-live`); overlays must not name a project.
+        # (the live stand uses a unique owner-marked project); overlays must
+        # not name a project.
         expected_name = (
             "university_ecosystem"
             if relative_path in {"docker-compose.yml", "docker-compose.full.yml"}
@@ -866,19 +1228,37 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
         '--env-file .env.docker"'
     ) in launcher
     expected_commands = (
-        'Write-Host "       $ComposeCommand cp '
-        'scripts/seed_demo_data.py backend:/app/seed_demo_data.py"',
-        'Write-Host "       $ComposeCommand exec -T -w /app '
-        'backend python seed_demo_data.py"',
-        'Write-Host "       $ComposeCommand cp '
-        'scripts/seed_admin_data.py backend:/app/seed_admin_data.py"',
-        'Write-Host "       $ComposeCommand exec -T -w /app '
-        'backend python seed_admin_data.py"',
+        'Write-Host "       python scripts/live_stand.py up --ref HEAD"',
+        'Write-Host "       python scripts/live_stand.py seed --demo"',
+        'Write-Host "       python scripts/live_stand.py e2e (optional)"',
     )
     for command in expected_commands:
         assert launcher.count(command) == 1, (
             f"Expected exactly one launcher command: {command}"
         )
+    assert (
+        'Write-Host "Demo seeding and optional live E2E stand (separate from this stack):"'
+        in launcher
+    )
+    assert (
+        "The stand runs the full stack by default; explicitly select its owner-bound Core dependency closure with --stack core."
+        in launcher
+    )
+    assert (
+        "Choose a stack only when host resources are available for that selection."
+        in launcher
+    )
+    live_stand_up = 'Write-Host "       python scripts/live_stand.py up --ref HEAD"'
+    live_stand_seed = 'Write-Host "       python scripts/live_stand.py seed --demo"'
+    live_stand_e2e = 'Write-Host "       python scripts/live_stand.py e2e (optional)"'
+    assert launcher.count(live_stand_up) == 1
+    assert launcher.count(live_stand_seed) == 1
+    assert launcher.count(live_stand_e2e) == 1
+    assert launcher.index(live_stand_up) < launcher.index(live_stand_seed)
+    assert launcher.index(live_stand_seed) < launcher.index(live_stand_e2e)
+    assert "scripts/seed_demo_data.py" not in launcher
+    assert "seed_admin_data.py" not in launcher
+    assert "Login:" not in launcher
 
 
 def test_sandbox_runner_uses_a_worktree_scoped_compose_project() -> None:
@@ -987,13 +1367,28 @@ def test_launcher_manages_independent_application_secrets() -> None:
 
 def test_launcher_waits_for_pyroscope_readiness_not_just_process_state() -> None:
     script = _read("start-docker.ps1")
-    services_start = script.index("$services = [ordered]@{")
-    services_block = script[services_start : script.index("do {", services_start)]
+    services_start = script.index("$fullReadiness = [ordered]@{")
+    services_end = script.index(
+        "\n}\n\nif ($script:LiveAcceptanceCore)", services_start
+    )
+    services_block = script[services_start:services_end]
     entry = re.search(r"pyroscope\s+= @\{([^\n]+)", services_block)
 
     assert entry is not None
     assert 'type = "http"' in entry.group(1)
-    assert "http://localhost:4040/ready" in entry.group(1)
+    assert (
+        'Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path "/ready"'
+        in entry.group(1)
+    )
+    selection_start = script.index(
+        "$services = Get-StartupReadinessInventory", services_end
+    )
+    selection_end = script.index("do {", selection_start)
+    assert "-FullReadiness $fullReadiness" in script[selection_start:selection_end]
+    assert (
+        "Test-ServiceHttp -Url $services[$name].url -Timeout $requestTimeout"
+        in (script[selection_end:])
+    )
 
 
 def test_launcher_recreates_services_when_bind_mounted_configs_change() -> None:
@@ -1821,7 +2216,7 @@ def test_caddy_plugin_dependency_is_version_pinned() -> None:
     assert "ARG XCADDY_VERSION=v0.4.5" in dockerfile
     assert "go install" in dockerfile
     assert "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}" in dockerfile
-    assert "ca-certificates=20260611-r0" in dockerfile
+    assert "ca-certificates=20260909-r0" in dockerfile
     assert "git=2.54.0-r0" in dockerfile
     assert "github.com/mholt/caddy-ratelimit@v0.1.0" in dockerfile
     assert not re.search(
@@ -1835,19 +2230,20 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
     full_caddy = _compose("docker-compose.full.yml")["services"]["caddy"]
 
-    assert "golang:1.26.6-alpine3.24@sha256:" in dockerfile
+    assert "golang:1.26.9-alpine3.24@sha256:" in dockerfile
     assert "caddy:2.11.4-alpine@sha256:" in dockerfile
     assert "ARG CADDY_VERSION=2.11.4" in dockerfile
-    assert "--replace golang.org/x/net=golang.org/x/net@v0.56.0" in dockerfile
-    assert "--replace golang.org/x/text=golang.org/x/text@v0.39.0" in dockerfile
+    assert "--replace golang.org/x/net=golang.org/x/net@v0.60.0" in dockerfile
+    assert "--replace golang.org/x/text=golang.org/x/text@v0.42.0" in dockerfile
     assert (
         "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
     )
+    assert re.search(r"RUN apk update \\\s+&& apk add --no-cache", dockerfile)
     for package in (
         "libapk=3.0.8-r0",
         "apk-tools=3.0.8-r0",
-        "libcrypto3=3.5.8-r0",
-        "libssl3=3.5.8-r0",
+        "libcrypto3=3.5.9-r0",
+        "libssl3=3.5.9-r0",
         "c-ares=1.34.8-r0",
         "libcurl=8.22.0-r0",
         "curl=8.22.0-r0",
@@ -2080,8 +2476,8 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
 
     assert (
         (
-            "golang:1.26.6-alpine3.24@sha256:"
-            "af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df"  # pragma: allowlist secret
+            "golang:1.26.9-alpine3.24@sha256:"
+            "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"  # pragma: allowlist secret
         )
         in dockerfile
     )
@@ -2098,8 +2494,8 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
 
 def test_go_service_builders_use_the_patched_repository_toolchain() -> None:
     expected = (
-        "golang:1.26.6-alpine3.24@sha256:"
-        "af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df"  # pragma: allowlist secret
+        "golang:1.26.9-alpine3.24@sha256:"
+        "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"  # pragma: allowlist secret
     )
 
     for relative_path in (
@@ -2131,8 +2527,8 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
     for dependency in (
         "github.com/spiffe/go-spiffe/v2@v2.7.0",
         "google.golang.org/grpc@v1.83.2",
-        "golang.org/x/net@v0.58.0",
-        "golang.org/x/text@v0.41.0",
+        "golang.org/x/net@v0.60.0",
+        "golang.org/x/text@v0.42.0",
     ):
         assert dependency in health_probe
     assert "go mod download" in health_probe

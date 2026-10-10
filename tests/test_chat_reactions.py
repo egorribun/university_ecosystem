@@ -86,7 +86,9 @@ class TestAddReaction:
         with patch(BROADCAST, new=AsyncMock()) as broadcast:
             await _svc(uow).add_reaction(chat.id, message_id, user, "👍", "en")
 
-        uow.chats.message_exists_in_chat.assert_awaited_once_with(message_id, chat.id)
+        uow.chats.message_exists_in_chat.assert_awaited_once_with(
+            message_id, chat.id, user_id=user.id
+        )
         uow.chats.add_reaction.assert_awaited_once_with(message_id, user.id, "👍")
         uow.commit.assert_awaited_once()
         broadcast.assert_awaited_once()
@@ -161,17 +163,41 @@ class TestAddReaction:
 
 class TestRemoveReaction:
     @pytest.mark.asyncio
+    async def test_message_outside_chat_is_not_mutated(self) -> None:
+        uow = _mock_uow()
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        message_id = uuid.uuid4()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=False)
+        uow.chats.remove_reaction = AsyncMock(return_value=1)
+
+        with patch(BROADCAST, new=AsyncMock()) as broadcast:
+            await _svc(uow).remove_reaction(chat.id, message_id, user, "👍", "en")
+
+        uow.chats.message_exists_in_chat.assert_awaited_once_with(
+            message_id, chat.id, user_id=user.id
+        )
+        uow.chats.remove_reaction.assert_not_awaited()
+        uow.commit.assert_not_awaited()
+        broadcast.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_success_broadcasts_reaction_removed(self) -> None:
         uow = _mock_uow()
         user = _mock_user()
         chat = _mock_chat(user.id)
         message_id = uuid.uuid4()
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
         uow.chats.remove_reaction = AsyncMock(return_value=1)  # affected
 
         with patch(BROADCAST, new=AsyncMock()) as broadcast:
             await _svc(uow).remove_reaction(chat.id, message_id, user, "👍", "en")
 
+        uow.chats.message_exists_in_chat.assert_awaited_once_with(
+            message_id, chat.id, user_id=user.id
+        )
         uow.chats.remove_reaction.assert_awaited_once_with(message_id, user.id, "👍")
         uow.commit.assert_awaited_once()
         broadcast.assert_awaited_once()
@@ -191,6 +217,7 @@ class TestRemoveReaction:
         user = _mock_user()
         chat = _mock_chat(user.id)
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
         uow.chats.remove_reaction = AsyncMock(return_value=0)  # nothing to remove
 
         with patch(BROADCAST, new=AsyncMock()) as broadcast:

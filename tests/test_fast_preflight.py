@@ -35,6 +35,7 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         "backend-typecheck",
         "backend-lint",
         "verify-harness",
+        "ci-check-catalog",
         "focused-contract-tests",
     ]
     by_name = {check.name: check for check in checks}
@@ -65,6 +66,10 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         sys.executable,
         "verify_harness.py",
     )
+    assert by_name["ci-check-catalog"].command == (
+        sys.executable,
+        "scripts/quality/validate_ci_check_catalog.py",
+    )
     assert by_name["focused-contract-tests"].command[:3] == (
         sys.executable,
         "-m",
@@ -87,6 +92,8 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         "test_route_dependency_inventory.py",
         "test_quality_configuration.py",
         "test_quality_workflow_contract.py",
+        "test_nightly_helm_reuse_contract.py",
+        "test_scheduled_workflow_regressions.py",
         "test_domain_event_registry_contract.py",
         "test_mfa_openapi_artifacts_contract.py",
     ):

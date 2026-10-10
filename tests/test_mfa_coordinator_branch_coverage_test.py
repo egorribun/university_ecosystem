@@ -1,13 +1,19 @@
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Request, Response
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import mfa
 from app.auth import schemas as auth_schemas
+from app.auth.mfa.email_otp import EmailOtpService
+from app.core import database
+from app.models import ChallengeState, MfaChallenge, User
 from app.services.auth.mfa_coordinator import MfaCoordinator
 
 
@@ -101,3 +107,73 @@ async def test_collect_mfa_challenges_totp(mock_describe, mock_start, coordinato
     assert methods[0].method == mfa.MFA_METHOD_TOTP
     assert methods[0].challenge_token == "token_totp"
     assert methods[0].remaining_attempts == 4
+
+
+class RecordingRateLimiter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def enforce(self, *, action: str, identifier: str) -> None:
+        self.calls.append((action, identifier))
+
+
+@pytest.mark.asyncio
+async def test_email_login_challenges_keep_distinct_client_rate_limit_buckets(
+    coordinator: MfaCoordinator,
+    db_session: AsyncSession,
+    user_factory: Callable[..., Awaitable[User]],
+) -> None:
+    user = await user_factory(email_mfa_enabled_at=datetime.now(UTC), mfa_epoch=0)
+    limiter = RecordingRateLimiter()
+    service = EmailOtpService(
+        hmac_keys={"active": b"h" * 32},
+        active_hmac_key_id="active",
+        delivery_keks={"active": b"k" * 32},
+        active_kek_id="active",
+        rate_limiter=limiter,
+    )
+    coordinator.repo.db = db_session
+    coordinator.email_otp_service = service
+    client_ips = ("203.0.113.10", "198.51.100.20")
+
+    for index, client_ip in enumerate(client_ips):
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/mfa/challenge",
+                "query_string": b"",
+                "headers": [(b"user-agent", b"mfa-ip-bucket-test")],
+                "client": (client_ip, 12345),
+            }
+        )
+        challenges = await coordinator._collect_mfa_challenges(
+            user,
+            "en",
+            {mfa.MFA_METHOD_EMAIL_OTP: True},
+            request=request,
+            session_identifier=f"login-session-{index}",
+        )
+        assert len(challenges) == 1
+        assert challenges[0].method == mfa.MFA_METHOD_EMAIL_OTP
+
+    await db_session.commit()
+    async with database.async_session() as reader:
+        persisted = (
+            (
+                await reader.execute(
+                    select(MfaChallenge).where(MfaChallenge.user_id == user.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(persisted) == 2
+        assert all(challenge.state == ChallengeState.PENDING for challenge in persisted)
+
+    assert limiter.calls == [
+        ("issue", f"user:{user.id}"),
+        ("issue", f"ip:{client_ips[0]}"),
+        ("issue", f"user:{user.id}"),
+        ("issue", f"ip:{client_ips[1]}"),
+    ]

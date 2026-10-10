@@ -5,16 +5,26 @@ from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
+from app.core.cache_versioning import events_cache_version
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import normalize_locale, translate
 from app.core.logging import get_logger
+from app.core.metrics import record_event_registration
 from app.models import Event
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
 from app.services import attendance_tokens, stats_cache
-from app.services.vector_service import VectorService
-from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+from app.services.vector_service import (
+    SemanticSearchUnavailableError,
+    VectorService,
+)
+from app.utils.pagination import (
+    decode_datetime_cursor,
+    decode_ranked_datetime_cursor,
+    encode_datetime_cursor,
+    encode_ranked_datetime_cursor,
+)
 
 logger = get_logger(__name__)
 
@@ -128,9 +138,14 @@ class EventService:
     ) -> schemas.PaginatedEvents:
         query_embedding = None
         if search:
-            query_embedding = await self.vector_service.get_embedding(search)
+            try:
+                query_embedding = await self.vector_service.get_embedding(search)
+            except SemanticSearchUnavailableError:
+                query_embedding = None
 
-        decoded_cursor = decode_datetime_cursor(cursor)
+        decoded_cursor = decode_ranked_datetime_cursor(
+            cursor
+        ) or decode_datetime_cursor(cursor)
 
         # Get limit+1 to determine has_more
         results = await self.repo.search_events(
@@ -190,10 +205,16 @@ class EventService:
         next_cursor = None
         if has_more and items_to_process:
             last_result = items_to_process[-1]
-            next_cursor = encode_datetime_cursor(
-                last_result.event.starts_at,
-                str(last_result.event.id),
-            )
+            if last_result.rank is not None:
+                next_cursor = encode_ranked_datetime_cursor(
+                    last_result.event.starts_at,
+                    str(last_result.event.id),
+                    last_result.rank,
+                )
+            else:
+                next_cursor = encode_datetime_cursor(
+                    last_result.event.starts_at, str(last_result.event.id)
+                )
 
         return schemas.PaginatedEvents(
             items=output,
@@ -213,7 +234,6 @@ class EventService:
         obj_data = data.model_dump()
         obj_data["created_by"] = user_id
         event = await self.repo.create(obj_data)
-        # EventCreated(event_id_entity=event.id, title=str(event.title))
         async with self.uow:
             await self.uow.commit()
         return event
@@ -255,6 +275,10 @@ class EventService:
         await self.repo.delete(event_id)
         async with self.uow:
             await self.uow.commit()
+
+        from app.services import search_indexer
+
+        await search_indexer.remove_document(search_indexer.EVENTS_INDEX, event_id)
 
         from app.utils.files import delete_static_file
 
@@ -301,9 +325,6 @@ class EventService:
             if exist.registered_at is None:
                 updates["registered_at"] = datetime.now(UTC)
 
-            # ensure_secret_material expects ORM. I need a way to handle this.
-            # I'll assume I can just issue a new secret if needed via repo.
-
             if updates:
                 exist = await self.repo.update_attendance(
                     data.event_id, user_id, updates
@@ -311,6 +332,7 @@ class EventService:
                 assert exist is not None  # noqa: S101
                 async with self.uow:
                     await self.uow.commit()
+                await events_cache_version.increment()
 
             # Helper logic to set token attribute for response
             token = attendance_tokens.issue_token(exist)
@@ -327,6 +349,8 @@ class EventService:
             )
             async with self.uow:
                 await self.uow.commit()
+            await events_cache_version.increment()
+            record_event_registration()
         except IntegrityError as exc:
             await self.uow.rollback()
             # Race condition retry
@@ -344,9 +368,6 @@ class EventService:
             if exist.registered_at is None:
                 retry_updates["registered_at"] = datetime.now(UTC)
 
-            # Note: ensure_secret_material is skipped here as it's legacy
-            # and might need ORM. For now we focus on reachability.
-
             if retry_updates:
                 updated_exist = await self.repo.update_attendance(
                     data.event_id, user_id, retry_updates
@@ -355,6 +376,7 @@ class EventService:
                     exist = updated_exist
                 async with self.uow:
                     await self.uow.commit()
+                await events_cache_version.increment()
 
             enriched_exist = exist.model_copy(
                 update={"qr_token": attendance_tokens.issue_token(exist)}
@@ -382,6 +404,7 @@ class EventService:
         if ok:
             async with self.uow:
                 await self.uow.commit()
+            await events_cache_version.increment()
             await stats_cache.invalidate_user_stats_cache(
                 user_ids=user_id,
                 kinds=("attendance", "participation"),
@@ -430,19 +453,17 @@ class EventService:
 
         qr_token = None
         if attendance:
-            # Ensure QR secret material exists before issuing token
-            if attendance_tokens.ensure_secret_material(attendance):
-                # How to handle session refresh/add for DTO?
-                # We should probably update via repo.
-                updates = {
-                    "qr_secret": attendance.qr_secret,
-                    "qr_hmac": attendance.qr_hmac,
-                }
-                await self.repo.update_attendance(
+            updates = attendance_tokens.secret_material_updates(attendance)
+            if updates:
+                repaired = await self.repo.update_attendance(
                     event_record.id, attendance.user_id, updates
                 )
+                if repaired is None:
+                    raise EntityNotFound("EventAttendance", attendance.id)
                 async with self.uow:
                     await self.uow.commit()
+                await events_cache_version.increment()
+                attendance = repaired
 
             qr_token = attendance_tokens.issue_token(attendance)
 

@@ -19,7 +19,7 @@ from psycopg import sql
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 from app.cli import migrate_passwords
 from app.core.db.listeners import register_tenant_listeners

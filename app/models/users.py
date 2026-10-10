@@ -7,12 +7,12 @@ from typing import Any
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Float,
     ForeignKey,
     Index,
     Integer,
     String,
     Time,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy import (
@@ -34,6 +34,11 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     # domain to 255 chars → total max 320; we use 254 (RFC 5321 §4.5.3.1 total).
     # Prevents storage-amplification via unbounded email payloads.
     email: Mapped[str] = mapped_column(String(254), unique=True, nullable=False)
+    # Private idempotency ownership for reserved synthetic demo accounts.
+    # Deliberately omitted from all API schemas and profile write paths.
+    demo_seed_key: Mapped[str | None] = mapped_column(
+        String(96), nullable=True, default=None
+    )
     # Argon2id hash format: $argon2id$v=19$m=32768,t=3,p=4$<salt>$<hash>
     # Max length: 97 bytes encoded (hex base64). Use 256 chars for safety margin.
     hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -45,7 +50,10 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         DateTime(timezone=True), nullable=True, index=True
     )
 
-    __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
+    __table_args__ = (
+        Index("ix_users_email_lower", func.lower(email), unique=True),
+        UniqueConstraint("demo_seed_key", name="uq_users_demo_seed_key"),
+    )
 
     role: Mapped[UserRole] = mapped_column(
         SqlEnum(
@@ -133,16 +141,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         relationship(  # LOW-W19: add lazy="noload" to prevent N+1 on user list loads
             "Group", back_populates="users", passive_deletes=True, lazy="noload"
         )
-    )
-    # TD-5: lazy="noload" prevents N+1 when loading lists of users.
-    # Load explicitly via selectinload(User.stats) in queries that need it.
-    stats = relationship(
-        "UserStats",
-        uselist=False,
-        back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="noload",
     )
     # PERF-1: Changed from lazy="selectin" to lazy="noload".
     # lazy="selectin" was firing an extra SELECT on EVERY User load, including
@@ -435,73 +433,3 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
 
     def __repr__(self) -> str:
         return f"<InviteCode(id={self.id}, code='{self.code}', used={self.is_used})>"
-
-
-class UserStats(Base):
-    """
-    Pre-aggregated metrics to offload heavy OLAP queries from the OLTP critical path.
-    Updated asynchronously via event consumers or cron jobs.
-    """
-
-    __tablename__ = "user_stats"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-
-    # TD-1: Migrated from legacy Column() to typed Mapped[] for consistency with
-    # the rest of the codebase and to benefit from SQLAlchemy 2.x type inference.
-    # Attendance metrics
-    attendance_percent: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0"
-    )
-    attendance_present: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
-    )
-    attendance_total: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
-    )
-    attendance_trend: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0"
-    )
-
-    # Grade metrics
-    grades_average: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0"
-    )
-    grades_trend: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0"
-    )
-
-    # Participation metrics
-    participation_events: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
-    )
-    participation_hours: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0"
-    )
-    participation_groups: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
-    )
-    participation_trend: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
-    )
-
-    # General metadata
-    last_computed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
-
-    user = relationship("User", back_populates="stats", lazy="noload")  # RZ-33-06
-
-    def __init__(self, **kwargs: Any) -> None:
-        kwargs.pop("_allow_system_managed_assignment", False)
-        super().__init__(**kwargs)
-
-    def __repr__(self) -> str:
-        return f"<UserStats(user_id={self.user_id})>"

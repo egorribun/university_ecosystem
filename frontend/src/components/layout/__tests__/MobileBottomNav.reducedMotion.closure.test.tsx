@@ -1,14 +1,20 @@
-import { act, fireEvent, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import MobileBottomNav from "@/components/layout/MobileBottomNav"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { expectNoRouterNavigation } from "@/tests/helpers/expectNoRouterNavigation"
 
 let mediaQuery: MediaQueryList
 let mediaQueryListeners: Array<(event: MediaQueryListEvent) => void>
 
 describe("MobileBottomNav reduced-motion closure", () => {
+  let originalScrollTo: PropertyDescriptor | undefined
+  let originalScrollMarker: string | null
+
   beforeEach(() => {
+    originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo")
+    originalScrollMarker = window.sessionStorage.getItem("__scrollTopNext")
     mediaQueryListeners = []
     mediaQuery = {
       matches: true,
@@ -26,7 +32,16 @@ describe("MobileBottomNav reduced-motion closure", () => {
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    try {
+      cleanup()
+    } finally {
+      if (originalScrollTo)
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo)
+      else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo")
+      if (originalScrollMarker === null) window.sessionStorage.removeItem("__scrollTopNext")
+      else window.sessionStorage.setItem("__scrollTopNext", originalScrollMarker)
+      vi.restoreAllMocks()
+    }
   })
 
   it("uses CSS reduced-motion fallbacks for the indicator and stable label", async () => {
@@ -56,12 +71,14 @@ describe("MobileBottomNav reduced-motion closure", () => {
     })
     window.sessionStorage.setItem("__scrollTopNext", "1")
 
-    await renderWithRouter({
+    const { router } = await renderWithRouter({
       ui: () => <MobileBottomNav />,
       path: "/dashboard",
       initialPath: "/dashboard",
     })
-    fireEvent.click(screen.getByRole("link", { name: "Home" }))
+    await expectNoRouterNavigation(router, () => {
+      fireEvent.click(screen.getByRole("link", { name: "Home" }))
+    })
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" })
     expect(scrollTo).toHaveBeenCalledTimes(2)

@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -62,60 +63,6 @@ async def test_nats_service_close():
 
 
 @pytest.mark.anyio
-async def test_nats_service_ensure_stream():
-    service = NatsService()
-    mock_js = AsyncMock()
-    service._js = mock_js
-
-    # Test stream setup success
-    await service.ensure_stream(name="test-stream", subjects=["test.>"])
-    mock_js.add_stream.assert_called_once()
-    kwargs = mock_js.add_stream.call_args.kwargs
-    assert kwargs["config"].name == "test-stream"
-    assert kwargs["config"].subjects == ["test.>"]
-
-    # Test nats.errors.Error handling
-    import nats.errors
-
-    mock_js.add_stream.side_effect = nats.errors.Error("Jetstream error")
-    await service.ensure_stream(name="test-stream", subjects=["test.>"])
-
-    # Test error handling when not connected
-    service._js = None
-    with pytest.raises(RuntimeError, match="Not connected to NATS"):
-        await service.ensure_stream(name="test", subjects=[])
-
-
-@pytest.mark.anyio
-async def test_nats_service_publish_and_jetstream():
-    service = NatsService()
-    mock_client = AsyncMock()
-    mock_js = AsyncMock()
-    service._client = mock_client
-    service._js = mock_js
-
-    # Test Core NATS publish bytes
-    await service.publish("test.sub", b"raw-bytes")
-    mock_client.publish.assert_called_once()
-    args, kwargs = mock_client.publish.call_args
-    assert args[0] == "test.sub"
-    assert args[1] == b"raw-bytes"
-    assert "Nats-Msg-Id" in kwargs["headers"]
-
-    # Test Core NATS publish dict
-    mock_client.publish.reset_mock()
-    await service.publish("test.sub", {"hello": "world"})
-    mock_client.publish.assert_called_once()
-    args = mock_client.publish.call_args.args
-    assert args[0] == "test.sub"
-    assert b"hello" in args[1]
-
-    # Test JetStream publish
-    await service.publish_jetstream("test.sub", {"foo": "bar"})
-    mock_js.publish.assert_called_once()
-
-
-@pytest.mark.anyio
 async def test_nats_service_subscribe():
     service = NatsService()
     mock_client = AsyncMock()
@@ -144,60 +91,116 @@ async def test_nats_service_subscribe():
     assert len(service._subscriptions) == 1
 
 
-@pytest.mark.anyio
-async def test_nats_service_subscribe_jetstream():
-    service = NatsService()
-    mock_js = AsyncMock()
-    service._js = mock_js
-
-    handler_called = None
-    received_msgs: list[NatsMessage] = []
-
-    async def my_handler(msg: NatsMessage):
-        nonlocal handler_called
-        handler_called = msg.subject
-        received_msgs.append(msg)
-        if msg.subject == "error":
-            raise ValueError("handler failed")
-
-    async def fake_subscribe_js(subject, stream, durable, config, cb):
-        # 1. Successful message
-        mock_msg1 = AsyncMock()
-        mock_msg1.subject = "success"
-        mock_msg1.data = b"ok"
-        mock_msg1.header = {"X-Header": "val"}
-        mock_msg1.reply = "reply.topic"
-        await cb(mock_msg1)
-        mock_msg1.ack.assert_called_once()
-
-        # 2. Failing message
-        mock_msg2 = AsyncMock()
-        mock_msg2.subject = "error"
-        mock_msg2.data = b"err"
-        mock_msg2.header = None
-        mock_msg2.reply = None
-        await cb(mock_msg2)
-        mock_msg2.nak.assert_called_once()
-
-        return AsyncMock()
-
-    mock_js.subscribe.side_effect = fake_subscribe_js
-
-    await service.subscribe_jetstream(
-        stream="test-stream",
-        subject="test.subject",
-        handler=my_handler,
-        durable="test-durable",
-    )
-    assert len(service._subscriptions) == 1
-    assert handler_called == "error"
-    assert received_msgs[0].headers == {"X-Header": "val"}
-    assert received_msgs[0].reply == "reply.topic"
-    assert received_msgs[1].headers is None
-    assert received_msgs[1].reply is None
-
-
 def test_get_nats_service():
     s1 = get_nats_service()
     s2 = get_nats_service()
     assert s1 is s2
+
+
+@pytest.fixture
+async def connected_nats(monkeypatch):
+    client = MagicMock()
+    client.is_connected = True
+    client.publish = AsyncMock()
+    client.drain = AsyncMock()
+    monkeypatch.setattr("nats.connect", AsyncMock(return_value=client))
+    service = NatsService()
+    await service.connect()
+    return service, client
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("payload", "msg_id", "expected_id"),
+    [
+        ({"id": "domain", "event_id": "event"}, "explicit", "explicit"),
+        ({"id": "domain", "event_id": "event"}, None, "domain"),
+        ({"id": "", "event_id": "event"}, None, "event"),
+        ({"event_id": 42}, None, "42"),
+        (b"raw-event", "explicit", "explicit"),
+    ],
+    ids=["explicit", "payload-id", "event-id", "numeric-id", "bytes"],
+)
+async def test_publish_preserves_payload_and_copies_headers(
+    connected_nats, payload, msg_id, expected_id
+):
+    service, client = connected_nats
+    headers = {"Trace-Id": "trace-123", "Nats-Msg-Id": "caller-header"}
+
+    await service.publish("events.created", payload, headers=headers, msg_id=msg_id)
+
+    client.publish.assert_awaited_once()
+    call = client.publish.await_args
+    assert call.args[0] == "events.created"
+    emitted = call.args[1]
+    if isinstance(payload, dict):
+        assert NatsMessage(subject=call.args[0], data=emitted).json() == payload
+    else:
+        assert emitted == payload
+    assert call.kwargs["headers"] == {
+        "Trace-Id": "trace-123",
+        "Nats-Msg-Id": expected_id,
+    }
+    assert headers == {"Trace-Id": "trace-123", "Nats-Msg-Id": "caller-header"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "payload", [{"message": "Привет"}, b"raw-event"], ids=["dict", "bytes"]
+)
+async def test_publish_generates_distinct_deduplication_ids(connected_nats, payload):
+    service, client = connected_nats
+
+    await service.publish("events.created", payload)
+    await service.publish("events.created", payload)
+
+    emitted_ids = [
+        uuid.UUID(call.kwargs["headers"]["Nats-Msg-Id"])
+        for call in client.publish.await_args_list
+    ]
+    assert len(emitted_ids) == 2
+    assert all(value.version == 4 for value in emitted_ids)
+    assert emitted_ids[0] != emitted_ids[1]
+
+
+@pytest.mark.anyio
+async def test_publish_rejects_unserializable_payload_before_transport(connected_nats):
+    service, client = connected_nats
+
+    with pytest.raises(TypeError):
+        await service.publish("events.created", {"unsupported": object()})
+
+    client.publish.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_publish_propagates_transport_failure(connected_nats):
+    service, client = connected_nats
+    client.publish.side_effect = ConnectionError("transport unavailable")
+
+    with pytest.raises(ConnectionError, match="transport unavailable"):
+        await service.publish("events.created", b"raw-event", msg_id="retryable-id")
+
+    client.publish.assert_awaited_once_with(
+        "events.created", b"raw-event", headers={"Nats-Msg-Id": "retryable-id"}
+    )
+
+
+@pytest.mark.anyio
+async def test_publish_and_subscribe_require_connection():
+    service = NatsService()
+    with pytest.raises(RuntimeError, match="Not connected to NATS"):
+        await service.publish("events.created", b"raw-event")
+    with pytest.raises(RuntimeError, match="Not connected to NATS"):
+        await service.subscribe("events.created", AsyncMock())
+
+
+@pytest.mark.anyio
+async def test_close_without_subscriptions_drains_once(connected_nats):
+    service, client = connected_nats
+
+    await service.close()
+    await service.close()
+
+    client.drain.assert_awaited_once_with()
+    assert service.is_connected is False

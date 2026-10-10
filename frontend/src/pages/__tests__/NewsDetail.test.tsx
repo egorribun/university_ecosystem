@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import NewsDetail from "../NewsDetail"
 
 const article = {
@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   share: {} as Record<string, unknown>,
   shareNotify: (_message: string): void => undefined,
   relatedArticles: [] as unknown[],
+  relatedCategory: "general",
+  language: "en",
   t: (key: string) => key,
 }))
 
@@ -56,7 +58,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 vi.mock("@/contexts/LanguageContext", () => ({
-  useLanguage: () => ({ language: "en" }),
+  useLanguage: () => ({ language: mocks.language }),
 }))
 
 vi.mock("@/api/news", () => ({
@@ -92,7 +94,12 @@ vi.mock("@/hooks/useBookmarks", () => ({
   }),
 }))
 
-vi.mock("@/hooks/useRelatedNews", () => ({ useRelatedNews: () => mocks.relatedArticles }))
+vi.mock("@/hooks/useRelatedNews", () => ({
+  useRelatedNews: (_id: string, category: string) => {
+    mocks.relatedCategory = category
+    return mocks.relatedArticles
+  },
+}))
 vi.mock("@/hooks/useArticleNavigation", () => ({
   useArticleNavigation: () => mocks.articleNavigation,
 }))
@@ -249,6 +256,8 @@ vi.mock("@/components/news/NewsDetailHeader", () => ({
 
 describe("NewsDetail", () => {
   beforeEach(() => {
+    // History entries created by another case must not choose this case's route.
+    vi.spyOn(window.history, "length", "get").mockReturnValue(1)
     mocks.query = { isLoading: false, isError: false, data: article }
     mocks.navigate.mockReset()
     mocks.removeQueries.mockReset()
@@ -265,6 +274,8 @@ describe("NewsDetail", () => {
       nextTitle: null,
     }
     mocks.relatedArticles = []
+    mocks.relatedCategory = "general"
+    mocks.language = "en"
     mocks.swipe = {}
     mocks.share = {
       sharing: false,
@@ -276,6 +287,45 @@ describe("NewsDetail", () => {
       handleShare: vi.fn(),
       handleCopyLink: vi.fn(),
     }
+  })
+
+  afterEach(() => {
+    try {
+      cleanup()
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it.each([
+    [
+      "ru",
+      "ГУУ вошёл в топ-20 лучших университетов страны",
+      "Научных публикаций стало больше; гранты и стипендии поддерживают исследования.",
+    ],
+    [
+      "en",
+      "GUU ranks among the country's top 20 universities",
+      "Research publications helped raise the result.",
+    ],
+  ] as const)("uses the stable Science category for %s detail data", (language, title, content) => {
+    mocks.language = language
+    mocks.query = {
+      isLoading: false,
+      isError: false,
+      data: {
+        ...article,
+        title,
+        content,
+        title_en: "GUU ranks among the country's top 20 universities",
+        content_en: "Research publications helped raise the result.",
+      },
+    }
+
+    render(<NewsDetail />)
+
+    expect(mocks.relatedCategory).toBe("science")
   })
 
   it("renders the loading skeleton without attempting the article layout", () => {
@@ -309,7 +359,7 @@ describe("NewsDetail", () => {
 
   it("uses browser history when a previous page exists", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined)
-    window.history.pushState({}, "", "/news/news-1")
+    vi.spyOn(window.history, "length", "get").mockReturnValue(2)
     mocks.query = { isLoading: false, isError: true, data: undefined }
 
     render(<NewsDetail />)

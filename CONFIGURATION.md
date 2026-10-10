@@ -3,8 +3,9 @@
 This document describes the operator-facing environment variables used by the
 University Ecosystem backend. Defaults in this document are the runtime
 `Settings` defaults; `.env.example` is an explicit local profile and may set a
-different value intentionally. Values supplied through `*_FILE` secret mounts
-take precedence over the corresponding plaintext variable.
+different value intentionally. Only settings with an implemented `*_FILE`
+variant accept secret-file mounts; the file value takes precedence over the
+corresponding plaintext variable.
 
 ## 🔴 Required Variables
 
@@ -12,7 +13,7 @@ take precedence over the corresponding plaintext variable.
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | - |
 | `SECRET_KEY` | Primary JWT signing secret (min 32 chars) | - |
-| `AUDIT_LOG_SECRET` | Audit log signing secret (min 32 chars) | - |
+| `AUDIT_LOG_SECRET` | Audit log signing secret (min 32 chars; use a random value outside development) | Development placeholder; must be overridden outside development |
 | `INTERNAL_HMAC_SECRET` | Internal gateway signature key (Required in production) | - |
 | `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change tokens (min 32 bytes; required in staging/production) | - |
 
@@ -46,7 +47,7 @@ take precedence over the corresponding plaintext variable.
 | `AUTH_LOCKOUT_THRESHOLDS` | Lockout rules `attempts:seconds` | `5:30,8:300,10:3600` |
 | `CSRF_HMAC_SECRET` | Independent HMAC key for signed CSRF cookies; unsigned fallback is development/testing only | Empty locally; required outside development |
 | `INTERNAL_HMAC_SECRET` | Verifies the gateway `X-Internal-Signature` identity assertion (minimum 32 bytes) | Required outside development |
-| `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Required |
+| `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Development placeholder; must be overridden outside development |
 | `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change token digests | Required in staging/prod |
 | `JWT_PRIVATE_KEY_PATH` | RS256 private key path used to mint access tokens | `.secrets/jwt_rs256.pem` |
 | `JWT_AUDIENCE` | Expected JWT audience for zero-trust consumers | `university-ecosystem-api` |
@@ -85,6 +86,8 @@ take precedence over the corresponding plaintext variable.
 | `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation | Required outside development |
 | `NATS_URL` | NATS message bus endpoint | `nats://127.0.0.1:4222` |
 | `NATS_AUTH_TOKEN` | NATS authentication token | Empty locally; required in production |
+| `NATS_TASK_MAX_DELIVERIES` | Delivery attempts of a background task before it is parked in the dead-letter queue (`/admin/dlq`) | `5` |
+| `NATS_TASK_RETRY_BASE_DELAY_SECONDS` | First redelivery delay of a failed task; doubles per attempt up to 300 s | `5` |
 | `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` |
 | `RATE_LIMIT_DEFAULT` | Default rate | `200/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
@@ -115,7 +118,7 @@ take precedence over the corresponding plaintext variable.
 | `STORAGE_S3_BUCKET` | S3 bucket name | Empty |
 | `STORAGE_S3_REGION` | AWS Region | Empty |
 | `STORAGE_S3_ENDPOINT_URL` | Custom S3 endpoint (for example the Compose SeaweedFS service `http://minio:9000`) | Empty |
-| `EVENT_FILE_SCANNER_ENABLED` | Enable ClamAV virus scanning | `false` |
+| `EVENT_FILE_SCANNER_ENABLED` | Enable ClamAV scanning (must be true in staging/production) | `false` (runtime default) |
 | `EVENT_FILE_MAX_SIZE_BYTES` | Max upload size (default 10MB) | `10485760` |
 | `CHAT_MAX_MESSAGE_LENGTH` | Max characters per message | `32768` |
 
@@ -132,11 +135,9 @@ take precedence over the corresponding plaintext variable.
 | `SPICEDB_PRESHARED_KEY` | SpiceDB auth key (`_FILE` supported); the development sentinel is rejected outside development | `development-preshared-key` (development only) |
 | `ELASTICSEARCH_URL` | Search engine endpoint; production/staging requires `https://` | `http://localhost:9200` (local only) |
 | `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Required |
-| `WS_HUB_INTERNAL_URL` | ws-hub control API | `http://ws-hub:8081` |
 | `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation | Required |
 | `INTERNAL_AUTH_TOKEN` | Token for ws-hub's exact room-participant callback; managed Compose/Helm/K8s deployments derive it from the existing ws-hub secret | Empty in development |
 | `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
-| `RUST_OPTIMIZER_URL` | Schedule optimization sidecar | `http://rust-optimizer:8080` |
 
 ---
 
@@ -181,4 +182,9 @@ take precedence over the corresponding plaintext variable.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | `http://localhost:4317` |
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 
-> **Tip**: Secrets can be provided via files using the `_FILE` suffix (e.g., `DATABASE_URL_FILE=/run/secrets/db_url`) to support Docker/Kubernetes secrets securely.
+> **Tip**: `_FILE` loading is implemented only for `DATABASE_URL`, `SECRET_KEY`,
+> `INTERNAL_HMAC_SECRET`, `TOKEN_HMAC_SECRET`, `NATS_AUTH_TOKEN`, `SMTP_PASSWORD`,
+> `VAPID_PRIVATE_KEY`, `SPOTIFY_CLIENT_SECRET`, `SPICEDB_PRESHARED_KEY`,
+> `ELASTICSEARCH_PASSWORD`, and `WS_HUB_INTERNAL_SECRET`. For these settings, the
+> file value takes precedence over plaintext. Other settings do not automatically
+> accept a `_FILE` suffix.

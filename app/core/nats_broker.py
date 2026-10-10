@@ -68,6 +68,13 @@ def set_app(application: Any) -> None:
 # P1-W5-08: Maximum seconds a single task handler may run before it is
 # cancelled.  Prevents one stuck handler from blocking the entire worker loop.
 _DEFAULT_TASK_TIMEOUT_S = float(os.environ.get("NATS_TASK_TIMEOUT_SECONDS", "30"))
+# A task that keeps failing is retried with exponential back-off and, after
+# ``_MAX_DELIVERIES`` attempts, parked in the database dead-letter queue instead
+# of being NAKed forever (an un-bounded redelivery loop hammers the broker and
+# starves healthy tasks in the same batch).
+_MAX_DELIVERIES = max(1, int(os.environ.get("NATS_TASK_MAX_DELIVERIES", "5")))
+_RETRY_BASE_DELAY_S = float(os.environ.get("NATS_TASK_RETRY_BASE_DELAY_SECONDS", "5"))
+_RETRY_MAX_DELAY_S = 300.0
 
 
 class _NatsTaskPayload(BaseModel):  # type: ignore[no-redef]
@@ -116,6 +123,8 @@ class NatsTaskBroker:
         self._notifications_events_subject = "notifications.*"
         self._outbox_events_stream_name = "OUTBOX_EVENTS"
         self._outbox_events_subject = "outbox.*"
+        self._cache_invalidations_stream_name = "CACHE_INVALIDATIONS"
+        self._cache_invalidations_subject = "cache.invalidate"
 
     @property
     def is_connected(self) -> bool:
@@ -155,7 +164,7 @@ class NatsTaskBroker:
             )
             self._js = self._nc.jetstream()
 
-            # Provision 5 file-backed streams with 7-day retention policy (604,800s)
+            # Provision file-backed streams with 7-day retention policy (604,800s)
             streams = [
                 StreamConfig(
                     name=self._stream_name,
@@ -192,6 +201,13 @@ class NatsTaskBroker:
                     retention=RetentionPolicy.LIMITS,
                     max_age=_SEVEN_DAYS_SECONDS,
                 ),
+                StreamConfig(
+                    name=self._cache_invalidations_stream_name,
+                    subjects=[self._cache_invalidations_subject],
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=_SEVEN_DAYS_SECONDS,
+                ),
             ]
 
             for stream_cfg in streams:
@@ -211,7 +227,7 @@ class NatsTaskBroker:
                     )
 
             _logger.info(
-                "Connected to NATS JetStream (5 file-backed streams provisioned)"
+                "Connected to NATS JetStream (6 file-backed streams provisioned)"
             )
         except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)
             _logger.error("Failed to connect to NATS: %s", exc)
@@ -311,6 +327,8 @@ class NatsTaskBroker:
         payload: dict[str, Any],
         headers: dict[str, str] | None = None,
         msg_id: str | None = None,
+        *,
+        strict: bool = False,
     ) -> None:
         """Publish an ephemeral event via CORE NATS (fire-and-forget, no stream).
 
@@ -332,8 +350,10 @@ class NatsTaskBroker:
         ``json.dumps`` would raise ``TypeError``.  ``default=str`` mirrors the
         existing orjson callsite at logging.py:222.
 
-        Best-effort: never raises on infra failure so the caller's in-process
-        delivery + refetch fallback stay intact.
+        Best-effort by default: never raises on infra failure so the caller's
+        in-process delivery + refetch fallback stay intact. Outbox-backed
+        callers may opt into ``strict`` so a transient publish failure returns
+        to the outbox worker and can be retried.
         """
         # Ephemeral best-effort: publish ONLY if the broker is already connected
         # (the app lifespan connects it at startup). Do NOT trigger a connect
@@ -348,6 +368,8 @@ class NatsTaskBroker:
                 "nats_publish_skipped_not_connected",
                 subject=subject,
             )
+            if strict:
+                raise ConnectionError("NATS core publisher is not connected")
             return
 
         with tracer.start_as_current_span(
@@ -385,6 +407,8 @@ class NatsTaskBroker:
                     subject,
                     exc,
                 )
+                if strict:
+                    raise
 
     async def enqueue(self, task_name: str, *args: Any, **kwargs: Any) -> str:
         """Push a task to the JetStream queue with trace context propagation."""
@@ -423,6 +447,66 @@ class NatsTaskBroker:
                     headers=headers,
                 )
             return task_id
+
+    @staticmethod
+    def _num_delivered(msg: Any) -> int:
+        try:
+            return max(1, int(msg.metadata.num_delivered))
+        except (AttributeError, TypeError, ValueError, nats.errors.Error):
+            return 1
+
+    async def _retry_or_dead_letter(
+        self, msg: Any, payload: _NatsTaskPayload, error: str
+    ) -> None:
+        """NAK with back-off, or park the task in the DLQ once retries are spent."""
+        delivered = self._num_delivered(msg)
+        if delivered >= _MAX_DELIVERIES:
+            if await self._dead_letter(payload, error, delivered):
+                await msg.term()
+                return
+            # Persisting failed: keep the message alive rather than lose the task.
+        delay = min(_RETRY_BASE_DELAY_S * 2 ** (delivered - 1), _RETRY_MAX_DELAY_S)
+        await msg.nak(delay=delay)
+
+    async def _dead_letter(
+        self, payload: _NatsTaskPayload, error: str, delivered: int
+    ) -> bool:
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from app.core.database import async_session
+        from app.workers.dead_letter_queue import DeadLetterQueue
+
+        try:
+            async with async_session() as session:
+                await DeadLetterQueue(session).add_failed_job(
+                    job_type=payload.name,
+                    payload={"args": list(payload.args), "kwargs": payload.kwargs},
+                    error_message=error[:2000],
+                )
+                await session.commit()
+        except (SQLAlchemyError, OSError) as exc:
+            _logger.error(
+                "nats_task_dlq_persist_failed: task=%s id=%s err=%s",
+                payload.name,
+                payload.id,
+                exc,
+            )
+            return False
+        _logger.error(
+            "nats_task_dead_lettered: task=%s id=%s deliveries=%d",
+            payload.name,
+            payload.id,
+            delivered,
+        )
+        return True
+
+    async def replay_dead_letter(self, job_type: str, payload: dict[str, Any]) -> None:
+        """Re-enqueue a dead-lettered task (handler for ``DeadLetterQueue`` replay)."""
+        await self.enqueue(
+            job_type,
+            *payload.get("args", []),
+            **payload.get("kwargs", {}),
+        )
 
     async def run_worker(self) -> None:
         """Run the worker to process tasks from JetStream with trace continuation."""
@@ -565,7 +649,9 @@ class NatsTaskBroker:
                                     payload.id,
                                     _DEFAULT_TASK_TIMEOUT_S,
                                 )
-                                await msg.nak()
+                                await self._retry_or_dead_letter(
+                                    msg, payload, "task timed out"
+                                )
                                 continue
 
                         await msg.ack()
@@ -573,8 +659,7 @@ class NatsTaskBroker:
                         _logger.exception(
                             "Error processing task %s: %s", task_name, exc
                         )
-                        # Let it retry (standard JetStream behavior for un-acked messages)
-                        await msg.nak()
+                        await self._retry_or_dead_letter(msg, payload, str(exc))
             except nats.errors.TimeoutError:
                 continue
             except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — worker loop must survive any error (reviewed TD-27-04)

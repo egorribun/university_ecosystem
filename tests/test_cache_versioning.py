@@ -32,11 +32,14 @@ async def test_get_version_zero_when_cache_disabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_version_zero_for_enabled_non_redis_cache() -> None:
-    # MemoryCache.enabled is True but it is NOT a RedisCache → the isinstance
-    # guard falls through to the "0" return (the 45->58 branch).
+async def test_get_version_for_enabled_non_redis_cache_uses_unique_generations() -> (
+    None
+):
     mgr = CacheVersionManager(prefix="x:list")
-    assert await mgr.get_version(MemoryCache()) == "0"
+    cache = MemoryCache()
+    initial = await mgr.get_version(cache)
+    await mgr.increment(cache)
+    assert await mgr.get_version(cache) != initial
 
 
 @pytest.mark.asyncio

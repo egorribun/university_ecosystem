@@ -5,7 +5,7 @@ Welcome to the **University Ecosystem Platform** repository. This document defin
 Subsystem-specific rules are hierarchically partitioned into domain `AGENTS.md` files:
 - **Backend Domain (`app/`)**: [`app/AGENTS.md`](app/AGENTS.md) — Python 3.14, FastAPI, SQLAlchemy 2.0 async (`lazy="noload"`), Dishka DI, Argon2id, Outbox pattern.
 - **Frontend Domain (`frontend/`)**: [`frontend/AGENTS.md`](frontend/AGENTS.md) — React 19, TypeScript strict, TanStack Router/Query, Zustand, Valibot-only, SSR, ARIA standards.
-- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.26.4+ (CI pins 1.26.6; fuzz jobs may use 1.27.1), `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
+- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.26.4+ (CI pins 1.26.9; fuzz jobs may use 1.27.2), `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
 
 ---
 
@@ -112,16 +112,27 @@ python verify_harness.py
 
 ## 4. Quality & Zero-Warning Contract
 
-All contributions must strictly comply with `quality/quality-contract.json`:
+All contributions must comply with `quality/quality-contract.json` and
+[ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md) (risk-based quality policy
+for the MVP release; the current plan is
+[`docs/superpowers/plans/MVP_MASTER_PLAN.md`](docs/superpowers/plans/MVP_MASTER_PLAN.md)):
 
-1. **100% Coverage Mandate**:
-   - 100% Line Coverage
-   - 100% Statement Coverage
-   - 100% Branch Coverage
-   - 100% Function Coverage
-   - Tier 0 core modules require 100% test coverage across all dimensions.
+1. **Coverage**:
+   - Tier 0 files (`tier0_rules` in `quality/ownership-mapping.json`) require 100% line,
+     statement, branch and function coverage.
+   - Other components keep their current contract floors until ADR-047 stage Q3 replaces
+     them with a no-decrease ratchet and a 90% patch floor for changed lines.
 2. **Mutation Testing**:
-   - 100% viable mutant score required (`mutmut` for Python backend, `Stryker` for TypeScript frontend).
+   - ADR-047 stage Q1 keeps full `mutmut` (Python backend) and Stryker (TypeScript frontend)
+     in nightly/manual lanes outside the MVP release gate. The Q1/Q4 source migration is
+     integrated; every new source SHA still needs its own required-check evidence.
+     Do not spend MVP effort on raising the global mutation score.
+   - The nightly no-regression check is planned for stage Q2; it is not implemented by
+     adopting this policy. Keep the integrated Q1/Q4 migration in force and verify
+     the remaining required checks for the current MVP source.
+   - A proven equivalent mutant goes to `quality/mutation-exclusions.json` with owner,
+     evidence and an expiry date; quarantine and manual `Killed` reclassification stay
+     forbidden.
 3. **Pre-Commit Enforcement**:
    - `ruff` (v0.14.14 pinned — prevents syntax regressions).
    - `detect-secrets` (scans for credentials against `.secrets.baseline`).
@@ -133,13 +144,16 @@ All contributions must strictly comply with `quality/quality-contract.json`:
    - `semgrep-sast` (Static Application Security Testing).
    - `renovate-config-validator` (validates dependency update configurations).
 
+   The additional `trivy-fs-scan` hook (`trivyfs-docker`) runs only at the manual
+   stage. Hosted Trivy image scans are configured separately in CI.
+
 ---
 
-## 5. Bypass Policy
+## 5. Merge Policy
 
-GitHub admin bypass on the main-branch ruleset is intentionally left enabled for this single-maintainer repository. The accepted admin bypass risk is that a false-positive gate or third-party outage can be bypassed to avoid a deadlock.
-- Use `scripts/merge-as-admin.ps1 -PrNumber <n> [-SquashTitle <title>]` for such a merge: it temporarily disables the repository ruleset and the classic branch protection on `main`, squash-merges the PR, and immediately re-enables both guards (the `egorribun` branch is never deleted).
-- Any bypass merge **must** record an explicit bypass reason in the PR description or merge commit message.
+- Use the ordinary pull-request flow and required checks for changes to `main`.
+- Admin bypass, force-push, and general changes to branch protection are outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
+- On 2026-10-09 the owner explicitly authorized removing the 14 Q1/Q4 required check contexts listed in [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md#authorized-required-context-removals), from main ruleset `8335285`, after the corresponding CI diff is complete, reviewed and checked. The owner subsequently approved removing exactly one additional context, `Security Audit / Semgrep SAST`, after the reviewed scanner de-duplication change passes its checks. CodeQL remains blocking and Semgrep remains in pre-commit. Preserve every other rule and context; this permission does not authorize bypass, further context removals, or early promotion of advisory live smoke.
 
 ---
 
@@ -148,7 +162,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
 - **Base Images**:
   - Python backend: `python:3.14-slim-bookworm`
   - Frontend SSR: `node:24-alpine` (running on port 3000)
-  - Go microservices: digest-pinned `golang:1.26.6-alpine` builders and a `distroless/static-debian12` runtime; `file-processor` also ships `grpc_health_probe`
+  - Go microservices: digest-pinned `golang:1.26.9-alpine` builders and a `distroless/static-debian12` runtime; `file-processor` also ships `grpc_health_probe`
 - **Healthcheck Standards**:
   - Backend: `/health/ready` (FastAPI readiness probe)
   - File processor: `grpc_health_probe -addr=:50051`
@@ -187,13 +201,19 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
 
 The developer harness defines 5 specialized subagents configured in `.agents/subagents.json`:
 - `lead_architect` (`inherit` mode): System design, ADR governance, Dishka DI validation.
-- `tdd_developer` (`branch` mode): Isolated RED-GREEN-REFACTOR test-driven implementation.
+- `tdd_developer` (`share` mode): RED-GREEN-REFACTOR implementation in explicitly assigned files.
 - `qa_e2e_tester` (`share` mode): Browser E2E, Playwright, ARIA compliance, SSR hydration testing.
 - `security_auditor` (`inherit` mode): Argon2id, RS256 JWKS, path traversal, SAST, secret leak prevention.
 - `perf_optimizer` (`inherit` mode): EXPLAIN ANALYZE, TieredCache tuning, frontend bundle budget (<500 KB).
+
+These profiles are guidance, not active processes or enforced timers. The root
+assigns at most three GPT-6 Luna Max agents in the current `egorribun` checkout,
+with disjoint file ownership and a 30-minute checkpoint budget; root owns Git.
+The lifecycle scripts use the Antigravity protocol. They are available through
+the explicit runner and are not automatically registered as Codex hooks.
 
 ---
 
 ## 9. Audit Trail & Documentation Index
 
-The canonical audit index, including the current reference set and the archive (`docs/audits/archive/`), is [`docs/audits/INDEX.md`](docs/audits/INDEX.md). The canonical documentation index is [`docs/README.md`](docs/README.md).
+The current documentation and audit-retention policy are indexed in [`docs/README.md`](docs/README.md) and [`docs/audits/INDEX.md`](docs/audits/INDEX.md). Legacy archives have been reconciled against the active MVP plan and removed from the working tree after transferring applicable requirements. Preserve Git history; keep the verified rescue bundle private and isolated because it contains credential-shaped history. Do not add session logs or superseded snapshots to the current indexes.

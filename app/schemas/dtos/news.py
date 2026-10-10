@@ -37,6 +37,8 @@ class NewsCommentDTO(DTOModel):
 
 
 class NewsListingDTO(DTOModel):
+    distance: float | None = None
+    ranked: bool = False
     news: NewsDTO
     likes_count: int
     comments_count: int

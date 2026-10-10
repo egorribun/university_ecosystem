@@ -1,161 +1,108 @@
-"""Contract for retry-safe primary CI mutmut artifact transport."""
+"""Mutation evidence stays complete in manual and nightly workflows only."""
 
 from __future__ import annotations
 
-import shlex
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-CI = ROOT / ".github" / "workflows" / "ci.yml"
+WORKFLOWS = ROOT / ".github" / "workflows"
+CI = WORKFLOWS / "ci.yml"
+MANUAL = WORKFLOWS / "manual-mutation-evidence.yml"
+NIGHTLY = WORKFLOWS / "nightly-full-gate.yml"
+BACKEND = WORKFLOWS / "reusable-full-backend-mutation.yml"
 
 
-def _workflow() -> dict[str, Any]:
-    loaded = yaml.safe_load(CI.read_text(encoding="utf-8"))
+def _workflow(path: Path) -> dict[str, Any]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
 
 
-def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
-    return next(step for step in job["steps"] if step.get("name") == name)
+def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
+    value = workflow.get("on", workflow.get(True, {}))
+    assert isinstance(value, dict)
+    return value
 
 
-def test_stats_sidecar_uses_the_locked_installed_producer_interpreter() -> None:
-    stats = _workflow()["jobs"]["mutation-tests-stats"]
-    sidecar = _step(stats, "Create retry-bound mutmut stats sidecar")
-    command = next(
-        line.rstrip().removesuffix("\\").strip()
-        for line in sidecar["run"].splitlines()
-        if "scripts.mutmut_retry_artifacts create-stats" in line
+def test_blocking_ci_keeps_security_and_coverage_but_has_no_mutation_execution() -> (
+    None
+):
+    jobs = _workflow(CI)["jobs"]
+    finalizer = jobs["ci-success"]
+
+    assert not any("mutation" in job_id or "stryker" in job_id for job_id in jobs)
+    assert not any(
+        "mutation" in job_id or "stryker" in job_id for job_id in finalizer["needs"]
     )
-    assert shlex.split(command) == [
-        "uv",
-        "run",
-        "--frozen",
-        "--no-sync",
-        "python",
-        "-m",
-        "scripts.mutmut_retry_artifacts",
-        "create-stats",
+    assert {
+        "pre-commit-security-and-types",
+        "security-audit",
+        "coverage-policy-gate",
+    } <= set(finalizer["needs"])
+
+
+def test_manual_and_nightly_mutation_lanes_preserve_full_logical_inventories() -> None:
+    manual = _workflow(MANUAL)
+    manual_triggers = _triggers(manual)
+    assert set(manual_triggers) == {"workflow_dispatch"}
+    manual_jobs = manual["jobs"]
+
+    stats = manual_jobs["manual-mutation-stats"]
+    execution = manual_jobs["manual-mutation-tests"]
+    assert stats["strategy"]["matrix"]["stats_shard"] == list(range(8))
+    assert stats["strategy"]["max-parallel"] == 8
+    assert execution["needs"] == "manual-mutation-stats"
+    assert execution["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert execution["strategy"]["max-parallel"] == 20
+    assert execution["strategy"]["fail-fast"] is False
+    assert any(
+        step.get("name") == "Require all manual mutmut stats shards"
+        for step in execution["steps"]
+    )
+
+    manual_frontend = manual_jobs["manual-frontend-mutation-shards"]
+    assert manual_frontend["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert manual_frontend["needs"] == "manual-frontend-mutation-preflight"
+    assert manual_jobs["manual-frontend-mutation-aggregate"]["needs"] == [
+        "manual-frontend-mutation-preflight",
+        "manual-frontend-mutation-shards",
     ]
-    dependencies = _step(stats, "Install dependencies")
-    collection = _step(stats, "Collect mutmut stats shard")
-    assert stats["steps"].index(dependencies) < stats["steps"].index(collection)
-    assert stats["steps"].index(collection) < stats["steps"].index(sidecar)
-    assert sidecar["if"] == collection["if"] == dependencies["if"]
-    assert "set -euo pipefail" in sidecar["run"]
-    assert "continue-on-error" not in sidecar
+    assert manual_jobs["manual-frontend-mutation-roundtrip"]["needs"] == (
+        "manual-frontend-mutation-aggregate"
+    )
 
+    nightly = _workflow(NIGHTLY)
+    nightly_triggers = _triggers(nightly)
+    assert "schedule" in nightly_triggers
+    assert "workflow_dispatch" in nightly_triggers
+    nightly_jobs = nightly["jobs"]
+    backend_call = nightly_jobs["mutation-tests-full"]
+    assert (
+        backend_call["uses"] == "./.github/workflows/reusable-full-backend-mutation.yml"
+    )
+    assert "github.ref == 'refs/heads/main'" in backend_call["if"]
 
-def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -> None:
-    jobs = _workflow()["jobs"]
-    stats = jobs["mutation-tests-stats"]
-    universe = jobs["mutation-tests-universe"]
-    incremental = jobs["mutation-tests-incremental"]
+    backend_jobs = _workflow(BACKEND)["jobs"]
+    backend_mutation = backend_jobs["mutation-tests-full"]
+    assert backend_jobs["mutation-tests-full-stats"]["strategy"]["matrix"][
+        "stats_shard"
+    ] == list(range(8))
+    assert backend_mutation["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert backend_jobs["mutation-tests-full-aggregate"]["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full",
+    ]
 
-    stats_sidecar = _step(stats, "Create retry-bound mutmut stats sidecar")
-    assert (
-        "python -m scripts.mutmut_retry_artifacts create-stats" in stats_sidecar["run"]
-    )
-    stats_stage = _step(stats, "Stage isolated mutmut stats artifact")
-    assert "set -euo pipefail" in stats_stage["run"]
-    assert "mutmut-stats-upload/mutmut-stats.json" in stats_stage["run"]
-    assert "mutmut-stats-upload/mutmut-stats-artifact.json" in stats_stage["run"]
-    assert "test -f mutmut-stats-upload/mutmut-stats.json" in stats_stage["run"]
-    assert (
-        "test -f mutmut-stats-upload/mutmut-stats-artifact.json" in stats_stage["run"]
-    )
-    stats_upload = _step(stats, "Upload mutmut stats shard")
-    assert stats_upload["with"]["name"] == (
-        "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}"
-    )
-    assert stats_upload["with"]["path"] == "mutmut-stats-upload"
-    assert "mutants/mutmut-stats.json" not in stats_upload["with"]["path"]
-    assert "mutmut-stats-artifact.json" not in stats_upload["with"]["path"]
-    assert stats_upload["with"]["retention-days"] == 30
-
-    stats_download = _step(universe, "Download same-run mutmut stats candidates")
-    assert stats_download["with"] == {
-        "pattern": "mutmut-stats-shard-*-attempt-*",
-        "path": "mutmut-stats-candidates",
-        "merge-multiple": False,
-    }
-    assert "if-no-artifact-found" not in stats_download["with"]
-    stats_selection = _step(universe, "Select complete retry-safe mutmut stats cohort")
-    assert (
-        "python -m scripts.mutmut_retry_artifacts select-stats"
-        in stats_selection["run"]
-    )
-    assert "--candidate-root" in stats_selection["run"]
-    assert "mutmut-stats-selection.json" in stats_selection["run"]
-    assert "! -type d" in stats_selection["run"]
-    assert "select_coverage_artifacts" not in stats_selection["run"]
-    universe_create = _step(universe, "Create retry-scoped mutmut universe envelope")
-    assert (
-        "python -m scripts.mutmut_retry_artifacts create-universe"
-        in universe_create["run"]
-    )
-    assert "--include-helm-dependencies" in universe_create["run"]
-    universe_upload = _step(universe, "Upload central mutmut universe")
-    assert universe_upload["with"]["retention-days"] == 30
-    assert (
-        "charts/university-ecosystem/charts/redis-20.13.4.tgz"
-        in universe_upload["with"]["path"]
-    )
-    assert (
-        "charts/university-ecosystem/charts/nats-8.5.4.tgz"
-        in universe_upload["with"]["path"]
-    )
-    assert universe_upload["if"] == "steps.mutation_scope.outputs.has_python == 'true'"
-    empty_upload = _step(universe, "Upload empty central mutmut universe")
-    assert empty_upload["if"] == "steps.mutation_scope.outputs.has_python != 'true'"
-    assert "charts/university-ecosystem/charts" not in empty_upload["with"]["path"]
-
-    scope = _step(incremental, "Detect changed Python source")
-    universe_selector = _step(
-        incremental, "Select immutable same-run mutmut universe candidate"
-    )
-    assert universe_selector["id"] == "select_mutmut_universe"
-    assert universe_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    selector_script = universe_selector["run"]
-    for invariant in (
-        "set -euo pipefail",
-        "scripts/quality/select_same_run_artifact_cli.py",
-        '--artifact-prefix "mutmut-universe-"',
-        '--artifact-suffix ""',
-        "--attempt-policy current-or-earlier",
-    ):
-        assert invariant in selector_script
-    universe_download = _step(
-        incremental, "Download selected same-run mutmut universe candidate"
-    )
-    assert universe_download["with"] == {
-        "artifact-ids": "${{ steps.select_mutmut_universe.outputs.artifact_id }}",
-        "repository": "${{ github.repository }}",
-        "run-id": "${{ github.run_id }}",
-        "github-token": "${{ github.token }}",
-        "path": (
-            "mutmut-universe-candidates/"
-            "${{ steps.select_mutmut_universe.outputs.artifact_name }}"
-        ),
-    }
-    assert "pattern" not in universe_download["with"]
-    universe_selection = _step(incremental, "Select retry-safe central mutmut universe")
-    assert (
-        "python -m scripts.mutmut_retry_artifacts select-universe"
-        in universe_selection["run"]
-    )
-    assert "--candidate-root" in universe_selection["run"]
-    assert "! -type d" in universe_selection["run"]
-    assert "selected_producer_attempt" in universe_selection["run"]
-    assert incremental["steps"].index(scope) < incremental["steps"].index(
-        universe_selector
-    )
-    assert incremental["steps"].index(universe_selector) < incremental["steps"].index(
-        universe_download
-    )
-    assert incremental["steps"].index(universe_download) < incremental["steps"].index(
-        universe_selection
+    nightly_frontend = nightly_jobs["frontend-mutation-shards"]
+    assert nightly_frontend["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    assert nightly_frontend["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert nightly_jobs["frontend-mutation-tests-full"]["needs"] == [
+        "frontend-mutation-preflight",
+        "frontend-mutation-shards",
+    ]
+    assert nightly_jobs["frontend-mutation-roundtrip"]["needs"] == (
+        "frontend-mutation-tests-full"
     )

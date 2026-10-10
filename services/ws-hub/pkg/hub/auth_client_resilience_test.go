@@ -24,7 +24,7 @@ func TestInternalAPIAuthClient_DoRequestResponseGuards(t *testing.T) {
 	roomID := "660e8400-e29b-41d4-a716-446655441111"
 
 	t.Run("nil response is rejected", func(t *testing.T) {
-		client := NewInternalAPIAuthClient("http://auth.test", nil)
+		client := NewInternalAPIAuthClientWithToken("http://auth.test", "", nil)
 		previous := authHTTPDoFunc
 		t.Cleanup(func() { authHTTPDoFunc = previous })
 		authHTTPDoFunc = func(*http.Client, *http.Request) (*http.Response, error) {
@@ -36,7 +36,7 @@ func TestInternalAPIAuthClient_DoRequestResponseGuards(t *testing.T) {
 	})
 
 	t.Run("body read failure is non-fatal", func(t *testing.T) {
-		client := NewInternalAPIAuthClient("http://auth.test", nil)
+		client := NewInternalAPIAuthClientWithToken("http://auth.test", "", nil)
 		previous := authHTTPDoFunc
 		t.Cleanup(func() { authHTTPDoFunc = previous })
 		authHTTPDoFunc = func(_ *http.Client, req *http.Request) (*http.Response, error) {
@@ -49,7 +49,7 @@ func TestInternalAPIAuthClient_DoRequestResponseGuards(t *testing.T) {
 }
 
 func TestInternalAPIAuthClient_WithSPIFFEConfiguresTransport(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://auth.test", nil)
+	client := NewInternalAPIAuthClientWithToken("http://auth.test", "", nil)
 	previous := authClientTLSConfigFunc
 	t.Cleanup(func() { authClientTLSConfigFunc = previous })
 	configured := &tls.Config{MinVersion: tls.VersionTLS13}

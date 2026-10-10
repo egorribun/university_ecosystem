@@ -443,7 +443,7 @@ async def test_generate_event_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
+        patch("app.services.event_handlers.VectorService", return_value=AsyncMock()),
     ):
         await generate_event_embedding(mock_event)  # returns early when not found
 
@@ -466,7 +466,7 @@ async def test_generate_news_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
+        patch("app.services.event_handlers.VectorService", return_value=AsyncMock()),
     ):
         await generate_news_embedding(mock_event)
 
@@ -516,13 +516,16 @@ async def test_generate_event_embedding_found() -> None:
 
 @pytest.mark.asyncio
 async def test_vector_service_get_embedding_disabled() -> None:
-    from app.services.vector_service import VectorService
+    from app.services.vector_service import (
+        SemanticSearchUnavailableError,
+        VectorService,
+    )
 
     mock_db = AsyncMock()
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
@@ -530,20 +533,25 @@ async def test_vector_service_get_embedding_disabled() -> None:
         mock_settings.embedding_dimensions = 128
 
         svc = VectorService(db=mock_db)
-        result = await svc.get_embedding("test text")
-
-    assert result == [0.0] * 128
+        with pytest.raises(
+            SemanticSearchUnavailableError,
+            match=r"^Semantic search is currently unavailable$",
+        ):
+            await svc.get_embedding("test text")
 
 
 @pytest.mark.asyncio
 async def test_vector_service_get_embedding_no_api_key() -> None:
-    from app.services.vector_service import VectorService
+    from app.services.vector_service import (
+        SemanticSearchUnavailableError,
+        VectorService,
+    )
 
     mock_db = AsyncMock()
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -551,9 +559,11 @@ async def test_vector_service_get_embedding_no_api_key() -> None:
         mock_settings.embedding_dimensions = 64
 
         svc = VectorService(db=mock_db)
-        result = await svc.get_embedding("test")
-
-    assert result == [0.0] * 64
+        with pytest.raises(
+            SemanticSearchUnavailableError,
+            match=r"^Semantic search is currently unavailable$",
+        ):
+            await svc.get_embedding("test")
 
 
 @pytest.mark.asyncio
@@ -570,7 +580,7 @@ async def test_vector_service_get_embedding_http_success() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -591,13 +601,16 @@ async def test_vector_service_get_embedding_http_success() -> None:
 async def test_vector_service_get_embedding_http_error() -> None:
     import httpx
 
-    from app.services.vector_service import VectorService
+    from app.services.vector_service import (
+        SemanticSearchUnavailableError,
+        VectorService,
+    )
 
     mock_db = AsyncMock()
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -609,9 +622,11 @@ async def test_vector_service_get_embedding_http_error() -> None:
         svc._client = AsyncMock()
         svc._client.post = AsyncMock(side_effect=httpx.ConnectError("no connection"))
 
-        result = await svc.get_embedding("text")
-
-    assert result == [0.0] * 8
+        with pytest.raises(
+            SemanticSearchUnavailableError,
+            match=r"^Semantic search is currently unavailable$",
+        ):
+            await svc.get_embedding("text")
 
 
 @pytest.mark.asyncio
@@ -622,7 +637,7 @@ async def test_vector_service_search_similar_disabled() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
@@ -645,7 +660,7 @@ async def test_vector_service_search_similar_empty_embedding() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
@@ -666,7 +681,7 @@ async def test_vector_service_close() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
@@ -690,7 +705,7 @@ async def test_vector_service_search_disabled_returns_empty() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost:8001"
@@ -713,7 +728,7 @@ async def test_vector_service_search_empty_embedding_returns_empty() -> None:
 
     with (
         patch("app.services.vector_service.settings") as mock_settings,
-        patch("app.services.vector_service.validate_url_not_internal"),
+        patch("app.services.vector_service.validate_url_not_internal_async"),
     ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost:8001"

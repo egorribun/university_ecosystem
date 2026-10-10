@@ -22,11 +22,21 @@ const cloneEvents = (source: Event[], label: string, offset: number): Event[] =>
     description_en: `${label} description ${index + 1}`,
   }))
 
+const dashboardEvents = (events: Event[]) =>
+  events.map(({ id, title, starts_at, location }) => ({
+    id,
+    title,
+    starts_at,
+    ...(location === undefined ? {} : { location }),
+  }))
+
 describe("useDashboardEvents", () => {
   it("fetches fresh events after resetEtagCache when a new user signs in", async () => {
     const baseEvents = testEvents.slice(0, 3)
     const firstUserEvents = cloneEvents(baseEvents, "First user", 0)
     const secondUserEvents = cloneEvents(baseEvents, "Second user", 100)
+    const firstDashboardEvents = dashboardEvents(firstUserEvents)
+    const secondDashboardEvents = dashboardEvents(secondUserEvents)
     let activeSnapshot = firstUserEvents
 
     server.use(
@@ -62,7 +72,7 @@ describe("useDashboardEvents", () => {
 
     const { result } = renderHook(() => useDashboardEvents(), { wrapper })
 
-    await waitFor(() => expect(result.current.data).toEqual(firstUserEvents))
+    await waitFor(() => expect(result.current.data).toEqual(firstDashboardEvents))
 
     activeSnapshot = secondUserEvents
     resetEtagCache()
@@ -71,6 +81,6 @@ describe("useDashboardEvents", () => {
       await queryClient.invalidateQueries({ queryKey: dashboardEventsQueryKey })
     })
 
-    await waitFor(() => expect(result.current.data).toEqual(secondUserEvents))
+    await waitFor(() => expect(result.current.data).toEqual(secondDashboardEvents))
   })
 })

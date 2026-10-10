@@ -405,6 +405,32 @@ async def verify_password(plain_password: str, hashed_password: str) -> bool:
         )
 
 
+# Public throw-away seed for timing equalization; never an account credential.
+_DUMMY_PASSWORD_HASH_SOURCE = "dummy-password-hash-source"  # noqa: S105  # nosec B105  # pragma: allowlist secret
+_dummy_password_hash: str | None = None
+
+
+def _verify_against_dummy_sync(plain_password: str) -> None:
+    global _dummy_password_hash
+    if _dummy_password_hash is None:
+        _dummy_password_hash = argon2_hasher.hash(_DUMMY_PASSWORD_HASH_SOURCE)
+    verify_password_sync(plain_password, _dummy_password_hash)
+
+
+async def verify_dummy_password(plain_password: str) -> None:
+    """Spend one Argon2 verification on a throw-away hash.
+
+    Unknown accounts must cost the same as known ones (same executor, same
+    backpressure semaphore, same Argon2 parameters); otherwise response time
+    reveals which e-mail addresses are registered.  The result is ignored.
+    """
+    async with _get_argon2_semaphore():
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            _auth_executor, _verify_against_dummy_sync, plain_password
+        )
+
+
 def verify_and_update_password_sync(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, str | None]:

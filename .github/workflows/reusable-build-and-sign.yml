@@ -35,7 +35,7 @@ on:
         required: false
         type: string
       canonical_frontend:
-        description: "Build the one staging-certified promotable frontend variant"
+        description: "Build the canonical frontend image for the release source"
         required: false
         default: false
         type: boolean
@@ -157,8 +157,8 @@ jobs:
           build-args: |
             ${{ inputs.build_args }}
             ${{ inputs.canonical_frontend && format('VITE_APP_RELEASE={0}', inputs.source-sha) || '' }}
-            ${{ inputs.canonical_frontend && 'VITE_ENABLE_WEB_VITALS=true' || '' }}
-            ${{ inputs.canonical_frontend && 'VITE_CWV_TRUSTED_RUM=true' || '' }}
+            ${{ inputs.canonical_frontend && 'VITE_ENABLE_WEB_VITALS=false' || '' }}
+            ${{ inputs.canonical_frontend && 'VITE_CWV_TRUSTED_RUM=false' || '' }}
             ${{ inputs.canonical_frontend && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
           target: ${{ inputs.target }}
           # Keep each image's BuildKit cache isolated while allowing repeat

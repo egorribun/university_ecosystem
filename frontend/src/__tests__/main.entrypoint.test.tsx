@@ -88,7 +88,7 @@ const waitForDeferredWork = async () => {
 beforeEach(() => {
   vi.resetModules()
   vi.unstubAllEnvs()
-  vi.clearAllMocks()
+  Object.values(mocks).forEach((mock) => mock.mockReset())
   requestedIdleOptions = undefined
   vi.useRealTimers()
 
@@ -105,10 +105,15 @@ beforeEach(() => {
   vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(145)
 })
 
-afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllEnvs()
-  vi.restoreAllMocks()
+afterEach(async () => {
+  // Each import owns deferred telemetry imports, even when a test only checks rendering.
+  try {
+    await vi.dynamicImportSettled()
+  } finally {
+    vi.useRealTimers()
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+  }
 })
 
 describe("browser entrypoint", () => {
@@ -198,12 +203,21 @@ describe("browser entrypoint", () => {
   it("does not hold service-worker bootstrap on the identity-gated push sync", async () => {
     vi.stubEnv("PROD", true)
     setServiceWorkerSupport(true)
-    mocks.syncPushForConfirmedIdentity.mockReturnValue(new Promise(() => {}))
+    let resolveSync!: (value: null) => void
+    const pendingSync = new Promise<null>((resolve) => {
+      resolveSync = resolve
+    })
+    mocks.syncPushForConfirmedIdentity.mockReturnValue(pendingSync)
 
-    await importMain()
+    try {
+      await importMain()
 
-    await vi.waitFor(() => expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledOnce())
-    expect(mocks.logError).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledOnce())
+      expect(mocks.logError).not.toHaveBeenCalled()
+    } finally {
+      resolveSync(null)
+      await pendingSync
+    }
   })
 
   it("logs push sync errors without failing bootstrap", async () => {

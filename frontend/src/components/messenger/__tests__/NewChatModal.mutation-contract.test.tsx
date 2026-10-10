@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { AppShellProvider } from "@/contexts/AppShellContext"
 
 const state = vi.hoisted(() => ({
   reduced: false,
@@ -110,7 +111,9 @@ import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 let latestQueryClient: QueryClient
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={latestQueryClient}>{children}</QueryClientProvider>
+  <AppShellProvider>
+    <QueryClientProvider client={latestQueryClient}>{children}</QueryClientProvider>
+  </AppShellProvider>
 )
 
 const user = (id: string, name = `User ${id}`) => ({
@@ -144,7 +147,7 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(state.mediaQueries).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
   })
 
-  it("keeps overlay and dialog entrance/exit values and accessible shell stable", () => {
+  it("keeps overlay and dialog entrance/exit values and accessible shell stable", async () => {
     const { container } = render(<NewChatModal open onClose={() => {}} onSelect={() => {}} />, {
       wrapper,
     })
@@ -153,6 +156,7 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(attr(overlay, "data-motion-animate")).toBe(JSON.stringify({ opacity: 1 }))
     expect(attr(overlay, "data-motion-exit")).toBe(JSON.stringify({ opacity: 0 }))
     expect(overlay).toHaveClass("fixed", "inset-0", "z-modal", "p-4")
+    await waitFor(() => expect(document.body).not.toHaveClass("blurred"))
     expect(container.querySelector(".absolute.inset-0")).toHaveClass(
       "bg-black/(--opacity-strong)",
       "backdrop-blur-md",
@@ -395,6 +399,97 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(screen.queryByRole("button", { name: /messenger:removeMember.*User one/ })).toBeNull()
   })
 
+  it("moves keyboard focus through search results and back to search at the list boundary", async () => {
+    state.get.mockResolvedValue({ data: [user("one"), user("two"), user("three")] })
+    render(<NewChatModal open onClose={() => {}} onSelect={() => {}} />, { wrapper })
+
+    const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(searchInput, { target: { value: "users" } })
+    const options = await screen.findAllByRole("option")
+    expect(options).toHaveLength(3)
+
+    searchInput.focus()
+    expect(fireEvent.keyDown(searchInput, { key: "ArrowUp" })).toBe(true)
+    expect(document.activeElement).toBe(searchInput)
+
+    expect(fireEvent.keyDown(searchInput, { key: "ArrowDown" })).toBe(false)
+    expect(document.activeElement).toBe(options[0])
+
+    expect(fireEvent.keyDown(options[0]!, { key: "ArrowDown" })).toBe(false)
+    expect(document.activeElement).toBe(options[1])
+
+    expect(fireEvent.keyDown(options[1]!, { key: "Enter" })).toBe(true)
+    expect(document.activeElement).toBe(options[1])
+
+    expect(fireEvent.keyDown(options[1]!, { key: "ArrowDown" })).toBe(false)
+    expect(document.activeElement).toBe(options[2])
+
+    expect(fireEvent.keyDown(options[2]!, { key: "ArrowDown" })).toBe(false)
+    expect(document.activeElement).toBe(options[2])
+
+    expect(fireEvent.keyDown(options[2]!, { key: "ArrowUp" })).toBe(false)
+    expect(document.activeElement).toBe(options[1])
+
+    expect(fireEvent.keyDown(options[1]!, { key: "ArrowUp" })).toBe(false)
+    expect(document.activeElement).toBe(options[0])
+
+    expect(fireEvent.keyDown(options[0]!, { key: "ArrowUp" })).toBe(false)
+    expect(document.activeElement).toBe(searchInput)
+  })
+
+  it("does not cancel ArrowDown when the user search has no options", async () => {
+    state.get.mockResolvedValue({ data: [] })
+    render(<NewChatModal open onClose={() => {}} onSelect={() => {}} />, { wrapper })
+
+    const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(searchInput, { target: { value: "missing" } })
+    expect(await screen.findByText("messenger:noUsersFound")).toBeTruthy()
+
+    searchInput.focus()
+    expect(fireEvent.keyDown(searchInput, { key: "ArrowDown" })).toBe(true)
+    expect(document.activeElement).toBe(searchInput)
+  })
+
+  it("ignores a queued arrow key after group creation disables every search row", async () => {
+    state.get.mockResolvedValue({ data: [user("one"), user("two")] })
+    const onSelect = vi.fn()
+    const onCreateGroup = vi.fn()
+    const props = { open: true, onClose: vi.fn(), onSelect, onCreateGroup }
+    const { rerender } = render(<NewChatModal {...props} />, { wrapper })
+    fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "users" },
+    })
+    const rows = await screen.findAllByRole("option")
+    rows[0]!.focus()
+    rerender(<NewChatModal {...props} isCreatingGroup />)
+    expect(rows[0]).toBeDisabled()
+    expect(rows[1]).toBeDisabled()
+    expect(fireEvent.keyDown(rows[0]!, { key: "ArrowDown" })).toBe(true)
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onCreateGroup).not.toHaveBeenCalled()
+  })
+
+  it("keeps scroll locks independent across mounted NewChatModal instances", async () => {
+    const { rerender } = render(
+      <>
+        <NewChatModal open onClose={() => {}} onSelect={() => {}} />
+        <NewChatModal open onClose={() => {}} onSelect={() => {}} />
+      </>,
+      { wrapper }
+    )
+    await waitFor(() => expect(document.body.style.overflow).toBe("hidden"))
+
+    rerender(
+      <>
+        <NewChatModal open={false} onClose={() => {}} onSelect={() => {}} />
+        <NewChatModal open onClose={() => {}} onSelect={() => {}} />
+      </>
+    )
+
+    await waitFor(() => expect(document.body.style.overflow).toBe("hidden"))
+  })
+
   it("renders user error retry motion and no-results branch without ambiguity", async () => {
     state.get.mockRejectedValueOnce(new Error("offline"))
     render(<NewChatModal open onClose={() => {}} onSelect={() => {}} />, { wrapper })
@@ -482,7 +577,7 @@ describe("NewChatModal motion/layout mutation contract", () => {
     state.get.mockResolvedValue({ data: [] })
     fireEvent.change(input, { target: { value: "ab" } })
     await waitFor(() => expect(state.get).toHaveBeenCalledTimes(1))
-    expect(state.get).toHaveBeenCalledWith("/users?limit=10&search=ab")
+    expect(state.get).toHaveBeenCalledWith("/users?limit=10&full_name=ab")
     await waitFor(() => expect(latestQueryClient?.getQueryData(["users", "ab"])).toEqual([]))
     expect(latestQueryClient?.getQueryData(["", "ab"])).toBeUndefined()
     expect(state.focusTrap).toHaveBeenLastCalledWith(

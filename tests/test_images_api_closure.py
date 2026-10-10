@@ -196,6 +196,21 @@ async def test_s3_image_proxy_reads_only_published_media_prefixes(path: str):
 
 
 @pytest.mark.asyncio
+async def test_s3_image_proxy_hides_sanitizer_rejection_before_storage_read() -> None:
+    storage = S3Storage(bucket="uploads", base_url="/api/v1/img", client=AsyncMock())
+    with (
+        patch.object(settings, "image_proxy_enabled", True),
+        patch("app.api.images._get_storage_backend", return_value=storage),
+        patch("app.api.images.get_transformed_image", new=AsyncMock()) as transform,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await proxy_image(_request(), "avatars/%00invalid.png", w=None, accept=None)
+
+    assert exc_info.value.status_code == 404
+    transform.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [

@@ -19,6 +19,7 @@ import pytest
 
 import app.models as models
 import app.services.user.logic as logic_module
+from app.core.constants import ANONYMIZED_USER_CREDENTIAL
 from app.services.user.logic import anonymize_user_data, update_user_attributes
 
 
@@ -56,6 +57,83 @@ def test_update_attributes_creates_all_nested_children() -> None:
     assert isinstance(user.education_path, models.EducationPath)
     assert user.education_path.course == 2
     assert user.some_core_field == "x"
+
+
+def test_nested_updates_ignore_fields_outside_child_allowlists() -> None:
+    user = models.User(
+        id=uuid.uuid4(),
+        email="nested-update@example.test",
+        hashed_password=ANONYMIZED_USER_CREDENTIAL,
+    )
+    user.profile = models.UserProfile(
+        user_id=user.id,
+        about="Existing bio",
+        department="Existing department",
+    )
+    user.education_path = models.EducationPath(
+        user_id=user.id,
+        institute="Existing institute",
+        course="Existing course",
+    )
+
+    update_user_attributes(
+        user,
+        {
+            "profile_detail": {
+                "department": "Updated department",
+                "unmapped_profile_attribute": "must not be assigned",
+            },
+            "education_path": {
+                "course": "Updated course",
+                "unmapped_education_attribute": "must not be assigned",
+            },
+        },
+    )
+
+    assert user.profile.about == "Existing bio"
+    assert user.profile.department == "Updated department"
+    assert not hasattr(user.profile, "unmapped_profile_attribute")
+    assert user.education_path.institute == "Existing institute"
+    assert user.education_path.course == "Updated course"
+    assert not hasattr(user.education_path, "unmapped_education_attribute")
+
+
+def test_nested_profile_update_creates_missing_profile() -> None:
+    user = models.User(
+        id=uuid.uuid4(),
+        email="new-profile@example.test",
+        hashed_password=ANONYMIZED_USER_CREDENTIAL,
+    )
+
+    update_user_attributes(
+        user,
+        {"profile_detail": {"about": "New profile bio", "department": "Physics"}},
+    )
+
+    assert isinstance(user.profile, models.UserProfile)
+    assert user.profile.user_id == user.id
+    assert user.profile.about == "New profile bio"
+    assert user.profile.department == "Physics"
+
+
+def test_invalid_education_payload_preserves_existing_relation() -> None:
+    user = models.User(
+        id=uuid.uuid4(),
+        email="existing-education@example.test",
+        hashed_password=ANONYMIZED_USER_CREDENTIAL,
+    )
+    education_path = models.EducationPath(
+        user_id=user.id,
+        institute="Existing institute",
+        course="Existing course",
+    )
+    user.education_path = education_path
+
+    update_user_attributes(user, {"education_path": object()})
+
+    assert user.education_path is education_path
+    assert user.education_path.institute == "Existing institute"
+    assert user.education_path.course == "Existing course"
 
 
 async def test_anonymize_user_data_clears_avatar_and_cover(

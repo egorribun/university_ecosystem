@@ -76,15 +76,16 @@ func newConnPair(t *testing.T) (server, client *websocket.Conn) {
 func newClientOn(h *Hub, serverConn *websocket.Conn, id, userID string) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		ID:         id,
-		UserID:     userID,
-		SessionJTI: "test-" + id,
-		Conn:       NewWebSocketSession(serverConn),
-		Rooms:      make(map[string]bool),
-		Send:       make(chan []byte, 8),
-		Hub:        h,
-		ctx:        ctx,
-		cancel:     cancel,
+		ID:               id,
+		UserID:           userID,
+		SessionJTI:       "test-" + id,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		Conn:             NewWebSocketSession(serverConn),
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, 8),
+		Hub:              h,
+		ctx:              ctx,
+		cancel:           cancel,
 	}
 }
 
@@ -172,17 +173,17 @@ func TestJoinLeaveRoom_Direct(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// handleMessage (direct — guard paths only, NATS-free)
+// rejectOversizedMessage (direct — ingress size guard, NATS-free)
 // ---------------------------------------------------------------------------
 
-func TestHandleMessage_Oversized(t *testing.T) {
+func TestRejectOversizedMessage(t *testing.T) {
 	h := setupTestHub()
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-big", "u-big")
 
 	before := testutil.ToFloat64(IncomingDropsTotal)
 	big := make([]byte, 61*1024) // > 60 KB ingress limit
-	c.handleMessage(Message{Type: "message", Room: "r"}, big)
+	assert.True(t, c.rejectOversizedMessage(big))
 	assert.Equal(t, before+1, testutil.ToFloat64(IncomingDropsTotal))
 
 	select {
@@ -193,7 +194,7 @@ func TestHandleMessage_Oversized(t *testing.T) {
 	}
 }
 
-func TestHandleMessage_OversizedDropsWhenSendFull(t *testing.T) {
+func TestRejectOversizedMessage_DropsWhenSendFull(t *testing.T) {
 	h := setupTestHub()
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-bigfull", "u-bigfull")
@@ -202,40 +203,9 @@ func TestHandleMessage_OversizedDropsWhenSendFull(t *testing.T) {
 		c.Send <- []byte("filler")
 	}
 	before := testutil.ToFloat64(IncomingDropsTotal)
-	c.handleMessage(Message{Type: "message"}, make([]byte, 61*1024))
+	assert.True(t, c.rejectOversizedMessage(make([]byte, 61*1024)))
 	assert.Equal(t, before+1, testutil.ToFloat64(IncomingDropsTotal),
 		"drop is still counted even when the client notice can't be enqueued")
-}
-
-func TestHandleMessage_RateLimited(t *testing.T) {
-	h := setupTestHub()
-	h.clientMsgRateLimit = 0 // deny everything
-	h.clientMsgRateBurst = 0
-	srv, _ := newConnPair(t)
-	c := newClientOn(h, srv, "c-rl", "u-rl")
-	c.JoinRoom("r")
-
-	c.handleMessage(Message{Type: "message", Room: "r"}, []byte(`{"type":"message"}`))
-	select {
-	case notice := <-c.Send:
-		assert.Contains(t, string(notice), "rate_limit_exceeded")
-	default:
-		t.Fatal("expected a rate_limit_exceeded notice on Send")
-	}
-}
-
-func TestHandleMessage_RateLimitedDropsWhenSendFull(t *testing.T) {
-	h := setupTestHub()
-	h.clientMsgRateLimit = 0
-	h.clientMsgRateBurst = 0
-	srv, _ := newConnPair(t)
-	c := newClientOn(h, srv, "c-rlfull", "u-rlfull")
-	c.JoinRoom("r")
-	for i := 0; i < cap(c.Send); i++ {
-		c.Send <- []byte("filler")
-	}
-	// Must not panic / block — the notice is silently dropped on a full buffer.
-	c.handleMessage(Message{Type: "message", Room: "r"}, []byte(`{"type":"message"}`))
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +227,30 @@ func TestHandleIncomingMessage_JoinLeaveDispatch(t *testing.T) {
 	_, ok := h.Rooms["room-d"]
 	h.mu.RUnlock()
 	assert.False(t, ok)
+}
+
+func TestHandleLeaveNoOpForEmptyRoomOrMissingHub(t *testing.T) {
+	h := setupTestHub()
+	serverConn, _ := newConnPair(t)
+	client := newClientOn(h, serverConn, "leave-guard-client", "leave-guard-user")
+	client.JoinRoom("room-a")
+
+	client.handleLeave(Message{Type: "leave", Room: ""})
+	assert.True(t, client.isInRoom("room-a"), "an empty room must not remove another membership")
+
+	(&Client{}).handleLeave(Message{Type: "leave", Room: "room-a"})
+}
+
+func TestRevokeRoomEmptyRoomIsNoOp(t *testing.T) {
+	h := setupTestHub()
+	serverConn, _ := newConnPair(t)
+	client := newClientOn(h, serverConn, "revoke-guard-client", "revoke-guard-user")
+	client.JoinRoom("room-a")
+
+	client.revokeRoom("", []byte(`{"type":"error"}`))
+
+	assert.True(t, client.isInRoom("room-a"), "an empty room must preserve existing membership")
+	assert.Empty(t, client.Send, "an empty room must not enqueue a revocation notice")
 }
 
 func TestMergeTopLevelJoinReplayIntoPayload(t *testing.T) {
@@ -354,11 +348,11 @@ func TestReadPump_DisallowedTypeOverSocket(t *testing.T) {
 	// Application-level ping, read receipts, and typing are not ws-hub commands:
 	// ping uses the WebSocket control frame, while read/typing are REST-owned
 	// backend broadcasts. All three must be rejected at the parse boundary.
-	for _, messageType := range []string{"ping", "read", "typing"} {
+	for _, messageType := range []string{"ping", "read", "typing", "message"} {
 		require.NoError(t, cli.WriteJSON(map[string]string{"type": messageType}))
 	}
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(UnknownMsgTypeTotal) >= before+3
+		return testutil.ToFloat64(UnknownMsgTypeTotal) >= before+4
 	}, 2*time.Second, 10*time.Millisecond)
 	require.NoError(t, cli.Close())
 }

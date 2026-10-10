@@ -25,7 +25,6 @@ class CacheSettings(BaseAppSettings):
     nats_url: str = "nats://127.0.0.1:4222"
     nats_auth_token: str | None = None
     cache_nats_bucket: str = "ue_cache"
-    cache_nats_ttl_seconds: int = 3600
     session_storage_backend: str = "redis"
     cache_default_ttl_seconds: int = 300
     stats_cache_ttl_seconds: int = 180

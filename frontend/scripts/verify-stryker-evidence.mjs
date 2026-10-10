@@ -3,17 +3,24 @@
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
 import { lstat, readdir, readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import path from "node:path"
 import process from "node:process"
 import { promisify } from "node:util"
 import { fileURLToPath } from "node:url"
 
 import {
+  buildCanonicalCheckerToolchain,
   buildMutationInventory,
   generateInstrumenterPreflight,
   listPolicyFiles,
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
+import {
+  assertCanonicalCheckerToolchain,
+  assertCanonicalTypeScriptCheckerConfig,
+  canonicalTypeScriptCheckerConfig,
+} from "./stryker-checker-config.mjs"
 import {
   buildWorkflowEvidenceIdentity,
   mutationPatternCoversMutant,
@@ -23,6 +30,7 @@ import {
 import { canonicalInstrumenterConfig } from "./stryker-presentation-ignorer.mjs"
 
 const execFileAsync = promisify(execFile)
+const require = createRequire(import.meta.url)
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
 const mutationEvidenceRoot = path.join(repositoryRoot, "frontend", "reports", "mutation")
 const markerPath = path.join(mutationEvidenceRoot, "VALIDATED.json")
@@ -84,6 +92,20 @@ function parseCanonicalObject(text, description) {
 
 function sameCanonicalValue(left, right) {
   return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
+}
+
+function assertWellFormedProducerRuntime(provenance) {
+  if (
+    !provenance ||
+    typeof provenance.node !== "string" ||
+    !/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(provenance.node) ||
+    typeof provenance.platform !== "string" ||
+    !/^[a-z0-9][a-z0-9_-]*$/u.test(provenance.platform) ||
+    typeof provenance.arch !== "string" ||
+    !/^[a-z0-9][a-z0-9_-]*$/u.test(provenance.arch)
+  ) {
+    throw new Error("Mutation producer runtime provenance is malformed")
+  }
 }
 
 function expectedEvidenceIdentity({
@@ -435,6 +457,10 @@ function assertValidatedCandidateMetadata({
   ) {
     throw new Error("Validated artifact configuration does not match this execution")
   }
+  assertCanonicalTypeScriptCheckerConfig(inventory.config)
+  assertCanonicalCheckerToolchain(provenance.tools)
+  assertCanonicalCheckerToolchain(toolchain.tools)
+  assertWellFormedProducerRuntime(provenance)
   if (
     provenance.node !== toolchain.node ||
     provenance.platform !== toolchain.platform ||
@@ -623,6 +649,7 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
     shardIds.add(evidence.shardId)
     const reportPath = assertCanonicalRelativePath(evidence.path)
     const report = parseObject(reportTexts.get(reportPath), `Mutation report ${reportPath}`)
+    assertCanonicalTypeScriptCheckerConfig(report.config)
     const files = report.config?.mutate
     if (
       !Array.isArray(files) ||
@@ -738,6 +765,7 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
     schemaVersion: "1.0",
     config: {
       mutate: expectedPatterns,
+      ...canonicalTypeScriptCheckerConfig,
       coverageAnalysis: "perTest",
       incremental: false,
       mutator: { plugins: null, excludedMutations: [] },
@@ -769,6 +797,7 @@ export async function verifyEvidenceDocuments({
   gitStatus,
   sourceFiles,
   expectedPatterns,
+  toolchain,
 }) {
   const expectedIdentity = expectedEvidenceIdentity({
     expectedSha,
@@ -810,6 +839,16 @@ export async function verifyEvidenceDocuments({
   }
   const consumerAttempt = parseWorkflowRunAttempt(expectedWorkflowRunAttempt)
   const producerAttempt = parseWorkflowRunAttempt(inventory.provenance?.workflowRunAttempt)
+  if (!toolchain || typeof toolchain !== "object" || !toolchain.tools) {
+    throw new Error("Mutation checker toolchain is missing from the consumer")
+  }
+  assertCanonicalTypeScriptCheckerConfig(inventory.config)
+  assertCanonicalCheckerToolchain(inventory.provenance?.tools)
+  assertCanonicalCheckerToolchain(toolchain.tools)
+  assertWellFormedProducerRuntime(inventory.provenance)
+  if (!sameCanonicalValue(inventory.provenance.tools, toolchain.tools)) {
+    throw new Error("Mutation checker toolchain provenance does not match the locked consumer")
+  }
   if (
     inventory.sourceRevision.repositoryDirty !== false ||
     inventory.sourceRevision.dirtyPaths?.length !== 0 ||
@@ -926,6 +965,7 @@ export async function verifyEvidenceDocuments({
     report: canonicalReport,
     expectedPatterns,
     preflightByFile,
+    toolchain: inventory.provenance.tools,
   })
   assertEqualEvidence(inventory.files, derived.files, "Mutation file inventory")
   assertEqualEvidence(inventory.summary, derived.summary, "Mutation summary")
@@ -958,21 +998,44 @@ export function resolveEvidencePath(relativePath, root = repositoryRoot) {
 }
 
 async function readPackageVersion(relativePath) {
+  return (await readPackageMetadata(relativePath)).version
+}
+
+async function readPackageMetadata(relativePath) {
   return JSON.parse(await readFile(path.join(repositoryRoot, "frontend", relativePath), "utf8"))
-    .version
 }
 
 async function readToolchain() {
-  const [stryker, instrumenter, vitest] = await Promise.all([
+  const [
+    stryker,
+    instrumenter,
+    vitest,
+    checkerPackage,
+    typescriptPackage,
+    packageManifest,
+    packageLock,
+  ] = await Promise.all([
     readPackageVersion("node_modules/@stryker-mutator/core/package.json"),
     readPackageVersion("node_modules/@stryker-mutator/instrumenter/package.json"),
     readPackageVersion("node_modules/vitest/package.json"),
+    readPackageMetadata("node_modules/@stryker-mutator/typescript-checker/package.json"),
+    readPackageMetadata("node_modules/typescript/package.json"),
+    readPackageMetadata("package.json"),
+    readPackageMetadata("package-lock.json"),
   ])
+  const checkerToolchain = buildCanonicalCheckerToolchain({
+    packageManifest,
+    packageLock,
+    checkerPackage,
+    typescriptPackage,
+    typescriptRuntimeVersion: require("typescript").version,
+    strykerCoreVersion: stryker,
+  })
   return {
     node: process.version,
     platform: process.platform,
     arch: process.arch,
-    tools: { stryker, instrumenter, vitest },
+    tools: { stryker, instrumenter, vitest, ...checkerToolchain },
   }
 }
 
@@ -1054,6 +1117,7 @@ async function main() {
   const expectedInputHashes = Object.fromEntries(
     currentEvidenceFiles.map((file) => [file, sha256(fileBytes.get(file))])
   )
+  const toolchain = await readToolchain()
   const candidateRoot = validatedCandidateRootFromEnvironment()
   const evidenceDocuments = candidateRoot
     ? await selectValidatedEvidenceCandidate({
@@ -1066,7 +1130,7 @@ async function main() {
         expectedWorkflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
         expectedInputHashes,
         expectedPatterns,
-        toolchain: await readToolchain(),
+        toolchain,
       })
     : await readCanonicalEvidenceDocuments()
   const result = await verifyEvidenceDocuments({
@@ -1083,6 +1147,7 @@ async function main() {
     gitStatus,
     sourceFiles,
     expectedPatterns,
+    toolchain,
   })
   process.stdout.write(
     `Verified release mutation evidence ${result.runId} at ${result.revision} (${result.sourceFileCount} sources, ${result.reportCount} reports)\n`

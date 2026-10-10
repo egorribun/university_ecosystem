@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, stripSearchParams } from "@tanstack/react-router"
 import { lazy } from "react"
 import * as v from "valibot"
 import { currentUserQueryOptions } from "@/api/hooks/users"
@@ -23,6 +23,9 @@ export const Route = createFileRoute("/_auth/settings")({
   //
   // Browser path uses withCredentials. Node SSR uses W133 SW1
   // requestCookieStorage via the axios interceptor.
+  search: {
+    middlewares: [stripSearchParams({ tab: SETTINGS_TAB.GENERAL })],
+  },
   validateSearch: (search: Record<string, unknown>) => v.parse(settingsSearchSchema, search),
   loaderDeps: ({ search }) => ({ tab: search.tab }),
   loader: async ({ context, deps }) => {

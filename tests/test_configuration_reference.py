@@ -45,7 +45,6 @@ def test_configuration_reference_tracks_runtime_defaults_and_security_semantics(
         "MFA_CHALLENGE_TTL_SECONDS": "| `600`",
         "RATE_LIMIT_DEFAULT": "| `200/minute`",
         "SPICEDB_PRESHARED_KEY": "| `development-preshared-key`",
-        "RUST_OPTIMIZER_URL": "| `http://rust-optimizer:8080`",
         "OUTBOX_BATCH_SIZE": "| `20`",
         "OUTBOX_POLL_INTERVAL_SECONDS": "| `5.0`",
         "SMTP_SECURITY": "| `none`",

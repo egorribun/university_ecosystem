@@ -1,25 +1,20 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
 from app.models import (
-    ActiveSession,
     DataAccessLog,
     EducationPath,
     InviteCode,
-    MfaChallenge,
-    MfaTotpEnrollment,
-    Notification,
     User,
     UserPreferences,
     UserProfile,
 )
 from app.models.enums import UserRole
 from app.repositories.user_repository import UserRepository
-from app.schemas import schemas
 
 
 class _Result:
@@ -143,23 +138,6 @@ async def test_get_variants_and_auth_queries():
 
 
 @pytest.mark.asyncio
-async def test_profile_and_locking_getters_and_not_found():
-    user = _user()
-    db = _DB([_Result(obj=user), _Result(obj=user), _Result(obj=user), _Result()])
-    repo = UserRepository(db)
-    assert (await repo.get_by_email_only(user.email)).id == user.id
-    assert (await repo.get_with_full_profile(str(user.id))).id == user.id
-    db.results.append(_Result(obj=user))
-    assert (await repo.get_with_full_profile(user.id)).id == user.id
-    assert await repo.get_with_full_profile("bad") is None
-    db.results = [_Result(obj=user), _Result(obj=user), _Result()]
-    assert (await repo.get_orm_for_update_with_relations(user.id)).id == user.id
-    assert (await repo.get_by_email_or_raise(user.email)).id == user.id
-    with pytest.raises(ValueError, match="User not found"):
-        await repo.get_by_email_or_raise("missing@example.com")
-
-
-@pytest.mark.asyncio
 async def test_get_users_by_ids_handles_empty_and_bulk_lookup():
     user = _user()
     db = _DB([_Result(objects=[user])])
@@ -171,95 +149,6 @@ async def test_get_users_by_ids_handles_empty_and_bulk_lookup():
     result = await repo.get_users_by_ids([user.id])
     assert result == [user]
     assert len(db.executed) == 1
-
-
-@pytest.mark.asyncio
-async def test_listing_counts_and_name_search():
-    user = _user()
-    rows = _Result(objects=[user])
-    db = _DB(
-        [
-            rows,
-            _Result(objects=[user]),
-            _Result(scalar_value=2),
-            _Result(scalar_value=1),
-            rows,
-        ]
-    )
-    repo = UserRepository(db)
-    assert (
-        len(
-            await repo.list_users(
-                schemas.UserSearchFilter(full_name="Repo%", role=UserRole.STUDENT)
-            )
-        )
-        == 1
-    )
-    db.results = [
-        rows,
-        rows,
-        rows,
-        _Result(scalar_value=2),
-        _Result(scalar_value=1),
-        rows,
-    ]
-    assert (
-        len(await repo.list_users(schemas.UserSearchFilter(group_id=uuid.uuid4()))) == 1
-    )
-    assert len(await repo.list_users()) == 1
-    assert len(await repo.get_active_users(skip=1, limit=999)) == 1
-    assert await repo.count_active() == 2
-    assert await repo.count_with_mfa() == 1
-    assert len(await repo.search_by_name("Repo_")) == 1
-
-
-@pytest.mark.asyncio
-async def test_user_related_getters_and_email_checks():
-    user = _user()
-    session = ActiveSession(user_id=user.id, jti="jti")
-    notification = Notification(
-        user_id=user.id, title="Title", body="Body", type="info"
-    )
-    challenge = MfaChallenge(
-        user_id=user.id,
-        challenge_type="totp",
-        flow="login",
-        session_identifier="repository-test",
-        client_fingerprint="f" * 64,
-        method="totp",
-        token_digest="d" * 64,
-        token_key_id="test-key",
-        expires_at=datetime.now(UTC) + timedelta(minutes=5),
-    )
-    enrollment = MfaTotpEnrollment(user_id=user.id, secret="secret")
-    db = _DB(
-        [
-            _Result(objects=[session]),
-            _Result(objects=[session]),
-            _Result(objects=[notification]),
-            _Result(objects=[challenge]),
-            _Result(objects=[enrollment]),
-            _Result(scalar_value=True),
-            _Result(scalar_value=False),
-            _Result(scalar_value=False),
-        ]
-    )
-    repo = UserRepository(db)
-    assert await repo.get_user_sessions(str(user.id)) == [session]
-    assert await repo.get_user_sessions(user.id) == [session]
-    assert await repo.get_user_notifications(user.id, limit=999) == [notification]
-    assert await repo.get_user_mfa_challenges(user.id, limit=999) == [challenge]
-    assert await repo.get_user_totp_enrollments(user.id) == [enrollment]
-    assert await repo.get_user_sessions("bad") == []
-    assert await repo.get_user_notifications("bad") == []
-    assert await repo.get_user_mfa_challenges("bad") == []
-    assert await repo.get_user_totp_enrollments("bad") == []
-    assert await repo.check_email_exists(user.email) is True
-    assert (
-        await repo.check_email_exists(user.email, exclude_user_id=str(user.id)) is False
-    )
-    assert await repo.check_email_exists(user.email, exclude_user_id=user.id) is False
-    assert await repo.check_email_exists(user.email, exclude_user_id="bad") is False
 
 
 @pytest.mark.asyncio

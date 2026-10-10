@@ -106,18 +106,78 @@ def test_helm_helper_requires_declared_archives_after_success(
     assert helper.main([str(chart), "redis-20.13.4.tgz"]) == 1
 
 
-@pytest.mark.parametrize(
-    "workflow",
-    [
-        ".github/workflows/ci.yml",
-        ".github/workflows/deploy.yml",
-        ".github/workflows/nightly-full-gate.yml",
-        ".github/workflows/reusable-backend-tests.yml",
-        ".github/workflows/reusable-security-audit.yml",
-    ],
+DIRECT_HELM_HELPER_WORKFLOWS = (
+    ".github/workflows/ci.yml",
+    ".github/workflows/deploy.yml",
+    ".github/workflows/reusable-backend-tests.yml",
+    ".github/workflows/reusable-security-audit.yml",
+    ".github/workflows/reusable-full-backend-mutation.yml",
+    ".github/workflows/reusable-helm-dependencies.yml",
 )
+
+
+def _workflow_job_block(source: str, job_name: str) -> str:
+    lines = source.splitlines()
+    header = f"  {job_name}:"
+    starts = [index for index, line in enumerate(lines) if line == header]
+    if len(starts) != 1:
+        raise AssertionError("expected_one_helm_workflow_job")
+    start = starts[0]
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("  ")
+            and not lines[index].startswith("    ")
+            and lines[index].endswith(":")
+        ),
+        len(lines),
+    )
+    return "\n".join(lines[start:end])
+
+
+@pytest.mark.parametrize("workflow", DIRECT_HELM_HELPER_WORKFLOWS)
 def test_helm_workflows_use_the_fail_closed_retry_helper(workflow: str) -> None:
     source = (ROOT / workflow).read_text(encoding="utf-8")
 
     assert "scripts/ci/helm_dependency_build.py" in source
     assert "helm dependency build" not in source
+
+
+@pytest.mark.parametrize(
+    ("workflow", "producer_job", "consumer_job"),
+    [
+        (
+            ".github/workflows/nightly-full-gate.yml",
+            "nightly-helm-dependencies",
+            "mutation-tests-full",
+        ),
+        (
+            ".github/workflows/manual-mutation-evidence.yml",
+            "manual-full-helm-dependencies",
+            "manual-full-backend-mutation",
+        ),
+    ],
+)
+def test_helm_workflow_callers_preserve_source_and_artifact_contract(
+    workflow: str, producer_job: str, consumer_job: str
+) -> None:
+    source = (ROOT / workflow).read_text(encoding="utf-8")
+    producer = _workflow_job_block(source, producer_job)
+    consumer = _workflow_job_block(source, consumer_job)
+
+    assert "uses: ./.github/workflows/reusable-helm-dependencies.yml" in producer
+    assert "source_sha: ${{ github.sha }}" in producer
+    assert producer_job in consumer
+    expected_artifact = (
+        "helm_artifact_name: ${{ needs." + producer_job + ".outputs.artifact_name }}"
+    )
+    assert expected_artifact in consumer
+
+    reusable = (ROOT / ".github/workflows/reusable-helm-dependencies.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "source_sha != github_sha" in reusable
+    assert 'artifact_prefix = "nightly-helm-dependencies-"' in reusable
+    assert 'artifact_prefix = "manual-full-helm-dependencies-"' in reusable
+    assert "value: ${{ jobs.produce.outputs.artifact_name }}" in reusable

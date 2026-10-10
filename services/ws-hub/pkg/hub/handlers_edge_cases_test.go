@@ -3,16 +3,11 @@ package hub
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/quic-go/webtransport-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -91,7 +86,22 @@ func TestUpgradeHandlers_RejectEmptyValidatedUser(t *testing.T) {
 
 func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T) {
 	h := hubWithWTTicketRedis(t, "user-wt:jti-wt")
-	h.Register = make(chan *Client, 1)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	runDone := make(chan struct{})
+	go func() {
+		h.Run(runCtx)
+		close(runDone)
+	}()
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
+	t.Cleanup(func() {
+		h.Stop()
+		cancelRun()
+		select {
+		case <-runDone:
+		case <-time.After(time.Second):
+			t.Error("hub run loop did not stop")
+		}
+	})
 	oldValidate := validateUpgradeTicketIdentityFunc
 	oldUpgrade := upgradeWTFunc
 	oldSession := newWebTransportSessionFunc
@@ -101,30 +111,42 @@ func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T
 		newWebTransportSessionFunc = oldSession
 	})
 	validateUpgradeTicketIdentityFunc = func(*Hub, context.Context, string) (upgradeTicketIdentity, error) {
-		return upgradeTicketIdentity{UserID: "user-wt", TenantID: "tenant-wt", SessionJTI: "22222222-2222-4222-8222-222222222222"}, nil
+		return upgradeTicketIdentity{UserID: "user-wt", TenantID: "tenant-wt", SessionJTI: "22222222-2222-4222-8222-222222222222", SessionExpiresAt: time.Unix(9999999999, 0)}, nil
 	}
 	assert.NotNil(t, newWebTransportSessionFunc(nil))
 	upgradeWTFunc = func(*webtransport.Server, http.ResponseWriter, *http.Request) (*webtransport.Session, error) {
 		return nil, nil
 	}
-	newWebTransportSessionFunc = func(*webtransport.Session) Session { return &recordingSession{} }
+	newWebTransportSessionFunc = func(*webtransport.Session) Session { return newBlockingShutdownSession() }
 
 	cfg := &config.Config{MaxClients: 100, SendBufferSize: 4}
 	req := httptest.NewRequest(http.MethodGet, "/wt?ticket="+validWTTicket, nil)
 	rec := httptest.NewRecorder()
 	h.HandleWebTransport(rec, req, cfg)
 
-	select {
-	case client := <-h.Register:
+	var client *Client
+	require.Eventually(t, func() bool {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		for _, candidate := range h.Clients {
+			if candidate.UserID == "user-wt" {
+				client = candidate
+				return true
+			}
+		}
+		return false
+	}, time.Second, time.Millisecond, "successful WebTransport upgrade did not register a client")
+	if client == nil {
+		t.Fatal("successful WebTransport upgrade registered a nil client")
+	}
+	{
 		assert.Equal(t, "user-wt", client.UserID)
 		assert.NotEmpty(t, client.ID)
 		assert.NotEqual(t, client.UserID, client.ID)
 		assert.Equal(t, "tenant-wt", client.Identity.TenantID)
 		assert.Equal(t, "tenant-wt", client.ctx.Value(tenantIDKey))
 		assert.Equal(t, "22222222-2222-4222-8222-222222222222", client.SessionJTI)
-		client.cancel()
-	case <-time.After(time.Second):
-		t.Fatal("successful WebTransport upgrade did not register a client")
+		assert.Equal(t, time.Unix(9999999999, 0), client.SessionExpiresAt)
 	}
 }
 
@@ -137,18 +159,6 @@ func TestNewConnectionID_IsUniqueAndNotUserDerived(t *testing.T) {
 	assert.NotEqual(t, "user-1", first)
 }
 
-func TestValidateRS256_JWKSFetchFailureIsReturned(t *testing.T) {
-	h := setupTestHub()
-	ctx := context.Background()
-	h.jwksCache = jwk.NewCache(ctx)
-	h.jwksURL = "http://127.0.0.1:1/jwks"
-	require.NoError(t, h.jwksCache.Register(h.jwksURL))
-
-	_, err := h.validateRS256(ctx, "eyJhbGciOiJSUzI1NiJ9.e30.signature")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to fetch")
-}
-
 func TestTryForceRefreshJWKS_RespectsCooldown(t *testing.T) {
 	previous := _lastJWKSForceRefreshUnix.Load()
 	t.Cleanup(func() { _lastJWKSForceRefreshUnix.Store(previous) })
@@ -156,27 +166,4 @@ func TestTryForceRefreshJWKS_RespectsCooldown(t *testing.T) {
 	h := setupTestHub()
 	h.jwksURL = "http://127.0.0.1:1/jwks"
 	assert.NotPanics(t, func() { h.tryForceRefreshJWKS(context.Background()) })
-}
-
-func TestValidateRS256_RawKeyExtractionFailureIsRejected(t *testing.T) {
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	server := startJWKSServer(t, &priv.PublicKey, "kid-raw-error")
-
-	h := setupTestHub()
-	ctx := context.Background()
-	require.NoError(t, h.SetupJWKS(ctx, server.URL))
-
-	oldRaw := rawJWKFunc
-	t.Cleanup(func() { rawJWKFunc = oldRaw })
-	rawJWKFunc = func(jwk.Key, interface{}) error {
-		return errors.New("raw key unavailable")
-	}
-
-	_, err = h.validateRS256(ctx, signRS256(t, priv, "kid-raw-error", jwt.MapClaims{
-		"sub": "user-rs",
-		"exp": time.Now().Add(time.Hour).Unix(),
-	}))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid RS256 token")
 }

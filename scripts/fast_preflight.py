@@ -35,6 +35,8 @@ _FOCUSED_TESTS = (
     "tests/test_frontend_ci_performance_contracts.py",
     "tests/test_workflow_fail_closed_contracts.py",
     "tests/test_fast_preflight.py",
+    "tests/test_nightly_helm_reuse_contract.py",
+    "tests/test_scheduled_workflow_regressions.py",
     # Fast repository ledgers that a hosted run otherwise catches first.
     "tests/test_route_dependency_inventory.py",
     "tests/test_quality_configuration.py",
@@ -114,6 +116,10 @@ def default_checks(repo_root: Path) -> tuple[CheckSpec, ...]:
         CheckSpec("backend-lint", _python_command("-m", "ruff", "check", "app")),
         CheckSpec(
             "verify-harness", _python_command("verify_harness.py", "--repo-only")
+        ),
+        CheckSpec(
+            "ci-check-catalog",
+            _python_command("scripts/quality/validate_ci_check_catalog.py"),
         ),
         CheckSpec(
             "focused-contract-tests",
@@ -428,6 +434,7 @@ def _parser() -> argparse.ArgumentParser:
             "backend-typecheck",
             "backend-lint",
             "verify-harness",
+            "ci-check-catalog",
             "focused-contract-tests",
         ),
         help="run only this named check; may be supplied more than once",

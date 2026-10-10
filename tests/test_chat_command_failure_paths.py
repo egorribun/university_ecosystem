@@ -3,8 +3,8 @@
 AsyncMock repo + fake-UoW harness (mirrors tests/test_chat_command_service.py
 style) targeting the previously-uncovered error branches:
 
-- L156-159  send_message idempotency cache hit with a corrupt / legacy entry
-            (falls through to the normal send path);
+- send_message idempotency cache hit with a corrupt / legacy entry
+  (occupied slots fail closed rather than duplicating a message);
 - L207      send_message total attachment payload size guard;
 - L234-239  idempotency "pending" slot pre-reservation (Redis SET NX);
 - L278      upload TimeoutError -> errors.files.upload_timeout (except* arm);
@@ -25,11 +25,11 @@ style) targeting the previously-uncovered error branches:
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import fakeredis.aioredis
 import pytest
 from fastapi import HTTPException
 
@@ -110,10 +110,9 @@ def _patch_ws(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return ws
 
 
-def _patch_cache(monkeypatch: pytest.MonkeyPatch, *, get_value=None) -> AsyncMock:
-    """Patch get_cache_client at its source module (lazily imported per call)."""
-    cache = AsyncMock()
-    cache.get.return_value = get_value
+async def _patch_cache(monkeypatch: pytest.MonkeyPatch):
+    """Use real fakeredis transaction behavior at the cache boundary."""
+    cache = fakeredis.aioredis.FakeRedis(decode_responses=True)
     monkeypatch.setattr(cache_module, "get_cache_client", AsyncMock(return_value=cache))
     return cache
 
@@ -172,8 +171,7 @@ async def test_send_message_total_size_exceeded(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# send_message — corrupt idempotency cache entry falls through (L156-159)
-# plus pending-slot reservation (L234-239) + completed store (L430-436)
+# send_message — corrupt and pending entries cannot bypass slot ownership
 # ---------------------------------------------------------------------------
 
 
@@ -185,71 +183,33 @@ async def test_send_message_total_size_exceeded(monkeypatch):
         '{"message_id": "zzz"}',  # ValueError from uuid.UUID
     ],
 )
-async def test_send_message_corrupt_idempotency_entry_falls_through(
+async def test_send_message_existing_idempotency_entry_is_not_overwritten(
     monkeypatch, cached
 ):
-    """A legacy / pending / corrupt cached value must NOT short-circuit the send.
-
-    The except (ValueError, KeyError, TypeError) arm passes through to the
-    normal flow, which then pre-reserves the pending slot (SET NX) and finally
-    promotes it to the slim completed entry (SETEX).
-    """
-    cache = _patch_cache(monkeypatch, get_value=cached)
-    _patch_ws(monkeypatch)
-
+    """A pending or malformed entry cannot grant ownership of an occupied key."""
+    cache = await _patch_cache(monkeypatch)
     uow = _mock_uow()
     user = _mock_user()
     chat = _mock_chat(user.id)
     uow.chats.get_by_id = AsyncMock(return_value=chat)
     uow.chats.check_participant = AsyncMock(return_value=True)
-    uow.chats.update_timestamp_by_id = AsyncMock()
-    uow.chats.add = MagicMock()
-    created = _capture_create_message(uow)
-
-    async def _get_last(ids):
-        m = created[0]
-        resp = MagicMock()
-        resp.model_dump.return_value = {
-            "id": m.id,
-            "chat_id": m.chat_id,
-            "sender_id": m.sender_id,
-            "content": m.content,
-            "created_at": m.created_at,
-            "read_status": False,
-            "sender": None,
-            "attachments": [],
-        }
-        resp.replied_to = None
-        return {m.id: resp}
-
-    uow.chats.get_last_messages = AsyncMock(side_effect=_get_last)
-
+    key = cs_module._make_idempotency_key(chat.id, user.id, "idem-corrupt")
+    await cache.set(key, cached)
     dispatcher = ChatMessageDispatcher(uow, _mock_attachment_service(), MagicMock())
-    result = await dispatcher.send_message(
-        chat.id, user, "Hello", [], "en", idempotency_key="idem-corrupt"
-    )
-
-    assert result is not None
-    uow.chats.create_message.assert_awaited_once()
-    # Pending-slot pre-reservation (L234-239): SET NX with a 300 s TTL.
-    cache.set.assert_awaited_once()
-    set_args, set_kwargs = cache.set.await_args
-    assert set_args[0].startswith("idm:msg:")
-    assert json.loads(set_args[1]) == {"status": "pending"}
-    assert set_kwargs == {"nx": True, "ex": 300}
-    # Completed-slot promotion (L430-436): SETEX with the slim format.
-    cache.setex.assert_awaited_once()
-    key, ttl, slim = cache.setex.await_args.args
-    assert key.startswith("idm:msg:")
-    assert ttl == 86400
-    assert json.loads(slim) == {
-        "status": "completed",
-        "message_id": str(result.id),
-    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            await dispatcher.send_message(
+                chat.id, user, "Hello", [], "en", idempotency_key="idem-corrupt"
+            )
+        assert exc.value.status_code == 409
+        assert await cache.get(key) == cached
+        uow.chats.create_message.assert_not_called()
+    finally:
+        await cache.aclose()
 
 
 # ---------------------------------------------------------------------------
-# send_message — upload TimeoutError maps to errors.files.upload_timeout (L278)
+# send_message — upload TimeoutError maps to errors.files.upload_timeout
 # ---------------------------------------------------------------------------
 
 
@@ -268,16 +228,111 @@ async def test_send_message_upload_timeout_maps_to_400(monkeypatch):
 
     dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(HTTPException) as excinfo:
         await dispatcher.send_message(
             chat.id, user, "with file", [MagicMock(size=10)], "en"
         )
 
-    leaves = _leaves(excinfo.value)
-    assert any(
-        isinstance(leaf, HTTPException) and leaf.status_code == 400 for leaf in leaves
-    )
+    assert excinfo.value.status_code == 400
     uow.chats.create_message.assert_not_called()
+
+
+async def test_send_message_uses_first_original_http_failure_from_upload_group(
+    monkeypatch,
+):
+    monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
+    _patch_ws(monkeypatch)
+
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+
+    first_file, second_file = MagicMock(size=10), MagicMock(size=10)
+    first_error = HTTPException(status_code=413, detail="first upload rejected")
+    second_error = HTTPException(status_code=415, detail="second upload rejected")
+    second_started = asyncio.Event()
+
+    async def process_upload(upload, *_args, **_kwargs):
+        if upload is first_file:
+            await second_started.wait()
+            raise first_error
+        second_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            raise second_error from None
+
+    attachment_svc = _mock_attachment_service()
+    attachment_svc.process_upload = AsyncMock(side_effect=process_upload)
+    dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await dispatcher.send_message(
+            chat.id, user, "with files", [first_file, second_file], "en"
+        )
+
+    assert excinfo.value is first_error
+    assert excinfo.value.status_code == 413
+    uow.chats.create_message.assert_not_called()
+
+
+async def test_send_message_preserves_mixed_nested_upload_group_and_releases_slot(
+    monkeypatch,
+):
+    monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
+    cache = await _patch_cache(monkeypatch)
+    _patch_ws(monkeypatch)
+
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+
+    first_file, second_file = MagicMock(size=10), MagicMock(size=10)
+    first_error = HTTPException(status_code=413, detail="first upload rejected")
+    nested_error = ExceptionGroup(
+        "nested upload failure",
+        [
+            HTTPException(status_code=415, detail="second upload rejected"),
+            RuntimeError("scanner failure"),
+        ],
+    )
+    second_started = asyncio.Event()
+
+    async def process_upload(upload, *_args, **_kwargs):
+        if upload is first_file:
+            await second_started.wait()
+            raise first_error
+        second_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            raise nested_error from None
+
+    attachment_svc = _mock_attachment_service()
+    attachment_svc.process_upload = AsyncMock(side_effect=process_upload)
+    dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
+
+    try:
+        with pytest.raises(ExceptionGroup) as excinfo:
+            await dispatcher.send_message(
+                chat.id,
+                user,
+                "with files",
+                [first_file, second_file],
+                "en",
+                idempotency_key="mixed-upload-failure",
+            )
+
+        assert excinfo.value.exceptions == (first_error, nested_error)
+        assert nested_error.exceptions[1].args == ("scanner failure",)
+        assert not await cache.keys("idm:msg:*")
+        uow.chats.create_message.assert_not_called()
+    finally:
+        await cache.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +346,7 @@ async def test_send_message_phase1_failure_cleans_partial_uploads_and_slot(
     """One upload succeeds, the second fails: the saved url must be cleaned up
     and the idempotency pending slot released (cache DELETE)."""
     monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
-    cache = _patch_cache(monkeypatch, get_value=None)
+    cache = await _patch_cache(monkeypatch)
     _patch_ws(monkeypatch)
 
     uow = _mock_uow()
@@ -336,7 +391,8 @@ async def test_send_message_phase1_failure_cleans_partial_uploads_and_slot(
         ["https://s3.example.com/ok.bin"]
     )
     # Pending slot released (L284-290).
-    cache.delete.assert_awaited_once()
+    assert not await cache.keys("idm:msg:*")
+    await cache.aclose()
     uow.chats.create_message.assert_not_called()
 
 
@@ -347,7 +403,7 @@ async def test_send_message_phase1_failure_cleans_partial_uploads_and_slot(
 
 async def test_send_message_phase2_failure_cleans_files_and_slot(monkeypatch):
     monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
-    cache = _patch_cache(monkeypatch, get_value=None)
+    cache = await _patch_cache(monkeypatch)
     _patch_ws(monkeypatch)
 
     uow = _mock_uow()
@@ -377,9 +433,8 @@ async def test_send_message_phase2_failure_cleans_files_and_slot(monkeypatch):
     attachment_svc.cleanup_files.assert_awaited_once_with(
         ["https://s3.example.com/file.pdf"]
     )
-    cache.delete.assert_awaited_once()
-    # No completed-slot promotion after a Phase 2 failure.
-    cache.setex.assert_not_awaited()
+    assert not await cache.keys("idm:msg:*")
+    await cache.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +516,7 @@ async def test_forward_messages_degraded_reload_refreshes_orm(monkeypatch):
     src.sender_id = uuid.uuid4()
     src.content = "forwarded text"
     src.attachments = []
+    src.deleted_at = None
 
     uow.chats.get_by_id = AsyncMock(return_value=dest_chat)
     uow.chats.check_participant = AsyncMock(return_value=True)

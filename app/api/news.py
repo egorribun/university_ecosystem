@@ -12,6 +12,7 @@ from fastapi import (
     Depends,
     File,
     Header,
+    HTTPException,
     Query,
     Request,
     Response,
@@ -22,17 +23,19 @@ from sqlalchemy import exists, func, literal, select
 
 import app.models as models
 from app.api.deps import (
+    get_current_admin_user_from_dishka,
     get_current_user_from_dishka,
     get_current_user_optional_from_dishka,
 )
+from app.api.deps.auth import ensure_admin, get_permission_checker
 from app.api.deps.etag import _set_language_headers, cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import (
     raise_forbidden,
     raise_not_found,
     raise_validation_error,
-    require_admin,
 )
+from app.auth.rbac import PermissionChecker
 from app.core.cache_versioning import news_cache_version
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
@@ -45,12 +48,15 @@ from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
-from app.models.enums import UserRole
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
-from app.services.vector_service import VectorService
+from app.services.vector_service import (
+    SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 
 logger = get_logger(__name__)
 
@@ -59,8 +65,6 @@ router = APIRouter(prefix="/news", tags=["news"])
 
 _NEWS_CACHE_CONTROL = "public, max-age=60, stale-while-revalidate=120"
 _NEWS_LIST_CACHE_PREFIX = news_cache_version.prefix
-_LEGACY_NEWS_LIST_CACHE_KEY = "news:list"
-_LEGACY_NEWS_ITEM_PREFIX = "news:item"
 _CACHE_LOCALES = frozenset(SUPPORTED_LOCALES)
 
 
@@ -86,13 +90,6 @@ def _news_item_cache_key(id: uuid.UUID | int, locale: str) -> str:
     return f"ue:news:item:{id}:{locale}"
 
 
-def _legacy_news_item_cache_key(id: uuid.UUID | int) -> str:
-    return f"news:item:{id}"
-
-
-# Obsolete cache key helpers removed
-
-
 @router.post(
     "",
     response_model=schemas.NewsOut,
@@ -105,10 +102,9 @@ async def create_news(
     background: BackgroundTasks,
     service: FromDishka[NewsService],
     notifications: FromDishka[NotificationService],
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
     record = await service.create_news(data)
     await _increment_news_list_version(getattr(request.app.state, "cache", None))
     serialized = service.serialize_news(record, locale)
@@ -252,10 +248,9 @@ async def update_news(
     request: Request,
     service: FromDishka[NewsService],
     data: schemas.NewsUpdate | None = Body(default=None),
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
 
     try:
         updated = await service.update_news(id, data or schemas.NewsUpdate())
@@ -265,9 +260,7 @@ async def update_news(
     await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
-        await cache.invalidate(
-            _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
-        )
+        await cache.invalidate(_news_item_cache_key(id, locale))
     serialized = service.serialize_news(updated, locale)
     return serialized
 
@@ -282,10 +275,9 @@ async def delete_news(
     id: uuid.UUID,
     request: Request,
     service: FromDishka[NewsService],
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
 
     deleted = await service.delete_news(id)
     if not deleted:
@@ -294,9 +286,7 @@ async def delete_news(
     await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
-        await cache.invalidate(
-            _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
-        )
+        await cache.invalidate(_news_item_cache_key(id, locale))
     return {"ok": True}
 
 
@@ -417,14 +407,17 @@ async def delete_comment(
     request: Request,
     service: FromDishka[NewsService],
     user: models.User = Depends(get_current_user_from_dishka),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     try:
-        await service.delete_comment(
-            comment_id,
-            user.id,
-            is_admin=(user.role == UserRole.ADMIN),
-        )
+        try:
+            await service.delete_comment(comment_id, user.id, is_admin=False)
+        except PermissionError:
+            # Ownership is checked before any mutation. Only the privileged
+            # moderation exception needs the authoritative administrator grant.
+            await ensure_admin(checker, user, request)
+            await service.delete_comment(comment_id, user.id, is_admin=True)
         return {"ok": True}
     except LookupError:
         raise_not_found("news", locale, exact_key="errors.not_found")
@@ -442,10 +435,9 @@ async def upload_news_image(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_upload(file, "news_images", "news", locale=locale)
     return {"url": url}
@@ -477,21 +469,31 @@ async def semantic_search(
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
 
+    try:
+        embedding = await vector_service.get_embedding(query)
+    except SemanticSearchUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+        ) from None
+
     # Note: We don't cache semantic search results easily due to query variety,
     # but we can use ETag based on the content version.
     cache = get_cache()
     version = await _get_news_list_version(cache)
-    etag = format_etag(f"semantic:{version}:{query}:{limit}:{min_score}")
-    if etag_matches(etag, if_none_match):
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    etag_value = f"semantic:{version}:{query}:{limit}:{min_score}:{normalized_locale}"
+    if etag_matches(etag_value, if_none_match):
+        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+        not_modified.headers["ETag"] = format_etag(etag_value)
+        _set_language_headers(not_modified, normalized_locale)
+        return not_modified
 
-    embedding = await vector_service.get_embedding(query)
     results = await vector_service.search_similar(
         models.News, embedding, limit=limit, min_score=min_score
     )
 
     items = [service.serialize_news(item, locale) for item in results]
-    response.headers["ETag"] = etag
+    response.headers["ETag"] = format_etag(etag_value)
     _set_language_headers(response, normalized_locale)
     return items
 

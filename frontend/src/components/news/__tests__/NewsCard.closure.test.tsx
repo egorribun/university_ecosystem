@@ -58,7 +58,16 @@ vi.mock("@/utils/localize", () => ({
 }))
 
 vi.mock("@/features/news/categories", () => ({
-  inferCategory: (title: string, content: string) => `category:${title}|${content}`,
+  inferNewsCategory: (item: {
+    title: string
+    content: string
+    title_en?: string | null
+    content_en?: string | null
+  }) => {
+    const title = item.title_en?.trim() ? item.title_en : item.title
+    const content = item.content_en?.trim() ? item.content_en : item.content
+    return `category:${title}|${content}`
+  },
 }))
 
 vi.mock("@/utils/readingTime", () => ({
@@ -457,7 +466,7 @@ describe("NewsCard — derived state follows props", () => {
     )
     const props = lastViewProps()
     expect(props.title).toBe("en:Exam week")
-    expect(props.category).toBe("category:Exam week|Library hours extended.")
+    expect(props.category).toBe("category:Exam week EN|Library hours extended EN.")
     expect(props.readingTime).toBe("en:Library hours extended.".length)
     expect(props.editData).toEqual({
       title: "Exam week",

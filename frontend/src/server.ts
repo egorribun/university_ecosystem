@@ -103,44 +103,20 @@ const HEALTHZ_RESPONSE_INIT: ResponseInit = {
   },
 }
 
-// Wave 180 SW3 — /messenger privacy posture (closes W161 SW2 concern #2).
-// Chat list + presence + counterpart names + last-message-preview is
-// user-private relationship state. SSR-rendered HTML for /messenger* paths
-// MUST NEVER be cached by browsers, intermediary CDNs/proxies, or Caddy —
-// otherwise a different user (or unauth'd request hitting same edge) could
-// see the prior user's chat state. Defensive headers:
-//   - Cache-Control: no-store, private, max-age=0 — browser + CDN must
-//     not persist; `private` blocks shared-cache; `max-age=0` matches
-//     spec for "absolute freshness required".
-//   - Vary: Cookie — explicit caching key variance signal (even with
-//     no-store, this defends against misconfigured upstream proxies).
-//
-// Implementation: inject headers AFTER `handler.fetch(request)` resolves
-// (Web Standard Response headers are immutable, so we rebuild via
-// `new Response(body, { ...init, headers })`). Pattern: only fires for
-// paths matching `/messenger` prefix — all other SSR routes (dashboard,
-// events, news, schedule, profile, settings) keep upstream-default headers.
-//
-// Per W127 SW6 `ssr: 'data-only'` pattern on messenger routes (W180 SW3),
-// the route component SHELL renders server-side (MainLayout + provider
-// tree → HTML stream — LCP win) but NO loader prefetches chat data (no
-// `ensureQueryData(chatsQueryOptions())` call). So the SSR-emitted HTML
-// contains NO user-private state — Cache-Control: no-store is defense-
-// in-depth, not a load-bearing privacy guarantee. The structural privacy
-// guarantee is the 'data-only' annotation + client-side chat data fetch.
-const MESSENGER_CACHE_CONTROL = "no-store, private, max-age=0"
-const MESSENGER_VARY = "Cookie"
-
+// Authenticated SSR responses can contain per-user loader data and query
+// hydration state, so browsers and shared intermediaries must never store
+// them. Keep the existing /messenger protection for unauthenticated requests
+// too, since that route handles private relationship state when logged in.
+// Vary: Cookie also protects deployments with misconfigured intermediary
+// caching, and Cache-Control overrides any upstream public policy.
+const PRIVATE_SSR_CACHE_CONTROL = "no-store, private, max-age=0"
+const PRIVATE_SSR_VARY = "Cookie"
 const MESSENGER_PATH_PREFIX = "/messenger"
 
-/**
- * Wave 180 SW3 helper — augment SSR response headers for /messenger* paths.
- * Returns the original response untouched for non-messenger paths (fast
- * path; no Response clone overhead).
- */
-const augmentResponseForMessenger = (response: Response): Response => {
+/** Mark a potentially user-specific SSR document private without changing its body or status. */
+const augmentResponseForPrivateSsr = (response: Response): Response => {
   const headers = new Headers(response.headers)
-  headers.set("cache-control", MESSENGER_CACHE_CONTROL)
+  headers.set("cache-control", PRIVATE_SSR_CACHE_CONTROL)
   const existingVary = headers.get("vary")
   if (existingVary) {
     // Preserve any existing Vary entries (e.g. Accept-Encoding from
@@ -149,11 +125,13 @@ const augmentResponseForMessenger = (response: Response): Response => {
       .split(",")
       .map((token) => token.trim().toLowerCase())
       .filter(Boolean)
-    if (!varyTokens.includes("cookie")) {
-      headers.set("vary", `${existingVary}, ${MESSENGER_VARY}`)
+    // A wildcard already signals variation by any request header, so keep it
+    // as supplied rather than redundantly appending Cookie.
+    if (!varyTokens.includes("cookie") && !varyTokens.includes("*")) {
+      headers.set("vary", `${existingVary}, ${PRIVATE_SSR_VARY}`)
     }
   } else {
-    headers.set("vary", MESSENGER_VARY)
+    headers.set("vary", PRIVATE_SSR_VARY)
   }
   return new Response(response.body, {
     status: response.status,
@@ -200,10 +178,8 @@ export default createServerEntry({
       userAgent: request.headers.get("user-agent") ?? "",
       acceptLanguage: request.headers.get("accept-language") ?? "",
     }
-    // Wave 180 SW3 — /messenger privacy posture: inject Cache-Control: no-store
-    // + Vary: Cookie after handler.fetch resolves. Branch is path-prefix based;
-    // all other routes return upstream response unchanged (fast path; no
-    // Response clone overhead).
+    // Authenticated SSR may serialize request-specific loader data. Protect it
+    // alongside messenger responses, which remain private even when unauthenticated.
     const isMessengerPath = url.pathname.startsWith(MESSENGER_PATH_PREFIX)
     return requestAuthStorage.run(auth, () =>
       requestCookieStorage.run(cookie, () =>
@@ -212,7 +188,9 @@ export default createServerEntry({
             requestLangStorage.run(lang, () =>
               requestI18nStorage.run(requestI18n, async () => {
                 const response = await handler.fetch(request)
-                return isMessengerPath ? augmentResponseForMessenger(response) : response
+                return auth.isAuth || isMessengerPath
+                  ? augmentResponseForPrivateSsr(response)
+                  : response
               })
             )
           )

@@ -93,7 +93,7 @@
   },
   "audit": {
     "title": "Защищённый аудит",
-    "subtitle": "Криптографически верифицированная система логирования активности.",
+    "subtitle": "Журнал аудита с явными сведениями о подписи и доверии к полям.",
     "filters": {
       "resourceType": "Тип ресурса",
       "action": "Действие"
@@ -116,8 +116,19 @@
       "ipAddress": "IP-адрес",
       "userAgent": "User Agent",
       "executionContext": "Контекст выполнения",
-      "integrityVerified": "Криптографическая целостность подтверждена",
-      "integrityTampered": "ПОДПИСЬ НЕДЕЙСТВИТЕЛЬНА ИЛИ ИЗМЕНЕНА",
+      "signatureEvidence": "Сведения о подписи",
+      "authenticatedFields": "Подписанные поля",
+      "unauthenticatedFields": "Неподписанные поля",
+      "integrityCanonicalVerified": "Подпись canonical v2 действительна для перечисленных подписанных полей.",
+      "integrityLegacyArrayVerified": "Подпись в устаревшем JSON-массиве действительна, но охватывает не все поля.",
+      "integrityLegacyPipeVerified": "Подпись в устаревшем pipe-формате действительна, но охватывает не все поля.",
+      "integrityInvalid": "Подпись недействительна. Целостность подтвердить не удалось.",
+      "integrityUnsigned": "Запись аудита не подписана.",
+      "integrityUnknown": "Формат подписи или сведения о доверии недоступны. Целостность не подтверждена.",
+      "legacyArrayTrustLimit": "Эта устаревшая подпись не подтверждает ID записи аудита.",
+      "legacyPipeTrustLimit": "Эта устаревшая подпись не подтверждает контекст и User-Agent; при отсутствии подтверждения эти значения не показываются.",
+      "metadataUnavailable": "Сведения о доверии недоступны",
+      "noFields": "Нет",
       "notAvailable": "Н/A",
       "system": "Система",
       "unknown": "Неизвестно"

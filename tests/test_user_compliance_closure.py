@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import secrets
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import Request
+from sqlalchemy import event
 
+from app import models
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     EntityNotFound,
     PermissionDenied,
 )
+from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
+from app.services.audit_service import AuditService
 from app.services.user.compliance_service import UserComplianceService
 
 
@@ -60,7 +66,7 @@ async def test_delete_user_data_success_anonymizes_revokes_logs_and_refreshes():
     user_id = uuid4()
     orm_user = SimpleNamespace(id=user_id)
     updated = SimpleNamespace(email=f"deleted+{user_id}@deleted.example.com")
-    repo._get_orm.return_value = orm_user
+    repo.get_orm_for_anonymization.return_value = orm_user
     repo.get.return_value = updated
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
@@ -147,7 +153,6 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
     now = datetime.now(UTC)
     session_id = uuid4()
     notification_id = uuid4()
-    challenge_id = uuid4()
     enrollment_id = uuid4()
     access_log_id = uuid4()
     db_user = SimpleNamespace(
@@ -155,27 +160,21 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
             "id": user_id,
             "email": "student@example.com",
         },
-        mfa_challenges=[
-            SimpleNamespace(
-                id=challenge_id,
-                challenge_type="totp",
-                expires_at=now,
-                consumed_at=None,
-                created_at=now,
-            )
-        ],
-        totp_enrollments=[
-            SimpleNamespace(
-                id=enrollment_id,
-                label="phone",
-                is_active=True,
-                confirmed_at=now,
-                revoked_at=None,
-                created_at=now,
-            )
-        ],
     )
     repo.get.return_value = db_user
+    repo.get_user_mfa_export_summary.return_value = (
+        1,
+        [
+            {
+                "id": enrollment_id,
+                "label": "phone",
+                "is_active": True,
+                "confirmed_at": now,
+                "revoked_at": None,
+                "created_at": now,
+            }
+        ],
+    )
     repo.get_user_sessions.return_value = [
         SimpleNamespace(
             id=session_id,
@@ -228,6 +227,257 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
 
 
 @pytest.mark.asyncio
+async def test_export_user_data_does_not_overlap_queries_on_shared_session(
+    user_factory, db_session
+):
+    user = await user_factory()
+    user_id, session_id, notification_id = user.id, uuid4(), uuid4()
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            models.ActiveSession(
+                id=session_id,
+                user_id=user_id,
+                jti=str(uuid4()),
+                expires_at=now + timedelta(hours=1),
+            ),
+            models.Notification(
+                id=notification_id,
+                user_id=user_id,
+                title="Export fixture",
+                body="Persisted notification",
+                created_at=now,
+            ),
+            models.DataAccessLog(
+                actor_user_id=user_id,
+                subject_user_id=user_id,
+                resource_type="profile",
+                resource_id=str(user_id),
+                action="read",
+                created_at=now,
+            ),
+        ]
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users/me/export", "headers": []}
+    )
+    pending_queries = set()
+    connections = set()
+    max_pending_queries = 0
+
+    def before_query(conn, cursor, statement, parameters, context, executemany):
+        nonlocal max_pending_queries
+        pending_queries.add(id(context))
+        connections.add(id(conn.connection))
+        max_pending_queries = max(max_pending_queries, len(pending_queries))
+
+    def after_query(conn, cursor, statement, parameters, context, executemany):
+        pending_queries.remove(id(context))
+
+    # Observe real driver calls, including the profile read that establishes
+    # the session's connection before the three export-section queries.
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", before_query)
+    event.listen(engine, "after_cursor_execute", after_query)
+    try:
+        result = await service.export_user_data(SimpleNamespace(id=user_id), request)
+    finally:
+        event.remove(engine, "before_cursor_execute", before_query)
+        event.remove(engine, "after_cursor_execute", after_query)
+
+    assert result.profile["id"] == user_id
+    assert [item["id"] for item in result.sessions] == [session_id]
+    assert [item["id"] for item in result.notifications] == [notification_id]
+    assert [item["action"] for item in result.access_logs] == ["read"]
+    assert result.access_logs[0]["resource_id"] == str(user_id)
+    assert result.mfa_challenge_count == 0
+    assert result.mfa_enrollments == []
+    assert not pending_queries
+    assert len(connections) == 1
+    assert max_pending_queries == 1, (
+        "Export submitted overlapping statements on the same session/connection"
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
+    user_factory, db_session
+):
+    user = await user_factory()
+    other_user = await user_factory()
+    user_id = user.id
+    now = datetime.now(UTC)
+    enrollment_secret = "test-only-enrollment-secret"  # pragma: allowlist secret
+    other_enrollment_secret = secrets.token_urlsafe(24)
+    enrollment_id = uuid4()
+    revoked_enrollment_id = uuid4()
+    revoked_enrollment_secret = secrets.token_urlsafe(24)
+    revoked_enrollment_created_at = now - timedelta(days=2)
+    revoked_enrollment_revoked_at = now - timedelta(days=1)
+    expired_token_digest = secrets.token_hex(32)
+    expired_otp_digest = secrets.token_hex(32)
+    expired_recipient_digest = secrets.token_hex(32)
+    token_digest = "a" * 64
+    otp_digest = "b" * 64
+    recipient_digest = "r" * 64
+    db_session.add_all(
+        [
+            models.MfaTotpEnrollment(
+                id=enrollment_id,
+                user_id=user_id,
+                secret=enrollment_secret,
+                label="phone",
+                is_active=True,
+                confirmed_at=now,
+                created_at=now,
+            ),
+            models.MfaTotpEnrollment(
+                id=revoked_enrollment_id,
+                user_id=user_id,
+                secret=revoked_enrollment_secret,
+                label="retired phone",
+                is_active=False,
+                confirmed_at=revoked_enrollment_created_at,
+                revoked_at=revoked_enrollment_revoked_at,
+                created_at=revoked_enrollment_created_at,
+            ),
+            models.MfaChallenge(
+                user_id=user_id,
+                challenge_type="email_otp",
+                flow="login",
+                session_identifier="export-fixture",
+                client_fingerprint="f" * 64,
+                method="email_otp",
+                token_digest=token_digest,
+                token_key_id="test-key",
+                recipient_digest=recipient_digest,
+                otp_digest=otp_digest,
+                otp_key_id="test-key",
+                expires_at=now + timedelta(minutes=5),
+            ),
+            # Recently expired records remain exportable during the retention window.
+            models.MfaChallenge(
+                user_id=user_id,
+                challenge_type="email_otp",
+                flow="login",
+                session_identifier="expired-export-fixture",
+                client_fingerprint="h" * 64,
+                method="email_otp",
+                token_digest=expired_token_digest,
+                token_key_id="test-key",
+                recipient_digest=expired_recipient_digest,
+                otp_digest=expired_otp_digest,
+                otp_key_id="test-key",
+                created_at=now - timedelta(days=2),
+                expires_at=now - timedelta(days=1),
+            ),
+            models.MfaTotpEnrollment(
+                user_id=other_user.id,
+                secret=other_enrollment_secret,
+                label="other phone",
+                is_active=True,
+                confirmed_at=now,
+                created_at=now,
+            ),
+            models.MfaChallenge(
+                user_id=other_user.id,
+                challenge_type="email_otp",
+                flow="login",
+                session_identifier="other-export-fixture",
+                client_fingerprint="g" * 64,
+                method="email_otp",
+                token_digest="c" * 64,
+                token_key_id="test-key",
+                recipient_digest="s" * 64,
+                otp_digest="d" * 64,
+                otp_key_id="test-key",
+                expires_at=now + timedelta(minutes=5),
+            ),
+        ]
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users/me/export", "headers": []}
+    )
+
+    result = await service.export_user_data(SimpleNamespace(id=user_id), request)
+
+    assert result.mfa_challenge_count == 2
+    assert result.mfa_enrollments == [
+        {
+            "id": revoked_enrollment_id,
+            "label": "retired phone",
+            "is_active": False,
+            "confirmed_at": revoked_enrollment_created_at.replace(tzinfo=None),
+            "revoked_at": revoked_enrollment_revoked_at.replace(tzinfo=None),
+            "created_at": revoked_enrollment_created_at.replace(tzinfo=None),
+        },
+        {
+            "id": enrollment_id,
+            "label": "phone",
+            "is_active": True,
+            "confirmed_at": now.replace(tzinfo=None),
+            "revoked_at": None,
+            "created_at": now.replace(tzinfo=None),
+        },
+    ]
+    exported_json = result.model_dump_json()
+    assert enrollment_secret not in exported_json
+    assert token_digest not in exported_json
+    assert otp_digest not in exported_json
+    assert recipient_digest not in exported_json
+    assert revoked_enrollment_secret not in exported_json
+    assert expired_token_digest not in exported_json
+    assert expired_otp_digest not in exported_json
+    assert expired_recipient_digest not in exported_json
+    assert other_enrollment_secret not in exported_json
+    assert '"secret"' not in exported_json
+    assert '"token_digest"' not in exported_json
+    assert '"otp_digest"' not in exported_json
+    # Export order remains deterministic when enrollment timestamps tie.
+    same_created_at = now - timedelta(days=3)
+    same_time_ids = sorted((uuid4(), uuid4()))
+    same_time_user = await user_factory()
+    db_session.add_all(
+        [
+            models.MfaTotpEnrollment(
+                id=same_time_ids[1],
+                user_id=same_time_user.id,
+                secret=secrets.token_urlsafe(24),
+                label="later id",
+                is_active=True,
+                confirmed_at=same_created_at,
+                created_at=same_created_at,
+            ),
+            models.MfaTotpEnrollment(
+                id=same_time_ids[0],
+                user_id=same_time_user.id,
+                secret=secrets.token_urlsafe(24),
+                label="earlier id",
+                is_active=True,
+                confirmed_at=same_created_at,
+                created_at=same_created_at,
+            ),
+        ]
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    same_time_result = await service.export_user_data(
+        SimpleNamespace(id=same_time_user.id), request
+    )
+
+    assert [item["id"] for item in same_time_result.mfa_enrollments] == same_time_ids
+
+
+@pytest.mark.asyncio
 async def test_admin_delete_user_rejects_non_admin():
     repo = _repo()
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
@@ -241,7 +491,7 @@ async def test_admin_delete_user_rejects_non_admin():
 @pytest.mark.asyncio
 async def test_admin_delete_user_rejects_missing_target():
     repo = _repo()
-    repo._get_orm.return_value = None
+    repo.get_orm_for_anonymization.return_value = None
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
     with pytest.raises(EntityNotFound):
@@ -254,7 +504,7 @@ async def test_admin_delete_user_rejects_missing_target():
 async def test_admin_delete_user_rejects_self_delete():
     repo = _repo()
     user_id = uuid4()
-    repo._get_orm.return_value = SimpleNamespace(id=user_id)
+    repo.get_orm_for_anonymization.return_value = SimpleNamespace(id=user_id)
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
 
     with pytest.raises(BusinessRuleViolation):

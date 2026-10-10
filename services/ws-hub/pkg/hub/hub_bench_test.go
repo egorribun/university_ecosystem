@@ -168,12 +168,28 @@ func BenchmarkCollectRecipients_Broadcast(b *testing.B) {
 // BenchmarkSafeSend measures safeSend on a buffered channel with available
 // capacity.
 func BenchmarkSafeSend(b *testing.B) {
-	ch := make(chan []byte, b.N+1)
+	const bufferSize = 256
+	ch := make(chan []byte, bufferSize)
+	b.Cleanup(func() { safeClose(ch) })
 	data := []byte(`{"type":"message","payload":{"text":"hello"}}`)
 
 	b.ResetTimer()
-	for range b.N {
-		safeSend(ch, data)
+	for completed := 0; completed < b.N; {
+		batchSize := min(bufferSize, b.N-completed)
+		for range batchSize {
+			if !safeSend(ch, data) {
+				b.Fatal("safeSend rejected a send with available buffer capacity")
+			}
+		}
+		completed += batchSize
+
+		// Keep storage bounded without timing the receive path or measuring
+		// saturated-channel rejections instead of successful sends.
+		b.StopTimer()
+		for range batchSize {
+			<-ch
+		}
+		b.StartTimer()
 	}
 }
 

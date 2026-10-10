@@ -14,7 +14,13 @@ import {
   applyReactionChangedFrame,
   calculateReconnectDelay,
 } from "@/hooks/useChatWebSocket"
-import { chatApi, type Message, type MessagesListResponse } from "@/api/chat"
+import {
+  chatApi,
+  type Chat,
+  type ChatsListResponse,
+  type Message,
+  type MessagesListResponse,
+} from "@/api/chat"
 import api from "@/api/client"
 import * as wsMessageSchema from "@/api/schemas/wsMessage"
 import { withExpectedConsole } from "../strictConsole"
@@ -32,6 +38,8 @@ const USER_A = "11111111-1111-4111-8111-111111111111"
 const USER_B = "22222222-2222-4222-8222-222222222222"
 const CHAT_ID = "33333333-3333-4333-8333-333333333333"
 const MSG_ID = "44444444-4444-4444-8444-444444444444"
+const OTHER_CHAT_ID = "77777777-7777-4777-8777-777777777777"
+const OTHER_MSG_ID = "88888888-8888-4888-8888-888888888888"
 
 function makeMessage(over: Partial<Message> = {}): Message {
   return {
@@ -50,6 +58,17 @@ function makeMessage(over: Partial<Message> = {}): Message {
 
 function makeList(items: Message[]): MessagesListResponse {
   return { items, has_more: false } as MessagesListResponse
+}
+
+function makeChat(over: Partial<Chat> = {}): Chat {
+  return {
+    id: CHAT_ID,
+    participants: [],
+    unread_count: 0,
+    created_at: "2026-01-15T09:00:00.000Z",
+    updated_at: "2026-01-15T10:00:00.000Z",
+    ...over,
+  } as Chat
 }
 
 type ChatHookOptions = Parameters<typeof useChatWebSocket>[0]
@@ -282,13 +301,44 @@ describe("useChatWebSocket", () => {
     unmount()
   })
 
-  it("calls onOnlineStatus for an online frame (true + false)", async () => {
+  it("calls presence and online-status callbacks for active and inactive presence frames", async () => {
     const onOnlineStatus = vi.fn()
-    const { socket, unmount } = await mountAndOpen({ enabled: true, onOnlineStatus })
-    act(() => socket.receive({ type: "online", user_id: USER_B, status: true }))
-    act(() => socket.receive({ type: "online", user_id: USER_B, status: false }))
+    const onPresenceUpdate = vi.fn()
+    const { socket, unmount } = await mountAndOpen({
+      enabled: true,
+      onOnlineStatus,
+      onPresenceUpdate,
+    })
+    act(() => socket.receive({ type: "presence", user_id: USER_B, active: true, last_seen: null }))
+    act(() => socket.receive({ type: "presence", user_id: USER_B, active: false, last_seen: null }))
+    expect(onOnlineStatus).toHaveBeenCalledTimes(2)
     expect(onOnlineStatus).toHaveBeenNthCalledWith(1, USER_B, true)
     expect(onOnlineStatus).toHaveBeenNthCalledWith(2, USER_B, false)
+    expect(onPresenceUpdate).toHaveBeenCalledTimes(2)
+    expect(onPresenceUpdate).toHaveBeenNthCalledWith(1, USER_B, true, null)
+    expect(onPresenceUpdate).toHaveBeenNthCalledWith(2, USER_B, false, null)
+    unmount()
+  })
+
+  it("rejects retired online frames without notifying presence callbacks", async () => {
+    const onOnlineStatus = vi.fn()
+    const onPresenceUpdate = vi.fn()
+    const { socket, unmount } = await mountAndOpen({
+      enabled: true,
+      onOnlineStatus,
+      onPresenceUpdate,
+    })
+    await withExpectedConsole(
+      "error",
+      "[ws] Invalid frame dropped",
+      () => {
+        act(() => socket.receive({ type: "online", user_id: USER_B, status: true }))
+        act(() => socket.receive({ type: "online", user_id: USER_B, status: false }))
+      },
+      2
+    )
+    expect(onOnlineStatus).not.toHaveBeenCalled()
+    expect(onPresenceUpdate).not.toHaveBeenCalled()
     unmount()
   })
 
@@ -297,10 +347,32 @@ describe("useChatWebSocket", () => {
     queryClient.setQueryData(
       ["messages", CHAT_ID],
       makeList([
-        makeMessage({ content: "old" }),
+        makeMessage({
+          content: "old",
+          reactions: [{ emoji: "💙", count: 2, reacted_by_me: true }],
+        }),
         makeMessage({ id: "55555555-5555-4555-8555-555555555555", content: "untouched" }),
       ])
     )
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        makeChat({
+          last_message: makeMessage({ content: "old" }),
+          unread_count: 3,
+        }),
+        makeChat({
+          id: OTHER_CHAT_ID,
+          last_message: makeMessage({
+            id: OTHER_MSG_ID,
+            chat_id: OTHER_CHAT_ID,
+            content: "newer message in another chat",
+          }),
+          unread_count: 1,
+        }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
     const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
     act(() => {
       socket.receive({
@@ -314,6 +386,50 @@ describe("useChatWebSocket", () => {
     const cached = queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])
     expect(cached?.items[0]?.content).toBe("edited!")
     expect(cached?.items[1]?.content).toBe("untouched")
+    const chats = queryClient.getQueryData<ChatsListResponse>(["chats"])
+    expect(chats?.items[0]?.last_message).toMatchObject({
+      id: MSG_ID,
+      content: "edited!",
+      edited_at: "2026-01-15T12:00:00Z",
+    })
+    expect(chats?.items[0]?.unread_count).toBe(3)
+    expect(chats?.items[1]?.last_message?.content).toBe("newer message in another chat")
+    expect(cached?.items[0]?.reactions).toEqual([{ emoji: "💙", count: 2, reacted_by_me: true }])
+
+    queryClient.setQueryData<ChatsListResponse>(["chats"], (old) =>
+      old
+        ? {
+            ...old,
+            items: old.items.map((chat) =>
+              chat.id === CHAT_ID
+                ? {
+                    ...chat,
+                    last_message: makeMessage({
+                      id: OTHER_MSG_ID,
+                      content: "newer message in the same chat",
+                      created_at: "2026-01-15T12:05:00Z",
+                    }),
+                  }
+                : chat
+            ),
+          }
+        : old
+    )
+    act(() => {
+      socket.receive({
+        type: "message_edited",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        content: "delayed edit of older message",
+        edited_at: "2026-01-15T12:01:00Z",
+      })
+    })
+    expect(
+      queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.last_message
+    ).toMatchObject({
+      id: OTHER_MSG_ID,
+      content: "newer message in the same chat",
+    })
     unmount()
   })
 
@@ -322,10 +438,28 @@ describe("useChatWebSocket", () => {
     queryClient.setQueryData(
       ["messages", CHAT_ID],
       makeList([
-        makeMessage({ content: "doomed" }),
+        makeMessage({
+          content: "doomed",
+          reactions: [{ emoji: "💙", count: 2, reacted_by_me: true }],
+        }),
         makeMessage({ id: "55555555-5555-4555-8555-555555555555", content: "untouched" }),
       ])
     )
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        makeChat({ last_message: makeMessage({ content: "doomed" }), unread_count: 2 }),
+        makeChat({
+          id: OTHER_CHAT_ID,
+          last_message: makeMessage({
+            id: OTHER_MSG_ID,
+            chat_id: OTHER_CHAT_ID,
+            content: "other chat preview",
+          }),
+        }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
     const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
     act(() => {
       socket.receive({
@@ -339,6 +473,113 @@ describe("useChatWebSocket", () => {
     expect(cached?.items[0]?.content).toBe("")
     expect(cached?.items[0]?.deleted_at).toBe("2026-01-15T12:30:00Z")
     expect(cached?.items[1]?.content).toBe("untouched")
+    expect(cached?.items[0]?.reactions).toEqual([{ emoji: "💙", count: 2, reacted_by_me: true }])
+    const chats = queryClient.getQueryData<ChatsListResponse>(["chats"])
+    expect(chats?.items[0]?.last_message).toBeUndefined()
+    expect(chats?.items[1]?.last_message).toMatchObject({
+      id: OTHER_MSG_ID,
+      content: "other chat preview",
+    })
+    expect(queryClient.getQueryState(["chats"])?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.unread_count).toBe(2)
+    unmount()
+  })
+
+  it("keeps a newer sidebar preview when an older message is deleted", async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage()]))
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        makeChat({
+          last_message: makeMessage({
+            id: OTHER_MSG_ID,
+            content: "newer preview",
+          }),
+        }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
+    act(() => {
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        deleted_at: "2026-01-15T12:30:00Z",
+      })
+    })
+    expect(
+      queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.last_message
+    ).toMatchObject({ id: OTHER_MSG_ID, content: "newer preview" })
+    unmount()
+  })
+  it("still invalidates the sidebar when the target chat has no preview", async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage()]))
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [makeChat({ last_message: undefined })],
+      has_more: false,
+      next_cursor: null,
+    })
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+    const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
+    invalidateQueries.mockClear()
+    act(() => {
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        deleted_at: "2026-01-15T12:30:00Z",
+      })
+    })
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+    unmount()
+  })
+  it("does not let a delayed edit resurrect a deleted message or its preview", async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(
+      ["messages", CHAT_ID],
+      makeList([
+        makeMessage({
+          content: "",
+          attachments: [],
+          edited_at: "2026-01-15T12:00:00Z",
+          deleted_at: "2026-01-15T12:30:00Z",
+        }),
+      ])
+    )
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [makeChat({ last_message: makeMessage({ content: "doomed" }) })],
+      has_more: false,
+      next_cursor: null,
+    })
+    const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
+
+    act(() => {
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        deleted_at: "2026-01-15T12:30:00Z",
+      })
+      socket.receive({
+        type: "message_edited",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        content: "delayed old content",
+        edited_at: "2026-01-15T12:00:00Z",
+      })
+    })
+
+    const message = queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])?.items[0]
+    expect(message).toMatchObject({ content: "", deleted_at: "2026-01-15T12:30:00Z" })
+    expect(
+      queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.last_message
+    ).toBeUndefined()
     unmount()
   })
 
@@ -403,13 +644,27 @@ describe("useChatWebSocket", () => {
   })
 
   it("reconnects with a new socket after a non-clean close", async () => {
-    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage()]))
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [makeChat()],
+      has_more: false,
+      next_cursor: null,
+    })
+    const { socket, result, unmount } = await mountAndOpen({ enabled: true }, queryClient)
     expect(MockWebSocket.instances.length).toBe(1)
+    expect(queryClient.getQueryState(["messages", CHAT_ID])?.isInvalidated).toBe(false)
+    expect(queryClient.getQueryState(["chats"])?.isInvalidated).toBe(false)
+    act(() => result.current.sendJoin(CHAT_ID))
     act(() => socket.close(1006))
     // calculateReconnectDelay(0) is 0–1000ms; a fresh socket is created within ~1s.
     await waitFor(() => expect(MockWebSocket.instances.length).toBeGreaterThanOrEqual(2), {
       timeout: 3000,
     })
+    const reconnectedSocket = MockWebSocket.instances[1]!
+    act(() => reconnectedSocket.open())
+    expect(queryClient.getQueryState(["messages", CHAT_ID])?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(["chats"])?.isInvalidated).toBe(true)
     unmount()
   })
 })
@@ -770,9 +1025,11 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
   it("uses the secure websocket scheme on HTTPS pages", async () => {
     const originalWindow = window
     const secureLocation = new Proxy(originalWindow.location, {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property === "protocol") return "https:"
-        return Reflect.get(target, property, receiver)
+        // Location accessors are Web IDL brand-checked; keep the real object
+        // as their receiver instead of forwarding the Proxy.
+        return Reflect.get(target, property, target)
       },
     })
     vi.stubGlobal(
@@ -1072,6 +1329,7 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1))
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        created_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
         content: "",
         read_status: false,
         read_at: null,

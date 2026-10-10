@@ -24,12 +24,12 @@ Adopted **SpiceDB** (authzed/spicedb) as the authorization service, using gRPC v
 2. **Hard per-call timeout** — `asyncio.timeout(2.0)` wraps each `CheckPermission` call. A slow SpiceDB never blocks a request indefinitely.
 3. **Circuit breaker** — `CircuitBreaker("spicedb", failure_threshold=3, recovery_timeout=15s)` — after 3 consecutive failures, the circuit opens and subsequent calls bypass the network.
 4. **Two-tier grace-period cache:**
-   - ALLOW results: cached max 30s during outage (fail-closed after 30s — revoked permissions have ≤30s exposure window)
+   - Ordinary ALLOW results: outage fallback accepts a cached live decision at most 45s old, then fails closed; `admin` ALLOW results require a live check.
    - DENY results: cached max 60s (safe to serve stale longer — worst case blocks a legitimate user temporarily)
 5. **LRU cache** — `OrderedDict` bounded at 10,000 entries (~2 MB) to prevent OOM.
 6. **`check_admin` fails CLOSED** — local `user.role` column is never the sole gate for privileged operations.
 
-**Operational SLA:** SpiceDB must recover within 30s for ALLOW results to remain valid. The runbook must reference 30s, not 60s.
+**Operational recovery bound:** Ordinary ALLOW fallback is bounded by 45s since the cached live check, not since outage onset; `admin` ALLOW results require a live SpiceDB check. The code exports the ordinary bound as `SPICEDB_MAX_TOLERABLE_DOWNTIME_SECONDS`.
 
 ## Alternatives Rejected
 
@@ -48,7 +48,7 @@ Adopted **SpiceDB** (authzed/spicedb) as the authorization service, using gRPC v
 **Negative:**
 - Additional infrastructure dependency (SpiceDB + its PostgreSQL datastore).
 - 2s timeout ceiling on permission checks — operations that need many checks may accumulate latency.
-- Grace cache can serve stale ALLOW results for up to 30s after permission revocation.
+- Grace cache can serve a revoked ordinary ALLOW until its cached live decision reaches 45s old; `admin` ALLOW results do not use stale fallback.
 
 ## Implementation
 

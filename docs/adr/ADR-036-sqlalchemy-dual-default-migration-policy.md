@@ -292,6 +292,25 @@ coverage exclusion.
 - Fresh current-SHA coverage, mutation, schema-drift and security evidence is
   required before a phase is accepted.
 
+## Deployed-Catalog Preflight Command
+
+Run the read-only preflight against the target PostgreSQL database before and
+after each DDL phase. Set `DATABASE_URL` through the approved secret
+environment, then run:
+
+```powershell
+uv run --locked python scripts/be02_catalog_preflight.py --phase 1
+uv run --locked python scripts/be02_catalog_preflight.py --phase 3
+uv run --locked python scripts/be02_catalog_preflight.py --phase 4
+```
+
+Phase two emits no DDL and is not a selectable preflight phase. Phase four is
+the default for compatibility with existing invocations. The command runs in
+a read-only transaction and reports each target as `pending`, `converged`, or
+`blocked`; it does not apply migrations, acquire table locks, or accept the
+database URL as a command-line argument. A deployed-catalog result remains
+required evidence and cannot be replaced by an offline catalog fixture.
+
 ## Consequences
 
 ### Positive
@@ -311,6 +330,17 @@ coverage exclusion.
   collected, so local SQLite tests cannot certify completion alone.
 - JSON, partition and composite-key fields require additional design review.
 
+## Later change
+
+Revision `202610010001` retires the unused `user_stats` and `vector_chunks`
+runtime models while retaining their physical schemas and data during online
+upgrade and downgrade. The inventory in `quality/model-default-policy.json`
+therefore no longer contains them. Their historical scalar defaults, columns,
+constraints and indexes remain explicitly owned by migration-only metadata in
+`app/core/db/retained_table_metadata.py` and are still checked by Alembic autogenerate.
+Physical removal needs a separate reviewed maintenance plan; it is not part of
+this online revision.
+
 ## Related Decisions
 
 - [ADR-003: Background Jobs](ADR-003-background-jobs.md)
@@ -325,5 +355,4 @@ coverage exclusion.
 - [`quality/model-default-policy.json`](../../quality/model-default-policy.json)
 - [`scripts/quality/audit_model_defaults.py`](../../scripts/quality/audit_model_defaults.py)
 - [`tests/test_model_default_policy.py`](../../tests/test_model_default_policy.py)
-- `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding BE-02 (user-owned audit
-  artifact; remains untracked and is not a release certificate)
+- [BE-02 in the findings ledger](../audits/INDEX.md#findings-ledger) (historical classification; not release evidence).

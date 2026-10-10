@@ -115,7 +115,7 @@ async def test_content_provider():
     mock_vector = AsyncMock()
 
     assert provider.notification_service(db=mock_db) is not None
-    assert provider.vector_service(db=mock_db) is not None
+    assert provider.grade_service(db=mock_db) is not None
     assert provider.group_service(db=mock_db) is not None
     assert provider.event_service(uow=mock_uow, vector=mock_vector) is not None
     assert provider.story_service(uow=mock_uow) is not None
@@ -247,3 +247,32 @@ async def test_infrastructure_provider():
             assert broker is not None
         mock_connect.assert_called_once()
         mock_close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_vector_service_provider_closes_http_client_on_scope_exit():
+    """The REQUEST-scoped VectorService must release its httpx pool (no leak)."""
+    provider = ContentProvider()
+    generator = provider.vector_service(db=AsyncMock())
+
+    service = await generator.__anext__()
+    closed = AsyncMock()
+    service.close = closed  # type: ignore[method-assign]
+    assert closed.await_count == 0
+
+    with pytest.raises(StopAsyncIteration):
+        await generator.__anext__()
+    closed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_vector_service_provider_closes_client_even_when_request_fails():
+    provider = ContentProvider()
+    generator = provider.vector_service(db=AsyncMock())
+    service = await generator.__anext__()
+    closed = AsyncMock()
+    service.close = closed  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError):
+        await generator.athrow(RuntimeError("request failed"))
+    closed.assert_awaited_once()

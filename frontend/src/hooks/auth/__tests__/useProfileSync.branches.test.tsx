@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
+import { useAuthStore } from "@/stores/useAuthStore"
 import { testUser } from "@/tests/mocks/handlers"
 import {
   getStrictConsoleDiagnostics,
@@ -136,16 +137,33 @@ const renderProfileSyncWithPendingQuery = () => {
   return { ...view, resolveFetch }
 }
 
+let savedAuthState: ReturnType<typeof useAuthStore.getState>
+
 beforeEach(() => {
+  savedAuthState = useAuthStore.getState()
+  useAuthStore.setState(useAuthStore.getInitialState(), true)
   localStorage.clear()
   sessionStorage.clear()
 })
 
 afterEach(() => {
-  cleanup()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-  vi.unstubAllEnvs()
+  const failures: unknown[] = []
+  const attempt = (action: () => void) => {
+    try {
+      action()
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  try {
+    attempt(cleanup)
+  } finally {
+    attempt(() => vi.restoreAllMocks())
+    attempt(() => vi.unstubAllGlobals())
+    attempt(() => vi.unstubAllEnvs())
+    attempt(() => useAuthStore.setState(savedAuthState, true))
+  }
+  if (failures.length) throw new AggregateError(failures, "Profile branches cleanup failed")
 })
 
 // ---------------------------------------------------------------------------
@@ -1968,6 +1986,43 @@ describe("useProfileSync — cross-tab sync effect", () => {
     view.unmount()
     expect(removeListener).toHaveBeenCalledWith("storage", expect.any(Function))
     expect(close).toHaveBeenCalled()
+  })
+
+  it("ignores storage decryption finishing after local session expiry", async () => {
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await act(async () => {
+      view.result.current.setUser(testUser)
+    })
+    const snapshot = { id: testUser.id, full_name: "Late A", is_active: true }
+    const data = await encryptData(snapshot, mockSigningKey)
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 300000,
+      data: data!,
+    }
+    const signature = await signPayload(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    let release!: (value: ArrayBuffer) => void
+    const originalDecrypt = window.crypto.subtle.decrypt.bind(window.crypto.subtle)
+    const decrypt = vi
+      .spyOn(window.crypto.subtle, "decrypt")
+      .mockImplementationOnce(async (...args) => {
+        const plaintext = await originalDecrypt(...args)
+        return new Promise<ArrayBuffer>((resolve) => {
+          release = () => resolve(plaintext)
+        })
+      })
+    act(() => window.dispatchEvent(new StorageEvent("storage", { key: PROFILE_CACHE_STORAGE_KEY })))
+    await waitFor(() => expect(decrypt).toHaveBeenCalledOnce())
+    await waitFor(() => expect(release).toBeTypeOf("function"))
+    act(() => view.result.current.handleUnauthorized({ broadcast: false }))
+    await act(async () => {
+      release(new ArrayBuffer(0))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(view.result.current.user).toBeNull()
   })
 
   it("applies a valid versioned cache snapshot from a storage event", async () => {

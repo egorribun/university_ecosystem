@@ -84,6 +84,22 @@ beforeEach(() => {
 })
 
 describe("useEmailMfa", () => {
+  it("keeps the challenge when the refreshed profile belongs to a different user", async () => {
+    const setSnackbar = vi.fn()
+    mocks.fetchQuery.mockResolvedValueOnce({ ...mocks.user, id: "different-user" })
+    const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor: vi.fn() }))
+
+    await act(() => result.current.handleStartEmailMfa())
+    expect(result.current.emailChallenge).toEqual(challenge)
+
+    await act(() => result.current.handleConfirmEmailMfa("135790"))
+
+    expect(mocks.verifyMfaChallenge).toHaveBeenCalledOnce()
+    expect(result.current.emailChallenge).toEqual(challenge)
+    expect(result.current.emailMfaBusy).toBe(false)
+    expect(mocks.setUser).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  })
   it("starts enablement for a verified email and verifies the issued challenge", async () => {
     const setSnackbar = vi.fn()
     const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor: vi.fn() }))
@@ -131,6 +147,39 @@ describe("useEmailMfa", () => {
     expect(mocks.disableEmailMfa).toHaveBeenCalledOnce()
   })
 
+  it("ignores a duplicate resend while challenge rotation is pending", async () => {
+    const { result } = renderHook(() =>
+      useEmailMfa({ setSnackbar: vi.fn(), openStepUpFor: vi.fn() })
+    )
+    await act(() => result.current.handleStartEmailMfa())
+    const issuedChallenge = result.current.emailChallenge
+    const pending = deferred<typeof challenge>()
+    const rotatedChallenge = {
+      ...challenge,
+      challenge_token: "rotated-token-id904",
+    }
+    mocks.resendEmailMfaChallenge.mockReturnValueOnce(pending.promise)
+
+    let firstResend!: Promise<void>
+    await act(async () => {
+      firstResend = result.current.handleResendEmailMfa()
+    })
+
+    try {
+      await act(() => result.current.handleResendEmailMfa())
+      expect(mocks.resendEmailMfaChallenge).toHaveBeenCalledOnce()
+      expect(result.current.emailChallenge).toEqual(issuedChallenge)
+      expect(result.current.emailMfaBusy).toBe(true)
+    } finally {
+      await act(async () => {
+        pending.resolve(rotatedChallenge)
+        await firstResend
+      })
+    }
+
+    expect(result.current.emailChallenge).toEqual(rotatedChallenge)
+    expect(result.current.emailMfaBusy).toBe(false)
+  })
   it("retries a step-up-protected enablement without recursing into another step-up", async () => {
     let retry: (() => Promise<void>) | undefined
     const openStepUpFor = vi.fn((action: () => Promise<void>) => {
@@ -268,6 +317,82 @@ describe("useEmailMfa", () => {
     expect(result.current.emailMfaError).toBeNull()
   })
 
+  it("does not report disable success when the refreshed profile belongs to another user", async () => {
+    mocks.user.email_mfa_enabled_at = "2026-01-01T00:00:00Z"
+    const setSnackbar = vi.fn()
+    let stepUpAction: (() => Promise<void>) | undefined
+    const openStepUpFor = vi.fn((action: () => Promise<void>) => {
+      stepUpAction = action
+    })
+    mocks.fetchQuery.mockResolvedValueOnce({ ...mocks.user, id: "other-user-id" })
+    const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor }))
+
+    act(() => result.current.handleDisableEmailMfa())
+
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+    expect(stepUpAction).toBeDefined()
+    await act(async () => {
+      await stepUpAction?.()
+    })
+
+    expect(mocks.disableEmailMfa).toHaveBeenCalledOnce()
+    expect(mocks.setUser).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  })
+  it("keeps a new operation busy when an older session request settles", async () => {
+    const firstRequest = deferred<typeof challenge>()
+    const secondRequest = deferred<typeof challenge>()
+    mocks.startEmailMfaEnablement
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+    const originalUser = mocks.user
+    const { result, rerender } = renderHook(() =>
+      useEmailMfa({ setSnackbar: vi.fn(), openStepUpFor: vi.fn() })
+    )
+    let firstCompletion: Promise<void> | undefined
+    let secondCompletion: Promise<void> | undefined
+
+    try {
+      act(() => {
+        firstCompletion = result.current.handleStartEmailMfa()
+      })
+      expect(result.current.emailMfaBusy).toBe(true)
+
+      mocks.user = { ...originalUser, id: "different-session-user" }
+      rerender()
+      expect(result.current.emailMfaBusy).toBe(false)
+
+      act(() => {
+        secondCompletion = result.current.handleStartEmailMfa()
+      })
+      expect(result.current.emailMfaBusy).toBe(true)
+
+      await act(async () => {
+        firstRequest.resolve(challenge)
+        await firstCompletion
+      })
+      expect(result.current.emailMfaBusy).toBe(true)
+      expect(result.current.emailChallenge).toBeNull()
+
+      await act(async () => {
+        secondRequest.resolve(challenge)
+        await secondCompletion
+      })
+      expect(result.current.emailMfaBusy).toBe(false)
+    } finally {
+      firstRequest.resolve(challenge)
+      secondRequest.resolve(challenge)
+      const pending = [firstCompletion, secondCompletion].filter(
+        (promise): promise is Promise<void> => promise !== undefined
+      )
+      if (pending.length > 0) {
+        await act(async () => {
+          await Promise.all(pending)
+        })
+      }
+      mocks.user = originalUser
+    }
+  })
   it("reports a step-up disable failure without clearing the current user", async () => {
     const setSnackbar = vi.fn()
     const openStepUpFor = vi.fn((action: () => Promise<void>) => void action())

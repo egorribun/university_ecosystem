@@ -10,7 +10,7 @@ pytestmark = pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to
 
 @pytest.fixture(scope="module")
 def postgres():
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
 
     with PostgresContainer(
         "postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b"
@@ -20,10 +20,8 @@ def postgres():
 
 @pytest.fixture(scope="module")
 def redis_client():
-    # Import lazily: Testcontainers currently emits a deprecation warning from
-    # its Redis module at import time.  Disabled integration tests must not load
-    # or warn from infrastructure they never execute.
-    from testcontainers.redis import RedisContainer
+    # Import lazily so disabled integration tests do not load Docker dependencies.
+    from testcontainers.community.redis import RedisContainer
 
     with RedisContainer(
         "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"

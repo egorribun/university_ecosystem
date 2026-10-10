@@ -1,5 +1,6 @@
 import contextlib
 import uuid
+from datetime import datetime
 
 from app.core.logging import get_logger
 from app.repositories.unit_of_work import UnitOfWork
@@ -10,7 +11,10 @@ from app.schemas.dtos import (
     NewsInteractionsDTO,
     NewsListingDTO,
 )
-from app.services.vector_service import VectorService
+from app.services.vector_service import (
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 
 logger = get_logger(__name__)
 
@@ -32,12 +36,21 @@ class NewsService:
     ) -> schemas.PaginatedNews:
         query_embedding = None
         if search:
-            query_embedding = await self.vector_service.get_embedding(search)
+            try:
+                query_embedding = await self.vector_service.get_embedding(search)
+            except SemanticSearchUnavailableError:
+                query_embedding = None
 
-        from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+        from app.utils.pagination import (
+            decode_datetime_cursor,
+            decode_ranked_datetime_cursor,
+            encode_datetime_cursor,
+            encode_ranked_datetime_cursor,
+        )
 
-        decoded_cursor = None
-        if cursor:
+        decoded_cursor: tuple[datetime, str] | tuple[datetime, str, float | None] | None
+        decoded_cursor = decode_ranked_datetime_cursor(cursor)
+        if decoded_cursor is None:
             decoded = decode_datetime_cursor(cursor)
             if decoded:
                 with contextlib.suppress(ValueError, TypeError):
@@ -64,10 +77,16 @@ class NewsService:
         next_cursor = None
         if has_more and items_to_process:
             last_item = items_to_process[-1]
-            next_cursor = encode_datetime_cursor(
-                last_item.news.created_at,
-                str(last_item.news.id),
-            )
+            if last_item.ranked:
+                next_cursor = encode_ranked_datetime_cursor(
+                    last_item.news.created_at,
+                    str(last_item.news.id),
+                    last_item.distance,
+                )
+            else:
+                next_cursor = encode_datetime_cursor(
+                    last_item.news.created_at, str(last_item.news.id)
+                )
 
         return schemas.PaginatedNews(
             items=output,
@@ -77,21 +96,6 @@ class NewsService:
 
     async def create_news(self, data: schemas.NewsCreate) -> NewsDTO:
         news = await self.repo.create(data.model_dump())
-        # BaseRepository.create returns DTO.
-        # But DTO doesn't have 'record_event'.
-        # We need a way to record events without using the ORM model if we want strict isolation.
-        # Alternatively, the repo can record the event, or we can use a separate event bus.
-        # Project uses models.record_event.
-        # If I want isolation, I must move event recording to the repository or service using an event bus.
-        # For now, I'll use the repo to record event or just keep it simple.
-
-        # NewsCreated(news_id=news.id, title=str(news.title))
-        # Wait, the repo created the record.
-
-        # I'll add record_event support to BaseRepository or just do it manually if possible.
-        # Actually models.record_event adds to a list on the object.
-        # Since I have a DTO, I can't.
-
         async with self.uow:
             await self.uow.commit()
         return news
@@ -119,19 +123,6 @@ class NewsService:
             # For now, let's stick to what we have or accept a small inconsistency
             # OR better, update get_with_interactions to verify it matches needs.
             pass
-        return news
-
-    async def get_news_with_details(
-        self, news_id: uuid.UUID, user_id: uuid.UUID | None = None
-    ) -> NewsDTO | None:
-        # HIGH-W19: implement instead of returning None (implicit from bare `pass`);
-        # delegate to get_with_interactions to populate like/comment metadata.
-        news = await self.repo.get(news_id)
-        if news is None:
-            return None
-        likes_count, is_liked = await self.repo.get_with_interactions(news_id, user_id)
-        news.likes_count = likes_count  # type: ignore[attr-defined]
-        news.is_liked = is_liked  # type: ignore[attr-defined]
         return news
 
     async def get_news_item(
@@ -174,6 +165,10 @@ class NewsService:
         await self.repo.delete(news_id)
         async with self.uow:
             await self.uow.commit()
+
+        from app.services import search_indexer
+
+        await search_indexer.remove_document(search_indexer.NEWS_INDEX, news_id)
         # Repository delete does execute/rowcount but usually not commit?
         # BaseRepository delete: execute delete stmt. Does NOT commit.
         # So we need to commit.

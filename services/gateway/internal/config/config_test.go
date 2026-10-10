@@ -1,12 +1,23 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func randomStrongTestValue(t *testing.T) string {
+	t.Helper()
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		t.Fatalf("generate test secret: %v", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(value)
+}
 
 func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_UNSET_VARIABLE_XYZ"
@@ -125,6 +136,22 @@ func TestGetEnvInt_ParsesZero(t *testing.T) {
 	result := getEnvInt(key, 999)
 
 	assert.Equal(t, 0, result)
+}
+
+func TestLoadFromEnvironment_TrustedProxiesDefaultToEmpty(t *testing.T) {
+	t.Setenv("GATEWAY_TRUSTED_PROXIES", "")
+
+	cfg := loadFromEnvironment()
+
+	assert.Empty(t, cfg.TrustedProxies)
+}
+
+func TestLoadFromEnvironment_ParsesExplicitTrustedProxies(t *testing.T) {
+	t.Setenv("GATEWAY_TRUSTED_PROXIES", " 172.28.4.0/28,10.30.0.12 ")
+
+	cfg := loadFromEnvironment()
+
+	assert.Equal(t, []string{"172.28.4.0/28", "10.30.0.12"}, cfg.TrustedProxies)
 }
 
 func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
@@ -301,6 +328,46 @@ func TestConfig_StructFields(t *testing.T) {
 	assert.Equal(t, "localhost:50051", cfg.FileProcessorAddr)
 	assert.Equal(t, 100, cfg.RateLimitRPS)
 	assert.Equal(t, 200, cfg.RateLimitBurst)
+}
+
+func TestValidateConfigRejectsNonPositiveRateLimitSettings(t *testing.T) {
+	tests := []struct {
+		name  string
+		rps   int
+		burst int
+		want  string
+	}{
+		{name: "zero requests per second", rps: 0, burst: 200, want: "RATE_LIMIT_RPS must be greater than zero"},
+		{name: "negative requests per second", rps: -1, burst: 200, want: "RATE_LIMIT_RPS must be greater than zero"},
+		{name: "zero burst", rps: 100, burst: 0, want: "RATE_LIMIT_BURST must be greater than zero"},
+		{name: "negative burst", rps: 100, burst: -1, want: "RATE_LIMIT_BURST must be greater than zero"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{
+				JWTSecret:          "test-secret",
+				JWTAudience:        "gateway-api",
+				RevocationRedisURL: "redis://security-redis:6379/0",
+				RateLimitRPS:       tt.rps,
+				RateLimitBurst:     tt.burst,
+			}
+
+			err := validateConfig(&cfg)
+			assert.ErrorContains(t, err, tt.want)
+		})
+	}
+
+	valid := Config{
+		JWTSecret:          "test-secret",
+		JWTAudience:        "gateway-api",
+		RevocationRedisURL: "redis://security-redis:6379/0",
+		RateLimitRPS:       100,
+		RateLimitBurst:     200,
+	}
+	assert.NoError(t, validateConfig(&valid))
+	assert.Equal(t, 100, valid.RateLimitRPS)
+	assert.Equal(t, 200, valid.RateLimitBurst)
 }
 
 func restoreEnv(t *testing.T, key, value string) {
@@ -571,10 +638,7 @@ func TestValidateInternalHMACSecretRejectsPredictableValues(t *testing.T) {
 		})
 	}
 
-	assert.NoError(
-		t,
-		validateInternalHMACSecret("6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!"),
-	)
+	assert.NoError(t, validateInternalHMACSecret(randomStrongTestValue(t)))
 }
 
 func TestValidateConfigRequiresStrongInternalHMACSecretInRelease(t *testing.T) {
@@ -582,10 +646,12 @@ func TestValidateConfigRequiresStrongInternalHMACSecretInRelease(t *testing.T) {
 		JWTSecret:                      "jwt-secret",
 		JWTAudience:                    "university-ecosystem-api",
 		RevocationRedisURL:             "redis://revocation:6379/0",
+		RateLimitRPS:                   100,
+		RateLimitBurst:                 200,
 		Environment:                    "production",
 		GrpcUseTLS:                     true,
 		SpiffeEnabled:                  true,
-		FileProcessingCapabilitySecret: "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!", // pragma: allowlist secret
+		FileProcessingCapabilitySecret: randomStrongTestValue(t),
 	}
 
 	weak := base
@@ -593,9 +659,10 @@ func TestValidateConfigRequiresStrongInternalHMACSecretInRelease(t *testing.T) {
 	assert.ErrorContains(t, validateConfig(&weak), "INTERNAL_HMAC_SECRET")
 
 	valid := base
-	valid.InternalHMACSecret = " 6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8! " // pragma: allowlist secret
+	validValue := randomStrongTestValue(t)
+	valid.InternalHMACSecret = " " + validValue + " "
 	assert.NoError(t, validateConfig(&valid))
-	assert.Equal(t, "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!", valid.InternalHMACSecret)
+	assert.Equal(t, validValue, valid.InternalHMACSecret)
 
 	development := base
 	development.Environment = "development"
@@ -617,7 +684,7 @@ func TestValidateFileProcessingCapabilitySecretRejectsPredictableValues(t *testi
 			}
 		})
 	}
-	assert.NoError(t, validateFileProcessingCapabilitySecret("6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!"))
+	assert.NoError(t, validateFileProcessingCapabilitySecret(randomStrongTestValue(t)))
 }
 
 func TestValidateConfigRequiresFileProcessingCapabilitySecretInRelease(t *testing.T) {
@@ -625,15 +692,18 @@ func TestValidateConfigRequiresFileProcessingCapabilitySecretInRelease(t *testin
 		JWTSecret:                      "jwt-secret",
 		JWTAudience:                    "university-ecosystem-api",
 		RevocationRedisURL:             "redis://revocation:6379/0",
+		RateLimitRPS:                   100,
+		RateLimitBurst:                 200,
 		Environment:                    "production",
 		GrpcUseTLS:                     true,
 		SpiffeEnabled:                  true,
-		InternalHMACSecret:             "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!", // pragma: allowlist secret
-		FileProcessingCapabilitySecret: "",                                          // deliberately missing
+		InternalHMACSecret:             randomStrongTestValue(t),
+		FileProcessingCapabilitySecret: "", // deliberately missing
 	}
 	assert.ErrorContains(t, validateConfig(&base), "FILE_PROCESSING_CAPABILITY_SECRET")
 
-	base.FileProcessingCapabilitySecret = " 6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8! " // pragma: allowlist secret
+	fileProcessingValue := randomStrongTestValue(t)
+	base.FileProcessingCapabilitySecret = " " + fileProcessingValue + " "
 	assert.NoError(t, validateConfig(&base))
-	assert.Equal(t, "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!", base.FileProcessingCapabilitySecret)
+	assert.Equal(t, fileProcessingValue, base.FileProcessingCapabilitySecret)
 }

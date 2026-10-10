@@ -58,12 +58,17 @@ class WsHubClient:
         self,
         user_id: str | uuid.UUID,
         room_id: str | uuid.UUID,
+        *,
+        evict_room: bool = False,
+        event_id: str | None = None,
+        raise_on_failure: bool = False,
     ) -> None:
         """Publish a signed invalidation event to NATS JetStream.
 
-        Events are published to 'cache.invalidate' subject. The ws-hub
-        subscribes to this subject and verifies the signature using the
-        shared InternalSecret.
+        Events are published to the durable 'cache.invalidate' subject. The
+        ws-hub verifies the signature using the shared InternalSecret. Durable
+        membership-revocation callers may request room eviction and propagate a
+        final publish failure back to the transactional outbox.
 
         RZ-14-04 (audit Wave 14): One retry with 100ms backoff covers transient
         NATS hiccups.  On final failure a Prometheus counter is incremented and
@@ -79,6 +84,8 @@ class WsHubClient:
             # the privacy risk or the overhead of MAC resolution.
             "timestamp": time.time_ns(),
         }
+        if evict_room:
+            payload_content["evict_room"] = True
 
         # TD-NEW-07: Sign the payload to prevent unauthorized cache flushes.
         # Use deterministic JSON serialization for consistent signing.
@@ -99,7 +106,12 @@ class WsHubClient:
         last_exc: Exception | None = None
         for attempt in range(_MAX_PUBLISH_ATTEMPTS):
             try:
-                await self._broker.publish("cache.invalidate", full_payload)
+                if event_id:
+                    await self._broker.publish(
+                        "cache.invalidate", full_payload, msg_id=event_id
+                    )
+                else:
+                    await self._broker.publish("cache.invalidate", full_payload)
                 return
             except (ConnectionError, TimeoutError, OSError) as exc:
                 # RZ-20-04: Narrowed — NATS publish retry catches infra errors.
@@ -120,6 +132,8 @@ class WsHubClient:
             attempts=_MAX_PUBLISH_ATTEMPTS,
             exc_info=last_exc,
         )
+        if raise_on_failure and last_exc is not None:
+            raise last_exc
 
     async def publish_control_event(
         self,
@@ -203,9 +217,23 @@ def _get_client() -> WsHubClient:
 async def invalidate_ws_hub_cache(
     user_id: str | uuid.UUID,
     room_id: str | uuid.UUID,
+    *,
+    evict_room: bool = False,
+    event_id: str | None = None,
+    raise_on_failure: bool = False,
 ) -> None:
     """Module-level convenience wrapper around the shared WsHubClient."""
-    await _get_client().invalidate_cache(user_id=user_id, room_id=room_id)
+    client = _get_client()
+    if not evict_room and event_id is None and not raise_on_failure:
+        await client.invalidate_cache(user_id=user_id, room_id=room_id)
+        return
+    await client.invalidate_cache(
+        user_id=user_id,
+        room_id=room_id,
+        evict_room=evict_room,
+        event_id=event_id,
+        raise_on_failure=raise_on_failure,
+    )
 
 
 async def publish_ws_hub_control(

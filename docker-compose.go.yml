@@ -17,6 +17,13 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       GATEWAY_PORT: "8080"
+      VITE_ENVIRONMENT: "${ENVIRONMENT:-development}"
+      # This local overlay pairs the processor's plaintext gRPC listener.
+      # Release-mode gateway validation still requires TLS and rejects this.
+      GRPC_USE_TLS: "false"
+      # Comma-delimited exact proxy IPs/CIDRs. Empty fails closed and uses the
+      # immediate peer; never set this to a broad RFC1918 or cluster range.
+      GATEWAY_TRUSTED_PROXIES: "${GATEWAY_TRUSTED_PROXIES:-}"
       BACKEND_URL: http://backend:8000
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/3
       REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
@@ -24,6 +31,7 @@ services:
       JWT_AUDIENCE: university-ecosystem-api
       JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
       JWKS_REFRESH_INTERVAL: "60"
+      INTERNAL_HMAC_SECRET: ${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - set in .env file}
       FILE_PROCESSING_CAPABILITY_SECRET: ${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - set in .env file}
       OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"

@@ -128,9 +128,9 @@ export default function useActivityData() {
     const d = envelope?.grades
     if (d) {
       return {
-        average: toNumber(d.average, 4.4),
+        average: toNumber(d.average),
         scale: isGradeScale(d.scale) ? d.scale : "5",
-        trend: toNumber(d.trend, 0.3),
+        trend: toNumber(d.trend),
         recent: parseGradeRecent(d.recent),
       }
     }
@@ -151,15 +151,23 @@ export default function useActivityData() {
     return null
   }, [envelope?.participation])
 
-  const hasAnyData = Boolean(attendance || grades || participation)
   const availability = {
     attendance: Boolean(envelope?.attendance),
     grades: Boolean(envelope?.grades),
     participation: Boolean(envelope?.participation),
   }
+  const hasAnyData = Boolean(
+    (attendance &&
+      (attendance.present > 0 || attendance.total > 0 || attendance.recent.length > 0)) ||
+    (grades && grades.recent.length > 0) ||
+    (participation &&
+      (participation.events > 0 ||
+        (participation.hours ?? 0) > 0 ||
+        (participation.groups ?? 0) > 0 ||
+        participation.recent.length > 0))
+  )
   const isPartial =
     hasInitiallyLoaded &&
-    hasAnyData &&
     (!availability.attendance || !availability.grades || !availability.participation)
 
   // ── Chart data derivation (Phase B) ───────────────

@@ -14,6 +14,7 @@ import logging
 import threading
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
@@ -27,6 +28,7 @@ from app.core.observability import get_request_id
 from app.models.domain_events import StoredEvent
 from app.models.logs import DataAccessLog
 from app.repositories.audit_repository import AuditRepository
+from app.schemas.admin import AuditSignatureScheme
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -200,50 +202,9 @@ class AuditService:
 
     # Convenience methods for common security events
 
-    def login_success(self, request: Request, user_id: UUID) -> None:
-        """Log successful login."""
-        self.log(
-            SecurityEvent.AUTH_LOGIN_SUCCESS, request, user_id, reason="authenticated"
-        )
-
-    def login_failure(
-        self, request: Request, reason: str = "invalid_credentials"
-    ) -> None:
-        """Log failed login attempt."""
-        self.log(
-            SecurityEvent.AUTH_LOGIN_FAILURE,
-            request,
-            reason=reason,
-            level=logging.WARNING,
-        )
-
     def logout(self, request: Request, user_id: UUID) -> None:
         """Log user logout."""
         self.log(SecurityEvent.AUTH_LOGOUT, request, user_id)
-
-    def mfa_failure(
-        self, request: Request, user_id: UUID, reason: str = "invalid_code"
-    ) -> None:
-        """Log MFA verification failure."""
-        self.log(
-            SecurityEvent.MFA_VERIFY_FAILURE,
-            request,
-            user_id,
-            reason=reason,
-            level=logging.WARNING,
-        )
-
-    def access_denied(
-        self, request: Request, user_id: UUID | None, reason: str
-    ) -> None:
-        """Log access denial."""
-        self.log(
-            SecurityEvent.ACCESS_DENIED,
-            request,
-            user_id,
-            reason=reason,
-            level=logging.WARNING,
-        )
 
     def rate_limit_exceeded(
         self, request: Request, user_id: UUID | None = None
@@ -353,6 +314,60 @@ def auditable(
 # Secure Audit Service with HMAC Integrity
 # ============================================================================
 
+_AUDIT_LOG_SIGNATURE_V2_PREFIX = "v2:"
+_AUDIT_LOG_PERSISTED_FIELDS = (
+    "id",
+    "actor_user_id",
+    "subject_user_id",
+    "resource_type",
+    "resource_id",
+    "action",
+    "context",
+    "ip_address",
+    "user_agent",
+    "created_at",
+)
+_AUDIT_LOG_PRESENTATION_FIELDS = ("actor_name", "subject_name")
+_AUDIT_LOG_NULL_EMPTY_COLLISION_FIELDS = ("resource_id", "ip_address", "user_agent")
+_AUDIT_LOG_PIPE_STRING_FIELDS = (
+    "resource_type",
+    "resource_id",
+    "action",
+    "ip_address",
+)
+_AUDIT_LOG_PIPE_V1_FIELDS = (
+    "id",
+    "actor_user_id",
+    "subject_user_id",
+    "resource_type",
+    "resource_id",
+    "action",
+    "ip_address",
+    "created_at",
+)
+_AUDIT_LOG_JSON_ARRAY_V1_FIELDS = (
+    "actor_user_id",
+    "subject_user_id",
+    "resource_type",
+    "resource_id",
+    "action",
+    "context",
+    "ip_address",
+    "user_agent",
+    "created_at",
+)
+_ZERO_HASH = "0" * 64
+
+
+@dataclass(frozen=True)
+class AuditSignatureStatus:
+    """Verification result and exact field coverage for an audit-log signature."""
+
+    is_valid: bool
+    signature_scheme: AuditSignatureScheme
+    authenticated_fields: tuple[str, ...]
+    unauthenticated_fields: tuple[str, ...]
+
 
 class SecureAuditService:
     """
@@ -384,7 +399,37 @@ class SecureAuditService:
     def _compute_signature(
         self, log: DataAccessLog | DataAccessLogDTO, *, key: bytes | None = None
     ) -> str:
-        """Compute HMAC signature for an audit log entry."""
+        """Sign all persisted audit-log fields covered by the v2 scheme."""
+        data = self._signature_payload_v2(log)
+        signing_key = key or self._primary_key
+        digest = hmac.new(signing_key, data.encode("utf-8"), sha256).hexdigest()
+        return f"{_AUDIT_LOG_SIGNATURE_V2_PREFIX}{digest}"
+
+    @staticmethod
+    def _signature_payload_v2(log: DataAccessLog | DataAccessLogDTO) -> str:
+        """Return a canonical, versioned payload for complete audit signatures."""
+        payload = {
+            "version": 2,
+            "id": str(log.id or ""),
+            "actor_user_id": str(log.actor_user_id or ""),
+            "subject_user_id": str(log.subject_user_id or ""),
+            "resource_type": str(log.resource_type or ""),
+            "resource_id": str(log.resource_id or ""),
+            "action": str(log.action or ""),
+            "context": getattr(log, "context", None),
+            "ip_address": str(log.ip_address or ""),
+            "user_agent": str(getattr(log, "user_agent", None) or ""),
+            "created_at": (
+                log.created_at.isoformat()
+                if log.created_at
+                else datetime.now(UTC).isoformat()
+            ),
+        }
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+
+    @staticmethod
+    def _legacy_signature_payload(log: DataAccessLog | DataAccessLogDTO) -> str:
+        """Reproduce the original unversioned payload for existing signatures."""
         data_parts = [
             str(log.id or ""),
             str(log.actor_user_id or ""),
@@ -399,69 +444,224 @@ class SecureAuditService:
                 else datetime.now(UTC).isoformat()
             ),
         ]
-        data = "|".join(data_parts)
+        return "|".join(data_parts)
+
+    @staticmethod
+    def _legacy_json_array_signature_payload(
+        log: DataAccessLog | DataAccessLogDTO,
+        *,
+        batch_normalization: bool = False,
+    ) -> str:
+        """Reproduce the original JSON-array writer payload byte-for-byte."""
+        resource_type = log.resource_type
+        resource_id = log.resource_id
+        action = log.action
+        if batch_normalization:
+            resource_type = str(resource_type) if resource_type else ""
+            resource_id = str(resource_id) if resource_id else None
+            action = str(action) if action else ""
+        return json.dumps(
+            [
+                str(log.actor_user_id) if log.actor_user_id else None,
+                str(log.subject_user_id) if log.subject_user_id else None,
+                resource_type,
+                resource_id,
+                action,
+                getattr(log, "context", None),
+                log.ip_address,
+                getattr(log, "user_agent", None),
+                (
+                    log.created_at.isoformat()
+                    if log.created_at
+                    else datetime.now(UTC).isoformat()
+                ),
+            ],
+            separators=(",", ":"),
+        )
+
+    def _compute_legacy_signature(
+        self, log: DataAccessLog | DataAccessLogDTO, *, key: bytes | None = None
+    ) -> str:
+        """Compute the historical v1 signature for compatibility verification."""
+        data = self._legacy_signature_payload(log)
         signing_key = key or self._primary_key
         return hmac.new(signing_key, data.encode("utf-8"), sha256).hexdigest()
 
-    def _find_valid_key(self, log: DataAccessLog | DataAccessLogDTO) -> bytes | None:
-        """Return the signing key that matches the stored signature, if any."""
-        if not log.signature:
-            return None
-
-        data_parts = [
-            str(log.id or ""),
-            str(log.actor_user_id or ""),
-            str(log.subject_user_id or ""),
-            str(log.resource_type or ""),
-            str(log.resource_id or ""),
-            str(log.action or ""),
-            str(log.ip_address or ""),
-            (
-                log.created_at.isoformat()
-                if log.created_at
-                else datetime.now(UTC).isoformat()
-            ),
-        ]
-        data = "|".join(data_parts)
-
+    def _matching_key_for_payload(
+        self,
+        log: DataAccessLog | DataAccessLogDTO,
+        data: str,
+        digest: str,
+        scheme: AuditSignatureScheme,
+    ) -> bytes | None:
+        """Verify with Rust when available and constant-time Python fallback."""
         try:
             import rust_ext
 
-            # Convert bytes keys to strings for the Rust extension
-            keys_str = [k.decode("utf-8") for k in self._signing_keys]
+            keys_str = [key.decode("utf-8") for key in self._signing_keys]
+            rust_valid = rust_ext.verify_audit_signature(keys_str, data, digest)
+        except (RuntimeError, ImportError, OSError, UnicodeDecodeError):
+            rust_valid = False
 
-            if rust_ext.verify_audit_signature(keys_str, data, str(log.signature)):
-                # Find which exact key matched (needed for re-signing logic)
-                # In a high-performance scenario, Rust handles the bulk check.
-                # We only re-check manually if we need the specific key index.
-                for signing_key in self._signing_keys:
-                    expected = self._compute_signature(log, key=signing_key)
-                    if hmac.compare_digest(str(log.signature), expected):
-                        return signing_key
-                return None
-        except (RuntimeError, ImportError, OSError):
-            pass
+        def matches_key(signing_key: bytes) -> bool:
+            if scheme == "canonical_v2":
+                expected = self._compute_signature(log, key=signing_key).removeprefix(
+                    _AUDIT_LOG_SIGNATURE_V2_PREFIX
+                )
+            elif scheme == "legacy_pipe_v1":
+                expected = self._compute_legacy_signature(log, key=signing_key)
+            else:
+                expected = hmac.new(
+                    signing_key, data.encode("utf-8"), sha256
+                ).hexdigest()
+            return hmac.compare_digest(digest, expected)
 
-        # Fallback pure-Python HMAC verification routine if rust_ext is unavailable or fails
+        if rust_valid:
+            for signing_key in self._signing_keys:
+                if matches_key(signing_key):
+                    return signing_key
+            # A positive native result followed by a failed constant-time key
+            # check is rejected instead of accepting a disagreement.
+            return None
+
         for signing_key in self._signing_keys:
-            expected = self._compute_signature(log, key=signing_key)
-            if hmac.compare_digest(str(log.signature), expected):
+            if matches_key(signing_key):
                 return signing_key
-
         return None
+
+    def _python_matching_key_for_payload(self, data: str, digest: str) -> bytes | None:
+        """Find a candidate legacy encoding using constant-time HMAC comparison."""
+        for signing_key in self._signing_keys:
+            expected = hmac.new(signing_key, data.encode("utf-8"), sha256).hexdigest()
+            if hmac.compare_digest(digest, expected):
+                return signing_key
+        return None
+
+    def _find_valid_signature(
+        self, log: DataAccessLog | DataAccessLogDTO
+    ) -> tuple[bytes | None, AuditSignatureScheme | None]:
+        """Return the key and exact signing scheme matching this row, if any."""
+        if not log.signature:
+            return None, None
+
+        signature = str(log.signature)
+        if signature.startswith(_AUDIT_LOG_SIGNATURE_V2_PREFIX):
+            digest = signature.removeprefix(_AUDIT_LOG_SIGNATURE_V2_PREFIX)
+            if len(digest) != 64 or any(
+                char not in "0123456789abcdef" for char in digest
+            ):
+                return None, None
+            payloads: list[tuple[AuditSignatureScheme, str]] = [
+                ("canonical_v2", self._signature_payload_v2(log))
+            ]
+        elif len(signature) == 64 and all(
+            char in "0123456789abcdef" for char in signature
+        ):
+            digest = signature
+            payloads = [
+                (
+                    "legacy_json_array_v1",
+                    self._legacy_json_array_signature_payload(log),
+                ),
+                (
+                    "legacy_json_array_v1",
+                    self._legacy_json_array_signature_payload(
+                        log, batch_normalization=True
+                    ),
+                ),
+                ("legacy_pipe_v1", self._legacy_signature_payload(log)),
+            ]
+        else:
+            return None, None
+
+        for scheme, data in payloads:
+            # Bare legacy digests have two historical encodings. Check the exact
+            # payload candidates first so the native verifier is called only for
+            # the encoding that can match this digest.
+            if (
+                scheme != "canonical_v2"
+                and self._python_matching_key_for_payload(data, digest) is None
+            ):
+                continue
+            key = self._matching_key_for_payload(log, data, digest, scheme)
+            if key is not None:
+                return key, scheme
+
+        return None, None
+
+    def _find_valid_key(self, log: DataAccessLog | DataAccessLogDTO) -> bytes | None:
+        """Return the signing key for any supported valid signature format."""
+        key, _scheme = self._find_valid_signature(log)
+        return key
+
+    def signature_status(
+        self, log: DataAccessLog | DataAccessLogDTO
+    ) -> AuditSignatureStatus:
+        """Verify a signature and disclose precisely which fields it covers."""
+        key, scheme = self._find_valid_signature(log)
+        is_valid = key is not None and scheme is not None
+        ambiguous_fields: set[str] = set()
+        if key is not None and scheme is not None:
+            resolved_scheme = scheme
+            if scheme == "canonical_v2":
+                authenticated: tuple[str, ...] = _AUDIT_LOG_PERSISTED_FIELDS
+                ambiguous_fields.update(
+                    field
+                    for field in _AUDIT_LOG_NULL_EMPTY_COLLISION_FIELDS
+                    if getattr(log, field, None) in (None, "")
+                )
+            elif scheme == "legacy_json_array_v1":
+                authenticated = _AUDIT_LOG_JSON_ARRAY_V1_FIELDS
+                if getattr(log, "resource_id", None) in (None, ""):
+                    # The historical batch writer normalized both values to JSON
+                    # null, so this stored value cannot distinguish them.
+                    ambiguous_fields.add("resource_id")
+            else:
+                authenticated = _AUDIT_LOG_PIPE_V1_FIELDS
+                for field in ("resource_id", "ip_address"):
+                    if getattr(log, field, None) in (None, ""):
+                        ambiguous_fields.add(field)
+                if any(
+                    isinstance(value := getattr(log, field, None), str) and "|" in value
+                    for field in _AUDIT_LOG_PIPE_STRING_FIELDS
+                ):
+                    # Bare-pipe serialization does not escape delimiters. If a
+                    # delimiter is present, boundaries among these adjacent
+                    # mutable strings can be repartitioned without changing the
+                    # signed bytes.
+                    ambiguous_fields.update(_AUDIT_LOG_PIPE_STRING_FIELDS)
+            authenticated = tuple(
+                field for field in authenticated if field not in ambiguous_fields
+            )
+        else:
+            authenticated = ()
+            resolved_scheme = "unsigned" if not log.signature else "invalid"
+
+        unauthenticated = tuple(
+            field
+            for field in (*_AUDIT_LOG_PERSISTED_FIELDS, *_AUDIT_LOG_PRESENTATION_FIELDS)
+            if field not in authenticated
+        )
+        return AuditSignatureStatus(
+            is_valid=is_valid,
+            signature_scheme=resolved_scheme,
+            authenticated_fields=tuple(authenticated),
+            unauthenticated_fields=unauthenticated,
+        )
 
     async def create_log(
         self,
         db: AsyncDatabaseSession,
         *,
-        actor_user_id: UUID | None = None,
-        subject_user_id: UUID | None = None,
+        actor_user_id: UUID | int | None = None,
+        subject_user_id: UUID | int | None = None,
         resource_type: str,
         resource_id: str | None = None,
         action: str,
         context: dict[str, Any] | None = None,
         ip_address: str | None = None,
         user_agent: str | None = None,
+        created_at: datetime | None = None,
     ) -> DataAccessLogDTO:
         """Create a signed audit log entry.
 
@@ -473,18 +673,19 @@ class SecureAuditService:
         repo = AuditRepository(db)
         # Step 1: persist the row — repo.create() flush+refresh gives us the
         # server-assigned id and created_at used in the HMAC digest.
-        log = await repo.create(
-            {
-                "actor_user_id": actor_user_id,
-                "subject_user_id": subject_user_id,
-                "resource_type": resource_type,
-                "resource_id": resource_id,
-                "action": action,
-                "context": context,
-                "ip_address": ip_address,
-                "user_agent": user_agent,
-            }
-        )
+        values: dict[str, Any] = {
+            "actor_user_id": actor_user_id,
+            "subject_user_id": subject_user_id,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "action": action,
+            "context": context,
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+        }
+        if created_at is not None:
+            values["created_at"] = created_at
+        log = await repo.create(values)
         # Step 2: compute signature over the flushed DTO (id + created_at locked in).
         signature = self._compute_signature(log)
         # Step 3: write the signature back to the actual DB row.
@@ -495,35 +696,41 @@ class SecureAuditService:
             else log.model_copy(update={"signature": signature})
         )
 
-    def verify_integrity(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
-        """Verify the integrity of an audit log entry."""
-        return self._find_valid_key(log) is not None
+    async def create_logs(
+        self,
+        db: AsyncDatabaseSession,
+        *,
+        entries: list[dict[str, Any]],
+    ) -> list[DataAccessLogDTO]:
+        """Create and sign a batch in the current unit of work with two flushes."""
+        if not entries:
+            return []
 
-    def resign_log(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
-        """
-        Re-sign an audit log entry with the primary key if needed.
-
-        Returns True when the signature was updated.
-        """
-        valid_key = self._find_valid_key(log)
-        if valid_key is None:
-            return False
-        primary_signature = self._compute_signature(log, key=self._primary_key)
-        if not isinstance(log, DataAccessLog):
-            # Cannot re-sign a frozen DTO in-place, caller should handle
-            return False
-
-        log.signature = primary_signature
-        return True
-
-    async def verify_batch(
-        self, db: AsyncDatabaseSession, *, limit: int = 1000
-    ) -> tuple[int, int, list[UUID]]:
-        """Verify integrity of a batch of audit logs."""
+        rows = [DataAccessLog(**entry) for entry in entries]
+        db.add_all(rows)
+        await db.flush()
+        row_ids = [row.id for row in rows]
+        persisted_result = await db.execute(
+            select(DataAccessLog)
+            .where(DataAccessLog.id.in_(row_ids))
+            .execution_options(populate_existing=True)
+        )
+        persisted_by_id = {row.id: row for row in persisted_result.scalars().all()}
+        for row in rows:
+            persisted = persisted_by_id[row.id]
+            persisted.signature = self._compute_signature(persisted)
+        await db.flush()
         repo = AuditRepository(db)
-        logs = await repo.list_logs(limit=limit)
-        invalid_ids = [log.id for log in logs if not self.verify_integrity(log)]
-        return len(logs), len(logs) - len(invalid_ids), invalid_ids
+        return [repo._to_dto(persisted_by_id[row.id]) for row in rows]
+
+    def verify_integrity(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
+        """Verify the fields authenticated by the signature's declared scheme."""
+        return self.signature_status(log).is_valid
+
+    @staticmethod
+    def signature_covers_metadata(log: DataAccessLog | DataAccessLogDTO) -> bool:
+        """Whether this signature version authenticates context and user agent."""
+        return str(log.signature or "").startswith(_AUDIT_LOG_SIGNATURE_V2_PREFIX)
 
     @staticmethod
     def canonicalize_event_payload(
@@ -667,13 +874,68 @@ class SecureAuditService:
         if not events:
             return True, None, None
 
+        # StoredEvent also serves as the transactional outbox. Rows without any
+        # chain markers and without the record_domain_event producer marker are
+        # unchained outbox/domain records. Keep them out of HMAC verification;
+        # partial markers and rows retaining the producer marker are chain
+        # candidates and fail below when their sequence/root is malformed.
+        chain_events = [
+            event
+            for event in events
+            if not (
+                getattr(event, "sequence_number", None) is None
+                and getattr(event, "prev_hash", None) is None
+                and getattr(event, "hash", None) is None
+                and not (
+                    isinstance(getattr(event, "metadata_", None), dict)
+                    and "actor_id" in event.metadata_
+                )
+            )
+        ]
+        if not chain_events:
+            return True, None, None
+
         # Group events by aggregate key (aggregate_type, aggregate_id) to verify self-contained per-aggregate chains
         events_by_aggregate: dict[tuple[str, str], list[StoredEvent]] = {}
-        for event in events:
+        for event in chain_events:
             key = (event.aggregate_type, event.aggregate_id)
             if key not in events_by_aggregate:
                 events_by_aggregate[key] = []
             events_by_aggregate[key].append(event)
+
+        # The Rust verifier starts from the supplied first prev_hash and does not
+        # know whether a prefix was deleted.  Validate the persisted root and
+        # sequence before crossing that boundary.
+        for _aggregate, aggregate_events in events_by_aggregate.items():
+            expected_prev_hash = _ZERO_HASH
+            for index, event in enumerate(aggregate_events):
+                if event.sequence_number != index + 1:
+                    return (
+                        False,
+                        str(event.id),
+                        f"Invalid chain sequence at index {index}: expected {index + 1}",
+                    )
+                if event.prev_hash != expected_prev_hash:
+                    error = (
+                        "Invalid chain root: first event must reference the zero hash"
+                        if index == 0
+                        else (
+                            f"Chain discontinuity at index {index}: expected prev_hash "
+                            f"{expected_prev_hash}, got {event.prev_hash}"
+                        )
+                    )
+                    return (
+                        False,
+                        str(event.id),
+                        error,
+                    )
+                if not isinstance(event.hash, str) or not event.hash:
+                    return (
+                        False,
+                        str(event.id),
+                        f"Invalid chain hash at index {index}",
+                    )
+                expected_prev_hash = event.hash
 
         # Attempt fast zero-copy verification via Rust extension FFI (RZ-Rust-01)
         try:
@@ -685,7 +947,7 @@ class SecureAuditService:
                     for k in self._signing_keys
                 ]
                 for (agg_type, agg_id), agg_events in events_by_aggregate.items():
-                    initial_prev_hash = agg_events[0].prev_hash or ("0" * 64)
+                    initial_prev_hash = agg_events[0].prev_hash
                     chain_tuples = []
                     for event in agg_events:
                         canonical = self.canonicalize_event_payload(
@@ -703,7 +965,7 @@ class SecureAuditService:
                         chain_tuples.append(
                             (
                                 str(event.id),
-                                event.prev_hash or ("0" * 64),
+                                event.prev_hash,
                                 canonical,
                                 created_iso,
                                 event.hash or "",
@@ -726,7 +988,7 @@ class SecureAuditService:
 
         # Fallback pure-Python loop if Rust FFI is unavailable
         for (agg_type, agg_id), agg_events in events_by_aggregate.items():
-            current_prev_hash = agg_events[0].prev_hash or ("0" * 64)
+            current_prev_hash = agg_events[0].prev_hash
 
             for idx, event in enumerate(agg_events):
                 # Check link continuity
@@ -751,9 +1013,15 @@ class SecureAuditService:
 
                 # Check HMAC signature against any active/rotation signing key
                 hash_valid = False
+                if not isinstance(event.prev_hash, str):
+                    return (
+                        False,
+                        str(event.id),
+                        f"Invalid previous hash at index {idx}",
+                    )
                 for signing_key in self._signing_keys:
                     expected_hash = self.compute_event_hash(
-                        event.prev_hash or ("0" * 64),
+                        event.prev_hash,
                         canonical,
                         created_iso,
                         key=signing_key,

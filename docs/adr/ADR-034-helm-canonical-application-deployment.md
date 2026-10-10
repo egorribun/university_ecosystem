@@ -127,5 +127,4 @@ application subdirectories is not a staging or production release path.
 - [`k8s/README.md`](../../k8s/README.md)
 - [`charts/university-ecosystem/README.md`](../../charts/university-ecosystem/README.md)
 - [`tests/test_infra_audit_contract.py`](../../tests/test_infra_audit_contract.py)
-- `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding INFRA-02 (user-owned audit
-  artifact; remains untracked and is not a release certificate)
+- [INFRA-02 in the findings ledger](../audits/INDEX.md#findings-ledger) (historical classification; not release evidence).

@@ -51,6 +51,11 @@ _ALLOWED_ACTIONS: frozenset[str] = frozenset(
         "data.export",
         "data.modify",
         "data.delete",
+        # Values emitted by app.services.data_access.log_data_access and
+        # batch_log_data_access for profile reads, exports, and deletions.
+        "read",
+        "export",
+        "delete",
     }
 )
 
@@ -86,7 +91,7 @@ async def list_audit_logs(
         .outerjoin(ActorProfile, Actor.id == ActorProfile.user_id)
         .outerjoin(Subject, DataAccessLog.subject_user_id == Subject.id)
         .outerjoin(SubjectProfile, Subject.id == SubjectProfile.user_id)
-        .order_by(DataAccessLog.created_at.desc())
+        .order_by(DataAccessLog.created_at.desc(), DataAccessLog.id.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -137,8 +142,10 @@ async def list_audit_logs(
     for row in result:
         log, actor_name, subject_name = row
 
-        # Verify cryptographic signature
-        is_valid = secure_audit.verify_integrity(log)
+        # Return explicit signature coverage so the UI does not overstate which
+        # historical fields were included in a valid legacy signature.
+        signature_status = secure_audit.signature_status(log)
+        authenticated_fields = signature_status.authenticated_fields
 
         items.append(
             schemas.AuditLogOut(
@@ -150,11 +157,18 @@ async def list_audit_logs(
                 resource_type=log.resource_type,
                 resource_id=log.resource_id,
                 action=log.action,
-                context=log.context,
-                ip_address=log.ip_address,
-                user_agent=log.user_agent,
+                context=(log.context if "context" in authenticated_fields else None),
+                ip_address=(
+                    log.ip_address if "ip_address" in authenticated_fields else None
+                ),
+                user_agent=(
+                    log.user_agent if "user_agent" in authenticated_fields else None
+                ),
                 created_at=log.created_at,
-                is_valid=is_valid,
+                is_valid=signature_status.is_valid,
+                signature_scheme=signature_status.signature_scheme,
+                authenticated_fields=list(authenticated_fields),
+                unauthenticated_fields=list(signature_status.unauthenticated_fields),
             )
         )
 

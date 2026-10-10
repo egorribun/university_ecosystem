@@ -103,7 +103,7 @@ async def test_delete_user_data_requires_confirmation(svc):
 
 @pytest.mark.asyncio
 async def test_delete_user_data_missing_user_raises(svc, repo):
-    repo._get_orm.return_value = None
+    repo.get_orm_for_anonymization.return_value = None
     user = MagicMock(id=uuid.uuid4())
     with pytest.raises(EntityNotFound):
         await svc.delete_user_data(user, request=_request(), confirm=True)

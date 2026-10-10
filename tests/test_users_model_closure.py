@@ -9,7 +9,6 @@ from app.models.users import (
     User,
     UserPreferences,
     UserProfile,
-    UserStats,
 )
 
 
@@ -95,18 +94,14 @@ def test_user_and_related_repr_are_pii_safe_and_stable():
     profile = UserProfile(user_id=user_id)
     education = EducationPath(user_id=user_id, program="Program")
     invite = InviteCode(id=user_id, code="INVITE", role="student", is_used=True)
-    stats = UserStats(user_id=user_id)
     assert "dnd=True" in repr(prefs)
     assert str(user_id) in repr(profile)
     assert "Program" in repr(education)
     assert "INVITE" in repr(invite)
-    assert str(user_id) in repr(stats)
 
 
 def test_system_managed_pop_argument_is_removed_from_other_models():
     invite = InviteCode(
         code="CODE", role="student", _allow_system_managed_assignment=True
     )
-    stats = UserStats(user_id=uuid.uuid4(), _allow_system_managed_assignment=True)
     assert invite.code == "CODE"
-    assert stats.user_id is not None

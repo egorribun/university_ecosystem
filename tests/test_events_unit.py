@@ -7,6 +7,7 @@ from fastapi import Request
 
 import app.models as models
 from app.api.events import all_events, attend, create_event, upload_event_file
+from app.deps.cache import MemoryCache
 from app.schemas import schemas
 from tests.conftest import call_injected
 
@@ -30,7 +31,7 @@ def mock_db():
 @pytest.fixture
 def mock_request():
     request = MagicMock(spec=Request)
-    request.app.state.cache = MagicMock()
+    request.app.state.cache = MemoryCache()
     return request
 
 

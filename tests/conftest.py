@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +28,11 @@ if "magic" not in sys.modules:
     sys.modules["magic"] = None  # type: ignore[assignment]
 
 import pytest
+
+if TYPE_CHECKING:
+    import fakeredis.aioredis
+
+    from tests.fixtures.services.service_fixtures import _TestingRedisCache
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.compiler import compiles
@@ -261,7 +266,7 @@ if os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1":
     try:
         import atexit
 
-        from testcontainers.postgres import PostgresContainer
+        from testcontainers.community.postgres import PostgresContainer
 
         # Start a lightweight Postgres container with pgvector support per worker process
         _container = PostgresContainer(
@@ -455,7 +460,9 @@ def initialize_database_for_tests() -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def mock_global_redis(monkeypatch_session):
+def mock_global_redis(
+    monkeypatch_session: pytest.MonkeyPatch,
+) -> fakeredis.aioredis.FakeRedis:
     """
     Global session-scoped fixture to redirect all Redis connections to fakeredis.
     This prevents 'Error 22' connection errors during test startup.
@@ -468,16 +475,16 @@ def mock_global_redis(monkeypatch_session):
 
     # Stable lock implementation to avoid AsyncMock/deepcopy RuntimeWarnings
     class SimpleAsyncLock:
-        async def acquire(self, *args, **kwargs):
+        async def acquire(self, *_args: object, **_kwargs: object) -> bool:
             return True
 
-        async def release(self, *args, **kwargs):
+        async def release(self, *_args: object, **_kwargs: object) -> None:
             pass
 
-        async def __aenter__(self):
+        async def __aenter__(self) -> SimpleAsyncLock:
             return self
 
-        async def __aexit__(self, *args, **kwargs):
+        async def __aexit__(self, *_args: object, **_kwargs: object) -> None:
             pass
 
     from unittest.mock import MagicMock
@@ -495,7 +502,7 @@ def mock_global_redis(monkeypatch_session):
         redis.asyncio.client, "Redis", lambda *args, **kwargs: fake_client
     )
 
-    fake_client.lock = MagicMock(return_value=fake_lock)
+    monkeypatch_session.setattr(fake_client, "lock", MagicMock(return_value=fake_lock))
 
     return fake_client
 
@@ -508,8 +515,49 @@ def monkeypatch_session() -> Iterator[pytest.MonkeyPatch]:
     mp.undo()
 
 
+@pytest.fixture
+def preserve_logging_configuration() -> Iterator[None]:
+    """Isolate tests that intentionally replace the process-wide log setup.
+
+    Pytest reuses its capture handlers between tests. Leaving a console
+    formatter attached makes later error-path tests render every traceback
+    through Rich, including the very large generated sources used by mutmut.
+    Restore the original handlers and processors without filtering any records.
+    """
+    import logging
+
+    import structlog
+
+    import app.core.logging as logging_mod
+
+    root = logging.getLogger()
+    handlers = root.handlers[:]
+    handler_state = [
+        (handler, handler.formatter, handler.level) for handler in handlers
+    ]
+    root_level = root.level
+    configuration = structlog.get_config().copy()
+    structlog_configured = structlog.is_configured()
+    app_configured = logging_mod._configured
+    try:
+        yield
+    finally:
+        root.handlers[:] = handlers
+        root.setLevel(root_level)
+        for handler, formatter, level in handler_state:
+            handler.setFormatter(formatter)
+            handler.setLevel(level)
+        structlog.configure(**configuration)
+        if not structlog_configured:
+            structlog.reset_defaults()
+        logging_mod._configured = app_configured
+
+
 @pytest.fixture(autouse=True)
-def mock_cache_backend(monkeypatch, mock_global_redis):
+def mock_cache_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_global_redis: fakeredis.aioredis.FakeRedis,
+) -> _TestingRedisCache:
     """Ensure the global cache backend uses the fake redis client."""
     from tests.fixtures.services.service_fixtures import _TestingRedisCache
 
@@ -522,7 +570,9 @@ def mock_cache_backend(monkeypatch, mock_global_redis):
 
 
 @pytest.fixture(autouse=True)
-async def clear_redis_between_tests(mock_global_redis):
+async def clear_redis_between_tests(
+    mock_global_redis: fakeredis.aioredis.FakeRedis,
+) -> AsyncIterator[None]:
     """
     Clear the shared FakeRedis instance and in-memory rate limiters before each test.
     This prevents rate limits and cache data from leaking between tests.
@@ -693,17 +743,17 @@ def _reset_settings_cached_properties() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def mock_nats_broker(monkeypatch):
+def mock_nats_broker(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mock the NATS broker so tests using LifespanManager don't hang on connect()."""
     from app.core.nats_broker import broker
 
-    async def mock_connect(*args, **kwargs):
+    async def mock_connect(*_args: object, **_kwargs: object) -> None:
         pass
 
-    async def mock_close(*args, **kwargs):
+    async def mock_close(*_args: object, **_kwargs: object) -> None:
         pass
 
-    async def mock_run_worker(*args, **kwargs):
+    async def mock_run_worker(*_args: object, **_kwargs: object) -> None:
         import asyncio
 
         try:
@@ -712,7 +762,7 @@ def mock_nats_broker(monkeypatch):
         except asyncio.CancelledError:
             pass
 
-    async def mock_enqueue(*args, **kwargs):
+    async def mock_enqueue(*_args: object, **_kwargs: object) -> str:
         return "mocked_task_id"
 
     monkeypatch.setattr(broker, "connect", mock_connect)

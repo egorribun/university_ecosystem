@@ -6,6 +6,7 @@
 
 # Python cache & artifacts
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
@@ -33,6 +34,13 @@ frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
 frontend/.vitest/
+frontend/reports/
+frontend/bundle-report.json
+# wasm-pack recreates these optional local files in the canonical builder.
+frontend/rust-crypto/pkg/.gitignore
+frontend/rust-crypto/pkg/uni_wasm_crypto_bg.wasm.d.ts
+frontend/wasm-sanitizer/pkg/.gitignore
+frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts
 
 # Virtual environments
 .venv/

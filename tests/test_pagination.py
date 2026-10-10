@@ -2,7 +2,6 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -13,11 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.models as models
 from app.repositories.unit_of_work import uow_from_session
 from app.utils.pagination import (
-    CursorParams,
     decode_cursor,
     decode_datetime_cursor,
     encode_datetime_cursor,
-    paginate_cursor,
 )
 
 
@@ -362,89 +359,6 @@ class TestPaginatedNewsSchema:
 
 class TestGenericPagination:
     """Tests for generic paginate_cursor function."""
-
-    @pytest.mark.asyncio
-    async def test_paginate_cursor_basic(self, db_session: AsyncSession, news_factory):
-        """Test basic pagination."""
-        await news_factory(count=5)
-        from sqlalchemy import select
-
-        stmt = select(models.News)
-        params = CursorParams(limit=2)
-
-        result: Any = await paginate_cursor(db_session, stmt, models.News.id, params)
-
-        assert len(result.items) == 2
-        assert result.has_more is True
-        assert result.next_cursor is not None
-        assert result.total_count is None
-
-    @pytest.mark.asyncio
-    async def test_paginate_cursor_with_total(
-        self, db_session: AsyncSession, news_factory
-    ):
-        """Test pagination with total count."""
-        await news_factory(count=5)
-        from sqlalchemy import select
-
-        stmt = select(models.News)
-        params = CursorParams(limit=2)
-
-        result: Any = await paginate_cursor(
-            db_session, stmt, models.News.id, params, include_total=True
-        )
-
-        assert len(result.items) == 2
-        assert result.has_more is True
-        assert result.total_count == 5
-
-    @pytest.mark.asyncio
-    async def test_paginate_cursor_ascending(
-        self, db_session: AsyncSession, news_factory
-    ):
-        """Test pagination in ascending order."""
-        await news_factory(count=5)
-        # News factory creates items with decreasing created_at (hours=count-i)
-        # Items are: [News 0 (oldest), ..., News 4 (newest)]
-        from sqlalchemy import select
-
-        stmt = select(models.News)
-        params = CursorParams(limit=2)
-
-        result: Any = await paginate_cursor(
-            db_session, stmt, models.News.id, params, descending=False
-        )
-
-        assert len(result.items) == 2
-        # Ascending by ID: should be News 0, News 1
-        # Factory creates News 0 (hours=5) -> News 4 (hours=1)
-        # created_at: 0 > 1 > 2 > 3 > 4
-        # Our news_factory might be creating them such that 0 is oldest
-        # and has earliest ID
-        # Verify items are in ascending order by ID
-        item_ids = [item.id for item in result.items]
-        assert item_ids == sorted(item_ids), "Items should be in ascending ID order"
-
-    @pytest.mark.asyncio
-    async def test_paginate_cursor_with_cursor(
-        self, db_session: AsyncSession, news_factory
-    ):
-        """Test pagination with a cursor."""
-        await news_factory(count=5)
-        from sqlalchemy import select
-
-        stmt = select(models.News)
-
-        # Get first page
-        params1 = CursorParams(limit=2)
-        result1: Any = await paginate_cursor(db_session, stmt, models.News.id, params1)
-
-        # Get second page
-        params2 = CursorParams(limit=2, cursor=result1.next_cursor)
-        result2: Any = await paginate_cursor(db_session, stmt, models.News.id, params2)
-
-        assert len(result2.items) == 2
-        assert result1.items[-1].id > result2.items[0].id  # Descending
 
     @pytest.mark.asyncio
     async def test_decode_cursor_failures(self):

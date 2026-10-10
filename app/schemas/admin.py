@@ -8,6 +8,10 @@ from typing import Any, Literal
 
 from app.schemas.common import BaseModel
 
+AuditSignatureScheme = Literal[
+    "canonical_v2", "legacy_json_array_v1", "legacy_pipe_v1", "invalid", "unsigned"
+]
+
 
 class FeatureFlagOut(BaseModel):
     name: str
@@ -34,6 +38,9 @@ class AuditLogOut(BaseModel):
     user_agent: str | None = None
     created_at: datetime
     is_valid: bool
+    signature_scheme: AuditSignatureScheme
+    authenticated_fields: list[str]
+    unauthenticated_fields: list[str]
 
 
 class AuditLogListOut(BaseModel):

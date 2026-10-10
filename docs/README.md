@@ -27,27 +27,54 @@ handoffs are intentionally not part of the canonical index.
 - [Deployment guide (English)](DEPLOY.en.md)
 - [Helm chart](../charts/university-ecosystem/README.md)
 - [Kubernetes notes](../k8s/README.md)
+- [Database backup and restore runbook](runbooks/database-backup-restore.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
+- [Observability configuration and reference examples](observability/README.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
-- [Legacy MinIO volume migration to SeaweedFS](runbooks/s3-seaweedfs-cutover.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 
 ## Quality evidence
 
-- [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) — the single consolidated
-  plan, progress and continuation guide.
-- [Approved MVP plan (snapshot)](superpowers/plans/MVP_APPROVED_PLAN.md) — phases,
-  acceptance tables and owner decisions of 2026-09-28.
+- [MVP master plan (Russian)](superpowers/plans/MVP_MASTER_PLAN.md) — the single
+  current roadmap, product acceptance for `v1.0.0`, retained work checkpoints
+  and the certification backlog for `v1.1`.
+- [ADR-047: risk-based quality policy](adr/ADR-047-risk-based-quality-policy.md)
+  — Tier 0 keeps 100% coverage; mutation testing is a nightly signal, not a
+  release gate after Q1. Current coverage floors remain enforced until Q3.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
-  operational status; earlier handoff and continuation plans live under
-  `superpowers/plans/archive/` as history.
+  operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)
 - [CI check catalog runbook](testing/ci-check-catalog-runbook.md)
 - [i18n gate](testing/i18n-gate.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
-- [Canonical audit index](audits/INDEX.md)
+- [Canonical audit index and retention policy](audits/INDEX.md)
+- [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
-Historical audit reports remain under `audits/archive/`. They are retained as
-an explicit audit trail and are not current implementation guidance.
+Legacy audit and plan archives have been reconciled against the master plan,
+ADRs, tests, and workflow contracts, then removed from the working tree without
+rewriting Git history. The audit index records the private rescue bundle,
+verification evidence, and recovery procedure; archive contents are not current
+implementation guidance.
+
+## Documentation ownership
+
+| Subject | Canonical source |
+| --- | --- |
+| Product requirements | [MVP requirements](superpowers/plans/University_Ecosystem_MVP.md) |
+| Priorities, acceptance and v1.1 backlog | [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) |
+| Current checkpoint and next actions | [STATUS](superpowers/plans/STATUS.md) |
+| Architecture and policy decisions | [ADRs](adr/README.md) |
+| Enforced quality and check inventory | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
+| Operator procedures | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/) |
+| Finding traceability and historical retention | [Audit index](audits/INDEX.md) |
+
+Update the canonical source before adjusting summaries or translations. Keep
+commands, versions and configuration descriptions aligned with executable
+configuration. Change a generated document through its generator and verify
+the output. Record runtime results with their source revision and scope; a
+historical pass does not certify a later checkout. Retain useful procedures
+and decisions while removing superseded handoffs and duplicate snapshots.
+The vendored skill catalog under `.agents/skills/` retains upstream guidance;
+current task and repository instructions determine how it applies here.

@@ -39,6 +39,7 @@ class UserDTO(DTOModel):
     # Nested DTOs
     profile: UserProfileDTO | None = None
     preferences: UserPreferencesDTO | None = None
+    education_path: UserEducationDTO | None = None
 
 
 class UserAuthDTO(UserDTO):
@@ -64,6 +65,15 @@ class UserPreferencesDTO(DTOModel):
     dnd_start: time | None
     dnd_end: time | None
     timezone: str | None
+
+
+class UserEducationDTO(DTOModel):
+    institute: str | None
+    course: str | None
+    education_level: str | None
+    track: str | None
+    program: str | None
+    record_book_number: str | None
 
 
 class UserListingDTO(DTOModel):

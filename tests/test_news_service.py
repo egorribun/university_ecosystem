@@ -8,6 +8,7 @@ import app.models as models
 from app.schemas import schemas
 from app.schemas.dtos.news import NewsDTO, NewsListingDTO
 from app.services.news_service import NewsService
+from app.services.vector_service import SemanticSearchUnavailableError
 
 
 @pytest.fixture
@@ -79,6 +80,21 @@ async def test_list_news(news_service, mock_uow, mock_repo, mock_vector_service)
 
 
 @pytest.mark.asyncio
+async def test_list_news_keeps_text_search_when_semantic_search_is_unavailable(
+    news_service, mock_repo, mock_vector_service
+):
+    mock_vector_service.get_embedding.side_effect = SemanticSearchUnavailableError(
+        "provider detail must not escape the text-search path"
+    )
+
+    await news_service.list_news(search="campus policy")
+
+    kwargs = mock_repo.list_news.await_args.kwargs
+    assert kwargs["search_query"] == "campus policy"
+    assert kwargs["query_embedding"] is None
+
+
+@pytest.mark.asyncio
 async def test_create_news(news_service, mock_uow, mock_repo):
     data = schemas.NewsCreate(title="News", content="Content")
 
@@ -109,7 +125,7 @@ async def test_toggle_like(news_service, mock_uow, mock_repo):
 
 
 # --------------------------------------------------------------------------- #
-# get_news / get_news_with_details / get_news_item — interaction enrichment    #
+# get_news / get_news_item — interaction enrichment    #
 # --------------------------------------------------------------------------- #
 
 
@@ -125,25 +141,6 @@ async def test_get_news_enriches_with_interactions(news_service, mock_repo):
     assert result is news_obj
     assert result.likes_count == 5
     assert result.is_liked is True
-
-
-@pytest.mark.asyncio
-async def test_get_news_with_details_none_when_missing(news_service, mock_repo):
-    mock_repo.get.return_value = None
-    assert await news_service.get_news_with_details(uuid4(), uuid4()) is None
-
-
-@pytest.mark.asyncio
-async def test_get_news_with_details_enriches(news_service, mock_repo):
-    news_obj = MagicMock()
-    mock_repo.get.return_value = news_obj
-    mock_repo.get_with_interactions.return_value = (3, False)
-
-    result = await news_service.get_news_with_details(uuid4(), uuid4())
-
-    assert result is news_obj
-    assert result.likes_count == 3
-    assert result.is_liked is False
 
 
 @pytest.mark.asyncio

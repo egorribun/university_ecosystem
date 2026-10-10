@@ -38,7 +38,7 @@ class SpiceDBProvider(Provider):
         """Singleton async gRPC channel — opened once per app process."""
 
         from app.core.config import settings
-        from app.core.spicedb import _parse_endpoint
+        from app.core.spicedb import _parse_endpoint, create_async_spicedb_channel
 
         host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
         target = f"{host}:{port}"
@@ -53,15 +53,9 @@ class SpiceDBProvider(Provider):
             ("grpc.http2.min_time_between_pings_ms", 10_000),
         ]
 
-        if use_ssl:
-            from grpcutil import bearer_token_credentials
-
-            credentials = bearer_token_credentials(token)
-            channel = grpc.aio.secure_channel(
-                target, credentials, options=_KEEPALIVE_OPTIONS
-            )
-        else:
-            channel = grpc.aio.insecure_channel(target, options=_KEEPALIVE_OPTIONS)
+        channel = create_async_spicedb_channel(
+            target, token, use_ssl=use_ssl, options=_KEEPALIVE_OPTIONS
+        )
 
         logger.info(
             "SpiceDB singleton channel opened: %s (ssl=%s)",

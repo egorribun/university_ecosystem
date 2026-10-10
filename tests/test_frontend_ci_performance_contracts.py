@@ -204,7 +204,7 @@ def test_frontend_suite_is_not_serialized_behind_pre_commit() -> None:
     assert frontend["permissions"] == {"contents": "read", "actions": "read"}
     assert frontend["with"] == {
         "node-version": "24",
-        "run-lighthouse": True,
+        "run-lighthouse": False,
         "wasm-artifact-id": "${{ needs.e2e-wasm-build.outputs.artifact_id }}",
         "wasm-artifact-name": "${{ needs.e2e-wasm-build.outputs.artifact_name }}",
         "wasm-artifact-digest": "${{ needs.e2e-wasm-build.outputs.artifact_digest }}",

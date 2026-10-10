@@ -1,128 +1,49 @@
 /**
- * admin-visual-smoke.mjs — authenticated admin-route visual smoke
- * smoke completion (Path B attempt). Uses the shared visual-audit auth+JWKS
- * infra for admin user + 5 admin routes × 2 themes (10 captures total).
+ * Authenticates through the browser context, loads /dashboard to let the
+ * client resolve the authoritative /users/me profile, then navigates to each
+ * admin route through the app's own links. A screenshot is written only after
+ * the URL, main landmark, admin-theme scope, and route-specific localized
+ * heading prove that the intended admin page is rendered.
  *
- * ## W165 SW3 outcome (post-execution, 2026-05-18)
+ * The smoke keeps one hydrated page and uses the client router: a cold
+ * full-document navigation can run route guards before the profile request
+ * settles. This checks the real admin UI without changing auth behavior.
  *
- * Path B execution **partially failed**: all 10 captures returned HTTP 200 +
- * AUTHED + 0 hydration errors at the script-detection level, BUT visual
- * inspection of the screenshots revealed the captures show LOGIN PAGE
- * (post-redirect-to-/login), not admin pages.
+ * Routes: /admin/audit, /admin/feature-flags, /admin/notifications,
+ * /admin/stories, and /admin/users in English and Russian, each in light and
+ * dark themes.
  *
- * Root cause (W141 anti-pattern #3 29th vindication candidate, NEW W165
- * finding):
- *   - `_admin.tsx:34` route guard checks `context.auth.user.role !== "admin"`
- *   - JWT payload has `role=(none)` — backend does NOT include role in JWT
- *     claims (only is_active per W136 SW1); role flows via /users/me
- *   - For cold-cache visits (fresh Playwright context with no idb-persister),
- *     AuthProvider initial state is `user=null, isAuth=false` until /users/me
- *     resolves (~50-200ms post-mount)
- *   - Router `beforeLoad` fires once on navigation; if context.auth.isAuth
- *     === false at that moment → redirect to /login
- *   - The 1500ms post-goto waitForTimeout was AFTER beforeLoad already fired
- *     and redirected → screenshots captured login page state
- *
- * The Tier 3 visual smoke scope (verify `.dark .admin-theme` CSS renders
- * correctly in production) was NOT achieved via Path B. W165 SW3 pivoted to
- * Path A close-as-already-resolved (the W164 SW4 static-fallback evidence
- * — Docker container CSS bundle grep confirmed Tailwind v4 emits the
- * `.dark .admin-theme` block correctly with 18 color-mix(...) overrides
- * at frontend/src/styles/tokens/admin.css:119-177).
- *
- * ## W166+ rework path (~2-3h focused scope to re-enable Path B)
- *
- * Two structural fixes would make this script work:
- *
- * 1. **Backend includes role in JWT claims** (W136 SW1 pattern extended)
- *    — LoginSessionManager.finalize_login adds `extra_claims={"role":
- *    user.role.value}` so SSR auth hint extraction has role available
- *    immediately. Fixes cold-cache race for real admin users too (not
- *    just Playwright smoke). RECOMMENDED.
- *
- * 2. **Script pre-populates idb-persister with admin user** before
- *    Playwright navigation — would make initial AuthProvider state
- *    have user.role=admin without /users/me roundtrip. Test-only fix,
- *    doesn't help real users.
- *
- * Alternative cheap mitigation (no structural fix):
- *   - Increase `waitForTimeout` from 1500ms → 5000ms AND change
- *     `page.goto` `waitUntil: "domcontentloaded"` → `"networkidle"` so
- *     /users/me completes before route guard re-evaluates. Risk: if
- *     route guard doesn't re-evaluate on context change, this still
- *     fails. Worth testing in W166+ as cheap first iteration.
- *
- * ## Original (pre-execution) goal
- *
- * Closes W164 §Honesty #4 PARTIAL via real visual evidence beyond the
- * static-fallback verification at AUDIT_WAVE164.md §SW4 Tier 3 (Docker
- * container CSS bundle grep proved Tailwind v4 compiled `.dark .admin-theme`
- * rule emissions exist; this script was intended to prove the rules
- * RENDER correctly in a real browser at user-facing pixel level).
- *
- * ## Why Playwright real-Chrome instead of chrome-devtools-mcp
- *
- * W137 SW7 + W138 SW3 documented Windows wall patterns for chrome-devtools-
- * mcp (chrome-profile-locked + heavy-DOM eval timeout on authed routes).
- * Playwright real-
- * Chrome (channel: "chrome") bypasses CDP backchannel timeouts. Bundled
- * Chromium fallback if real Chrome unavailable.
- *
- * ## Admin routes covered
- *
- *   /admin/audit          — Audit logs table (12 entries seeded)
- *   /admin/feature-flags  — Feature flag toggles
- *   /admin/notifications  — Dead-letter queue (4 jobs seeded)
- *   /admin/stories        — Stories admin. The current inventory contains five
- *                           admin routes; capturing both themes yields ten
- *                           required screenshots.
- *   /admin/users          — User management table (7 users incl. admin seeded)
- *
- * ## Usage
- *
- *   node ./scripts/admin-visual-smoke.mjs
- *
- *   # Override:
- *   ORIGIN=http://localhost \
- *     TEST_EMAIL=admin@university.dev \
- *     TEST_PASSWORD=Admin@2024test \
- *     node ./scripts/admin-visual-smoke.mjs
- *
- * ## Exit codes
- *
- *   0: all 10 captures succeed + 0 hydration errors per route
- *   1: JWKS pre-check failed OR login failed OR a route returned non-200
- *   2: hydration errors detected on >=1 admin route
- *   3: JWT alg !== "RS256" (W137 SW1 verification failed)
- *   4: JWKS returned 0 keys (W137 SW1 backend RSA key not loaded)
- *
- * ## Prerequisites
- *
- * 1. Docker stack running healthy (start-docker.ps1 -Build, then service stack
- *    Up + healthy per W137 SW6 healthchecks).
- * 2. Admin user seeded:
- *      docker cp scripts/seed_admin_data.py university_ecosystem-backend-1:/app/
- *      MSYS_NO_PATHCONV=1 docker exec -w /app university_ecosystem-backend-1 \
- *        python seed_admin_data.py
- *    (idempotent; 1st run creates, subsequent runs reuse existing)
+ * Usage: node ./scripts/admin-visual-smoke.mjs
+ * Prerequisites: a healthy local stack, RSA JWKS, and the seeded admin account.
  */
-
 import { Buffer } from "node:buffer"
-import { mkdir, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
-import { loginBrowserContext } from "./visual-smoke-auth.mjs"
+import { loginBrowserContext, withOwnedSessionCleanup } from "./visual-smoke-auth.mjs"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname, "..")
+const CHECKOUT_ROOT = path.resolve(PROJECT_ROOT, "..")
 
 const ORIGIN = process.env.ORIGIN ?? "http://localhost"
 const TEST_EMAIL = process.env.TEST_EMAIL ?? "admin@university.dev"
-const TEST_PASSWORD = process.env.TEST_PASSWORD ?? "Admin@2024test"
+
+export function getAdminSmokeCredentials(environment = process.env) {
+  //  pragma: allowlist nextline secret
+  const candidate = environment.TEST_PASSWORD
+  if (typeof candidate !== "string" || candidate.trim().length === 0) {
+    throw new Error("TEST_PASSWORD must be set to a non-empty password")
+  }
+  return {
+    email: environment.TEST_EMAIL ?? "admin@university.dev",
+    password: candidate,
+  }
+}
 const OUT_DIR = path.resolve(PROJECT_ROOT, process.env.OUT_DIR ?? ".screenshots/admin-visual-smoke")
 
 const ADMIN_ROUTES = [
@@ -134,6 +55,311 @@ const ADMIN_ROUTES = [
 ]
 
 const THEMES = ["light", "dark"]
+const LOCALES = ["en", "ru"]
+
+function parseMatrixList(value, fallback, name, supportedValues) {
+  const raw = typeof value === "string" && value.trim() ? value : fallback
+  const values = raw.split(",").map((item) => item.trim())
+  if (
+    values.length === 0 ||
+    values.some((item) => !item) ||
+    new Set(values).size !== values.length ||
+    values.some((item) => !supportedValues.includes(item))
+  ) {
+    throw new Error(`${name} must be a comma-separated list of supported, unique values`)
+  }
+  return values
+}
+
+function parseMatrixWidths(value) {
+  const raw = typeof value === "string" && value.trim() ? value : "390,768,1440"
+  const values = raw.split(",").map((item) => item.trim())
+  if (values.length === 0 || values.length > 8 || values.some((item) => !/^\d+$/u.test(item))) {
+    throw new Error("VISUAL_WIDTHS must contain one to eight integer CSS-pixel widths")
+  }
+  const widths = values.map(Number)
+  if (
+    new Set(widths).size !== widths.length ||
+    widths.some((width) => width < 320 || width > 2560)
+  ) {
+    throw new Error("VISUAL_WIDTHS must contain unique widths from 320 through 2560")
+  }
+  return widths
+}
+
+function isOutsideCheckout(checkoutRoot, candidate) {
+  const relativePath = path.relative(path.resolve(checkoutRoot), path.resolve(candidate))
+  return (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  )
+}
+
+async function assertPrivateOutputDirectory(outputDirectory) {
+  const resolvedOutput = path.resolve(outputDirectory)
+  let ancestor = resolvedOutput
+  const missingParts = []
+  let realOutput
+  for (;;) {
+    try {
+      const realAncestor = await realpath(ancestor)
+      realOutput = path.resolve(realAncestor, ...missingParts)
+      break
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error
+      const parent = path.dirname(ancestor)
+      if (parent === ancestor) throw error
+      missingParts.unshift(path.basename(ancestor))
+      ancestor = parent
+    }
+  }
+  const realCheckout = await realpath(CHECKOUT_ROOT)
+  if (!isOutsideCheckout(realCheckout, realOutput)) {
+    throw new Error("Matrix capture OUT_DIR must resolve outside the checkout")
+  }
+}
+
+export function parseAdminVisualCaptureMatrix(
+  environment = process.env,
+  { checkoutRoot = CHECKOUT_ROOT } = {}
+) {
+  const enabled = environment.VISUAL_CAPTURE_MATRIX
+  if (enabled === undefined || enabled === "" || enabled === "0") return null
+  if (enabled !== "1") throw new Error("VISUAL_CAPTURE_MATRIX must be 1 when enabled")
+
+  let origin
+  try {
+    origin = new URL(environment.ORIGIN ?? "http://localhost")
+  } catch {
+    throw new Error("ORIGIN must be a valid HTTP(S) origin for matrix capture")
+  }
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash
+  ) {
+    throw new Error("ORIGIN must be a clean HTTP(S) origin without credentials or path")
+  }
+
+  if (typeof environment.OUT_DIR !== "string" || !path.isAbsolute(environment.OUT_DIR)) {
+    throw new Error("Matrix capture requires an absolute caller-selected OUT_DIR")
+  }
+  const outputDir = path.resolve(environment.OUT_DIR)
+  if (!isOutsideCheckout(checkoutRoot, outputDir)) {
+    throw new Error("Matrix capture OUT_DIR must be outside the checkout")
+  }
+  if (environment.GITHUB_OUTPUT) {
+    throw new Error("Matrix capture must not publish its private output as a CI artifact")
+  }
+
+  const sourceSha = environment.SOURCE_SHA ?? environment.GITHUB_SHA
+  if (typeof sourceSha !== "string" || !/^[0-9a-f]{40}$/iu.test(sourceSha)) {
+    throw new Error("Matrix capture requires a 40-character SOURCE_SHA or GITHUB_SHA")
+  }
+  if (typeof environment.TEST_EMAIL !== "string" || !environment.TEST_EMAIL.trim()) {
+    throw new Error("Matrix capture requires an explicit synthetic admin TEST_EMAIL")
+  }
+  if (typeof environment.TEST_PASSWORD !== "string" || !environment.TEST_PASSWORD.trim()) {
+    throw new Error("Matrix capture requires an explicit synthetic admin TEST_PASSWORD")
+  }
+
+  const locales = parseMatrixList(environment.VISUAL_LOCALES, "en,ru", "VISUAL_LOCALES", LOCALES)
+  const themes = parseMatrixList(environment.VISUAL_THEMES, "light,dark", "VISUAL_THEMES", THEMES)
+  const widths = parseMatrixWidths(environment.VISUAL_WIDTHS)
+  const heightValue = environment.VISUAL_HEIGHT ?? "800"
+  if (!/^\d+$/u.test(heightValue)) {
+    throw new Error("VISUAL_HEIGHT must be an integer CSS-pixel height")
+  }
+  const height = Number(heightValue)
+  if (height < 600 || height > 1600) {
+    throw new Error("VISUAL_HEIGHT must be from 600 through 1600")
+  }
+
+  return {
+    mode: "admin-live-visual-matrix",
+    evidenceKind: "real-browser-no-route-mocks",
+    origin: origin.origin,
+    outputDir,
+    sourceSha: sourceSha.toLowerCase(),
+    locales,
+    themes,
+    widths,
+    height,
+  }
+}
+
+export function buildAdminCaptureBasename(routePath, locale, theme, captureConfig = null) {
+  const base = `${safeFilename(routePath)}_${locale}_${theme}`
+  return captureConfig ? `${base}_w${captureConfig.width}` : base
+}
+
+const ADMIN_ROUTE_HEADINGS = {
+  "/admin/audit": { en: "Secure Audit Logs", ru: "Защищённый аудит" },
+  "/admin/feature-flags": {
+    en: "Feature Flag Diagnostics",
+    ru: "Диагностика флагов функций",
+  },
+  "/admin/notifications": { en: "Notification queue", ru: "Очередь уведомлений" },
+  "/admin/stories": { en: "Stories management", ru: "Управление сторис" },
+  "/admin/users": { en: "Users", ru: "Пользователи" },
+}
+
+function normalizeHeading(value) {
+  return typeof value === "string" ? value.replace(/\s+/gu, " ").trim().toLowerCase() : ""
+}
+
+export function classifyAdminPageSnapshot({
+  routePath,
+  finalUrl,
+  hasMainLandmark,
+  hasAdminTheme,
+  locale,
+  documentLanguage,
+  headingText,
+  expectedOrigin = ORIGIN,
+}) {
+  const routeMatches = (() => {
+    try {
+      const final = new URL(finalUrl)
+      return final.origin === new URL(expectedOrigin).origin && final.pathname === routePath
+    } catch {
+      return false
+    }
+  })()
+
+  const expectedHeading = ADMIN_ROUTE_HEADINGS[routePath]?.[locale]
+  const heading = normalizeHeading(headingText)
+  const hasExpectedHeading =
+    typeof expectedHeading === "string" && normalizeHeading(expectedHeading) === heading
+  const localeMatches = documentLanguage === locale
+
+  return {
+    ready:
+      routeMatches &&
+      Boolean(hasMainLandmark) &&
+      Boolean(hasAdminTheme) &&
+      localeMatches &&
+      hasExpectedHeading,
+    routeMatches,
+    hasMainLandmark: Boolean(hasMainLandmark),
+    hasAdminTheme: Boolean(hasAdminTheme),
+    localeMatches,
+    hasExpectedHeading,
+  }
+}
+
+export async function createAdminSmokeRunDirectory(outputRoot) {
+  await mkdir(outputRoot, { recursive: true })
+  return mkdtemp(path.join(outputRoot, "run-"))
+}
+
+export function isAdminCaptureSuccessful(capture) {
+  return (
+    LOCALES.includes(capture?.locale) &&
+    capture?.bootstrapPath === "/dashboard" &&
+    capture?.bootstrapHttpStatus === 200 &&
+    capture?.adminRoleConfirmed === true &&
+    !capture.redirectedToLogin &&
+    capture.pageReadiness?.ready === true &&
+    capture.pageReadiness?.themeMatches !== false &&
+    capture.pageReadiness?.viewportMatches !== false &&
+    typeof capture.screenshotPath === "string" &&
+    capture.screenshotPath.trim() !== "" &&
+    (capture.width === undefined || (Number.isInteger(capture.width) && capture.width >= 320)) &&
+    (capture.height === undefined || (Number.isInteger(capture.height) && capture.height >= 600))
+  )
+}
+
+function safePathname(value) {
+  try {
+    return new URL(value).pathname
+  } catch {
+    return ""
+  }
+}
+
+function safeRequestUrl(value) {
+  try {
+    const url = new URL(value)
+    return `${url.origin}${url.pathname}`
+  } catch {
+    return "[invalid-url]"
+  }
+}
+
+function safeAdminPathname(value) {
+  const pathname = safePathname(value)
+  return ADMIN_ROUTES.includes(pathname) || pathname === "/login" ? pathname : null
+}
+
+export function createAdminSmokeSidecar({
+  routePath,
+  locale,
+  theme,
+  bootstrapPath,
+  bootstrapHttpStatus,
+  finalUrl,
+  documentLanguage,
+  redirectedToLogin,
+  adminRoleConfirmed,
+  pageReadiness,
+  screenshotPath,
+  consoleErrorCount,
+  hydrationErrorCount,
+  networkRequestCount,
+  navigationError,
+  width = 1280,
+  height = 800,
+  sourceSha = null,
+  captureMode = "admin-live-default",
+}) {
+  const readiness = pageReadiness ?? {}
+  const screenshotFilename = typeof screenshotPath === "string" ? path.basename(screenshotPath) : ""
+  const safeScreenshotPath = /^[a-z0-9_-]+\.png$/iu.test(screenshotFilename)
+    ? screenshotFilename
+    : null
+  return {
+    path: ADMIN_ROUTES.includes(routePath) ? routePath : null,
+    locale: LOCALES.includes(locale) ? locale : null,
+    theme: THEMES.includes(theme) ? theme : null,
+    bootstrapPath: bootstrapPath === "/dashboard" ? "/dashboard" : null,
+    bootstrapHttpStatus,
+    finalPath: safeAdminPathname(finalUrl),
+    documentLanguage: LOCALES.includes(documentLanguage) ? documentLanguage : null,
+    redirectedToLogin: Boolean(redirectedToLogin),
+    adminRoleConfirmed: Boolean(adminRoleConfirmed),
+    pageReadiness: {
+      ready: readiness.ready === true,
+      routeMatches: readiness.routeMatches === true,
+      hasMainLandmark: readiness.hasMainLandmark === true,
+      hasAdminTheme: readiness.hasAdminTheme === true,
+      localeMatches: readiness.localeMatches === true,
+      hasExpectedHeading: readiness.hasExpectedHeading === true,
+      themeMatches: readiness.themeMatches !== false,
+      viewportMatches: readiness.viewportMatches !== false,
+    },
+    screenshotPath: safeScreenshotPath,
+    captureMode,
+    evidenceKind: "real-browser-no-route-mocks",
+    sourceSha:
+      typeof sourceSha === "string" && /^[0-9a-f]{40}$/iu.test(sourceSha) ? sourceSha : null,
+    viewport: Number.isInteger(width) && Number.isInteger(height) ? { width, height } : null,
+    consoleErrorCount,
+    hydrationErrorCount,
+    networkRequestCount,
+    navigationError: navigationError ? "navigation_failed" : null,
+  }
+}
+
+export async function captureAdminScreenshot(page, pageReadiness, screenshotOptions) {
+  if (!pageReadiness?.ready) return null
+  await page.screenshot(screenshotOptions)
+  return screenshotOptions.path
+}
 
 function safeFilename(routePath) {
   if (routePath === "/" || routePath === "") return "root"
@@ -146,28 +372,20 @@ function safeFilename(routePath) {
   )
 }
 
-function decodeJwtUnverified(token) {
+function decodeJwtHeader(token) {
   const parts = token.split(".")
   if (parts.length !== 3) {
-    throw new Error(`Malformed JWT: expected 3 dot-separated parts, got ${parts.length}`)
+    throw new Error("Malformed access token")
   }
   const decode = (b64) =>
     JSON.parse(Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8"))
-  return {
-    header: decode(parts[0]),
-    payload: decode(parts[1]),
-  }
+  return decode(parts[0])
 }
 
 async function checkJwksEndpoint() {
-  const jwksUrl = `${ORIGIN}/.well-known/jwks.json`
-  console.log(`-> JWKS pre-check: GET ${jwksUrl}`)
-  let resp = await fetch(jwksUrl)
-  if (resp.status !== 200) {
-    const altUrl = `${ORIGIN}/api/v1/.well-known/jwks.json`
-    console.log(`   fallback: GET ${altUrl}`)
-    resp = await fetch(altUrl)
-  }
+  const jwksUrl = new URL("/.well-known/jwks.json", ORIGIN)
+  console.log("-> JWKS pre-check: GET /.well-known/jwks.json")
+  const resp = await fetch(jwksUrl)
   if (resp.status !== 200) {
     throw new Error(`JWKS endpoint unreachable: HTTP ${resp.status}`)
   }
@@ -175,44 +393,200 @@ async function checkJwksEndpoint() {
   if (!jwks.keys || jwks.keys.length === 0) {
     throw new Error(`JWKS endpoint returned 0 keys`)
   }
-  // Prefer kty=RSA + n + e per W143 polish-v2 ## Gotchas (proper RSA JWKS
-  // shape, not the HMAC metadata stub at /api/v1/.well-known/jwks.json).
+  // Require kty=RSA + n + e (the public RSA JWKS shape).
   const rsaKeys = jwks.keys.filter(
     (k) => k.kty === "RSA" && typeof k.n === "string" && typeof k.e === "string"
   )
   if (rsaKeys.length === 0) {
     throw new Error(
       `JWKS has ${jwks.keys.length} keys but NONE with kty=RSA + n + e fields. ` +
-        `Hit the HMAC metadata stub at /api/v1/.well-known/jwks.json? Backend RSA key may not be loaded.`
+        `Backend RSA key may not be loaded.`
     )
   }
-  console.log(
-    `OK JWKS healthy: ${rsaKeys.length} RSA key(s) (kids: ${rsaKeys.map((k) => k.kid).join(", ")})`
-  )
-  return jwks
+  console.log(`OK JWKS healthy: ${rsaKeys.length} RSA key(s)`)
+  return { rsaKeyCount: rsaKeys.length, totalKeyCount: jwks.keys.length }
 }
 
-async function performLogin(context) {
-  console.log(`-> API login: POST ${ORIGIN}/api/v1/auth/login/json as ${TEST_EMAIL}`)
-  const { cookies, cookieJar } = await loginBrowserContext({
+async function performLogin(context, credentials, ownSession) {
+  console.log("-> API login: POST /api/v1/auth/login/json")
+  const { cookies, cookieJar, ownedSession } = await loginBrowserContext({
     context,
     origin: ORIGIN,
-    email: TEST_EMAIL,
-    password: TEST_PASSWORD,
+    email: credentials.email,
+    password: credentials.password,
   })
+  ownSession(ownedSession)
   const accessTokenValue = cookieJar.get("access_token_v2")
 
-  const { header, payload } = decodeJwtUnverified(accessTokenValue)
-  console.log(`   JWT header: alg=${header.alg} kid=${header.kid ?? "(none)"}`)
-  console.log(
-    `   JWT payload: role=${payload.role ?? "(none)"} aud=${payload.aud} is_active=${payload.is_active}`
-  )
-  if (header.alg !== "RS256") {
-    throw new RS256Error(`JWT alg=${header.alg}, expected "RS256"`)
+  const jwtHeader = decodeJwtHeader(accessTokenValue)
+  console.log(`   JWT signing algorithm: ${jwtHeader.alg ?? "(missing)"}`)
+  if (jwtHeader.alg !== "RS256") {
+    throw new RS256Error(`JWT signing algorithm ${jwtHeader.alg ?? "(missing)"}; expected RS256`)
   }
 
   console.log(`OK Login OK; browser context holds ${cookies.length} cookies`)
-  return { cookies, jwtHeader: header, jwtPayload: payload }
+  return { cookieCount: cookies.length, jwtAlgorithm: jwtHeader.alg }
+}
+
+function setVisualExitCode(error, code) {
+  Object.defineProperty(error, "visualExitCode", { value: code, configurable: true })
+  return error
+}
+
+async function setSmokeTheme(page, theme, { beforeNavigation = false } = {}) {
+  const cookieDomain = new URL(ORIGIN).hostname
+  await page.context().addCookies([
+    {
+      name: "ue-mode",
+      value: theme,
+      domain: cookieDomain,
+      path: "/",
+    },
+  ])
+  await page.emulateMedia({ colorScheme: theme })
+
+  if (beforeNavigation) {
+    await page.addInitScript((themeName) => {
+      try {
+        localStorage.setItem("ue-mode", themeName)
+      } catch {
+        // Ignore storage restrictions; the cookie and explicit class remain.
+      }
+    }, theme)
+    return
+  }
+
+  await page.evaluate((themeName) => {
+    try {
+      localStorage.setItem("ue-mode", themeName)
+    } catch {
+      // Ignore storage restrictions; the cookie and explicit class remain.
+    }
+    const { document } = globalThis
+    for (const element of [document.documentElement, document.body]) {
+      element.classList.remove("light", "dark")
+      element.classList.add(themeName)
+      element.dataset.colorScheme = themeName
+    }
+  }, theme)
+}
+
+async function setSmokeLocale(page, locale, { beforeNavigation = false } = {}) {
+  if (!LOCALES.includes(locale)) throw new Error(`Unsupported smoke locale: ${locale}`)
+  const origin = new URL(ORIGIN)
+  await page.context().addCookies([
+    {
+      name: "ue:language",
+      value: locale,
+      domain: origin.hostname,
+      path: "/",
+      secure: origin.protocol === "https:",
+      sameSite: "Lax",
+    },
+  ])
+
+  if (beforeNavigation) {
+    await page.addInitScript(() => {
+      try {
+        const match = globalThis.document.cookie.match(/(?:^|;\s*)ue:language=(en|ru)(?:;|$)/u)
+        if (match) globalThis.localStorage.setItem("ue:language", match[1])
+      } catch {
+        // The mirrored cookie still selects the SSR document language.
+      }
+    })
+    return
+  }
+
+  await page.evaluate((language) => {
+    localStorage.setItem("ue:language", language)
+  }, locale)
+}
+
+function isCurrentUserResponse(response) {
+  try {
+    const url = new URL(response.url())
+    return (
+      url.origin === new URL(ORIGIN).origin &&
+      url.pathname.endsWith("/api/v1/users/me") &&
+      response.request().method() === "GET"
+    )
+  } catch {
+    return false
+  }
+}
+
+async function bootstrapAdminSession(page, expectedLocale) {
+  const profileResponsePromise = page.waitForResponse(isCurrentUserResponse)
+  const response = await page.goto(`${ORIGIN}/dashboard`, {
+    waitUntil: "domcontentloaded",
+    timeout: 30_000,
+  })
+  const documentStatus = response?.status() ?? null
+  const bootstrapUrl = new URL(page.url())
+  if (
+    documentStatus !== 200 ||
+    bootstrapUrl.origin !== new URL(ORIGIN).origin ||
+    bootstrapUrl.pathname !== "/dashboard"
+  ) {
+    throw new Error(
+      `Authenticated app bootstrap failed: HTTP ${documentStatus}, final URL ${bootstrapUrl.pathname}`
+    )
+  }
+
+  const profileResponse = await profileResponsePromise
+  if (profileResponse.status() !== 200) {
+    throw new Error(`Admin profile request failed: HTTP ${profileResponse.status()}`)
+  }
+  const profile = await profileResponse.json()
+  if (profile.role !== "admin" || profile.email?.toLowerCase() !== TEST_EMAIL.toLowerCase()) {
+    throw new Error(`Expected seeded admin profile; received role=${profile.role ?? "(missing)"}`)
+  }
+
+  await page.waitForFunction(
+    (language) => globalThis.document.documentElement.getAttribute("lang") === language,
+    expectedLocale,
+    { timeout: 15_000 }
+  )
+  const documentLanguage = await page.locator("html").getAttribute("lang")
+  if (documentLanguage !== expectedLocale) {
+    throw new Error(
+      `Requested locale ${expectedLocale} was not active after /dashboard bootstrap (document lang=${documentLanguage ?? "missing"})`
+    )
+  }
+
+  let adminNavLink = page.locator('nav a[href^="/admin/"]').first()
+  if (!(await adminNavLink.isVisible().catch(() => false))) {
+    await page.locator('nav button[aria-controls="navbar-overflow-menu"]').click()
+    adminNavLink = page.locator('#navbar-overflow-menu a[href^="/admin/"]').first()
+  }
+  await adminNavLink.waitFor({ state: "visible", timeout: 15_000 })
+  return {
+    documentPath: bootstrapUrl.pathname,
+    documentStatus,
+    locale: expectedLocale,
+    adminRoleConfirmed: true,
+  }
+}
+
+async function navigateToAdminRoute(page, routePath) {
+  const origin = new URL(ORIGIN).origin
+  const currentUrl = new URL(page.url())
+  if (currentUrl.origin === origin && currentUrl.pathname === routePath) return
+
+  let routeLink = page.locator(`nav a[href="${routePath}"]`).first()
+  if (!(await routeLink.isVisible().catch(() => false))) {
+    const overflowMenu = page.locator("#navbar-overflow-menu")
+    if (!(await overflowMenu.isVisible().catch(() => false))) {
+      await page.locator('nav button[aria-controls="navbar-overflow-menu"]').click()
+    }
+    routeLink = page.locator(`#navbar-overflow-menu a[href="${routePath}"]`)
+  }
+
+  await routeLink.waitFor({ state: "visible", timeout: 10_000 })
+  await routeLink.click()
+  await page.waitForURL((url) => url.origin === origin && url.pathname === routePath, {
+    timeout: 15_000,
+  })
 }
 
 class RS256Error extends Error {
@@ -228,7 +602,16 @@ class RS256Error extends Error {
  * because the app uses Tailwind v4's class-based dark mode (per
  * frontend/src/styles/tokens/admin.css:120 `.dark .admin-theme` selector).
  */
-async function smokeAdminRoute(page, routePath, theme, outDir) {
+async function smokeAdminRoute(
+  page,
+  routePath,
+  locale,
+  theme,
+  outDir,
+  adminSession,
+  captureConfig = null,
+  sourceSha = null
+) {
   const consoleMessages = []
   const networkRequests = []
 
@@ -239,10 +622,11 @@ async function smokeAdminRoute(page, routePath, theme, outDir) {
     consoleMessages.push({ type: "pageerror", text: err.message })
   }
   const requestHandler = (req) => {
-    networkRequests.push({ method: req.method(), url: req.url() })
+    networkRequests.push({ method: req.method(), url: safeRequestUrl(req.url()) })
   }
   const responseHandler = (res) => {
-    const idx = networkRequests.findLastIndex((r) => r.url === res.url() && !("status" in r))
+    const responseUrl = safeRequestUrl(res.url())
+    const idx = networkRequests.findLastIndex((r) => r.url === responseUrl && !("status" in r))
     if (idx >= 0) networkRequests[idx].status = res.status()
   }
 
@@ -251,229 +635,290 @@ async function smokeAdminRoute(page, routePath, theme, outDir) {
   page.on("request", requestHandler)
   page.on("response", responseHandler)
 
-  // W188 SW2: Three-layer theme initialization BEFORE page.goto so both
-  // SSR initial render AND client hydration converge on the correct theme.
-  //
-  // Pre-W188 (PRE-EXISTING bug since W165 SW3): the script only set the
-  // theme via post-goto root.classList.add("dark") which does NOT propagate
-  // to SSR's initial HTML response NOR survive client React hydration
-  // (ThemeContext reads localStorage on mount, defaults to "system" which
-  // falls back to "light" in headless Chrome without --force-colors flag).
-  // Result: _dark.png files captured LIGHT theme. W164 + W167 §H#4 closures
-  // relied on STATIC CSS bundle grep, never visual fidelity — the gap went
-  // unnoticed for ~22 waves until W187 SW4 PNG inspection surfaced it.
-  //
-  // Why three layers (W188 SW2-followup per W138 Lesson #1 within-iter
-  // SAME-mechanism sub-fix — all "init theme to <theme>", just multiple
-  // surfaces):
-  //   1. Cookie ue-mode=<theme> — per W127 SW2 cookie-mirror: server reads
-  //      via globalThis.__ssrThemeGetter__ (src/server.ts) → RootShell
-  //      renders <html class="dark"> in SSR HTML (no FOUC).
-  //   2. localStorage ue-mode=<theme> — per ThemeContext readStoredTheme()
-  //      at frontend/src/contexts/ThemeContext.tsx:18-25: client useState
-  //      initializer reads localStorage; absent this, defaults to "system"
-  //      → media query → "light" in headless Chrome → client React
-  //      OVERRIDES the SSR-rendered dark class on hydration. addInitScript
-  //      runs BEFORE any page script per navigation, so localStorage is
-  //      already populated when ThemeContext mounts.
-  //   3. emulateMedia colorScheme=<theme> — defense-in-depth: if a future
-  //      ThemeContext refactor adds prefers-color-scheme fallback, this
-  //      ensures media query returns the target value.
-  //
-  // Combined, the post-goto root.classList.add("dark") below stays as a
-  // 4th-layer client-side re-application after hydration settles (covers
-  // race conditions where Framer Motion entrance animations snap before
-  // React's theme effect fires).
-  const cookieDomain = new URL(ORIGIN).hostname
-  await page.context().addCookies([
-    {
-      name: "ue-mode",
-      value: theme,
-      domain: cookieDomain,
-      path: "/",
-    },
-  ])
-  await page.addInitScript((themeName) => {
-    try {
-      localStorage.setItem("ue-mode", themeName)
-    } catch {
-      // ignore Safari private-browsing failures (RZ-31-03)
-    }
-  }, theme)
-  await page.emulateMedia({ colorScheme: theme })
-
-  const targetUrl = `${ORIGIN}${routePath}`
-  let httpStatus = null
-  let finalUrl = null
+  if (captureConfig) {
+    await page.setViewportSize({ width: captureConfig.width, height: captureConfig.height })
+  }
+  await setSmokeTheme(page, theme)
+  let finalUrl
   let navError = null
   let screenshotPath = null
+  let hasMainLandmark = false
+  let hasAdminTheme = false
+  let documentLanguage
+  let headingText = ""
+  let viewportMatches = false
+  let themeMatches = false
 
   try {
-    const resp = await page.goto(targetUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    })
-    httpStatus = resp?.status() ?? null
-    finalUrl = page.url()
-
-    // Apply theme class on <html> element (Tailwind v4 class-based dark mode).
-    // Light theme = no class; dark theme = add "dark" class.
-    // W188 SW2: this stays as defense-in-depth post cookie addition above —
-    // ThemeContext useEffect re-syncs class from cookie on mount, but explicit
-    // post-load class write covers any race where Framer Motion entrance
-    // animations snap before the React state propagation cycle completes.
-    await page.evaluate((themeName) => {
-      const root = globalThis.document.documentElement
-      if (themeName === "dark") {
-        root.classList.add("dark")
-      } else {
-        root.classList.remove("dark")
-      }
-    }, theme)
-
-    // Settle React hydration + Framer Motion + theme apply
+    await navigateToAdminRoute(page, routePath)
+    const main = page.locator("main#main-content")
+    await main.waitFor({ state: "visible", timeout: 15_000 })
+    await main.locator("h1").first().waitFor({ state: "visible", timeout: 15_000 })
     await page.waitForTimeout(1500)
 
-    // Capture screenshot (best-effort per W137 SW3 pattern — heavy DOM may
-    // hit timeout but page.screenshot is tolerant)
-    const filename = `${safeFilename(routePath)}_${theme}.png`
+    const viewportState = await page.evaluate(() => {
+      const documentTheme = globalThis.document.documentElement.dataset.colorScheme
+      return {
+        width: globalThis.innerWidth,
+        height: globalThis.innerHeight,
+        theme: documentTheme,
+        hasThemeClass: documentTheme
+          ? globalThis.document.documentElement.classList.contains(documentTheme)
+          : false,
+      }
+    })
+    viewportMatches =
+      viewportState.width === (captureConfig?.width ?? 1280) &&
+      viewportState.height === (captureConfig?.height ?? 800)
+    themeMatches = viewportState.theme === theme && viewportState.hasThemeClass
+
+    hasMainLandmark = (await main.count()) > 0
+    hasAdminTheme = (await page.locator(".admin-theme").count()) > 0
+    documentLanguage = (await page.locator("html").getAttribute("lang")) ?? ""
+    headingText =
+      (await main.locator("h1").first().textContent())?.replace(/\s+/gu, " ").trim() ?? ""
+    finalUrl = page.url()
+    const baseReadiness = classifyAdminPageSnapshot({
+      routePath,
+      finalUrl,
+      hasMainLandmark,
+      hasAdminTheme,
+      locale,
+      documentLanguage,
+      headingText,
+    })
+    const pageReadiness = {
+      ...baseReadiness,
+      viewportMatches,
+      themeMatches,
+      ready: baseReadiness.ready && viewportMatches && themeMatches,
+    }
+
+    const filename = `${buildAdminCaptureBasename(routePath, locale, theme, captureConfig)}.png`
     const fullPath = path.join(outDir, filename)
     try {
-      await page.screenshot({
+      screenshotPath = await captureAdminScreenshot(page, pageReadiness, {
         path: fullPath,
-        fullPage: false, // viewport only — admin tables can be very tall
+        fullPage: false,
         timeout: 10_000,
       })
-      screenshotPath = fullPath
-    } catch (err) {
-      console.warn(`   screenshot failed for ${routePath}/${theme}: ${err.message}`)
+    } catch {
+      console.warn(`   screenshot failed for ${routePath}/${locale}/${theme}`)
     }
-  } catch (err) {
-    navError = err
+  } catch (error) {
+    navError = error
+    finalUrl = page.url()
+    documentLanguage =
+      (await page
+        .locator("html")
+        .getAttribute("lang")
+        .catch(() => "")) ?? ""
   }
+
+  const pageReadiness = classifyAdminPageSnapshot({
+    routePath,
+    finalUrl,
+    hasMainLandmark,
+    hasAdminTheme,
+    locale,
+    documentLanguage,
+    headingText,
+  })
+  const verifiedPageReadiness = {
+    ...pageReadiness,
+    viewportMatches,
+    themeMatches,
+    ready: pageReadiness.ready && viewportMatches && themeMatches,
+  }
+  const finalPath = safeAdminPathname(finalUrl) ?? "unrecognized"
+  const redirectedToLogin = finalPath === "/login"
 
   page.off("console", consoleHandler)
   page.off("pageerror", pageErrorHandler)
   page.off("request", requestHandler)
   page.off("response", responseHandler)
 
-  const sidecarPath = path.join(outDir, `${safeFilename(routePath)}_${theme}.json`)
-  await writeFile(
-    sidecarPath,
-    JSON.stringify(
-      {
-        path: routePath,
-        theme,
-        targetUrl,
-        finalUrl,
-        httpStatus,
-        navigationError: navError?.message ?? null,
-        screenshotPath: screenshotPath ? path.relative(PROJECT_ROOT, screenshotPath) : null,
-        consoleMessages,
-        networkRequestCount: networkRequests.length,
-      },
-      null,
-      2
+  const errors = consoleMessages.filter(
+    (message) => message.type === "error" || message.type === "pageerror"
+  )
+  const hydrationErrors = consoleMessages.filter((message) => {
+    const text = message.text.toLowerCase()
+    return (
+      text.includes("hydrat") ||
+      text.includes("did not match") ||
+      /minified react error #\d+/u.test(text)
     )
-  )
-
-  const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
-  // Wave 167 SW1 (Tier 2) — extend filter to also catch React's minified
-  // hydration error class. Pre-W167 the filter matched only the unminified
-  // English phrases ("Hydration failed because..." / "did not match"), so
-  // production-bundled apps (which is the dev Docker compose default per
-  // FRONTEND_BUILD_UNMINIFIED="" + FRONTEND_REACT_DEV_MODE="" at
-  // docker-compose.full.yml:144 + 158) produced false-negative
-  // hydrationErrorCount=0 even when React #418 fired × 2 per admin page
-  // (W166 §Honesty NEW caveat #2). Regex catches #418-#427 hydration
-  // boundary error class (W155 SW3.B `getParentHydrationBoundary` infinite
-  // loop observed React #419 in the same family). Always cross-verify
-  // with direct `grep -c "React error #" .screenshots/.../*.json` per
-  // CLAUDE.md gotcha — test infrastructure filter bugs hide regression
-  // evidence (W141 anti-pattern #3 32nd vindication at W166).
-  const hydrationErrors = consoleMessages.filter(
-    (m) =>
-      m.text.includes("hydrat") ||
-      m.text.includes("Hydration") ||
-      m.text.includes("did not match") ||
-      /Minified React error #\d+/.test(m.text)
-  )
-
-  const redirectedToLogin =
-    finalUrl && (finalUrl.endsWith("/login") || finalUrl.includes("/login?"))
-
-  return {
-    path: routePath,
+  })
+  const publicScreenshotPath = screenshotPath ? path.basename(screenshotPath) : null
+  const sidecar = createAdminSmokeSidecar({
+    routePath,
+    locale,
     theme,
-    httpStatus,
+    bootstrapPath: adminSession.documentPath,
+    bootstrapHttpStatus: adminSession.documentStatus,
     finalUrl,
+    documentLanguage,
     redirectedToLogin,
+    adminRoleConfirmed: adminSession.adminRoleConfirmed,
+    pageReadiness: verifiedPageReadiness,
+    screenshotPath: publicScreenshotPath,
     consoleErrorCount: errors.length,
     hydrationErrorCount: hydrationErrors.length,
     networkRequestCount: networkRequests.length,
-    screenshotPath: screenshotPath ? path.relative(PROJECT_ROOT, screenshotPath) : null,
-    sampleErrors: errors.slice(0, 3).map((e) => e.text),
-    navError: navError?.message ?? null,
+    navigationError: navError,
+    width: captureConfig?.width ?? 1280,
+    height: captureConfig?.height ?? 800,
+    sourceSha,
+    captureMode: captureConfig ? "admin-live-visual-matrix" : "admin-live-default",
+  })
+  const sidecarPath = path.join(
+    outDir,
+    `${buildAdminCaptureBasename(routePath, locale, theme, captureConfig)}.json`
+  )
+  await writeFile(sidecarPath, JSON.stringify(sidecar, null, 2))
+
+  return {
+    path: routePath,
+    locale,
+    theme,
+    width: captureConfig?.width ?? 1280,
+    height: captureConfig?.height ?? 800,
+    bootstrapPath: adminSession.documentPath,
+    bootstrapHttpStatus: adminSession.documentStatus,
+    adminRoleConfirmed: adminSession.adminRoleConfirmed,
+    finalPath,
+    redirectedToLogin,
+    pageReadiness: verifiedPageReadiness,
+    consoleErrorCount: errors.length,
+    hydrationErrorCount: hydrationErrors.length,
+    networkRequestCount: networkRequests.length,
+    screenshotPath: publicScreenshotPath,
+    navigationError: sidecar.navigationError,
   }
 }
 
 function printSummary(summaries) {
   const padR = (s, n) => String(s).padEnd(n, " ")
   console.log("")
-  console.log("=".repeat(130))
+  console.log("=".repeat(160))
+  console.log("Admin visual smoke (5 verified routes x 2 locales x 2 themes = 20 captures)")
+  console.log("=".repeat(160))
   console.log(
-    "Wave 165 SW3 -- admin.css `.dark` visual smoke (5 admin routes x 2 themes = 10 captures)"
+    `${padR("Path", 22)}${padR("Locale", 8)}${padR("Theme", 8)}${padR("Bootstrap /dashboard HTTP", 28)}${padR("Auth", 10)}${padR("Page", 8)}${padR("Console err", 14)}${padR("Hydr err", 11)}${padR("Net req", 10)}Screenshot`
   )
-  console.log("=".repeat(130))
-  console.log(
-    `${padR("Path", 22)}${padR("Theme", 8)}${padR("HTTP", 7)}${padR("Auth", 10)}${padR(
-      "Console err",
-      14
-    )}${padR("Hydr err", 11)}${padR("Net req", 10)}Screenshot`
-  )
-  console.log("-".repeat(130))
+  console.log("-".repeat(160))
   for (const s of summaries) {
     const auth = s.redirectedToLogin ? "REDIRECT" : "AUTHED"
+    const page = s.pageReadiness.ready ? "READY" : "FAIL"
     const ss = s.screenshotPath ? path.basename(s.screenshotPath) : "(none)"
     console.log(
-      `${padR(s.path, 22)}${padR(s.theme, 8)}${padR(s.httpStatus ?? "-", 7)}${padR(auth, 10)}${padR(
-        s.consoleErrorCount,
-        14
-      )}${padR(s.hydrationErrorCount, 11)}${padR(s.networkRequestCount, 10)}${ss}`
+      `${padR(s.path, 22)}${padR(s.locale, 8)}${padR(s.theme, 8)}${padR(s.bootstrapHttpStatus ?? "-", 28)}${padR(auth, 10)}${padR(page, 8)}${padR(s.consoleErrorCount, 14)}${padR(s.hydrationErrorCount, 11)}${padR(s.networkRequestCount, 10)}${ss}`
     )
   }
-  console.log("=".repeat(130))
+  console.log("=".repeat(160))
+}
+
+async function publishCurrentRunPath(runDirectory) {
+  const outputFile = process.env.GITHUB_OUTPUT
+  if (!outputFile) return
+
+  const workspaceRoot = path.resolve(PROJECT_ROOT, "..")
+  const relativeDirectory = path.relative(workspaceRoot, runDirectory)
+  if (
+    relativeDirectory === "" ||
+    path.isAbsolute(relativeDirectory) ||
+    relativeDirectory === ".." ||
+    relativeDirectory.startsWith(`..${path.sep}`) ||
+    /[\r\n]/u.test(relativeDirectory)
+  ) {
+    throw new Error("Admin smoke run output must be inside the workspace for artifact upload")
+  }
+  await appendFile(
+    outputFile,
+    `artifact_dir=${relativeDirectory.split(path.sep).join("/")}\n`,
+    "utf8"
+  )
 }
 
 async function main() {
-  console.log(
-    `Wave 165 SW3 -- admin.css \`.dark\` visual smoke (Path B real Chrome via Playwright)`
-  )
-  console.log(`  Origin: ${ORIGIN}`)
-  console.log(
-    `  Routes: ${ADMIN_ROUTES.length} admin routes x ${THEMES.length} themes = ${ADMIN_ROUTES.length * THEMES.length} captures`
-  )
-  console.log(`  Output: ${OUT_DIR}`)
-  console.log("")
+  // Validate matrix options before output creation, network activity, or a
+  // browser launch. Default scheduled/manual smoke behavior remains unchanged.
+  const captureMatrix = parseAdminVisualCaptureMatrix()
+  const credentials = getAdminSmokeCredentials()
+  delete process.env.TEST_PASSWORD
+  const locales = captureMatrix?.locales ?? LOCALES
+  const themes = captureMatrix?.themes ?? THEMES
+  const widths = captureMatrix?.widths ?? [1280]
+  const captureHeight = captureMatrix?.height ?? 800
+  const expectedCaptureCount = ADMIN_ROUTES.length * locales.length * themes.length * widths.length
+  const outputRoot = captureMatrix?.outputDir ?? OUT_DIR
+  if (captureMatrix) await assertPrivateOutputDirectory(outputRoot)
+  const runDir = await createAdminSmokeRunDirectory(outputRoot)
+  const metaDir = path.join(runDir, "metadata")
+  await mkdir(metaDir, { recursive: true })
+  if (!captureMatrix) await publishCurrentRunPath(runDir)
+  const sourceShaCandidate =
+    captureMatrix?.sourceSha ?? process.env.SOURCE_SHA ?? process.env.GITHUB_SHA
+  const sourceSha =
+    typeof sourceShaCandidate === "string" && /^[0-9a-f]{40}$/iu.test(sourceShaCandidate)
+      ? sourceShaCandidate.toLowerCase()
+      : null
 
-  await mkdir(OUT_DIR, { recursive: true })
+  if (captureMatrix) {
+    await writeFile(
+      path.join(metaDir, "run.json"),
+      JSON.stringify(
+        {
+          evidenceKind: captureMatrix.evidenceKind,
+          sourceSha: captureMatrix.sourceSha,
+          origin: captureMatrix.origin,
+          routes: ADMIN_ROUTES,
+          locales,
+          themes,
+          widths,
+          height: captureHeight,
+          captureMode: captureMatrix.mode,
+        },
+        null,
+        2
+      )
+    )
+  }
+
+  console.log(
+    captureMatrix
+      ? "Admin visual matrix (real authenticated browser pages; no route mocks)"
+      : "Admin visual smoke (verified localized client pages via Playwright)"
+  )
+  console.log(`  Origin: ${new URL(ORIGIN).origin}`)
+  console.log(
+    captureMatrix
+      ? `  Routes/locales/themes/widths: ${ADMIN_ROUTES.length} x ${locales.length} x ${themes.length} x ${widths.length} = ${expectedCaptureCount} captures`
+      : `  Routes/locales/themes: ${ADMIN_ROUTES.length} x ${locales.length} x ${themes.length} = ${expectedCaptureCount} captures`
+  )
+  console.log(
+    captureMatrix
+      ? "  Current run output: caller-selected private directory outside the checkout"
+      : `  Current run output: ${path.relative(PROJECT_ROOT, runDir)}`
+  )
+  console.log("")
 
   let jwks
   try {
     jwks = await checkJwksEndpoint()
     await writeFile(
-      path.join(OUT_DIR, "jwks.json"),
+      path.join(metaDir, "jwks.json"),
       JSON.stringify(
         {
-          jwks,
-          rsaKeyCount: jwks.keys.filter((k) => k.kty === "RSA" && k.n && k.e).length,
-          totalKeyCount: jwks.keys.length,
+          endpointPath: "/.well-known/jwks.json",
+          ...jwks,
         },
         null,
         2
       )
     )
   } catch (err) {
+    credentials.password = ""
     console.error(`X JWKS PRE-CHECK FAILED: ${err.message}`)
     process.exit(4)
   }
@@ -487,101 +932,112 @@ async function main() {
     browser = await chromium.launch({ headless: true })
   }
 
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-  })
-  const page = await context.newPage()
-  page.setDefaultTimeout(30_000)
-  page.setDefaultNavigationTimeout(30_000)
+  await withOwnedSessionCleanup({
+    browser,
+    createContext: () => browser.newContext({ viewport: { width: 1280, height: 800 } }),
+    origin: ORIGIN,
+    onCleanupFailure: () => console.error("Owned session or browser cleanup failed."),
+    run: async ({ context, ownSession }) => {
+      const page = await context.newPage()
+      page.setDefaultTimeout(30_000)
+      page.setDefaultNavigationTimeout(30_000)
 
-  let loginResult
-  try {
-    loginResult = await performLogin(context)
-  } catch (err) {
-    if (err instanceof RS256Error) {
-      console.error(`X RS256 ASSERTION FAILED: ${err.message}`)
-      await context.close()
-      await browser.close()
-      process.exit(3)
-    }
-    console.error(`X LOGIN FAILED: ${err.message}`)
-    await context.close()
-    await browser.close()
-    process.exit(1)
-  }
+      let loginResult
+      try {
+        loginResult = await performLogin(context, credentials, ownSession)
+      } catch (err) {
+        credentials.password = ""
+        throw setVisualExitCode(err, err instanceof RS256Error ? 3 : 1)
+      }
+      credentials.password = ""
 
-  await writeFile(
-    path.join(OUT_DIR, "login.json"),
-    JSON.stringify(
-      {
-        injectedCookieCount: loginResult.cookies.length,
-        cookieNames: loginResult.cookies.map((c) => c.name),
-        jwtHeader: loginResult.jwtHeader,
-        jwtPayloadSummary: {
-          sub: loginResult.jwtPayload.sub,
-          aud: loginResult.jwtPayload.aud,
-          role: loginResult.jwtPayload.role,
-          is_active: loginResult.jwtPayload.is_active,
-          exp: loginResult.jwtPayload.exp,
-          jti: loginResult.jwtPayload.jti,
-        },
-      },
-      null,
-      2
-    )
-  )
-
-  // Close initial page; use fresh page per route per W129 §Honesty pattern
-  await page.close()
-
-  const summaries = []
-  for (const route of ADMIN_ROUTES) {
-    for (const theme of THEMES) {
-      console.log(`-> ${route} [${theme}]`)
-      const routePage = await context.newPage()
-      routePage.setDefaultTimeout(30_000)
-      routePage.setDefaultNavigationTimeout(30_000)
-      const result = await smokeAdminRoute(routePage, route, theme, OUT_DIR)
-      await routePage.close()
-      summaries.push(result)
-      const glyph = result.httpStatus === 200 && !result.redirectedToLogin ? "OK" : "X"
-      console.log(
-        `   ${glyph} http=${result.httpStatus} auth=${result.redirectedToLogin ? "REDIRECT" : "AUTHED"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} ss=${result.screenshotPath ? "yes" : "no"}`
+      await writeFile(
+        path.join(metaDir, "login.json"),
+        JSON.stringify(
+          {
+            loginVerified: true,
+            cookieCount: loginResult.cookieCount,
+            jwtAlgorithm: loginResult.jwtAlgorithm,
+          },
+          null,
+          2
+        )
       )
-    }
-  }
 
-  await context.close()
-  await browser.close()
+      const summaries = []
+      for (const locale of locales) {
+        console.log(`-> locale ${locale}: set ue:language cookie + localStorage; reload /dashboard`)
+        const beforeNavigation = page.url() === "about:blank"
+        await setSmokeLocale(page, locale, { beforeNavigation })
+        let adminSession
+        try {
+          adminSession = await bootstrapAdminSession(page, locale)
+        } catch (error) {
+          console.error(`X ADMIN SESSION BOOTSTRAP FAILED for locale ${locale}: ${error.name}`)
+          throw setVisualExitCode(error, 1)
+        }
+        for (const route of ADMIN_ROUTES) {
+          for (const theme of themes) {
+            for (const width of widths) {
+              const captureConfig = captureMatrix
+                ? { mode: captureMatrix.mode, locale, theme, width, height: captureHeight }
+                : null
+              console.log(`-> ${route} [${locale}/${theme}/${width}x${captureHeight}]`)
+              const result = await smokeAdminRoute(
+                page,
+                route,
+                locale,
+                theme,
+                runDir,
+                adminSession,
+                captureConfig,
+                sourceSha
+              )
+              summaries.push(result)
+              const glyph = isAdminCaptureSuccessful(result) ? "OK" : "X"
+              console.log(
+                `   ${glyph} bootstrap_http=${result.bootstrapHttpStatus} final=${result.finalPath || "n/a"} page=${result.pageReadiness.ready ? "verified" : "invalid"} ss=${result.screenshotPath ? "yes" : "no"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount}`
+              )
+            }
+          }
+        }
+      }
 
-  printSummary(summaries)
+      printSummary(summaries)
 
-  const failed = summaries.filter((s) => s.httpStatus !== 200 || s.redirectedToLogin)
-  const hydrationIssues = summaries.filter((s) => s.hydrationErrorCount > 0)
-  const screenshotsCaptured = summaries.filter((s) => s.screenshotPath).length
+      const failed = summaries.filter((summary) => !isAdminCaptureSuccessful(summary))
+      const hydrationIssues = summaries.filter((s) => s.hydrationErrorCount > 0)
+      const screenshotsCaptured = summaries.filter((s) => s.screenshotPath).length
 
-  if (failed.length > 0) {
-    console.error(
-      `\nX ${failed.length}/${summaries.length} captures failed (non-200 OR redirected to /login)`
-    )
-    process.exit(1)
-  }
-  if (hydrationIssues.length > 0) {
-    console.error(`\nX ${hydrationIssues.length}/${summaries.length} captures had hydration errors`)
-    process.exit(2)
-  }
-  console.log(
-    `\nOK All ${summaries.length} admin captures (5 routes x 2 themes) returned 200 + 0 hydration errors`
-  )
-  console.log(
-    `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured to ${path.relative(PROJECT_ROOT, OUT_DIR)}/`
-  )
-  console.log(
-    `OK W164 §Honesty #4 admin.css \`.dark\` PARTIAL -> CLOSED via Path B real visual evidence`
-  )
+      if (failed.length > 0 || summaries.length !== expectedCaptureCount) {
+        throw setVisualExitCode(
+          new Error(
+            `${failed.length} failed capture(s); completed ${summaries.length}/${expectedCaptureCount} expected locale/route/theme combinations`
+          ),
+          1
+        )
+      }
+      if (hydrationIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(`${hydrationIssues.length}/${summaries.length} captures had hydration errors`),
+          2
+        )
+      }
+      console.log(
+        `\nOK All ${summaries.length} admin captures verified /dashboard bootstrap, requested URL, locale, main landmark, admin theme, and route heading`
+      )
+      console.log(
+        captureMatrix
+          ? `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured (${captureMatrix.sourceSha}) to private output`
+          : `OK Screenshots: ${screenshotsCaptured}/${summaries.length} captured to ${path.relative(PROJECT_ROOT, runDir)}/`
+      )
+    },
+  })
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err)
-  process.exit(1)
-})
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch((err) => {
+    console.error("Fatal error: admin visual capture failed.")
+    process.exitCode = Number.isInteger(err?.visualExitCode) ? err.visualExitCode : 1
+  })
+}

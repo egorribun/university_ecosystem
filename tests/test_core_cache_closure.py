@@ -43,7 +43,7 @@ async def test_multilayer_l2_miss_and_metrics_guard_paths():
     with patch("app.core.metrics.record_redis_command", side_effect=RuntimeError):
         assert await cache.get("error") is None
 
-    redis.setex.side_effect = ConnectionError("redis unavailable")
+    redis.set.side_effect = ConnectionError("redis unavailable")
     with patch("app.core.metrics.record_redis_command", side_effect=RuntimeError):
         await cache.set("error", {"value": 1})
 
@@ -79,7 +79,7 @@ async def test_multilayer_delete_and_l2_set_success_and_failure():
     redis = AsyncMock()
     cache = MultiLayerCache(redis_client=redis, l2_ttl=11)
     await cache.set("key", {"value": 1}, l1_ttl=3)
-    redis.setex.assert_awaited_once()
+    redis.set.assert_awaited_once_with("key", b'{"value":1}', ex=11)
     await cache.delete("key")
     redis.delete.assert_awaited_once_with("key")
 

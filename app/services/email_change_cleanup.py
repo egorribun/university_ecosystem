@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -17,8 +15,6 @@ from app.models import EmailChangeToken
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = get_logger(__name__)
@@ -83,62 +79,6 @@ async def cleanup_stale_email_change_tokens(
             removed_count,
         )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
     return total
-
-
-@dataclass(slots=True)
-class EmailChangeCleanupConfig:
-    interval_seconds: int = 3_600
-    retention_minutes: int | None = None
-
-    def normalized_interval(self) -> int:
-        return max(30, int(self.interval_seconds))
-
-    def normalized_retention_minutes(self) -> int:
-        return _normalize_retention_minutes(self.retention_minutes)
-
-
-async def start_email_change_cleanup_scheduler(
-    *, config: EmailChangeCleanupConfig | None = None
-) -> Callable[[], Awaitable[None]]:
-    """Start a background task that cleans up stale email change tokens."""
-
-    cfg = config or EmailChangeCleanupConfig()
-    interval = cfg.normalized_interval()
-    retention = cfg.normalized_retention_minutes()
-
-    async def _loop() -> None:
-        try:
-            while True:
-                try:
-                    async with _METRICS.track_execution() as run:
-                        cleaned = await cleanup_stale_email_change_tokens(
-                            retention_minutes=retention
-                        )
-                        run.observe_deleted(cleaned)
-                except asyncio.CancelledError:
-                    raise
-                except (OSError, ConnectionError):
-                    # RZ-20-04 (audit 2026-03-24): Narrowed — DB/network errors only.
-                    # Logic bugs (TypeError, KeyError) now propagate to Sentry.
-                    logger.exception("Failed to cleanup pending address-change records")
-                await asyncio.sleep(interval)
-        except asyncio.CancelledError:
-            logger.info("Address-change cleanup loop cancelled")
-            raise
-
-    loop = asyncio.get_running_loop()
-    task = loop.create_task(_loop())
-
-    async def _stop() -> None:
-        if task.done():
-            with suppress(Exception, asyncio.CancelledError):
-                task.result()
-            return
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-    return _stop
 
 
 if __name__ == "__main__":

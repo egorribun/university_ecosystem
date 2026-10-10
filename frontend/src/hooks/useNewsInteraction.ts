@@ -10,6 +10,9 @@ const NEWS_INTERACTION_SYNC_TAG = "news-interaction:sync"
 const CLICK_DB_NAME = "notification-interactions"
 const CLICK_DB_VERSION = 3
 
+// Temporary comments have no server ID until the interactions query reconciles.
+export const OPTIMISTIC_COMMENT_ID_PREFIX = "optimistic-"
+
 export type NewsComment = {
   id: string
   content: string
@@ -45,7 +48,7 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-async function queueInteraction(url: string, payload: unknown, method = "POST") {
+async function queueInteraction(url: string, payload: unknown, method: string) {
   const db = await openDatabase()
   try {
     const tx = db.transaction(NEWS_INTERACTION_STORE, "readwrite")
@@ -175,7 +178,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       if (previous) {
         // Optimistic comment
         const optimisticComment: NewsComment = {
-          id: "optimistic-" + Date.now(),
+          id: OPTIMISTIC_COMMENT_ID_PREFIX + Date.now(),
           content,
           user_id: user?.id ?? "",
           user_name: user?.full_name ?? "You",

@@ -45,20 +45,19 @@ if (!globalThis.TextEncoder) (globalThis as any).TextEncoder = TextEncoder
 if (!globalThis.TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
 if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
 if (typeof globalThis.URL !== "undefined") {
-  if (typeof globalThis.URL.createObjectURL !== "function") {
-    Object.defineProperty(globalThis.URL, "createObjectURL", {
-      value: vi.fn(() => "blob:mock-url"),
-      writable: true,
-      configurable: true,
-    })
-  }
-  if (typeof globalThis.URL.revokeObjectURL !== "function") {
-    Object.defineProperty(globalThis.URL, "revokeObjectURL", {
-      value: vi.fn(() => undefined),
-      writable: true,
-      configurable: true,
-    })
-  }
+  // Vitest's built-in URL implementation expects Node Blob internals, while
+  // upload tests create jsdom File instances. Keep blob URL previews
+  // deterministic in tests; individual tests may still spy on these methods.
+  Object.defineProperty(globalThis.URL, "createObjectURL", {
+    value: vi.fn(() => "blob:mock-url"),
+    writable: true,
+    configurable: true,
+  })
+  Object.defineProperty(globalThis.URL, "revokeObjectURL", {
+    value: vi.fn(() => undefined),
+    writable: true,
+    configurable: true,
+  })
 }
 if (!("dispatchEvent" in globalThis)) {
   Object.defineProperty(globalThis, "dispatchEvent", {

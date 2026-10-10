@@ -5,6 +5,7 @@ from app.api.auth.mfa import router as mfa_router
 from app.api.chat import router as chat_router
 from app.api.cwv import router as cwv_router
 from app.api.events import router as events_router
+from app.api.grades import router as grades_router
 from app.api.images import router as images_router
 from app.api.internal.csp_report import router as csp_report_router
 from app.api.news import router as news_router
@@ -41,6 +42,7 @@ router.include_router(news_router)
 router.include_router(stories_router)
 router.include_router(schedule_api_router)
 router.include_router(stats_router)
+router.include_router(grades_router)
 router.include_router(chat_router)
 router.include_router(cwv_router)
 router.include_router(images_router)

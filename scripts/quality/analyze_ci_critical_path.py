@@ -121,6 +121,8 @@ class JobTiming:
     api_run_id: int | None = None
     api_run_attempt: int | None = None
     api_head_sha: str | None = None
+    api_created_at: datetime | None = None
+    rerun_timing_kind: str | None = None
 
     @property
     def duration_seconds(self) -> float | None:
@@ -449,12 +451,27 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
             if conclusion_value is None
             else _text(conclusion_value, f"job {name!r}.conclusion")
         )
-        # GitHub's Jobs API does not currently populate ``queued_at`` for live
-        # jobs.  ``created_at`` is the authoritative queued/created timestamp
-        # in that payload shape; prefer an explicit queued_at when available,
-        # but fall back only when it is absent or explicitly null.  A malformed
-        # value in either field remains a hard error rather than silently
-        # reporting zero queue wait.
+        api_run_id = (
+            None
+            if record.get("run_id") is None
+            else _positive_integer(record.get("run_id"), f"job {name!r}.run_id")
+        )
+        api_run_attempt = (
+            None
+            if record.get("run_attempt") is None
+            else _positive_integer(
+                record.get("run_attempt"), f"job {name!r}.run_attempt"
+            )
+        )
+        api_head_sha = (
+            None
+            if record.get("head_sha") is None
+            else _validate_sha(record.get("head_sha"), f"job {name!r}.head_sha")
+        )
+        # Ordinary Jobs API records expose created_at rather than queued_at.
+        # Partial reruns also create NEW records carrying OLD execution times;
+        # their created_at cannot measure the original queue interval.
+        created = _parse_timestamp(record.get("created_at"), f"job {name!r}.created_at")
         queued_field = "queued_at"
         queued_value = record.get("queued_at")
         if queued_value is None and "created_at" in record:
@@ -469,16 +486,61 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
         core_failure_value = record.get("core_failure", False)
         if not isinstance(core_failure_value, bool):
             raise AnalysisError(f"job {name!r}.core_failure must be boolean")
+        rerun_identity = (
+            api_run_id is not None
+            and api_run_attempt is not None
+            and api_run_attempt > 1
+            and api_head_sha is not None
+            and record.get("status") == "completed"
+        )
+        rerun_timing_kind = None
         if queued is not None and started is not None and queued > started:
-            raise AnalysisError(f"job {name!r} {queued_field} is after it starts")
+            # Observed in GitHub run 37184644787 attempt 2: both successful
+            # and failed jobs retained the prior attempt's entire execution.
+            # Accept only that bounded shape, never an explicit inverted
+            # queued_at or a created_at inside an execution interval.
+            if (
+                rerun_identity
+                and queued_field == "created_at"
+                and conclusion in _TERMINAL_CONCLUSIONS
+                and conclusion != "skipped"
+                and completed is not None
+                and started <= completed < queued
+                and steps
+                and all(
+                    step.started_at is not None
+                    and step.completed_at is not None
+                    and started <= step.started_at <= step.completed_at <= completed
+                    for step in steps
+                )
+            ):
+                queued = None
+                rerun_timing_kind = "rerun_record_created_after_execution"
+            else:
+                raise AnalysisError(f"job {name!r} {queued_field} is after it starts")
         if started is not None and completed is not None and completed < started:
+            # Copied skipped records instead expose the new record's creation
+            # as started_at, retaining the prior skip's completed_at. There is
+            # no executed interval or measured queue. Keep the API timestamps
+            # intact and require the exact no-runner/no-steps shape.
+            if (
+                rerun_identity
+                and queued_field == "created_at"
+                and created == started
+                and conclusion == "skipped"
+                and record.get("steps") == []
+                and "runner_id" in record
+                and record["runner_id"] is None
+            ):
+                queued = None
+                rerun_timing_kind = "rerun_skipped_record_with_prior_completion"
             # GitHub occasionally emits a one-second inverted pair for a
             # skipped or cancelled job that never received a runner (there
             # are no steps and therefore no elapsed work to measure). Treat
             # that API sentinel as a zero-duration guarded terminal job, but
             # keep malformed timestamps a hard error for every job that
             # could have executed.
-            if (
+            elif (
                 conclusion in {"skipped", "cancelled"}
                 and not steps
                 and started - completed <= timedelta(seconds=1)
@@ -498,23 +560,11 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 needs=_parse_needs(record.get("needs"), name),
                 steps=steps,
                 core_failure=core_failure_value,
-                api_run_id=(
-                    None
-                    if record.get("run_id") is None
-                    else _positive_integer(record.get("run_id"), f"job {name!r}.run_id")
-                ),
-                api_run_attempt=(
-                    None
-                    if record.get("run_attempt") is None
-                    else _positive_integer(
-                        record.get("run_attempt"), f"job {name!r}.run_attempt"
-                    )
-                ),
-                api_head_sha=(
-                    None
-                    if record.get("head_sha") is None
-                    else _validate_sha(record.get("head_sha"), f"job {name!r}.head_sha")
-                ),
+                api_run_id=api_run_id,
+                api_run_attempt=api_run_attempt,
+                api_head_sha=api_head_sha,
+                api_created_at=created,
+                rerun_timing_kind=rerun_timing_kind,
             )
         )
     return tuple(
@@ -1133,6 +1183,23 @@ def _rounded_seconds(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
 
 
+def _rerun_timing_evidence(job: JobTiming) -> dict[str, object]:
+    """Expose the observed API shape, without inventing an original attempt ID."""
+    if job.rerun_timing_kind is None:
+        return {}
+    return {
+        "github_timing_evidence": {
+            "kind": job.rerun_timing_kind,
+            "queue_wait_reason": "original_queue_timestamp_unavailable",
+            "created_at": (
+                job.api_created_at.isoformat() if job.api_created_at else None
+            ),
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        }
+    }
+
+
 def _step_rows(job: JobTiming) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for step in job.steps:
@@ -1254,6 +1321,7 @@ def _diagnostic_lower_bound_report(
                 "duration_seconds": _rounded_seconds(job.duration_seconds),
                 "dependency_wait_seconds": None,
                 "github_queue_wait_seconds": queue_wait,
+                **_rerun_timing_evidence(job),
                 "setup_install_seconds": _rounded_seconds(setup),
                 "actual_test_seconds": _rounded_seconds(actual),
                 "artifact_seconds": _rounded_seconds(artifact),
@@ -1366,6 +1434,7 @@ def analyze_jobs(
             earliest_core_failure
             and job.started_at
             and job.started_at > earliest_core_failure
+            and job.rerun_timing_kind != "rerun_skipped_record_with_prior_completion"
             and not dag_evidence.core_failures[job.job_id]
         )
         job_rows.append(
@@ -1384,6 +1453,7 @@ def analyze_jobs(
                     3,
                 ),
                 "github_queue_wait_seconds": _rounded_seconds(job.queue_wait_seconds),
+                **_rerun_timing_evidence(job),
                 "setup_install_seconds": _rounded_seconds(setup),
                 "actual_test_seconds": _rounded_seconds(actual),
                 "artifact_seconds": _rounded_seconds(artifact),

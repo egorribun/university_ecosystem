@@ -11,8 +11,77 @@ import {
   isGovernedIgnoredMutant,
   resolveInstrumenterOptions,
 } from "./stryker-presentation-ignorer.mjs"
+import {
+  assertCanonicalCheckerToolchain,
+  assertCanonicalTypeScriptCheckerConfig,
+  canonicalTypeScriptCheckerToolchain,
+} from "./stryker-checker-config.mjs"
+
+export {
+  assertCanonicalCheckerToolchain,
+  assertCanonicalTypeScriptCheckerConfig,
+  canonicalTypeScriptCheckerConfig,
+} from "./stryker-checker-config.mjs"
 
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
+
+export function buildCanonicalCheckerToolchain({
+  packageManifest,
+  packageLock,
+  checkerPackage,
+  typescriptPackage,
+  typescriptRuntimeVersion,
+  strykerCoreVersion,
+}) {
+  const { checkerDependencySpec, checkerPackageName, typescriptDependencySpec } =
+    canonicalTypeScriptCheckerToolchain
+  const rootLock = packageLock?.packages?.[""]
+  const coreLock = packageLock?.packages?.["node_modules/@stryker-mutator/core"]
+  const checkerLock = packageLock?.packages?.[`node_modules/${checkerPackageName}`]
+  const typescriptLock = packageLock?.packages?.["node_modules/typescript"]
+  if (
+    packageManifest?.devDependencies?.[checkerPackageName] !== checkerDependencySpec ||
+    rootLock?.devDependencies?.[checkerPackageName] !== checkerDependencySpec ||
+    packageManifest?.devDependencies?.["@stryker-mutator/core"] !==
+      rootLock?.devDependencies?.["@stryker-mutator/core"] ||
+    coreLock?.version !== strykerCoreVersion ||
+    checkerPackage?.name !== checkerPackageName ||
+    checkerPackage?.version !== canonicalTypeScriptCheckerToolchain.checkerPackageVersion ||
+    checkerLock?.version !== canonicalTypeScriptCheckerToolchain.checkerLockVersion ||
+    typeof checkerLock.integrity !== "string" ||
+    !/^sha512-[A-Za-z0-9+/]{86}==$/.test(checkerLock.integrity) ||
+    checkerPackage?.peerDependencies?.["@stryker-mutator/core"] !== strykerCoreVersion ||
+    packageManifest?.devDependencies?.typescript !== typescriptDependencySpec ||
+    rootLock?.devDependencies?.typescript !== typescriptDependencySpec ||
+    typescriptPackage?.name !== canonicalTypeScriptCheckerToolchain.typescriptPackageName ||
+    typescriptPackage?.version !== canonicalTypeScriptCheckerToolchain.typescriptPackageVersion ||
+    typescriptLock?.name !== canonicalTypeScriptCheckerToolchain.typescriptPackageName ||
+    typescriptLock?.version !== canonicalTypeScriptCheckerToolchain.typescriptLockVersion ||
+    typescriptRuntimeVersion !== canonicalTypeScriptCheckerToolchain.typescriptRuntimeVersion
+  ) {
+    throw new Error("Installed Stryker checker or TypeScript metadata differs from the source lock")
+  }
+
+  const toolchain = {
+    typescriptChecker: {
+      packageName: checkerPackageName,
+      pluginName: canonicalTypeScriptCheckerToolchain.checkerPluginName,
+      dependencySpec: checkerDependencySpec,
+      packageVersion: checkerPackage.version,
+      lockVersion: checkerLock.version,
+      lockIntegrity: checkerLock.integrity,
+    },
+    typescript: {
+      dependencySpec: typescriptDependencySpec,
+      packageName: typescriptPackage.name,
+      packageVersion: typescriptPackage.version,
+      lockVersion: typescriptLock.version,
+      runtimeVersion: typescriptRuntimeVersion,
+    },
+  }
+  assertCanonicalCheckerToolchain(toolchain)
+  return toolchain
+}
 
 function normalizePath(value) {
   if (typeof value !== "string" || value.includes("\0")) {
@@ -165,6 +234,7 @@ export function buildMutationInventory({
   report,
   expectedPatterns,
   preflightByFile,
+  toolchain,
 }) {
   assertStringArray(sourceFiles, "Source denominator")
   assertStringArray(expectedPatterns, "Expected mutation patterns")
@@ -200,6 +270,7 @@ export function buildMutationInventory({
   if (report.config?.incremental !== false) {
     throw new Error("Stryker report incremental must be disabled for canonical evidence")
   }
+  assertCanonicalTypeScriptCheckerConfig(report.config)
   if (!report.files || typeof report.files !== "object" || Array.isArray(report.files)) {
     throw new Error("Stryker report files must be an object")
   }
@@ -240,6 +311,7 @@ export function buildMutationInventory({
   let killedMutants = 0
   let nonViableMutants = 0
   let ignoredMutants = 0
+  let checkerToolchainValidated = false
   const mutantIds = new Set()
   const files = normalizedSources.map((file) => {
     const currentSource = sourceByFile.get(file)
@@ -311,6 +383,10 @@ export function buildMutationInventory({
         continue
       }
       if (mutant.status === "CompileError") {
+        if (!checkerToolchainValidated) {
+          assertCanonicalCheckerToolchain(toolchain)
+          checkerToolchainValidated = true
+        }
         if (typeof mutant.statusReason !== "string" || mutant.statusReason.trim() === "") {
           throw new Error(`CompileError mutant ${mutant.id} lacks a status reason`)
         }

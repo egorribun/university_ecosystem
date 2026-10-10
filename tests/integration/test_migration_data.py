@@ -4,7 +4,7 @@ from pathlib import Path
 import psycopg
 import pytest
 from alembic.config import Config
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 from alembic import command
 

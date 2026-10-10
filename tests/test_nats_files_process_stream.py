@@ -1,14 +1,13 @@
 """File-processor NATS stream provisioning unit tests.
 
-NatsTaskBroker.connect() must create BOTH the TASK_QUEUE stream (legacy
-worker queue) AND the new FILES_PROCESS stream (consumed by the Go
-file-processor service per W140 Q2 architecture).
+NatsTaskBroker.connect() provisions the TASK_QUEUE, FILES_PROCESS, application
+event, outbox, and cache-invalidation streams consumed by workers and services.
 
 Pre-W140: only TASK_QUEUE was created; file-processor crashed at startup
 with `nats: no stream matches subject` (W139 §Honesty #6).
 
 This test mocks the JetStream + NATS client surfaces and asserts that
-connect() invokes add_stream() exactly twice with the expected stream
+connect() provisions the required file-backed streams with the expected
 name + subject configuration.
 """
 
@@ -23,8 +22,8 @@ from app.core.nats_broker import NatsTaskBroker
 
 
 @pytest.mark.asyncio
-async def test_connect_creates_both_streams() -> None:
-    """NatsTaskBroker.connect() must add all 5 streams with file storage & 7-day retention."""
+async def test_connect_creates_required_streams() -> None:
+    """NatsTaskBroker.connect() provisions all 6 file streams with 7-day retention."""
     broker = NatsTaskBroker()
 
     mock_js = MagicMock()
@@ -39,8 +38,8 @@ async def test_connect_creates_both_streams() -> None:
     ):
         await broker.connect()
 
-    assert mock_js.add_stream.await_count == 5, (
-        f"Expected 5 add_stream calls, got {mock_js.add_stream.await_count}"
+    assert mock_js.add_stream.await_count == 6, (
+        f"Expected 6 add_stream calls, got {mock_js.add_stream.await_count}"
     )
 
     calls = mock_js.add_stream.call_args_list
@@ -60,6 +59,9 @@ async def test_connect_creates_both_streams() -> None:
 
     assert configs[4].name == "OUTBOX_EVENTS"
     assert configs[4].subjects == ["outbox.*"]
+
+    assert configs[5].name == "CACHE_INVALIDATIONS"
+    assert configs[5].subjects == ["cache.invalidate"]
 
 
 @pytest.mark.asyncio
@@ -110,8 +112,8 @@ async def test_connect_idempotent_when_streams_exist() -> None:
         # not invoked again.
         await broker.connect()
 
-    assert mock_js.add_stream.await_count == 5, (
-        "Second connect() should short-circuit; add_stream should still be 5 total"
+    assert mock_js.add_stream.await_count == 6, (
+        "Second connect() should short-circuit; add_stream should still be 6 total"
     )
 
 
@@ -126,7 +128,9 @@ async def test_connect_reconciles_existing_stream_configuration_drift() -> None:
     )
 
     mock_js = MagicMock()
-    mock_js.add_stream = AsyncMock(side_effect=[drift_error, None, None, None, None])
+    mock_js.add_stream = AsyncMock(
+        side_effect=[drift_error, None, None, None, None, None]
+    )
     mock_js.update_stream = AsyncMock()
 
     mock_nc = MagicMock()

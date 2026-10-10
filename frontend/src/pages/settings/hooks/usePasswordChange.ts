@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from "react"
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
@@ -37,6 +38,7 @@ export function usePasswordChange({
 }: UsePasswordChangeOptions): UsePasswordChangeReturn {
   const { t } = useTranslation(["settings"])
   const queryClient = useQueryClient()
+  const captureOperation = useProfileSessionGuard()
 
   const [currentPasswordValue, setCurrentPasswordValue] = useState("")
   const [newPasswordValue, setNewPasswordValue] = useState("")
@@ -44,6 +46,15 @@ export function usePasswordChange({
   const [passwordBusy, setPasswordBusy] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [currentPasswordError, setCurrentPasswordError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setCurrentPasswordValue("")
+    setNewPasswordValue("")
+    setConfirmPasswordValue("")
+    setPasswordBusy(false)
+    setPasswordError(null)
+    setCurrentPasswordError(null)
+  }, [captureOperation])
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
@@ -87,7 +98,8 @@ export function usePasswordChange({
 
   const handlePasswordSubmit = useCallback(
     async (options?: { skipStepUp?: boolean }) => {
-      if (passwordBusy) return
+      const isCurrent = captureOperation()
+      if (passwordBusy || !isCurrent()) return
 
       setCurrentPasswordError(null)
       setPasswordError(null)
@@ -126,6 +138,7 @@ export function usePasswordChange({
           new_password: newPasswordValue,
         })
 
+        if (!isCurrent()) return
         if (data?.ok) {
           setSnackbar({
             text: t("settings:security.password.updated", {
@@ -143,8 +156,10 @@ export function usePasswordChange({
         // Refresh sessions since some may have been revoked
         await queryClient.invalidateQueries({ queryKey: sessionsQueryKey })
       } catch (error) {
+        if (!isCurrent()) return
         if (!options?.skipStepUp && isStepUpError(error) && openStepUpFor) {
           openStepUpFor(async () => {
+            if (!isCurrent()) return
             await handlePasswordSubmit({ skipStepUp: true })
           })
           return
@@ -174,10 +189,11 @@ export function usePasswordChange({
           setSnackbar({ text: message, severity: "error" })
         }
       } finally {
-        setPasswordBusy(false)
+        if (isCurrent()) setPasswordBusy(false)
       }
     },
     [
+      captureOperation,
       confirmPasswordValue,
       currentPasswordValue,
       newPasswordValue,

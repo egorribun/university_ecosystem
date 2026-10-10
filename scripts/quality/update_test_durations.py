@@ -138,13 +138,11 @@ def build_duration_payload(
                 # file to the global default merely because one optional case
                 # was skipped in this environment.
                 durations[path] = executed_measured[path]
-            elif replace:
-                # An all-skipped replacement report provides no useful
-                # estimate.  Leave the path absent so collection uses the
-                # conservative default rather than a misleading 0.001 s.
-                durations.pop(path, None)
             else:
-                durations[path] = value
+                # An all-skipped report provides no useful estimate in either
+                # mode.  Leave the path absent so collection uses the
+                # conservative default rather than a bookkeeping duration.
+                durations.pop(path, None)
             continue
         durations[path] = value
     values = [value for path, value in measured.items() if not skipped.get(path, False)]

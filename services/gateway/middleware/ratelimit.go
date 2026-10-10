@@ -33,6 +33,7 @@ type RateLimiter struct {
 	client  *redis.Client
 	limiter *redis_rate.Limiter
 	rps     int
+	burst   int
 
 	// P0-W5-04: In-memory fallback for Redis outages.
 	// Conservative limits prevent brute-force even when Redis is unavailable.
@@ -82,6 +83,7 @@ func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*Rate
 	rateLimiter.client = client
 	rateLimiter.limiter = limiter
 	rateLimiter.rps = rps
+	rateLimiter.burst = burst
 	return rateLimiter, nil
 }
 
@@ -232,7 +234,11 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 		defer cancel()
 
 		// Apply rate limit
-		res, err := rl.limiter.Allow(rCtx, key, redis_rate.PerSecond(rl.rps))
+		res, err := rl.limiter.Allow(rCtx, key, redis_rate.Limit{
+			Rate:   rl.rps,
+			Burst:  rl.burst,
+			Period: time.Second,
+		})
 		if err != nil {
 			// P0-W5-04: Redis failure — apply in-memory fallback instead of fail-open.
 			// Without this, any Redis outage completely disables rate limiting and
@@ -249,7 +255,7 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 		// ResetAfter is a time.Duration, we need to add it to current time for Reset header
 		resetAt := time.Now().Add(res.ResetAfter)
 		c.Header("RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
-		c.Header("RateLimit-Policy", fmt.Sprintf("%d;w=1", rl.rps)) // Assuming 1 second window based on PerSecond(rl.rps)
+		c.Header("RateLimit-Policy", fmt.Sprintf("%d;w=1", rl.rps)) // One-second steady rate; burst capacity is configured separately.
 
 		if res.Allowed == 0 {
 			// RFC 7231 requires Retry-After to be an HTTP-date or an integer number of seconds

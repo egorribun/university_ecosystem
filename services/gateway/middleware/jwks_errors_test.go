@@ -2,7 +2,7 @@ package middleware
 
 // Coverage tests (testing session 9) for the JWKS parsing error branches.
 // The happy path is already exercised by TestJWKSRefresher in auth_test.go;
-// this file drives the failure branches of fetchJWKSPublicKey,
+// this file drives the failure branches of fetchJWKSKeySet,
 // jwkToRSAPublicKey and parseRSAPublicKeyFromPEM.
 
 import (
@@ -48,61 +48,63 @@ func jwksServer(t *testing.T, status int, body []byte) *httptest.Server {
 }
 
 // ---------------------------------------------------------------------------
-// fetchJWKSPublicKey
+// fetchJWKSKeySet
 // ---------------------------------------------------------------------------
 
-func TestFetchJWKSPublicKey_Success(t *testing.T) {
+func TestFetchJWKSKeySet_Success(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	srv := jwksServer(t, http.StatusOK, rsaJWKSBody(t, &key.PublicKey))
 
-	pub, err := fetchJWKSPublicKey(context.Background(), srv.Client(), srv.URL)
+	keys, err := fetchJWKSKeySet(context.Background(), srv.Client(), srv.URL)
 	require.NoError(t, err)
+	pub := keys[""]
 	if pub == nil {
 		t.Fatal("JWKS public key must not be nil")
 	}
 	assert.Equal(t, key.N, pub.N)
 }
 
-func TestFetchJWKSPublicKey_Non200(t *testing.T) {
+func TestFetchJWKSKeySet_Non200(t *testing.T) {
 	srv := jwksServer(t, http.StatusInternalServerError, []byte("boom"))
-	_, err := fetchJWKSPublicKey(context.Background(), srv.Client(), srv.URL)
+	_, err := fetchJWKSKeySet(context.Background(), srv.Client(), srv.URL)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected status")
 }
 
-func TestFetchJWKSPublicKey_PEMFallback(t *testing.T) {
+func TestFetchJWKSKeySet_PEMFallback(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	der, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	require.NoError(t, err)
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 
-	// Body is not JSON → fetchJWKSPublicKey falls back to PEM parsing.
+	// Body is not JSON → fetchJWKSKeySet falls back to PEM parsing.
 	srv := jwksServer(t, http.StatusOK, pemBytes)
-	pub, err := fetchJWKSPublicKey(context.Background(), srv.Client(), srv.URL)
+	keys, err := fetchJWKSKeySet(context.Background(), srv.Client(), srv.URL)
 	require.NoError(t, err)
+	pub := keys[""]
 	if pub == nil {
 		t.Fatal("PEM fallback public key must not be nil")
 	}
 	assert.Equal(t, key.N, pub.N)
 }
 
-func TestFetchJWKSPublicKey_NoRSAKey(t *testing.T) {
+func TestFetchJWKSKeySet_NoRSAKey(t *testing.T) {
 	// Valid JSON, but the only key is EC → "no RSA key found".
 	body := []byte(`{"keys":[{"kty":"EC","crv":"P-256","x":"abc","y":"def"}]}`)
 	srv := jwksServer(t, http.StatusOK, body)
-	_, err := fetchJWKSPublicKey(context.Background(), srv.Client(), srv.URL)
+	_, err := fetchJWKSKeySet(context.Background(), srv.Client(), srv.URL)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no RSA key found")
 }
 
-func TestFetchJWKSPublicKey_RequestError(t *testing.T) {
+func TestFetchJWKSKeySet_RequestError(t *testing.T) {
 	// A cancelled context makes client.Do fail before any response.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	srv := jwksServer(t, http.StatusOK, []byte("{}"))
-	_, err := fetchJWKSPublicKey(ctx, srv.Client(), srv.URL)
+	_, err := fetchJWKSKeySet(ctx, srv.Client(), srv.URL)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "jwks: fetch")
 }

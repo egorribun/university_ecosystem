@@ -8,11 +8,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import and_, delete, func, or_, select, type_coerce, update
 from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm.attributes import flag_dirty
 
 import app.models as models
 from app.core.config import settings
+from app.core.events import EventCreated, EventUpdated
 from app.core.protocols import AsyncDatabaseSession
 from app.models import Event
 from app.repositories.base import BaseRepository
@@ -20,6 +23,8 @@ from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventSearchResultDTO
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from sqlalchemy.sql.elements import ColumnElement
 
     from app.core.protocols import AsyncDatabaseSession
 
@@ -29,6 +34,35 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
     def __init__(self, db: AsyncDatabaseSession):
         super().__init__(db)
+
+    async def create(self, obj_in: dict[str, Any]) -> EventDTO:
+        result = await super().create(obj_in)
+        record = await self._get_orm(result.id)
+        assert record is not None  # noqa: S101
+        record.record_event(
+            EventCreated(
+                event_id_entity=record.id,
+                title=record.title,
+                organizer_id=record.created_by,
+            )
+        )
+        # Capture in this transaction so rollback cannot retain an emitter.
+        flag_dirty(record)
+        await self.db.flush()
+        return result
+
+    async def update(self, id: Any, obj_in: dict[str, Any]) -> EventDTO | None:
+        result = await super().update(id, obj_in)
+        if result is not None:
+            record = await self._get_orm(result.id)
+            assert record is not None  # noqa: S101
+            record.record_event(
+                EventUpdated(event_id_entity=record.id, title=record.title)
+            )
+            # Capture in this transaction so rollback cannot retain an emitter.
+            flag_dirty(record)
+            await self.db.flush()
+        return result
 
     @property
     def model(self) -> type[Event]:
@@ -52,74 +86,6 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         stmt = select(Event).where(Event.id == event_id).with_for_update()
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-
-    async def get_with_details(
-        self, event_id: uuid.UUID | str | int
-    ) -> EventDTO | None:
-        event_id = self._cast_id(event_id)
-        stmt = (
-            select(Event).where(Event.id == event_id).options(selectinload(Event.files))
-        )
-        result = await self.db.execute(stmt)
-        obj = result.scalar_one_or_none()
-        return self._to_dto(obj) if obj else None
-
-    async def get_upcoming(
-        self,
-        *,
-        limit: int = 20,
-        after_starts_at: datetime | None = None,
-        after_id: uuid.UUID | None = None,
-    ) -> list[EventDTO]:
-        """Get upcoming events with keyset cursor pagination.
-
-        AUDIT-BE-01 (audit 2026-03-15): Replaced OFFSET-based pagination.
-        OFFSET forces PostgreSQL to scan and discard all preceding rows — O(N).
-        Keyset pagination uses a composite (starts_at, id) cursor to jump
-        directly to the next page via the existing B-tree index — O(log N).
-
-        Callers that previously used skip=N should compute an (after_starts_at,
-        after_id) cursor from the last item of the previous page.
-        """
-        now = datetime.now(UTC)
-        stmt = select(Event).where(Event.starts_at >= now)
-        if after_starts_at is not None and after_id is not None:
-            stmt = stmt.where(
-                or_(
-                    Event.starts_at > after_starts_at,
-                    and_(Event.starts_at == after_starts_at, Event.id > after_id),
-                )
-            )
-        stmt = stmt.order_by(Event.starts_at.asc(), Event.id.asc()).limit(limit)
-        objs = (await self.db.execute(stmt)).scalars().all()
-        return [self._to_dto(obj) for obj in objs]
-
-    async def get_by_organizer(
-        self,
-        organizer_id: uuid.UUID | str | int,
-        *,
-        limit: int = 20,
-        after_created_at: datetime | None = None,
-        after_id: uuid.UUID | None = None,
-    ) -> list[EventDTO]:
-        """Get events by organizer with keyset cursor pagination.
-
-        AUDIT-BE-01 (audit 2026-03-15): Replaced OFFSET with keyset cursor.
-        Cursor is composite (created_at DESC, id DESC) matching the ORDER BY clause
-        so the B-tree index on created_at can be used directly without a sort step.
-        """
-        organizer_id = self._cast_id(organizer_id)
-        stmt = select(Event).where(Event.created_by == organizer_id)
-        if after_created_at is not None and after_id is not None:
-            stmt = stmt.where(
-                or_(
-                    Event.created_at < after_created_at,
-                    and_(Event.created_at == after_created_at, Event.id < after_id),
-                )
-            )
-        stmt = stmt.order_by(Event.created_at.desc(), Event.id.desc()).limit(limit)
-        objs = (await self.db.execute(stmt)).scalars().all()
-        return [self._to_dto(obj) for obj in objs]
 
     async def count_upcoming(self) -> int:
         """Count upcoming events."""
@@ -166,27 +132,36 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         location: str | None = None,
         is_active: bool | None = True,
         limit: int = 20,
-        cursor: tuple[datetime, uuid.UUID | int | str] | None = None,
+        cursor: tuple[datetime, uuid.UUID | int | str]
+        | tuple[datetime, str, float | None]
+        | None = None,
         query_embedding: list[float] | None = None,
     ) -> Sequence[EventSearchResultDTO]:
         now = datetime.now(UTC)
 
         # Build conditions
         conditions: list[Any] = []
-        rank_expr = None
+        rank_expr: ColumnElement[float] | None = None
 
         if search_query:
             ts_query = func.plainto_tsquery("simple", search_query)
             conditions.append(Event.search_vector.op("@@")(ts_query))
-            rank_expr = func.ts_rank(Event.search_vector, ts_query)
+            rank_expr = func.coalesce(func.ts_rank(Event.search_vector, ts_query), 0.0)
 
             if (
                 settings.semantic_search_enabled
                 and query_embedding
                 and any(abs(v) > 1e-9 for v in query_embedding)
             ):
-                sim_score = 1.0 - Event.embedding.cosine_distance(query_embedding)
-                rank_expr = (rank_expr + sim_score * 2.0).label("hybrid_rank")
+                distance = type_coerce(Event.embedding, Vector(1536)).cosine_distance(
+                    query_embedding
+                )
+                # Legacy zero-norm vectors produce NaN in pgvector. Treat these
+                # as absent embeddings in both ranking and cursor predicates.
+                sim_score = 1.0 - func.nullif(distance, float("nan"))
+                rank_expr = (rank_expr + func.coalesce(sim_score, 0.0) * 2.0).label(
+                    "hybrid_rank"
+                )
                 conditions = [or_(and_(*conditions), sim_score > 0.6)]
 
         if event_type:
@@ -214,17 +189,27 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             conditions.append(Event.ends_at < now)
 
         if cursor:
-            last_starts_at, last_id = cursor
-            last_id = self._cast_id(last_id)
-            conditions.append(
-                or_(
-                    Event.starts_at > last_starts_at,
-                    and_(
-                        Event.starts_at == last_starts_at,
-                        Event.id > last_id,
-                    ),
-                )
+            last_starts_at, raw_id = cursor[:2]
+            last_id = self._cast_id(raw_id)
+            after_time = or_(
+                Event.starts_at > last_starts_at,
+                and_(Event.starts_at == last_starts_at, Event.id > last_id),
             )
+            if rank_expr is not None:
+                last_rank = (
+                    cursor[2]
+                    if len(cursor) == 3
+                    else await self.db.scalar(
+                        select(rank_expr).where(Event.id == last_id)
+                    )
+                )
+                if last_rank is None:
+                    return []
+                conditions.append(
+                    or_(rank_expr < last_rank, and_(rank_expr == last_rank, after_time))
+                )
+            else:
+                conditions.append(after_time)
 
         # PERF-W10-02: Replaced the global aggregating CTE with a correlated
         # scalar subquery.  The CTE scanned the entire event_attendance table
@@ -267,6 +252,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             stmt = stmt.where(and_(*conditions))
 
         if rank_expr is not None:
+            stmt = stmt.add_columns(rank_expr)
             stmt = stmt.order_by(
                 rank_expr.desc(), Event.starts_at.asc(), Event.id.asc()
             )
@@ -280,6 +266,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
         return [
             EventSearchResultDTO(
+                rank=float(row[3]) if rank_expr is not None else None,
                 event=row[0] if isinstance(row[0], EventDTO) else self._to_dto(row[0]),
                 participant_count=row[1] or 0,
                 user_attendance=EventAttendanceDTO.model_validate(row[2])
@@ -423,32 +410,6 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         await self.db.execute(
             delete(models.EventFile).where(models.EventFile.event_id == event_id)
         )
-
-    async def get_analytics_data(
-        self, start_date: datetime | None = None
-    ) -> tuple[Sequence[Any], Sequence[str]]:
-        """Fetch raw event data for high-performance Polars analytics."""
-        from sqlalchemy import text
-
-        query = """
-            SELECT
-                e.id, e.title, e.starts_at as start_time, e.location,
-                COUNT(ea.user_id) as attendees_count,
-                e.max_attendees
-            FROM events e
-            LEFT JOIN event_attendance ea ON e.id = ea.event_id
-            WHERE e.deleted_at IS NULL
-        """
-        params: dict[str, Any] = {}
-
-        if start_date:
-            query += " AND e.starts_at >= :start_date"
-            params["start_date"] = start_date
-
-        query += " GROUP BY e.id, e.title, e.starts_at, e.location, e.max_attendees"
-
-        result = await self.db.execute(text(query), params)
-        return result.fetchall(), list(result.keys())
 
     async def get_event_files(
         self, event_id: uuid.UUID | str | int

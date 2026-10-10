@@ -6,14 +6,17 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, exists, func, or_, select
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import and_, exists, func, or_, select, type_coerce
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_dirty
 
 import app.models as models
 from app.core.cache import cached, news_cache
 from app.core.config import settings
+from app.core.events import NewsCreated, NewsUpdated
 from app.core.protocols import AsyncDatabaseSession
 from app.core.tenant import get_current_tenant
 from app.models.news import News
@@ -43,6 +46,27 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     def __init__(self, db: AsyncDatabaseSession):
         super().__init__(db)
 
+    async def create(self, obj_in: dict[str, Any]) -> NewsDTO:
+        result = await super().create(obj_in)
+        record = await self._get_orm(result.id)
+        assert record is not None  # noqa: S101
+        record.record_event(NewsCreated(news_id=record.id, title=record.title))
+        # Capture in this transaction so rollback cannot retain an emitter.
+        flag_dirty(record)
+        await self.db.flush()
+        return result
+
+    async def update(self, id: Any, obj_in: dict[str, Any]) -> NewsDTO | None:
+        result = await super().update(id, obj_in)
+        if result is not None:
+            record = await self._get_orm(result.id)
+            assert record is not None  # noqa: S101
+            record.record_event(NewsUpdated(news_id=record.id, title=record.title))
+            # Capture in this transaction so rollback cannot retain an emitter.
+            flag_dirty(record)
+            await self.db.flush()
+        return result
+
     @property
     def model(self) -> type[News]:
         return News
@@ -69,10 +93,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         dtos = [self._to_dto(obj) for obj in news_items]
         return dtos
 
-    async def get_latest(self, limit: int = 5) -> list[NewsDTO]:
-        """Get the latest news items."""
-        return cast(list[NewsDTO], await self.get_published(skip=0, limit=limit))
-
     async def search(
         self, query: str, *, skip: int = 0, limit: int = 20
     ) -> list[NewsDTO]:
@@ -91,16 +111,13 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
-    async def count_total(self) -> int:
-        """Count total news items."""
-        result = await self.db.execute(select(func.count(News.id)))
-        return result.scalar() or 0
-
     async def list_news(
         self,
         *,
         limit: int = 20,
-        cursor: tuple[datetime, uuid.UUID | str] | None = None,
+        cursor: tuple[datetime, uuid.UUID | str]
+        | tuple[datetime, str, float | None]
+        | None = None,
         current_user_id: uuid.UUID | str | None = None,
         search_query: str | None = None,
         query_embedding: list[float] | None = None,
@@ -115,19 +132,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         # 1. Fetch news objects with pagination/cursor/search
         stmt = select(News).options(selectinload(News.author))
 
-        if cursor:
-            last_created_at, last_id = cursor
-            last_id = self._cast_id(last_id)
-            stmt = stmt.where(
-                or_(
-                    News.created_at < last_created_at,
-                    and_(
-                        News.created_at == last_created_at,
-                        News.id < last_id,
-                    ),
-                )
-            )
-
         rank_expr = None
         if search_query:
             if (
@@ -135,12 +139,10 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
                 and query_embedding
                 and any(abs(v) > 1e-9 for v in query_embedding)
             ):
-                # PERF-01 Fix: Use ORDER BY distance LIMIT N instead of distance-based filter.
-                # This ensures pgvector HNSW/IVFFlat indexes are utilized for ANN search.
-                # Distance-based filters (WHERE dist < X) trigger a full table scan in many PG versions.
-                rank_expr = News.embedding.cosine_distance(query_embedding).label(
-                    "vector_dist"
+                distance = type_coerce(News.embedding, Vector(1536)).cosine_distance(
+                    query_embedding
                 )
+                rank_expr = func.nullif(distance, float("nan")).label("vector_dist")
             else:
                 stmt = stmt.where(
                     or_(
@@ -151,17 +153,57 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
                     )
                 )
 
+        if cursor:
+            last_created_at, raw_id = cursor[:2]
+            last_id = self._cast_id(raw_id)
+            after_time = or_(
+                News.created_at < last_created_at,
+                and_(News.created_at == last_created_at, News.id < last_id),
+            )
+            if rank_expr is not None:
+                if len(cursor) == 3:
+                    last_distance = cursor[2]
+                else:
+                    anchor = (
+                        await self.db.execute(
+                            select(rank_expr).where(News.id == last_id)
+                        )
+                    ).first()
+                    if anchor is None:
+                        return []
+                    last_distance = anchor[0]
+                if last_distance is None:
+                    stmt = stmt.where(and_(rank_expr.is_(None), after_time))
+                else:
+                    stmt = stmt.where(
+                        or_(
+                            rank_expr > last_distance,
+                            rank_expr.is_(None),
+                            and_(rank_expr == last_distance, after_time),
+                        )
+                    )
+            else:
+                stmt = stmt.where(after_time)
+
         if rank_expr is not None:
-            # TD-003: pgvector HNSW indexes require strict ORDER BY distance LIMIT N.
-            # Adding other columns to ORDER BY (like created_at) breaks the index
-            # and forces a full sequential scan + sort.
-            stmt = stmt.order_by(rank_expr.asc())
+            # A total order is required for keyset pagination, including ties and
+            # missing embeddings. Correct continuation takes precedence over ANN-only ordering.
+            stmt = stmt.add_columns(rank_expr).order_by(
+                rank_expr.asc().nulls_last(), News.created_at.desc(), News.id.desc()
+            )
         else:
             stmt = stmt.order_by(News.created_at.desc(), News.id.desc())
 
         stmt = stmt.limit(limit)
         result = await self.db.execute(stmt)
-        news_items = result.scalars().all()
+        distances = {}
+        news_items: Sequence[News]
+        if rank_expr is not None:
+            rows = result.all()
+            news_items = [row[0] for row in rows]
+            distances = {row[0].id: row[1] for row in rows}
+        else:
+            news_items = result.scalars().all()
 
         if not news_items:
             return []
@@ -206,6 +248,8 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
 
         return [
             NewsListingDTO(
+                ranked=rank_expr is not None,
+                distance=distances.get(item.id),
                 news=self._to_dto(item),
                 likes_count=likes_map.get(item.id, 0),
                 comments_count=comments_map.get(item.id, 0),

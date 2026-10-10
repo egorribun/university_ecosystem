@@ -1,12 +1,10 @@
 """Message edit and soft-delete service/serializer tests.
 
-Mirrors the W203 mark_read tests (tests/test_chat_command_service.py): mock the uow +
-repo, patch ws_manager.broadcast_to_chat, assert the synchronous-broadcast contract.
+The request commits author-scoped changes and relies on the transactional outbox for
+the durable WebSocket notification. It must not emit a best-effort frame itself.
 
 Contracts:
-  1. Author edit/delete → repo called → commit → message_edited / message_deleted
-     frame broadcast to ALL participants (exclude_user_id omitted, D3) with the
-     authoritative content/edited_at | deleted_at.
+  1. Author edit/delete → repo called → commit; outbox delivery owns the frame.
   2. affected == 0 (non-author / missing / already-deleted) → 404, raised BEFORE
      commit (nothing persisted) and NO broadcast.
   3. Non-participant → 403, before the repo edit/delete is even attempted.
@@ -23,6 +21,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.ws.serializers import serialize_message
+from app.core.events import (
+    _EVENT_REGISTRY,
+    EventMetadata,
+    MessageDeleted,
+    MessageEdited,
+)
 from app.services.chat.command_service import ChatMaintenanceService
 
 BROADCAST = "app.services.chat.command_service.ws_manager.broadcast_to_chat"
@@ -70,7 +74,7 @@ def _svc(uow: MagicMock) -> ChatMaintenanceService:
 
 class TestEditMessage:
     @pytest.mark.asyncio
-    async def test_success_broadcasts_message_edited(self) -> None:
+    async def test_success_commits_without_direct_broadcast(self) -> None:
         uow = _mock_uow()
         user = _mock_user()
         chat = _mock_chat(user.id)
@@ -82,19 +86,11 @@ class TestEditMessage:
         with patch(BROADCAST, new=AsyncMock()) as broadcast:
             await _svc(uow).edit_message(chat.id, message_id, user, "new text", "en")
 
-        uow.chats.edit_message.assert_awaited_once_with(message_id, user.id, "new text")
+        uow.chats.edit_message.assert_awaited_once_with(
+            message_id, user.id, "new text", chat_id=chat.id
+        )
         uow.commit.assert_awaited_once()
-        broadcast.assert_awaited_once()
-        call = broadcast.await_args
-        assert call.args[0] == chat.id
-        frame = call.args[1]
-        assert frame["type"] == "message_edited"
-        assert frame["message_id"] == str(message_id)
-        assert frame["chat_id"] == str(chat.id)
-        assert frame["content"] == "new text"
-        assert frame["edited_at"] == edited_at.isoformat()
-        # D3 — broadcast to ALL participants (idempotent FE cache-update).
-        assert call.kwargs.get("exclude_user_id") is None
+        broadcast.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_not_author_raises_404_before_commit(self) -> None:
@@ -135,7 +131,7 @@ class TestEditMessage:
 
 class TestSoftDeleteMessage:
     @pytest.mark.asyncio
-    async def test_success_broadcasts_message_deleted(self) -> None:
+    async def test_success_commits_without_direct_broadcast(self) -> None:
         uow = _mock_uow()
         user = _mock_user()
         chat = _mock_chat(user.id)
@@ -147,18 +143,11 @@ class TestSoftDeleteMessage:
         with patch(BROADCAST, new=AsyncMock()) as broadcast:
             await _svc(uow).soft_delete_message(chat.id, message_id, user, "en")
 
-        uow.chats.soft_delete_message.assert_awaited_once_with(message_id, user.id)
+        uow.chats.soft_delete_message.assert_awaited_once_with(
+            message_id, user.id, chat_id=chat.id
+        )
         uow.commit.assert_awaited_once()
-        broadcast.assert_awaited_once()
-        call = broadcast.await_args
-        assert call.args[0] == chat.id
-        frame = call.args[1]
-        assert frame["type"] == "message_deleted"
-        assert frame["message_id"] == str(message_id)
-        assert frame["chat_id"] == str(chat.id)
-        assert frame["deleted_at"] == deleted_at.isoformat()
-        assert "content" not in frame  # tombstone frame carries no content
-        assert call.kwargs.get("exclude_user_id") is None
+        broadcast.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_not_author_raises_404_before_commit(self) -> None:
@@ -195,6 +184,43 @@ class TestSoftDeleteMessage:
 # ---------------------------------------------------------------------------
 # serialize_message — W203 SW8 field-drop gotcha guard
 # ---------------------------------------------------------------------------
+
+
+def test_message_mutation_events_are_registered_for_durable_dispatch() -> None:
+    assert _EVENT_REGISTRY["chat.message_edited"] is MessageEdited
+    assert _EVENT_REGISTRY["chat.message_deleted"] is MessageDeleted
+
+    message_id = uuid.uuid4()
+    chat_id = uuid.uuid4()
+    edited = MessageEdited.from_dict(
+        {
+            "message_id": str(message_id),
+            "chat_id": str(chat_id),
+            "_schema_version": 1,
+            "unknown": "ignored",
+            "metadata": {
+                "correlation_id": "payload-controlled",
+                "user_id": str(uuid.uuid4()),
+                "source": "payload",
+            },
+        }
+    )
+    deleted = MessageDeleted.from_dict(
+        {
+            "message_id": str(message_id),
+            "chat_id": str(chat_id),
+            "_schema_version": 1,
+        }
+    )
+    assert edited.message_id == message_id and edited.chat_id == chat_id
+    if (
+        not isinstance(edited.metadata, EventMetadata)
+        or edited.metadata.user_id is not None
+        or edited.metadata.correlation_id is not None
+        or edited.metadata.source != "app"
+    ):
+        raise AssertionError("event_from_dict_metadata_is_internal")
+    assert deleted.message_id == message_id and deleted.chat_id == chat_id
 
 
 class TestSerializerFields:

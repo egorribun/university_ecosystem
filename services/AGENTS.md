@@ -6,7 +6,7 @@ This document defines the architectural invariants, concurrency models, error ha
 
 ## 1. Go Runtime & Tooling Standards
 
-- **Go Version**: Standardized on **Go 1.26.4+** (CI pins 1.26.6; fuzz jobs may use 1.27.1).
+- **Go Version**: Standardized on **Go 1.26.4+** (CI pins 1.26.9; fuzz jobs may use 1.27.2).
 - **Static Analysis & Linting**: `.golangci.yml` must enable:
   - `exhaustive` (with `default-signifies-exhaustive: true` to catch unhandled enum switch cases).
   - `govet`, `errcheck`, `staticcheck`, and `gosec` (SAST vulnerability scanner).
@@ -21,13 +21,15 @@ Windows host has no C compiler, run the same checks in pinned containers rather
 than silently replacing `go test -race` with a non-race run:
 
 ```powershell
-docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 bash -lc 'CGO_ENABLED=1 go test -race ./...'
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c bash -c 'CGO_ENABLED=1 go test -race ./...'
 docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golangci/golangci-lint:v2.13.2 golangci-lint run --config /workspace/.golangci.yml --timeout 5m
 ```
 
 Repeat the commands with `services/gateway` and `services/file-processor` as
 the working directory. Container output is local diagnostic evidence; the
 required release gate still comes from the current-SHA Linux CI jobs.
+Use `bash -c` to preserve the image's Go executable path; a login shell can
+replace `PATH` before the checks start.
 
 ---
 
@@ -67,6 +69,9 @@ if exists {
 - Messages exceeding 60 KB (61,440 bytes) must be rejected immediately.
 - The hub sends a `message_too_large` error frame to the sender client and terminates the frame processing pipeline (RZ-31-02).
 
+### 3.2.1. Per-Client Inbound Rate Limit
+- Every inbound frame (including malformed or unknown ones) consumes a token from a per-client bucket (`WS_CLIENT_MSG_RATE_LIMIT`, burst `WS_CLIENT_MSG_BURST`). Frames over budget are dropped and the client receives `{"type":"rate_limit_exceeded"}`. Each accepted frame costs a session-revocation check, so this limit also bounds Redis load.
+
 ### 3.3. Client Limits & Connection Pre-Check
 - `maxClients` limit must be validated in `HandleWebSocket` **before** executing the HTTP-to-WebSocket connection upgrade (TD-31-05).
 
@@ -77,7 +82,7 @@ if exists {
 - **Path**: Frontend clients connect to `/ws/chat`; Caddy rewrites the request path to `/ws`.
 - **Ticket Validation**: WebSocket connections require a one-time ticket (`ott:ws:<ticket>`) issued by the backend and validated against Redis using `REDIS_PASSWORD`.
 - **Allowed Origins**: `ALLOWED_ORIGINS` must include `http://localhost` (port 80 Caddy) in development and local compose configurations.
-- **Message Types**: All incoming payload types must be validated against the whitelist map `allowedMessageTypes`.
+- **Message Types**: Client-to-hub frames are limited to `join` and `leave` and must be validated against `allowedMessageTypes`. Chat mutations are backend-owned REST/outbox operations; never relay an arbitrary client payload into the trusted `chat.*` event stream.
 
 ---
 

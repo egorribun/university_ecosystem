@@ -1,4 +1,5 @@
 import type { UserState } from "@/types/Auth"
+import { isCurrentBrowserSession } from "./sessionEpoch"
 import { useAuthStore } from "./useAuthStore"
 
 /** Role-only user rendered from the SSR auth hint before `/users/me` resolves. */
@@ -22,7 +23,7 @@ type AuthIdentitySnapshot = {
  * cache is deliberately not consulted.
  */
 export function getConfirmedUserId({ user, loading }: AuthIdentitySnapshot): string | null {
-  if (loading) return null
+  if (loading || !isCurrentBrowserSession()) return null
   const rawId: unknown = user?.id
   if (typeof rawId !== "string" && typeof rawId !== "number") return null
   const id = String(rawId).trim()

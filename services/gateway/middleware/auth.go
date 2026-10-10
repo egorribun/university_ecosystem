@@ -16,7 +16,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +38,7 @@ var errRevocationStoreUnavailable = errors.New("session revocation store unavail
 const (
 	// DefaultJWTAudience must match app/core/config/mixins/jwt_settings.py.
 	DefaultJWTAudience            = "university-ecosystem-api"
+	defaultJWKSRefreshInterval    = 5 * time.Minute
 	jwtMaxClockSkew               = 5 * time.Minute
 	jwtMaxTokenAge                = 24 * time.Hour
 	revocationHealthCheckInterval = 500 * time.Millisecond
@@ -184,11 +184,6 @@ type Claims struct {
 	TenantID string `json:"tenant_id,omitempty"`
 }
 
-// NewJWTMiddleware creates a new JWT middleware with default L1 cache settings.
-func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
-	return NewJWTMiddlewareWithConfig(secret, "", redisClient, DefaultL1CacheConfig())
-}
-
 // storeRSAKeys publishes a complete JWKS snapshot atomically.  The legacy
 // rsaPublicKey pointer is updated as well so older direct-PEM integrations keep
 // their existing observability/test seam; authentication itself uses the map.
@@ -305,6 +300,10 @@ var (
 // the JWKS from endpoint and atomically swaps the RSA public key.  The caller
 // must cancel ctx to stop the goroutine on shutdown.
 func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string, interval time.Duration, logger *slog.Logger) {
+	if interval <= 0 {
+		interval = defaultJWKSRefreshInterval
+	}
+
 	// Mark RS256 mode before starting any asynchronous work.  If the initial
 	// fetch fails, authentication must remain fail-closed until a valid JWKS
 	// snapshot is available; HS256 is never an outage fallback in JWKS mode.
@@ -466,38 +465,6 @@ func parseJWKSKeys(rawKeys []json.RawMessage) (rsaKeySet, error) {
 		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
 	}
 	return keys, nil
-}
-
-// fetchJWKSPublicKey is retained for existing single-key callers and tests.
-// Authentication and refresh use fetchJWKSKeySet; this compatibility helper
-// returns the sole key or a deterministic representative when multiple keys
-// are present.
-func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint string) (*rsa.PublicKey, error) {
-	keys, err := fetchJWKSKeySet(ctx, client, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	return selectJWKSRepresentative(keys)
-}
-
-// selectJWKSRepresentative returns the compatibility key used by callers that
-// predate dual-key JWKS support.  A blank kid is the legacy single-key form;
-// otherwise choose the lexicographically first kid so the result is stable
-// across map iterations.  fetchJWKSKeySet normally guarantees a non-empty set,
-// but keeping the invariant check here makes this helper safe for all callers.
-func selectJWKSRepresentative(keys rsaKeySet) (*rsa.PublicKey, error) {
-	if key, ok := keys[""]; ok {
-		return key, nil
-	}
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
-	}
-	kids := make([]string, 0, len(keys))
-	for kid := range keys {
-		kids = append(kids, kid)
-	}
-	sort.Strings(kids)
-	return keys[kids[0]], nil
 }
 
 func jwkToRSAPublicKey(nB64, eB64 string) (*rsa.PublicKey, error) {
@@ -820,6 +787,13 @@ func validateIAT(claims *Claims) error {
 	return nil
 }
 
+func validateSubject(claims *Claims) error {
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		return fmt.Errorf("token missing sub claim")
+	}
+	return nil
+}
+
 // extractAlgFromHeader decodes the JWT header without validating the signature
 // and returns the "alg" field.  Reading the algorithm BEFORE calling
 // jwt.ParseWithClaims provides a defense-in-depth check against algorithm-
@@ -963,6 +937,10 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			})
 			return
 		}
+		if err := validateSubject(claims); err != nil {
+			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token claims", "https://api.university.edu/probs/invalid-token")
+			return
+		}
 
 		// GW-P1-02: enforce iat temporal bounds (issued-at must not be in the future
 		// or older than jwtMaxTokenAge).
@@ -1074,6 +1052,12 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 			c.Next()
 			return
 		}
+		if validateSubject(claims) != nil || !claims.IsActive {
+			// Optional authentication must not promote incomplete or inactive
+			// claims into a signed downstream identity assertion.
+			c.Next()
+			return
+		}
 
 		// GW-P1-02: enforce iat temporal bounds for optional auth too.
 		if err := validateIAT(claims); err != nil {
@@ -1112,37 +1096,6 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		c.Set("session_id", claims.ID)
 		c.Set("tenant_id", tenantID)
 		c.Set("claims", claims)
-
-		c.Next()
-	}
-}
-
-// RequireRole returns a middleware that requires a specific role.
-func RequireRole(roles ...string) gin.HandlerFunc {
-	roleSet := make(map[string]bool)
-	for _, role := range roles {
-		roleSet[role] = true
-	}
-
-	return func(c *gin.Context) {
-		userRole, exists := c.Get("user_role")
-		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "role not found in token",
-			})
-			return
-		}
-
-		// TD-10 (audit 2026-03-05): Use ok-guard form of type assertion.
-		// Without it, a non-string value in the Gin context (e.g., nil or int
-		// set by another middleware) causes a goroutine panic → HTTP 500.
-		role, ok := userRole.(string)
-		if !ok || !roleSet[role] {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "insufficient permissions",
-			})
-			return
-		}
 
 		c.Next()
 	}

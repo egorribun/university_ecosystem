@@ -27,6 +27,15 @@ async def test_spicedb_provider_opens_insecure_channel_when_explicitly_enabled()
         await generator.aclose()
 
     insecure.assert_called_once()
+    assert insecure.call_args.args == ("localhost:50051",)
+    # The live provider's transport policy must reach the gRPC factory intact.
+    assert insecure.call_args.kwargs["options"] == [
+        ("grpc.keepalive_time_ms", 10_000),
+        ("grpc.keepalive_timeout_ms", 5_000),
+        ("grpc.keepalive_permit_without_calls", 1),
+        ("grpc.max_reconnect_backoff_ms", 5_000),
+        ("grpc.http2.min_time_between_pings_ms", 10_000),
+    ]
     channel.close.assert_awaited_once()
 
 

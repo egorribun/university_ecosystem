@@ -148,13 +148,13 @@ async def test_user_service_mega():
         # self deletion check
         repo.get.side_effect = None
         repo.get.return_value = admin_dto
-        repo._get_orm.return_value = admin_user
+        repo.get_orm_for_anonymization.return_value = admin_user
         with pytest.raises(BusinessRuleViolation):
             await service.admin_delete_user(admin_user.id, request, admin_user)
 
         # not found check
         repo.get.return_value = None
-        repo._get_orm.return_value = None
+        repo.get_orm_for_anonymization.return_value = None
         with pytest.raises(EntityNotFound):
             await service.admin_delete_user(999, request, admin_user)
 
@@ -189,6 +189,7 @@ async def test_user_service_mega():
             created_at=datetime.datetime.now(datetime.UTC),
         )
     ]
+    repo.get_user_mfa_export_summary.return_value = (0, [])
     repo.get_user_mfa_challenges.return_value = []
     repo.get_user_totp_enrollments.return_value = []
     with (
@@ -209,6 +210,8 @@ async def test_user_service_mega():
         assert len(export.sessions) == 1
         assert len(export.notifications) == 1
         assert len(export.access_logs) == 1
+        assert export.mfa_challenge_count == 0
+        assert export.mfa_enrollments == []
 
 
 @pytest.mark.asyncio

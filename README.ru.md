@@ -203,7 +203,7 @@ sequenceDiagram
 | **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | Цель политики: 100%; нужны свежие SHA-доказательства |
 | **Авторизация и безопасность** | Argon2id, SpiceDB, TOTP/email OTP, recovery-коды, Kyverno, CSRF nonces | Zero-Trust ReBAC, step-up MFA и политики | Реализовано; нужны свежие SHA-доказательства |
 | **Данные и Кэш** | PostgreSQL 17, pgvector, кэш Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Реализовано; нужны свежие SHA-доказательства |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Реализовано; нужны свежие SHA-доказательства |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Распределённая трассировка, метрики, профилирование и сбор логов | Реализовано; нужны свежие SHA-доказательства |
 
 ## 🚀 Быстрый старт
 
@@ -240,7 +240,7 @@ Copy-Item .env.example .env
 
 ### **Python (Core API)**
 ```bash
-uv sync            # Синхронизация зависимостей Python 3.14
+uv sync --frozen   # Загрузка зависимостей Python 3.14 из зафиксированного lock-файла
 uv run pytest      # Запуск полной тестовой сюиты
 uv run ruff check app/      # Проверка Ruff линтером
 uv run ruff format app/     # Форматирование кода
@@ -250,10 +250,17 @@ uv run ruff format app/     # Форматирование кода
 ```bash
 cd frontend
 npm ci              # Воспроизводимая установка по package-lock.json
+npm run lint:knip  # Строгая проверка неиспользуемого кода и зависимостей
 npm run dev        # Запуск Vite 8 dev-сервера
 npx tsc --noEmit   # Проверка типов TypeScript
 npm run test       # Запуск Vitest тестов
 ```
+
+В Windows используйте `npm run lhci` для полного сбора Lighthouse CI и
+проверки всех утверждений. `npm run lhci:windows` — только измерительный
+резервный вариант: он не проверяет утверждения LHCI. При установке на Windows
+пропускается Unix-настройка LHCI symlink; оба runner используют Chromium из
+Playwright и не требуют прав на создание symbolic links.
 
 ### **Go (Микросервисы)**
 ```bash
@@ -264,7 +271,7 @@ make test-integration # Запуск интеграционных тестов A
 
 ## 🔭 Наблюдаемость и Мониторинг
 
-Платформа включает готовую к продакшену подсистему мониторинга:
+Платформа включает интегрированный стек наблюдаемости:
 - **OpenTelemetry & Tempo**: Сквозная распределенная трассировка микросервисов Go и FastAPI.
 - **Prometheus**: Метрики в реальном времени, включая процент попаданий в L1-кэш (`cache_l1_hits_total`).
 - **Pyroscope**: Непрерывное профилирование ресурсов процессора и памяти (`grafana/pyroscope:1.19.1`).

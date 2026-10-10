@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -660,44 +662,34 @@ async def test_middleware_health_path_skipped():
     middleware._app.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_get_shared_client_concurrent():
-    import app.core.ratelimit.strategies.base as base_module
+def test_get_shared_client_concurrent():
     from app.core.ratelimit.strategies.base import (
         get_shared_client,
         set_rate_limit_client_factory,
     )
 
-    # Mock redis factory to return mock clients
     mock_factory = MagicMock()
     set_rate_limit_client_factory(mock_factory)
 
+    start = threading.Barrier(3)
+    url = "redis://localhost:9999"
+
+    async def get_client():
+        return await get_shared_client(url)
+
+    def run_client_in_its_own_loop():
+        start.wait(timeout=5)
+        return asyncio.run(get_client())
+
     try:
-        # Force bootstrap of the lock by making one dummy request
-        await get_shared_client("redis://localhost:8888")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(run_client_in_its_own_loop)
+            second = executor.submit(run_client_in_its_own_loop)
+            start.wait(timeout=5)
+            first_client = first.result(timeout=5)
+            second_client = second.result(timeout=5)
 
-        # Now acquire the lock manually
-        lock = base_module._shared_clients_write_lock
-        assert lock is not None
-        await lock.acquire()
-
-        # Start concurrent client retrievals (both will check line 37, find None, and block on lock)
-        t1 = get_shared_client("redis://localhost:9999")
-        t2 = get_shared_client("redis://localhost:9999")
-
-        # Yield to let them execute up to the locked line 45
-        task1 = asyncio.create_task(t1)
-        task2 = asyncio.create_task(t2)
-        await asyncio.sleep(0.01)
-
-        # Release the lock so they can proceed
-        lock.release()
-
-        # Wait for both to complete
-        c1 = await task1
-        c2 = await task2
-
-        assert c1 is c2
-        assert mock_factory.call_count == 2  # one for 8888, one for 9999
+        assert first_client is second_client
+        mock_factory.assert_called_once_with(url)
     finally:
         set_rate_limit_client_factory(None)

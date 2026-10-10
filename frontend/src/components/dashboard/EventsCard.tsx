@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type CSSProperties } from "react"
+import { memo, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react"
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -12,10 +12,10 @@ import { Skeleton } from "@/components/ui/Skeleton"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
 import { useDashboardEvents, prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
+import type { DashboardEvent } from "@/hooks/useDashboardEvents"
 import { prefetchEventsListQuery, EVENTS_PAGE_SIZE } from "@/api/hooks/events"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useQueryClient } from "@tanstack/react-query"
-import type { Event } from "@/types/Event"
 import { formatDate, toDate } from "@/utils/date"
 import { DateBullet } from "./DateBullet"
 
@@ -24,6 +24,52 @@ interface EventsCardProps {
   style?: CSSProperties
   "data-fade"?: string
   "data-pop"?: string
+  queryResult?: ReturnType<typeof useDashboardEvents>
+}
+
+const SERVER_TIME_ZONE = "UTC"
+
+function subscribeToTimeZone(): () => void {
+  return () => undefined
+}
+
+function getLocalTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+function getServerTimeZone(): string {
+  return SERVER_TIME_ZONE
+}
+
+function createCalendarDateFormatter(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-CA", {
+    calendar: "gregory",
+    day: "2-digit",
+    month: "2-digit",
+    numberingSystem: "latn",
+    timeZone,
+    year: "numeric",
+  })
+}
+
+function getCalendarDateKey(date: Date, formatter: Intl.DateTimeFormat): string {
+  const parts = formatter.formatToParts(date)
+  // createCalendarDateFormatter requests all three parts from Intl.
+  const year = parts.find((part) => part.type === "year")!.value
+  const month = parts.find((part) => part.type === "month")!.value
+  const day = parts.find((part) => part.type === "day")!.value
+  return `${year}-${month}-${day}`
+}
+
+function addDaysToCalendarDateKey(dateKey: string, days: number): string {
+  const year = Number(dateKey.slice(0, 4))
+  const month = Number(dateKey.slice(5, 7))
+  const day = Number(dateKey.slice(8, 10))
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+  const shiftedYear = String(date.getUTCFullYear()).padStart(4, "0")
+  const shiftedMonth = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const shiftedDay = String(date.getUTCDate()).padStart(2, "0")
+  return `${shiftedYear}-${shiftedMonth}-${shiftedDay}`
 }
 
 export function prepareOnKey(event: { key: string }, callback: () => void) {
@@ -32,27 +78,45 @@ export function prepareOnKey(event: { key: string }, callback: () => void) {
   }
 }
 
-export const EventsCard = memo(function EventsCard({
+type EventsCardPresentationProps = Omit<EventsCardProps, "queryResult"> & {
+  queryResult: ReturnType<typeof useDashboardEvents>
+}
+
+function EventsCardWithQuery(props: Omit<EventsCardProps, "queryResult">) {
+  const queryResult = useDashboardEvents()
+  return <EventsCardContent {...props} queryResult={queryResult} />
+}
+
+export const EventsCard = memo(function EventsCard(props: EventsCardProps) {
+  const { queryResult, ...presentationProps } = props
+  if (queryResult) {
+    return <EventsCardContent {...presentationProps} queryResult={queryResult} />
+  }
+  return <EventsCardWithQuery {...presentationProps} />
+})
+
+const EventsCardContent = memo(function EventsCardContent({
   className,
   style,
+  queryResult: dashboardEventsQuery,
   ...props
-}: EventsCardProps) {
+}: EventsCardPresentationProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
+  const timeZone = useSyncExternalStore(subscribeToTimeZone, getLocalTimeZone, getServerTimeZone)
   // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
   // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
   // Behaviour preserved: hook returns boolean (was `boolean | null`).
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
-  const dashboardEventsQuery = useDashboardEvents()
-  const events: Event[] = useMemo(
+  const events: DashboardEvent[] = useMemo(
     () => dashboardEventsQuery.data ?? [],
     [dashboardEventsQuery.data]
   )
-  const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
+  const loadingEvents = dashboardEventsQuery.isPending && events.length === 0
 
   const prefetchEventsList = () => {
     void prefetchDashboardEvents(queryClient)
@@ -64,33 +128,33 @@ export const EventsCard = memo(function EventsCard({
   }
 
   const todayEvents = useMemo(() => {
-    const from = new Date()
-    from.setHours(0, 0, 0, 0)
-    const to = new Date()
-    to.setHours(23, 59, 59, 999)
+    const formatter = createCalendarDateFormatter(timeZone)
+    const today = getCalendarDateKey(new Date(), formatter)
 
     return events
       .filter((e) => e.starts_at)
       .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
-      .filter((e) => !isNaN(e.d.getTime()) && e.d >= from && e.d <= to)
+      .filter((e) => !isNaN(e.d.getTime()) && getCalendarDateKey(e.d, formatter) === today)
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
-  }, [events])
+  }, [events, timeZone])
 
   const weekEvents = useMemo(() => {
-    const from = new Date()
-    from.setHours(0, 0, 0, 0)
-    const to = new Date()
-    to.setDate(to.getDate() + 7)
-    to.setHours(23, 59, 59, 999)
+    const formatter = createCalendarDateFormatter(timeZone)
+    const today = getCalendarDateKey(new Date(), formatter)
+    const lastDay = addDaysToCalendarDateKey(today, 7)
 
     return events
       .filter((e) => e.starts_at)
       .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
-      .filter((e) => !isNaN(e.d.getTime()) && e.d >= from && e.d <= to)
+      .filter((e) => {
+        if (isNaN(e.d.getTime())) return false
+        const eventDay = getCalendarDateKey(e.d, formatter)
+        return eventDay >= today && eventDay <= lastDay
+      })
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
-  }, [events])
+  }, [events, timeZone])
 
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
@@ -223,6 +287,7 @@ export const EventsCard = memo(function EventsCard({
                                 hour: "2-digit",
                                 minute: "2-digit",
                                 hour12: false,
+                                timeZone,
                               })}
                             </span>
                           )}

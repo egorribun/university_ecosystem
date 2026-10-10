@@ -221,7 +221,7 @@ func TestInitRedis_ReportsCloseFailureAfterPingFailure(t *testing.T) {
 func TestSetupHub_CleansUpOnJWKSAndSubscriptionFailures(t *testing.T) {
 	resetBootstrapSeams(t)
 	setupJWKSFunc = func(*hub.Hub, context.Context, string) error { return errors.New("jwks setup failed") }
-	h, err := setupHub(context.Background(), &config.Config{JWKSURL: "http://jwks.test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
+	h, err := setupHubWithRevocation(context.Background(), &config.Config{JWKSURL: "http://jwks.test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	assert.Nil(t, h)
 	assert.EqualError(t, err, "jwks setup failed")
 
@@ -231,23 +231,32 @@ func TestSetupHub_CleansUpOnJWKSAndSubscriptionFailures(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h, err = setupHub(ctx, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), &nats.Conn{}, nil)
+	h, err = setupHubWithRevocation(ctx, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), &nats.Conn{}, nil, nil)
 	assert.Nil(t, h)
 	assert.EqualError(t, err, "subscription failed")
+}
+
+func TestDefaultSubscribeNATSFuncPropagatesHubConfigurationError(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := hub.NewHub(nil, logger, nil, &config.Config{EnableJetStream: false}, nil)
+	t.Cleanup(h.Stop)
+
+	err := subscribeNATSFunc(h, context.Background())
+	require.EqualError(t, err, "NATS connection is not configured")
 }
 
 func TestSetupHub_ConfiguresSPIFFEAuthClient(t *testing.T) {
 	resetBootstrapSeams(t)
 	// Exercise the production default wrapper with a disabled SPIFFE client
 	// before replacing it with the deterministic success seam below.
-	configureAuthSPIFFEFunc(hub.NewInternalAPIAuthClient("http://auth.test", nil), nil, "")
+	configureAuthSPIFFEFunc(hub.NewInternalAPIAuthClientWithToken("http://auth.test", "", nil), nil, "")
 	configured := false
 	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) {
 		configured = true
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	h, err := setupHub(ctx, &config.Config{SpiffeEnabled: true, BackendSpiffeID: "spiffe://backend"}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, &spiffe.Client{})
+	h, err := setupHubWithRevocation(ctx, &config.Config{SpiffeEnabled: true, BackendSpiffeID: "spiffe://backend"}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, &spiffe.Client{})
 	require.NoError(t, err)
 	require.NotNil(t, h)
 	h.Stop()

@@ -132,20 +132,22 @@ def test_storage_init_waits_for_the_s3_api_without_mc(relative_path: str) -> Non
     assert init["command"] == ["wget -qO- http://minio:9000/status >/dev/null"]
     assert init["depends_on"]["minio"]["condition"] == "service_healthy"
     assert "environment" not in init
-    assert "tmpfs" not in init
+    assert init["tmpfs"] == ["/data"]
     assert init["read_only"] is True
     assert init["cap_drop"] == ["ALL"]
     assert init["security_opt"] == ["no-new-privileges:true"]
     assert init["restart"] == "no"
 
 
-def test_overlays_carry_no_minio_only_settings() -> None:
+def test_storage_overlays_use_expected_loopback_publications() -> None:
     observability = _compose("docker-compose.observability.yml")["services"]
     assert "minio" not in observability
     infra_ports = _compose("docker-compose.infra.yml")["services"]["minio"]["ports"]
     assert infra_ports == ["127.0.0.1:9000:9000"]
     live = _compose("docker-compose.live.yml")["services"]
-    assert "minio" not in live
+    assert live["minio"]["ports"] == [
+        "127.0.0.1:${LIVE_HOST_PORT_MINIO:?set by scripts/live_stand.py}:9000"
+    ]
     assert "minio-init" not in live
 
 
@@ -163,7 +165,9 @@ def test_prometheus_has_no_minio_metrics_job() -> None:
 def _docker_compose() -> str:
     docker = shutil.which("docker")
     if docker is None:
-        pytest.skip("Docker CLI is not installed")
+        pytest.skip(  # QUALITY-123 @egorribun — Docker capability varies by runner
+            "Docker CLI is not installed"
+        )
     probe = subprocess.run(  # noqa: S603 - fixed local CLI
         [docker, "compose", "version"],
         capture_output=True,
@@ -171,7 +175,9 @@ def _docker_compose() -> str:
         check=False,
     )
     if probe.returncode != 0:
-        pytest.skip("Docker Compose plugin is not available")
+        pytest.skip(  # QUALITY-123 @egorribun — Compose plugin capability varies by runner
+            "Docker Compose plugin is not available"
+        )
     return docker
 
 
@@ -191,6 +197,18 @@ def _rendered(tmp_path: Path, project: str | None, *files: str) -> dict[str, Any
     for path in _root_compose_files():
         for name in _REQUIRED_VARIABLE.findall(path.read_text(encoding="utf-8")):
             env[name] = "placeholder-value"
+    live_port_names = sorted(
+        {
+            name
+            for path in _root_compose_files()
+            for name in re.findall(
+                r"\$\{(LIVE_HOST_PORT_[A-Z_]+|LIVE_MAILPIT_PORT):\?",
+                path.read_text(encoding="utf-8"),
+            )
+        }
+    )
+    for index, name in enumerate(live_port_names):
+        env[name] = str(24000 + index)
     command = [docker, "compose"]
     if project is not None:
         command += ["-p", project]
@@ -235,13 +253,15 @@ def test_rendered_stacks_mount_the_named_seaweedfs_volume(
 
 def test_live_stand_storage_volume_is_project_scoped(tmp_path: Path) -> None:
     # Each Compose project owns its storage volume without a global name.
-    plain = _rendered(tmp_path, "ue-live", "docker-compose.full.yml")
+    project_name = "ue-live-0123456789abcdef"
+    plain = _rendered(tmp_path, project_name, "docker-compose.full.yml")
     live = _rendered(
-        tmp_path, "ue-live", "docker-compose.full.yml", "docker-compose.live.yml"
+        tmp_path, project_name, "docker-compose.full.yml", "docker-compose.live.yml"
     )
 
-    assert plain["volumes"]["seaweedfs_data"]["name"] == "ue-live_seaweedfs_data"
-    assert live["volumes"]["seaweedfs_data"]["name"] == "ue-live_seaweedfs_data"
+    expected_volume = f"{project_name}_seaweedfs_data"
+    assert plain["volumes"]["seaweedfs_data"]["name"] == expected_volume
+    assert live["volumes"]["seaweedfs_data"]["name"] == expected_volume
     assert live["services"]["minio"]["image"] == plain["services"]["minio"]["image"]
 
 

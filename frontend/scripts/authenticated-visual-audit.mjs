@@ -12,9 +12,10 @@
  *   2. API login + JWT validation (alg=RS256 + payload claims) — same as wave137.
  *   3. Open fresh page per route (W129 §Honesty `new_page` workaround).
  *   4. Navigate + wait for domcontentloaded + 1500ms hydration settle.
- *   5. Run axe-core scan (legacy mode for WebKit safety; WCAG 2.0/2.1/2.2 AA).
- *   6. Filter violations to critical+serious.
- *   7. Capture enhanced sidecar JSON: HTTP status + console + axe violations.
+ *   5. Require dashboard card content to be loaded and visually settled before capture.
+ *   6. Run axe-core scan (legacy mode for WebKit safety; WCAG 2.0/2.1/2.2 AA).
+ *   7. Filter violations to critical+serious.
+ *   8. Capture enhanced sidecar JSON: HTTP status + console + axe violations.
  *
  * LHCI numerical perf measurement is intentionally NOT in this script —
  * `npm run lhci:windows` (W120 SW1) already does that against VITE_LHCI=true
@@ -46,16 +47,18 @@
  *   4: JWKS returned 0 keys (backend RSA key not loaded)
  *   5: critical or serious axe violations found
  *   6: console/page errors or failed subresource/API requests detected
+ *   8: dashboard loaded content did not become visible and settled
+ *   9: News heading, default filter, or loaded article list did not settle
  */
 
 import { Buffer } from "node:buffer"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
-import { loginBrowserContext } from "./visual-smoke-auth.mjs"
+import { loginBrowserContext, withOwnedSessionCleanup } from "./visual-smoke-auth.mjs"
 import {
   classifyAuthenticatedAuditSummaries,
   requestFailureRecord,
@@ -72,6 +75,7 @@ const AXE_SOURCE_PATH = path.resolve(
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname, "..")
+const CHECKOUT_ROOT = path.resolve(PROJECT_ROOT, "..")
 
 const ORIGIN = process.env.ORIGIN ?? "http://localhost"
 const TEST_EMAIL = process.env.TEST_EMAIL ?? "test@university.dev"
@@ -96,6 +100,9 @@ const DEFAULT_ROUTES = [
   "/activity",
   "/messenger",
 ]
+const DEFAULT_ROUTE_SET = new Set(DEFAULT_ROUTES)
+const SEEDED_CHAT_DETAIL_ROUTE =
+  /^\/messenger\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 // Normalize each route — accept both "/dashboard" and "dashboard" forms.
 // MSYS path conversion on Windows Git Bash mangles leading-slash env values
@@ -103,19 +110,354 @@ const DEFAULT_ROUTES = [
 // can pass without leading slash and we re-add it here. (Same workaround as
 // lhci-windows-fallback.mjs `normalizePath` from W120 SW1.)
 function normalizeRoute(p) {
+  if (typeof p !== "string") return null
   const trimmed = p.trim()
   if (!trimmed) return null
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`
 }
-// W140 SW4 iter7 fix: env ROUTES="" (workflow_dispatch with empty input)
-// must fall through to DEFAULT_ROUTES. `??` treats "" as a real value
-// (not nullish), so we explicitly check for trimmed-empty too. Same
-// concern as W120 SW5 MSYS empty-string handling in run-lhci.mjs.
-const routesEnv = process.env.ROUTES?.trim()
-const ROUTES = (routesEnv ? routesEnv : DEFAULT_ROUTES.join(","))
-  .split(",")
-  .map(normalizeRoute)
-  .filter(Boolean)
+
+export function parseAuthenticatedVisualRoutes(environment = process.env) {
+  const configuredRoutes = environment.ROUTES
+  if (configuredRoutes !== undefined && typeof configuredRoutes !== "string") {
+    throw new Error("ROUTES contains an unsupported application path")
+  }
+
+  // W140 SW4 iter7 fix: an empty workflow_dispatch value falls through to the
+  // original defaults. MSYS callers may omit leading slashes; normalize those
+  // before matching against the exact route allowlist.
+  const routesEnv = configuredRoutes?.trim()
+  const routes = routesEnv ? routesEnv.split(",").map(normalizeRoute) : [...DEFAULT_ROUTES]
+
+  if (
+    routes.length === 0 ||
+    routes.some(
+      (route) =>
+        route === null || (!DEFAULT_ROUTE_SET.has(route) && !SEEDED_CHAT_DETAIL_ROUTE.test(route))
+    )
+  ) {
+    throw new Error("ROUTES contains an unsupported application path")
+  }
+
+  return routes
+}
+
+const SUPPORTED_LOCALES = ["en", "ru"]
+const SUPPORTED_THEMES = ["light", "dark"]
+
+function parseList(value, fallback, name, allowedValues) {
+  const raw = typeof value === "string" && value.trim() ? value : fallback
+  const values = raw.split(",").map((item) => item.trim())
+  if (
+    values.length === 0 ||
+    values.some((item) => !item) ||
+    new Set(values).size !== values.length ||
+    values.some((item) => !allowedValues.includes(item))
+  ) {
+    throw new Error(`${name} must be a comma-separated list of supported, unique values`)
+  }
+  return values
+}
+
+function parseWidths(value, fallback = "390,768,1440") {
+  const raw = typeof value === "string" && value.trim() ? value : fallback
+  const values = raw.split(",").map((item) => item.trim())
+  if (values.length === 0 || values.length > 8 || values.some((item) => !/^\d+$/u.test(item))) {
+    throw new Error("VISUAL_WIDTHS must contain one to eight integer CSS-pixel widths")
+  }
+  const widths = values.map(Number)
+  if (
+    new Set(widths).size !== widths.length ||
+    widths.some((width) => width < 320 || width > 2560)
+  ) {
+    throw new Error("VISUAL_WIDTHS must contain unique widths from 320 through 2560")
+  }
+  return widths
+}
+
+function isOutsideDirectory(directory, candidate) {
+  const relativePath = path.relative(path.resolve(directory), path.resolve(candidate))
+  return (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  )
+}
+
+async function assertPrivateOutputDirectory(outputDirectory, checkoutRoot = CHECKOUT_ROOT) {
+  const resolvedOutput = path.resolve(outputDirectory)
+  let ancestor = resolvedOutput
+  const missingParts = []
+  let realOutput
+  for (;;) {
+    try {
+      const realAncestor = await realpath(ancestor)
+      realOutput = path.resolve(realAncestor, ...missingParts)
+      break
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error
+      const parent = path.dirname(ancestor)
+      if (parent === ancestor) throw error
+      missingParts.unshift(path.basename(ancestor))
+      ancestor = parent
+    }
+  }
+  const realCheckout = await realpath(checkoutRoot)
+  if (!isOutsideDirectory(realCheckout, realOutput)) {
+    throw new Error("Matrix capture OUT_DIR must resolve outside the checkout")
+  }
+}
+
+export function parseAuthenticatedVisualCaptureMatrix(
+  environment = process.env,
+  { checkoutRoot = CHECKOUT_ROOT } = {}
+) {
+  // Validate requested routes in legacy and matrix modes alike. This helper is
+  // intentionally environment-parameterized so contract tests exercise the
+  // caller's exact ROUTES value without opening a browser or making a request.
+  parseAuthenticatedVisualRoutes(environment)
+  const enabled = environment.VISUAL_CAPTURE_MATRIX
+  if (enabled === undefined || enabled === "" || enabled === "0") return null
+  if (enabled !== "1") throw new Error("VISUAL_CAPTURE_MATRIX must be 1 when enabled")
+
+  const originValue = environment.ORIGIN ?? "http://localhost"
+  let origin
+  try {
+    origin = new URL(originValue)
+  } catch {
+    throw new Error("ORIGIN must be a valid HTTP(S) origin for matrix capture")
+  }
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash
+  ) {
+    throw new Error("ORIGIN must be a clean HTTP(S) origin without credentials or path")
+  }
+
+  const outputValue = environment.OUT_DIR
+  if (typeof outputValue !== "string" || !path.isAbsolute(outputValue)) {
+    throw new Error("Matrix capture requires an absolute caller-selected OUT_DIR")
+  }
+  const outputDir = path.resolve(outputValue)
+  if (!isOutsideDirectory(checkoutRoot, outputDir)) {
+    throw new Error("Matrix capture OUT_DIR must be outside the checkout")
+  }
+
+  const sourceSha = environment.SOURCE_SHA ?? environment.GITHUB_SHA
+  if (typeof sourceSha !== "string" || !/^[0-9a-f]{40}$/iu.test(sourceSha)) {
+    throw new Error("Matrix capture requires a 40-character SOURCE_SHA or GITHUB_SHA")
+  }
+  if (typeof environment.TEST_EMAIL !== "string" || !environment.TEST_EMAIL.trim()) {
+    throw new Error("Matrix capture requires an explicit synthetic TEST_EMAIL")
+  }
+  if (typeof environment.TEST_PASSWORD !== "string" || !environment.TEST_PASSWORD.trim()) {
+    throw new Error("Matrix capture requires an explicit synthetic TEST_PASSWORD")
+  }
+
+  const locales = parseList(
+    environment.VISUAL_LOCALES,
+    "en,ru",
+    "VISUAL_LOCALES",
+    SUPPORTED_LOCALES
+  )
+  const themes = parseList(
+    environment.VISUAL_THEMES,
+    "light,dark",
+    "VISUAL_THEMES",
+    SUPPORTED_THEMES
+  )
+  const widths = parseWidths(environment.VISUAL_WIDTHS)
+  const heightValue = environment.VISUAL_HEIGHT ?? "800"
+  if (!/^\d+$/u.test(heightValue)) {
+    throw new Error("VISUAL_HEIGHT must be an integer CSS-pixel height")
+  }
+  const height = Number(heightValue)
+  if (height < 600 || height > 1600) {
+    throw new Error("VISUAL_HEIGHT must be from 600 through 1600")
+  }
+  return {
+    mode: "authenticated-visual-matrix",
+    origin: origin.origin,
+    outputDir,
+    sourceSha: sourceSha.toLowerCase(),
+    locales,
+    themes,
+    widths,
+    height,
+  }
+}
+
+export function parseAuthenticatedRemoteBrowserConnection(environment = process.env) {
+  const required = environment.VISUAL_REMOTE_CHROMIUM_REQUIRED
+  if (required !== undefined && required !== "0" && required !== "1") {
+    throw new Error("VISUAL_REMOTE_CHROMIUM_REQUIRED must be 0 or 1")
+  }
+
+  const endpointValue = environment.VISUAL_REMOTE_CHROMIUM_WS_ENDPOINT
+  if (typeof endpointValue !== "string" || endpointValue.length === 0) {
+    if (required === "1") {
+      throw new Error("Required remote Chromium endpoint is missing")
+    }
+    return null
+  }
+  if (endpointValue !== endpointValue.trim()) {
+    throw new Error("Remote Chromium endpoint is invalid")
+  }
+
+  let endpoint
+  try {
+    endpoint = new URL(endpointValue)
+  } catch {
+    throw new Error("Remote Chromium endpoint is invalid")
+  }
+  const endpointPath = endpoint.pathname.endsWith("/")
+    ? endpoint.pathname.slice(0, -1)
+    : endpoint.pathname
+  const endpointSegments = endpointPath.split("/").slice(1)
+  if (
+    endpoint.protocol !== "ws:" ||
+    endpoint.hostname !== "127.0.0.1" ||
+    !endpoint.port ||
+    endpoint.username !== "" ||
+    endpoint.password !== "" ||
+    endpoint.search !== "" ||
+    endpoint.hash !== "" ||
+    endpoint.pathname === "/" ||
+    endpoint.pathname.length > 512 ||
+    endpoint.pathname.includes("%") ||
+    endpoint.pathname.includes("\\") ||
+    endpointSegments.some((segment) => segment === "" || segment === "." || segment === "..") ||
+    !/^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*\/?$/u.test(endpoint.pathname) ||
+    endpointValue !== endpoint.href
+  ) {
+    throw new Error("Remote Chromium endpoint is invalid")
+  }
+
+  const originValue = environment.ORIGIN ?? "http://localhost"
+  let origin
+  try {
+    origin = new URL(originValue)
+  } catch {
+    throw new Error("Remote Chromium origin is invalid")
+  }
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.hostname.toLowerCase() !== "localhost" ||
+    !origin.port ||
+    origin.username !== "" ||
+    origin.password !== "" ||
+    origin.pathname !== "/" ||
+    origin.search !== "" ||
+    origin.hash !== "" ||
+    origin.origin !== originValue
+  ) {
+    throw new Error("Remote Chromium origin is invalid")
+  }
+
+  return {
+    endpoint: endpoint.href,
+    exposeNetwork: `localhost:${origin.port}`,
+  }
+}
+
+export function buildAuthenticatedCaptureBasename(routePath, captureConfig = null) {
+  const route = safeFilename(routePath)
+  if (!captureConfig) return route
+  return `${route}_${captureConfig.locale}_${captureConfig.theme}_w${captureConfig.width}`
+}
+
+export function createAuthenticatedLoginSidecar(loginResult) {
+  return {
+    loginVerified: true,
+    injectedCookieCount: loginResult.cookies.length,
+    cookieNames: loginResult.cookies.map((cookie) => cookie.name),
+    jwtAlgorithm: loginResult.jwtAlgorithm,
+  }
+}
+
+export function createAuthenticatedCaptureMetadata(
+  captureConfig = null,
+  {
+    sourceSha = null,
+    visualConfigurationMatches = null,
+    visualConfigurationError = null,
+    screenshotPath = null,
+  } = {}
+) {
+  return {
+    captureMode: captureConfig ? "authenticated-live-matrix" : "authenticated-axe-audit",
+    sourceSha,
+    locale: captureConfig?.locale ?? null,
+    theme: captureConfig?.theme ?? null,
+    viewport: captureConfig
+      ? { width: captureConfig.width, height: captureConfig.height }
+      : { width: 1280, height: 800 },
+    visualConfigurationMatches,
+    visualConfigurationError,
+    screenshotPath: screenshotPath ? path.basename(screenshotPath) : null,
+  }
+}
+
+export async function createAuthenticatedCaptureRunDirectory(outputRoot) {
+  await mkdir(outputRoot, { recursive: true })
+  return mkdtemp(path.join(outputRoot, "run-"))
+}
+
+function safeAuditUrl(value) {
+  try {
+    const parsed = new URL(value, ORIGIN)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return "[invalid-url]"
+  }
+}
+
+function redactDiagnostic(value) {
+  if (typeof value !== "string") return value
+  return value
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu, "[redacted-email]")
+    .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\b/gu, "[redacted-token]")
+    .replace(/https?:\/\/[^\s"'<>]+/giu, (url) => safeAuditUrl(url))
+    .replace(
+      /\b(sub|jti|password|access_token|refresh_token)\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,}]+)/giu,
+      "$1=[redacted]"
+    )
+}
+
+async function setStudentCapturePreferences(context, captureConfig) {
+  const origin = new URL(ORIGIN)
+  await context.addCookies(
+    [
+      { name: "ue:language", value: captureConfig.locale },
+      { name: "ue-mode", value: captureConfig.theme },
+    ].map(({ name, value }) => ({
+      name,
+      value,
+      domain: origin.hostname,
+      path: "/",
+      secure: origin.protocol === "https:",
+      sameSite: "Lax",
+    }))
+  )
+}
+
+async function verifySyntheticStudent(context) {
+  const response = await context.request.get(new URL("/api/v1/users/me", ORIGIN).toString())
+  if (response.status() !== 200) {
+    throw new Error(`Matrix account profile check failed: HTTP ${response.status()}`)
+  }
+  const profile = await response.json()
+  if (
+    profile.role !== "student" ||
+    typeof profile.email !== "string" ||
+    profile.email.toLowerCase() !== TEST_EMAIL.toLowerCase()
+  ) {
+    throw new Error("Matrix account must resolve to the explicitly configured student profile")
+  }
+}
 
 function safeFilename(routePath) {
   if (routePath === "/" || routePath === "") return "root"
@@ -145,33 +487,18 @@ class RS256Error extends Error {
   }
 }
 
+function setVisualExitCode(error, code) {
+  Object.defineProperty(error, "visualExitCode", { value: code, configurable: true })
+  return error
+}
+
 async function checkJwksEndpoint() {
-  // W143 SW1 follow-up — CI sidecar (run 25732174008) revealed the script was
-  // preferring the WRONG endpoint. Two JWKS endpoints exist in the backend:
-  //   - GET /.well-known/jwks.json — app/api/well_known.py (proper RSA JWKS
-  //     with kty=RSA + n + e fields per RFC 7517 / 7518; this is what Temporal
-  //     Server fetches via TEMPORAL_JWT_KEY_SOURCE1 per W142 SW3 v2)
-  //   - GET /api/v1/.well-known/jwks.json — app/api/internal/jwks.py (HMAC
-  //     metadata stub with kty=oct, NO key material; for ws-hub legacy rotation
-  //     polling per its own docstring)
-  //
-  // Pre-W143 the script preferred /api/v1/ first, which in CI returned the
-  // stub (kty=oct, no n+e) and passed the alg-only RS256 filter at line 151
-  // (the stub still has alg=RS256). This gave misleading "JWKS healthy"
-  // confirmation while masking the structural endpoint shape mismatch.
-  // W143 SW1 follow-up: prefer the ROOT URL first (Temporal's actual fetch
-  // target per docker-compose TEMPORAL_JWT_KEY_SOURCE1), keep /api/v1/ as
-  // fallback for ws-hub-routed deployments. Also tightens the validation
-  // to require key material (n + e for RSA keys) so a stub-shape response
-  // can no longer false-pass.
+  // The backend publishes one RSA JWKS at /.well-known/jwks.json
+  // (app/api/well_known.py). Temporal fetches it via TEMPORAL_JWT_KEY_SOURCE1
+  // and the gateway, ws-hub and file-processor verify tokens against it.
   const jwksUrl = `${ORIGIN}/.well-known/jwks.json`
-  console.log(`→ JWKS pre-check: GET ${jwksUrl}`)
-  let resp = await fetch(jwksUrl)
-  if (resp.status !== 200) {
-    const altUrl = `${ORIGIN}/api/v1/.well-known/jwks.json`
-    console.log(`  fallback: GET ${altUrl}`)
-    resp = await fetch(altUrl)
-  }
+  console.log("→ JWKS pre-check: GET /.well-known/jwks.json")
+  const resp = await fetch(jwksUrl)
   if (resp.status !== 200) {
     throw new Error(`JWKS endpoint unreachable: HTTP ${resp.status}.`)
   }
@@ -183,30 +510,30 @@ async function checkJwksEndpoint() {
   if (rs256Keys.length === 0) {
     throw new Error(`JWKS has ${jwks.keys.length} keys but NONE with alg=RS256.`)
   }
-  // W143 SW1 follow-up: require RSA key material (kty + n + e) so the
-  // internal stub endpoint (kty=oct, no n+e) can't false-pass this check.
+  // Require RSA key material (kty + n + e) so a key-less response cannot
+  // false-pass this check.
   const rsaWithMaterial = rs256Keys.filter(
     (k) => k.kty === "RSA" && typeof k.n === "string" && typeof k.e === "string"
   )
   if (rsaWithMaterial.length === 0) {
     throw new Error(
       `JWKS has ${rs256Keys.length} RS256 key(s) but NONE include n+e material ` +
-        `(likely hitting the internal stub at /api/v1/.well-known/jwks.json instead ` +
-        `of the proper /. .well-known/jwks.json endpoint).`
+        `(is the backend RSA key loaded?).`
     )
   }
   console.log(`✓ JWKS healthy: ${rsaWithMaterial.length} RS256 key(s) with n+e material`)
   return jwks
 }
 
-async function performLogin(context) {
-  console.log(`→ API login: POST ${ORIGIN}/api/v1/auth/login/json as ${TEST_EMAIL}`)
-  const { cookies, cookieJar } = await loginBrowserContext({
+async function performLogin(context, ownSession) {
+  console.log("→ API login: POST /api/v1/auth/login/json")
+  const { cookies, cookieJar, ownedSession } = await loginBrowserContext({
     context,
     origin: ORIGIN,
     email: TEST_EMAIL,
     password: TEST_PASSWORD,
   })
+  ownSession(ownedSession)
   const accessTokenValue = cookieJar.get("access_token_v2")
 
   const { header, payload } = decodeJwtUnverified(accessTokenValue)
@@ -214,11 +541,172 @@ async function performLogin(context) {
     throw new RS256Error(`JWT alg=${header.alg}, expected "RS256".`)
   }
   if (payload.aud !== "university-ecosystem-api") {
-    throw new Error(`JWT aud=${payload.aud}, expected "university-ecosystem-api".`)
+    throw new Error(
+      `JWT audience ${redactDiagnostic(String(payload.aud))} did not match the expected API audience.`
+    )
   }
 
   console.log(`✓ Login OK; browser context holds ${cookies.length} cookies`)
-  return { cookies, jwtHeader: header, jwtPayload: payload }
+  return {
+    cookies,
+    jwtAlgorithm: header.alg,
+  }
+}
+
+function authenticatedNewsStateInPage(locale) {
+  const normalize = (value) => (value ?? "").replace(/\s+/gu, " ").trim()
+  const isVisible = (element) => {
+    if (!element) return false
+    const style = globalThis.window.getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    return (
+      style.display !== "none" &&
+      style.visibility === "visible" &&
+      Number.parseFloat(style.opacity) >= 0.999 &&
+      rect.width > 0 &&
+      rect.height > 0
+    )
+  }
+
+  const heading = globalThis.document.querySelector("h1")
+  const headingPattern =
+    locale === "ru" ? /^Новости университета\s*\d*$/u : /^University news\s*\d*$/u
+  const headingMatches = isVisible(heading) && headingPattern.test(normalize(heading.innerText))
+  const toolbar = globalThis.document.querySelector('[role="toolbar"]')
+  const activeFilters = toolbar
+    ? Array.from(toolbar.querySelectorAll('button[aria-current="page"]'))
+    : []
+  const expectedAllLabel = locale === "ru" ? "Все" : "All"
+  const activeFilterAll =
+    activeFilters.length === 1 && normalize(activeFilters[0].innerText) === expectedAllLabel
+  const query = new URLSearchParams(globalThis.location.search)
+  const defaultFilterUrl =
+    !query.has("cat") && !query.has("q") && (!query.has("sort") || query.get("sort") === "newest")
+
+  const section = globalThis.document.querySelector("section[aria-label]")
+  const cards = section
+    ? Array.from(section.querySelectorAll('article[data-testid="news-card"]'))
+    : []
+  const visibleArticleCount = cards.filter((card) => {
+    const link = card.querySelector('h2 a[href^="/news/"]')
+    return isVisible(card) && isVisible(link) && normalize(link?.textContent).length > 0
+  }).length
+  const hasNextPageSkeleton = Boolean(
+    section &&
+    Array.from(section.querySelectorAll("article")).some(
+      (article) => article.getAttribute("data-testid") !== "news-card"
+    )
+  )
+  const hasRefetchIndicator = Boolean(
+    section &&
+    Array.from(section.children).some((element) => element.classList.contains("animate-pulse"))
+  )
+
+  return {
+    pathnameMatches: globalThis.location.pathname === "/news",
+    headingMatches,
+    toolbarVisible: isVisible(toolbar),
+    activeFilterCount: activeFilters.length,
+    activeFilterAll,
+    defaultFilterUrl,
+    visibleArticleCount,
+    hasNextPageSkeleton,
+    hasRefetchIndicator,
+  }
+}
+
+export function isAuthenticatedNewsCaptureReady(state) {
+  return Boolean(
+    state &&
+    state.pathnameMatches === true &&
+    state.headingMatches === true &&
+    state.toolbarVisible === true &&
+    state.activeFilterCount === 1 &&
+    state.activeFilterAll === true &&
+    state.defaultFilterUrl === true &&
+    Number.isInteger(state.visibleArticleCount) &&
+    state.visibleArticleCount > 0 &&
+    state.hasNextPageSkeleton === false &&
+    state.hasRefetchIndicator === false
+  )
+}
+
+async function waitForAuthenticatedNewsReady(page, locale) {
+  const deadline = Date.now() + 30_000
+  let previousSignature = null
+  let stableSamples = 0
+  let lastState = null
+
+  while (Date.now() < deadline) {
+    const remainingBeforeProbe = Math.max(0, deadline - Date.now())
+    if (remainingBeforeProbe === 0) break
+    const probeTimeout = "NEWS_READINESS_PROBE_TIMEOUT"
+    let timer
+    try {
+      lastState = await Promise.race([
+        page.evaluate(authenticatedNewsStateInPage, locale),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(probeTimeout), remainingBeforeProbe)
+        }),
+      ])
+    } catch (error) {
+      if (error === probeTimeout) break
+      throw error
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+    if (Date.now() >= deadline) break
+    if (isAuthenticatedNewsCaptureReady(lastState)) {
+      const signature = JSON.stringify([
+        lastState.pathnameMatches,
+        lastState.headingMatches,
+        lastState.activeFilterCount,
+        lastState.activeFilterAll,
+        lastState.defaultFilterUrl,
+        lastState.visibleArticleCount,
+        lastState.hasNextPageSkeleton,
+        lastState.hasRefetchIndicator,
+      ])
+      stableSamples = signature === previousSignature ? stableSamples + 1 : 1
+      previousSignature = signature
+      if (stableSamples >= 3) {
+        return {
+          ready: true,
+          articleCount: lastState.visibleArticleCount,
+          activeFilterState: "all",
+          error: null,
+        }
+      }
+    } else {
+      previousSignature = null
+      stableSamples = 0
+    }
+    const remainingAfterProbe = Math.max(0, deadline - Date.now())
+    const settleWaitMs = Math.min(250, remainingAfterProbe)
+    if (settleWaitMs === 0) break
+    await page.waitForTimeout(settleWaitMs)
+  }
+
+  return {
+    ready: false,
+    articleCount: Number.isInteger(lastState?.visibleArticleCount)
+      ? lastState.visibleArticleCount
+      : 0,
+    activeFilterState: lastState?.activeFilterAll ? "all" : "unexpected",
+    error: "news_heading_filter_or_nonempty_list_not_stable",
+  }
+}
+
+export function findNewsReadinessIssues(summaries) {
+  return summaries.filter(
+    (summary) =>
+      summary.path === "/news" &&
+      summary.newsReadinessRequired === true &&
+      (summary.newsReady !== true ||
+        summary.newsActiveFilterState !== "all" ||
+        !Number.isInteger(summary.newsArticleCount) ||
+        summary.newsArticleCount < 1)
+  )
 }
 
 /**
@@ -228,7 +716,72 @@ async function performLogin(context) {
  * settle. Returns an enhanced result that includes
  * `axeViolations` + `axeViolationCount`.
  */
-async function auditRoute(page, routePath, outDir) {
+function dashboardCardsAreVisible() {
+  const selectors = [".vt-dash-schedule", ".vt-dash-news", ".vt-dash-events"]
+  const identityTransform = (value) => {
+    if (value === "none") return true
+    try {
+      return new globalThis.DOMMatrixReadOnly(value).isIdentity
+    } catch {
+      return false
+    }
+  }
+
+  return selectors.every((selector) => {
+    const card = globalThis.document.querySelector(selector)
+    const animatedAncestor = card?.parentElement
+    const content = card?.querySelector('.skeleton-morph-content[data-loaded="true"]')
+    if (!card || !animatedAncestor || !content || content.getAttribute("data-loaded") !== "true") {
+      return false
+    }
+
+    const cardMotionSettled = [animatedAncestor, card].every((element) => {
+      const style = globalThis.window.getComputedStyle(element)
+      const opacity = Number.parseFloat(style.opacity)
+      return Number.isFinite(opacity) && opacity >= 0.999 && identityTransform(style.transform)
+    })
+    const contentStyle = globalThis.window.getComputedStyle(content)
+    const contentOpacity = Number.parseFloat(contentStyle.opacity)
+    const contentVisible =
+      Number.isFinite(contentOpacity) &&
+      contentOpacity >= 0.999 &&
+      contentStyle.display !== "none" &&
+      contentStyle.visibility === "visible" &&
+      content.getClientRects().length > 0
+    return cardMotionSettled && contentVisible
+  })
+}
+
+export function canCaptureAuthenticatedScreenshot({
+  captureConfig,
+  visualConfigurationMatches,
+  routePath,
+  httpStatus,
+  redirectedToLogin,
+  finalUrl,
+  dashboardCardsVisible,
+  newsReadinessRequired = false,
+  newsReady = null,
+}) {
+  return Boolean(
+    captureConfig &&
+    visualConfigurationMatches &&
+    httpStatus === 200 &&
+    !redirectedToLogin &&
+    finalUrl &&
+    new URL(finalUrl).pathname === routePath &&
+    (routePath !== "/dashboard" || dashboardCardsVisible === true) &&
+    (!newsReadinessRequired || newsReady === true)
+  )
+}
+
+export function findDashboardReadinessIssues(summaries) {
+  return summaries.filter(
+    (summary) => summary.path === "/dashboard" && summary.dashboardCardsVisible !== true
+  )
+}
+
+async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {
   const consoleMessages = []
   const networkRequests = []
   const networkFailures = []
@@ -240,14 +793,20 @@ async function auditRoute(page, routePath, outDir) {
     consoleMessages.push({ type: "pageerror", text: err.message })
   }
   const requestHandler = (req) => {
-    networkRequests.push({ method: req.method(), url: req.url() })
+    networkRequests.push({ method: req.method(), url: safeAuditUrl(req.url()) })
   }
   const responseHandler = (res) => {
-    const idx = networkRequests.findLastIndex((r) => r.url === res.url() && !("status" in r))
+    const responseUrl = safeAuditUrl(res.url())
+    const idx = networkRequests.findLastIndex((r) => r.url === responseUrl && !("status" in r))
     if (idx >= 0) networkRequests[idx].status = res.status()
   }
   const requestFailedHandler = (request) => {
-    networkFailures.push(requestFailureRecord(request))
+    const failure = requestFailureRecord(request)
+    networkFailures.push({
+      ...failure,
+      url: safeAuditUrl(failure.url),
+      errorText: redactDiagnostic(failure.errorText),
+    })
   }
 
   page.on("console", consoleHandler)
@@ -256,16 +815,40 @@ async function auditRoute(page, routePath, outDir) {
   page.on("response", responseHandler)
   page.on("requestfailed", requestFailedHandler)
 
-  const targetUrl = `${ORIGIN}${routePath}`
+  const targetUrl = new URL(routePath, ORIGIN).toString()
   let httpStatus = null
   let finalUrl = null
   let navError = null
   let axeViolations = []
   let axeError = null
+  let visualConfigurationMatches = captureConfig ? false : null
+  let visualConfigurationError = null
+  let dashboardCardsVisible = routePath === "/dashboard" ? false : null
+  let dashboardReadinessError = null
+  const newsReadinessRequired = Boolean(captureConfig && routePath === "/news")
+  let newsReady = newsReadinessRequired ? false : null
+  let newsArticleCount = newsReadinessRequired ? 0 : null
+  let newsActiveFilterState = newsReadinessRequired ? "unavailable" : null
+  let newsReadinessError = null
+  let screenshotPath = null
 
   // emulateMedia + reducedMotion settles Framer Motion at end-state for
   // axe-core sampling (W113 SW1 + W114 SW2b + W115 SW1 pattern).
-  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.emulateMedia({
+    reducedMotion: "reduce",
+    ...(captureConfig ? { colorScheme: captureConfig.theme } : {}),
+  })
+  if (captureConfig) {
+    await page.setViewportSize({ width: captureConfig.width, height: captureConfig.height })
+    await page.addInitScript((preferences) => {
+      try {
+        localStorage.setItem("ue:language", preferences.locale)
+        localStorage.setItem("ue-mode", preferences.theme)
+      } catch {
+        // The SSR preference cookies remain authoritative for this navigation.
+      }
+    }, captureConfig)
+  }
   await page.addInitScript({ path: AXE_SOURCE_PATH })
 
   try {
@@ -275,19 +858,58 @@ async function auditRoute(page, routePath, outDir) {
     // SW1 iter 2 CI run 25739831369 on /login. The marker that DOESN'T
     // log identifies the exact unbounded-wait step.
     console.log(`[${routePath}] before-goto`)
-    const resp = await page.goto(targetUrl, {
+    const resp = await page.goto(new URL(routePath, ORIGIN).toString(), {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     })
     httpStatus = resp?.status() ?? null
     finalUrl = page.url()
-    console.log(`[${routePath}] after-goto status=${httpStatus} url=${finalUrl}`)
+    console.log(`[${routePath}] after-goto status=${httpStatus} path=${safeAuditUrl(finalUrl)}`)
 
     // 1500ms hydration + Framer Motion + React Query observers settle.
     // Same buffer wave137 uses; axe-core needs final-state DOM.
     console.log(`[${routePath}] before-waitTimeout`)
     await page.waitForTimeout(1500)
     console.log(`[${routePath}] after-waitTimeout`)
+
+    if (captureConfig) {
+      const browserState = await page.evaluate(() => ({
+        locale: globalThis.document.documentElement.getAttribute("lang"),
+        theme: globalThis.document.documentElement.dataset.colorScheme,
+        width: globalThis.innerWidth,
+        height: globalThis.innerHeight,
+      }))
+      visualConfigurationMatches =
+        browserState.locale === captureConfig.locale &&
+        browserState.theme === captureConfig.theme &&
+        browserState.width === captureConfig.width &&
+        browserState.height === captureConfig.height
+      if (!visualConfigurationMatches) {
+        visualConfigurationError = "requested_locale_theme_or_viewport_not_active"
+      }
+    }
+
+    if (routePath === "/dashboard") {
+      try {
+        await page.waitForFunction(dashboardCardsAreVisible, undefined, { timeout: 30_000 })
+        dashboardCardsVisible = true
+      } catch {
+        dashboardReadinessError = "dashboard_cards_not_visible_or_settled"
+      }
+    }
+
+    if (newsReadinessRequired) {
+      try {
+        const readiness = await waitForAuthenticatedNewsReady(page, captureConfig.locale)
+        newsReady = readiness.ready
+        newsArticleCount = readiness.articleCount
+        newsActiveFilterState = readiness.activeFilterState
+        newsReadinessError = readiness.error
+      } catch {
+        newsReady = false
+        newsReadinessError = "news_readiness_probe_failed"
+      }
+    }
 
     // Scope axe to the stable main landmark; heavy routes get a larger bound.
     const HEAVY_ROUTES = new Set(["/dashboard", "/map", "/activity"])
@@ -305,20 +927,6 @@ async function auditRoute(page, routePath, outDir) {
         runOnly: {
           type: "tag",
           values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"],
-        },
-        rules: {
-          "color-contrast": { enabled: false },
-          "color-contrast-enhanced": { enabled: false },
-          region: { enabled: false },
-          "landmark-one-main": { enabled: false },
-          "landmark-no-duplicate-banner": { enabled: false },
-          "landmark-no-duplicate-contentinfo": { enabled: false },
-          "landmark-no-duplicate-main": { enabled: false },
-          "landmark-unique": { enabled: false },
-          "page-has-heading-one": { enabled: false },
-          "frame-title": { enabled: false },
-          "frame-tested": { enabled: false },
-          "scrollable-region-focusable": { enabled: false },
         },
       }
 
@@ -371,44 +979,6 @@ async function auditRoute(page, routePath, outDir) {
     (request) => typeof request.status === "number" && request.status >= 400
   )
 
-  // Sidecar JSON
-  const sidecarPath = path.join(outDir, `${safeFilename(routePath)}.json`)
-  await writeFile(
-    sidecarPath,
-    JSON.stringify(
-      {
-        path: routePath,
-        targetUrl,
-        finalUrl,
-        httpStatus,
-        navigationError: navError?.message ?? null,
-        consoleMessages,
-        networkRequestCount: networkRequests.length,
-        networkRequests: networkRequests.slice(0, 50),
-        networkFailures,
-        failedNetworkRequests,
-        axeError,
-        axeViolationCount: axeViolations.length,
-        axeViolations: axeViolations.map((v) => ({
-          id: v.id,
-          impact: v.impact,
-          description: v.description,
-          help: v.help,
-          helpUrl: v.helpUrl,
-          tags: v.tags,
-          nodeCount: v.nodes.length,
-          nodes: v.nodes.slice(0, 5).map((n) => ({
-            html: n.html.slice(0, 300),
-            target: n.target,
-            failureSummary: n.failureSummary?.slice(0, 500),
-          })),
-        })),
-      },
-      null,
-      2
-    )
-  )
-
   const hydrationErrors = consoleMessages.filter(
     (m) =>
       m.text.includes("hydrat") || m.text.includes("Hydration") || m.text.includes("did not match")
@@ -416,10 +986,87 @@ async function auditRoute(page, routePath, outDir) {
   const redirectedToLogin =
     finalUrl && (finalUrl.endsWith("/login") || finalUrl.includes("/login?"))
 
+  if (
+    canCaptureAuthenticatedScreenshot({
+      captureConfig,
+      visualConfigurationMatches,
+      routePath,
+      httpStatus,
+      redirectedToLogin,
+      finalUrl,
+      dashboardCardsVisible,
+      newsReadinessRequired,
+      newsReady,
+    })
+  ) {
+    const filename = `${buildAuthenticatedCaptureBasename(routePath, captureConfig)}.png`
+    screenshotPath = path.join(outDir, filename)
+    try {
+      await page.screenshot({ path: screenshotPath, fullPage: false, timeout: 10_000 })
+    } catch (error) {
+      screenshotPath = null
+      visualConfigurationError = `screenshot_failed:${redactDiagnostic(error.message)}`
+    }
+  }
+
+  const basename = buildAuthenticatedCaptureBasename(routePath, captureConfig)
+  const sidecarPath = path.join(outDir, `${basename}.json`)
+  await writeFile(
+    sidecarPath,
+    JSON.stringify(
+      {
+        path: routePath,
+        targetUrl: safeAuditUrl(targetUrl),
+        finalUrl: finalUrl ? safeAuditUrl(finalUrl) : null,
+        httpStatus,
+        navigationError: navError ? redactDiagnostic(navError.message) : null,
+        consoleMessages: consoleMessages.map((message) => ({
+          type: message.type,
+          text: redactDiagnostic(message.text),
+        })),
+        networkRequestCount: networkRequests.length,
+        networkRequests: networkRequests.slice(0, 50),
+        networkFailures,
+        failedNetworkRequests,
+        axeError: redactDiagnostic(axeError),
+        dashboardCardsVisible,
+        dashboardReadinessError,
+        newsReadinessRequired,
+        newsReady,
+        newsArticleCount,
+        newsActiveFilterState,
+        newsReadinessError,
+        axeViolationCount: axeViolations.length,
+        axeViolations: axeViolations.map((violation) => ({
+          id: violation.id,
+          impact: violation.impact,
+          description: violation.description,
+          help: violation.help,
+          helpUrl: violation.helpUrl,
+          tags: violation.tags,
+          nodeCount: violation.nodes.length,
+          nodes: violation.nodes.slice(0, 5).map((node) => ({
+            html: redactDiagnostic(node.html.slice(0, 300)),
+            target: node.target,
+            failureSummary: redactDiagnostic(node.failureSummary?.slice(0, 500) ?? ""),
+          })),
+        })),
+        ...createAuthenticatedCaptureMetadata(captureConfig, {
+          sourceSha,
+          visualConfigurationMatches,
+          visualConfigurationError,
+          screenshotPath,
+        }),
+      },
+      null,
+      2
+    )
+  )
+
   return {
     path: routePath,
     httpStatus,
-    finalUrl,
+    finalUrl: finalUrl ? safeAuditUrl(finalUrl) : null,
     redirectedToLogin,
     consoleErrorCount: errors.length,
     failedNetworkRequestCount: failedNetworkRequests.length + networkFailures.length,
@@ -427,9 +1074,19 @@ async function auditRoute(page, routePath, outDir) {
     networkRequestCount: networkRequests.length,
     axeError,
     axeViolationCount: axeViolations.length,
-    sampleErrors: errors.slice(0, 3).map((e) => e.text),
+    sampleErrors: errors.slice(0, 3).map((e) => redactDiagnostic(e.text)),
     failedNetworkRequests: [...failedNetworkRequests, ...networkFailures],
-    navError: navError?.message ?? null,
+    navError: navError ? redactDiagnostic(navError.message) : null,
+    captureConfigMatches: visualConfigurationMatches,
+    captureConfigError: visualConfigurationError,
+    dashboardCardsVisible,
+    dashboardReadinessError,
+    newsReadinessRequired,
+    newsReady,
+    newsArticleCount,
+    newsActiveFilterState,
+    newsReadinessError,
+    screenshotPath: screenshotPath ? path.basename(screenshotPath) : null,
   }
 }
 
@@ -461,20 +1118,61 @@ function printSummary(summaries) {
   console.log("=".repeat(120))
 }
 
+async function connectAuthenticatedRemoteChromium(connection) {
+  try {
+    return await chromium.connect(connection.endpoint, {
+      timeout: 30_000,
+      exposeNetwork: connection.exposeNetwork,
+    })
+  } catch {
+    throw new Error("Remote Chromium connection failed")
+  }
+}
+
 async function main() {
+  const routes = parseAuthenticatedVisualRoutes(process.env)
+  // Validate the complete optional matrix before creating output, making a
+  // network request, or launching Chromium. The legacy run remains unchanged.
+  const captureMatrix = parseAuthenticatedVisualCaptureMatrix()
+  const remoteBrowserConnection = parseAuthenticatedRemoteBrowserConnection(process.env)
+  const outputRoot = captureMatrix?.outputDir ?? OUT_DIR
+  let outputDir = outputRoot
+  const sourceShaCandidate = process.env.SOURCE_SHA ?? process.env.GITHUB_SHA ?? null
+  const sourceSha =
+    typeof sourceShaCandidate === "string" && /^[0-9a-f]{40}$/iu.test(sourceShaCandidate)
+      ? sourceShaCandidate.toLowerCase()
+      : null
+
   console.log(`Wave 138 SW3 — visual audit (authed Docker chain + axe-core)`)
-  console.log(`  Origin: ${ORIGIN}`)
-  console.log(`  Routes: ${ROUTES.length} (${ROUTES.join(", ")})`)
-  console.log(`  Output: ${OUT_DIR}`)
+  console.log(`  Origin: ${new URL(ORIGIN).origin}`)
+  console.log(`  Routes: ${routes.length} (${routes.join(", ")})`)
+  if (captureMatrix) {
+    const captureCount =
+      routes.length *
+      captureMatrix.locales.length *
+      captureMatrix.themes.length *
+      captureMatrix.widths.length
+    console.log(
+      `  Matrix: ${captureCount} authenticated captures (${captureMatrix.locales.join(",")}; ${captureMatrix.themes.join(",")}; ${captureMatrix.widths.join(",")}px x ${captureMatrix.height}px)`
+    )
+    console.log("  Output: caller-selected private directory outside the checkout")
+  } else {
+    console.log(`  Output: ${outputDir}`)
+  }
   console.log("")
 
-  await mkdir(OUT_DIR, { recursive: true })
+  if (captureMatrix) {
+    await assertPrivateOutputDirectory(outputRoot)
+    outputDir = await createAuthenticatedCaptureRunDirectory(outputRoot)
+  } else {
+    await mkdir(outputDir, { recursive: true })
+  }
 
   let jwks
   try {
     jwks = await checkJwksEndpoint()
     await writeFile(
-      path.join(OUT_DIR, "jwks.json"),
+      path.join(outputDir, "jwks.json"),
       JSON.stringify(
         {
           jwks,
@@ -499,124 +1197,212 @@ async function main() {
   // Trade-off: dist sw.js precache assumes "chrome" rendering but bundled
   // chromium is close enough for axe a11y purposes (axe scans the DOM
   // structure, not browser-specific quirks).
-  const browser = await chromium.launch({ headless: true })
+  const browser = remoteBrowserConnection
+    ? await connectAuthenticatedRemoteChromium(remoteBrowserConnection)
+    : await chromium.launch({ headless: true })
 
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-  })
-  const page = await context.newPage()
-  page.setDefaultTimeout(30_000)
-  page.setDefaultNavigationTimeout(30_000)
-
-  let loginResult
-  try {
-    loginResult = await performLogin(context)
-  } catch (err) {
-    if (err instanceof RS256Error) {
-      console.error(`✗ RS256 ASSERTION FAILED: ${err.message}`)
-      await context.close()
-      await browser.close()
-      process.exit(3)
-    }
-    console.error(`✗ LOGIN FAILED: ${err.message}`)
-    await context.close()
-    await browser.close()
-    process.exit(1)
-  }
-
-  await writeFile(
-    path.join(OUT_DIR, "login.json"),
-    JSON.stringify(
-      {
-        injectedCookieCount: loginResult.cookies.length,
-        cookieNames: loginResult.cookies.map((c) => c.name),
-        jwtHeader: loginResult.jwtHeader,
-        jwtPayloadSummary: {
-          sub: loginResult.jwtPayload.sub,
-          aud: loginResult.jwtPayload.aud,
-          is_active: loginResult.jwtPayload.is_active,
-          exp: loginResult.jwtPayload.exp,
-          jti: loginResult.jwtPayload.jti,
+  await withOwnedSessionCleanup({
+    browser,
+    createContext: () =>
+      browser.newContext({
+        viewport: {
+          width: captureMatrix?.widths[0] ?? 1280,
+          height: captureMatrix?.height ?? 800,
         },
-      },
-      null,
-      2
-    )
-  )
+      }),
+    origin: ORIGIN,
+    onCleanupFailure: () => console.error("Owned session or browser cleanup failed."),
+    run: async ({ context, ownSession }) => {
+      const page = await context.newPage()
+      page.setDefaultTimeout(30_000)
+      page.setDefaultNavigationTimeout(30_000)
 
-  await page.close()
+      let loginResult
+      try {
+        loginResult = await performLogin(context, ownSession)
+        if (captureMatrix) await verifySyntheticStudent(context)
+      } catch (err) {
+        if (err instanceof RS256Error) throw setVisualExitCode(err, 3)
+        throw setVisualExitCode(err, 1)
+      }
 
-  const summaries = []
-  for (const route of ROUTES) {
-    console.log(`→ ${route}`)
-    const routePage = await context.newPage()
-    routePage.setDefaultTimeout(45_000)
-    routePage.setDefaultNavigationTimeout(45_000)
-    const result = await auditRoute(routePage, route, OUT_DIR)
-    await routePage.close()
-    summaries.push(result)
-    const glyph =
-      result.httpStatus === 200 &&
-      !result.redirectedToLogin &&
-      !result.axeError &&
-      result.axeViolationCount === 0
-        ? "✓"
-        : "✗"
-    console.log(
-      `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} axe_viol=${result.axeViolationCount}`
-    )
-  }
+      await writeFile(
+        path.join(outputDir, "login.json"),
+        JSON.stringify(createAuthenticatedLoginSidecar(loginResult), null, 2)
+      )
 
-  await context.close()
-  await browser.close()
+      if (captureMatrix) {
+        await writeFile(
+          path.join(outputDir, "matrix.json"),
+          JSON.stringify(
+            {
+              evidenceKind: "real-authenticated-browser-no-route-mocks",
+              browserTransport: remoteBrowserConnection
+                ? "playwright-websocket"
+                : "local-bundled-chromium",
+              remoteBrowserRequired: process.env.VISUAL_REMOTE_CHROMIUM_REQUIRED === "1",
+              sourceSha: captureMatrix.sourceSha,
+              origin: captureMatrix.origin,
+              routes,
+              locales: captureMatrix.locales,
+              themes: captureMatrix.themes,
+              widths: captureMatrix.widths,
+              height: captureMatrix.height,
+              screenshots: true,
+            },
+            null,
+            2
+          )
+        )
+      }
 
-  printSummary(summaries)
+      await page.close()
 
-  const {
-    failedRoutes: failed,
-    hydrationIssues,
-    axeErrors,
-    axeIssues,
-    runtimeIssues,
-  } = classifyAuthenticatedAuditSummaries(summaries)
+      const summaries = []
+      const configurations = captureMatrix
+        ? captureMatrix.locales.flatMap((locale) =>
+            captureMatrix.themes.flatMap((theme) =>
+              captureMatrix.widths.map((width) => ({
+                mode: captureMatrix.mode,
+                locale,
+                theme,
+                width,
+                height: captureMatrix.height,
+              }))
+            )
+          )
+        : [null]
+      for (const captureConfig of configurations) {
+        if (captureConfig) await setStudentCapturePreferences(context, captureConfig)
+        for (const route of routes) {
+          console.log(
+            `→ ${route}${captureConfig ? ` [${captureConfig.locale}/${captureConfig.theme}/${captureConfig.width}x${captureConfig.height}]` : ""}`
+          )
+          const routePage = await context.newPage()
+          routePage.setDefaultTimeout(45_000)
+          routePage.setDefaultNavigationTimeout(45_000)
+          const result = await auditRoute(
+            routePage,
+            route,
+            outputDir,
+            captureConfig,
+            captureMatrix?.sourceSha ?? sourceSha
+          )
+          await routePage.close()
+          summaries.push(result)
+          const glyph =
+            result.httpStatus === 200 &&
+            !result.redirectedToLogin &&
+            !result.axeError &&
+            result.axeViolationCount === 0 &&
+            result.captureConfigMatches !== false &&
+            result.dashboardCardsVisible !== false &&
+            (!result.newsReadinessRequired || result.newsReady === true) &&
+            (!captureConfig || Boolean(result.screenshotPath))
+              ? "✓"
+              : "✗"
+          console.log(
+            `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} axe_viol=${result.axeViolationCount}${captureConfig ? ` config=${result.captureConfigMatches ? "verified" : "failed"} screenshot=${result.screenshotPath ? "yes" : "no"}` : ""}`
+          )
+        }
+      }
 
-  if (failed.length > 0) {
-    console.error(
-      `\n✗ ${failed.length}/${summaries.length} routes failed (non-200 OR redirected to /login)`
-    )
-    process.exit(1)
-  }
-  if (hydrationIssues.length > 0) {
-    console.error(`\n✗ ${hydrationIssues.length}/${summaries.length} routes had hydration errors`)
-    process.exit(2)
-  }
-  if (axeErrors.length > 0) {
-    console.error(
-      `\n✗ ${axeErrors.length}/${summaries.length} routes did not complete axe analysis`
-    )
-    console.error(`  See sidecar JSON in ${OUT_DIR} for the exact axe errors.`)
-    process.exit(5)
-  }
-  if (axeIssues.length > 0) {
-    console.error(
-      `\n✗ ${axeIssues.length}/${summaries.length} routes had critical/serious axe violations`
-    )
-    console.error(`  See sidecar JSON in ${OUT_DIR} for full details.`)
-    process.exit(5)
-  }
-  if (runtimeIssues.length > 0) {
-    console.error(
-      `\n✗ ${runtimeIssues.length}/${summaries.length} routes had console/page errors or failed network requests`
-    )
-    console.error(`  See sidecar JSON in ${OUT_DIR} for exact URLs and statuses.`)
-    process.exit(6)
-  }
-  console.log(
-    `\n✓ All ${summaries.length} routes passed: HTTP 200 + 0 hydration errors + 0 axe critical/serious violations`
-  )
+      printSummary(summaries)
+
+      const {
+        failedRoutes: failed,
+        hydrationIssues,
+        axeErrors,
+        axeIssues,
+        runtimeIssues,
+      } = classifyAuthenticatedAuditSummaries(summaries)
+      const visualConfigurationIssues = summaries.filter(
+        (summary) =>
+          summary.captureConfigMatches === false || (captureMatrix && !summary.screenshotPath)
+      )
+
+      if (failed.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${failed.length}/${summaries.length} routes failed (non-200 OR redirected to /login)`
+          ),
+          1
+        )
+      }
+      if (hydrationIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(`${hydrationIssues.length}/${summaries.length} routes had hydration errors`),
+          2
+        )
+      }
+      const newsReadinessIssues = findNewsReadinessIssues(summaries)
+      if (newsReadinessIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            newsReadinessIssues.length +
+              "/" +
+              summaries.length +
+              " News captures did not prove a stable non-empty list and default filter"
+          ),
+          9
+        )
+      }
+      const dashboardReadinessIssues = findDashboardReadinessIssues(summaries)
+      if (dashboardReadinessIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            dashboardReadinessIssues.length +
+              "/" +
+              summaries.length +
+              " dashboard captures did not prove all loaded cards visible and settled"
+          ),
+          8
+        )
+      }
+      if (axeErrors.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${axeErrors.length}/${summaries.length} routes did not complete axe analysis; inspect private sidecars`
+          ),
+          5
+        )
+      }
+      if (axeIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${axeIssues.length}/${summaries.length} routes had critical/serious axe violations; inspect private sidecars`
+          ),
+          5
+        )
+      }
+      if (runtimeIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${runtimeIssues.length}/${summaries.length} routes had console/page errors or failed network requests; inspect private sidecars`
+          ),
+          6
+        )
+      }
+      if (visualConfigurationIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            `${visualConfigurationIssues.length}/${summaries.length} captures failed requested locale/theme/viewport verification or screenshot capture; inspect private sidecars`
+          ),
+          7
+        )
+      }
+      console.log(
+        captureMatrix
+          ? `\n✓ All ${summaries.length} authenticated matrix captures passed on source ${captureMatrix.sourceSha}`
+          : `\n✓ All ${summaries.length} routes passed: HTTP 200 + 0 hydration errors + 0 axe critical/serious violations`
+      )
+    },
+  })
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err)
-  process.exit(1)
-})
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch((err) => {
+    console.error("Fatal error:", redactDiagnostic(err.message))
+    process.exitCode = Number.isInteger(err?.visualExitCode) ? err.visualExitCode : 1
+  })
+}

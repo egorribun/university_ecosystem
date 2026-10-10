@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react"
 
 const STORAGE_KEY = "news:bookmarks"
 const CHANNEL_NAME = "ecosystem.news.bookmarks"
+const EMPTY_SERVER_SNAPSHOT = new Set<string>()
 
 /* ── External store for cross-tab sync ── */
 let bookmarkSet: Set<string> = loadFromStorage()
@@ -30,6 +31,10 @@ function emitChange() {
 
 function getSnapshot(): Set<string> {
   return bookmarkSet
+}
+
+function getServerSnapshot(): Set<string> {
+  return EMPTY_SERVER_SNAPSHOT
 }
 
 function subscribe(listener: () => void): () => void {
@@ -68,7 +73,7 @@ export function useBookmarks() {
     ensureChannel()
   }, [])
 
-  const bookmarks = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const bookmarks = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
   const isBookmarked = useCallback((id: string) => bookmarks.has(id), [bookmarks])
 

@@ -1,13 +1,18 @@
 """Tests for the enhanced audit service."""
 
+import hashlib
+import hmac
+import json
 import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from starlette.requests import Request
 
+from app.schemas.dtos.audit import DataAccessLogDTO
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,
@@ -166,30 +171,38 @@ def test_redact_sensitive_redacts_keys_nested_and_in_lists():
 # --------------------------------------------------------------------------- #
 
 
-def test_convenience_wrappers_delegate_to_log():
-    svc = AuditService()
-    req = MagicMock()
-    uid = uuid4()
-    with patch.object(svc, "log") as mock_log:
-        svc.login_success(req, uid)
-        svc.login_failure(req, reason="bad_pw")
-        svc.logout(req, uid)
-        svc.mfa_failure(req, uid, reason="bad_otp")
-        svc.access_denied(req, uid, reason="rbac")
-        svc.rate_limit_exceeded(req, uid)
+@pytest.mark.parametrize(
+    ("method", "event", "logger_name", "level"),
+    [
+        ("logout", "auth.logout", "app.auth", logging.INFO),
+        ("rate_limit_exceeded", "access.rate_limit", "app.access", logging.WARNING),
+    ],
+)
+def test_convenience_audit_events_emit_identity_and_request_context(
+    caplog, method, event, logger_name, level
+):
+    user_id = uuid4()
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/account",
+            "headers": [],
+            "client": ("203.0.113.9", 4321),
+        }
+    )
+    with caplog.at_level(logging.INFO, logger=logger_name):
+        getattr(AuditService(), method)(request, user_id)
 
-    events = [c.args[0] for c in mock_log.call_args_list]
-    assert events == [
-        SecurityEvent.AUTH_LOGIN_SUCCESS,
-        SecurityEvent.AUTH_LOGIN_FAILURE,
-        SecurityEvent.AUTH_LOGOUT,
-        SecurityEvent.MFA_VERIFY_FAILURE,
-        SecurityEvent.ACCESS_DENIED,
-        SecurityEvent.RATE_LIMIT_EXCEEDED,
-    ]
-    # login_failure / mfa_failure / access_denied / rate_limit escalate to WARNING.
-    assert mock_log.call_args_list[1].kwargs["level"] == logging.WARNING
-    assert mock_log.call_args_list[3].kwargs["level"] == logging.WARNING
+    records = [record for record in caplog.records if record.name == logger_name]
+    assert len(records) == 1
+    assert records[0].levelno == level
+    payload = json.loads(records[0].getMessage())
+    assert payload["event"] == event
+    assert payload["user_id"] == str(user_id)
+    assert payload["path"] == "/account"
+    assert payload["method"] == "POST"
+    assert payload["ip"] == "203.0.113.9"
 
 
 # --------------------------------------------------------------------------- #
@@ -292,7 +305,9 @@ def _fake_log(signature=None):
         resource_type="user",
         resource_id="42",
         action="read",
+        context={"detail": "original"},
         ip_address="10.0.0.1",
+        user_agent="synthetic-agent-original",
         created_at=datetime.now(UTC),
         signature=signature,
     )
@@ -305,9 +320,27 @@ def test_secure_audit_init_with_single_key_and_explicit_keys():
     assert svc2._primary_key == b"a"
 
 
+def test_secure_audit_init_uses_configured_rotation_keys(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.audit_service.settings",
+        SimpleNamespace(audit_log_secret=" current-key , previous-key "),
+    )
+
+    service = SecureAuditService()
+
+    assert service._signing_keys == [b"current-key", b"previous-key"]
+
+
 def test_secure_audit_parse_signing_keys_empty_raises():
     with pytest.raises(ValueError, match="must not be empty"):
         SecureAuditService._parse_signing_keys("  ,  ")
+
+
+def test_secure_audit_parse_signing_keys_keeps_nonempty_rotation_entries():
+    assert SecureAuditService._parse_signing_keys(" first , , second ") == [
+        b"first",
+        b"second",
+    ]
 
 
 def test_secure_audit_compute_signature_is_deterministic():
@@ -316,7 +349,88 @@ def test_secure_audit_compute_signature_is_deterministic():
     sig1 = svc._compute_signature(log)
     sig2 = svc._compute_signature(log)
     assert sig1 == sig2
-    assert len(sig1) == 64  # hex SHA-256
+    assert sig1.startswith("v2:")
+    assert len(sig1.removeprefix("v2:")) == 64  # hex SHA-256
+
+
+def test_secure_audit_verifies_persisted_v2_format_with_nullable_ids() -> None:
+    """Optional IDs retain their established empty-string encoding in v2."""
+    # These None values are accepted by the DTO and are create_log's defaults.
+    # Sign the wire fixture independently so signer/verifier drift is observable.
+    canonical_payload = (
+        '{"action":"read","actor_user_id":"",'
+        '"context":{"detail":"original"},"created_at":"2026-09-22T12:34:56+00:00",'
+        '"id":"00000000-0000-0000-0000-000000000001","ip_address":"192.0.2.1",'
+        '"resource_id":"","resource_type":"user","subject_user_id":"",'
+        '"user_agent":"synthetic-agent","version":2}'
+    )
+    fixture_key = b"test-only-audit-v2-key"
+    signature = (
+        "v2:"
+        + hmac.new(
+            fixture_key, canonical_payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+    )
+    log = DataAccessLogDTO(
+        id=UUID(int=1),
+        actor_user_id=None,
+        subject_user_id=None,
+        resource_type="user",
+        resource_id=None,
+        action="read",
+        context={"detail": "original"},
+        ip_address="192.0.2.1",
+        user_agent="synthetic-agent",
+        created_at=datetime(2026, 9, 22, 12, 34, 56, tzinfo=UTC),
+        signature=signature,
+    )
+    service = SecureAuditService(signing_key=fixture_key)
+
+    assert service.verify_integrity(log) is True
+    for field, value in (
+        ("actor_user_id", UUID(int=2)),
+        ("subject_user_id", UUID(int=3)),
+        ("resource_id", "42"),
+    ):
+        tampered = log.model_copy(update={field: value})
+        assert service.verify_integrity(tampered) is False, field
+
+
+def test_secure_audit_verifies_persisted_v2_format_with_empty_action() -> None:
+    """An accepted empty action retains its persisted v2 wire representation."""
+    canonical_payload = (
+        '{"action":"","actor_user_id":"",'
+        '"context":{"detail":"original"},"created_at":"2026-09-22T12:34:56+00:00",'
+        '"id":"00000000-0000-0000-0000-000000000001","ip_address":"192.0.2.1",'
+        '"resource_id":"","resource_type":"user","subject_user_id":"",'
+        '"user_agent":"synthetic-agent","version":2}'
+    )
+    fixture_key = b"test-only-audit-v2-key"
+    # Independent wire fixture: do not sign with the service under test.
+    signature = (
+        "v2:"
+        + hmac.new(
+            fixture_key, canonical_payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+    )
+    log = DataAccessLogDTO(
+        id=UUID(int=1),
+        actor_user_id=None,
+        subject_user_id=None,
+        resource_type="user",
+        resource_id=None,
+        action="",
+        context={"detail": "original"},
+        ip_address="192.0.2.1",
+        user_agent="synthetic-agent",
+        created_at=datetime(2026, 9, 22, 12, 34, 56, tzinfo=UTC),
+        signature=signature,
+    )
+    service = SecureAuditService(signing_key=fixture_key)
+
+    assert service.verify_integrity(log) is True
+    tampered = DataAccessLogDTO.model_validate({**log.model_dump(), "action": "read"})
+    assert service.verify_integrity(tampered) is False
 
 
 def test_secure_audit_verify_integrity_roundtrip_and_tamper():
@@ -331,42 +445,256 @@ def test_secure_audit_verify_integrity_roundtrip_and_tamper():
     assert svc.verify_integrity(log) is False
 
 
+@pytest.mark.parametrize("field", ["context", "user_agent"])
+def test_secure_audit_integrity_detects_metadata_tampering(field: str) -> None:
+    svc = SecureAuditService(signing_key=b"signing-key")
+    log = _fake_log()
+    log.signature = svc._compute_signature(log)
+
+    if field == "context":
+        log.context = {"detail": "changed"}
+    else:
+        log.user_agent = "synthetic-agent-changed"
+
+    assert svc.verify_integrity(log) is False
+
+
+def test_secure_audit_verify_integrity_accepts_legacy_signature() -> None:
+    svc = SecureAuditService(signing_key=b"signing-key")
+    log = _fake_log()
+    legacy_parts = [
+        str(log.id or ""),
+        str(log.actor_user_id or ""),
+        str(log.subject_user_id or ""),
+        str(log.resource_type or ""),
+        str(log.resource_id or ""),
+        str(log.action or ""),
+        str(log.ip_address or ""),
+        log.created_at.isoformat(),
+    ]
+    legacy_data = "|".join(legacy_parts)
+    log.signature = hmac.new(
+        b"signing-key", legacy_data.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    assert svc.verify_integrity(log) is True
+    status = svc.signature_status(log)
+    assert status.signature_scheme == "legacy_pipe_v1"
+    assert "id" in status.authenticated_fields
+    for field in ("resource_type", "resource_id", "action", "ip_address"):
+        assert field in status.authenticated_fields
+        assert field not in status.unauthenticated_fields
+    assert {"context", "user_agent"}.issubset(status.unauthenticated_fields)
+
+
+def test_secure_audit_verifies_legacy_json_array_signature_with_exact_coverage() -> (
+    None
+):
+    key = b"synthetic-json-array-legacy-key"
+    svc = SecureAuditService(signing_key=key)
+    log = _fake_log()
+    legacy_payload = json.dumps(
+        [
+            str(log.actor_user_id) if log.actor_user_id else None,
+            str(log.subject_user_id) if log.subject_user_id else None,
+            log.resource_type,
+            log.resource_id,
+            log.action,
+            log.context,
+            log.ip_address,
+            log.user_agent,
+            log.created_at.isoformat(),
+        ],
+        separators=(",", ":"),
+    )
+    log.signature = hmac.new(
+        key, legacy_payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    status = svc.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_json_array_v1"
+    assert "id" in status.unauthenticated_fields
+    assert {"context", "user_agent"}.issubset(status.authenticated_fields)
+    assert "resource_id" in status.authenticated_fields
+    assert "resource_id" not in status.unauthenticated_fields
+    assert "actor_name" in status.unauthenticated_fields
+    assert "subject_name" in status.unauthenticated_fields
+
+
+def test_secure_audit_verifies_legacy_batch_json_array_normalization() -> None:
+    key = b"synthetic-legacy-batch-key"
+    service = SecureAuditService(signing_key=key)
+    log = _fake_log()
+    log.resource_type = None
+    log.resource_id = ""
+    log.action = None
+    payload = json.dumps(
+        [
+            str(log.actor_user_id) if log.actor_user_id else None,
+            str(log.subject_user_id) if log.subject_user_id else None,
+            "",
+            None,
+            "",
+            log.context,
+            log.ip_address,
+            log.user_agent,
+            log.created_at.isoformat(),
+        ],
+        separators=(",", ":"),
+    )
+    log.signature = hmac.new(key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    # The persisted empty string and the historical batch-normalized null have
+    # identical signature bytes. Simulate loading the same signature after the
+    # nullable column has been represented as NULL.
+    log.resource_id = None
+
+    status = service.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_json_array_v1"
+    assert "id" in status.unauthenticated_fields
+    assert "resource_id" in status.unauthenticated_fields
+    assert "resource_id" not in status.authenticated_fields
+
+
+@pytest.mark.parametrize(
+    ("field", "original", "substituted"),
+    [
+        (field, original, substituted)
+        for field in ("resource_id", "ip_address", "user_agent")
+        for original, substituted in ((None, ""), ("", None))
+    ],
+)
+def test_v2_nullable_empty_substitution_is_not_reported_as_authenticated(
+    field: str, original: str | None, substituted: str | None
+) -> None:
+    service = SecureAuditService(signing_key=b"nullable-field-audit-key")
+    log = DataAccessLogDTO.model_validate(_fake_log())
+    unsigned = log.model_copy(update={field: original, "signature": None})
+    signed = unsigned.model_copy(
+        update={"signature": service._compute_signature(unsigned)}
+    )
+    substituted_log = signed.model_copy(update={field: substituted})
+
+    status = service.signature_status(substituted_log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "canonical_v2"
+    assert field in status.unauthenticated_fields
+    assert field not in status.authenticated_fields
+    assert "id" in status.authenticated_fields
+
+
+@pytest.mark.parametrize("field", ["resource_id", "ip_address", "user_agent"])
+def test_v2_nonempty_nullable_fields_remain_authenticated(field: str) -> None:
+    service = SecureAuditService(signing_key=b"nullable-field-audit-key")
+    log = DataAccessLogDTO.model_validate(_fake_log())
+    signed = log.model_copy(update={"signature": service._compute_signature(log)})
+
+    status = service.signature_status(signed)
+
+    assert status.is_valid is True
+    assert field in status.authenticated_fields
+    assert field not in status.unauthenticated_fields
+
+
+def test_legacy_pipe_delimiter_repartition_marks_mutable_strings_ambiguous() -> None:
+    service = SecureAuditService(signing_key=b"legacy-pipe-audit-key")
+    log = _fake_log()
+    log.resource_type = "document|public"
+    log.resource_id = "42"
+    signed_payload = service._legacy_signature_payload(log)
+    log.signature = service._compute_legacy_signature(log)
+
+    # Both rows produce the same historical bare-pipe payload bytes:
+    # "document|public|42" versus "document|public|42".
+    log.resource_type = "document"
+    log.resource_id = "public|42"
+    assert service._legacy_signature_payload(log) == signed_payload
+    status = service.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_pipe_v1"
+    for field in ("resource_type", "resource_id", "action", "ip_address"):
+        assert field in status.unauthenticated_fields
+        assert field not in status.authenticated_fields
+    for field in ("id", "actor_user_id", "created_at"):
+        assert field in status.authenticated_fields
+
+
+@pytest.mark.parametrize(
+    ("field", "original", "substituted"),
+    [
+        (field, original, substituted)
+        for field in ("resource_id", "ip_address")
+        for original, substituted in ((None, ""), ("", None))
+    ],
+)
+def test_legacy_pipe_nullable_empty_substitution_is_not_authenticated(
+    field: str, original: str | None, substituted: str | None
+) -> None:
+    service = SecureAuditService(signing_key=b"legacy-pipe-audit-key")
+    log = _fake_log()
+    setattr(log, field, original)
+    log.signature = service._compute_legacy_signature(log)
+    setattr(log, field, substituted)
+
+    status = service.signature_status(log)
+
+    assert status.is_valid is True
+    assert status.signature_scheme == "legacy_pipe_v1"
+    assert field in status.unauthenticated_fields
+    assert field not in status.authenticated_fields
+
+
+def test_secure_audit_verify_integrity_accepts_independent_v2_fixture() -> None:
+    """Pin the persisted v2 format independently of the production serializer."""
+    fixture_key = b"test-only-audit-v2-key"
+    payload = (
+        '{"action":"read","actor_user_id":"00000000-0000-0000-0000-000000000002",'
+        '"context":{"detail":"original"},"created_at":"2026-09-22T12:34:56+00:00",'
+        '"id":"00000000-0000-0000-0000-000000000001","ip_address":"192.0.2.1",'
+        '"resource_id":"42","resource_type":"user",'
+        '"subject_user_id":"00000000-0000-0000-0000-000000000003",'
+        '"user_agent":"synthetic-agent","version":2}'
+    )
+    signature = hmac.new(
+        fixture_key, payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    log = DataAccessLogDTO(
+        id=UUID(int=1),
+        actor_user_id=UUID(int=2),
+        subject_user_id=UUID(int=3),
+        resource_type="user",
+        resource_id="42",
+        action="read",
+        context={"detail": "original"},
+        ip_address="192.0.2.1",
+        user_agent="synthetic-agent",
+        created_at=datetime(2026, 9, 22, 12, 34, 56, tzinfo=UTC),
+        signature=f"v2:{signature}",
+    )
+    service = SecureAuditService(signing_keys=[b"current-test-key", fixture_key])
+
+    assert service.verify_integrity(log) is True
+    status = service.signature_status(log)
+    assert status.signature_scheme == "canonical_v2"
+    assert "id" in status.authenticated_fields
+    assert "context" not in status.unauthenticated_fields
+
+    tampered = log.model_copy(update={"actor_user_id": UUID(int=4)})
+    assert service.verify_integrity(tampered) is False
+
+
 def test_secure_audit_verify_integrity_unsigned_is_false():
     svc = SecureAuditService(signing_key=b"k")
     assert svc.verify_integrity(_fake_log(signature=None)) is False
-
-
-def test_secure_audit_resign_frozen_dto_returns_false():
-    # _fake_log is not a DataAccessLog ORM instance, so resign cannot mutate it.
-    svc = SecureAuditService(signing_key=b"k")
-    log = _fake_log()
-    log.signature = svc._compute_signature(log)
-    assert svc.resign_log(log) is False
-
-
-@pytest.mark.asyncio
-async def test_secure_audit_create_log_and_verify_batch(db_session, user_factory):
-    # actor_user_id must reference a real users row: the PostgreSQL integration
-    # tier enforces the data_access_logs.actor_user_id FK (SQLite does not by
-    # default), so a synthetic uuid4() raises ForeignKeyViolationError on CI.
-    actor = await user_factory()
-    svc = SecureAuditService(signing_key=b"db-signing-key")
-
-    dto = await svc.create_log(
-        db_session,
-        actor_user_id=actor.id,
-        resource_type="user",
-        resource_id="7",
-        action="read",
-        ip_address="127.0.0.1",
-    )
-    # The signature is computed over the flushed row (id + created_at locked in).
-    assert dto.signature
-    assert svc.verify_integrity(dto) is True
-
-    total, valid, invalid_ids = await svc.verify_batch(db_session)
-    assert total >= 1
-    assert valid == total - len(invalid_ids)
+    status = svc.signature_status(_fake_log(signature=None))
+    assert status.signature_scheme == "unsigned"
+    assert status.authenticated_fields == ()
 
 
 @pytest.mark.asyncio
@@ -445,3 +773,159 @@ async def test_verify_chain_integrity_tamper_detection(db_session):
         "tampering detected" in (err_msg or "").lower()
         or "discontinuity" in (err_msg or "").lower()
     )
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_rejects_deleted_prefix(db_session):
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+    first = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "101"},
+    )
+    second = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_UPDATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "202"},
+    )
+    await db_session.delete(first)
+    await db_session.flush()
+
+    is_valid, failed_id, _ = await svc.verify_chain_integrity(
+        db_session, aggregate_type="schedule", aggregate_id=agg_id
+    )
+
+    assert is_valid is False
+    assert failed_id == str(second.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tamper", ["first_sequence", "first_root", "sequence_gap"])
+async def test_verify_chain_integrity_rejects_invalid_sequence_or_root(
+    db_session, tamper
+):
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+    first = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "101"},
+    )
+    if tamper == "sequence_gap":
+        event = await svc.record_domain_event(
+            db_session,
+            event_type="SCHEDULE_UPDATED",
+            aggregate_type="schedule",
+            aggregate_id=agg_id,
+            payload={"room": "202"},
+        )
+        event.sequence_number = 3
+    elif tamper == "first_sequence":
+        first.sequence_number = 3
+    else:
+        first.prev_hash = "f" * 64
+        canonical = svc.canonicalize_event_payload(
+            aggregate_type=first.aggregate_type,
+            aggregate_id=first.aggregate_id,
+            event_type=first.event_type,
+            payload=first.payload,
+            version=first.version,
+        )
+        first.hash = svc.compute_event_hash(
+            first.prev_hash,
+            canonical,
+            first.created_at.isoformat(),
+        )
+    await db_session.flush()
+
+    is_valid, _, _ = await svc.verify_chain_integrity(
+        db_session, aggregate_type="schedule", aggregate_id=agg_id
+    )
+
+    assert is_valid is False
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_skips_only_unhashed_outbox_rows(db_session):
+    from app.models.domain_events import StoredEvent
+
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+    await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "101"},
+    )
+    db_session.add(
+        StoredEvent(
+            event_type="NotificationsRequested",
+            aggregate_type="NotificationBatch",
+            aggregate_id=str(uuid4()),
+            payload={"notification_ids": []},
+        )
+    )
+    await db_session.flush()
+
+    is_valid, failed_id, error = await svc.verify_chain_integrity(db_session)
+
+    assert is_valid is True
+    assert failed_id is None
+    assert error is None
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_rejects_partially_marked_outbox_row(db_session):
+    from app.models.domain_events import StoredEvent
+
+    event = StoredEvent(
+        event_type="NotificationsRequested",
+        aggregate_type="NotificationBatch",
+        aggregate_id=str(uuid4()),
+        payload={"notification_ids": []},
+        sequence_number=1,
+        prev_hash="0" * 64,
+        hash=None,
+    )
+    db_session.add(event)
+    await db_session.flush()
+
+    is_valid, failed_id, error = await SecureAuditService(
+        signing_key=b"domain-event-secret-key-32bytes"
+    ).verify_chain_integrity(db_session)
+
+    assert is_valid is False
+    assert failed_id == str(event.id)
+    assert "invalid chain hash" in (error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_rejects_chain_row_with_removed_markers(
+    db_session,
+):
+    service = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    event = await service.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=uuid4(),
+        payload={"room": "101"},
+    )
+    event.sequence_number = None
+    event.prev_hash = None
+    event.hash = None
+    await db_session.flush()
+
+    is_valid, failed_id, error = await service.verify_chain_integrity(db_session)
+
+    assert is_valid is False
+    assert failed_id == str(event.id)
+    assert "sequence" in (error or "").lower()

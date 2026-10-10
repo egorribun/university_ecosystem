@@ -3,7 +3,7 @@ declare const self: ServiceWorkerGlobalScope
 
 import { clientsClaim } from "workbox-core"
 
-import { initApiCaching, clearSessionCaches, setSessionHash } from "./sw/api"
+import { initApiCaching, clearSessionCaches, setSessionHash, purgeLegacyCaches } from "./sw/api"
 import { error, log } from "./sw/logger"
 import { initMediaCaching } from "./sw/media"
 import { initOfflineQueue, processOfflineQueues } from "./sw/offline"
@@ -53,8 +53,8 @@ async function bootstrap() {
     initPrecaching()
     initApiCaching()
     initMediaCaching()
-    await initOfflineQueue()
     initPushHandlers()
+    await Promise.all([purgeLegacyCaches(), initOfflineQueue()])
 
     // 3. Register testing helper
     self.__SW_TESTING__ = {
@@ -115,8 +115,12 @@ self.addEventListener("message", (event) => {
       // Strict type guard — sessionHash must be a non-empty string of reasonable length
       // to prevent null/object/oversized-string injection via postMessage.
       const hash = event.data.sessionHash
-      if (typeof hash === "string" && hash.length > 0 && hash.length <= 128) {
-        setSessionHash(hash)
+      if (hash == null) {
+        event.waitUntil(clearSessionCaches())
+      } else if (typeof hash === "string" && hash.trim().length > 0 && hash.length <= 128) {
+        const scope =
+          typeof event.data.sessionScope === "string" ? event.data.sessionScope : undefined
+        setSessionHash(hash, scope)
       }
       break
     }

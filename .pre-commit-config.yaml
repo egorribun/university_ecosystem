@@ -25,7 +25,7 @@ repos:
     hooks:
       - id: detect-secrets
         name: detect-secrets scan
-        entry: python scripts/run_detect_secrets.py
+        entry: python -X utf8 scripts/run_detect_secrets.py
         args: ["--baseline", ".secrets.baseline"]
         require_serial: true
         # Generated WASM provenance contains SHA-256 digests rather than
@@ -116,8 +116,9 @@ repos:
         pass_filenames: false
         always_run: true
 
+  # Temporary upstream PR #745 pin; return to a supported release once it includes cache-mode.
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.12
+    rev: 5dc52e8daa4ef51bfd76a648128474bd41d65df0  # pragma: allowlist secret -- immutable upstream source revision
     hooks:
       - id: actionlint
 
@@ -126,6 +127,7 @@ repos:
     hooks:
       - id: semgrep-docker
         name: semgrep-sast
+        entry: -e SEMGREP_LOG_FILE=/tmp/out.log -e SEMGREP_VERSION_CACHE_PATH=/tmp/cache semgrep/semgrep:1.113.0@sha256:136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22 semgrep
         args: ["--config", "auto", "--error", "--oss-only"]
         exclude: (^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|^frontend/coverage-[^/]+/
         # pre-commit may split --all-files into several invocations. Running

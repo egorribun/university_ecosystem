@@ -3,6 +3,7 @@ import path from "node:path"
 import process from "node:process"
 
 import coverageSourcePolicy from "../quality/coverage-source-policy.json" with { type: "json" }
+import { canonicalTypeScriptCheckerConfig } from "./scripts/stryker-checker-config.mjs"
 import { PRESENTATION_IGNORER } from "./scripts/stryker-presentation-ignorer.mjs"
 import { STRYKER_PROGRESS_REPORTER_NAME } from "./scripts/stryker-progress-plugin.mjs"
 
@@ -78,6 +79,9 @@ const maxTestRunnerReuse = mutationRunnerReuse()
  * either mutated or explicitly accounted for as generating zero mutants.
  */
 export default {
+  checkers: [...canonicalTypeScriptCheckerConfig.checkers],
+  tsconfigFile: canonicalTypeScriptCheckerConfig.tsconfigFile,
+  typescriptChecker: { ...canonicalTypeScriptCheckerConfig.typescriptChecker },
   testRunner: "vitest",
   // Windows Vitest/ESBuild cannot reliably resolve configs from Stryker's
   // hidden default `.stryker-tmp`; keep the sandbox visible as recommended

@@ -3,7 +3,9 @@
  *
  * like/comment/edit/delete optimistic mutations + offline IndexedDB queue.
  *
- * Stateful MSW server simulation: the hook runs `onMutate` (optimistic) then
+ * Gated mutation/refetch responses prove optimistic state and rollback before
+ * server data can hide either regression. The remaining tests use a stateful
+ * MSW server simulation: the hook runs `onMutate` (optimistic) then
  * `onSettled` (invalidateQueries → refetch). A *static* GET body would silently
  * revert every optimistic update on that refetch, so handlers here keep a mutable
  * `state` that the POST/PATCH/DELETE mutate on success — the refetch then CONFIRMS
@@ -56,6 +58,47 @@ function makeWrapper() {
 
 function setOnline(value: boolean) {
   Object.defineProperty(navigator, "onLine", { configurable: true, value })
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
+function holdInteractionResponses(action: "like" | "comment", initial: NewsInteractions) {
+  const mutation = deferred<Response>()
+  const refetch = deferred<NewsInteractions>()
+  const request = { started: false }
+  let hasLoaded = false
+  server.use(
+    http.get(`*/news/${NEWS_ID}/interactions`, async () => {
+      if (!hasLoaded) {
+        hasLoaded = true
+        return HttpResponse.json(initial)
+      }
+      return HttpResponse.json(await refetch.promise)
+    }),
+    http.post(`*/news/${NEWS_ID}/${action}`, () => {
+      request.started = true
+      return mutation.promise
+    })
+  )
+  return { mutation, refetch, request }
+}
+
+async function waitForMutationAttempt(qc: QueryClient, request: { started: boolean }) {
+  // The request starts after onMutate finishes. Also stop waiting if setup
+  // fails, so the pending-state assertion reports that failure directly.
+  await waitFor(() => {
+    const failed = qc
+      .getMutationCache()
+      .getAll()
+      .some((mutation) => mutation.state.status === "error")
+    expect(request.started || failed).toBe(true)
+  })
 }
 
 type Behavior = "ok" | "500" | "401" | "offline"
@@ -260,46 +303,81 @@ describe("useNewsInteraction — query", () => {
 })
 
 describe("useNewsInteraction — toggleLike", () => {
-  it("online happy path flips optimistically and the refetch confirms it", async () => {
-    const { qc, wrapper } = makeWrapper()
-    setupServer({ initial: { ...baseInteractions, is_liked: false, likes_count: 3 }, like: "ok" })
-    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-    act(() => result.current.toggleLike())
-    await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-      expect(d?.is_liked).toBe(true)
-      expect(d?.likes_count).toBe(4)
-    })
-    await waitFor(() => expect(result.current.isLiking).toBe(false))
-  })
+  it.each([
+    { isLiked: false, optimisticCount: 4 },
+    { isLiked: true, optimisticCount: 2 },
+  ])(
+    "updates the like while the request is pending (already liked: $isLiked)",
+    async ({ isLiked, optimisticCount }) => {
+      const initial = { ...baseInteractions, is_liked: isLiked }
+      const authoritative = { ...initial, is_liked: !isLiked, likes_count: 9 }
+      const { mutation, refetch, request } = holdInteractionResponses("like", initial)
+      const { qc, wrapper } = makeWrapper()
+      const { result, unmount } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
 
-  it("online happy path removes an existing like", async () => {
-    const { qc, wrapper } = makeWrapper()
-    setupServer({ initial: { ...baseInteractions, is_liked: true, likes_count: 3 }, like: "ok" })
-    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-    act(() => result.current.toggleLike())
-    await waitFor(() => {
-      const data = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-      expect(data?.is_liked).toBe(false)
-      expect(data?.likes_count).toBe(2)
-    })
-  })
+      try {
+        await waitFor(() => expect(result.current.interactions).toEqual(initial))
+        act(() => result.current.toggleLike())
 
-  it("server 500 rolls back", async () => {
-    const { qc, wrapper } = makeWrapper()
-    setupServer({ initial: { ...baseInteractions, is_liked: false, likes_count: 3 }, like: "500" })
-    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-    act(() => result.current.toggleLike())
-    await waitFor(() => expect(result.current.isLiking).toBe(false))
-    await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-      expect(d?.is_liked).toBe(false)
-      expect(d?.likes_count).toBe(3)
-    })
-  })
+        await waitForMutationAttempt(qc, request)
+        expect(result.current.isLiking).toBe(true)
+        expect(result.current.interactions).toEqual({
+          ...initial,
+          is_liked: !isLiked,
+          likes_count: optimisticCount,
+        })
+
+        mutation.resolve(new HttpResponse(null, { status: 200 }))
+        await waitFor(() => expect(result.current.isLiking).toBe(false))
+        expect(qc.isFetching()).toBe(1)
+        expect(result.current.interactions?.likes_count).toBe(optimisticCount)
+
+        refetch.resolve(authoritative)
+        await waitFor(() => expect(result.current.interactions).toEqual(authoritative))
+      } finally {
+        unmount()
+        qc.clear()
+        mutation.resolve(new HttpResponse(null, { status: 200 }))
+        refetch.resolve(initial)
+      }
+    }
+  )
+
+  it.each([false, true])(
+    "restores a rejected like before refetch resolves (already liked: %s)",
+    async (isLiked) => {
+      const initial = { ...baseInteractions, is_liked: isLiked }
+      const authoritative = { ...initial, likes_count: 7 }
+      const { mutation, refetch, request } = holdInteractionResponses("like", initial)
+      const { qc, wrapper } = makeWrapper()
+      const { result, unmount } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+
+      try {
+        await waitFor(() => expect(result.current.interactions).toEqual(initial))
+        act(() => result.current.toggleLike())
+        await waitForMutationAttempt(qc, request)
+        expect(result.current.isLiking).toBe(true)
+        expect(result.current.interactions).toEqual({
+          ...initial,
+          is_liked: !isLiked,
+          likes_count: isLiked ? 2 : 4,
+        })
+
+        mutation.resolve(new HttpResponse(null, { status: 500 }))
+        await waitFor(() => expect(result.current.isLiking).toBe(false))
+        expect(qc.isFetching()).toBe(1)
+        expect(result.current.interactions).toEqual(initial)
+
+        refetch.resolve(authoritative)
+        await waitFor(() => expect(result.current.interactions).toEqual(authoritative))
+      } finally {
+        unmount()
+        qc.clear()
+        mutation.resolve(new HttpResponse(null, { status: 200 }))
+        refetch.resolve(initial)
+      }
+    }
+  )
 
   it("401 rethrows and does NOT queue", async () => {
     const { wrapper } = makeWrapper()
@@ -390,8 +468,8 @@ describe("useNewsInteraction — toggleLike", () => {
 
   it("registers background sync when the service-worker sync APIs exist", async () => {
     const register = vi.fn().mockResolvedValue(undefined)
-    const previousServiceWorker = navigator.serviceWorker
-    const previousSyncManager = (window as Window & { SyncManager?: unknown }).SyncManager
+    const previousServiceWorker = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+    const previousSyncManager = Object.getOwnPropertyDescriptor(window, "SyncManager")
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
       value: { ready: Promise.resolve({ sync: { register } }) },
@@ -417,22 +495,24 @@ describe("useNewsInteraction — toggleLike", () => {
       await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
       await waitFor(() => expect(result.current.isLiking).toBe(false))
     } finally {
-      Object.defineProperty(navigator, "serviceWorker", {
-        configurable: true,
-        value: previousServiceWorker,
-      })
-      Object.defineProperty(window, "SyncManager", {
-        configurable: true,
-        value: previousSyncManager,
-      })
+      if (previousServiceWorker) {
+        Object.defineProperty(navigator, "serviceWorker", previousServiceWorker)
+      } else {
+        Reflect.deleteProperty(navigator, "serviceWorker")
+      }
+      if (previousSyncManager) {
+        Object.defineProperty(window, "SyncManager", previousSyncManager)
+      } else {
+        Reflect.deleteProperty(window, "SyncManager")
+      }
     }
   })
 
   it("keeps the offline mutation when background-sync registration fails", async () => {
     const registrationError = new Error("sync denied")
     const register = vi.fn().mockRejectedValue(registrationError)
-    const previousServiceWorker = navigator.serviceWorker
-    const previousSyncManager = (window as Window & { SyncManager?: unknown }).SyncManager
+    const previousServiceWorker = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+    const previousSyncManager = Object.getOwnPropertyDescriptor(window, "SyncManager")
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
       value: { ready: Promise.resolve({ sync: { register } }) },
@@ -456,14 +536,16 @@ describe("useNewsInteraction — toggleLike", () => {
       })
       expect(await readQueue()).toHaveLength(1)
     } finally {
-      Object.defineProperty(navigator, "serviceWorker", {
-        configurable: true,
-        value: previousServiceWorker,
-      })
-      Object.defineProperty(window, "SyncManager", {
-        configurable: true,
-        value: previousSyncManager,
-      })
+      if (previousServiceWorker) {
+        Object.defineProperty(navigator, "serviceWorker", previousServiceWorker)
+      } else {
+        Reflect.deleteProperty(navigator, "serviceWorker")
+      }
+      if (previousSyncManager) {
+        Object.defineProperty(window, "SyncManager", previousSyncManager)
+      } else {
+        Reflect.deleteProperty(window, "SyncManager")
+      }
     }
   })
 })
@@ -485,52 +567,185 @@ describe("useNewsInteraction — addComment", () => {
     ...over,
   })
 
-  it("online optimistic append uses the auth user", async () => {
+  it.each([
+    { name: "signed-in author and server count", hasUser: true, count: 20, nextCount: 21 },
+    { name: "anonymous author", hasUser: false, count: 1, nextCount: 2 },
+    { name: "omitted server count", hasUser: true, count: undefined, nextCount: 2 },
+  ])("shows a pending comment with $name", async ({ hasUser, count, nextCount }) => {
+    if (!hasUser) authMock.user = null
+    const initial = withComment({ comments_count: count })
+    const { mutation, refetch, request } = holdInteractionResponses("comment", initial)
     const { qc, wrapper } = makeWrapper()
-    setupServer({ initial: withComment(), comment: "ok" })
-    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
-    await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
-    act(() => result.current.addComment("hello"))
-    await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-      expect(d?.comments.length).toBe(2)
-    })
-    const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-    const last = d!.comments[d!.comments.length - 1]!
-    expect(last.content).toBe("hello")
-    expect(last.user_id).toBe("u-1")
-    expect(last.user_name).toBe("Test User")
-    expect(d?.comments_count).toBe(2)
+    const { result, unmount } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    const confirmed: NewsComment = {
+      id: "server-comment-42",
+      content: "hello",
+      user_id: hasUser ? "u-1" : "",
+      user_name: hasUser ? "Test User" : "You",
+      created_at: "2026-06-13T00:00:00Z",
+    }
+    const authoritative = {
+      ...initial,
+      comments: [...initial.comments, confirmed],
+      comments_count: nextCount,
+    }
+
+    try {
+      await waitFor(() => expect(result.current.interactions).toEqual(initial))
+      const startedAt = Date.now()
+      act(() => result.current.addComment("hello"))
+      await waitForMutationAttempt(qc, request)
+      expect(result.current.isCommenting).toBe(true)
+      expect(result.current.interactions?.comments).toHaveLength(2)
+      expect(result.current.interactions?.comments_count).toBe(nextCount)
+      const pending = result.current.interactions!.comments[1]!
+      expect(result.current.interactions?.comments[0]).toEqual(initial.comments[0])
+      expect(pending).toMatchObject({
+        content: "hello",
+        user_id: confirmed.user_id,
+        user_name: confirmed.user_name,
+      })
+      expect(pending.id).not.toBe("")
+      expect(pending.id).not.toBe(initial.comments[0]!.id)
+      expect(Date.parse(pending.created_at)).toBeGreaterThanOrEqual(startedAt)
+      expect(Date.parse(pending.created_at)).toBeLessThanOrEqual(Date.now())
+
+      mutation.resolve(HttpResponse.json(confirmed))
+      await waitFor(() => expect(result.current.isCommenting).toBe(false))
+      expect(qc.isFetching()).toBe(1)
+      expect(result.current.interactions?.comments).toEqual([...initial.comments, pending])
+
+      refetch.resolve(authoritative)
+      await waitFor(() => expect(result.current.interactions).toEqual(authoritative))
+    } finally {
+      unmount()
+      qc.clear()
+      mutation.resolve(HttpResponse.json(confirmed))
+      refetch.resolve(initial)
+    }
   })
 
-  it("optimistic user_name falls back to 'You' + user_id '' when user null", async () => {
-    authMock.user = null
+  it("restores a rejected comment before refetch resolves", async () => {
+    const initial = withComment({ comments_count: 20 })
+    const authoritative = { ...initial, likes_count: 7 }
+    const { mutation, refetch, request } = holdInteractionResponses("comment", initial)
     const { qc, wrapper } = makeWrapper()
-    setupServer({ initial: withComment(), comment: "ok" })
-    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
-    await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
-    act(() => result.current.addComment("hi"))
-    await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-      expect(d?.comments.length).toBe(2)
-    })
-    const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-    const last = d!.comments[d!.comments.length - 1]!
-    expect(last.user_name).toBe("You")
-    expect(last.user_id).toBe("")
+    const { result, unmount } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+
+    try {
+      await waitFor(() => expect(result.current.interactions).toEqual(initial))
+      act(() => result.current.addComment("nope"))
+      await waitForMutationAttempt(qc, request)
+      expect(result.current.isCommenting).toBe(true)
+      expect(result.current.interactions?.comments).toHaveLength(2)
+      expect(result.current.interactions?.comments[1]?.content).toBe("nope")
+      expect(result.current.interactions?.comments_count).toBe(21)
+
+      mutation.resolve(new HttpResponse(null, { status: 500 }))
+      await waitFor(() => expect(result.current.isCommenting).toBe(false))
+      expect(qc.isFetching()).toBe(1)
+      expect(result.current.interactions).toEqual(initial)
+
+      refetch.resolve(authoritative)
+      await waitFor(() => expect(result.current.interactions).toEqual(authoritative))
+    } finally {
+      unmount()
+      qc.clear()
+      mutation.resolve(new HttpResponse(null, { status: 200 }))
+      refetch.resolve(initial)
+    }
   })
 
-  it("server 500 rolls back", async () => {
+  it("keeps another news item's fetch running while posting a comment", async () => {
+    const initial = withComment()
+    const { mutation, refetch, request } = holdInteractionResponses("comment", initial)
+    const otherResponse = deferred<NewsInteractions>()
+    server.use(
+      http.get("*/news/news-other/interactions", async () =>
+        HttpResponse.json(await otherResponse.promise)
+      )
+    )
     const { qc, wrapper } = makeWrapper()
-    setupServer({ initial: withComment(), comment: "500" })
-    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
-    await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
-    act(() => result.current.addComment("nope"))
-    await waitFor(() => expect(result.current.isCommenting).toBe(false))
-    await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-      expect(d?.comments.length).toBe(1)
-    })
+    const { result, unmount } = renderHook(
+      () => ({ current: useNewsInteraction(NEWS_ID), other: useNewsInteraction("news-other") }),
+      { wrapper }
+    )
+
+    try {
+      await waitFor(() => expect(result.current.current.interactions).toEqual(initial))
+      expect(result.current.other.isLoading).toBe(true)
+      act(() => result.current.current.addComment("hello"))
+
+      await waitForMutationAttempt(qc, request)
+      expect(result.current.current.isCommenting).toBe(true)
+      expect(result.current.other.isLoading).toBe(true)
+
+      otherResponse.resolve(baseInteractions)
+      await waitFor(() => expect(result.current.other.isLoading).toBe(false))
+      expect(result.current.other.interactions).toEqual(baseInteractions)
+
+      mutation.resolve(new HttpResponse(null, { status: 500 }))
+      await waitFor(() => expect(result.current.current.isCommenting).toBe(false))
+      expect(result.current.current.interactions).toEqual(initial)
+      expect(result.current.other.interactions).toEqual(baseInteractions)
+
+      refetch.resolve(initial)
+      await waitFor(() => expect(qc.isFetching()).toBe(0))
+    } finally {
+      unmount()
+      qc.clear()
+      mutation.resolve(new HttpResponse(null, { status: 200 }))
+      refetch.resolve(initial)
+      otherResponse.resolve(baseInteractions)
+    }
+  })
+
+  it("posts a comment before interactions have loaded and then fetches the saved comment", async () => {
+    const queryGate = deferred<void>()
+    const state = { ...baseInteractions }
+    const saved: NewsComment = {
+      id: "server-comment-before-load",
+      content: "before load",
+      user_id: "u-1",
+      user_name: "Test User",
+      created_at: "2026-06-13T00:00:00Z",
+    }
+    const request = { started: false }
+    server.use(
+      http.get(`*/news/${NEWS_ID}/interactions`, async () => {
+        await queryGate.promise
+        return HttpResponse.json(state)
+      }),
+      http.post(`*/news/${NEWS_ID}/comment`, async ({ request: incoming }) => {
+        const body = (await incoming.json()) as { content: string }
+        state.comments = [{ ...saved, content: body.content }]
+        state.comments_count = 1
+        request.started = true
+        return HttpResponse.json(saved)
+      })
+    )
+    const { qc, wrapper } = makeWrapper()
+    const { result, unmount } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+
+    try {
+      expect(result.current.isLoading).toBe(true)
+      expect(result.current.interactions).toBeUndefined()
+      act(() => result.current.addComment("before load"))
+      await waitForMutationAttempt(qc, request)
+      await waitFor(() => expect(result.current.isCommenting).toBe(false))
+
+      queryGate.resolve()
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      expect(result.current.interactions).toEqual({
+        ...baseInteractions,
+        comments: [saved],
+        comments_count: 1,
+      })
+    } finally {
+      unmount()
+      qc.clear()
+      queryGate.resolve()
+    }
   })
 
   it("offline queues the comment payload", async () => {
@@ -546,18 +761,6 @@ describe("useNewsInteraction — addComment", () => {
     expect(q[0]!.url).toBe(`/api/v1/news/${NEWS_ID}/comment`)
     expect(q[0]!.method).toBe("POST")
     expect(q[0]!.payload).toEqual({ content: "offline comment" })
-  })
-
-  it("comments_count falls back to comments.length when undefined", async () => {
-    const { qc, wrapper } = makeWrapper()
-    setupServer({ initial: withComment({ comments_count: undefined }), comment: "ok" })
-    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
-    await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
-    act(() => result.current.addComment("x"))
-    await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
-      expect(d?.comments_count).toBe(2) // (undefined ?? 1) + 1
-    })
   })
 })
 

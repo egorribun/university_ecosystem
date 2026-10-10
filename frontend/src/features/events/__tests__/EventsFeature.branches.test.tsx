@@ -117,6 +117,9 @@ vi.mock("../components/EventsHeader", () => ({
       <span data-testid="events-count">{String(props.eventsCount)}</span>
       <span data-testid="header-admin">{String(props.isAdmin)}</span>
       <button onClick={() => (props.onTabChange as (v: string) => void)("my")}>tab-my</button>
+      <button onClick={() => (props.onTabChange as (v: string) => void)("active")}>
+        tab-active
+      </button>
       <button onClick={() => (props.onTabChange as (v: string) => void)("archive")}>
         tab-archive
       </button>
@@ -287,6 +290,19 @@ describe("EventsFeature — URL change handlers (set + delete branches)", () => 
     }
     expect(tabCall.search({})).toEqual({ tab: "archive" })
     expect(drCall.search({})).toEqual({ dr: "today" })
+  })
+
+  it("removes the default active tab while preserving other search params", () => {
+    render(<EventsFeature />)
+    act(() => fireEvent.click(screen.getByText("tab-active")))
+    const call = navigateSpy.fn.mock.calls[0]![0] as {
+      search: (p: Record<string, unknown>) => unknown
+    }
+
+    expect(call.search({ tab: "archive", q: "keep", sort: "popular" })).toEqual({
+      q: "keep",
+      sort: "popular",
+    })
   })
 })
 

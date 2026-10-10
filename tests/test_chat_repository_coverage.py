@@ -5,10 +5,12 @@ via the ``db_session`` + ``user_factory`` fixtures (mirrors
 ``test_chat_repository_groups.py``). Deliberately AVOIDS the PostgreSQL-only paths
 that the SQLite harness cannot run:
 
-* ``_set_rls_user`` / ``get_unread_count`` / ``get_messages(user_id=...)`` —
-  use ``SET LOCAL app.current_user_id`` (PG GUC; SQLite rejects it). The group
-  unread branch is already exercised at the repo level via ``get_chats_for_user``
-  (which has no RLS call) in ``test_chat_repository_groups.py``.
+* PostgreSQL message reads and deletes require an explicit RLS ``user_id``.
+  SQLite skips the PostgreSQL-only GUC write, so the same tests run on both
+  dialects while retaining the production identity requirement.
+* ``get_unread_count`` uses ``SET LOCAL app.current_user_id`` (PG GUC; SQLite
+  rejects it). The group unread branch is exercised via ``get_chats_for_user``
+  in ``test_chat_repository_groups.py``.
 * ``add_reaction`` — ``pg_insert(...).on_conflict_do_nothing`` is PG-only, so
   reactions are seeded here with a plain ``MessageReaction(...)`` insert to test
   ``remove_reaction`` / ``get_reactors``.
@@ -21,21 +23,30 @@ in an existing partition on the CI PostgreSQL integration tier.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.events import register_event_listeners
 from app.models.chat import (
     Message,
     MessageReaction,
 )
+from app.models.domain_events import StoredEvent
+from app.models.users import User
 from app.repositories.chat_repository import ChatRepository
+from app.schemas.dtos.chat import ChatDTO
 
 _NOW = datetime.now(UTC)
 
 
-async def _make_dm(db_session, user_factory):
+async def _make_dm(
+    db_session: AsyncSession, user_factory: Callable[..., Awaitable[User]]
+) -> tuple[ChatRepository, ChatDTO, User, User]:
     """Create a 2-participant DM chat and return (repo, chat_dto, u1, u2)."""
     u1 = await user_factory()
     u2 = await user_factory()
@@ -46,8 +57,8 @@ async def _make_dm(db_session, user_factory):
 
 async def _add_message(
     repo: ChatRepository,
-    chat_id,
-    sender_id,
+    chat_id: UUID,
+    sender_id: UUID,
     content: str = "hi",
     *,
     offset_seconds: int = 0,
@@ -110,7 +121,7 @@ async def test_find_existing_dm_none_when_no_shared_chat(db_session, user_factor
 
 
 # --------------------------------------------------------------------------- #
-# get_last_message + get_messages (user_id=None skips the PG RLS GUC)          #
+# get_last_message + get_messages — explicit identity for PostgreSQL RLS        #
 # --------------------------------------------------------------------------- #
 
 
@@ -120,7 +131,7 @@ async def test_get_last_message_returns_most_recent(db_session, user_factory):
     await _add_message(repo, chat.id, u1.id, "first", offset_seconds=0)
     await _add_message(repo, chat.id, u1.id, "latest", offset_seconds=10)
 
-    last = await repo.get_last_message(chat.id)
+    last = await repo.get_last_message(chat.id, user_id=u1.id)
 
     assert last is not None
     assert last.content == "latest"
@@ -128,8 +139,8 @@ async def test_get_last_message_returns_most_recent(db_session, user_factory):
 
 @pytest.mark.asyncio
 async def test_get_last_message_none_for_empty_chat(db_session, user_factory):
-    repo, chat, *_ = await _make_dm(db_session, user_factory)
-    assert await repo.get_last_message(chat.id) is None
+    repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
+    assert await repo.get_last_message(chat.id, user_id=u1.id) is None
 
 
 @pytest.mark.asyncio
@@ -145,7 +156,7 @@ async def test_get_messages_paginates_descending(db_session, user_factory):
     # cursor-bearing call raises StatementError on the SQLite test harness. This
     # is a harness limitation, not a prod bug (prod runs on PG, which coerces the
     # string to UUID). Assert page-1 shape only.
-    page1, has_more, cursor = await repo.get_messages(chat.id, None, 2)
+    page1, has_more, cursor = await repo.get_messages(chat.id, None, 2, user_id=u1.id)
     assert has_more is True
     assert cursor is not None
     assert [m.content for m in page1] == ["m2", "m1"]
@@ -161,11 +172,13 @@ async def test_edit_message_author_succeeds(db_session, user_factory):
     repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "original")
 
-    edited_at, affected = await repo.edit_message(msg.id, u1.id, "edited")
+    edited_at, affected = await repo.edit_message(
+        msg.id, u1.id, "edited", chat_id=chat.id
+    )
 
     assert affected == 1
     assert edited_at is not None
-    refreshed = await repo.get_message_by_id(msg.id)
+    refreshed = await repo.get_message_by_id(msg.id, user_id=u1.id)
     assert refreshed is not None
     assert refreshed.content == "edited"
 
@@ -175,10 +188,101 @@ async def test_edit_message_non_author_is_noop(db_session, user_factory):
     repo, chat, u1, u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "original")
 
-    edited_at, affected = await repo.edit_message(msg.id, u2.id, "hijack")
+    edited_at, affected = await repo.edit_message(
+        msg.id, u2.id, "hijack", chat_id=chat.id
+    )
 
     assert affected == 0
     assert edited_at is None
+
+
+@pytest.mark.asyncio
+async def test_edit_message_preserves_committed_tombstone(db_session, user_factory):
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "deleted text")
+    message.edited_at = _NOW
+    message.read_status = True
+    message.read_at = _NOW
+    message_id, chat_id, author_id = message.id, chat.id, author.id
+
+    deleted_at, deleted = await repo.soft_delete_message(
+        message_id, author_id, chat_id=chat_id
+    )
+    assert deleted == 1
+    assert deleted_at is not None
+    await db_session.commit()
+
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    stored_row = select(Message.__table__).where(Message.id == message_id)
+    # Both calls use the real author and chat. SQLite proves the deleted_at
+    # predicate here; PostgreSQL RLS still requires its integration tier.
+    async with sessions.begin() as edit_session:
+        edit_repo = ChatRepository(edit_session)
+        await edit_repo.set_message_rls_user(author_id)
+        before = dict((await edit_session.execute(stored_row)).mappings().one())
+        assert before["content"] == ""
+        assert before["deleted_at"] is not None
+        assert before["edited_at"] is not None
+        assert before["read_status"] is True
+        assert before["read_at"] is not None
+
+        edited_at, affected = await edit_repo.edit_message(
+            message_id, author_id, "resurrected text", chat_id=chat_id
+        )
+
+    # Read every persisted column after commit in another session, so an ORM
+    # identity-map value cannot hide resurrected content or changed metadata.
+    async with sessions.begin() as read_session:
+        await ChatRepository(read_session).set_message_rls_user(author_id)
+        after = dict((await read_session.execute(stored_row)).mappings().one())
+
+    assert after == before
+    assert affected == 0
+    assert edited_at is None
+
+
+@pytest.mark.asyncio
+async def test_edit_message_rejects_message_from_different_chat(
+    db_session, user_factory
+):
+    repo, source_chat, author, source_peer = await _make_dm(db_session, user_factory)
+    destination_peer = await user_factory()
+    other_chat = await repo.create_chat([author, destination_peer])
+    msg = await _add_message(repo, source_chat.id, author.id, "source text")
+    assert await repo.remove_participant(source_chat.id, author.id) == 1
+    assert await repo.check_participant(other_chat.id, author.id)
+
+    edited_at, affected = await repo.edit_message(
+        msg.id, author.id, "cross-chat edit", chat_id=other_chat.id
+    )
+
+    assert affected == 0
+    assert edited_at is None
+    refreshed = await repo.get_message_by_id(msg.id, user_id=source_peer.id)
+    assert refreshed is not None
+    assert refreshed.content == "source text"
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_message_rejects_message_from_different_chat(
+    db_session, user_factory
+):
+    repo, source_chat, author, source_peer = await _make_dm(db_session, user_factory)
+    destination_peer = await user_factory()
+    other_chat = await repo.create_chat([author, destination_peer])
+    msg = await _add_message(repo, source_chat.id, author.id, "source text")
+    assert await repo.remove_participant(source_chat.id, author.id) == 1
+    assert await repo.check_participant(other_chat.id, author.id)
+
+    deleted_at, affected = await repo.soft_delete_message(
+        msg.id, author.id, chat_id=other_chat.id
+    )
+
+    assert affected == 0
+    assert deleted_at is None
+    refreshed = await repo.get_message_by_id(msg.id, user_id=source_peer.id)
+    assert refreshed is not None
+    assert refreshed.content == "source text"
 
 
 @pytest.mark.asyncio
@@ -186,17 +290,125 @@ async def test_soft_delete_message_clears_content(db_session, user_factory):
     repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "secret")
 
-    deleted_at, affected = await repo.soft_delete_message(msg.id, u1.id)
+    deleted_at, affected = await repo.soft_delete_message(
+        msg.id, u1.id, chat_id=chat.id
+    )
 
     assert affected == 1
     assert deleted_at is not None
     # D1: the deleted text must not linger — content is cleared to "".
-    refreshed = await repo.get_message_by_id(msg.id)
+    refreshed = await repo.get_message_by_id(msg.id, user_id=u1.id)
     assert refreshed is not None
     assert refreshed.content == ""
     # A repeat delete is a no-op (deleted_at IS NULL guard).
-    _, again = await repo.soft_delete_message(msg.id, u1.id)
+    _, again = await repo.soft_delete_message(msg.id, u1.id, chat_id=chat.id)
     assert again == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "event_type"),
+    [
+        ("edit", "chat.message_edited"),
+        ("delete", "chat.message_deleted"),
+    ],
+)
+async def test_message_mutation_outbox_event_commits_atomically(
+    db_session, user_factory, operation, event_type
+):
+    await register_event_listeners()
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "original")
+    message_id = message.id
+    chat_id = chat.id
+    author_id = author.id
+    await db_session.commit()
+    # Start the transaction used by the service's preceding chat read; the
+    # identity map can satisfy get_by_id without SQL after the setup commit.
+    await db_session.execute(select(1))
+
+    if operation == "edit":
+        timestamp, affected = await repo.edit_message(
+            message_id, author_id, "edited", chat_id=chat_id
+        )
+    else:
+        timestamp, affected = await repo.soft_delete_message(
+            message_id, author_id, chat_id=chat_id
+        )
+
+    assert affected == 1
+    assert timestamp is not None
+    await db_session.commit()
+
+    stored = await db_session.scalar(
+        select(StoredEvent).where(
+            StoredEvent.aggregate_type == "Message",
+            StoredEvent.aggregate_id == str(message_id),
+            StoredEvent.event_type == event_type,
+        )
+    )
+    assert stored is not None
+    assert stored.payload["message_id"] == str(message_id)
+    assert stored.payload["chat_id"] == str(chat_id)
+    # Outbox events carry identity only; handlers read the committed row rather
+    # than duplicating message text in durable history.
+    assert "content" not in stored.payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "event_type"),
+    [
+        ("edit", "chat.message_edited"),
+        ("delete", "chat.message_deleted"),
+    ],
+)
+async def test_message_mutation_rollback_discards_outbox_event(
+    db_session, user_factory, operation, event_type
+):
+    await register_event_listeners()
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "original")
+    message_id = message.id
+    chat_id = chat.id
+    author_id = author.id
+    await db_session.commit()
+    await db_session.execute(select(1))
+
+    if operation == "edit":
+        await repo.edit_message(message_id, author_id, "edited", chat_id=chat_id)
+    else:
+        await repo.soft_delete_message(message_id, author_id, chat_id=chat_id)
+
+    # Force the ORM event capture/StoredEvent INSERT, then roll back the same
+    # transaction that contains the message mutation and its outbox row.
+    await db_session.flush()
+    pending_count = await db_session.scalar(
+        select(func.count())
+        .select_from(StoredEvent)
+        .where(
+            StoredEvent.aggregate_type == "Message",
+            StoredEvent.aggregate_id == str(message_id),
+            StoredEvent.event_type == event_type,
+        )
+    )
+    assert pending_count == 1
+    await db_session.rollback()
+
+    refreshed = await repo.get_message_by_id(message_id, user_id=author_id)
+    assert refreshed is not None
+    assert refreshed.content == "original"
+    assert refreshed.deleted_at is None
+    stored_count = await db_session.scalar(
+        select(func.count())
+        .select_from(StoredEvent)
+        .where(
+            StoredEvent.aggregate_type == "Message",
+            StoredEvent.aggregate_id == str(message_id),
+            StoredEvent.event_type == event_type,
+        )
+    )
+    assert stored_count == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -229,7 +441,7 @@ async def test_get_reactors_returns_users_oldest_first(db_session, user_factory)
     # A different emoji must not leak into the result.
     await _seed_reaction(db_session, msg.id, u2.id, "😂")
 
-    reactors = await repo.get_reactors(msg.id, "❤️")
+    reactors = await repo.get_reactors(msg.id, "❤️", user_id=u1.id)
 
     assert {u.id for u in reactors} == {u1.id, u2.id}
 
@@ -251,7 +463,7 @@ async def test_delete_messages_removes_rows(db_session, user_factory):
     m1 = await _add_message(repo, chat.id, u1.id, "a", offset_seconds=0)
     m2 = await _add_message(repo, chat.id, u1.id, "b", offset_seconds=1)
 
-    deleted = await repo.delete_messages([m1.id, m2.id])
+    deleted = await repo.delete_messages([m1.id, m2.id], chat_id=chat.id, user_id=u1.id)
 
     assert deleted == 2
     remaining = (
@@ -286,14 +498,260 @@ async def test_get_chat_type_none_for_missing_chat(db_session):
 
 
 @pytest.mark.asyncio
+async def test_get_message_by_id_loads_reply_preview(db_session, user_factory):
+    repo, chat, original_author, reply_author = await _make_dm(db_session, user_factory)
+    original = await _add_message(repo, chat.id, original_author.id, "quoted content")
+    reply = Message(
+        chat_id=chat.id,
+        sender_id=reply_author.id,
+        content="reply",
+        reply_to_message_id=original.id,
+        created_at=_NOW + timedelta(seconds=1),
+    )
+    db_session.add(reply)
+    await db_session.flush()
+
+    found = await repo.get_message_by_id(
+        reply.id, user_id=reply_author.id, chat_id=chat.id
+    )
+
+    assert found is not None
+    assert found.replied_to is not None
+    assert found.replied_to.id == original.id
+    assert found.replied_to.content == "quoted content"
+
+
+@pytest.mark.asyncio
 async def test_get_message_by_id_roundtrip_and_miss(db_session, user_factory):
     import uuid
 
     repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "findme")
 
-    found = await repo.get_message_by_id(msg.id)
+    found = await repo.get_message_by_id(msg.id, user_id=u1.id)
     assert found is not None
     assert found.content == "findme"
 
-    assert await repo.get_message_by_id(uuid.uuid4()) is None
+    assert await repo.get_message_by_id(uuid.uuid4(), user_id=u1.id) is None
+
+
+@pytest.mark.asyncio
+async def test_get_last_message_preserves_postgres_rls_identity(
+    db_session, user_factory, monkeypatch
+):
+    repo, chat, owner, _other = await _make_dm(db_session, user_factory)
+    await _add_message(repo, chat.id, owner.id, "latest visible message")
+
+    dialect = repo.db.get_bind().dialect
+    monkeypatch.setattr(dialect, "name", "postgresql")
+    execute = repo.db.execute
+    observed_identity = None
+
+    async def execute_with_local_rls_setting(statement, *args, **kwargs):
+        nonlocal observed_identity
+        if str(statement).startswith("SELECT set_config('app.current_user_id'"):
+            parameters = args[0] if args else kwargs.get("params", {})
+            observed_identity = parameters.get("uid")
+            return None
+        return await execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(repo.db, "execute", execute_with_local_rls_setting)
+
+    latest = await repo.get_last_message(chat.id, user_id=owner.id)
+
+    assert observed_identity == str(owner.id)
+    assert latest is not None
+    assert latest.content == "latest visible message"
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_message_rejects_non_author_in_same_chat(
+    db_session, user_factory
+):
+    repo, chat, author, requester = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "author-owned content")
+    message_id = message.id
+
+    assert await repo.check_participant(chat.id, requester.id) is True
+    deleted_at, affected = await repo.soft_delete_message(
+        message_id, requester.id, chat_id=chat.id
+    )
+
+    assert affected == 0
+    assert deleted_at is None
+    await db_session.flush()
+    persisted = (
+        (
+            await db_session.execute(
+                select(Message.__table__).where(Message.id == message_id)
+            )
+        )
+        .mappings()
+        .one()
+    )
+    assert persisted["content"] == "author-owned content"
+    assert persisted["deleted_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_message_rejects_unknown_message_id(db_session, user_factory):
+    import uuid
+
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, author.id, "requested message")
+    message_id = message.id
+    unknown_id = uuid.uuid4()
+    assert unknown_id != message_id
+
+    deleted_at, affected = await repo.soft_delete_message(
+        unknown_id, author.id, chat_id=chat.id
+    )
+
+    assert affected == 0
+    assert deleted_at is None
+    await db_session.flush()
+    persisted = (
+        (
+            await db_session.execute(
+                select(Message.__table__).where(Message.id == message_id)
+            )
+        )
+        .mappings()
+        .one()
+    )
+    assert persisted["content"] == "requested message"
+    assert persisted["deleted_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_edit_message_targets_one_persisted_row_and_stamps_timestamp(
+    db_session: AsyncSession, user_factory: Callable[..., Awaitable[User]]
+) -> None:
+    repo, chat, author, _peer = await _make_dm(db_session, user_factory)
+    target = await _add_message(repo, chat.id, author.id, "target-before")
+    untouched = await _add_message(repo, chat.id, author.id, "other-message")
+    target_id, untouched_id = target.id, untouched.id
+
+    edited_at, affected = await repo.edit_message(
+        target_id, author.id, "target-after", chat_id=chat.id
+    )
+
+    assert affected == 1
+    assert edited_at is not None
+    await db_session.commit()
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    async with sessions() as reader:
+        rows = (
+            (
+                await reader.execute(
+                    select(Message.__table__).where(
+                        Message.id.in_([target_id, untouched_id])
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    persisted = {row["id"]: row for row in rows}
+    assert persisted[target_id]["content"] == "target-after"
+    assert persisted[target_id]["edited_at"] is not None
+    assert persisted[untouched_id]["content"] == "other-message"
+    assert persisted[untouched_id]["edited_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_reactors_returns_users_by_persisted_reaction_time(
+    db_session: AsyncSession, user_factory: Callable[..., Awaitable[User]]
+) -> None:
+    repo, chat, earlier_user, later_user = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, earlier_user.id)
+    db_session.add_all(
+        [
+            MessageReaction(
+                message_id=message.id,
+                user_id=earlier_user.id,
+                emoji="❤️",
+                created_at=_NOW - timedelta(seconds=10),
+            ),
+            MessageReaction(
+                message_id=message.id,
+                user_id=later_user.id,
+                emoji="❤️",
+                created_at=_NOW - timedelta(seconds=20),
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    reactors = await repo.get_reactors(message.id, "❤️", user_id=earlier_user.id)
+
+    assert [reactor.id for reactor in reactors] == [later_user.id, earlier_user.id]
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_commits_attachment_cleanup_for_persisted_attachments(
+    db_session: AsyncSession,
+    user_factory: Callable[..., Awaitable[User]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.core.events import AttachmentCleanupRequested
+    from app.models.chat import Attachment, Chat
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.chat.attachment_service import ChatAttachmentService
+    from app.services.chat.command_service import ChatMaintenanceService
+
+    admin = await user_factory(role="admin")
+    repo, chat, sender, _peer = await _make_dm(db_session, user_factory)
+    message = await _add_message(
+        repo, chat.id, sender.id, "retained only until deletion"
+    )
+    chat_id, message_id = chat.id, message.id
+    attachment_url = "https://files.example.test/chat/cleanup-target.png"
+    db_session.add(
+        Attachment(
+            message_id=message_id,
+            url=attachment_url,
+            file_type="image",
+            filename="cleanup-target.png",
+            size=12,
+        )
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.chat.command_service.invalidate_chat_participants_cache",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.chat.command_service.invalidate_presence_audience_cache",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", AsyncMock()
+    )
+    service = ChatMaintenanceService(
+        uow_from_session(db_session), ChatAttachmentService()
+    )
+
+    result = await service.delete_chat(chat_id, admin, "en")
+
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    async with sessions() as reader:
+        cleanup = (
+            await reader.execute(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == AttachmentCleanupRequested.EVENT_TYPE,
+                    StoredEvent.aggregate_type == "Chat",
+                    StoredEvent.aggregate_id == str(chat_id),
+                )
+            )
+        ).scalar_one_or_none()
+        assert cleanup is not None
+        assert cleanup.payload["attachment_urls"] == [attachment_url]
+        assert await reader.get(Chat, chat_id) is None
+        assert await reader.get(Message, message_id) is None
+    assert result.deleted_messages == 1
+    assert result.deleted_attachments == 1

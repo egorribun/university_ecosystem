@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import sys
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
+
+from scripts import s3_cutover_preflight
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,7 +40,20 @@ def test_deptry_is_pinned_and_scoped_to_the_application() -> None:
     # Security floors for transitive packages are constraints, not direct
     # dependencies that the application pretends to import.
     constraints = project["tool"]["uv"]["constraint-dependencies"]
-    assert "urllib3>=2.7.0,<2.9" in constraints
+    assert "urllib3>=2.8.0,<2.9" in constraints
     assert "h2>=4.4.1,<5" in constraints
     dependencies = project["project"]["dependencies"]
     assert not any(dep.startswith(("urllib3", "h2>")) for dep in dependencies)
+
+
+def test_minio_runtime_exception_is_required_by_the_cutover_entrypoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = _project()
+    assert any(dep.startswith("minio>=") for dep in project["project"]["dependencies"])
+    assert "minio" in project["tool"]["deptry"]["per_rule_ignores"]["DEP002"]
+    # The cutover runbook mounts this script into the production backend image.
+    # A future client replacement must remove the exception with the SDK import.
+    monkeypatch.setitem(sys.modules, "minio", None)
+    with pytest.raises(ModuleNotFoundError, match="minio"):
+        s3_cutover_preflight._client_from_environment("SOURCE", allow_http=False)

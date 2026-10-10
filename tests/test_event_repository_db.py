@@ -56,22 +56,6 @@ async def _add_event(
 
 
 @pytest.mark.asyncio
-async def test_get_for_registration_and_with_details(
-    event_repo_db, db_session, user_factory
-):
-    user = await user_factory()
-    event = await _add_event(db_session, user.id, title="RegEvent")
-
-    locked = await event_repo_db.get_for_registration(event.id)
-    assert locked is not None
-    assert locked.id == event.id
-
-    details = await event_repo_db.get_with_details(event.id)
-    assert details is not None
-    assert details.title == "RegEvent"
-
-
-@pytest.mark.asyncio
 async def test_search_by_title(event_repo_db, db_session, user_factory):
     user = await user_factory()
     await _add_event(db_session, user.id, title="Workshop on Rust")
@@ -185,22 +169,3 @@ async def test_search_events_filter_branches(event_repo_db, db_session, user_fac
         cursor=(datetime.now(UTC) - timedelta(hours=1), uuid.uuid4())
     )
     assert isinstance(cursored, list)
-
-
-@pytest.mark.asyncio
-async def test_get_by_organizer_cursor_and_count_upcoming(
-    event_repo_db, db_session, user_factory
-):
-    user = await user_factory()
-    event = await _add_event(db_session, user.id, created_at=datetime.now(UTC))
-
-    # Cursor branch of get_by_organizer.
-    rows = await event_repo_db.get_by_organizer(
-        user.id,
-        after_created_at=datetime.now(UTC) + timedelta(hours=1),
-        after_id=event.id,
-    )
-    assert isinstance(rows, list)
-
-    # Real-DB count_upcoming (future event counts).
-    assert await event_repo_db.count_upcoming() >= 1

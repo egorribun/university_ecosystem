@@ -566,6 +566,94 @@ describe("useMessengerController", () => {
         })
       }
     )
+
+    it.each([
+      {
+        name: "edit",
+        initial: {
+          content: "cached older edit",
+          edited_at: "2026-08-25T11:00:00Z",
+        },
+        server: {
+          content: "authoritative newer edit",
+          edited_at: "2026-08-25T12:00:00Z",
+        },
+        expected: {
+          text: "authoritative newer edit",
+          editedAt: "2026-08-25T12:00:00Z",
+          deletedAt: null,
+        },
+      },
+      {
+        name: "delete",
+        initial: {
+          content: "cached live text",
+          deleted_at: null,
+        },
+        server: {
+          content: "",
+          attachments: [],
+          deleted_at: "2026-08-25T12:02:00Z",
+        },
+        expected: {
+          text: "",
+          deletedAt: "2026-08-25T12:02:00Z",
+        },
+      },
+    ])(
+      "accepts an authoritative REST $name after reconnect when cache missed the frame",
+      async ({ initial, server, expected }) => {
+        mocks.paramsRef.current = { chatId: "chat-1" }
+        mocks.chatApi.getChats.mockResolvedValue({
+          items: [
+            {
+              id: "chat-1",
+              participants: [{ id: "current-user-id" }, { id: "peer" }],
+              unread_count: 0,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        mocks.chatApi.getMessages.mockResolvedValueOnce({
+          items: [
+            {
+              ...makeApiMessage("m-shared", "2026-08-25T10:00:00Z"),
+              ...initial,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        const queryClient = new QueryClient({
+          defaultOptions: {
+            queries: { retry: false, gcTime: 0 },
+            mutations: { retry: false },
+          },
+        })
+        const localWrapper = ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        )
+        const { result } = renderHook(() => useMessengerController(), { wrapper: localWrapper })
+        await waitFor(() => expect(result.current.messages).toHaveLength(1))
+
+        mocks.chatApi.getMessages.mockResolvedValue({
+          items: [
+            {
+              ...makeApiMessage("m-shared", "2026-08-25T10:00:00Z"),
+              ...server,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        await act(async () => {
+          await queryClient.invalidateQueries({ queryKey: ["messages", "chat-1"] })
+        })
+
+        await waitFor(() => expect(result.current.messages[0]).toMatchObject(expected))
+      }
+    )
   })
 
   describe("Blob URL lifecycle (W183 SW3 regression)", { retry: 2 }, () => {

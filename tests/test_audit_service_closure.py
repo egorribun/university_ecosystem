@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections import UserString
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,7 +12,6 @@ from uuid import uuid4
 import pytest
 
 import app.services.audit_service as audit_module
-from app.models.logs import DataAccessLog
 from app.services.audit_service import SecureAuditService, auditable
 
 
@@ -36,6 +36,7 @@ def _event(
     *,
     created_at: datetime | None = None,
     event_id: str | None = None,
+    sequence_number: int = 1,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=event_id or str(uuid4()),
@@ -44,10 +45,26 @@ def _event(
         event_type=event_type,
         payload=payload,
         version=1,
+        sequence_number=sequence_number,
         created_at=created_at,
         prev_hash="0" * 64,
         hash="hash",
     )
+
+
+class _EventWithChangingPrevHash:
+    """Model a row-like value changing while the Python fallback rechecks it."""
+
+    def __init__(self, event: SimpleNamespace, prev_hash_values: list[str]) -> None:
+        self.__dict__.update(vars(event))
+        self._prev_hash_values = prev_hash_values
+        self._prev_hash_reads = 0
+
+    @property
+    def prev_hash(self) -> str:
+        index = min(self._prev_hash_reads, len(self._prev_hash_values) - 1)
+        self._prev_hash_reads += 1
+        return self._prev_hash_values[index]
 
 
 def _audit_log_stub(*, signature: str | None = None) -> SimpleNamespace:
@@ -101,17 +118,8 @@ def test_secure_audit_rejects_empty_explicit_key_list():
 
 def test_find_valid_key_returns_none_when_rust_matches_but_key_recheck_fails():
     service = SecureAuditService(signing_keys=[b"old", b"new"])
-    log = SimpleNamespace(
-        id=uuid4(),
-        actor_user_id=None,
-        subject_user_id=None,
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        ip_address=None,
-        created_at=datetime.now(UTC),
-        signature="signature",
-    )
+    log = _audit_log_stub()
+    log.signature = service._compute_signature(log)
     rust = MagicMock()
     rust.verify_audit_signature.return_value = True
 
@@ -120,6 +128,21 @@ def test_find_valid_key_returns_none_when_rust_matches_but_key_recheck_fails():
         patch.object(service, "_compute_signature", return_value="different"),
     ):
         assert service._find_valid_key(log) is None
+
+
+@pytest.mark.parametrize("signature", ["v2:short", "v2:" + "g" * 64])
+def test_find_valid_key_rejects_malformed_v2_digest(signature: str) -> None:
+    service = SecureAuditService(signing_key=b"test-key")
+    log = _audit_log_stub(signature=signature)
+
+    assert service._find_valid_key(log) is None
+
+
+def test_find_valid_key_rejects_unversioned_non_digest_signature() -> None:
+    service = SecureAuditService(signing_key=b"test-key")
+    log = _audit_log_stub(signature="not-a-digest")
+
+    assert service._find_valid_key(log) is None
 
 
 def test_find_valid_key_falls_back_to_python_when_rust_is_unavailable():
@@ -141,38 +164,6 @@ def test_find_valid_key_falls_back_to_python_when_rust_is_unavailable():
 
     with patch.dict(sys.modules, {"rust_ext": rust}):
         assert service._find_valid_key(log) == b"new"
-
-
-def test_resign_log_updates_mutable_orm_log():
-    service = SecureAuditService(signing_key=b"primary")
-    log = DataAccessLog(
-        id=uuid4(),
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        created_at=datetime.now(UTC),
-    )
-    log.signature = service._compute_signature(log)
-    rust = MagicMock()
-    rust.verify_audit_signature.return_value = True
-
-    with patch.dict(sys.modules, {"rust_ext": rust}):
-        assert service.resign_log(log) is True
-
-    assert log.signature == service._compute_signature(log)
-
-
-def test_resign_log_rejects_unsigned_log():
-    service = SecureAuditService(signing_key=b"primary")
-    log = DataAccessLog(
-        id=uuid4(),
-        resource_type="user",
-        resource_id="42",
-        action="read",
-        created_at=datetime.now(UTC),
-    )
-
-    assert service.resign_log(log) is False
 
 
 @pytest.mark.asyncio
@@ -287,23 +278,17 @@ async def test_create_log_returns_signed_copy_when_update_has_no_row():
 
 
 @pytest.mark.asyncio
-async def test_verify_batch_returns_invalid_ids_and_honors_limit():
+async def test_create_logs_empty_batch_is_a_noop():
     service = SecureAuditService(signing_key=b"key")
     db = MagicMock()
-    valid = SimpleNamespace(id=uuid4())
-    invalid = SimpleNamespace(id=uuid4())
+    db.flush = AsyncMock()
+    db.execute = AsyncMock()
 
-    with patch.object(audit_module, "AuditRepository") as repository_type:
-        repository = repository_type.return_value
-        repository.list_logs = AsyncMock(return_value=[valid, invalid])
-        with patch.object(
-            service, "verify_integrity", side_effect=[True, False]
-        ) as verify:
-            result = await service.verify_batch(db, limit=17)
+    assert await service.create_logs(db, entries=[]) == []
 
-    assert result == (2, 1, [invalid.id])
-    repository.list_logs.assert_awaited_once_with(limit=17)
-    assert verify.call_count == 2
+    db.add_all.assert_not_called()
+    db.flush.assert_not_awaited()
+    db.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -313,6 +298,22 @@ async def test_verify_chain_integrity_accepts_empty_result():
     db.execute = AsyncMock(return_value=_Result())
 
     assert await service.verify_chain_integrity(db) == (True, None, None)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_accepts_only_unchained_outbox_rows():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    unchained = _event("OUTBOX", {"kind": "notice"}, sequence_number=1)
+    unchained.sequence_number = None
+    unchained.prev_hash = None
+    unchained.hash = None
+    unchained.metadata_ = {"source": "outbox"}
+    db.execute = AsyncMock(return_value=_Result([unchained]))
+
+    assert await service.verify_chain_integrity(db) == (True, None, None)
+
+    db.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -391,7 +392,9 @@ async def test_verify_chain_integrity_python_fallback_accepts_rotated_key_and_gr
     service = SecureAuditService(signing_keys=[b"old", b"key"])
     db = MagicMock()
     first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
-    second = _event("CUSTOM", {"value": 2}, created_at=datetime.now(UTC))
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
     _sign_event(service, first, "0" * 64)
     _sign_event(service, second, first.hash)
     rust = SimpleNamespace()
@@ -418,7 +421,9 @@ async def test_verify_chain_integrity_reports_link_discontinuity():
     service = SecureAuditService(signing_key=b"key")
     db = MagicMock()
     first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
-    second = _event("CUSTOM", {"value": 2}, created_at=datetime.now(UTC))
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
     _sign_event(service, first, "0" * 64)
     second.prev_hash = "broken"
     db.execute = AsyncMock(return_value=_Result([first, second]))
@@ -429,6 +434,48 @@ async def test_verify_chain_integrity_reports_link_discontinuity():
     assert valid is False
     assert failed_id == second.id
     assert "Chain discontinuity" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_fallback_rechecks_link_discontinuity():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
+    _sign_event(service, first, "0" * 64)
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
+    second.hash = "nonempty-unverified-hash"
+    changing_second = _EventWithChangingPrevHash(second, [first.hash, "broken"])
+    db.execute = AsyncMock(return_value=_Result([first, changing_second]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert valid is False
+    assert failed_id == second.id
+    assert "Chain discontinuity at index 1" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_fallback_rejects_non_string_prev_hash():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
+    _sign_event(service, first, "0" * 64)
+    second = _event(
+        "CUSTOM", {"value": 2}, created_at=datetime.now(UTC), sequence_number=2
+    )
+    second.prev_hash = UserString(first.hash)
+    second.hash = "nonempty-unverified-hash"
+    db.execute = AsyncMock(return_value=_Result([first, second]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert valid is False
+    assert failed_id == second.id
+    assert "Invalid previous hash at index 1" in str(error)
 
 
 @pytest.mark.asyncio
@@ -682,3 +729,32 @@ def test_secure_audit_service_handles_race_inside_lock():
             assert audit_module.get_secure_audit_service() is instance
     finally:
         audit_module._secure_audit_service = original
+
+
+def test_verify_integrity_accepts_rotated_legacy_signature_on_rust_fast_path() -> None:
+    service = SecureAuditService(signing_keys=[b"old", b"new"])
+    log = _audit_log_stub()
+    log.signature = service._compute_legacy_signature(log, key=b"new")
+    rust = MagicMock()
+    rust.verify_audit_signature.return_value = True
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert service.verify_integrity(log) is True
+
+    rust.verify_audit_signature.assert_called_once()
+
+
+def test_secure_audit_verify_integrity_accepts_legacy_signature_in_python_fallback() -> (
+    None
+):
+    service = SecureAuditService(signing_keys=[b"old", b"new"])
+    log = _audit_log_stub()
+    log.signature = service._compute_legacy_signature(log, key=b"new")
+    rust = MagicMock()
+    rust.verify_audit_signature.side_effect = RuntimeError("ffi unavailable")
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert service.verify_integrity(log) is True
+
+    assert service.signature_covers_metadata(log) is False
+    rust.verify_audit_signature.assert_called_once()

@@ -3,6 +3,7 @@ import { useEffect, useId, useState, useRef, useCallback } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import "@/styles/tokens/profile.css"
 import api from "@/api/client"
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.jpg"
 import PageFadeIn from "@/components/motion/PageFadeIn"
@@ -47,6 +48,7 @@ const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "t
 
 export default function Profile() {
   const { user, loading, setUser } = useAuth()
+  const captureOperation = useProfileSessionGuard()
   const [snackbar, setSnackbar] = useState<SnackbarState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
@@ -129,6 +131,7 @@ export default function Profile() {
   useEffect(() => {
     if (!user) {
       initializedEditorUserIdRef.current = null
+      initEditFields()
       return
     }
 
@@ -140,6 +143,11 @@ export default function Profile() {
       initializedEditorUserIdRef.current = user.id
     }
   }, [user, edit, initEditFields])
+
+  useEffect(() => {
+    setSaving(false)
+    setSnackbar(null)
+  }, [captureOperation])
 
   useEffect(() => {
     if (shouldEditFromSearch) setEdit(true)
@@ -160,6 +168,8 @@ export default function Profile() {
   const achievementsList = parseAchievements(user?.profile_detail?.achievements)
 
   const handleSave = async () => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
     setSaving(true)
     try {
       const response = await api.put<User>("/users/me", {
@@ -181,6 +191,7 @@ export default function Profile() {
           program,
         },
       })
+      if (!isCurrent() || response.data.id !== user?.id) return
       setUser(response.data)
       setEdit(false)
       navigate({ to: "/profile", replace: true })
@@ -188,6 +199,7 @@ export default function Profile() {
       setAvatarVersion(Date.now())
       setCoverVersion(Date.now())
     } catch (error: unknown) {
+      if (!isCurrent()) return
       let messageKey: SnackbarKey | undefined = "error"
       let messageText: string | undefined
 
@@ -212,7 +224,7 @@ export default function Profile() {
       }
       setSnackbar({ key: messageKey, message: messageText, severity: "error" })
     } finally {
-      setSaving(false)
+      if (isCurrent()) setSaving(false)
     }
   }
 
@@ -431,11 +443,13 @@ export default function Profile() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={!!snackbar} autoHideDuration={2600} onClose={() => setSnackbar(null)}>
-        <Alert onClose={() => setSnackbar(null)} severity={snackbar?.severity || "info"}>
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
+      <div data-testid="profile-save-feedback">
+        <Snackbar open={!!snackbar} autoHideDuration={2600} onClose={() => setSnackbar(null)}>
+          <Alert onClose={() => setSnackbar(null)} severity={snackbar?.severity || "info"}>
+            {snackbarMessage}
+          </Alert>
+        </Snackbar>
+      </div>
     </Layout>
   )
 }

@@ -59,7 +59,7 @@ func TestJWKSRefresher_FailuresAndRetries(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := NewJWTMiddleware("secret", nil)
+	m := NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig())
 	assert.Nil(t, m.rsaPublicKey.Load())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -126,7 +126,7 @@ func TestJWKSRefresher_KeyRotation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := NewJWTMiddleware("secret", nil)
+	m := NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

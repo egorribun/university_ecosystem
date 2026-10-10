@@ -10,15 +10,53 @@ import api from "@/api/client"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
 
-type EventsSnapshot = {
-  items: Event[]
-}
+export type DashboardEvent = Pick<Event, "id" | "title" | "starts_at" | "location">
+export type DashboardEventsSnapshot = { items: DashboardEvent[] }
 
 const DASHBOARD_EVENTS_ETAG_KEY = "dashboard:events"
 
 export const dashboardEventsQueryKey = ["dashboard", "events"] as const
 
 type DashboardEventsQueryKey = typeof dashboardEventsQueryKey
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const toDashboardEvent = (event: DashboardEvent): DashboardEvent => ({
+  id: event.id,
+  title: event.title,
+  starts_at: event.starts_at,
+  ...(event.location === undefined ? {} : { location: event.location }),
+})
+
+/** Validate and project cached or serialized data onto the dashboard display contract. */
+export function projectDashboardEventsSnapshot(
+  value: unknown
+): DashboardEventsSnapshot | undefined {
+  if (!isRecord(value) || !Array.isArray(value.items)) return undefined
+
+  const items: DashboardEvent[] = []
+  for (const item of value.items) {
+    if (!isRecord(item)) return undefined
+    const { id, title, starts_at: startsAt, location } = item
+    if (
+      typeof id !== "string" ||
+      typeof title !== "string" ||
+      typeof startsAt !== "string" ||
+      (location !== undefined && location !== null && typeof location !== "string")
+    ) {
+      return undefined
+    }
+    items.push({
+      id,
+      title,
+      starts_at: startsAt,
+      ...(location === undefined ? {} : { location }),
+    })
+  }
+
+  return { items }
+}
 
 const ensureEventList = (payload: PaginatedResponse<Event> | null | undefined): Event[] => {
   if (!payload) {
@@ -35,12 +73,13 @@ const sortEventsByStart = (items: Event[]): Event[] => {
     .slice(0, 30)
 }
 
+const getSafePrevious = (queryClient: QueryClient) =>
+  projectDashboardEventsSnapshot(queryClient.getQueryData(dashboardEventsQueryKey))
+
 const createEventsQueryFn = (
   queryClient: QueryClient
-): QueryFunction<EventsSnapshot, DashboardEventsQueryKey> => {
+): QueryFunction<DashboardEventsSnapshot, DashboardEventsQueryKey> => {
   return async ({ signal }) => {
-    const previous = queryClient.getQueryData<EventsSnapshot>(dashboardEventsQueryKey)
-
     try {
       const response = await api.get<PaginatedResponse<Event>>("/events", {
         params: { is_active: true, limit: 50 },
@@ -49,22 +88,17 @@ const createEventsQueryFn = (
         etagCacheKey: DASHBOARD_EVENTS_ETAG_KEY,
       } as Parameters<typeof api.get>[1])
 
-      if (response.status === 304 && previous) {
-        return previous
+      if (response.status === 304) {
+        const previous = getSafePrevious(queryClient)
+        if (previous) return previous
       }
 
-      const normalized = sortEventsByStart(ensureEventList(response.data))
-      return { items: normalized }
+      const items = sortEventsByStart(ensureEventList(response.data)).map(toDashboardEvent)
+      return { items }
     } catch (error) {
-      if (signal?.aborted) {
-        throw error
-      }
-
-      const fallback = queryClient.getQueryData<EventsSnapshot>(dashboardEventsQueryKey)
-      if (fallback) {
-        return fallback
-      }
-
+      if (signal?.aborted) throw error
+      const fallback = getSafePrevious(queryClient)
+      if (fallback) return fallback
       throw error
     }
   }
@@ -76,8 +110,8 @@ export const createDashboardEventsQueryOptions = (queryClient: QueryClient) => {
   return {
     queryKey: dashboardEventsQueryKey,
     queryFn,
-    select: (snapshot: EventsSnapshot) => snapshot.items,
-    placeholderData: (previous: EventsSnapshot | undefined) => previous,
+    select: (snapshot: DashboardEventsSnapshot) => snapshot.items,
+    placeholderData: (previous: DashboardEventsSnapshot | undefined) => previous,
     staleTime: 2 * 60_000,
     gcTime: 30 * 60_000,
   } as const

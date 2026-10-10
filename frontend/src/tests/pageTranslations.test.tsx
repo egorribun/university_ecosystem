@@ -35,6 +35,7 @@ vi.mock("@/hooks/useClock", () => ({
     mm: "30",
     dateStr: "Monday, September 15",
     time: new Date(2025, 8, 15, 9, 30),
+    isReady: true,
   }),
 }))
 
@@ -693,13 +694,9 @@ describe("page translations", { retry: 2 }, () => {
   })
 
   it("renders login page in Russian when seeded and toggles to English", async () => {
-    // Wave 177 SW3 — block /users/me so the W177 SW1 reactive useEffect in
-    // Login.tsx (subscribes to useAuthStore.user → navigate to /dashboard)
-    // doesn't fire mid-translation-toggle-test. Default msw mock
-    // (handlers.ts:373) returns testUser → useProfileSync populates store →
-    // useEffect redirects to /dashboard → Login UI never renders for the
-    // translation assertion. See AUDIT_WAVE177.md SW3 + Login.test.tsx
-    // renderLogin helper for the same pattern in the Login page test suite.
+    // Keep the login form mounted while testing the language toggle. The
+    // default /users/me mock returns an authenticated user, which correctly
+    // redirects away from /login before this assertion can inspect the form.
     server.use(http.get("*/users/me", () => HttpResponse.json(null, { status: 401 })))
     const { user } = await renderWithProviders(<Login />, {
       initialPath: "/login",

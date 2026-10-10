@@ -57,7 +57,8 @@ export function ActivityFeature() {
     heatmapData,
   } = useActivityData()
 
-  const comparative = useActivityComparative(attendance, grades, participation, period)
+  const comparative = useActivityComparative(attendance, grades, participation)
+  const hasAvailableActivitySection = Object.values(availability).some(Boolean)
 
   const reduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isSm = useMediaQuery(`(max-width: ${breakpoints.small})`)
@@ -183,7 +184,7 @@ export function ActivityFeature() {
           </div>
         )}
 
-        {!isError && hasInitiallyLoaded && !hasAnyData && (
+        {!isError && hasInitiallyLoaded && !hasAnyData && !isPartial && (
           <section className="activity-card-matte mb-8 p-8 text-center" aria-live="polite">
             <h2 className="text-lg font-extrabold text-text-primary">
               {t("activity:empty.title")}
@@ -212,55 +213,56 @@ export function ActivityFeature() {
         )}
 
         {/* ── Stat Cards ──────────────────────────── */}
-        {!isError && (!hasInitiallyLoaded || hasAnyData) && (
-          <section aria-label={t("activity:title")} className="mb-8 md:mb-10">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 md:gap-6">
-              <div
-                className="activity-card-container activity-stagger-item"
-                style={{ "--stagger-index": 0 } as CSSProperties}
-              >
-                {!hasInitiallyLoaded || availability.attendance ? (
-                  <AttendanceCard
-                    attendance={attendance}
-                    hasInitiallyLoaded={hasInitiallyLoaded}
-                    ringSize={ringSize}
-                  />
-                ) : (
-                  <ActivityUnavailableCard title={t("activity:sections.attendance.title")} />
-                )}
+        {!isError &&
+          (!hasInitiallyLoaded || hasAnyData || isPartial || hasAvailableActivitySection) && (
+            <section aria-label={t("activity:title")} className="mb-8 md:mb-10">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 md:gap-6">
+                <div
+                  className="activity-card-container activity-stagger-item"
+                  style={{ "--stagger-index": 0 } as CSSProperties}
+                >
+                  {!hasInitiallyLoaded || availability.attendance ? (
+                    <AttendanceCard
+                      attendance={attendance}
+                      hasInitiallyLoaded={hasInitiallyLoaded}
+                      ringSize={ringSize}
+                    />
+                  ) : (
+                    <ActivityUnavailableCard title={t("activity:sections.attendance.title")} />
+                  )}
+                </div>
+                <div
+                  className="activity-card-container activity-stagger-item"
+                  style={{ "--stagger-index": 1 } as CSSProperties}
+                >
+                  {!hasInitiallyLoaded || availability.grades ? (
+                    <GradesCard
+                      grades={grades}
+                      hasInitiallyLoaded={hasInitiallyLoaded}
+                      ringSize={ringSize}
+                    />
+                  ) : (
+                    <ActivityUnavailableCard title={t("activity:sections.grades.title")} />
+                  )}
+                </div>
+                <div
+                  className="activity-card-container activity-stagger-item"
+                  style={{ "--stagger-index": 2 } as CSSProperties}
+                >
+                  {!hasInitiallyLoaded || availability.participation ? (
+                    <ParticipationCard
+                      participation={participation}
+                      hasInitiallyLoaded={hasInitiallyLoaded}
+                      separator={separator}
+                      ringSize={ringSize}
+                    />
+                  ) : (
+                    <ActivityUnavailableCard title={t("activity:sections.participation.title")} />
+                  )}
+                </div>
               </div>
-              <div
-                className="activity-card-container activity-stagger-item"
-                style={{ "--stagger-index": 1 } as CSSProperties}
-              >
-                {!hasInitiallyLoaded || availability.grades ? (
-                  <GradesCard
-                    grades={grades}
-                    hasInitiallyLoaded={hasInitiallyLoaded}
-                    ringSize={ringSize}
-                  />
-                ) : (
-                  <ActivityUnavailableCard title={t("activity:sections.grades.title")} />
-                )}
-              </div>
-              <div
-                className="activity-card-container activity-stagger-item"
-                style={{ "--stagger-index": 2 } as CSSProperties}
-              >
-                {!hasInitiallyLoaded || availability.participation ? (
-                  <ParticipationCard
-                    participation={participation}
-                    hasInitiallyLoaded={hasInitiallyLoaded}
-                    separator={separator}
-                    ringSize={ringSize}
-                  />
-                ) : (
-                  <ActivityUnavailableCard title={t("activity:sections.participation.title")} />
-                )}
-              </div>
-            </div>
-          </section>
-        )}
+            </section>
+          )}
 
         {/* ── Charts ──────────────────────────────── */}
         {hasInitiallyLoaded && hasAnyData && !isError && (

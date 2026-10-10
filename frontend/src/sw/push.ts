@@ -11,17 +11,13 @@ import { sanitizeReportPayload, storePendingNavigation, storePendingReport } fro
 export function initPushHandlers() {
   self.addEventListener("push", (event: PushEvent) => {
     const payload = parsePushEventData(event.data)
-    const { title, options } = buildNotificationDetails(payload)
+    const { title, options, data: notificationData } = buildNotificationDetails(payload)
 
     const handlePush = async () => {
       const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
       const visibleClients = clientList.filter((c) => c.visibilityState === "visible")
 
       if (visibleClients.length > 0 && payload.data?.type === "in-app") {
-        const notificationData =
-          options.data && typeof options.data === "object"
-            ? (options.data as Record<string, unknown>)
-            : {}
         const notificationId =
           typeof notificationData.notificationId === "string"
             ? notificationData.notificationId
@@ -35,8 +31,8 @@ export function initPushHandlers() {
           toast: {
             ...(notificationId ? { id: notificationId } : {}),
             title,
-            body: options.body || payload.body,
-            url: payload.url || options.data?.url || "/",
+            body: options.body,
+            url: payload.url || notificationData.url || "/",
             ...(notificationId || topic ? { data: notificationData } : {}),
           },
         }
@@ -55,8 +51,7 @@ export function initPushHandlers() {
     event.notification.close()
 
     const clickData = event.notification.data
-    const urlToOpen = clickData?.url || "/"
-    const absoluteUrl = resolveNotificationDeepLink(urlToOpen, self.location.origin)
+    const absoluteUrl = resolveNotificationDeepLink(clickData?.url, self.location.origin)
 
     const handleNavigationAndReporting = async () => {
       let navigated = false
@@ -76,8 +71,6 @@ export function initPushHandlers() {
           const client = await self.clients.openWindow(absoluteUrl)
           if (client) {
             navigated = true
-          } else {
-            throw new Error("openWindow returned null")
           }
         }
       } catch (_err) {
@@ -98,7 +91,7 @@ export function initPushHandlers() {
         const rawPayload = clickData.reportPayload || {}
         const sanitized = sanitizeReportPayload(rawPayload)
         const payload =
-          typeof sanitized === "object" && sanitized !== null
+          typeof sanitized === "object"
             ? { ...sanitized, notificationId: clickData.notificationId }
             : { notificationId: clickData.notificationId }
 
@@ -122,6 +115,7 @@ export function initPushHandlers() {
               timestamp: Date.now(),
               payload,
             })
+            return
           }
           if (!navigated) {
             await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now() })

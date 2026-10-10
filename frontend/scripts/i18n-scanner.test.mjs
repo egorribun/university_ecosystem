@@ -342,6 +342,45 @@ test("backend dynamic translation keys require a finite backend registry", () =>
   assert.ok(report.errors.some((entry) => entry.code === "DYNAMIC_KEY_UNREGISTERED"))
 })
 
+test("business-rule exception messages resolve only the finite translated service errors", async () => {
+  const expectedKeys = [
+    "errors.chat.invalid_participants",
+    "errors.users.cannot_delete_self",
+    "errors.users.confirmation_required",
+    "errors.users.invalid_invite",
+    "errors.users.create_failed",
+    "errors.users.invalid_invite_code",
+    "errors.users.invite_code_required",
+  ]
+  const report = await scanBackendRepository({
+    backendTemplateFiles: ["app/core/exceptions/handlers.py"],
+  })
+
+  assert.equal(report.ok, true, JSON.stringify(report.errors))
+  assert.deepEqual(report.dynamicRegistry["exc.message"], expectedKeys)
+  assert.ok(
+    report.dynamicReferences.some((entry) => entry.pattern === "exc.message" && entry.registered)
+  )
+  for (const key of expectedKeys) {
+    assert.ok(report.references.some((entry) => entry.key === key && entry.dynamic))
+    const catalog = { ...report.catalog }
+    delete catalog[key]
+    const missing = scanBackendSource("translate(exc.message, locale=locale)", {
+      catalog,
+      dynamicRegistry: report.dynamicRegistry,
+    })
+    assert.ok(
+      missing.errors.some((entry) => entry.code === "TRANSLATION_KEY_MISSING" && entry.key === key),
+      `the registered exception key ${key} must still exist in the catalogue`
+    )
+  }
+  const unregistered = scanBackendSource("translate(exc.unregistered_message, locale=locale)", {
+    catalog: report.catalog,
+    dynamicRegistry: report.dynamicRegistry,
+  })
+  assert.ok(unregistered.errors.some((entry) => entry.code === "DYNAMIC_KEY_UNREGISTERED"))
+})
+
 test("repository backend scope has terminal RU/EN evidence", async () => {
   const report = await scanBackendRepository()
   assert.equal(report.ok, true)

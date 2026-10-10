@@ -12,20 +12,16 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
 - To enable client-side error monitoring, set `VITE_SENTRY_DSN` and, if needed, `VITE_ENVIRONMENT`. The SDK does not activate automatically in dev builds.
 - The frontend logger (`src/app/logger.ts`) automatically sends `logError`/`logWarning` to Sentry and mirrors the output in the console. Unhandled `Promise`/`axios` errors are captured by global handlers (`initGlobalErrorHandlers()` is invoked in `src/main.tsx`).
-- To collect Web Vitals, set `VITE_ENABLE_WEB_VITALS=true`. Optionally send metrics to your own endpoint through `VITE_WEB_VITALS_ENDPOINT` (otherwise they are printed to the console). The flag is ignored in dev/test environments, so CI will not fail even when the variable is enabled.
-- Release-blocking field Core Web Vitals are certified separately by
-  `cwv-field-certification.yml`. The workflow derives the exporter URL from the
-  signed, SHA-bound staging deployment metadata; an independent export URL is
-  not accepted. The exporter must validate the GitHub OIDC audience
-  `university-cwv-exporter`, repository, protected `main` ref, and `staging`
-  environment, then return observations only for the exact `release_sha`,
-  frontend image digest, and deploy run/attempt. The supported collector contract
-  is `web-vitals` 6.1.1 with exporter schema version `1`. The deploy workflow
-  emits the immutable `staging-deployment-<sha>` artifact only after rollout,
-  smoke, and Kyverno verification. Certification downloads it from the exact run
-  and attempt, rejects stale, partial, or foreign evidence, evaluates p75
-  LCP/INP/CLS, and publishes a SHA-bound artifact with a build-provenance
-  attestation. A manually uploaded report is not valid release evidence.
+- For separate Web Vitals diagnostics, set `VITE_ENABLE_WEB_VITALS=true` at build time and optionally provide `VITE_WEB_VITALS_ENDPOINT`; metrics go to the console when no endpoint is set. The canonical MVP release image sets the `/api/v1/cwv` endpoint but disables collection with `VITE_ENABLE_WEB_VITALS=false` and `VITE_CWV_TRUSTED_RUM=false`.
+- Field Core Web Vitals (field CWV) collection and certification are outside the
+  MVP: acceptance does not use external staging/production or measurements from
+  physical devices, and the canonical release frontend does not enable field
+  collection. MVP performance acceptance uses local Lighthouse/CI checks and
+  current Compose/Core checks. Full published-image kind acceptance remains
+  planned for v1.1 and is not current certification evidence. The manual
+  `cwv-field-certification.yml` workflow and production-only certificate guard
+  remain for future external deployments; they are not prerequisites for the
+  `v1.0.0` release.
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/static` and `/storage` assets.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The `redis` backend and a URI supplied from a protected store through environment variables enable shared storage for middleware and sensitive endpoints; keep credentials out of URLs and shell history. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
@@ -196,15 +192,17 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 
 ### Offline PWA behaviour
 
-- The Service Worker caches the SPA shell (`_shell.html`) and serves it for navigation
-  requests while offline; when the shell is unavailable it falls back to `offline.html`
-  from the precache.
-- API calls for schedules, news, and events (`/api/schedule`, `/api/news`, `/api/events`)
-  use a stale-while-revalidate strategy. Cached responses are reused during outages and
-  empty offline placeholders are returned with `X-Offline-Fallback`/`X-Offline-Resource`
-  headers when nothing is cached yet.
-- Media and backend static assets keep the NetworkFirst strategy with a bounded cache
-  (24 hours, up to 200 entries).
+- When a navigation request fails, the Service Worker returns the precached SPA shell
+  (`_shell.html`); if that shell is unavailable, the handler returns an error. The
+  separately precached `offline.html` can be opened directly but is not this fallback.
+- Cacheable GET requests under `/api/` use a session-scoped NetworkFirst cache only
+  after the worker confirms the current session. The cache is limited to 100 entries
+  for one hour; requests without confirmed identity and `no-store` requests go to the
+  network without this cache. The worker does not synthesize empty API placeholders or
+  `X-Offline-Fallback`/`X-Offline-Resource` headers.
+- `/static/` assets use StaleWhileRevalidate (100 entries, seven days). Explicit
+  `/media/` requests use public or session-private cache rules, and generic image
+  requests use CacheFirst (200 entries, 30 days).
 - The interactive map and its lazy MapLibre chunks are intentionally excluded from the
   install-time precache so the manifest stays below a conservative CacheStorage budget.
   The offline shell and generic fallback page remain usable without a network; the map
@@ -361,19 +359,20 @@ server {
 ## Notifications worker
 
 - Start a dedicated worker to send push notifications: `python -m app.workers.notifications`.
-- When running the API and worker in separate processes, disable the built-in scheduler in the API by setting `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - The worker publishes health and Prometheus metrics at `http://<host>:9101/healthz` and `http://<host>:9101/metrics` (change the port via `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - docker-compose already includes a `notifications-worker` service with the `unless-stopped` restart policy.
-- Jobs in the dead-letter queue are automatically removed after 30 days (`NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`). The check interval is controlled by `NOTIFICATION_QUEUE_DEAD_LETTER_CLEANUP_INTERVAL_SECONDS` (minimum 300 seconds; set `0` to disable the scheduler).
+- Jobs in the dead-letter queue are automatically removed after 30 days (`NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
-## User session cleanup
+## Periodic cleanup schedule
 
-- The API automatically removes stale records from `active_sessions` at startup and then every 15 minutes.
-- Adjust the frequency via `SESSION_CLEANUP_INTERVAL_SECONDS` (minimum 30 seconds). Setting the value to `0` disables the background scheduler; you can run the cleanup manually with `python -m app.services.session_cleanup` inside the container/virtual environment.
-- Session revocations (logout, `/auth/sessions/*`) now delete database rows immediately. Run the cleanup script once after upgrading to purge any previously revoked-but-not-deleted rows so that operator dashboards and the `/auth/sessions` UI stay in sync.
+The API runs one hourly scheduler (`app/core/lifespan.py::_periodic_scheduler_loop`; an initial 0–60 s jitter spreads rolling deploys). The cadence is fixed in code, not configurable per job:
 
-## MFA challenge cleanup
+| Cadence | Jobs |
+|---|---|
+| every hour | expired stories, stale password-reset tokens, stale e-mail-change tokens, stale MFA challenges, product gauges (active users, MFA adoption) |
+| every 6 hours | expired and revoked sessions |
+| daily at 02:00 UTC | stale notifications, dead-lettered notification-queue jobs, privacy artifacts (and CWV observations) |
 
-- The `cleanup_stale_mfa_challenges` utility removes rows where both `expires_at` and `consumed_at` are older than `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
-- The scheduler runs every 10 minutes by default (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, minimum 30 seconds). Set the value to `0` to disable the background loop; you can still run the job manually via `python -m app.services.mfa_challenge_cleanup`.
-- We recommend triggering the cleanup every 5–10 minutes so the table does not grow indefinitely and login flows stay responsive. Monitor `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total`, and `_deleted_total` to spot anomalies or repeated failures.
+Retention windows are configurable (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Each job can also be run manually, e.g. `python -m app.services.session_cleanup` or `python -m app.services.mfa_challenge_cleanup`. Monitor `periodic_task_*_runs_total`, `_errors_total` and `_deleted_total`.
+
+Session revocations (logout, `/auth/sessions/*`) delete database rows immediately; after upgrading from a release that only marked rows revoked, run the session cleanup once so `/auth/sessions` and operator dashboards stay in sync.

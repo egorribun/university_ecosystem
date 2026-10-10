@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import runpy
 import sys
-import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,14 +15,12 @@ from fastapi import Request, Response
 import app.api.deps.etag as etag_module
 import app.core.middleware as middleware
 import app.services.nats_messaging as nats_messaging
-import app.services.session_cleanup as session_cleanup
 import app.utils.images_vips as images_vips
 from app.api.deps.etag import cached_endpoint
 from app.core.db import listeners
 from app.core.middleware.tenant import TenantContextMiddleware
 from app.core.nats_broker import NatsTaskBroker
 from app.core.ssrf import validate_public_https_url
-from app.services.grade_service import GradeService
 from app.workers.outbox import OutboxWorker
 
 
@@ -179,46 +176,6 @@ async def test_nats_service_connect_without_auth_token() -> None:
         await service.connect()
 
     assert "token" not in connect.await_args.kwargs
-
-
-@pytest.mark.asyncio
-async def test_session_cleanup_scheduler_contains_network_failure() -> None:
-    attempted = asyncio.Event()
-
-    async def fail_cleanup() -> int:
-        attempted.set()
-        raise OSError("database unavailable")
-
-    with (
-        patch.object(
-            session_cleanup,
-            "cleanup_expired_sessions",
-            side_effect=fail_cleanup,
-        ),
-        patch.object(session_cleanup.logger, "exception") as log_exception,
-    ):
-        stop = await session_cleanup.start_session_cleanup_scheduler()
-        await asyncio.wait_for(attempted.wait(), timeout=1)
-        await asyncio.sleep(0)
-        await stop()
-
-    log_exception.assert_called_once_with("Failed to cleanup expired sessions")
-
-
-@pytest.mark.asyncio
-async def test_modify_missing_grade_raises_domain_error() -> None:
-    result = MagicMock()
-    result.scalars.return_value.first.return_value = None
-    database = AsyncMock()
-    database.execute.return_value = result
-    grade_id = uuid.uuid4()
-
-    with pytest.raises(ValueError, match=str(grade_id)):
-        await GradeService().modify_grade(
-            database,
-            grade_id=grade_id,
-            new_score=5,
-        )
 
 
 def test_images_vips_import_success_path_with_optional_module() -> None:

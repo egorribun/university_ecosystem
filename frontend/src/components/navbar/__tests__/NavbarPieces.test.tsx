@@ -5,7 +5,7 @@
  * unauthenticated / authenticated states). Mirrors the renderWithRouter +
  * stub-props pattern from NavbarOverflowMenu.test.tsx (session 9 template).
  */
-import { act, screen } from "@testing-library/react"
+import { act, fireEvent, screen } from "@testing-library/react"
 import { useState } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
@@ -28,6 +28,7 @@ import { MobileDrawerProfile } from "@/components/navbar/MobileDrawerProfile"
 import { MobileDrawerQuickActions } from "@/components/navbar/MobileDrawerQuickActions"
 import { UserMenu } from "@/components/navbar/UserMenu"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { expectNoRouterNavigation } from "@/tests/helpers/expectNoRouterNavigation"
 import { testUser } from "@/tests/mocks/handlers"
 import type { NavigationItem } from "@/config/navigation"
 
@@ -78,7 +79,7 @@ describe("DesktopNav", () => {
 
   it("scrolls to top instead of navigating when the link targets the current page", async () => {
     const scrollToTop = vi.fn()
-    await renderWithRouter({
+    const { router } = await renderWithRouter({
       ui: () => (
         <DesktopNav
           menuLinks={navItems}
@@ -90,6 +91,8 @@ describe("DesktopNav", () => {
           isCompact
         />
       ),
+      path: "/news",
+      initialPath: "/news",
       authProvider: false,
     })
     expect(document.querySelector(".navbar-desktop-nav")).toHaveClass("ml-(--space-4)", "gap-0.5")
@@ -103,13 +106,15 @@ describe("DesktopNav", () => {
       "opacity-0",
       "pointer-events-none"
     )
-    await userEvent.click(screen.getByText("News"))
+    await expectNoRouterNavigation(router, () => {
+      fireEvent.click(screen.getByRole("link", { name: "News" }))
+    })
     expect(scrollToTop).toHaveBeenCalledWith("auto")
   })
 
   it("uses smooth scrolling for a same-target link when motion is allowed", async () => {
     const scrollToTop = vi.fn()
-    await renderWithRouter({
+    const { router } = await renderWithRouter({
       ui: () => (
         <DesktopNav
           menuLinks={navItems}
@@ -121,10 +126,14 @@ describe("DesktopNav", () => {
           isCompact={false}
         />
       ),
+      path: "/events",
+      initialPath: "/events",
       authProvider: false,
     })
 
-    await userEvent.click(screen.getByText("Events"))
+    await expectNoRouterNavigation(router, () => {
+      fireEvent.click(screen.getByRole("link", { name: "Events" }))
+    })
     expect(scrollToTop).toHaveBeenCalledWith("smooth")
   })
 })

@@ -33,6 +33,7 @@ from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.auth.fingerprint_service import AuthFingerprintService
 from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
+from app.services.auth.session_policy import session_epoch_is_current
 from app.services.auth.token_service import AuthTokenService
 
 _logger = get_logger(__name__)
@@ -113,24 +114,27 @@ async def _resolve_current_user(
         payload = AuthTokenService.extract_and_decode_token(request, token, locale)
         user_id, jti = AuthTokenService.validate_payload(payload, locale)
 
-    # 2. JTI Revocation Fast-Path — optional O(1) pre-check before session lookup.
-    # The durable revocation store is an O(1) cross-service pre-check. PostgreSQL
-    # remains authoritative in this process and is checked on every path below,
-    # so a revocation-store outage safely falls back to session.revoked_at.
+    # 2. JTI Revocation Check — required O(1) cross-service check before cache
+    # or database access. PostgreSQL remains authoritative in this process,
+    # while the tombstone covers a failed DB commit across service boundaries.
     try:
         _redis = await get_revocation_redis_client()
         if await _redis.exists(f"revoked:jti:{jti}"):
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
     except HTTPException:
         raise
-    except (
-        RuntimeError,
-        RedisError,
-        OSError,
-    ) as exc:  # RZ-22-01: narrowed — Redis/NullCache errors
-        # Redis unavailable: fall through to DB revoked_at check below
-        _logger.debug("Redis revoked-jti check failed: %s", exc)  # nosec B110
-        pass
+    except (RuntimeError, RedisError, OSError):
+        # A DB-active row may be stale when revocation committed only to the
+        # durable tombstone. Do not trust cache or DB state when that mandatory
+        # cross-service check is unavailable, and never expose provider details.
+        _logger.warning("Durable session revocation check unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "session_verification_unavailable",
+                "message": "Session verification temporarily unavailable",
+            },
+        ) from None
 
     # 3. Redis Session Check (Cache-Aside)
     cached_session = await redis_service.get_session(jti)
@@ -195,7 +199,7 @@ async def _resolve_current_user(
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
     assert session is not None  # noqa: S101
-    if session.mfa_epoch != int(user.mfa_epoch):
+    if not session_epoch_is_current(session.mfa_epoch, user.mfa_epoch):
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     security_service = AuthSecurityService(db, locale)
@@ -269,8 +273,10 @@ async def get_current_user_optional(
     """Optional version of get_current_user that returns None instead of raising 401."""
     try:
         return await get_current_user(request, token, db)
-    except HTTPException:
-        return None
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise
 
 
 @inject
@@ -330,12 +336,15 @@ async def get_permission_checker(
     return checker
 
 
-async def get_current_admin_user(
-    request: Request,
-    user: Annotated[User, Depends(get_current_user)],
-    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
-) -> User:
-    """Dependency that ensures the current user is an admin via SpiceDB."""
+async def ensure_admin(
+    checker: PermissionChecker, user: User | UserDTO, request: Request
+) -> None:
+    """Require the global admin permission, resolved through SpiceDB.
+
+    The local ``user.role`` column is never the sole gate for a privileged
+    operation: the check fails closed (HTTP 503) when SpiceDB is unreachable and
+    answers 403 for any user without the permission.
+    """
     try:
         is_admin_user = await checker.check_admin(str(user.id), user=user)
     except SpiceDBUnavailableError:
@@ -347,8 +356,16 @@ async def get_current_admin_user(
             },
         ) from None
     if not is_admin_user:
-        locale = resolve_locale(request=request)
-        raise_forbidden(locale)
+        raise_forbidden(resolve_locale(request=request))
+
+
+async def get_current_admin_user(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
+) -> User:
+    """Dependency that ensures the current user is an admin via SpiceDB."""
+    await ensure_admin(checker, user, request)
     return user
 
 
@@ -367,19 +384,7 @@ async def get_current_admin_user_from_dishka(
     authorization check itself is unchanged.
     """
 
-    try:
-        is_admin_user = await checker.check_admin(str(user.id), user=user)
-    except SpiceDBUnavailableError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "authz_unavailable",
-                "message": "Authorization service temporarily unavailable",
-            },
-        ) from None
-    if not is_admin_user:
-        locale = resolve_locale(request=request)
-        raise_forbidden(locale)
+    await ensure_admin(checker, user, request)
     return user
 
 

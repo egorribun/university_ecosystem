@@ -199,6 +199,58 @@ async def test_build_token_response_handles_pending_email_and_signing_key() -> N
     assert without_pending.session is None
 
 
+@pytest.mark.asyncio
+async def test_build_token_response_accepts_bounded_education_dto() -> None:
+    """Login serialization accepts the education fields exposed by UserOut."""
+    from app.core.constants import ANONYMIZED_USER_CREDENTIAL
+    from app.models.enums import UserRole
+    from app.models.users import EducationPath
+    from app.schemas.dtos import UserAuthDTO, UserEducationDTO
+    from app.services.auth.login_session_manager import LoginSessionManager
+
+    user_id = uuid4()
+    education_path = EducationPath(
+        user_id=user_id,
+        institute="Example University",
+        course="Computer Science",
+        education_level="bachelor",
+        track=None,
+        program=None,
+        record_book_number=None,
+    )
+    user = UserAuthDTO(
+        id=user_id,
+        email="student@example.com",
+        role=UserRole.STUDENT,
+        group_id=None,
+        is_active=True,
+        mfa_required=False,
+        mfa_default_method=None,
+        mfa_last_verified_at=None,
+        created_at=None,
+        hashed_password=ANONYMIZED_USER_CREDENTIAL,
+        education_path=UserEducationDTO.model_validate(education_path),
+    )
+    manager = LoginSessionManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+
+    with patch(
+        "app.services.auth_service.attach_pending_email",
+        AsyncMock(return_value=None),
+    ):
+        response = await manager.build_token_response(user, "token", None, MagicMock())
+
+    assert response.user.id == user_id
+    assert response.user.education_path is not None
+    assert response.user.education_path.model_dump() == {
+        "institute": "Example University",
+        "course": "Computer Science",
+        "education_level": "bachelor",
+        "track": None,
+        "program": None,
+        "record_book_number": None,
+    }
+
+
 def test_extract_client_info_resolves_ip_and_user_agent() -> None:
     from app.services.auth.login_session_manager import LoginSessionManager
 

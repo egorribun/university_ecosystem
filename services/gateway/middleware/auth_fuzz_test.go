@@ -18,7 +18,7 @@ func FuzzJWTValidation(f *testing.F) {
 
 	gin.SetMode(gin.TestMode)
 	// Create middleware without redis to isolate JWT parsing logic
-	m := NewJWTMiddleware("test-secret-at-least-32-bytes-long!", nil)
+	m := NewJWTMiddlewareWithConfig("test-secret-at-least-32-bytes-long!", "", nil, DefaultL1CacheConfig())
 	handler := m.Validate(context.Background())
 
 	f.Fuzz(func(t *testing.T, authHeader string) {

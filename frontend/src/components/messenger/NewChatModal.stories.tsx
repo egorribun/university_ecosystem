@@ -1,6 +1,7 @@
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
 import { LazyMotion, domAnimation } from "framer-motion"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { AppShellProvider } from "@/contexts/AppShellContext"
 import type { User } from "@/types/User"
 import { NewChatModal } from "./NewChatModal"
 
@@ -39,13 +40,15 @@ const seededClientDecorator: Decorator = (Story) => (
 const themed = (dark: boolean): Decorator => {
   // eslint-disable-next-line react/display-name -- Storybook decorator, not a render component
   return (Story) => (
-    <LazyMotion features={domAnimation}>
-      <div className={dark ? "dark" : undefined}>
-        <div className="messenger-theme" style={{ minHeight: 600, position: "relative" }}>
-          <Story />
+    <AppShellProvider>
+      <LazyMotion features={domAnimation}>
+        <div className={dark ? "dark" : undefined}>
+          <div className="messenger-theme" style={{ minHeight: 600, position: "relative" }}>
+            <Story />
+          </div>
         </div>
-      </div>
-    </LazyMotion>
+      </LazyMotion>
+    </AppShellProvider>
   )
 }
 

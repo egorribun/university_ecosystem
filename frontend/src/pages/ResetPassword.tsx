@@ -1,6 +1,6 @@
-import { useState, useEffect, type FormEvent } from "react"
+import { useState, useEffect, useCallback, type FormEvent } from "react"
 import api from "@/api/client"
-import { useLocation, useParams, Link } from "@tanstack/react-router"
+import { useLocation, useNavigate, useParams, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { m, AnimatePresence } from "framer-motion"
 import "@/styles/tokens/auth.css"
@@ -62,11 +62,64 @@ export default function ResetPassword() {
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   // The token route is a child of this page's route, so read params loosely.
   const routeParameters = useParams({ strict: false })
-  const { search: searchParameters } = useLocation()
+  const navigate = useNavigate()
+  const { pathname, search: searchParameters, state: locationState } = useLocation()
+  const routeToken = (routeParameters as { token?: string }).token || ""
+  const queryToken = (searchParameters as { token?: string }).token || ""
+  const routeStateToken =
+    (locationState as { resetPasswordToken?: string }).resetPasswordToken || ""
+  const [capturedQueryToken, setCapturedQueryToken] = useState(() =>
+    queryToken ? { pathname, token: queryToken } : null
+  )
   const token =
-    (routeParameters as { token?: string }).token ||
-    (searchParameters as { token?: string }).token ||
-    ""
+    routeToken ||
+    queryToken ||
+    routeStateToken ||
+    (capturedQueryToken?.pathname === pathname ? capturedQueryToken.token : "")
+
+  // Legacy reset links put the bearer token in a path segment. Move it into
+  // non-URL router state and replace that history entry with the clean route.
+  useEffect(() => {
+    if (!routeToken) return
+
+    void navigate({
+      to: "/reset-password",
+      search: (previous: Record<string, unknown>) => {
+        const next = { ...previous }
+        delete next.token
+        return next
+      },
+      state: (previous) => ({
+        ...previous,
+        resetPasswordToken: routeToken,
+      }),
+      replace: true,
+      viewTransition: false,
+    })
+  }, [navigate, routeToken])
+
+  // Capture query-string reset links in component and router state before
+  // removal. Other search parameters remain intact, and replace avoids
+  // retaining the bearer URL as a back-button history entry.
+  useEffect(() => {
+    if (!queryToken || routeToken) return
+
+    setCapturedQueryToken({ pathname, token: queryToken })
+    void navigate({
+      to: ".",
+      search: (previous: Record<string, unknown>) => {
+        const next = { ...previous }
+        delete next.token
+        return next
+      },
+      state: (previous) => ({
+        ...previous,
+        resetPasswordToken: queryToken,
+      }),
+      replace: true,
+      viewTransition: false,
+    })
+  }, [navigate, pathname, queryToken, routeToken])
 
   const [capsPass, setCapsPass] = useState(false)
   const [capsConfirm, setCapsConfirm] = useState(false)
@@ -76,6 +129,9 @@ export default function ResetPassword() {
   const [feedback, setFeedback] = useState<string>("")
   const [pwned, setPwned] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const focusSuccessHeading = useCallback((heading: HTMLHeadingElement | null) => {
+    heading?.focus()
+  }, [])
 
   const {
     register,
@@ -199,7 +255,11 @@ export default function ResetPassword() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-black tracking-tight text-text-primary">
+                    <h2
+                      ref={focusSuccessHeading}
+                      tabIndex={-1}
+                      className="text-2xl font-black tracking-tight text-text-primary"
+                    >
                       {t("auth:reset.successTitle")}
                     </h2>
                     <p className="text-sm text-text-secondary font-medium leading-relaxed">

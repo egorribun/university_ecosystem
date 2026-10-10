@@ -94,6 +94,17 @@ def test_build_reset_email_content_html_contains_link():
     assert link in html
 
 
+def test_build_reset_email_content_escapes_untrusted_profile_name_in_html():
+    payload = '<img src=x onerror="alert(1)">'
+
+    _, _, html = build_reset_email_content(
+        "https://example.com/reset?token=opaque", payload
+    )
+
+    assert payload not in html
+    assert "&lt;img" in html
+
+
 def test_build_reset_email_content_with_locale():
     subject_en, _, _ = build_reset_email_content("https://x.com/r", locale="en")
     subject_ru, _, _ = build_reset_email_content("https://x.com/r", locale="ru")
@@ -117,6 +128,15 @@ def test_build_lockout_email_content_returns_tuple():
     assert isinstance(subject, str)
     assert isinstance(plain, str)
     assert isinstance(html, str)
+
+
+def test_build_lockout_email_content_escapes_untrusted_profile_name_in_html():
+    payload = '<img src=x onerror="alert(1)">'
+
+    _, _, html = build_lockout_email_content(payload)
+
+    assert payload not in html
+    assert "&lt;img" in html
 
 
 def test_build_lockout_email_content_with_locale():

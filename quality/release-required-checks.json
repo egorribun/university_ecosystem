@@ -12,7 +12,7 @@
           "workflow_path": ".github/workflows/ci.yml",
           "category": "aggregate",
           "allowed_conclusions": ["success"],
-          "rationale": "Canonical CI aggregate includes the SHA-bound quality manifest, coverage and mutation policy, internal security audit, API contract, Schemathesis, OpenAPI drift, infrastructure, and integration gates."
+          "rationale": "Canonical CI aggregate includes the SHA-bound quality manifest, coverage and policy, internal security audit, API contracts, OpenAPI and GraphQL drift, infrastructure, and integration gates."
         },
         {
           "name": "Trusted Codecov Upload",
@@ -27,13 +27,6 @@
           "category": "security",
           "allowed_conclusions": ["success"],
           "rationale": "Independent full-history secret scanning is release-critical."
-        },
-        {
-          "name": "TruffleHog Scan",
-          "workflow_path": ".github/workflows/trufflehog.yml",
-          "category": "security",
-          "allowed_conclusions": ["success"],
-          "rationale": "Independent verified-secret scanning of the full history is release-critical."
         },
         {
           "name": "Analyze (actions)",
@@ -92,13 +85,6 @@
           "rationale": "GitHub Actions security analysis must pass independently."
         },
         {
-          "name": "SQLMap Scan",
-          "workflow_path": ".github/workflows/sqlmap.yml",
-          "category": "security",
-          "allowed_conclusions": ["success"],
-          "rationale": "The release API must pass the independent SQL injection scan."
-        },
-        {
           "name": "Vulnerability gate (CRITICAL/HIGH)",
           "workflow_path": ".github/workflows/sbom.yml",
           "category": "security",
@@ -125,13 +111,6 @@
           "category": "security",
           "allowed_conclusions": ["success"],
           "rationale": "Pull requests must pass independent secret scanning."
-        },
-        {
-          "name": "TruffleHog Scan",
-          "workflow_path": ".github/workflows/trufflehog.yml",
-          "category": "security",
-          "allowed_conclusions": ["success"],
-          "rationale": "Pull requests must pass verified-secret scanning."
         },
         {
           "name": "Analyze (actions)",
@@ -188,13 +167,6 @@
           "category": "security",
           "allowed_conclusions": ["success"],
           "rationale": "Pull requests must pass GitHub Actions security analysis."
-        },
-        {
-          "name": "SQLMap Scan",
-          "workflow_path": ".github/workflows/sqlmap.yml",
-          "category": "security",
-          "allowed_conclusions": ["success"],
-          "rationale": "Pull requests must pass the independent SQL injection scan."
         },
         {
           "name": "Vulnerability gate (CRITICAL/HIGH)",

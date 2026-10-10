@@ -97,7 +97,10 @@ export const EventsFeature = () => {
     [navigate]
   )
 
-  const setTab = useCallback((v: string) => handleURLChange("tab", v), [handleURLChange])
+  const setTab = useCallback(
+    (v: EventTabKey) => handleURLChange("tab", v === "active" ? "" : v),
+    [handleURLChange]
+  )
   const setSearchQuery = useCallback((v: string) => handleURLChange("q", v), [handleURLChange])
   const setSortMode = useCallback(
     (v: EventSortMode) => handleURLChange("sort", v === "newest" ? "" : v),

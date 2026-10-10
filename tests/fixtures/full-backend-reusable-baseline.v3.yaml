@@ -1,0 +1,109 @@
+schema: full-backend-reusable-baseline-v3
+source_commit: 4213ed042416ff39cd4c50cc6e49edbf44e9b992 # pragma: allowlist secret -- public Git or workflow content digest
+source_files:
+  nightly: cbead78888ea97ea093c3b570c19969df459994872a2e870eef541b7e239d5bf # pragma: allowlist secret -- public Git or workflow content digest
+  manual: 7cfce7c06055ae4d902e74e15bd23ba9b7260487393be77f57655bfdde4fe7ed # pragma: allowlist secret -- public Git or workflow content digest
+nightly_trigger_sha256: fdc20c3df799579edad1d3c520a3678d50fbc3359d50c2bffe8a2db8f4708a19 # pragma: allowlist secret -- public Git or workflow content digest
+manual_trigger_sha256: 489a16b2e1094614ce44cfaabe33078986fc592412b4e3f8f0b98be59096d0bd # pragma: allowlist secret -- public Git or workflow content digest
+nightly_preserved_jobs:
+  frontend-mutation-preflight: ef63a9b8b85fca12f774ca2b6d6a9608ae0625e2a63d94308d4172ff32448eb4 # pragma: allowlist secret -- public Git or workflow content digest
+  frontend-mutation-shards: 823e3395daa117d2c73b4c24c3a092b8fad606def8ecf828b9946704b66ad250 # pragma: allowlist secret -- public Git or workflow content digest
+  frontend-mutation-tests-full: ac1320f13bfc12c52713814b3f04e9e1f08382406367d1cf3629d024e5bbeb3c # pragma: allowlist secret -- public Git or workflow content digest
+  frontend-mutation-roundtrip: 3416a01236fe8485fc248867dd96638f4e4c401032dc2432ec6f7b27f290790c # pragma: allowlist secret -- public Git or workflow content digest
+  backend-full: d209f3a544cafc57f417b265008216f87f3477af9c35269dd98773bb9ae5a673 # pragma: allowlist secret -- public Git or workflow content digest
+  backend-integration: f85f81fe703fb7fbb7a2601d97fe361a1694c6840be49b494c5f599ae5c1b1c1 # pragma: allowlist secret -- public Git or workflow content digest
+  go-integration: 0ae30c84e67c76d2eb9242696dae04c50054299e07e8d9a7568e0f6d59c75928 # pragma: allowlist secret -- public Git or workflow content digest
+  container-integration-cells: 9203ff22fe6ac0eeb659051bec38dc7c5534c58a60e0123139af85b15ca90685 # pragma: allowlist secret -- public Git or workflow content digest
+  e2e-wasm-build: 28d00aa9d36f6c5ab67eccdb33138df4fc57c71d67c4ecdc92444d0425ca5695 # pragma: allowlist secret -- public Git or workflow content digest
+  browser-matrix: e41902f951cefa163229854ee2f1e4d4fba9188706e5cde84491a368ea6ce9aa # pragma: allowlist secret -- public Git or workflow content digest
+  load-and-chaos: 112d78abb16018feb303cce1a4c55c6afa80514ffb1f68ce926a9367a533f078 # pragma: allowlist secret -- public Git or workflow content digest
+  kyverno-test: 34d29871ec059f1c4b053147749088140e159a7ae934098d73c937cfc9b7532c # pragma: allowlist secret -- public Git or workflow content digest
+  miri: 68dbeb525c2af2866800a2c771019a52fe459dd82e9314c0d9f723a6434ae237 # pragma: allowlist secret -- public Git or workflow content digest
+manual_preserved_jobs:
+  manual-mutation-stats: b3acf20e8f44d77330d6149be4ab29de7095cbaa82e53f49fa4361402d2fe1d1 # pragma: allowlist secret -- public Git or workflow content digest
+  manual-mutation-tests: fdd0185555f42d5741d7fae954d057660513d84a7f5d5cca41a082e117be26ff # pragma: allowlist secret -- public Git or workflow content digest
+  manual-frontend-mutation-preflight: 0b270086b0c0d8ef2e6f528e3bff706ad78c1efa27c47053ae1993031c2a977a # pragma: allowlist secret -- public Git or workflow content digest
+  manual-frontend-mutation-shards: 5ca36c2e4c5108f423ce0fdf21e3b8bdd23e1e7478e5e0dcd7f4a0f85a5c073b # pragma: allowlist secret -- public Git or workflow content digest
+  manual-frontend-mutation-aggregate: b835c2f211c48a5013d58d161b38a9bd2a720265386e7892e06c8e577238bf0e # pragma: allowlist secret -- public Git or workflow content digest
+  manual-frontend-mutation-roundtrip: 9c5abc87ce51a3de0a2cf3866b9577b744021b862322b53f648a1e71223e2c52 # pragma: allowlist secret -- public Git or workflow content digest
+full_mutation_steps:
+  mutation-tests-full-generation-base:
+    excluded_boundary_steps: []
+    step_names:
+    - Checkout
+    - Create retry-scoped mutmut generation envelope
+    - Generate reusable mutmut source and metadata
+    - Upload full mutmut generation base
+    sha256: 871d12aab28f4e9835aedc85fbd65651829a4245f53dbc559b3590105936300f # pragma: allowlist secret -- public Git or workflow content digest
+    timeout_minutes: 45
+    strategy_sha256: 74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b # pragma: allowlist secret -- public Git or workflow content digest
+  mutation-tests-full-stats:
+    excluded_boundary_steps:
+    - Download nightly Helm dependency artifact
+    - Download same-run Helm dependency artifact
+    - Restore verified Helm dependency archives
+    - Select same-run Helm dependency artifact
+    step_names:
+    - Checkout
+    - Collect full mutmut stats shard
+    - Install dependencies
+    - Install uv
+    - Resolve Helm chart dependencies
+    - Set up Helm
+    - Set up Python
+    - Upload full mutmut stats shard
+    sha256: 7c46a66539d421f73fa074da7a3ab97a6c1b514798ac99396999bdc714be66be # pragma: allowlist secret -- public Git or workflow content digest
+    timeout_minutes: 45
+    strategy_sha256: 792273e039d644e447e19694f0f2479cad3dd4bb4e40358b1cc5e06e669abfac # pragma: allowlist secret -- public Git or workflow content digest
+  mutation-tests-full-plan:
+    excluded_boundary_steps:
+    - Download full mutmut stats shards
+    - Require all full mutmut stats shards
+    step_names:
+    - Checkout
+    - Install dependencies
+    - Install uv
+    - Merge full mutmut stats shards
+    - Plan and budget every exact full mutation shard
+    - Reduce full mutmut mapping to observed kill probes
+    - Set up Python
+    - Upload preflighted full mutation plan
+    sha256: fbd082430b18efc2b4903702b8f29cdbe2f1ee8625ced0ae03e5619afc4fd113 # pragma: allowlist secret -- public Git or workflow content digest
+    timeout_minutes: 60
+    strategy_sha256: 74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b # pragma: allowlist secret -- public Git or workflow content digest
+  mutation-tests-full:
+    excluded_boundary_steps:
+    - Download nightly Helm dependency artifact
+    - Download same-run Helm dependency artifact
+    - Restore verified Helm dependency archives
+    - Select same-run Helm dependency artifact
+    step_names:
+    - Checkout
+    - Download preflighted full mutation plan
+    - Install dependencies
+    - Install uv
+    - Plan and run exact full mutation shard
+    - Record mutmut job deadline
+    - Resolve Helm chart dependencies
+    - Set up Helm
+    - Set up Python
+    - Upload full mutation shard evidence
+    - Validate completed full mutation shard statistics
+    - Validate full mutation shard evidence artifact
+    sha256: 7b89d99949f9d35700d598fe9f7cae1dc6f71d617f97afea2d6539364f0996cc # pragma: allowlist secret -- public Git or workflow content digest
+    timeout_minutes: 360
+    strategy_sha256: 1715b0ab10712671f463161124569990fcad562da8ff7e896afd07f5152777fa # pragma: allowlist secret -- public Git or workflow content digest
+  mutation-tests-full-aggregate:
+    excluded_boundary_steps:
+    - Require all full mutmut execution shards
+    step_names:
+    - Checkout
+    - Download full mutation shard evidence
+    - Install dependencies
+    - Install uv
+    - Merge and gate full mutation evidence
+    - Set up Python
+    - Upload aggregate mutation evidence
+    sha256: a06f9119d8ba229e15f3aa150ef4df5b51338d23e5cea5c3ce6d65167cf928e9 # pragma: allowlist secret -- public Git or workflow content digest
+    timeout_minutes: 30
+    strategy_sha256: 74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b # pragma: allowlist secret -- public Git or workflow content digest

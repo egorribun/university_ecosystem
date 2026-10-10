@@ -9,7 +9,7 @@ import (
 )
 
 func TestWithSPIFFESilentFallbackOnNilClient(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://localhost:8000", nil)
+	client := NewInternalAPIAuthClientWithToken("http://localhost:8000", "", nil)
 
 	// Call WithSPIFFE with a nil spiffe.Client
 	client.WithSPIFFE(nil, "spiffe://university.ecosystem/ns/default/sa/app")
@@ -23,7 +23,7 @@ func TestWithSPIFFESilentFallbackOnNilClient(t *testing.T) {
 }
 
 func TestWithSPIFFEInvalidClientFailsClosed(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://localhost:8000", nil)
+	client := NewInternalAPIAuthClientWithToken("http://localhost:8000", "", nil)
 
 	require.Panics(t, func() {
 		client.WithSPIFFE(&spiffe.Client{}, "spiffe://university.ecosystem/ns/default/sa/app")
@@ -31,7 +31,7 @@ func TestWithSPIFFEInvalidClientFailsClosed(t *testing.T) {
 }
 
 func TestWithSPIFFEEmptyBackendIDSkipsConfiguration(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://localhost:8000", nil)
+	client := NewInternalAPIAuthClientWithToken("http://localhost:8000", "", nil)
 
 	// An enabled SPIFFE client without a backend identity is deliberately a
 	// no-op: there is no peer identity to validate and no TLS config to install.

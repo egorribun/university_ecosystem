@@ -191,22 +191,31 @@ function parseReportUrl(report) {
     throw new TypeError("Lighthouse finalUrl uses an unsupported protocol")
   }
 
-  let requestedPath = null
-  if (report.requestedUrl !== undefined) {
-    let requested
-    try {
-      requested = new URL(report.requestedUrl)
-    } catch {
-      throw new TypeError("Lighthouse requestedUrl is not an absolute URL")
-    }
-    if (requested.protocol !== "http:" && requested.protocol !== "https:") {
-      throw new TypeError("Lighthouse requestedUrl uses an unsupported protocol")
-    }
-    requestedPath = normalizeRoutePath(requested.pathname)
+  if (typeof report.requestedUrl !== "string") {
+    throw new TypeError("Lighthouse report is missing a requestedUrl")
   }
+  let requested
+  try {
+    requested = new URL(report.requestedUrl)
+  } catch {
+    throw new TypeError("Lighthouse requestedUrl is not an absolute URL")
+  }
+  if (requested.protocol !== "http:" && requested.protocol !== "https:") {
+    throw new TypeError("Lighthouse requestedUrl uses an unsupported protocol")
+  }
+  if (requested.origin !== parsed.origin) {
+    throw new TypeError("requested and final Lighthouse URLs have different origins")
+  }
+
+  const requestedPath = normalizeRoutePath(requested.pathname)
+  const pathname = normalizeRoutePath(parsed.pathname)
+  if (requestedPath !== pathname && !(requestedPath === "/" && pathname === "/dashboard")) {
+    throw new TypeError("requested and final Lighthouse paths do not match")
+  }
+
   return {
     parsed,
-    pathname: normalizeRoutePath(parsed.pathname),
+    pathname,
     requestedPath,
   }
 }

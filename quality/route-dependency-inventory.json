@@ -280,7 +280,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.get_current_admin_user_from_dishka",
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
@@ -319,7 +319,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.get_current_admin_user_from_dishka",
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
@@ -388,6 +388,7 @@
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_chat:GET:/{chat_id}",
@@ -399,6 +400,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_chats:GET:",
@@ -411,6 +413,7 @@
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_messages:GET:/{chat_id}/messages",
@@ -423,6 +426,7 @@
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
+        "FromDishka[ChatQueryService]",
         "inject"
       ],
       "id": "app.api.chat:get_reactors:GET:/{chat_id}/messages/{message_id}/reactions",
@@ -586,6 +590,30 @@
     },
     {
       "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.dlq:list_outbox_failures:GET:/outbox",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.dlq:requeue_outbox_failure:POST:/outbox/{failure_id}/requeue",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
         "app.api.deps.auth.get_current_admin_user_from_dishka",
         "app.api.deps.localization.get_locale"
       ],
@@ -604,6 +632,7 @@
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[NatsTaskBroker]",
         "inject"
       ],
       "id": "app.api.dlq:trigger_dlq_replay:POST:/replay",
@@ -688,6 +717,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "FromDishka[EventService]",
         "inject"
       ],
       "id": "app.api.events:get_event:GET:/{event_id}",
@@ -779,6 +809,32 @@
       "ownership": "canonical_dishka"
     },
     {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[GradeService]",
+        "inject"
+      ],
+      "id": "app.api.grades:assign_grade:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[GradeService]",
+        "inject"
+      ],
+      "id": "app.api.grades:modify_grade:PATCH:/{grade_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
       "dishka_dependencies": [],
       "dishka_signals": [],
       "id": "app.api.health:healthz:GET:/healthz",
@@ -831,13 +887,6 @@
       "ownership": "worker_internal"
     },
     {
-      "dishka_dependencies": [],
-      "dishka_signals": [],
-      "id": "app.api.internal.jwks:get_jwks:GET:/.well-known/jwks.json",
-      "legacy_dependencies": [],
-      "ownership": "worker_internal"
-    },
-    {
       "dishka_dependencies": [
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
@@ -852,7 +901,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[NewsService]",
@@ -877,7 +926,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[NewsService]",
@@ -958,7 +1007,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[NewsService]",
@@ -970,7 +1019,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [],
       "id": "app.api.news:upload_news_image:POST:/upload_image",
@@ -1231,7 +1280,9 @@
       "ownership": "canonical_dishka"
     },
     {
-      "dishka_dependencies": [],
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
         "inject"
@@ -1286,7 +1337,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[StoryService]",
@@ -1298,7 +1349,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[StoryService]",
@@ -1319,7 +1370,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[StoryService]",
@@ -1331,7 +1382,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [],
       "id": "app.api.stories:upload_story_cover:POST:/upload_cover",
@@ -1366,7 +1417,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_auth_dto"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[UserComplianceService]",
@@ -1427,7 +1478,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AuditService]",
@@ -1607,7 +1658,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1619,7 +1670,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1631,7 +1682,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1643,7 +1694,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1655,7 +1706,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1686,7 +1737,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1744,8 +1795,8 @@
   ],
   "schema_version": 1,
   "summary": {
-    "canonical_dishka": 136,
+    "canonical_dishka": 140,
     "public_no_db": 11,
-    "worker_internal": 4
+    "worker_internal": 3
   }
 }

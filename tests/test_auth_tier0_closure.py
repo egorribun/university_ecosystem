@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from redis.exceptions import RedisError
 
 
 def _lockout_service(monkeypatch, thresholds: str = "2:10,5:20"):
@@ -150,8 +151,9 @@ async def test_graphql_validator_allows_active_user_without_legacy_fingerprint()
         jti="live-jti",
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
         fingerprint_hash=None,
+        mfa_epoch=0,
     )
-    user = SimpleNamespace(id=user_id, is_active=True)
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
     session_result = MagicMock()
     session_result.scalar_one_or_none.return_value = active_session
     user_result = MagicMock()
@@ -174,17 +176,56 @@ async def test_graphql_validator_allows_active_user_without_legacy_fingerprint()
 
 
 @pytest.mark.asyncio
-async def test_graphql_validator_redis_failure_falls_back_to_database(monkeypatch):
+@pytest.mark.parametrize("failure_stage", ["client_initialization", "exists"])
+@pytest.mark.parametrize("error_type", [RedisError, RuntimeError, OSError])
+async def test_graphql_validator_fails_closed_when_revocation_store_is_unavailable(
+    monkeypatch, caplog, failure_stage, error_type
+):
     from app.services.auth.graphql_token_validator import GraphQLTokenValidator
 
+    provider_marker = "provider-diagnostic-marker"
+    jti = "stale-db-active-session"
+    redis = AsyncMock()
+    failure = error_type(provider_marker)
+    if failure_stage == "client_initialization":
+        redis_client = AsyncMock(side_effect=failure)
+    else:
+        redis.exists.side_effect = failure
+        redis_client = AsyncMock(return_value=redis)
     monkeypatch.setattr(
         "app.services.auth.graphql_token_validator.get_revocation_redis_client",
-        AsyncMock(side_effect=ConnectionError("redis unavailable")),
+        redis_client,
     )
 
     validator = GraphQLTokenValidator(MagicMock(), AsyncMock())
+    active_session = SimpleNamespace(
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        revoked_at=None,
+        mfa_epoch=0,
+        fingerprint_hash=None,
+    )
+    active_user = SimpleNamespace(is_active=True, mfa_epoch=0)
+    db_load = AsyncMock(return_value=active_session)
+    user_load = AsyncMock(return_value=active_user)
+    monkeypatch.setattr(validator, "_load_db_session", db_load)
+    monkeypatch.setattr(validator, "_load_user", user_load)
+    monkeypatch.setattr(validator, "_check_fingerprint", AsyncMock(return_value=True))
+    caplog.set_level("DEBUG", logger="app.services.auth.graphql_token_validator")
 
-    assert await validator._redis_jti_check("jti") is True
+    with pytest.raises(
+        RuntimeError, match=r"^Durable session revocation check unavailable$"
+    ):
+        await validator.validate(str(uuid4()), jti)
+
+    db_load.assert_not_awaited()
+    user_load.assert_not_awaited()
+    if failure_stage == "client_initialization":
+        redis_client.assert_awaited_once_with()
+    else:
+        redis_client.assert_awaited_once_with()
+        redis.exists.assert_awaited_once_with(f"revoked:jti:{jti}")
+    assert provider_marker not in caplog.text
+    assert jti not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -247,10 +288,11 @@ async def test_graphql_validator_fingerprint_success_and_failure_are_fail_closed
 
     request = MagicMock()
     validator = GraphQLTokenValidator(request, AsyncMock())
-    user = SimpleNamespace(id=uuid4(), is_active=True)
+    user = SimpleNamespace(id=uuid4(), is_active=True, mfa_epoch=0)
     active_session = SimpleNamespace(
         fingerprint_hash="stored",
         jti="jti",
+        mfa_epoch=0,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
     )
 

@@ -16,11 +16,11 @@ describe("SmartImage defensive and responsive branches", () => {
 
     const image = screen.getByRole("img", { name: "photo" })
     expect(image.getAttribute("src")).toContain("/api/v1/img/media/photo.jpg?_v=v2")
-    expect(image.getAttribute("srcset")).toContain("/api/v1/img/media/photo.jpg?w=320 320w")
-    expect(image.getAttribute("srcset")).toContain("/api/v1/img/media/photo.jpg?w=540 540w")
+    expect(image.getAttribute("srcset")).toContain("/api/v1/img/media/photo.jpg?w=320&_v=v2 320w")
+    expect(image.getAttribute("srcset")).toContain("/api/v1/img/media/photo.jpg?w=540&_v=v2 540w")
     expect(image).toHaveAttribute(
       "srcset",
-      "/api/v1/img/media/photo.jpg?w=320 320w, /api/v1/img/media/photo.jpg?w=540 540w"
+      "/api/v1/img/media/photo.jpg?w=320&_v=v2 320w, /api/v1/img/media/photo.jpg?w=540&_v=v2 540w"
     )
     expect(image).toHaveAttribute("loading", "lazy")
     expect(image).toHaveStyle({ objectFit: "cover" })
@@ -71,7 +71,7 @@ describe("SmartImage defensive and responsive branches", () => {
     )
     expect(image).toHaveAttribute(
       "srcset",
-      "/api/v1/img/media/photo.jpg?w=320 320w, /api/v1/img/media/photo.jpg?w=768 768w"
+      "/api/v1/img/media/photo.jpg?w=320&_v=second 320w, /api/v1/img/media/photo.jpg?w=768&_v=second 768w"
     )
   })
 
@@ -115,5 +115,134 @@ describe("SmartImage defensive and responsive branches", () => {
     expect(onLoad).toHaveBeenCalledOnce()
     expect(image).toHaveAttribute("loading", "eager")
     expect(image).toHaveStyle({ objectFit: "contain" })
+  })
+
+  it("versions each responsive candidate with the primary avatar", () => {
+    render(
+      <SmartImage
+        srcRaw="/media/avatar.png"
+        cacheV="profile-r7"
+        responsiveWidths={[64, 96]}
+        alt="account avatar"
+      />
+    )
+
+    const image = screen.getByRole("img", { name: "account avatar" })
+    const primary = new URL(image.getAttribute("src") ?? "", window.location.origin)
+    const candidates = (image.getAttribute("srcset") ?? "").split(",").map((entry) => {
+      const [url, width] = entry.trim().split(/\s+/u)
+      return { url: new URL(url ?? "", window.location.origin), width }
+    })
+
+    expect(primary.searchParams.get("_v")).toBe("profile-r7")
+    expect(candidates.map(({ url }) => url.searchParams.get("_v"))).toEqual([
+      "profile-r7",
+      "profile-r7",
+    ])
+    expect(candidates.map(({ url }) => url.searchParams.get("w"))).toEqual(["64", "96"])
+    expect(candidates.map(({ width }) => width)).toEqual(["64w", "96w"])
+  })
+
+  it("drops responsive candidates on fallback and preserves caller props", () => {
+    const onError = vi.fn()
+    render(
+      <SmartImage
+        srcRaw="/media/unavailable.png"
+        cacheV="profile-r1"
+        responsiveWidths={[64]}
+        fallback="/avatar-fallback.png"
+        alt="account avatar"
+        onError={onError}
+        data-testid="avatar-image"
+      />
+    )
+
+    const image = screen.getByTestId("avatar-image")
+    expect(image).toHaveAttribute("srcset")
+    expect(image).toHaveAttribute("sizes")
+    fireEvent.error(image)
+
+    expect(new URL(image.getAttribute("src") ?? "", window.location.origin).pathname).toBe(
+      "/avatar-fallback.png"
+    )
+    expect(image).not.toHaveAttribute("srcset")
+    expect(image).not.toHaveAttribute("sizes")
+    expect(image).toHaveAttribute("alt", "account avatar")
+    expect(image).toHaveAttribute("data-testid", "avatar-image")
+    expect(onError).toHaveBeenCalledOnce()
+
+    fireEvent.error(image)
+    expect(image).not.toHaveAttribute("srcset")
+    expect(onError).toHaveBeenCalledTimes(2)
+  })
+
+  it("retries the primary image immediately when srcRaw changes after failure", () => {
+    const { rerender } = render(
+      <SmartImage
+        srcRaw="/media/unavailable.png"
+        cacheV="profile-r1"
+        responsiveWidths={[64]}
+        fallback="/avatar-fallback.png"
+        alt="account avatar"
+      />
+    )
+    const image = screen.getByRole("img", { name: "account avatar" })
+    fireEvent.error(image)
+
+    rerender(
+      <SmartImage
+        srcRaw="/media/new-avatar.png"
+        cacheV="profile-r1"
+        responsiveWidths={[64]}
+        fallback="/avatar-fallback.png"
+        alt="account avatar"
+      />
+    )
+
+    const primary = new URL(image.getAttribute("src") ?? "", window.location.origin)
+    const candidate = new URL(
+      (image.getAttribute("srcset") ?? "").split(/\s+/u)[0] ?? "",
+      window.location.origin
+    )
+    expect(primary.pathname).toBe("/api/v1/img/media/new-avatar.png")
+    expect(primary.searchParams.get("_v")).toBe("profile-r1")
+    expect(candidate.pathname).toBe("/api/v1/img/media/new-avatar.png")
+    expect(candidate.searchParams.get("_v")).toBe("profile-r1")
+    expect(candidate.searchParams.get("w")).toBe("64")
+  })
+
+  it("retries the primary image immediately when cacheV changes after failure", () => {
+    const { rerender } = render(
+      <SmartImage
+        srcRaw="/media/unavailable.png"
+        cacheV="profile-r1"
+        responsiveWidths={[64]}
+        fallback="/avatar-fallback.png"
+        alt="account avatar"
+      />
+    )
+    const image = screen.getByRole("img", { name: "account avatar" })
+    fireEvent.error(image)
+
+    rerender(
+      <SmartImage
+        srcRaw="/media/unavailable.png"
+        cacheV="profile-r2"
+        responsiveWidths={[64]}
+        fallback="/avatar-fallback.png"
+        alt="account avatar"
+      />
+    )
+
+    const primary = new URL(image.getAttribute("src") ?? "", window.location.origin)
+    const candidate = new URL(
+      (image.getAttribute("srcset") ?? "").split(/\s+/u)[0] ?? "",
+      window.location.origin
+    )
+    expect(primary.pathname).toBe("/api/v1/img/media/unavailable.png")
+    expect(primary.searchParams.get("_v")).toBe("profile-r2")
+    expect(candidate.pathname).toBe("/api/v1/img/media/unavailable.png")
+    expect(candidate.searchParams.get("_v")).toBe("profile-r2")
+    expect(candidate.searchParams.get("w")).toBe("64")
   })
 })

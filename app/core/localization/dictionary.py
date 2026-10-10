@@ -279,6 +279,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Недействительный или просроченный запрос проверки.",
         "en": "Invalid or expired verification challenge.",
     },
+    "errors.mfa.invalid_method": {
+        "ru": "Неподдерживаемый способ подтверждения",
+        "en": "Unsupported verification method",
+    },
     "errors.mfa.code_required": {
         "ru": "Введите код подтверждения.",
         "en": "Confirmation code is required.",
@@ -422,6 +426,126 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "errors.events.registration_forbidden": {
         "ru": "Регистрация на мероприятия недоступна для вашей роли",
         "en": "Event registration is not available for your role",
+    },
+    "errors.auth.session_compromised": {
+        "ru": "Сессия скомпрометирована и была завершена. Войдите снова",
+        "en": "The session was compromised and has been terminated. Please sign in again",
+    },
+    "errors.auth.session_not_found": {
+        "ru": "Сессия не найдена",
+        "en": "Session not found",
+    },
+    "errors.auth.user_not_found": {
+        "ru": "Пользователь не найден",
+        "en": "User not found",
+    },
+    "errors.chat.attachment_failed": {
+        "ru": "Не удалось обработать вложение",
+        "en": "The attachment could not be processed",
+    },
+    "errors.chat.deletion_forbidden_non_admin": {
+        "ru": "Удалять личные чаты может только администратор",
+        "en": "Only an administrator can delete direct chats",
+    },
+    "errors.chat.history_clear_forbidden_non_admin": {
+        "ru": "Очищать историю личных чатов может только администратор",
+        "en": "Only an administrator can clear direct chat history",
+    },
+    "errors.chat.invalid_participants": {
+        "ru": "Некорректные участники чата",
+        "en": "Invalid chat participants",
+    },
+    "errors.chat.lock_timeout": {
+        "ru": "Чат создаётся другим запросом, повторите попытку",
+        "en": "The chat is being created by another request, please retry",
+    },
+    "errors.chat.message_too_long": {
+        "ru": "Сообщение слишком длинное",
+        "en": "The message is too long",
+    },
+    "errors.chat.missing_participant": {
+        "ru": "Не указан собеседник",
+        "en": "A participant is required",
+    },
+    "errors.chat.not_found": {
+        "ru": "Чат не найден",
+        "en": "Chat not found",
+    },
+    "errors.chat.not_participant": {
+        "ru": "Вы не участник этого чата",
+        "en": "You are not a participant of this chat",
+    },
+    "errors.chat.self_chat": {
+        "ru": "Нельзя создать чат с самим собой",
+        "en": "You cannot create a chat with yourself",
+    },
+    "errors.common.internal_error": {
+        "ru": "Внутренняя ошибка сервера",
+        "en": "Internal server error",
+    },
+    "errors.files.upload_timeout": {
+        "ru": "Время загрузки файла истекло",
+        "en": "The file upload timed out",
+    },
+    "errors.mfa.code_already_used": {
+        "ru": "Этот код уже использован",
+        "en": "This code has already been used",
+    },
+    "errors.mfa.no_enrollment": {
+        "ru": "Настройка многофакторной аутентификации не найдена",
+        "en": "No multi-factor enrollment found",
+    },
+    "errors.mfa.totp_enrollment_pending": {
+        "ru": "Настройка TOTP уже начата и ожидает подтверждения",
+        "en": "A TOTP enrollment is already pending confirmation",
+    },
+    "errors.profile_cache.envelope_expired": {
+        "ru": "Срок действия кэша профиля истёк",
+        "en": "The profile cache envelope has expired",
+    },
+    "errors.profile_cache.invalid_expires_at": {
+        "ru": "Некорректный срок действия кэша профиля",
+        "en": "The profile cache expiry is invalid",
+    },
+    "errors.profile_cache.missing_envelope": {
+        "ru": "Отсутствует конверт кэша профиля",
+        "en": "The profile cache envelope is missing",
+    },
+    "errors.spotify.misconfigured": {
+        "ru": "Интеграция со Spotify не настроена",
+        "en": "The Spotify integration is not configured",
+    },
+    "errors.spotify.scope_downgraded": {
+        "ru": "Права доступа Spotify уменьшены; подключите аккаунт заново",
+        "en": "Spotify permissions were reduced; reconnect your account",
+    },
+    "errors.users.confirmation_required": {
+        "ru": "Требуется подтверждение действия",
+        "en": "Confirmation is required",
+    },
+    "errors.users.invalid_invite_code": {
+        "ru": "Недействительный код приглашения",
+        "en": "Invalid invite code",
+    },
+    "errors.users.invite_code_required": {
+        "ru": "Для регистрации преподавателя нужен код приглашения",
+        "en": "An invite code is required to register as a teacher",
+    },
+    "errors.validation.required": {
+        "ru": "Обязательное поле не заполнено",
+        "en": "A required field is empty",
+    },
+    "errors.events.creation_failed": {
+        "ru": "Не удалось создать событие: проверьте введённые данные",
+        "en": "Could not create the event: check the submitted data",
+    },
+    "errors.events.id_out_of_range": {
+        "ru": "Идентификатор выходит за допустимый диапазон",
+        "en": "The identifier is out of the allowed range",
+    },
+    "errors.events.integer_id_unsupported": {
+        "ru": "Целочисленные идентификаторы событий не поддерживаются; используйте UUID",
+        "en": "Integer event identifiers are not supported; use a UUID",
     },
     "errors.events.not_found": {
         "ru": "Событие не найдено",
@@ -578,6 +702,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "errors.users.not_found": {
         "ru": "Пользователь не найден",
         "en": "User not found",
+    },
+    "errors.grades.not_found": {
+        "ru": "Оценка не найдена",
+        "en": "Grade not found",
     },
     "errors.sessions.not_found": {
         "ru": "Сессия не найдена",
@@ -740,6 +868,18 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "errors.dlq.invalid_status": {
         "ru": "Некорректный статус. Допустимые значения: {statuses}",
         "en": "Invalid status. Must be one of: {statuses}",
+    },
+    "errors.dlq.invalid_target": {
+        "ru": "Некорректная цель повтора. Допустимые значения: {targets}",
+        "en": "Invalid replay target. Must be one of: {targets}",
+    },
+    "errors.dlq.already_resolved": {
+        "ru": "Сбой уже обработан",
+        "en": "This failure has already been resolved",
+    },
+    "errors.dlq.not_replayable": {
+        "ru": "Событие нельзя повторить: его одноразовые данные уже уничтожены",
+        "en": "This event cannot be replayed: its one-time data was already destroyed",
     },
     "success.dlq.retry_queued": {
         "ru": "Задание {job_id} поставлено в очередь на повтор",

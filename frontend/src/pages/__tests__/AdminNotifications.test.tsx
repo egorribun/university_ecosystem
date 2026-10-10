@@ -1,10 +1,12 @@
-import { screen, waitFor } from "@testing-library/react"
+import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import { HttpResponse, http } from "msw"
-import { QueryClient } from "@tanstack/react-query"
+import { notifyManager, QueryClient } from "@tanstack/react-query"
 
 import AdminNotifications from "@/pages/AdminNotifications"
+import * as notificationsApi from "@/api/notifications"
+import { adminDeadLetterQueueQueryKey } from "@/api/hooks/adminNotifications"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { User } from "@/types/User"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -50,6 +52,30 @@ const authValue = {
 
 type RenderResult = { queryClient: QueryClient }
 
+let loadTopicsSpy: MockInstance<typeof notificationsApi.fetchAdminUserTopics>
+let saveTopicsSpy: MockInstance<typeof notificationsApi.updateAdminUserTopics>
+
+async function settleQueue(queryClient: QueryClient) {
+  // Wait for the request lifecycle, then flush Query's scheduled observer notifications.
+  await waitFor(() => {
+    expect(queryClient.isMutating()).toBe(0)
+    expect(queryClient.isFetching({ queryKey: adminDeadLetterQueueQueryKey })).toBe(0)
+  })
+  await act(async () => {
+    await new Promise<void>((resolve) => notifyManager.schedule(resolve))
+  })
+}
+
+async function settleTopicRequest(request: Promise<unknown>) {
+  await act(async () => {
+    try {
+      await request
+    } catch {
+      // The caller checks the feature's error state after the real request rejects.
+    }
+  })
+}
+
 const renderPage = async (): Promise<RenderResult> => {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -71,23 +97,31 @@ const renderPage = async (): Promise<RenderResult> => {
     authProvider: false,
   })
 
+  await settleQueue(queryClient)
   return { queryClient }
 }
 
 describe("AdminNotifications page", () => {
   beforeEach(() => {
     resetAdminDeadLetterJobs()
+    loadTopicsSpy = vi.spyOn(notificationsApi, "fetchAdminUserTopics")
+    saveTopicsSpy = vi.spyOn(notificationsApi, "updateAdminUserTopics")
+  })
+
+  afterEach(() => {
+    loadTopicsSpy.mockRestore()
+    saveTopicsSpy.mockRestore()
   })
 
   it("lists dead-letter jobs and supports selection", async () => {
     const { queryClient } = await renderPage()
 
-    expect(await screen.findByText(/Notification queue/i)).toBeInTheDocument()
-    expect(await screen.findByText("Timeout")).toBeInTheDocument()
-    expect(await screen.findByText("Webhook failed")).toBeInTheDocument()
+    expect(screen.getByText(/Notification queue/i)).toBeInTheDocument()
+    expect(screen.getByText("Timeout")).toBeInTheDocument()
+    expect(screen.getByText("Webhook failed")).toBeInTheDocument()
     expect(screen.getByText("Total jobs: 2")).toBeInTheDocument()
 
-    const checkbox = await screen.findByRole("checkbox", {
+    const checkbox = screen.getByRole("checkbox", {
       name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
     })
     await userEvent.click(checkbox)
@@ -99,27 +133,29 @@ describe("AdminNotifications page", () => {
   it("retries and purges selected jobs", async () => {
     const { queryClient } = await renderPage()
 
-    const firstJobCheckbox = await screen.findByRole("checkbox", {
+    const firstJobCheckbox = screen.getByRole("checkbox", {
       name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
     })
     await userEvent.click(firstJobCheckbox)
 
-    const retryButton = await screen.findByRole("button", { name: /Retry selected/i })
+    const retryButton = screen.getByRole("button", { name: /Retry selected/i })
     await userEvent.click(retryButton)
+    await settleQueue(queryClient)
 
-    await waitFor(() => expect(screen.queryByText("Timeout")).not.toBeInTheDocument())
+    expect(screen.queryByText("Timeout")).not.toBeInTheDocument()
     expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
 
-    const secondJobCheckbox = await screen.findByRole("checkbox", {
+    const secondJobCheckbox = screen.getByRole("checkbox", {
       name: /Select job 550e8400-e29b-41d4-a716-446655440002/i,
     })
     await userEvent.click(secondJobCheckbox)
 
-    const purgeButton = await screen.findByRole("button", { name: /Delete selected/i })
+    const purgeButton = screen.getByRole("button", { name: /Delete selected/i })
     await userEvent.click(purgeButton)
+    await settleQueue(queryClient)
 
-    await waitFor(() => expect(screen.queryByText("Webhook failed")).not.toBeInTheDocument())
-    expect(await screen.findByText(/No dead-lettered jobs/)).toBeInTheDocument()
+    expect(screen.queryByText("Webhook failed")).not.toBeInTheDocument()
+    expect(screen.getByText(/No dead-lettered jobs/)).toBeInTheDocument()
 
     queryClient.clear()
   })
@@ -133,7 +169,7 @@ describe("AdminNotifications page", () => {
 
     const { queryClient } = await renderPage()
 
-    expect(await screen.findByText("nope")).toBeInTheDocument()
+    expect(screen.getByText("nope")).toBeInTheDocument()
 
     queryClient.clear()
   })
@@ -145,8 +181,8 @@ describe("AdminNotifications page", () => {
   it("select-all toggles every row and back", async () => {
     const { queryClient } = await renderPage()
 
-    const selectAll = await screen.findByRole("checkbox", { name: /Select all/i })
-    const rowCheckbox = await screen.findByRole("checkbox", {
+    const selectAll = screen.getByRole("checkbox", { name: /Select all/i })
+    const rowCheckbox = screen.getByRole("checkbox", {
       name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
     })
 
@@ -162,7 +198,7 @@ describe("AdminNotifications page", () => {
   it("toggles an individual row off after selecting it", async () => {
     const { queryClient } = await renderPage()
 
-    const rowCheckbox = await screen.findByRole("checkbox", {
+    const rowCheckbox = screen.getByRole("checkbox", {
       name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
     })
     await userEvent.click(rowCheckbox)
@@ -196,7 +232,7 @@ describe("AdminNotifications page", () => {
     )
     const { queryClient } = await renderPage()
 
-    expect(await screen.findByText("maintenance")).toBeInTheDocument()
+    expect(screen.getByText("maintenance")).toBeInTheDocument()
     expect(screen.getByText("Any")).toBeInTheDocument()
     expect(screen.getByText("No error recorded")).toBeInTheDocument()
 
@@ -206,11 +242,12 @@ describe("AdminNotifications page", () => {
   it("retries a single job via the row action button", async () => {
     const { queryClient } = await renderPage()
 
-    expect(await screen.findByText("Timeout")).toBeInTheDocument()
-    const retryButtons = await screen.findAllByRole("button", { name: "Retry" })
+    expect(screen.getByText("Timeout")).toBeInTheDocument()
+    const retryButtons = screen.getAllByRole("button", { name: "Retry" })
     await userEvent.click(retryButtons[0]!)
+    await settleQueue(queryClient)
 
-    await waitFor(() => expect(screen.queryByText("Timeout")).not.toBeInTheDocument())
+    expect(screen.queryByText("Timeout")).not.toBeInTheDocument()
     expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
 
     queryClient.clear()
@@ -219,11 +256,12 @@ describe("AdminNotifications page", () => {
   it("purges a single job via the row action button", async () => {
     const { queryClient } = await renderPage()
 
-    expect(await screen.findByText("Timeout")).toBeInTheDocument()
-    const purgeButtons = await screen.findAllByRole("button", { name: "Delete" })
+    expect(screen.getByText("Timeout")).toBeInTheDocument()
+    const purgeButtons = screen.getAllByRole("button", { name: "Delete" })
     await userEvent.click(purgeButtons[0]!)
+    await settleQueue(queryClient)
 
-    await waitFor(() => expect(screen.queryByText("Timeout")).not.toBeInTheDocument())
+    expect(screen.queryByText("Timeout")).not.toBeInTheDocument()
     expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
     queryClient.clear()
   })
@@ -236,13 +274,14 @@ describe("AdminNotifications page", () => {
     )
     const { queryClient } = await renderPage()
 
-    const firstJobCheckbox = await screen.findByRole("checkbox", {
+    const firstJobCheckbox = screen.getByRole("checkbox", {
       name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
     })
     await userEvent.click(firstJobCheckbox)
     await userEvent.click(screen.getByRole("button", { name: /Retry selected/i }))
+    await settleQueue(queryClient)
 
-    expect(await screen.findByText("retry exploded")).toBeInTheDocument()
+    expect(screen.getByText("retry exploded")).toBeInTheDocument()
 
     queryClient.clear()
   })
@@ -250,8 +289,9 @@ describe("AdminNotifications page", () => {
   it("rejects an empty user id in the topics loader", async () => {
     const { queryClient } = await renderPage()
 
-    await userEvent.click(await screen.findByRole("button", { name: /Load topics/i }))
-    expect(await screen.findByText(/Please enter a valid user ID/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
+    expect(loadTopicsSpy).not.toHaveBeenCalled()
+    expect(screen.getByText(/Please enter a valid user ID/i)).toBeInTheDocument()
 
     queryClient.clear()
   })
@@ -276,10 +316,12 @@ describe("AdminNotifications page", () => {
     const { queryClient } = await renderPage()
 
     // The user-topics ID field is the first textbox; the release form follows it.
-    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, topicsResponse.user_id)
+    await userEvent.type(screen.getAllByRole("textbox")[0]!, topicsResponse.user_id)
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
+    expect(loadTopicsSpy).toHaveBeenCalledTimes(1)
+    await settleTopicRequest(loadTopicsSpy.mock.results[0]!.value)
 
-    expect(await screen.findByText(/Topics loaded for student@example.com/i)).toBeInTheDocument()
+    expect(screen.getByText(/Topics loaded for student@example.com/i)).toBeInTheDocument()
 
     const newsTopic = screen.getByRole("checkbox", { name: /news/i })
     const eventsTopic = screen.getByRole("checkbox", { name: /events/i })
@@ -288,8 +330,10 @@ describe("AdminNotifications page", () => {
 
     await userEvent.click(eventsTopic)
     await userEvent.click(screen.getByRole("button", { name: /Save topics/i }))
+    expect(saveTopicsSpy).toHaveBeenCalledTimes(1)
+    await settleTopicRequest(saveTopicsSpy.mock.results[0]!.value)
 
-    expect(await screen.findByText(/Topics updated successfully/i)).toBeInTheDocument()
+    expect(screen.getByText(/Topics updated successfully/i)).toBeInTheDocument()
     expect(savedTopics).toEqual(["news", "events"])
 
     queryClient.clear()
@@ -308,10 +352,12 @@ describe("AdminNotifications page", () => {
     )
     const { queryClient } = await renderPage()
 
-    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, "empty-user-id")
+    await userEvent.type(screen.getAllByRole("textbox")[0]!, "empty-user-id")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
+    expect(loadTopicsSpy).toHaveBeenCalledTimes(1)
+    await settleTopicRequest(loadTopicsSpy.mock.results[0]!.value)
 
-    expect(await screen.findByText("No topics are currently available.")).toBeInTheDocument()
+    expect(screen.getByText("No topics are currently available.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Save topics/i })).toBeDisabled()
 
     queryClient.clear()
@@ -330,10 +376,12 @@ describe("AdminNotifications page", () => {
     )
     const { queryClient } = await renderPage()
 
-    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, "unknown-topic-user-id")
+    await userEvent.type(screen.getAllByRole("textbox")[0]!, "unknown-topic-user-id")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
+    expect(loadTopicsSpy).toHaveBeenCalledTimes(1)
+    await settleTopicRequest(loadTopicsSpy.mock.results[0]!.value)
 
-    expect(await screen.findByText(/experimental/)).toBeInTheDocument()
+    expect(screen.getByText(/experimental/)).toBeInTheDocument()
 
     queryClient.clear()
   })
@@ -357,9 +405,11 @@ describe("AdminNotifications page", () => {
 
     const { queryClient } = await renderPage()
 
-    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, "some-user-id")
+    await userEvent.type(screen.getAllByRole("textbox")[0]!, "some-user-id")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
-    await waitFor(() => expect(screen.getAllByRole("alert").length).toBeGreaterThan(0))
+    expect(loadTopicsSpy).toHaveBeenCalledTimes(1)
+    await settleTopicRequest(loadTopicsSpy.mock.results[0]!.value)
+    expect(screen.getAllByRole("alert").length).toBeGreaterThan(0)
     expect(screen.queryByText(/Topics loaded for/i)).not.toBeInTheDocument()
 
     // Now make load succeed but save fail.
@@ -370,10 +420,14 @@ describe("AdminNotifications page", () => {
       )
     )
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
-    expect(await screen.findByText(/Managing topics for broken@example.com/i)).toBeInTheDocument()
+    expect(loadTopicsSpy).toHaveBeenCalledTimes(2)
+    await settleTopicRequest(loadTopicsSpy.mock.results[1]!.value)
+    expect(screen.getByText(/Managing topics for broken@example.com/i)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: /Save topics/i }))
-    await waitFor(() => expect(screen.getAllByRole("alert").length).toBeGreaterThan(0))
+    expect(saveTopicsSpy).toHaveBeenCalledTimes(1)
+    await settleTopicRequest(saveTopicsSpy.mock.results[0]!.value)
+    expect(screen.getAllByRole("alert").length).toBeGreaterThan(0)
     expect(screen.queryByText(/Topics updated successfully/i)).not.toBeInTheDocument()
 
     queryClient.clear()

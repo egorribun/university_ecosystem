@@ -22,6 +22,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import api from "@/api/client"
 import {
+  invalidateSessionEpoch,
+  rotateBrowserSession,
+  getBrowserSessionGeneration,
+  establishBrowserSession,
+  matchesBrowserSession,
+} from "@/stores/sessionEpoch"
+import {
   SERVICE_WORKER_MESSAGE_TYPES,
   type ApiCacheControlMessage,
 } from "@/constants/serviceWorkerMessages"
@@ -210,9 +217,10 @@ const SIGNING_KEY_BACKOFF_BASE_MS = 5_000
  *    immediately on subsequent ``ensure()`` calls.
  *  - On the 3rd failure, the hook enters exponential backoff
  *    (``SIGNING_KEY_BACKOFF_BASE_MS = 5_000`` doubling, capped at
- *    60 s) and dispatches a ``"auth:session-crypto-failed"`` window
- *    event so ``SessionCryptoErrorBoundary`` can prompt
- *    re-authentication. ``signingKeyBackoffTimerRef`` is cleared on
+ *    60 s). Calls return null without fetching while the timer is pending.
+ *    A ``"auth:session-crypto-failed"`` window event reports the delay.
+ *    Successful or explicit key updates reset backoff.
+ *    ``signingKeyBackoffTimerRef`` is cleared on
  *    unmount so React 18 StrictMode double-mount doesn't leak a
  *    stale timer.
  *
@@ -249,6 +257,9 @@ export const useSessionCrypto = () => {
    */
   const signingKeyBackoffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sessionCacheHashRef = useRef<string | null>(null)
+  const sessionCacheNonceRef = useRef<string | null>(null)
+  const sessionRevisionRef = useRef(0)
+  const cacheRevisionRef = useRef(0)
 
   const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
     const container: ServiceWorkerContainer | undefined = globalThis.navigator?.serviceWorker
@@ -256,8 +267,9 @@ export const useSessionCrypto = () => {
       return
     }
 
+    const revision = cacheRevisionRef.current
     const postTo = (target: ServiceWorker | null | undefined) => {
-      if (!target) return
+      if (!target || revision !== cacheRevisionRef.current) return
       try {
         target.postMessage(message)
       } catch (error) {
@@ -291,29 +303,62 @@ export const useSessionCrypto = () => {
       signingKey: string | null,
       { purge = false, force = false }: { purge?: boolean; force?: boolean } = {}
     ) => {
-      const nextHash = signingKey ? await hashSessionIdentifier(signingKey) : null
-      if (!force && sessionCacheHashRef.current === nextHash) {
+      const revision = ++cacheRevisionRef.current
+      const generation = getBrowserSessionGeneration()
+      if (!signingKey && !purge) return
+      if (signingKey && sessionCacheNonceRef.current && sessionCacheNonceRef.current !== generation)
         return
-      }
-
-      sessionCacheHashRef.current = nextHash
-
-      if (purge) {
+      // Disable the old namespace before any asynchronous key derivation.
+      if (purge || !signingKey) {
+        sessionCacheHashRef.current = null
         sendServiceWorkerMessage({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
       }
+      const nextHash = signingKey ? await hashSessionIdentifier(signingKey) : null
+      if (revision !== cacheRevisionRef.current || generation !== getBrowserSessionGeneration())
+        return
+      if (nextHash) {
+        const nonce = sessionCacheNonceRef.current ?? establishBrowserSession(nextHash, generation)
+        if (!nonce || !matchesBrowserSession(nextHash, nonce)) return
+        sessionCacheNonceRef.current = nonce
+      }
+      if (!force && !purge && sessionCacheHashRef.current === nextHash) return
+      sessionCacheHashRef.current = nextHash
 
       sendServiceWorkerMessage({
         type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
         sessionHash: nextHash ?? undefined,
+        ...(nextHash ? { sessionScope: `${nextHash}:${sessionCacheNonceRef.current}` } : {}),
       })
     },
     [sendServiceWorkerMessage]
   )
 
   const updateSessionSigningKey = useCallback(
-    async (value: string | null) => {
+    async (
+      value: string | null,
+      onInstall?: (revision: number, generation: string | null) => void
+    ) => {
+      if (value !== sessionSigningKeyRef.current) {
+        if (
+          sessionCacheHashRef.current &&
+          sessionCacheNonceRef.current &&
+          matchesBrowserSession(sessionCacheHashRef.current, sessionCacheNonceRef.current)
+        )
+          rotateBrowserSession()
+        invalidateSessionEpoch()
+        sessionCacheNonceRef.current = null
+      }
+      sessionRevisionRef.current += 1
+      sessionSigningKeyPromiseRef.current = null
       sessionSigningKeyRef.current = value
       signingKeyRetryCountRef.current = 0 // reset circuit breaker on explicit update
+      signingKeyBackoffMsRef.current = SIGNING_KEY_BACKOFF_BASE_MS
+      if (signingKeyBackoffTimerRef.current !== null) {
+        clearTimeout(signingKeyBackoffTimerRef.current)
+        signingKeyBackoffTimerRef.current = null
+      }
+      // Hand off this installation before cache delivery or hashing can yield.
+      onInstall?.(sessionRevisionRef.current, getBrowserSessionGeneration())
       setSessionSigningKeyState(value)
       await sendSessionCacheUpdate(value, { purge: true })
     },
@@ -328,23 +373,41 @@ export const useSessionCrypto = () => {
     if (sessionSigningKeyPromiseRef.current) {
       return sessionSigningKeyPromiseRef.current
     }
+    if (signingKeyBackoffTimerRef.current !== null) {
+      return null
+    }
+    const revision = sessionRevisionRef.current
+    const generation = getBrowserSessionGeneration()
     const clearInFlightPromise = () => {
       // Always clear the ref so subsequent callers retry rather than awaiting
       // a settled promise indefinitely, regardless of fulfillment or rejection.
-      sessionSigningKeyPromiseRef.current = null
+      if (sessionSigningKeyPromiseRef.current === promise)
+        sessionSigningKeyPromiseRef.current = null
     }
     const promise = (async (): Promise<string | null> => {
+      let failureRevision = revision
+      let failureGeneration = generation
       try {
         const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
           skipRateLimitQueue: true,
         } as Parameters<typeof api.get>[1])
+        if (revision !== sessionRevisionRef.current || generation !== getBrowserSessionGeneration())
+          return null
         // Success — reset circuit breaker and store key
         signingKeyRetryCountRef.current = 0
         const key = response.data.signing_key
-        await updateSessionSigningKey(key)
-        return key
+        await updateSessionSigningKey(key, (installedRevision, installedGeneration) => {
+          failureRevision = installedRevision
+          failureGeneration = installedGeneration
+        })
+        return sessionRevisionRef.current === revision + 1 ? key : null
       } catch (err) {
-        // Increment failure counter; log once max retries reached then reset
+        if (
+          failureRevision !== sessionRevisionRef.current ||
+          failureGeneration !== getBrowserSessionGeneration()
+        )
+          return null
+        // Increment failure counter; log when entering the next backoff window.
         signingKeyRetryCountRef.current += 1
         if (signingKeyRetryCountRef.current >= MAX_SIGNING_KEY_RETRIES) {
           if (import.meta.env.DEV) {
@@ -357,18 +420,14 @@ export const useSessionCrypto = () => {
           // degradation. Backoff: 5 s → 10 s → 20 s → … capped at 60 s.
           const backoffDelay = signingKeyBackoffMsRef.current
           signingKeyBackoffMsRef.current = Math.min(signingKeyBackoffMsRef.current * 2, 60_000)
-          // DEBT-FE-01: store timer ID so useEffect cleanup can cancel it on unmount.
-          if (signingKeyBackoffTimerRef.current !== null) {
-            clearTimeout(signingKeyBackoffTimerRef.current)
-          }
+          // Admission and request ownership guarantee no live timer here.
+          // Store the timer so explicit updates and unmount can cancel it.
           signingKeyBackoffTimerRef.current = setTimeout(() => {
             signingKeyRetryCountRef.current = 0
             signingKeyBackoffTimerRef.current = null
           }, backoffDelay)
 
-          // P-05 (audit 2026-03-08): Signal the UI layer so it can prompt the
-          // user to re-authenticate rather than silently swallowing the failure.
-          // The event is caught by the SessionCryptoErrorBoundary component.
+          // Publish the cooldown for consumers of the authentication failure event.
           window.dispatchEvent(
             new CustomEvent("auth:session-crypto-failed", {
               detail: { reason: "max_retries_exceeded", backoffMs: backoffDelay },
@@ -378,12 +437,21 @@ export const useSessionCrypto = () => {
         return null
       }
     })()
-    sessionSigningKeyPromiseRef.current = promise
+    // A synchronous failure event may already have started a replacement request.
+    if (revision === sessionRevisionRef.current && generation === getBrowserSessionGeneration()) {
+      sessionSigningKeyPromiseRef.current = promise
+    }
     // Register both settlement handlers before returning the promise. This
     // preserves the old finally semantics without a synthetic uncovered branch.
     void promise.then(clearInFlightPromise, clearInFlightPromise)
     return promise
   }, [updateSessionSigningKey])
+
+  const isCurrentSigningSession = useCallback(() => {
+    const hash = sessionCacheHashRef.current
+    const nonce = sessionCacheNonceRef.current
+    return !!sessionSigningKeyRef.current && !!hash && !!nonce && matchesBrowserSession(hash, nonce)
+  }, [])
 
   // PERF-03 (audit 2026-03-15 Wave 7): redundant useEffect removed.
   // sessionSigningKeyRef is updated imperatively inside updateSessionSigningKey
@@ -392,7 +460,29 @@ export const useSessionCrypto = () => {
 
   useEffect(() => {
     if (!isSessionCryptoBrowserRuntime()) return
-    void sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
+    const sync = () => void sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
+    sync()
+    const container = globalThis.navigator?.serviceWorker
+    const onMessage = (event: MessageEvent) => {
+      if (
+        event.source !== container?.controller ||
+        event.data?.type !== SERVICE_WORKER_MESSAGE_TYPES.REQUEST_API_SESSION_CACHE_KEY
+      )
+        return
+      const nonce = sessionCacheNonceRef.current
+      const candidate = sessionSigningKeyRef.current ? sessionCacheHashRef.current : null
+      const hash = candidate && nonce && matchesBrowserSession(candidate, nonce) ? candidate : null
+      event.ports[0]?.postMessage({
+        sessionHash: hash,
+        sessionScope: hash && nonce ? `${hash}:${nonce}` : null,
+      })
+    }
+    container?.addEventListener?.("controllerchange", sync)
+    container?.addEventListener?.("message", onMessage)
+    return () => {
+      container?.removeEventListener?.("controllerchange", sync)
+      container?.removeEventListener?.("message", onMessage)
+    }
   }, [sendSessionCacheUpdate])
 
   // DEBT-FE-01 (audit 2026-03-15): cancel pending backoff timer on unmount.
@@ -400,6 +490,8 @@ export const useSessionCrypto = () => {
   // setTimeout callback fires on a stale ref after the first unmount.
   useEffect(() => {
     return () => {
+      sessionRevisionRef.current += 1
+      cacheRevisionRef.current += 1
       if (signingKeyBackoffTimerRef.current !== null) {
         clearTimeout(signingKeyBackoffTimerRef.current)
         signingKeyBackoffTimerRef.current = null
@@ -409,6 +501,7 @@ export const useSessionCrypto = () => {
 
   return {
     sessionSigningKey,
+    isCurrentSigningSession,
     sessionSigningKeyRef,
     sessionSigningKeyPromiseRef,
     signingKeyRetryCountRef,

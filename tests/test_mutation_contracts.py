@@ -353,6 +353,7 @@ def _challenge(*, flow: str = "login", revision: int = 2) -> SimpleNamespace:
         otp_key_id="active",
         token_key_id="active",
         attempt_count=0,
+        payload={"mfa_epoch": 0},
     )
 
 
@@ -362,7 +363,9 @@ async def test_resend_update_rotates_recipient_and_keeps_pending_revision_guard(
 ):
     service = _email_service()
     challenge = _challenge()
-    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    user = SimpleNamespace(
+        id=challenge.user_id, email="student@example.edu", mfa_epoch=0
+    )
     challenge.recipient_digest = service._recipient_digest(
         key_id="active", email=user.email
     )
@@ -469,7 +472,9 @@ async def test_verify_opaque_forwards_the_presented_code_unchanged() -> None:
 async def test_resend_locks_recipient_and_cancels_only_pending_deliveries() -> None:
     service = _email_service()
     challenge = _challenge()
-    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    user = SimpleNamespace(
+        id=challenge.user_id, email="student@example.edu", mfa_epoch=0
+    )
     challenge.recipient_digest = service._recipient_digest(
         key_id="active", email=user.email
     )

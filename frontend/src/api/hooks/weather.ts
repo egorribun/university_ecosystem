@@ -42,16 +42,18 @@ export const weatherQueryKey = (coordinates: WeatherCoordinates): WeatherQueryKe
 
 export const weatherQueryOptions = (
   coordinates: WeatherCoordinates,
-  cacheTtlMs: number = WEATHER_CACHE_TTL_MS
+  cacheTtlMs: number = WEATHER_CACHE_TTL_MS,
+  { allowSessionCachePlaceholder = true }: { allowSessionCachePlaceholder?: boolean } = {}
 ) => ({
   queryKey: weatherQueryKey(coordinates),
   queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<WeatherSnapshot> => {
     return fetchWeatherSnapshot({ coordinates, cacheTtlMs, signal })
   },
   // Cold-mount fast paint via sessionStorage (typeof window guard
-  // inside readWeatherCache returns null on SSR — placeholderData
-  // simply absent there, query starts in loading state).
+  // inside readWeatherCache returns null on SSR). Callers that hydrate
+  // browser state can defer this until after the first client render.
   placeholderData: (): WeatherSnapshot | undefined => {
+    if (!allowSessionCachePlaceholder) return undefined
     const cached = readWeatherCache(coordinates, { allowExpired: true })
     return cached?.data ?? undefined
   },

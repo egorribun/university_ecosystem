@@ -1,10 +1,7 @@
-import uuid
 from typing import Any
 
 import app.models as models
 from app.core.constants import ANONYMIZED_USER_CREDENTIAL
-from app.core.exceptions.domain import EntityAlreadyExists
-from app.repositories.user_repository import UserRepository
 
 
 async def delete_static_file(path: str) -> None:
@@ -29,6 +26,14 @@ def update_user_attributes(user: models.User, data: dict[str, Any]) -> None:
         "position",
         "department",
     }
+    profile_detail_fields = {
+        "about",
+        "telegram",
+        "status",
+        "achievements",
+        "department",
+        "position",
+    }
     education_fields = {
         "institute",
         "course",
@@ -51,6 +56,13 @@ def update_user_attributes(user: models.User, data: dict[str, Any]) -> None:
             if not user.profile:
                 user.profile = models.UserProfile(user_id=user.id)
             setattr(user.profile, field, value)
+        elif field == "profile_detail":
+            if isinstance(value, dict):
+                if not user.profile:
+                    user.profile = models.UserProfile(user_id=user.id)
+                for key, nested_value in value.items():
+                    if key in profile_detail_fields:
+                        setattr(user.profile, key, nested_value)
         elif field == "profile" and isinstance(value, dict):
             if not user.profile:
                 user.profile = models.UserProfile(user_id=user.id)
@@ -60,6 +72,15 @@ def update_user_attributes(user: models.User, data: dict[str, Any]) -> None:
             if not user.education_path:
                 user.education_path = models.EducationPath(user_id=user.id)
             setattr(user.education_path, field, value)
+        elif field == "education_path":
+            if value is None:
+                user.education_path = None
+            elif isinstance(value, dict):
+                if not user.education_path:
+                    user.education_path = models.EducationPath(user_id=user.id)
+                for key, nested_value in value.items():
+                    if key in education_fields:
+                        setattr(user.education_path, key, nested_value)
         else:
             setattr(user, field, value)
 
@@ -127,13 +148,3 @@ async def anonymize_user_data(user: models.User) -> str:
     user.education_path = None
 
     return anonymized_email
-
-
-async def validate_user_email(
-    repo: UserRepository, email: str, exclude_user_id: uuid.UUID | str | None = None
-) -> str:
-    """Validate email and check for uniqueness."""
-    validated_email = str(email).strip().lower()
-    if await repo.check_email_exists(validated_email, exclude_user_id=exclude_user_id):
-        raise EntityAlreadyExists("User", validated_email)
-    return validated_email

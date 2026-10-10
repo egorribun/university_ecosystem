@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -14,10 +15,19 @@ from scripts.quality.capture_isolated_benchmarks import (
     CAPTURE_SIDE_WORKERS,
     CONTAINER_HOME,
     DOCKER_BINARY,
+    GO_IMAGE,
     PAIR_COUNT,
     TIMEOUT_BINARY,
+    TRUSTED_GO_BENCHMARK_BLOB,
+    TRUSTED_GO_BENCHMARK_COMMIT,
+    TRUSTED_GO_BENCHMARK_CONTAINER_PATH,
+    TRUSTED_GO_BENCHMARK_PARENT,
+    TRUSTED_GO_BENCHMARK_PATH,
+    TRUSTED_GO_BENCHMARK_SHA256,
+    TRUSTED_GO_BENCHMARK_TREE,
     CaptureArguments,
     CaptureError,
+    TrustedGoBenchmarkOverlay,
     _build_rust_image,
     _capture_pair_sides_concurrently,
     _container_tool_output,
@@ -28,7 +38,10 @@ from scripts.quality.capture_isolated_benchmarks import (
     _go_environment,
     _go_prefetch_environment,
     _go_program,
+    _is_symlink_or_junction,
+    _prepare_trusted_go_benchmark_overlay,
     _remove_image,
+    _remove_trusted_go_benchmark_overlay,
     _remove_volume,
     _rust_environment,
     _rust_prefetch_program,
@@ -134,6 +147,204 @@ def test_container_command_has_an_explicit_non_privileged_boundary(
         "-bench=.",
         "./...",
     ]
+
+
+def test_container_command_mounts_the_trusted_go_benchmark_as_a_read_only_overlay(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "candidate-source"
+    source.mkdir()
+    source_target = source / TRUSTED_GO_BENCHMARK_PATH
+    source_target.parent.mkdir(parents=True)
+    source_target.write_text("package hub\n", encoding="utf-8")
+    overlay = tmp_path / "trusted-hub-bench_test.go"
+    overlay.write_text("package hub\n", encoding="utf-8")
+
+    command = build_container_command(
+        image="example.invalid/performance@sha256:" + "a" * 64,
+        source_worktree=source,
+        cache_volume="private-candidate-cache",
+        container_name="quality-benchmark-" + "a" * 32,
+        workdir="/src/services/ws-hub",
+        network="none",
+        environment={"HOME": CONTAINER_HOME},
+        program=("go", "test", "-run=^$", "./..."),
+        trusted_go_benchmark=overlay,
+    )
+
+    mounts = [
+        command[index + 1]
+        for index, token in enumerate(command[:-1])
+        if token == "--mount"
+    ]
+    assert mounts == [
+        f"type=bind,src={source.resolve()},dst=/src,readonly",
+        "type=bind,src="
+        + str(overlay.resolve())
+        + ",dst="
+        + TRUSTED_GO_BENCHMARK_CONTAINER_PATH
+        + ",readonly",
+        "type=volume,src=private-candidate-cache,dst=/cache",
+    ]
+
+    with pytest.raises(CaptureError, match="only for Go capture"):
+        build_container_command(
+            image="example.invalid/performance@sha256:" + "a" * 64,
+            source_worktree=source,
+            cache_volume="private-candidate-cache",
+            container_name="quality-benchmark-" + "b" * 32,
+            workdir="/src",
+            network="none",
+            environment={"HOME": CONTAINER_HOME},
+            program=("cargo", "bench"),
+            trusted_go_benchmark=overlay,
+        )
+
+
+def _trusted_git_command_stub(
+    monkeypatch: pytest.MonkeyPatch, content: bytes
+) -> tuple[str, str, str, str]:
+    import scripts.quality.capture_isolated_benchmarks as capture_module
+
+    commit = "1" * 40
+    parent = "2" * 40
+    tree = "3" * 40
+    blob = "4" * 40
+    content_sha256 = hashlib.sha256(content).hexdigest()
+    monkeypatch.setattr(capture_module, "TRUSTED_GO_BENCHMARK_COMMIT", commit)
+    monkeypatch.setattr(capture_module, "TRUSTED_GO_BENCHMARK_PARENT", parent)
+    monkeypatch.setattr(capture_module, "TRUSTED_GO_BENCHMARK_TREE", tree)
+    monkeypatch.setattr(capture_module, "TRUSTED_GO_BENCHMARK_BLOB", blob)
+    monkeypatch.setattr(capture_module, "TRUSTED_GO_BENCHMARK_SHA256", content_sha256)
+
+    def fake_run_checked(
+        command: tuple[str, ...], _description: str
+    ) -> SimpleNamespace:
+        git_args = command[3:]
+        if git_args[:2] == ("rev-parse", "--verify"):
+            object_spec = git_args[2]
+            if object_spec.endswith("^{commit}"):
+                return SimpleNamespace(stdout=f"{commit}\n")
+            if object_spec.endswith("^{tree}"):
+                return SimpleNamespace(stdout=f"{tree}\n")
+            if object_spec == f"{commit}:{TRUSTED_GO_BENCHMARK_PATH}":
+                return SimpleNamespace(stdout=f"{blob}\n")
+        if git_args[:5] == ("rev-list", "--parents", "-n", "1", commit):
+            return SimpleNamespace(stdout=f"{commit} {parent}\n")
+        if git_args[:3] == ("cat-file", "-s", blob):
+            return SimpleNamespace(stdout=f"{len(content)}\n")
+        if git_args[:2] == ("cat-file", "blob") and git_args[2] == blob:
+            return SimpleNamespace(stdout=content.decode("utf-8"))
+        raise AssertionError("Unexpected trusted Git command")
+
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._run_checked",
+        fake_run_checked,
+    )
+    return commit, parent, tree, content_sha256
+
+
+def test_trusted_go_benchmark_overlay_is_pinned_and_materialized_outside_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    runner_temp = tmp_path / "runner-temp"
+    repo.mkdir()
+    runner_temp.mkdir()
+    content = b"package hub\n\nfunc BenchmarkTrusted(b *testing.B) {}\n"
+    commit, parent, tree, content_sha256 = _trusted_git_command_stub(
+        monkeypatch, content
+    )
+
+    overlay = _prepare_trusted_go_benchmark_overlay(
+        repo_worktree=repo,
+        runner_temp=runner_temp,
+    )
+
+    assert overlay.path.read_bytes() == content
+    assert overlay.path.parent.parent.resolve() == runner_temp.resolve()
+    assert overlay.commit == commit
+    assert overlay.parent == parent
+    assert overlay.tree == tree
+    assert overlay.blob != ""
+    assert overlay.sha256 == content_sha256
+    assert overlay.size_bytes == len(content)
+    _remove_trusted_go_benchmark_overlay(overlay, runner_temp)
+    assert list(runner_temp.iterdir()) == []
+
+
+def test_trusted_go_benchmark_bootstrap_provenance_is_explicit() -> None:
+    assert (
+        TRUSTED_GO_BENCHMARK_COMMIT
+        == "6a1d1a78a5a78e793b0df32fc6dea1f192b0732f"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+    )
+    assert (
+        TRUSTED_GO_BENCHMARK_PARENT
+        == "7fe9b621af3091ad88701c08c0f6441deecf8c26"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+    )
+    assert (
+        TRUSTED_GO_BENCHMARK_TREE
+        == "9040080eb32793c6abf8964814e1bab3514593a8"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+    )
+    assert TRUSTED_GO_BENCHMARK_PATH == "services/ws-hub/pkg/hub/hub_bench_test.go"
+    assert (
+        TRUSTED_GO_BENCHMARK_BLOB
+        == "02659ee9e5b86c832f9afda1e938e9e10da3d613"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+    )
+    assert (
+        TRUSTED_GO_BENCHMARK_SHA256
+        == (
+            "a3f340ebaad4ac8248f52e8a0989a2e97e2616c3481e9f7785ac9c90ceaf1018"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+        )
+    )
+
+
+def test_trusted_go_benchmark_overlay_rejects_tree_pin_mismatch_before_writing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import scripts.quality.capture_isolated_benchmarks as capture_module
+
+    repo = tmp_path / "repo"
+    runner_temp = tmp_path / "runner-temp"
+    repo.mkdir()
+    runner_temp.mkdir()
+    _trusted_git_command_stub(monkeypatch, b"package hub\n")
+
+    original_run_checked = capture_module._run_checked
+
+    def wrong_tree(command: tuple[str, ...], description: str) -> SimpleNamespace:
+        result = original_run_checked(command, description)
+        if description == "verify trusted benchmark commit tree":
+            return SimpleNamespace(stdout="4" * 40 + "\n")
+        return result
+
+    monkeypatch.setattr(capture_module, "_run_checked", wrong_tree)
+    with pytest.raises(CaptureError, match="tree does not match its pin"):
+        _prepare_trusted_go_benchmark_overlay(
+            repo_worktree=repo,
+            runner_temp=runner_temp,
+        )
+    assert list(runner_temp.iterdir()) == []
+
+
+def test_trusted_go_benchmark_overlay_rejects_content_digest_mismatch_before_writing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import scripts.quality.capture_isolated_benchmarks as capture_module
+
+    repo = tmp_path / "repo"
+    runner_temp = tmp_path / "runner-temp"
+    repo.mkdir()
+    runner_temp.mkdir()
+    _trusted_git_command_stub(monkeypatch, b"package hub\n")
+    monkeypatch.setattr(capture_module, "TRUSTED_GO_BENCHMARK_SHA256", "f" * 64)
+
+    with pytest.raises(CaptureError, match="digest does not match its pin"):
+        _prepare_trusted_go_benchmark_overlay(
+            repo_worktree=repo,
+            runner_temp=runner_temp,
+        )
+    assert list(runner_temp.iterdir()) == []
 
 
 def test_container_command_allows_the_read_only_source_mount_root(
@@ -341,6 +552,10 @@ def test_capture_accepts_worktrees_with_matching_declared_heads(
     runner_temp = tmp_path / "runner-temp"
     for directory in (base_worktree, candidate_worktree, runner_temp):
         directory.mkdir()
+    for worktree in (base_worktree, candidate_worktree):
+        target = worktree / TRUSTED_GO_BENCHMARK_PATH
+        target.parent.mkdir(parents=True)
+        target.write_text("package hub\n", encoding="utf-8")
     docker_binary = tmp_path / "docker"
     timeout_binary = tmp_path / "timeout"
     docker_binary.touch()
@@ -357,6 +572,20 @@ def test_capture_accepts_worktrees_with_matching_declared_heads(
     )
     observed_commands: list[list[str]] = []
     captured_descriptions: list[str] = []
+    captured_harnesses: list[Path | None] = []
+    reported_harnesses: list[TrustedGoBenchmarkOverlay | None] = []
+    overlay_path = tmp_path / "trusted" / "hub_bench_test.go"
+    overlay_path.parent.mkdir()
+    overlay_path.write_text("package hub\n", encoding="utf-8")
+    overlay = TrustedGoBenchmarkOverlay(
+        path=overlay_path,
+        commit=TRUSTED_GO_BENCHMARK_COMMIT,
+        parent=TRUSTED_GO_BENCHMARK_PARENT,
+        tree=TRUSTED_GO_BENCHMARK_TREE,
+        blob=TRUSTED_GO_BENCHMARK_BLOB,
+        sha256=TRUSTED_GO_BENCHMARK_SHA256,
+        size_bytes=overlay_path.stat().st_size,
+    )
 
     def fake_run(command: list[str], **_: object) -> SimpleNamespace:
         observed_commands.append(command)
@@ -374,6 +603,14 @@ def test_capture_accepts_worktrees_with_matching_declared_heads(
         "scripts.quality.capture_isolated_benchmarks.subprocess.run", fake_run
     )
     monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._prepare_trusted_go_benchmark_overlay",
+        lambda **_kwargs: overlay,
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._remove_trusted_go_benchmark_overlay",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
         "scripts.quality.capture_isolated_benchmarks._create_private_volume",
         lambda _image, _artifact_root, side: f"{side}-volume",
     )
@@ -384,13 +621,20 @@ def test_capture_accepts_worktrees_with_matching_declared_heads(
         "scripts.quality.capture_isolated_benchmarks._start_cache_holder",
         lambda **_kwargs: None,
     )
+
+    def fake_capture_pair(**kwargs: object) -> None:
+        captured_descriptions.append(str(kwargs["description"]))
+        benchmark = kwargs.get("trusted_go_benchmark")
+        assert isinstance(benchmark, Path)
+        captured_harnesses.append(benchmark)
+
     monkeypatch.setattr(
         "scripts.quality.capture_isolated_benchmarks._capture_pair",
-        lambda **kwargs: captured_descriptions.append(kwargs["description"]),
+        fake_capture_pair,
     )
     monkeypatch.setattr(
         "scripts.quality.capture_isolated_benchmarks._write_toolchain",
-        lambda **_kwargs: None,
+        lambda **kwargs: reported_harnesses.append(kwargs.get("trusted_go_benchmark")),
     )
     monkeypatch.setattr(
         "scripts.quality.capture_isolated_benchmarks._remove_volume",
@@ -427,6 +671,9 @@ def test_capture_accepts_worktrees_with_matching_declared_heads(
         for side in ("base", "candidate")
     }
     assert set(captured_descriptions[2:]) == expected_pair_descriptions
+    assert len(captured_harnesses) == 2 + (PAIR_COUNT * 2)
+    assert set(captured_harnesses) == {overlay_path}
+    assert reported_harnesses == [overlay]
     assert len(captured_descriptions[2:]) == PAIR_COUNT * CAPTURE_SIDE_WORKERS
 
 
@@ -476,6 +723,112 @@ def test_capture_pair_sides_concurrently_starts_both_independent_sides(
         tmp_path / "artifacts" / "candidate" / "pair-03.txt",
     }
     assert all(item["emit_markers"] is False for item in started)
+
+
+@pytest.mark.parametrize("bad_side", ("base", "candidate"))
+@pytest.mark.parametrize(
+    ("bad_kind", "expected_error"),
+    (
+        ("missing", "target is missing"),
+        ("symlink", "must not be redirected"),
+        ("junction", "must not be redirected"),
+    ),
+)
+def test_capture_preflights_both_go_benchmark_targets_before_resources(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    bad_side: str,
+    bad_kind: str,
+    expected_error: str,
+) -> None:
+    base_worktree = tmp_path / "base"
+    candidate_worktree = tmp_path / "candidate"
+    runner_temp = tmp_path / "runner-temp"
+    for directory in (base_worktree, candidate_worktree, runner_temp):
+        directory.mkdir()
+    worktrees = {"base": base_worktree, "candidate": candidate_worktree}
+    for side, worktree in worktrees.items():
+        target = worktree / TRUSTED_GO_BENCHMARK_PATH
+        if side == bad_side and bad_kind == "missing":
+            continue
+        target.parent.mkdir(parents=True)
+        target.write_text("package hub\n", encoding="utf-8")
+
+    docker_binary = tmp_path / "docker"
+    timeout_binary = tmp_path / "timeout"
+    docker_binary.touch()
+    timeout_binary.touch()
+    arguments = CaptureArguments(
+        format_name="go",
+        base_worktree=base_worktree,
+        candidate_worktree=candidate_worktree,
+        artifact_root=runner_temp / "artifacts",
+        runner_temp=runner_temp,
+        base_revision="a" * 40,
+        candidate_revision="b" * 40,
+        rust_dockerfile=None,
+    )
+    resource_calls: list[str] = []
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks.DOCKER_BINARY", docker_binary
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks.TIMEOUT_BINARY", timeout_binary
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._resolve_worktree_head",
+        lambda worktree, label: "a" * 40 if label == "base worktree" else "b" * 40,
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._create_private_volume",
+        lambda *_args: resource_calls.append("volume"),
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._prefetch",
+        lambda **_kwargs: resource_calls.append("prefetch"),
+    )
+    if bad_kind in {"symlink", "junction"}:
+        bad_target = worktrees[bad_side] / TRUSTED_GO_BENCHMARK_PATH
+        path_type = type(bad_target)
+        original_is_symlink = path_type.is_symlink
+        original_is_junction = path_type.is_junction
+        if bad_kind == "symlink":
+            monkeypatch.setattr(
+                path_type,
+                "is_symlink",
+                lambda path: path == bad_target or original_is_symlink(path),
+            )
+        else:
+            monkeypatch.setattr(
+                path_type,
+                "is_junction",
+                lambda path: path == bad_target or original_is_junction(path),
+            )
+
+    with pytest.raises(CaptureError, match=expected_error):
+        capture(arguments)
+
+    assert resource_calls == []
+    assert not arguments.artifact_root.exists()
+
+
+def test_go_benchmark_target_guard_checks_symlink_and_junction_flags(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree = tmp_path / "source"
+    worktree.mkdir()
+    target = worktree / TRUSTED_GO_BENCHMARK_PATH
+    target.parent.mkdir(parents=True)
+    target.write_text("package hub\n", encoding="utf-8")
+    path_type = type(target)
+
+    monkeypatch.setattr(path_type, "is_symlink", lambda path: path == target)
+    monkeypatch.setattr(path_type, "is_junction", lambda _path: False)
+    assert _is_symlink_or_junction(target) is True
+
+    monkeypatch.setattr(path_type, "is_symlink", lambda _path: False)
+    monkeypatch.setattr(path_type, "is_junction", lambda path: path == target)
+    assert _is_symlink_or_junction(target) is True
 
 
 def test_capture_pair_sides_concurrently_propagates_worker_failure(
@@ -745,7 +1098,7 @@ def test_toolchain_query_uses_bounded_logs_and_a_pinned_compiler_environment(
     removed_containers: list[str] = []
 
     class FinishedProcess:
-        stdout = BytesIO(b"go version go1.26.6\n")
+        stdout = BytesIO(b"go version go1.26.9\n")
 
         def poll(self) -> int:
             return 0
@@ -778,7 +1131,7 @@ def test_toolchain_query_uses_bounded_logs_and_a_pinned_compiler_environment(
             ("go", "version"),
             environment={"GOTOOLCHAIN": "local", "HOME": CONTAINER_HOME},
         )
-        == "go version go1.26.6"
+        == "go version go1.26.9"
     )
 
     command = observed_commands[0]
@@ -1037,7 +1390,7 @@ def test_cache_holder_is_non_networked_and_removed_before_its_volume(
 @pytest.mark.parametrize(
     ("format_name", "expected_key", "expected_version", "environment_entry"),
     [
-        ("go", "go", "go version go1.26.6", "GOTOOLCHAIN=local"),
+        ("go", "go", "go version go1.26.9", "GOTOOLCHAIN=local"),
         (
             "rust",
             "rustc",
@@ -1099,16 +1452,45 @@ def test_toolchain_report_records_the_effective_pinned_compiler(
         raising=False,
     )
 
+    trusted_go_benchmark = None
+    if format_name == "go":
+        overlay_path = tmp_path / "hub_bench_test.go"
+        overlay_path.write_text("package hub\n", encoding="utf-8")
+        trusted_go_benchmark = TrustedGoBenchmarkOverlay(
+            path=overlay_path,
+            commit=TRUSTED_GO_BENCHMARK_COMMIT,
+            parent=TRUSTED_GO_BENCHMARK_PARENT,
+            tree=TRUSTED_GO_BENCHMARK_TREE,
+            blob=TRUSTED_GO_BENCHMARK_BLOB,
+            sha256=TRUSTED_GO_BENCHMARK_SHA256,
+            size_bytes=overlay_path.stat().st_size,
+        )
+
     _write_toolchain(
         artifact_root=tmp_path,
         format_name=format_name,
         image="example.invalid/performance@sha256:" + "a" * 64,
         base_revision="a" * 40,
         rust_dockerfile=None,
+        trusted_go_benchmark=trusted_go_benchmark,
     )
 
     report = json.loads((tmp_path / "toolchain.json").read_text(encoding="utf-8"))
     assert report[expected_key] == expected_version
+    if trusted_go_benchmark is None:
+        assert "trusted_go_benchmark_harness" not in report
+    else:
+        assert report["trusted_go_benchmark_harness"] == {
+            "applied_sides": ["base", "candidate"],
+            "commit": TRUSTED_GO_BENCHMARK_COMMIT,
+            "parent": TRUSTED_GO_BENCHMARK_PARENT,
+            "tree": TRUSTED_GO_BENCHMARK_TREE,
+            "path": TRUSTED_GO_BENCHMARK_PATH,
+            "blob": TRUSTED_GO_BENCHMARK_BLOB,
+            "sha256": TRUSTED_GO_BENCHMARK_SHA256,
+            "size_bytes": trusted_go_benchmark.size_bytes,
+            "mount": "read-only overlay for warm and measurement containers",
+        }
     run_command = capture_commands[0][4:]
     assert run_command[0:2] == [str(DOCKER_BINARY), "run"]
     assert environment_entry in run_command
@@ -1384,13 +1766,22 @@ def test_rust_benchmark_image_cannot_copy_candidate_build_context() -> None:
     assert "USER benchmark" in lines
 
 
+def test_disposable_test_runner_provides_the_pinned_benchmark_compiler() -> None:
+    """The maintained full Python runner must execute its real Go contracts."""
+    dockerfile = (REPOSITORY_ROOT / "Dockerfile.test").read_text(encoding="utf-8")
+    assert f"COPY --from={GO_IMAGE} /usr/local/go /usr/local/go" in dockerfile
+    assert 'GOTOOLCHAIN="local"' in dockerfile
+    assert 'PATH="/usr/local/go/bin:$PATH"' in dockerfile
+
+
 def test_go_measurement_isolates_benchmarks_without_losing_coverage(
     tmp_path: Path,
 ) -> None:
     """A retained fixture cannot affect later benchmarks in either package."""
 
-    if shutil.which("go") is None:
-        pytest.skip("Go is required for the real benchmark-process contract")
+    assert shutil.which("go") is not None, (
+        "Go is required for the real benchmark-process contract"
+    )
     (tmp_path / "go.mod").write_text("module example.test/isolation\n\ngo 1.20\n")
     fixture = """package isolation
 
@@ -1457,8 +1848,9 @@ def test_go_measurement_stops_on_discovery_or_benchmark_failure(
 ) -> None:
     """A failed package discovery or benchmark cannot become partial evidence."""
 
-    if shutil.which("go") is None:
-        pytest.skip("Go is required for the real benchmark-process contract")
+    assert shutil.which("go") is not None, (
+        "Go is required for the real benchmark-process contract"
+    )
     (tmp_path / "go.mod").write_text("module example.test/failure\n\ngo 1.20\n")
     (tmp_path / "failure_test.go").write_text(
         """package failure

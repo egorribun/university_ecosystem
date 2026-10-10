@@ -1,14 +1,18 @@
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
 import { AxiosError } from "axios"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, renderHook } from "@testing-library/react"
 import { usePasswordChange } from "../usePasswordChange"
 
 const mocks = vi.hoisted(() => ({
+  user: { id: "user-1" },
   post: vi.fn(),
   invalidateQueries: vi.fn(),
   t: (key: string, options?: { count?: number }) =>
     options?.count === undefined ? key : `${key}:${options.count}`,
 }))
+
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: mocks.user, loading: false }) }))
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: mocks.t }) }))
 vi.mock("@tanstack/react-query", () => ({
@@ -34,6 +38,8 @@ const setValidPasswords = (result: ReturnType<typeof renderPasswordChange>["resu
 
 describe("usePasswordChange", () => {
   beforeEach(() => {
+    rotateBrowserSession()
+    mocks.user = { id: "user-1" }
     mocks.post.mockReset()
     mocks.invalidateQueries.mockReset().mockResolvedValue(undefined)
   })
@@ -339,5 +345,133 @@ describe("usePasswordChange", () => {
       text: "settings:security.password.failed",
       severity: "error",
     })
+  })
+
+  it("does not replay a password step-up action after the account changes", async () => {
+    mocks.post.mockRejectedValueOnce({ isAxiosError: true, response: { status: 428 } })
+    const openStepUpFor = vi.fn()
+    const { result, rerender } = renderPasswordChange(openStepUpFor)
+    setValidPasswords(result)
+    await act(() => result.current.handlePasswordSubmit())
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    await act(() => openStepUpFor.mock.calls[0]![0]())
+    expect(mocks.post).toHaveBeenCalledTimes(1)
+  })
+  it.each(["success", "failure"] as const)(
+    "ignores a stale password %s after switching accounts",
+    async (outcome) => {
+      let resolve!: (value: unknown) => void
+      let reject!: (reason: unknown) => void
+      const pending = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise
+        reject = rejectPromise
+      })
+      mocks.post.mockReturnValueOnce(pending)
+      const { result, rerender, setSnackbar } = renderPasswordChange()
+      setValidPasswords(result)
+      let operation!: Promise<void>
+      act(() => {
+        operation = result.current.handlePasswordSubmit()
+      })
+      rotateBrowserSession()
+      mocks.user = { id: "user-2" }
+      rerender()
+      act(() => result.current.setCurrentPasswordValue("account-b-current"))
+      await act(async () => {
+        if (outcome === "success") resolve({ data: { ok: true, revoked_sessions: 2 } })
+        else reject(new Error("Account A failed"))
+        await operation
+      })
+      expect(result.current.currentPasswordValue).toBe("account-b-current")
+      expect(result.current.passwordBusy).toBe(false)
+      expect(result.current.passwordError).toBeNull()
+      expect(setSnackbar).not.toHaveBeenCalled()
+      expect(mocks.invalidateQueries).not.toHaveBeenCalled()
+    }
+  )
+  it("does not open step-up for an ordinary server failure", async () => {
+    const error = new AxiosError("server error")
+    error.response = {
+      status: 500,
+      data: { detail: "Server unavailable" },
+    } as AxiosError["response"]
+    mocks.post.mockRejectedValue(error)
+    const openStepUpFor = vi.fn()
+    const { result } = renderPasswordChange(openStepUpFor)
+    setValidPasswords(result)
+
+    await act(async () => {
+      await result.current.handlePasswordSubmit()
+    })
+
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(result.current.passwordError).toBe("Server unavailable")
+  })
+  it("handles an Axios network error without a response as an ordinary failure", async () => {
+    const error = new AxiosError("network error")
+    mocks.post.mockRejectedValue(error)
+    const openStepUpFor = vi.fn()
+    const { result, setSnackbar } = renderPasswordChange(openStepUpFor)
+    setValidPasswords(result)
+
+    await act(async () => {
+      await expect(result.current.handlePasswordSubmit()).resolves.toBeUndefined()
+    })
+
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(result.current.passwordError).toBe("settings:security.password.failed")
+    expect(result.current.passwordBusy).toBe(false)
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.password.failed",
+      severity: "error",
+    })
+  })
+
+  it("keeps the active account busy when a stale account request settles", async () => {
+    let resolveFirst!: (value: unknown) => void
+    let resolveSecond!: (value: unknown) => void
+    mocks.post
+      .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)))
+      .mockReturnValueOnce(new Promise((resolve) => (resolveSecond = resolve)))
+    const { result, rerender, setSnackbar } = renderPasswordChange()
+    setValidPasswords(result)
+
+    let firstOperation!: Promise<void>
+    act(() => {
+      firstOperation = result.current.handlePasswordSubmit()
+    })
+    await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1))
+
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    setValidPasswords(result)
+
+    let secondOperation!: Promise<void>
+    act(() => {
+      secondOperation = result.current.handlePasswordSubmit()
+    })
+    await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2))
+    expect(result.current.passwordBusy).toBe(true)
+
+    await act(async () => {
+      resolveFirst({ data: { ok: false, revoked_sessions: 0 } })
+      await firstOperation
+    })
+
+    expect(result.current.passwordBusy).toBe(true)
+    expect(setSnackbar).not.toHaveBeenCalled()
+    expect(mocks.invalidateQueries).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveSecond({ data: { ok: false, revoked_sessions: 0 } })
+      await secondOperation
+    })
+
+    expect(result.current.passwordBusy).toBe(false)
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: sessionsQueryKey })
   })
 })

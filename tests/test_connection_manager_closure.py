@@ -234,6 +234,34 @@ async def test_broadcast_to_chat_keeps_local_delivery_when_nats_fails() -> None:
         assert await manager.broadcast_to_chat(chat_id, {"type": "message"}) == 2
 
 
+@pytest.mark.asyncio
+async def test_broadcast_to_chat_can_propagate_nats_failure_for_outbox_retry() -> None:
+    from app.api.ws import connection_manager as module
+
+    manager = module.ConnectionManager()
+    chat_id = uuid.uuid4()
+    recipient = uuid.uuid4()
+    manager._get_chat_participants_cached = AsyncMock(return_value=[recipient])
+    manager.send_to_user = AsyncMock(return_value=1)
+    broker = SimpleNamespace(
+        publish_core=AsyncMock(side_effect=ConnectionError("nats unavailable"))
+    )
+
+    with (
+        patch("app.core.nats_broker.broker", broker),
+        pytest.raises(ConnectionError, match="nats unavailable"),
+    ):
+        await manager.broadcast_to_chat(
+            chat_id,
+            {"type": "message_edited", "room": str(chat_id)},
+            propagate_nats_failure=True,
+        )
+
+    manager.send_to_user.assert_awaited_once_with(
+        recipient, {"type": "message_edited", "room": str(chat_id)}
+    )
+
+
 def test_presence_throttle_decision_matrix() -> None:
     from app.api.ws import connection_manager as module
 
@@ -368,3 +396,33 @@ def test_connection_manager_dependency_prefers_app_state_then_global() -> None:
     assert module.get_connection_manager(request) is app_manager
     fallback_request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
     assert module.get_connection_manager(fallback_request) is module.manager
+
+
+@pytest.mark.asyncio
+async def test_outbox_broadcast_propagates_nats_disconnect() -> None:
+    from app.api.ws import connection_manager as module
+    from app.core.nats_broker import NatsTaskBroker
+
+    manager = module.ConnectionManager()
+    chat_id = uuid.uuid4()
+    recipient = uuid.uuid4()
+    participant_lookup = AsyncMock(return_value=[recipient])
+    local_send = AsyncMock(return_value=1)
+    broker = NatsTaskBroker()
+    assert broker._nc is None
+
+    with (
+        patch.object(manager, "_get_chat_participants_cached", participant_lookup),
+        patch.object(manager, "send_to_user", local_send),
+        patch("app.core.nats_broker.broker", broker),
+        pytest.raises(ConnectionError),
+    ):
+        await manager.broadcast_to_chat(
+            chat_id,
+            {"type": "message_edited", "room": str(chat_id)},
+            propagate_nats_failure=True,
+        )
+
+    local_send.assert_awaited_once_with(
+        recipient, {"type": "message_edited", "room": str(chat_id)}
+    )
