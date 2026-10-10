@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto"
-import {
-  expect,
-  freshPassword,
-  loginAs,
-  loginWith,
-  stubBreachedPasswordLookup,
-  test,
-} from "./fixtures"
+import { expect, freshPassword, loginAs, loginWith, stubBreachedPasswordLookup } from "./fixtures"
+import { test } from "./native-push-profile-fixtures"
+import type { NativePushProfile } from "./native-push-profile-fixtures"
 import type { Page } from "@playwright/test"
+
+const expandPushAccordion = async (page: Page): Promise<void> => {
+  const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
+  if ((await accordion.getAttribute("aria-expanded")) !== "true") {
+    await accordion.click()
+  }
+  await expect(accordion).toHaveAttribute("aria-expanded", "true")
+}
 
 interface PushSubscriptionResponse {
   id?: unknown
@@ -101,6 +104,7 @@ const cleanupOwnedBrowserSubscription = async (
 test("Chromium push opt-in persists one native subscription and removes it on opt-out", async ({
   page,
   browser,
+  nativePushProfiles,
 }, testInfo) => {
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
@@ -118,7 +122,7 @@ test("Chromium push opt-in persists one native subscription and removes it on op
   let foreignRegistrationAttempted = false
   let foreignSubscriptionMayExist = false
   let foreignEndpoint: string | undefined
-  let foreignContext: import("@playwright/test").BrowserContext | undefined
+  let foreignProfile: NativePushProfile | undefined
   let foreignPage: Page | undefined
 
   const adminContext = await browser.newContext({
@@ -145,12 +149,9 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     // a non-automatable browser prompt. The source contract separately proves
     // the prompt is reachable only through the explicit settings-switch action.
     await page.context().grantPermissions(["notifications"], { origin })
-    foreignContext = await browser.newContext({
-      baseURL: liveBaseUrl,
-      ignoreHTTPSErrors: true,
-      locale: "ru-RU",
-    })
-    const secondPage = await foreignContext.newPage()
+    foreignProfile = await nativePushProfiles.create()
+    const foreignContext = foreignProfile.context
+    const secondPage = foreignProfile.page
     foreignPage = secondPage
     await foreignContext.grantPermissions(["notifications"], { origin })
 
@@ -172,6 +173,7 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     expect(profile.email === email).toBe(true)
 
     await page.goto("/settings?tab=3")
+    await expandPushAccordion(page)
 
     const pushSwitch = page.getByRole("switch", { name: "Включить уведомления" })
     await expect(pushSwitch).toBeVisible()
@@ -218,9 +220,10 @@ test("Chromium push opt-in persists one native subscription and removes it on op
       foreignProfileResponse.status(),
       "the second synthetic owner reads its own profile"
     ).toBe(200)
-    const foreignProfile = (await foreignProfileResponse.json()) as { email?: string }
-    expect(foreignProfile.email === foreignEmail).toBe(true)
+    const foreignIdentityProfile = (await foreignProfileResponse.json()) as { email?: string }
+    expect(foreignIdentityProfile.email === foreignEmail).toBe(true)
     await secondPage.goto("/settings?tab=3")
+    await expandPushAccordion(secondPage)
 
     const foreignPushSwitch = secondPage.getByRole("switch", { name: "Включить уведомления" })
     await expect(foreignPushSwitch).toBeVisible()
@@ -287,6 +290,7 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     ).toBe(false)
     await expect(foreignPushSwitch).toBeChecked()
     await secondPage.reload()
+    await expandPushAccordion(secondPage)
     await expect(secondPage.getByRole("switch", { name: "Включить уведомления" })).toBeChecked()
     const foreignSubscriptionAfterReload = await secondPage.evaluate(async () => {
       const registration = await navigator.serviceWorker.ready
@@ -375,6 +379,7 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     expect(subscriptionRequests, "one duplicate bind reuses the same endpoint record").toBe(2)
 
     await page.reload()
+    await expandPushAccordion(page)
     await expect(page.getByRole("switch", { name: "Включить уведомления" })).toBeChecked()
     const afterReload = await page.evaluate(async () => {
       const registration = await navigator.serviceWorker.ready
@@ -400,6 +405,7 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     expect(browserUnsubscribed, "opt-out also revokes the browser subscription").toBe(true)
 
     await page.reload()
+    await expandPushAccordion(page)
     const pushSwitchAfterOptOut = page.getByRole("switch", { name: "Включить уведомления" })
     await expect(pushSwitchAfterOptOut).toBeEnabled()
     await expect(pushSwitchAfterOptOut).not.toBeChecked()
@@ -443,7 +449,6 @@ test("Chromium push opt-in persists one native subscription and removes it on op
           try {
             if (registrationAttempted) await deleteOnlyCreatedAccount(adminPage, email, fullName)
           } finally {
-            await foreignContext?.close()
             await adminContext.close()
           }
         }

@@ -134,7 +134,6 @@ def _make_windows_junction(link: Path, target: Path) -> None:
     result = subprocess.run(  # noqa: S603 -- fixed Windows builtin, temp paths only
         ["cmd.exe", "/c", "mklink", "/J", str(link), str(target)],  # noqa: S607
         capture_output=True,
-        text=True,
         check=False,
     )
     if result.returncode != 0:
@@ -1889,6 +1888,98 @@ def test_live_playwright_counts_reject_malformed_summary_records(line: str) -> N
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("route", ["dashboard", "settings"])
+@pytest.mark.parametrize("ratio_milli", [0, 1, 4_500, 20_999, 21_000])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_a11y_contrast_accepts_bounded_closed_records(
+    project: str, route: str, ratio_milli: int, newline: str
+) -> None:
+    row = (
+        f"UE_LIVE_A11Y_CONTRAST_V1 project={project} route={route} "
+        f"fg=#A1b2C3 bg=#000000 ratio_milli={ratio_milli}{newline}"
+    )
+    assert live_stand._live_playwright_a11y_contrasts(row) == [
+        (project, route, "#a1b2c3", "#000000", ratio_milli)
+    ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "UE_LIVE_A11Y_CONTRAST_V1 project=private route=settings fg=#ffffff bg=#000000 ratio_milli=1000\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=private fg=#ffffff bg=#000000 ratio_milli=1000\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=white bg=#000000 ratio_milli=1000\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli=21001\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli=02100\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli=-1\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli=1000 private-token\n",
+        "prefix UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli=1000\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli=1000",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli=1000\x1b[0m\n",
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff bg=#000000 ratio_milli="
+        + "1" * 5000
+        + "\n",
+    ],
+)
+def test_live_playwright_a11y_contrast_rejects_malformed_records(line: str) -> None:
+    assert live_stand._live_playwright_a11y_contrasts(line) == []
+
+
+def test_live_playwright_a11y_contrast_deduplicates_and_caps_each_project_route() -> (
+    None
+):
+    output = "".join(
+        f"UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#ffffff "
+        f"bg=#000000 ratio_milli={ratio}\n"
+        for ratio in range(8)
+    )
+    output += (
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=dashboard fg=#ffffff "
+        "bg=#000000 ratio_milli=1000\n"
+        "UE_LIVE_A11Y_CONTRAST_V1 project=mobile route=settings fg=#ffffff "
+        "bg=#000000 ratio_milli=1000\n"
+    )
+    records = live_stand._live_playwright_a11y_contrasts(output)
+    assert records == [
+        ("desktop", "settings", "#ffffff", "#000000", ratio) for ratio in range(4)
+    ] + [
+        ("desktop", "dashboard", "#ffffff", "#000000", 1000),
+        ("mobile", "settings", "#ffffff", "#000000", 1000),
+    ]
+
+
+def test_live_playwright_emits_only_bounded_a11y_contrast_values(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    sentinel = (
+        "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings "
+        "fg=#aabbcc bg=#000000 ratio_milli=2850\n"
+    )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(sentinel + sentinel.rstrip() + " private-token\n").encode(),
+        stderr=b"private body and credential",
+    )
+    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E a11y contrast project=desktop route=settings fg=#aabbcc "
+        "bg=#000000 ratio_milli=2850",
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert "private" not in printed.out
+    assert "credential" not in printed.out
+    assert printed.err == ""
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize(
     "check",
     [
@@ -1896,6 +1987,8 @@ def test_live_playwright_counts_reject_malformed_summary_records(line: str) -> N
         "admin-feature-flags",
         "admin-feature-flags-ui",
         "password-reset-replay",
+        "messenger-message-send",
+        "chat-attachment-create",
     ],
 )
 @pytest.mark.parametrize("status", [100, 200, 403, 500, 599])
@@ -2087,6 +2180,7 @@ def test_live_playwright_auth_status_rows_accept_lf_and_crlf(
     [
         "UE_LIVE_HTTP_STATUS_V1 project=private-project check=admin-users status=200\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=private-check status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=messenger-message-send status=503 url=https://private.invalid/path\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=99\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=600\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=-200\n",
@@ -2127,7 +2221,7 @@ def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
         for status in range(100, 600)
     )
     assert live_stand._live_playwright_http_statuses(output) == [
-        ("desktop", "admin-users", status) for status in range(100, 132)
+        ("desktop", "admin-users", status) for status in range(100, 140)
     ]
 
 

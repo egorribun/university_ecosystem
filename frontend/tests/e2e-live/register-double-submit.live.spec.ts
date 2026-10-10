@@ -60,6 +60,7 @@ test("rapid double submit on a 360px registration form creates one account", asy
   await page.addInitScript(() => window.localStorage.setItem("ue:language", "ru"))
   await stubBreachedPasswordLookup(page)
   await page.goto("/register", { waitUntil: "domcontentloaded" })
+  await page.waitForFunction(() => window.__APP_HYDRATED === true)
 
   const suffix = crypto.randomUUID()
   const email = `live-double-submit-${suffix}@example.com`

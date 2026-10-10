@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer"
 import { randomUUID } from "node:crypto"
 import { devices, type BrowserContext, type Page } from "@playwright/test"
 import { expect, GROUP_CHAT_ACCOUNTS, loginAs, loginWith, test } from "./fixtures"
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
 
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
 if (!LIVE_BASE_URL) {
@@ -354,6 +355,13 @@ test.describe("live private chat attachment isolation", () => {
       })
       await page.locator("#chat-send-btn").click()
       const messageResponse = await messageResponsePromise
+      if (!messageResponse.ok()) {
+        reportLiveHttpStatus(
+          testInfo.project.name,
+          "chat-attachment-create",
+          messageResponse.status()
+        )
+      }
       expect(messageResponse.ok()).toBe(true)
       const message = (await messageResponse.json()) as LiveMessage
       attachmentUploaded = true

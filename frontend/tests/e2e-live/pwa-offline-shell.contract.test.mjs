@@ -64,7 +64,7 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assert.match(spec, /url\.pathname !== appBundlePath/u)
   assert.match(spec, /pwa-build-marker/u)
   assert.match(spec, /controllerchange/u)
-  assert.match(spec, /activeRegistration\.update\(\)/u)
+  assert.match(spec, /await activeRegistration\.update\(\)/u)
   assert.match(spec, /setOffline\(true\)[\s\S]*?setOffline\(false\)[\s\S]*?setOffline\(true\)/u)
   assert.match(spec, /oldBundleCacheKeys[\s\S]*?not\.toContain/u)
   assert.match(spec, /newBundleCacheEntries[\s\S]*?hasBuildMarker/u)

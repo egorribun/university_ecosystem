@@ -1,6 +1,6 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-10, 00:33 UTC.
+Срез на 2026-10-10, 04:00 UTC.
 [Мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md) и
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) действуют.
 Выпуск `v1.0.0` ещё не подтверждён; автономная работа продолжается.
@@ -9,117 +9,105 @@
 
 - Только `egorribun`, один checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
   Root владеет Git/интеграцией; до трёх GPT-6 Luna Max работают в непересекающихся областях.
-- Q1/Q4 migration и разрешённые 14+1 removals выполнены; ruleset `8335285`
-  содержит 76 required contexts. Точный разрешённый список сохранён в ADR-047.
-  Readback 00:31 UTC подтвердил неизменность всех 76 context/integration pairs.
-  CodeQL blocking, Semgrep в pre-commit; Tier 0 и текущие coverage floors/100% patch сохраняются.
-- Q2/Q3, global mutation score, три comparable CI runs, kind certification,
-  RPO/RTO и deployed BE-02/MIG-PASS остаются v1.1. Один paired DB/S3 restore нужен для MVP.
+- Q1/Q4 migration и разрешённые 14+1 removals выполнены. Ruleset `8335285`:
+  76 required context/integration pairs; остальные правила сохранены.
+  CodeQL blocking, Semgrep в pre-commit; Tier 0 и нынешние floors/100% patch сохраняются.
+- Q2/Q3, global mutation score, comparable CI runs, kind certification,
+  RPO/RTO и deployed BE-02/MIG-PASS — v1.1. Один paired DB/S3 restore нужен для MVP.
 - ADR-006 сохраняет tombstone/WS revoke до commit и conservative sibling logout
   при rollback. ГУУ — внутреннее демо; данные синтетические.
 
-## Опубликованный checkpoint и CI
+## Опубликованный CI checkpoint
 
-Опубликован `2b53ed12748c5483161e8ea5ea4a55b5d8cad613`,
-tree `d6dbdb7dae2256f26afde720838700096fb977cf`; PR открыт, base `main`.
-Документационная консолидация и предыдущие News/mock/license fixes опубликованы
-с ordinary hooks. Новые локальные исправления ниже требуют successor commit/push
-и свежих hosted results.
+Hosted evidence относится к `e537137a917c3ec647f3c7ef7126f21e144a7673`,
+tree `56180c1656fba5cfe6d5660a31b87b7b778dc4a3`.
+Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
+`6fa133b57f62c554162876d4e6d8349f8060fce9`; PR открыт.
 
-- Exact-head hosted snapshot: 138 checks, 112 SUCCESS/23 SKIPPED/3 FAILURE,
-  чужих SHA0, незавершённых0. Required join: 73 SUCCESS/3 FAILURE,
-  missing/skipped/in-progress0; все 23 skips вне required set.
-- [Matrix 38005762675/a1](https://github.com/egorribun/university_ecosystem/actions/runs/38005762675)
-  завершилась с двумя прямыми ошибками: устаревшие policy literals в
-  `verify_harness.py` и MD047/final LF в `AUDIT_PROMPT.md`.
-  Третья ошибка — производный `CI Success`. Оба исправления reviewed и интегрированы.
-- [Dependency Review 38005762392/a1](https://github.com/egorribun/university_ecosystem/actions/runs/38005762392)
-  PASS; frontend shard2/MSW drift, все четыре backend unit shards, Go integrations
-  и Linux Python3.14 integration shard0 PASS.
-- Actual Linux shard3 JUnit подтверждает MFA deadline1/1 и cancellation7/7,
-  без skip/failure/error. Linux integration job подтвердил реальный PG/Mailpit
-  outbox test и fail-closed JUnit1/0/0/0; XML не скачан, upload failure-only.
-- Ранее подтверждённые Docker Hub/registry transport failures не переносятся
-  на этот snapshot. Цель PR critical path ≤15min остаётся открытой.
+- Exact-head final: 138 checks — 115 SUCCESS/23 SKIPPED, failures/running0.
+  Required join: 76/76 SUCCESS, missing/duplicates0; все skips вне required set.
+- [Matrix 38009644006/a1](https://github.com/egorribun/university_ecosystem/actions/runs/38009644006)
+  SUCCESS. Harness policy/final-LF и News readiness fixes опубликованы с ordinary hooks.
+- Bundle report: budget violations0; initial JS gzip380055/430080,
+  CSS39511/40960, lazy280782/286720 bytes. Это transfer-budget proof, не LHCI.
+  Rust/WASM coverage, crypto/browser parity и source-bound producer/consumer PASS на PR SHA.
+- Wall span43m42; цель PR≤15min остаётся открытой. Wall span не является DAG critical path.
+  Transport failures старых image pulls не переносятся на этот зелёный snapshot.
+- Пакет ниже требует новых hosted results на своём SHA; e537 не заменяет их.
 
-## Последний Core и рабочая интеграция
+## Проверенная интеграция и Core
 
-- Fresh signed Core `run-d71b6d00-33ee-4230-b6fc-15dedc149cef` на 2b53:
-  up, admin-only seed, readiness и cookie policy PASS. Admin-only seed выполнен
-  до demo seed; synthetic notification safety сохранена.
-- Targeted News: 3 PASS/1 FAIL. Responsive axes и mobile history PASS;
-  desktop history упал на exact scrollY после первого Science filter click.
-  Full Core на этом SHA не запускался.
-- Ограниченный geometry diagnostic V6 не воспроизвёл failure; обнаружены
-  незавершённые загрузка/анимации перед click baseline. Reviewed test preconditions
-  теперь ждут seeded article, видимый Science filter в viewport и stable position.
-  Exact scrollY/URL/aria/history assertions, deadlines и skips сохранены;
-  product code не менялся. Новый browser acceptance ещё не выполнен.
-- Canonical teardown 00:22–00:25 PASS; независимый readback 00:26 UTC:
-  owned containers/networks/volumes0/0/0. State и private evidence сохранены.
-  Retired states d71b6d00/a0b646d8/6684 повторно не запускать.
-- После текущей интеграции root harness28/28 PASS и canonical live Node
-  contracts160/160 PASS 00:32. Source/branch stable, owned children0, resource stopfalse.
-  Предыдущий focused mock Vitest23/23 PASS 22:40.
-- Documentation checks: Markdown tests9/9, dashboard/generator tests6/6,
-  actual generated dashboard byte-identical; оба режима link checker PASS.
-  Root AST comparison подтвердил неизменность executable logic после правок
-  комментариев/docstrings в auth/Watch/Redis и Markdown test module.
-- Для successor подготовлены readiness/cookie helpers под unique state
-  `run-1faec800-7fcf-47a0-8cc2-1222b0f07e16`; state ещё не создан,
-  helpers static reviewed, runtime привязывается к clean successor SHA.
+- Core e537 `run-1faec800-7fcf-47a0-8cc2-1222b0f07e16`:
+  up, admin-only seed до demo seed, readiness/cookie policy и targeted News4/4 PASS.
+  Первый full: **117 PASS/73 FAIL/8 SKIP**; второй не запускался.
+- Этот Core штатно остановлен 03:27 UTC с signed-owner/daemon/resource checks;
+  owned children0, source stable. Env, тома, данные и evidence сохранены.
+  Ранее retired states и два временных Linux browser server не запускать повторно.
+- Reviewed production fixes: MFA ring validation до любого изменения env;
+  сохранение/синхронизация валидных rings, независимая fresh generation и worker isolation.
+  Settings удаляет только default tab0 из URL, сохраняя остальные search values.
+- Live test fixes: раскрытие Push accordion, точные Password labels,
+  CSRF lockout, hydration регистрации, ожидание реального SW update,
+  точный RU TOTP accordion title, same-origin Stories write и native persistent
+  Push profiles с проверяемой очисткой.
+  Исходные assertions, deadlines и восемь expected skips сохранены.
+- HTTP diagnostics теперь различает Messenger/attachment failures; a11y diagnostics
+  выводит только bounded axe colors/ratio. Full-page scope и serious/critical gate сохранены.
+- Проверки интеграции: Node contracts169/169, final TOTP contract1/1; Settings18/18;
+  весь TypeScript и frontend lint PASS, warnings0; Ruff/Prettier/diff check PASS.
+- Полный Python startup/parser:1497 PASS/4 FAIL/1 platform SKIP.
+  Все шесть новых MFA fail-closed cases PASS; прежние39 decoding warnings устранены.
+  Четыре failure — decoding неиспользуемого mklink output в Windows test helper.
+  После узкого bytes fix именно эти четыре теста **4/4 PASS** с thread warnings как errors.
+  Форматирование MFA test file не изменило Python AST.
+- Detect-secrets выявил публичный алфавит Base64URL в тестовом helper.
+  Он выражен через стандартный модуль string с тем же набором64 символов;
+  root/peer review CLEAR, scanner exclusions не добавлены, targeted hook PASS.
+  Первая ошибочная правка owner-key fixture отменена; исходные fixture bytes сохранены.
+  Весь итоговый startup-state test file:15 PASS/1 platform SKIP, warnings0.
+- Новая живая приёмка этой интеграции ещё не выполнена. Planned fresh unique state:
+  `run-e4bb144a-89bc-4ef9-ae51-eb40b5fce8aa`; readiness/cookie helpers static reviewed,
+  source SHA привязывается после обычного commit.
 
-## Визуал, security и данные
+## Открытые критерии
 
-- Владелец утвердил Home12 на `ddbbc84d`; approved PNG/provenance сохранены
-  byte-for-byte в `frontend/visual-baselines/live/home-empty/`. Technical capture
-  на другом SHA не означает одобрения новых bytes. Остальные visual packages/owner review открыты.
-- Native V10 выполнил 20 cycles и прочие измерения, но strict exact-DOM gate FAIL;
-  V11 static reviewed, runtime NOT RUN. LHCI V12 candidate-v2 static reviewed,
-  runtime NOT RUN; требуются 21 reports, 7 routes ×3. Текущие V11 source pins совпадают.
-- Независимый source review изменённых auth/session/data путей не нашёл нового
-  подтверждённого P0/P1 в проверенной области; это не полная runtime certification.
-  Real all-five-topic Push/auth/MFA/WS acceptance открыта; использовать существующие
-  full Core scenarios, не создавать дублирующий Push operator.
-- Paired S3 V6/read-probe V3/avatar V4/invocation map V2 static reviewed.
-  ACL трёх pinned private dependencies исправлены без изменения bytes.
-  Actual snapshot/isolated DB+S3 restore/read by restored DB reference NOT RUN.
-  Source data, backups и partial targets сохранять; RPO/RTO не заявлять.
-- [Реестр всех 63 audit IDs](../../audits/INDEX.md#findings-ledger) сохраняет aliases,
-  rationale и source references. Historical 60 CLOSED/2 DECLINED/1 OPEN не являются
-  текущей RC certification; revalidation открыта. Exact CodeQL3382/3383 dismissal
-  уже выполнен; не повторять и не расширять.
-- Read-only release preflight: remote tags/releases отсутствуют; default
-  semantic-release first version — `1.0.0`, tag `v1.0.0`. Producer/consumer сохраняют
-  source/run/attempt binding шести images. Full smoke и paired restore — отдельные
-  root prerequisites до dispatch; публикация ещё не выполнялась.
+- Native V15:20 cycles/hidden7s и прочие gates PASS, strict exact-DOM FAIL:
+  baseline716 nodes/437 listeners, после всех20 closes670/435.
+  Sampling correction не устранила отличие; источник46 nodes/2 listeners не доказан.
+  CSS/cleanup defect не подтверждён. Следующий шаг — неизменный canonical Story memory test.
+- Full-page Core axe ранее дал serious color-contrast в Settings обоих проектов.
+  Ограниченный legacy Settings audit03:00 дал HTTP200/axe0 при иной scope/motion;
+  этот результат не закрывает full-page gate. Actual contrast colors ещё не получены.
+- Fresh all-five-topic Push/auth/MFA/WS, остальные Core failures, два consecutive
+  full runs190 PASS + exact8 skips/198 total, visual approvals и LHCI21/7 routes открыты.
+  Desktop narrow footer geometry и Native требуют измерения; hypotheses не являются fixes.
+- Owner утвердил только Home12 `ddbbc84d`; PNG/provenance сохранены byte-for-byte.
+  Новый SHA или технический capture не означает одобрения новых bytes.
+- Seed stop/start persistence и paired isolated DB/S3 restore ещё NOT RUN.
+  Prepared restore/read-probe/avatar packages не заменяют actual snapshot/restore proof.
+- [63 audit IDs](../../audits/INDEX.md#findings-ledger): historical60 CLOSED/2 DECLINED/1 OPEN
+  не являются RC certification. Revalidation открыта; CodeQL3382/3383 уже dismissed,
+  не повторять и не расширять разрешение.
+- Full frozen-RC smoke, ordinary merge, fresh main checks, шесть signed source-bound
+  images/SBOM/provenance и tag/release notes `v1.0.0` ещё не выполнены.
 
-## Документация и ближайшие действия
+## Следующие действия и ресурсы
 
-По поручению владельца завершена общая сверка 82 проектных Markdown-документов
-с кодом и ADR; сторонний каталог skills сохранён.
-Удалены superseded audits и одноразовый session prompt после переноса уникальных
-требований; Git history, rescue bundle и его inventory сохранены. Canonical ownership
-описано в [docs index](../../README.md#documentation-ownership).
+1. Опубликовать reviewed пакет с ordinary hooks, restage `.secrets.baseline`;
+   fresh required-check results и unique Core на clean successor SHA.
+2. Admin-only seed перед demo seed, readiness/cookie policy, затронутые live scenarios;
+   исправить реальные failures и затем два consecutive full190+8 на неизменном RC.
+3. Visual/LHCI, Native/Push/auth/WS, persistence/paired restore, security revalidation;
+   frozen-RC full smoke → ordinary merge → main gates → image producer → release.
 
-1. Опубликовать reviewed News/harness/Markdown fixes с ordinary hooks:
-   restage `.secrets.baseline`, commit/push и проверить новые hosted checks.
-2. Создать fresh signed unique Core на clean successor SHA, выполнить admin-only
-   seed перед demo seed, readiness/cookie policy и targeted News. Затем два consecutive
-   full Core runs: каждый 190 PASS +
-   exact8 source/project expected skips; failures/flaky/interrupted/did-not-run0.
-3. Завершить Native/Push/auth/MFA/WS, visual approvals/LHCI/JS<500KB, seed persistence,
-   security/data и один paired DB/S3 restore.
-4. Frozen-RC full smoke, ordinary merge PR1306, свежие main checks, существующий
-   producer шести signed source-bound image digests/SBOM/provenance, tag/release notes.
-
-## Ресурсы
+Документационная консолидация сохранена:82 authored Markdown согласованы с кодом/ADR;
+superseded audits и одноразовый prompt удалены после переноса требований.
+Canonical ownership — [docs index](../../README.md#documentation-ownership).
+Git history, migrations, private rescue bundle и его inventory сохраняются.
 
 Один heavy workload: startup RAM≤75%/free≥8GiB, stop≥85%/free<4GiB.
-Для serial Linux screenshots действует owner exception≤80%/≥6GiB, browser1GiB/2CPU.
-Последний guard 00:32 UTC: peakRAM47,05%/minimum free16,84GiB;
-диск C readback00:08 — свободно195,31GiB.
+Serial Linux screenshots: owner exception≤80%/≥6GiB, browser1GiB/2CPU.
+После остановки Core RAM≈41%/free≈19GiB; диск C≈200GiB свободно.
 Owned builder stopped, cap4GiB/no swap/2CPU; полезный cache сохранён.
-Последний account refresh00:03 UTC:29% weekly consumed/71% remaining,
-ordinary usage allowed.
-Чужие процессы, Docker/WSL, env/data/backups и приватный rescue bundle сохраняются.
+Account refresh03:51 UTC:39% weekly consumed/61% remaining, ordinary usage allowed.
+Чужие процессы, Docker/WSL, env/data/backups и rescue bundle не очищать.

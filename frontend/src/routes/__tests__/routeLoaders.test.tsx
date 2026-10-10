@@ -181,6 +181,19 @@ describe("Route Loaders & validateSearch validation", () => {
       expect(parsedValid).toEqual({ tab: 2, spotify: "connected" })
     })
 
+    it("strips only the default tab from navigation search", () => {
+      const middlewares = (SettingsRoute.options as any).search.middlewares
+      expect(middlewares).toHaveLength(1)
+      const stripDefaultTab = middlewares[0]
+      const next = (search: Record<string, unknown>) => search
+
+      expect(stripDefaultTab({ search: { tab: 0 }, next })).toEqual({})
+      expect(stripDefaultTab({ search: { tab: 2, spotify: "connected" }, next })).toEqual({
+        tab: 2,
+        spotify: "connected",
+      })
+    })
+
     it("maps search params to loader dependencies", () => {
       const loaderDeps = SettingsRoute.options.loaderDeps
       expect(loaderDeps).toBeTypeOf("function")

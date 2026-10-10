@@ -38,6 +38,8 @@ test("HTTP diagnostics emit only fixed project/check labels and integer status b
         "auth-login",
         "auth-logout",
         "auth-session-preflight",
+        "messenger-message-send",
+        "chat-attachment-create",
       ]) {
         calls.push(
           `reportLiveHttpStatus(${JSON.stringify(project)}, ${JSON.stringify(check)}, ${status})`
@@ -56,7 +58,7 @@ test("HTTP diagnostics silently reject out-of-domain runtime values without coer
       for (const project of ["", "Desktop", "private-project", "desktop\\n", "desktop\\r", "desktop\\u202e", null, undefined, 1, privateValue]) {
         reportLiveHttpStatus(project, "admin-users", 200);
       }
-      for (const check of ["", "admin", "private-check", "admin-users\\n", "admin-users status=401", null, undefined, 1, privateValue]) {
+      for (const check of ["", "admin", "private-check", "admin-users\\n", "admin-users status=401", "messenger-message-send url=https://private.invalid/path", null, undefined, 1, privateValue]) {
         reportLiveHttpStatus("desktop", check, 200);
       }
       for (const status of [99, 600, -1, 200.5, NaN, Infinity, -Infinity, "200", "200\\nprivate", null, undefined, true, 200n, privateValue]) {
@@ -67,7 +69,7 @@ test("HTTP diagnostics silently reject out-of-domain runtime values without coer
   )
 })
 
-test("HTTP diagnostics deduplicate records and stop at thirty-two records per worker process", () => {
+test("HTTP diagnostics deduplicate records and stop at forty records per worker process", () => {
   const output = reportInChild(`
     for (let status = 100; status < 600; status += 1) {
       for (let duplicate = 0; duplicate < 10; duplicate += 1) {
@@ -78,7 +80,7 @@ test("HTTP diagnostics deduplicate records and stop at thirty-two records per wo
   assert.equal(
     output,
     Array.from(
-      { length: 32 },
+      { length: 40 },
       (_, index) =>
         `UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=${100 + index}\n`
     ).join("")

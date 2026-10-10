@@ -1,6 +1,14 @@
 import type { BrowserContext, Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
 
+const expandPushAccordion = async (page: Page): Promise<void> => {
+  const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
+  if ((await accordion.getAttribute("aria-expanded")) !== "true") {
+    await accordion.click()
+  }
+  await expect(accordion).toHaveAttribute("aria-expanded", "true")
+}
+
 const readNativePushState = async (page: Page) =>
   page.evaluate(async () => {
     const supported =
@@ -24,6 +32,7 @@ const expectDeniedSettings = async (page: Page): Promise<void> => {
   expect(state.hasSubscription, "denied permission must not create a browser subscription").toBe(
     false
   )
+  await expandPushAccordion(page)
   await expect(
     page.getByText(/Текущее состояние:\s*запрещено|Current status:\s*blocked/u)
   ).toBeVisible()

@@ -4200,10 +4200,22 @@ _PLAYWRIGHT_FRAME_LOCATION = re.compile(
     r"(?P<source>.{1,1024}):(?P<line>[1-9][0-9]{0,4}):"
     r"(?P<column>[1-9][0-9]{0,4})"
 )
+_PLAYWRIGHT_A11Y_CONTRAST_LINE = re.compile(
+    r"UE_LIVE_A11Y_CONTRAST_V1 project=(?P<project>desktop|mobile) "
+    r"route=(?P<route>dashboard|settings) "
+    r"fg=(?P<foreground>#[0-9a-fA-F]{6}) bg=(?P<background>#[0-9a-fA-F]{6}) "
+    r"ratio_milli=(?P<ratio>0|[1-9][0-9]{0,4})"
+)
+_PLAYWRIGHT_A11Y_CONTRAST_LIMIT = 16
+_PLAYWRIGHT_A11Y_CONTRAST_PER_ROUTE_LIMIT = 4
+_PlaywrightA11yContrast = tuple[str, str, str, str, int]
+
+
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
-    r"auth-login|auth-session-cap|auth-logout|auth-session-preflight) "
+    r"auth-login|auth-session-cap|auth-logout|auth-session-preflight|"
+    r"messenger-message-send|chat-attachment-create) "
     r"status=(?P<status>[1-5][0-9]{2})"
 )
 _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
@@ -4217,10 +4229,12 @@ _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
         "auth-session-cap",
         "auth-logout",
         "auth-session-preflight",
+        "messenger-message-send",
+        "chat-attachment-create",
     )
 }
-# Both projects × eight checks × two attempts (CI retries once).
-_PLAYWRIGHT_HTTP_STATUS_LIMIT = 32
+# Both projects × ten checks × two attempts (CI retries once).
+_PLAYWRIGHT_HTTP_STATUS_LIMIT = 40
 
 
 _PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
@@ -4242,6 +4256,41 @@ _PLAYWRIGHT_RATE_LIMIT_LINE = re.compile(
 _PLAYWRIGHT_RATE_LIMIT_MAX = 100_000
 _PLAYWRIGHT_RATE_LIMIT_RECORD_LIMIT = 32
 _PlaywrightRateLimit = tuple[str, int | None, int | None]
+
+
+def _live_playwright_a11y_contrasts(output: str) -> list[_PlaywrightA11yContrast]:
+    """Accept bounded contrast values from the fixed stdout protocol only."""
+    records: list[_PlaywrightA11yContrast] = []
+    route_counts: dict[tuple[str, str], int] = {}
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 160 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_A11Y_CONTRAST_LINE.fullmatch(line)
+        if match is None:
+            continue
+        ratio_milli = int(match["ratio"])
+        if ratio_milli > 21_000:
+            continue
+        project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
+        route = match["route"]
+        record: _PlaywrightA11yContrast = (
+            project,
+            route,
+            match["foreground"].lower(),
+            match["background"].lower(),
+            ratio_milli,
+        )
+        if record in records:
+            continue
+        route_key = (project, route)
+        if route_counts.get(route_key, 0) >= _PLAYWRIGHT_A11Y_CONTRAST_PER_ROUTE_LIMIT:
+            continue
+        records.append(record)
+        route_counts[route_key] = route_counts.get(route_key, 0) + 1
+        if len(records) == _PLAYWRIGHT_A11Y_CONTRAST_LIMIT:
+            break
+    return records
 
 
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
@@ -4872,6 +4921,7 @@ def _run_live_playwright(
         )
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
+    a11y_contrast_diagnostics = _live_playwright_a11y_contrasts(stdout)
     retry_decisions = _live_playwright_retry_decisions(stdout)
     rate_limit_headers = _live_playwright_rate_limit_headers(stdout)
     page_errors = _live_playwright_page_errors(stdout)
@@ -4942,6 +4992,18 @@ def _run_live_playwright(
     for project, check, status in http_statuses:
         print(
             f"live E2E HTTP project={project} check={check} status={status}",
+            flush=True,
+        )
+    for (
+        project,
+        route,
+        foreground,
+        background,
+        ratio_milli,
+    ) in a11y_contrast_diagnostics:
+        print(
+            f"live E2E a11y contrast project={project} route={route} fg={foreground} "
+            f"bg={background} ratio_milli={ratio_milli}",
             flush=True,
         )
     for project, check, retry_after, decision, remaining_ms in retry_decisions:

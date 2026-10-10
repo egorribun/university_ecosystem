@@ -81,6 +81,13 @@ test("theme and language preferences survive reload and are restored", async ({ 
   await expect(page.getByRole("heading", { name: /Settings|Настройки/i })).toBeVisible()
 
   await openThemeOptions(page)
+  // Force a genuine transition before selecting the default System option.
+  // Selecting an already-checked radio does not dispatch its change handler.
+  await chooseTheme(page, /Светлая|Light/i)
+  await expect
+    .poll(() => page.evaluate((key) => localStorage.getItem(key), THEME_KEY))
+    .toBe("light")
+  await expect.poll(() => page.evaluate(() => document.cookie)).toContain("ue-mode=light")
   await chooseTheme(page, /Система|System/i)
   await expect(page.locator("html")).not.toHaveClass(/\bdark\b/u)
   await expect

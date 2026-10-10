@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import csv
 import hashlib
 import hmac
 import importlib.util
@@ -12,6 +11,7 @@ import os
 import secrets
 import shutil
 import stat
+import string
 import subprocess
 import sys
 import uuid
@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+# The launcher fixtures use PowerShell 7, whose redirected text output is UTF-8.
 POWERSHELL = shutil.which("pwsh")
 PORT_NAMES = (
     "BACKEND",
@@ -117,32 +118,41 @@ def _owner_marker(
     return {**payload, "signature": signature}
 
 
+def _windows_user_sid() -> str:
+    whoami = shutil.which("whoami.exe") or shutil.which("whoami")
+    assert whoami is not None
+    identity = subprocess.run(  # noqa: S603 - fixed Windows identity query
+        [whoami, "/user", "/fo", "csv", "/nh"],
+        capture_output=True,
+        check=True,
+        timeout=10,
+    )
+    rows = identity.stdout.splitlines()
+    assert len(rows) == 1
+    # The account column may use the Windows console code page. Only the final
+    # SID field is consumed; it is ASCII and can be decoded strictly.
+    sid_field = rows[0].rsplit(b",", maxsplit=1)[-1].strip().strip(b'"')
+    sid = sid_field.decode("ascii")
+    assert sid.startswith("S-1-")
+    return sid
+
+
 def _secure_state_tree(state_root: Path) -> None:
     if os.name == "nt":
-        whoami = shutil.which("whoami.exe") or shutil.which("whoami")
         icacls = shutil.which("icacls.exe") or shutil.which("icacls")
-        assert whoami is not None and icacls is not None
-        identity = subprocess.run(  # noqa: S603 - fixed Windows identity query
-            [whoami, "/user", "/fo", "csv", "/nh"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-        )
-        row = next(csv.reader(identity.stdout.splitlines()))
-        sid = row[-1]
-        assert sid.startswith("S-1-")
+        assert icacls is not None
+        sid = _windows_user_sid()
+        # Native icacls output is localized and unused; keep it as bytes rather
+        # than assuming PowerShell's UTF-8 stream encoding.
         subprocess.run(  # noqa: S603 - fixed Windows ACL tool and pytest-owned temp path
             [icacls, str(state_root), "/reset", "/T", "/C"],
             capture_output=True,
-            text=True,
             check=True,
             timeout=10,
         )
         subprocess.run(  # noqa: S603 - fixed Windows ACL tool and validated SID
             [icacls, str(state_root), "/setowner", f"*{sid}", "/T", "/C"],
             capture_output=True,
-            text=True,
             check=True,
             timeout=10,
         )
@@ -156,7 +166,6 @@ def _secure_state_tree(state_root: Path) -> None:
                 "*S-1-5-18:(OI)(CI)F",
             ],
             capture_output=True,
-            text=True,
             check=True,
             timeout=10,
         )
@@ -218,6 +227,7 @@ def _run_prepare(
         env=environment,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
         timeout=40,
     )
@@ -247,6 +257,36 @@ def _write_env_value(path: Path, key: str, value: str) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _remove_env_values(path: Path, keys: tuple[str, ...]) -> None:
+    prefixes = tuple(f"{key}=" for key in keys)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    retained = [line for line in lines if not line.startswith(prefixes)]
+    path.write_text("\n".join(retained) + "\n", encoding="utf-8")
+
+
+def _single_mfa_key_material(
+    values: dict[str, str], ring_name: str, active_name: str
+) -> tuple[str, bytes]:
+    ring = values.get(ring_name, "")
+    active_id = values.get(active_name, "")
+    if not ring or not active_id or ring.count(":") != 1 or "," in ring:
+        raise AssertionError("invalid single-key MFA ring fixture")
+    key_id, encoded = ring.split(":", 1)
+    if not key_id or key_id != active_id or not encoded:
+        raise AssertionError("invalid active MFA key binding")
+    if any(char not in string.ascii_letters + string.digits + "-_" for char in encoded):
+        raise AssertionError("invalid MFA key encoding")
+    try:
+        material = base64.b64decode(
+            encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True
+        )
+    except (ValueError, base64.binascii.Error) as exc:
+        raise AssertionError("invalid MFA key encoding") from exc
+    if len(material) != 32:
+        raise AssertionError("unexpected MFA key length")
+    return ring, material
+
+
 def _windows_acl_summary(path: Path) -> dict[str, object]:
     powershell = shutil.which("pwsh") or shutil.which("powershell.exe")
     assert powershell is not None
@@ -269,6 +309,7 @@ $rules = @($acl.Access | ForEach-Object {
         [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
         check=False,
         timeout=15,
@@ -279,14 +320,7 @@ $rules = @($acl.Access | ForEach-Object {
 
 def _assert_windows_private_acl(path: Path) -> None:
     acl = _windows_acl_summary(path)
-    identity = subprocess.run(  # noqa: S603 - fixed Windows identity query
-        [shutil.which("whoami.exe") or "whoami", "/user", "/fo", "csv", "/nh"],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=10,
-    )
-    user_sid = next(csv.reader(identity.stdout.splitlines()))[-1]
+    user_sid = _windows_user_sid()
     assert acl["OwnerSid"] == user_sid
     rules = acl["Rules"]
     assert isinstance(rules, list)
@@ -408,7 +442,7 @@ def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
-def test_launcher_generates_and_preserves_run_local_audit_signing_key(
+def test_launcher_generates_and_preserves_run_local_audit_and_email_mfa_keys(
     tmp_path: Path,
 ) -> None:
     project, state_root = _fixture_project(tmp_path)
@@ -447,6 +481,59 @@ def test_launcher_generates_and_preserves_run_local_audit_signing_key(
     generated_was_not_printed = generated_key not in (
         first_result.stdout + first_result.stderr
     )
+    mfa_key_names = (
+        "MFA_EMAIL_OTP_HMAC_KEYS",
+        "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID",
+        "MFA_EMAIL_DELIVERY_KEKS",
+        "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID",
+    )
+    mfa_values = {name: generated_docker.get(name, "") for name in mfa_key_names}
+    otp_active_id = mfa_values["MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID"]
+    otp_ring, otp_material = _single_mfa_key_material(
+        generated_docker,
+        "MFA_EMAIL_OTP_HMAC_KEYS",
+        "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID",
+    )
+    delivery_ring, delivery_material = _single_mfa_key_material(
+        generated_docker,
+        "MFA_EMAIL_DELIVERY_KEKS",
+        "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID",
+    )
+    key_material_is_independent = not hmac.compare_digest(
+        otp_material, delivery_material
+    )
+    assert key_material_is_independent
+    mfa_compose_matches = all(
+        hmac.compare_digest(generated_compose.get(name, ""), value)
+        for name, value in mfa_values.items()
+    )
+    worker_has_delivery_kek = hmac.compare_digest(
+        generated_workers.get("MFA_EMAIL_DELIVERY_KEKS", ""), delivery_ring
+    )
+    api_only_key_names_absent_from_worker = all(
+        name not in generated_workers
+        for name in (
+            "MFA_EMAIL_OTP_HMAC_KEYS",
+            "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID",
+            "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID",
+        )
+    )
+    mfa_files_match = (
+        mfa_compose_matches
+        and worker_has_delivery_kek
+        and api_only_key_names_absent_from_worker
+    )
+    assert mfa_files_match
+    mfa_secrets_not_printed = all(
+        secret not in (first_result.stdout + first_result.stderr)
+        for secret in (
+            otp_ring,
+            delivery_ring,
+            otp_ring.split(":", 1)[1],
+            delivery_ring.split(":", 1)[1],
+        )
+    )
+    assert mfa_secrets_not_printed
     assert len(generated_key) == 64
     assert generated_key.isascii() and generated_key.isalnum()
     assert generated_is_independent
@@ -458,6 +545,7 @@ def test_launcher_generates_and_preserves_run_local_audit_signing_key(
 
     preserved_key = ",".join((secrets.token_hex(32), secrets.token_hex(32)))
     _write_env_value(docker_env_path, "AUDIT_LOG_SECRET", preserved_key)
+    _remove_env_values(docker_env_path, mfa_key_names)
 
     second_result = _run_prepare(project, state_root, env)
 
@@ -478,6 +566,92 @@ def test_launcher_generates_and_preserves_run_local_audit_signing_key(
         preserved_workers.get("AUDIT_LOG_SECRET", ""), preserved_key
     )
     assert preserved_was_not_printed
+    preserved_mfa_values = _read_env_file(docker_env_path)
+    preserved_mfa_compose = _read_env_file(compose_env_path)
+    preserved_mfa_workers = _read_env_file(worker_env_path)
+    mfa_values_preserved = all(
+        hmac.compare_digest(preserved_mfa_values.get(name, ""), value)
+        and hmac.compare_digest(preserved_mfa_compose.get(name, ""), value)
+        for name, value in mfa_values.items()
+    )
+    worker_delivery_kek_preserved = hmac.compare_digest(
+        preserved_mfa_workers.get("MFA_EMAIL_DELIVERY_KEKS", ""), delivery_ring
+    )
+    api_only_key_names_remain_absent = all(
+        name not in preserved_mfa_workers
+        for name in (
+            "MFA_EMAIL_OTP_HMAC_KEYS",
+            "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID",
+            "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID",
+        )
+    )
+    mfa_values_preserved = (
+        mfa_values_preserved
+        and worker_delivery_kek_preserved
+        and api_only_key_names_remain_absent
+    )
+    assert mfa_values_preserved
+    preserved_rings_not_printed = all(
+        secret not in (second_result.stdout + second_result.stderr)
+        for secret in (
+            otp_ring,
+            delivery_ring,
+            otp_ring.split(":", 1)[1],
+            delivery_ring.split(":", 1)[1],
+        )
+    )
+    assert preserved_rings_not_printed
+
+    conflicting_active_id = "conflicting-active-id"
+    _write_env_value(
+        compose_env_path, "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID", conflicting_active_id
+    )
+    mismatched_result = _run_prepare(project, state_root, env)
+    mismatch_stays_unmodified = hmac.compare_digest(
+        _read_env_file(compose_env_path).get("MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID", ""),
+        conflicting_active_id,
+    )
+    docker_rings_unchanged = all(
+        hmac.compare_digest(_read_env_file(docker_env_path).get(name, ""), value)
+        for name, value in mfa_values.items()
+    )
+    mismatch_fails_closed = (
+        mismatched_result.returncode != 0
+        and "refusing to replace key material" in mismatched_result.stderr.lower()
+        and mismatch_stays_unmodified
+        and docker_rings_unchanged
+    )
+    mismatched_secrets_not_printed = all(
+        secret not in (mismatched_result.stdout + mismatched_result.stderr)
+        for secret in (otp_ring, delivery_ring)
+    )
+    assert mismatch_fails_closed
+    assert mismatched_secrets_not_printed
+    _write_env_value(
+        compose_env_path, "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID", otp_active_id
+    )
+
+    _write_env_value(docker_env_path, "MFA_EMAIL_DELIVERY_KEKS", "")
+    failed_closed = _run_prepare(project, state_root, env)
+    after_invalid = _read_env_file(docker_env_path)
+    assert failed_closed.returncode != 0
+    assert "refusing to replace key material" in failed_closed.stderr.lower()
+    invalid_ring_remains_empty = after_invalid.get("MFA_EMAIL_DELIVERY_KEKS") == ""
+    assert invalid_ring_remains_empty
+    otp_ring_preserved = hmac.compare_digest(
+        after_invalid.get("MFA_EMAIL_OTP_HMAC_KEYS", ""), otp_ring
+    )
+    assert otp_ring_preserved
+    failed_closed_rings_not_printed = all(
+        secret not in (failed_closed.stdout + failed_closed.stderr)
+        for secret in (
+            otp_ring,
+            delivery_ring,
+            otp_ring.split(":", 1)[1],
+            delivery_ring.split(":", 1)[1],
+        )
+    )
+    assert failed_closed_rings_not_printed
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
@@ -765,6 +939,7 @@ def test_launcher_rejects_compose_without_override_support_before_env_writes(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
         timeout=30,
     )
@@ -781,3 +956,99 @@ def test_launcher_rejects_compose_without_override_support_before_env_writes(
     assert not (project / ".secrets").exists()
     assert profile.read_bytes() == sentinel
     assert os.environ == parent_environment
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
+@pytest.mark.parametrize(
+    ("case", "env_name", "mutation"),
+    [
+        ("duplicate_docker_key", ".env.docker", "duplicate_field"),
+        ("duplicate_compose_key", ".env", "duplicate_field"),
+        ("duplicate_otp_key_id", ".env.docker", "duplicate_otp_id"),
+        ("invalid_otp_base64url", ".env.docker", "invalid_otp_encoding"),
+        ("undersized_otp_hmac", ".env.docker", "short_otp_hmac"),
+        ("invalid_delivery_kek_length", ".env.docker", "short_delivery_kek"),
+    ],
+)
+def test_prepare_only_rejects_ambiguous_or_malformed_mfa_key_material(
+    tmp_path: Path, case: str, env_name: str, mutation: str
+) -> None:
+    project, state_root = _fixture_project(tmp_path)
+    state_root.mkdir(parents=True)
+    secrets_root = state_root / ".secrets"
+    secrets_root.mkdir()
+    public, private = _vapid_pair()
+    (secrets_root / "live-stand-owner.key").write_bytes(
+        b"owner-key-fixture-material-32bytes!"[:32]
+    )
+    (secrets_root / "live-vapid.json").write_text(
+        json.dumps({"public": public, "private": private}), encoding="utf-8"
+    )
+    (secrets_root / "live-stand.json").write_text(
+        json.dumps(_owner_marker(project, state_root, version=11)), encoding="utf-8"
+    )
+    (state_root / "docker-compose.live-state.yml").write_text(
+        "services: {}\n", encoding="utf-8"
+    )
+    _secure_state_tree(state_root)
+    env = _live_environment(state_root, public, private, current_schema=True)
+
+    initial = _run_prepare(project, state_root, env)
+    assert initial.returncode == 0, "initial PrepareOnly setup failed"
+
+    docker_env_path = state_root / ".env.docker"
+    compose_env_path = state_root / ".env"
+    worker_env_path = state_root / ".env.docker.workers"
+    docker_values = _read_env_file(docker_env_path)
+    otp_ring = docker_values["MFA_EMAIL_OTP_HMAC_KEYS"]
+    delivery_ring = docker_values["MFA_EMAIL_DELIVERY_KEKS"]
+    otp_key_id, _ = otp_ring.split(":", 1)
+    delivery_key_id, _ = delivery_ring.split(":", 1)
+    target_path = state_root / env_name
+    target_key = (
+        "MFA_EMAIL_DELIVERY_KEKS"
+        if mutation == "short_delivery_kek"
+        else "MFA_EMAIL_OTP_HMAC_KEYS"
+    )
+    invalid_material = ""
+
+    if mutation == "duplicate_field":
+        lines = target_path.read_text(encoding="utf-8").splitlines()
+        prefix = f"{target_key}="
+        matches = [line for line in lines if line.startswith(prefix)]
+        assert len(matches) == 1, "expected one generated MFA key field"
+        target_path.write_text("\n".join((*lines, matches[0])) + "\n", encoding="utf-8")
+        invalid_material = matches[0].split("=", 1)[1]
+    elif mutation == "duplicate_otp_id":
+        invalid_material = f"{otp_ring},{otp_ring}"
+        _write_env_value(docker_env_path, target_key, invalid_material)
+    elif mutation == "invalid_otp_encoding":
+        invalid_material = f"{otp_key_id}:!"
+        _write_env_value(docker_env_path, target_key, invalid_material)
+    elif mutation == "short_otp_hmac":
+        encoded = base64.urlsafe_b64encode(bytes(range(31))).decode("ascii").rstrip("=")
+        invalid_material = f"{otp_key_id}:{encoded}"
+        _write_env_value(docker_env_path, target_key, invalid_material)
+    else:
+        encoded = base64.urlsafe_b64encode(bytes(range(31))).decode("ascii").rstrip("=")
+        invalid_material = f"{delivery_key_id}:{encoded}"
+        _write_env_value(docker_env_path, target_key, invalid_material)
+
+    paths = (docker_env_path, compose_env_path, worker_env_path)
+    before = {path: path.read_bytes() for path in paths}
+    failed = _run_prepare(project, state_root, env)
+    after = {path: path.read_bytes() for path in paths}
+    combined_output = failed.stdout + failed.stderr
+
+    files_unchanged = all(
+        hmac.compare_digest(before[path], after[path]) for path in paths
+    )
+    key_material_not_printed = all(
+        material not in combined_output
+        for material in (otp_ring, delivery_ring, invalid_material)
+        if material
+    )
+    assert failed.returncode != 0, f"{case}: malformed configuration was accepted"
+    assert "refusing to replace key material" in failed.stderr.lower()
+    assert files_unchanged, f"{case}: env files changed after rejected configuration"
+    assert key_material_not_printed, f"{case}: key material appeared in command output"

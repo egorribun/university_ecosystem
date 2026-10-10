@@ -9,6 +9,14 @@ import {
   test,
 } from "./fixtures"
 
+const expandPushAccordion = async (page: Page): Promise<void> => {
+  const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
+  if ((await accordion.getAttribute("aria-expanded")) !== "true") {
+    await accordion.click()
+  }
+  await expect(accordion).toHaveAttribute("aria-expanded", "true")
+}
+
 interface NotificationRow {
   id: string
   type: string | null
@@ -62,6 +70,7 @@ const waitForProfileUpdate = (page: Page) =>
 
 const enableAllDayQuietHours = async (page: Page): Promise<void> => {
   await page.goto("/settings?tab=3")
+  await expandPushAccordion(page)
   const quietHours = page.getByRole("switch", { name: "Включить тихий период", exact: true })
   await expect(quietHours).toBeVisible()
   if (!(await quietHours.isChecked())) {

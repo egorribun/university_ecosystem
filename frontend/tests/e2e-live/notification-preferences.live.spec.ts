@@ -8,6 +8,14 @@ import {
   test,
 } from "./fixtures"
 
+const expandPushAccordion = async (page: Page): Promise<void> => {
+  const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
+  if ((await accordion.getAttribute("aria-expanded")) !== "true") {
+    await accordion.click()
+  }
+  await expect(accordion).toHaveAttribute("aria-expanded", "true")
+}
+
 interface UserProfileResponse {
   id: string
   email: string
@@ -181,6 +189,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     )
 
     await page.goto("/settings?tab=3")
+    await expandPushAccordion(page)
     const pushSwitch = page.getByRole("switch", { name: "Включить уведомления", exact: true })
     await expect(pushSwitch).toBeVisible()
     await expect(pushSwitch).toBeEnabled()
@@ -244,6 +253,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     expect(adminTopics.topics).toEqual(SELECTED_TOPICS)
 
     await page.reload()
+    await expandPushAccordion(page)
     await expect(
       page.getByRole("switch", { name: "Включить уведомления", exact: true })
     ).toBeChecked()
@@ -283,6 +293,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     subscriptionMayExist = false
 
     await page.reload()
+    await expandPushAccordion(page)
     await expect(
       page.getByRole("switch", { name: "Включить уведомления", exact: true })
     ).not.toBeChecked()
@@ -312,6 +323,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     expect(topicPatchRequests).toBe(topicPatchRequestsBeforeRebind)
 
     await page.reload()
+    await expandPushAccordion(page)
     await expect(pushSwitch).toBeChecked()
     await expectTopicSelection(page, [])
     const reboundTopicsAfterReload = await readTopicPreferences(page)
@@ -349,6 +361,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expect(endTime).toBeEnabled()
 
     await page.reload()
+    await expandPushAccordion(page)
     await expect(page.getByRole("switch", { name: "Включить тихий период" })).toBeChecked()
     await expect(page.getByLabel("С", { exact: true })).toHaveValue("21:35")
     await expect(page.getByLabel("До", { exact: true })).toHaveValue("06:45")
@@ -372,6 +385,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     expect(equalEndResponse.status(), "matching midnight endpoints are accepted").toBe(200)
 
     await page.reload()
+    await expandPushAccordion(page)
     await expect(quietHours).toBeChecked()
     await expect(startTime).toHaveValue("00:00")
     await expect(endTime).toHaveValue("00:00")
@@ -387,6 +401,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expect(quietHours).not.toBeChecked()
 
     await page.reload()
+    await expandPushAccordion(page)
     const quietHoursAfterOptOut = page.getByRole("switch", { name: "Включить тихий период" })
     await expect(quietHoursAfterOptOut).not.toBeChecked()
     const optedOutProfile = await readProfile(page)

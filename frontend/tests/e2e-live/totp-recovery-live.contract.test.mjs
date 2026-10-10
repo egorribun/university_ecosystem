@@ -5,6 +5,8 @@ import { URL } from "node:url"
 
 const specUrl = new URL("./totp-recovery.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
+const russianSettingsUrl = new URL("../../src/i18n/locales/ru/settings.json", import.meta.url)
+const englishSettingsUrl = new URL("../../src/i18n/locales/en/settings.json", import.meta.url)
 
 test("live TOTP enrollment, login, recovery use, and replay rejection stay secret-safe", async () => {
   let spec
@@ -15,6 +17,8 @@ test("live TOTP enrollment, login, recovery use, and replay rejection stay secre
   }
 
   const config = await readFile(configUrl, "utf8")
+  const russianSettings = JSON.parse(await readFile(russianSettingsUrl, "utf8"))
+  const englishSettings = JSON.parse(await readFile(englishSettingsUrl, "utf8"))
   const requireMatch = (pattern, message, source = spec) => assert.ok(pattern.test(source), message)
 
   requireMatch(/testDir:\s*["']\.\/tests\/e2e-live["']/u, "the live config owns this spec", config)
@@ -28,6 +32,14 @@ test("live TOTP enrollment, login, recovery use, and replay rejection stay secre
   requireMatch(/freshPassword\(\)/u, "the account password is generated in memory")
   requireMatch(/isApiResponse\(["']\/auth\/register["']\)/u, "registration uses the live endpoint")
   requireMatch(/#totp-manual-code/u, "the TOTP seed is read from the enrollment UI only in memory")
+
+  requireMatch(
+    /name:\s*\/\^\(\?:Приложение-аутентификатор\|Authenticator app\)\/iu/u,
+    "the live locator matches the localized Russian and English accordion titles"
+  )
+  const accordionNamePattern = /^(?:Приложение-аутентификатор|Authenticator app)/iu
+  assert.match(russianSettings.security.method.totp, accordionNamePattern)
+  assert.match(englishSettings.security.method.totp, accordionNamePattern)
   requireMatch(
     /createHmac\(["']sha1["']/u,
     "RFC 6238 codes use Node's built-in HMAC without an added dependency"

@@ -1,5 +1,6 @@
 import { devices, type Locator, type Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
 
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
 if (!LIVE_BASE_URL) {
@@ -146,7 +147,8 @@ type ReceiverSocketSession = { joinedChat: boolean; closed: boolean }
 async function sendLiveMessage(
   page: Page,
   chatId: string,
-  content: string
+  content: string,
+  project: string
 ): Promise<CreatedLiveMessage> {
   const responsePromise = page.waitForResponse((response) => {
     const request = response.request()
@@ -158,6 +160,9 @@ async function sendLiveMessage(
   await page.locator("#chat-message-input").fill(content)
   await page.locator("#chat-send-btn").click()
   const response = await responsePromise
+  if (!response.ok()) {
+    reportLiveHttpStatus(project, "messenger-message-send", response.status())
+  }
   expect(response.ok()).toBe(true)
   const created = (await response.json()) as { id: string }
   expect(created.id).toBeTruthy()
@@ -319,6 +324,13 @@ test.describe("live messenger delivery", () => {
       await page.locator("#chat-message-input").fill(message)
       await page.locator("#chat-send-btn").click()
       const messageResponse = await messageResponsePromise
+      if (!messageResponse.ok()) {
+        reportLiveHttpStatus(
+          testInfo.project.name,
+          "messenger-message-send",
+          messageResponse.status()
+        )
+      }
       expect(messageResponse.ok()).toBe(true)
       const sentMessage = (await messageResponse.json()) as {
         id: string
@@ -583,13 +595,15 @@ test.describe("live messenger delivery", () => {
       const first = await sendLiveMessage(
         page,
         chatIdFromRoute,
-        `live-dm-order-first-${crypto.randomUUID()}`
+        `live-dm-order-first-${crypto.randomUUID()}`,
+        testInfo.project.name
       )
       createdMessages.push(first)
       const second = await sendLiveMessage(
         page,
         chatIdFromRoute,
-        `live-dm-order-second-${crypto.randomUUID()}`
+        `live-dm-order-second-${crypto.randomUUID()}`,
+        testInfo.project.name
       )
       createdMessages.push(second)
       const messageIds = [first.id, second.id]
@@ -627,7 +641,8 @@ test.describe("live messenger delivery", () => {
       const missedWhileOffline = await sendLiveMessage(
         page,
         chatIdFromRoute,
-        `live-dm-reconnect-missed-${crypto.randomUUID()}`
+        `live-dm-reconnect-missed-${crypto.randomUUID()}`,
+        testInfo.project.name
       )
       createdMessages.push(missedWhileOffline)
       const missedDeliveries = () =>
@@ -670,7 +685,8 @@ test.describe("live messenger delivery", () => {
       const afterReconnect = await sendLiveMessage(
         page,
         chatIdFromRoute,
-        `live-dm-reconnect-after-${crypto.randomUUID()}`
+        `live-dm-reconnect-after-${crypto.randomUUID()}`,
+        testInfo.project.name
       )
       createdMessages.push(afterReconnect)
       const afterReconnectDeliveries = () =>
@@ -785,7 +801,12 @@ test.describe("live messenger delivery", () => {
         .poll(() => receiverRoomJoinFrames.some((frame) => hasRoomJoin(frame, activeChatId)))
         .toBe(true)
 
-      createdMessage = await sendLiveMessage(page, activeChatId, messageContent)
+      createdMessage = await sendLiveMessage(
+        page,
+        activeChatId,
+        messageContent,
+        testInfo.project.name
+      )
       await expect(senderLog.getByText(messageContent, { exact: true })).toBeVisible()
       const receiverMessage = receiverLog.getByText(messageContent, { exact: true })
       await expect(receiverMessage).toBeVisible()
@@ -1018,7 +1039,12 @@ test.describe("live messenger delivery", () => {
         .poll(() => receiverRoomJoinFrames.some((frame) => hasRoomJoin(frame, activeChatId)))
         .toBe(true)
 
-      const createdParent = await sendLiveMessage(page, activeChatId, parentContent)
+      const createdParent = await sendLiveMessage(
+        page,
+        activeChatId,
+        parentContent,
+        testInfo.project.name
+      )
       parentMessage = createdParent
       await expect(senderLog.getByText(parentContent, { exact: true })).toBeVisible()
       const receiverParent = receiverLog.getByText(parentContent, { exact: true })
@@ -1040,6 +1066,13 @@ test.describe("live messenger delivery", () => {
       await page.locator("#chat-message-input").fill(replyContent)
       await page.locator("#chat-send-btn").click()
       const replyResponse = await replyResponsePromise
+      if (!replyResponse.ok()) {
+        reportLiveHttpStatus(
+          testInfo.project.name,
+          "messenger-message-send",
+          replyResponse.status()
+        )
+      }
       expect(replyResponse.ok()).toBe(true)
       const createdReply = (await replyResponse.json()) as {
         id: string
@@ -1177,7 +1210,12 @@ test.describe("live messenger delivery", () => {
         .poll(() => receiverRoomJoinFrames.some((frame) => hasRoomJoin(frame, activeChatId)))
         .toBe(true)
 
-      const createdSource = await sendLiveMessage(page, activeChatId, sourceContent)
+      const createdSource = await sendLiveMessage(
+        page,
+        activeChatId,
+        sourceContent,
+        testInfo.project.name
+      )
       sourceMessage = createdSource
       await expect(senderLog.getByText(sourceContent, { exact: true })).toBeVisible()
       await expect(receiverLog.getByText(sourceContent, { exact: true })).toBeVisible()

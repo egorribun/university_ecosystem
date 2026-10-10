@@ -106,9 +106,18 @@ test("synthetic account reaches account lockout after the configured failed-logi
     // The successful login clears the UI failure above. BrowserContext.request
     // shares this synthetic user's cookie, so these failed attempts use that
     // user's isolated rate-limit bucket instead of consuming the shared IP key.
+    const csrfToken = await page.evaluate(() => {
+      const cookie = document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("csrf_token="))
+      return cookie ? decodeURIComponent(cookie.slice("csrf_token=".length)) : ""
+    })
+    expect(csrfToken, "the authenticated synthetic session has CSRF proof").not.toBe("")
     for (let attempt = 1; attempt <= LOCKOUT_ATTEMPTS; attempt += 1) {
       const response = await page.request.post("/api/v1/auth/login", {
         form: { username: email, password: wrongPassword },
+        headers: { "X-CSRF-Token": csrfToken },
       })
       if (attempt < LOCKOUT_ATTEMPTS) {
         expect(response.status(), `failed credential attempt ${attempt}`).toBe(401)

@@ -1,4 +1,14 @@
-import { expect, loginAs, test } from "./fixtures"
+import type { Page } from "@playwright/test"
+import { expect, loginAs } from "./fixtures"
+import { test } from "./native-push-profile-fixtures"
+
+const expandPushAccordion = async (page: Page): Promise<void> => {
+  const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
+  if ((await accordion.getAttribute("aria-expanded")) !== "true") {
+    await accordion.click()
+  }
+  await expect(accordion).toHaveAttribute("aria-expanded", "true")
+}
 
 test("Chromium leaves notification permission at default when settings are only opened", async ({
   page,
@@ -40,6 +50,7 @@ test("Chromium leaves notification permission at default when settings are only 
   expect(beforeSettings.hasSubscription, "the test starts without a browser endpoint").toBe(false)
 
   await page.goto("/settings?tab=3")
+  await expandPushAccordion(page)
   const pushSwitch = page.getByRole("switch", {
     name: /Включить уведомления|Enable notifications/u,
   })

@@ -33,10 +33,12 @@ const readOwnerProfile = async (page: Page): Promise<OwnerProfileResponse> => {
   return (await response.json()) as OwnerProfileResponse
 }
 
-const openPasswordSection = async (page: Page): Promise<void> => {
+const openPasswordSection = async (page: Page) => {
   const section = page.getByRole("button", { name: /Пароль/u })
   await expect(section).toBeVisible()
   if ((await section.getAttribute("aria-expanded")) !== "true") await section.click()
+  await expect(section).toHaveAttribute("aria-expanded", "true")
+  return section.locator("xpath=..")
 }
 
 const deleteOnlyCreatedAccount = async (
@@ -128,10 +130,12 @@ test("password settings reject a wrong current password and persist a corrected 
     expect(createdProfile.full_name).toBe(fullName)
 
     await page.goto("/settings?tab=2")
-    await openPasswordSection(page)
-    const currentPasswordField = page.getByLabel("Текущий пароль", { exact: true })
-    const newPasswordField = page.getByLabel("Новый пароль", { exact: true })
-    const confirmPasswordField = page.getByLabel("Повторите новый пароль", { exact: true })
+    const passwordSection = await openPasswordSection(page)
+    const currentPasswordField = passwordSection.getByLabel("Текущий пароль", { exact: true })
+    const newPasswordField = passwordSection.getByLabel("Новый пароль", { exact: true })
+    const confirmPasswordField = passwordSection.getByLabel("Повторите новый пароль", {
+      exact: true,
+    })
     const updatePasswordButton = page.getByRole("button", { name: "Обновить пароль", exact: true })
 
     await currentPasswordField.fill(incorrectCurrentPassword)

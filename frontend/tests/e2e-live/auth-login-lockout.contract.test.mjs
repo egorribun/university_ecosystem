@@ -95,6 +95,11 @@ test("Auth lockout live acceptance isolates a synthetic identity and preserves l
     /page\.request\.post\("\/api\/v1\/auth\/login"/u,
     "real login API attempts missing"
   )
+  requireMatch(
+    spec,
+    /page\.request\.post\("\/api\/v1\/auth\/login",\s*\{\s*form:[\s\S]*?headers:\s*\{\s*"X-CSRF-Token":\s*csrfToken/u,
+    "direct failed-login attempts must include the current browser CSRF proof"
+  )
   requireMatch(spec, /\.toBe\(\s*423\s*\)/u, "account lockout must retain HTTP 423 semantics")
   requireMatch(
     spec,

@@ -1,15 +1,18 @@
 import { randomUUID } from "node:crypto"
 import type { BrowserContext, Page } from "@playwright/test"
-import {
-  expect,
-  freshPassword,
-  loginAs,
-  loginWith,
-  stubBreachedPasswordLookup,
-  test,
-} from "./fixtures"
+import { expect, freshPassword, loginAs, loginWith, stubBreachedPasswordLookup } from "./fixtures"
+import { test } from "./native-push-profile-fixtures"
+
+const expandPushAccordion = async (page: Page): Promise<void> => {
+  const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
+  if ((await accordion.getAttribute("aria-expanded")) !== "true") {
+    await accordion.click()
+  }
+  await expect(accordion).toHaveAttribute("aria-expanded", "true")
+}
 
 test.use({ channel: "chromium" })
+test.use({ nativePushChannel: "chromium" })
 
 const DELIVERY_TOPICS = [
   "news.published",
@@ -521,6 +524,7 @@ const savePushOptInAndTopics = async (
   expect(initialBrowserState.hasSubscription).toBe(false)
 
   await page.goto("/settings?tab=3")
+  await expandPushAccordion(page)
   const pushSwitch = page.getByRole("switch", { name: "Включить уведомления", exact: true })
   const chatTopicSwitch = page.getByRole("switch", { name: "Сообщения чата", exact: true })
   await expect(pushSwitch).toBeVisible()

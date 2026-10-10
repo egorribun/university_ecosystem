@@ -257,7 +257,7 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
 
     await page.goto("/settings?tab=2")
     const authenticatorAccordion = page.getByRole("button", {
-      name: /^Приложение для аутентификации|^Authenticator app/iu,
+      name: /^(?:Приложение-аутентификатор|Authenticator app)/iu,
     })
     if ((await authenticatorAccordion.getAttribute("aria-expanded")) !== "true") {
       await authenticatorAccordion.click()

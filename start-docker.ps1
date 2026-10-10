@@ -993,6 +993,183 @@ function Ensure-ApplicationSecrets {
     }
 }
 
+function New-MfaEmailKeyRingEntry {
+    param(
+        [Parameter(Mandatory=$true)][string]$KeyId,
+        [Parameter(Mandatory=$true)][int]$ByteLength
+    )
+    $bytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes($ByteLength)
+    try {
+        $encoded = [Convert]::ToBase64String($bytes)
+        $encoded = $encoded.TrimEnd([char[]]@('='))
+        $encoded = $encoded.Replace('+', '-').Replace('/', '_')
+        return "${KeyId}:$encoded"
+    } finally {
+        [Array]::Clear($bytes, 0, $bytes.Length)
+    }
+}
+
+function Test-MfaEmailKeyRing {
+    param(
+        [Parameter(Mandatory=$true)][AllowEmptyString()][string]$Ring,
+        [Parameter(Mandatory=$true)][AllowEmptyString()][string]$ActiveKeyId,
+        [Parameter(Mandatory=$true)][ValidateSet('Hmac', 'Kek')][string]$Purpose
+    )
+    if ([string]::IsNullOrWhiteSpace($Ring) -or
+        [string]::IsNullOrWhiteSpace($ActiveKeyId)) {
+        return $false
+    }
+
+    $keyIds = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::Ordinal
+    )
+    foreach ($entry in $Ring.Split([char]',') ) {
+        if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+        $parts = $entry.Split([char]':')
+        if ($parts.Length -ne 2) { return $false }
+        $keyId = $parts[0].Trim()
+        $encoded = $parts[1].Trim()
+        if (-not $keyId -or -not $encoded -or
+            -not $keyIds.Add($keyId) -or
+            $encoded -cnotmatch '^[A-Za-z0-9_-]+$' -or
+            $encoded.Length % 4 -eq 1) {
+            return $false
+        }
+
+        $base64 = $encoded.Replace('-', '+').Replace('_', '/')
+        switch ($base64.Length % 4) {
+            2 { $base64 += '==' }
+            3 { $base64 += '=' }
+        }
+        $decoded = [byte[]]@()
+        try {
+            $decoded = [Convert]::FromBase64String($base64)
+            if ($Purpose -eq 'Hmac' -and $decoded.Length -lt 32) {
+                return $false
+            }
+            if ($Purpose -eq 'Kek' -and $decoded.Length -notin @(16, 24, 32)) {
+                return $false
+            }
+        } catch {
+            return $false
+        } finally {
+            if ($decoded.Length -gt 0) {
+                [Array]::Clear($decoded, 0, $decoded.Length)
+            }
+        }
+    }
+    return $keyIds.Contains($ActiveKeyId)
+}
+
+function Ensure-MfaEmailKeyRings {
+    param([switch]$ValidateOnly)
+    # Both launcher Compose modes can consume persisted key material. Preserve
+    # one complete valid set from either env file, require agreement when both
+    # are configured, and never replace ambiguous or malformed key material.
+    $ringKeys = @(
+        'MFA_EMAIL_OTP_HMAC_KEYS',
+        'MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID',
+        'MFA_EMAIL_DELIVERY_KEKS',
+        'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID'
+    )
+    $valuesByPath = @{}
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        $absolutePath = Resolve-StatePath -Path $path
+        $fileLines = @()
+        if (Test-Path -LiteralPath $absolutePath) {
+            $fileLines = @(Get-Content -LiteralPath $absolutePath)
+        }
+        $pathValues = @{}
+        foreach ($key in $ringKeys) {
+            $prefix = "$key="
+            $fieldLines = @($fileLines | Where-Object {
+                $_.StartsWith($prefix, [StringComparison]::Ordinal)
+            })
+            if ($fieldLines.Count -gt 1) {
+                throw 'Email MFA key configuration is ambiguous; refusing to replace key material.'
+            }
+            if ($fieldLines.Count -eq 1) {
+                $pathValues[$key] = $fieldLines[0].Substring($prefix.Length).Trim()
+            } else {
+                $pathValues[$key] = $null
+            }
+        }
+        $valuesByPath[$path] = $pathValues
+    }
+
+    $dockerValues = $valuesByPath[$EnvFile]
+    $composeValues = $valuesByPath[$EnvCompose]
+    $dockerCount = @($ringKeys | Where-Object {
+        -not [string]::IsNullOrWhiteSpace([string]$dockerValues[$_])
+    }).Count
+    $composeCount = @($ringKeys | Where-Object {
+        -not [string]::IsNullOrWhiteSpace([string]$composeValues[$_])
+    }).Count
+
+    $dockerValid = $false
+    if ($dockerCount -eq 4) {
+        $dockerValid = (
+            (Test-MfaEmailKeyRing -Ring ([string]$dockerValues['MFA_EMAIL_OTP_HMAC_KEYS']) `
+                -ActiveKeyId ([string]$dockerValues['MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID']) -Purpose Hmac) -and
+            (Test-MfaEmailKeyRing -Ring ([string]$dockerValues['MFA_EMAIL_DELIVERY_KEKS']) `
+                -ActiveKeyId ([string]$dockerValues['MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID']) -Purpose Kek)
+        )
+    }
+    $composeValid = $false
+    if ($composeCount -eq 4) {
+        $composeValid = (
+            (Test-MfaEmailKeyRing -Ring ([string]$composeValues['MFA_EMAIL_OTP_HMAC_KEYS']) `
+                -ActiveKeyId ([string]$composeValues['MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID']) -Purpose Hmac) -and
+            (Test-MfaEmailKeyRing -Ring ([string]$composeValues['MFA_EMAIL_DELIVERY_KEKS']) `
+                -ActiveKeyId ([string]$composeValues['MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID']) -Purpose Kek)
+        )
+    }
+
+    $valuesAgree = $true
+    foreach ($key in $ringKeys) {
+        if (-not [string]::Equals(
+            [string]$dockerValues[$key],
+            [string]$composeValues[$key],
+            [StringComparison]::Ordinal
+        )) {
+            $valuesAgree = $false
+            break
+        }
+    }
+
+    if ($dockerCount -eq 0 -and $composeCount -eq 0) {
+        if ($ValidateOnly) {
+            return
+        }
+        $selectedValues = @{
+            MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID = 'live-otp-v1'
+            MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID = 'live-delivery-v1'
+        }
+        $selectedValues['MFA_EMAIL_OTP_HMAC_KEYS'] = New-MfaEmailKeyRingEntry `
+            -KeyId $selectedValues['MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID'] -ByteLength 32
+        $selectedValues['MFA_EMAIL_DELIVERY_KEKS'] = New-MfaEmailKeyRingEntry `
+            -KeyId $selectedValues['MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID'] -ByteLength 32
+        Write-Ok 'Generated isolated email MFA key rings'
+    } elseif ($dockerCount -eq 4 -and $composeCount -eq 0 -and $dockerValid) {
+        $selectedValues = $dockerValues
+    } elseif ($composeCount -eq 4 -and $dockerCount -eq 0 -and $composeValid) {
+        $selectedValues = $composeValues
+    } elseif ($dockerCount -eq 4 -and $composeCount -eq 4 -and
+        $dockerValid -and $composeValid -and $valuesAgree) {
+        $selectedValues = $dockerValues
+    } else {
+        throw 'Email MFA key configuration is incomplete or invalid; refusing to replace key material.'
+    }
+
+    if ($ValidateOnly) {
+        return
+    }
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        foreach ($key in $ringKeys) {
+            Set-EnvEntry -Path $path -Key $key -Value ([string]$selectedValues[$key])
+        }
+    }
+}
 function Assert-IndependentRedisCredentials {
     # .env.docker is the canonical source. Do this before syncing Compose
     # interpolation so a pre-existing manual configuration cannot silently
@@ -1007,17 +1184,19 @@ function Assert-IndependentRedisCredentials {
 }
 
 function Write-WorkerEnvironmentFile {
-    # The full stack's canonical application environment also contains the
-    # dedicated revocation-store password and URL. Background workers never
-    # authenticate sessions, so materialize a separate env_file instead of
-    # handing them a broad credential-bearing environment and relying only on
-    # network isolation. The redacted file remains ignored by Git.
+    # Workers need the delivery KEK to decrypt queued email payloads, but not
+    # OTP digest keys, active-key selectors, or revocation credentials. Keep a
+    # dedicated env_file so API-only key material is not exposed to workers.
     $sourcePath = Resolve-StatePath -Path $EnvFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
         throw "Cannot create ${WorkerEnvFile}: ${EnvFile} is missing."
     }
 
-    $redactedPattern = '^\s*REVOCATION_REDIS_(?:URL|PASSWORD)='
+    $redactedPattern = (
+        '^\s*(?:REVOCATION_REDIS_(?:URL|PASSWORD)|' +
+        'MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)|' +
+        'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID)='
+    )
     $workerLines = @(
         Get-Content -LiteralPath $sourcePath | Where-Object {
             $_ -notmatch $redactedPattern
@@ -2200,6 +2379,10 @@ if (-not $PrepareOnly) {
     Assert-LegacyS3VolumeGuard
 }
 
+# Validate persisted email MFA key material before any environment file is created,
+# copied, or mutated. Fresh key generation remains in the normal initialization path.
+Ensure-MfaEmailKeyRings -ValidateOnly
+
 # -- Generate secrets ---------------------------------------------------------
 
 $generated = $false
@@ -2344,6 +2527,7 @@ Ensure-MetricsEnvironment
 
 # Give each application security domain an independent launcher-managed key.
 Ensure-ApplicationSecrets
+Ensure-MfaEmailKeyRings
 
 # Fail closed if an existing local configuration reuses the cache password for
 # the durable security-state Redis. Fresh generation uses independent CSPRNG
@@ -2356,10 +2540,9 @@ Ensure-JwtEnvironment
 # Make bind-mounted configuration changes visible to Compose's config hash.
 Ensure-DockerConfigRevision
 
-# Materialize the worker view only after every launcher-managed mutation of
-# the canonical .env.docker file, so it cannot become stale during a restart.
-# It deliberately denies both the revocation URL and its credential even when
-# a user copied every documented value into .env.docker.
+# Materialize the worker view after launcher-managed environment changes.
+# It excludes revocation credentials and API-only OTP digest keys while keeping
+# the delivery KEK required by the outbox consumer.
 Write-WorkerEnvironmentFile
 
 # -- Sync check: keep Compose interpolation in lockstep with .env.docker ------

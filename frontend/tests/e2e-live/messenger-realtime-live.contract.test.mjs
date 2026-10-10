@@ -125,6 +125,43 @@ test("removing a reaction is delivered over WebSocket and clears both members' s
   assert.match(reactionScenario, /receiverAfterRemovalHistory[\s\S]{0,220}toEqual\(\[\]\)/u)
 })
 
+test("failed UI message creates emit only a closed status before the existing assertion", () => {
+  const start = spec.indexOf("async function sendLiveMessage(")
+  const end = spec.indexOf("async function deleteOwnedLiveMessage(", start)
+  assert.ok(start >= 0 && end > start)
+  const helper = spec.slice(start, end)
+  const failedCheck = helper.indexOf("if (!response.ok()) {")
+  const diagnostic = helper.indexOf(
+    'reportLiveHttpStatus(project, "messenger-message-send", response.status())'
+  )
+  const assertion = helper.indexOf("expect(response.ok()).toBe(true)")
+  assert.ok(failedCheck >= 0 && failedCheck < diagnostic && diagnostic < assertion)
+  const diagnosticBlock = helper.slice(failedCheck, assertion)
+  assert.doesNotMatch(diagnosticBlock, /response\.(?:url|headers|json|text)\s*\(/u)
+  for (const content of [
+    "live-dm-order-first",
+    "live-dm-order-second",
+    "live-dm-reconnect-missed",
+    "live-dm-reconnect-after",
+    "messageContent",
+    "parentContent",
+    "sourceContent",
+  ]) {
+    assert.ok(spec.includes(content), "existing send scenarios remain present")
+  }
+  for (const [response, promise] of [
+    ["messageResponse", "messageResponsePromise"],
+    ["replyResponse", "replyResponsePromise"],
+  ]) {
+    const awaited = spec.indexOf("const " + response + " = await " + promise)
+    const diagnosticBlockStart = spec.indexOf("if (!" + response + ".ok()) {", awaited)
+    const statusCheck = spec.indexOf('"messenger-message-send"', diagnosticBlockStart)
+    const assertion = spec.indexOf("expect(" + response + ".ok()).toBe(true)", diagnosticBlockStart)
+    assert.ok(awaited >= 0 && diagnosticBlockStart > awaited)
+    assert.ok(statusCheck > diagnosticBlockStart && assertion > statusCheck)
+  }
+})
+
 test("ordered live deliveries remain exactly once across reconnect and history refresh", () => {
   assert.match(
     spec,

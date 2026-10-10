@@ -1,6 +1,6 @@
-// Bound both projects × eight checks × two attempts (CI retries once).
+// Bound both projects × ten checks × two attempts (CI retries once).
 const emittedRecords = new Set<string>()
-const MAX_RECORDS = 32
+const MAX_RECORDS = 40
 const emittedRetryRecords = new Set<string>()
 const emittedRateLimitRecords = new Set<string>()
 // Bound retry decisions across both projects and all E2E retries.
@@ -19,6 +19,8 @@ export type LiveHttpStatusCheck =
   | "auth-session-cap"
   | "auth-logout"
   | "auth-session-preflight"
+  | "messenger-message-send"
+  | "chat-attachment-create"
 
 const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
   "admin-users",
@@ -29,6 +31,8 @@ const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
   "auth-session-cap",
   "auth-logout",
   "auth-session-preflight",
+  "messenger-message-send",
+  "chat-attachment-create",
 ])
 
 export function reportLiveHttpStatus(

@@ -59,7 +59,7 @@ test("live Web Push acceptance is selected and stays inside native opt-in and su
   assert.match(spec, /const foreignIdentity = randomUUID\(\)/u)
   assert.match(spec, /foreignRegistrationAttempted = true/u)
   assert.match(spec, /loginWith\(secondPage, foreignEmail, foreignPassword\)/u)
-  assert.match(spec, /foreignProfile\.email === foreignEmail/u)
+  assert.match(spec, /foreignIdentityProfile\.email === foreignEmail/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)
   assert.match(spec, /encodeURIComponent\(userId\)/u)
   assert.match(spec, /X-CSRF-Token/u)

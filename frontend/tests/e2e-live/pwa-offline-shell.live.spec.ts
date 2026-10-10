@@ -308,7 +308,8 @@ test.describe("PWA offline app shell on the live stack", () => {
 
     try {
       await page.evaluate(async () => {
-        void navigator.serviceWorker.ready.then((activeRegistration) => activeRegistration.update())
+        const activeRegistration = await navigator.serviceWorker.ready
+        await activeRegistration.update()
       })
 
       await page.waitForFunction(() => window.__APP_HYDRATED === true)

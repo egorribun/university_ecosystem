@@ -32,6 +32,20 @@ test("live registration double-submit acceptance uses one real owned account", a
 
   assert.match(spec, /page\.setViewportSize\(\{\s*width:\s*360/u)
   assert.match(spec, /stubBreachedPasswordLookup\(page\)/u)
+  const registrationNavigation = spec.indexOf(
+    'await page.goto("/register", { waitUntil: "domcontentloaded" })'
+  )
+  const hydrationWait = spec.indexOf(
+    "await page.waitForFunction(() => window.__APP_HYDRATED === true)",
+    registrationNavigation
+  )
+  const firstFormInteraction = spec.indexOf('await page.locator("#full_name").fill')
+  assert.ok(
+    registrationNavigation >= 0 &&
+      hydrationWait > registrationNavigation &&
+      firstFormInteraction > hydrationWait,
+    "registration controls must not be interacted with before React hydration"
+  )
   assert.match(spec, /freshPassword\(\)/u)
   assert.match(spec, /crypto\.randomUUID\(\)/u)
   assert.match(spec, /touchscreen\.tap\(x,\s*y\)/u)

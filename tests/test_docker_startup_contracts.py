@@ -439,14 +439,41 @@ def test_launcher_generates_a_redacted_worker_environment_file() -> None:
 
     assert '$WorkerEnvFile = ".env.docker.workers"' in script
     assert "function Write-WorkerEnvironmentFile" in script
+    assert "function Ensure-MfaEmailKeyRings" in script
     assert "REVOCATION_REDIS_(?:URL|PASSWORD)" in script
+    assert "MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)" in script
+    assert "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" in script
     assert "Write-Utf8NoBom -Path $WorkerEnvFile" in script
 
-    invocation_start = script.index("# Fail closed if an existing local configuration")
+    key_ring_setup = _powershell_function(
+        script, "Ensure-MfaEmailKeyRings", "Assert-IndependentRedisCredentials"
+    )
+    for key_name in (
+        "MFA_EMAIL_OTP_HMAC_KEYS",
+        "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID",
+        "MFA_EMAIL_DELIVERY_KEKS",
+        "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID",
+    ):
+        assert key_name in key_ring_setup
+    assert "refusing to replace key material" in key_ring_setup
+    assert "foreach ($path in @($EnvFile, $EnvCompose))" in key_ring_setup
+    assert "fieldLines.Count -gt 1" in key_ring_setup
+    assert "valuesAgree" in key_ring_setup
+
+    worker_setup = _powershell_function(
+        script, "Write-WorkerEnvironmentFile", "Ensure-JwtEnvironment"
+    )
+    assert "MFA_EMAIL_DELIVERY_KEKS" not in worker_setup
+    assert "MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)" in worker_setup
+    assert "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" in worker_setup
+
+    invocation_start = script.index("# Give each application security domain")
     invocation_end = script.index("# -- Sync check")
     invocation = script[invocation_start:invocation_end]
     assert (
-        invocation.index("Assert-IndependentRedisCredentials")
+        invocation.index("Ensure-ApplicationSecrets")
+        < invocation.index("Ensure-MfaEmailKeyRings")
+        < invocation.index("Assert-IndependentRedisCredentials")
         < invocation.index("Ensure-JwtEnvironment")
         < invocation.index("Ensure-DockerConfigRevision")
         < invocation.index("Write-WorkerEnvironmentFile")

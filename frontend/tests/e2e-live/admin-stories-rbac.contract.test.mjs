@@ -53,7 +53,15 @@ test("admin story management is denied to both non-admin live roles", async () =
   assert.match(spec, /adminPage\.request\.get\([\s\S]*?__live_verify/u)
   assert.match(spec, /adminStories\.find\(\(entry\) => entry\.id === createdBody\.id\)/u)
   assert.match(spec, /expect\(\s*ownedStory,[\s\S]*?toBeDefined\(\)/u)
-  assert.match(spec, /adminPage\.request\.post\("\/api\/v1\/stories"/u)
+  const ownerCreateStart = spec.indexOf("const adminCreateResponse = await adminPage.evaluate(")
+  const ownerCreateEnd = spec.indexOf("\n      const createdBody", ownerCreateStart)
+  assert.ok(ownerCreateStart >= 0 && ownerCreateEnd > ownerCreateStart)
+  const ownerCreate = spec.slice(ownerCreateStart, ownerCreateEnd)
+  assert.match(ownerCreate, /await fetch\("\/api\/v1\/stories"/u)
+  assert.match(ownerCreate, /method: "POST"/u)
+  assert.match(ownerCreate, /credentials: "same-origin"/u)
+  assert.match(ownerCreate, /"X-CSRF-Token": csrfToken/u)
+  assert.match(ownerCreate, /body: JSON\.stringify\(payload\)/u)
   assert.match(spec, /const ownedTitle = `Live RBAC admin-owned story/u)
   assert.match(
     spec,

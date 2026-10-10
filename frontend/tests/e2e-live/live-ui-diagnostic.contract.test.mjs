@@ -13,7 +13,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { reportLiveActivityGeometry, reportLiveAdminQueueState } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
+      `import { reportLiveActivityGeometry, reportLiveAdminQueueState, reportLiveAxeColorContrast } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -33,6 +33,58 @@ test("UI diagnostics emit only fixed live project/period labels and bounded meas
     "UE_LIVE_ADMIN_QUEUE_V1 project=desktop status=200 items_array=true items_count=999 total_valid=true table_visible=false progressbar_visible=true alert_visible=true row_count=999\n" +
       "UE_LIVE_ACTIVITY_GEOMETRY_V1 project=mobile period=30-day indicator_present=true radio_present=true dx_milli=-999999 dy_milli=25 dw_milli=-12 dh_milli=999999\n"
   )
+})
+
+test("UI contrast diagnostics emit only bounded route-bound RGB and milli-ratio values", () => {
+  assert.equal(
+    reportInChild(`
+      reportLiveAxeColorContrast("desktop", "settings", "#AABBCC", "#000000", 2.85);
+      reportLiveAxeColorContrast("mobile", "dashboard", "#ffffff", "#000000", 21);
+    `),
+    "UE_LIVE_A11Y_CONTRAST_V1 project=desktop route=settings fg=#aabbcc bg=#000000 ratio_milli=2850\n" +
+      "UE_LIVE_A11Y_CONTRAST_V1 project=mobile route=dashboard fg=#ffffff bg=#000000 ratio_milli=21000\n"
+  )
+})
+
+test("UI contrast diagnostics reject untrusted labels, malformed colors, and private values", () => {
+  assert.equal(
+    reportInChild(`
+      const privateValue = { toString() { throw new Error("private-value") } };
+      reportLiveAxeColorContrast("desktop\\nprivate", "settings", "#ffffff", "#000000", 4.5);
+      reportLiveAxeColorContrast("desktop", "private-route", "#ffffff", "#000000", 4.5);
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff\\nprivate", "#000000", 4.5);
+      reportLiveAxeColorContrast("desktop", "settings", "ffffff", "#000000", 4.5);
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", "4.5");
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", privateValue);
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", NaN);
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", Infinity);
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", 21.001);
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", -0.001);
+    `),
+    ""
+  )
+})
+
+test("UI contrast diagnostics deduplicate and cap at four findings per project-route", () => {
+  const output = reportInChild(`
+    for (let ratio = 0; ratio < 8; ratio += 1) {
+      reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", ratio);
+    }
+    reportLiveAxeColorContrast("desktop", "settings", "#ffffff", "#000000", 0);
+    reportLiveAxeColorContrast("desktop", "dashboard", "#ffffff", "#000000", 1);
+    reportLiveAxeColorContrast("mobile", "settings", "#ffffff", "#000000", 1);
+  `)
+  const lines = output.trimEnd().split("\n")
+  assert.equal(lines.length, 6)
+  assert.equal(
+    lines
+      .slice(0, 4)
+      .map((line) => line.match(/ratio_milli=(\d+)/u)?.[1])
+      .join(","),
+    "0,1000,2000,3000"
+  )
+  assert.match(lines[4], /project=desktop route=dashboard/u)
+  assert.match(lines[5], /project=mobile route=settings/u)
 })
 
 test("UI diagnostics reject untrusted labels, noninteger values, and private objects without coercion", () => {

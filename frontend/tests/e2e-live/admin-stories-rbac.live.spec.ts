@@ -123,23 +123,40 @@ for (const role of ["student", "teacher"] as const) {
       const publishedAt = new Date(Date.now() - 60_000).toISOString()
       const expiresAt = new Date(Date.now() + 86_400_000).toISOString()
       ownedCreateMayHaveSucceeded = true
-      const adminCreateResponse = await adminPage.request.post("/api/v1/stories", {
-        data: {
-          title: ownedTitle,
-          title_en: ownedTitle,
-          short_text: ownedShortText,
-          short_text_en: ownedShortText,
-          published_at: publishedAt,
-          expires_at: expiresAt,
-          is_active: true,
+      const adminCreateResponse = await adminPage.evaluate(
+        async ({ payload, csrfToken }) => {
+          const response = await fetch("/api/v1/stories", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": csrfToken,
+            },
+            body: JSON.stringify(payload),
+          })
+          return {
+            status: response.status,
+            body: await response.json().catch(() => null),
+          }
         },
-        headers: { "X-CSRF-Token": adminCsrfToken },
-      })
+        {
+          payload: {
+            title: ownedTitle,
+            title_en: ownedTitle,
+            short_text: ownedShortText,
+            short_text_en: ownedShortText,
+            published_at: publishedAt,
+            expires_at: expiresAt,
+            is_active: true,
+          },
+          csrfToken: adminCsrfToken,
+        }
+      )
       expect(
-        adminCreateResponse.status(),
+        adminCreateResponse.status,
         "admin creates the temporary story through the real API"
       ).toBe(200)
-      const createdBody = (await adminCreateResponse.json()) as Partial<StoryRow>
+      const createdBody = adminCreateResponse.body as Partial<StoryRow>
       expect(createdBody.title).toBe(ownedTitle)
       expect(createdBody.short_text).toBe(ownedShortText)
       if (typeof createdBody.id !== "string" || createdBody.id.length === 0) {

@@ -1,15 +1,18 @@
 import { randomUUID } from "node:crypto"
 import type { BrowserContext, Page } from "@playwright/test"
-import {
-  expect,
-  freshPassword,
-  loginAs,
-  loginWith,
-  stubBreachedPasswordLookup,
-  test,
-} from "./fixtures"
+import { expect, freshPassword, loginAs, loginWith, stubBreachedPasswordLookup } from "./fixtures"
+import { test } from "./native-push-profile-fixtures"
+
+const expandPushAccordion = async (page: Page): Promise<void> => {
+  const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
+  if ((await accordion.getAttribute("aria-expanded")) !== "true") {
+    await accordion.click()
+  }
+  await expect(accordion).toHaveAttribute("aria-expanded", "true")
+}
 
 test.use({ channel: "chromium" })
+test.use({ nativePushChannel: "chromium" })
 
 interface PermissionAuditEntry {
   isActive: boolean
@@ -462,6 +465,7 @@ test("permission is requested only after the explicit settings action", async ({
     })
 
     await page.goto("/settings?tab=3")
+    await expandPushAccordion(page)
     const pushSwitch = page.getByRole("switch", { name: "Включить уведомления" })
     await expect(pushSwitch).toBeVisible()
     await expect(pushSwitch).not.toBeChecked()
@@ -557,6 +561,7 @@ test("chat message reaches Chromium through its real push subscription", async (
     expect(initialPushState.hasSubscription).toBe(false)
 
     await page.goto("/settings?tab=3")
+    await expandPushAccordion(page)
     const pushSwitch = page.getByRole("switch", { name: "Включить уведомления" })
     await expect(pushSwitch).toBeVisible()
     await expect(pushSwitch).not.toBeChecked()
@@ -854,6 +859,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
     expect(initialPushState.hasSubscription).toBe(false)
 
     await page.goto("/settings?tab=3")
+    await expandPushAccordion(page)
     const pushSwitch = page.getByRole("switch", {
       name: "Включить уведомления",
     })
