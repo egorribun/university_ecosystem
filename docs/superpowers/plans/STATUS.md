@@ -1,9 +1,9 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-10, 04:00 UTC.
+Контрольная точка на 2026-10-10, 04:28 UTC.
 [Мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md) и
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) действуют.
-Выпуск `v1.0.0` ещё не подтверждён; автономная работа продолжается.
+Работа безопасно приостановлена по запросу владельца; выпуск `v1.0.0` ещё не подтверждён.
 
 ## Границы работы
 
@@ -19,7 +19,13 @@
 
 ## Опубликованный CI checkpoint
 
-Hosted evidence относится к `e537137a917c3ec647f3c7ef7126f21e144a7673`,
+Reviewed пакет опубликован с ordinary hooks на `bd248ae7274f97630c67743775abff4be4db52e8`,
+tree `0113feb8101086af3fcc81019b4a33809b6422d0`; следующий commit содержит только STATUS.
+PR #1306 открыт; branch и origin совпадали перед этой записью.
+Снимок 04:24 UTC для bd248:129 checks — 107 SUCCESS/20 SKIPPED/2 IN_PROGRESS,
+failures0. Это промежуточный снимок, не итоговый exact required join76/76.
+
+Предыдущий завершённый hosted evidence относится к `e537137a917c3ec647f3c7ef7126f21e144a7673`,
 tree `56180c1656fba5cfe6d5660a31b87b7b778dc4a3`.
 Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
 `6fa133b57f62c554162876d4e6d8349f8060fce9`; PR открыт.
@@ -33,7 +39,7 @@ Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
   Rust/WASM coverage, crypto/browser parity и source-bound producer/consumer PASS на PR SHA.
 - Wall span43m42; цель PR≤15min остаётся открытой. Wall span не является DAG critical path.
   Transport failures старых image pulls не переносятся на этот зелёный snapshot.
-- Пакет ниже требует новых hosted results на своём SHA; e537 не заменяет их.
+- Каждый successor SHA требует новых hosted results; e537 не заменяет их.
 
 ## Проверенная интеграция и Core
 
@@ -65,16 +71,24 @@ Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
   root/peer review CLEAR, scanner exclusions не добавлены, targeted hook PASS.
   Первая ошибочная правка owner-key fixture отменена; исходные fixture bytes сохранены.
   Весь итоговый startup-state test file:15 PASS/1 platform SKIP, warnings0.
-- Новая живая приёмка этой интеграции ещё не выполнена. Planned fresh unique state:
-  `run-e4bb144a-89bc-4ef9-ae51-eb40b5fce8aa`; readiness/cookie helpers static reviewed,
-  source SHA привязывается после обычного commit.
+- Fresh Core на bd248: `run-e4bb144a-89bc-4ef9-ae51-eb40b5fce8aa`,
+  project `ue-live-9e8c111842d543b4`, signed schema11,23 services.
+  Up, admin-only seed до demo seed, readiness14 healthchecks/4 initializers
+  и effective cookie policy PASS; proof привязан к source SHA/state.
+- Неизменный canonical Story20:2/2 FAIL в desktop/mobile на ожидании
+  `visibilityState === hidden`, до DOM assertions. Heap/DOM acceptance этим не проверена.
+  Default headless shell имеет документированное ограничение background target;
+  это source-backed гипотеза причины, а не подтверждённое исправление.
+- Fresh Core штатно остановлен 04:24 UTC;23 containers stopped,6 mounted volumes
+  и все три env-файла сохранены. Guard:source stable,dirty0,owned children0.
+  Builder остаётся stopped с сохранённым cache; активных заданий агентов нет.
 
 ## Открытые критерии
 
 - Native V15:20 cycles/hidden7s и прочие gates PASS, strict exact-DOM FAIL:
   baseline716 nodes/437 listeners, после всех20 closes670/435.
   Sampling correction не устранила отличие; источник46 nodes/2 listeners не доказан.
-  CSS/cleanup defect не подтверждён. Следующий шаг — неизменный canonical Story memory test.
+  CSS/cleanup defect не подтверждён. Canonical failure выше — отдельный visibility blocker.
 - Full-page Core axe ранее дал serious color-contrast в Settings обоих проектов.
   Ограниченный legacy Settings audit03:00 дал HTTP200/axe0 при иной scope/motion;
   этот результат не закрывает full-page gate. Actual contrast colors ещё не получены.
@@ -86,17 +100,21 @@ Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
 - Seed stop/start persistence и paired isolated DB/S3 restore ещё NOT RUN.
   Prepared restore/read-probe/avatar packages не заменяют actual snapshot/restore proof.
 - [63 audit IDs](../../audits/INDEX.md#findings-ledger): historical60 CLOSED/2 DECLINED/1 OPEN
-  не являются RC certification. Revalidation открыта; CodeQL3382/3383 уже dismissed,
+  не являются RC certification. Root проверил три private source-bound static receipts
+  по всем63 IDs; execution/final-RC evidence остаётся открытым. BE-04 по ADR-033 требует
+  PostgreSQL session-ownership integration proof; SQLite probe его не заменяет.
+  CodeQL3382/3383 уже dismissed,
   не повторять и не расширять разрешение.
 - Full frozen-RC smoke, ordinary merge, fresh main checks, шесть signed source-bound
   images/SBOM/provenance и tag/release notes `v1.0.0` ещё не выполнены.
 
 ## Следующие действия и ресурсы
 
-1. Опубликовать reviewed пакет с ordinary hooks, restage `.secrets.baseline`;
-   fresh required-check results и unique Core на clean successor SHA.
-2. Admin-only seed перед demo seed, readiness/cookie policy, затронутые live scenarios;
-   исправить реальные failures и затем два consecutive full190+8 на неизменном RC.
+1. После возобновления освежить Git/PR/required CI/resources. Проверить реальный переход
+   страницы в hidden в поддерживаемом browser mode без ослабления assertions; BE-04 PG proof.
+2. Fresh unique Core на clean текущем SHA:admin-only seed перед demo seed,
+   readiness/cookie policy и затронутые live scenarios; затем два consecutive full190+8.
+   Остановленный bd248 state не переиспользовать на successor SHA через обход strict resume.
 3. Visual/LHCI, Native/Push/auth/WS, persistence/paired restore, security revalidation;
    frozen-RC full smoke → ordinary merge → main gates → image producer → release.
 
@@ -107,7 +125,7 @@ Git history, migrations, private rescue bundle и его inventory сохран�
 
 Один heavy workload: startup RAM≤75%/free≥8GiB, stop≥85%/free<4GiB.
 Serial Linux screenshots: owner exception≤80%/≥6GiB, browser1GiB/2CPU.
-После остановки Core RAM≈41%/free≈19GiB; диск C≈200GiB свободно.
+После остановки Core ресурсы повторно измеряются в private checkpoint; диск C≈198GiB свободно.
 Owned builder stopped, cap4GiB/no swap/2CPU; полезный cache сохранён.
-Account refresh03:51 UTC:39% weekly consumed/61% remaining, ordinary usage allowed.
+Account refresh04:23 UTC:40% weekly consumed/60% remaining, ordinary usage allowed.
 Чужие процессы, Docker/WSL, env/data/backups и rescue bundle не очищать.
