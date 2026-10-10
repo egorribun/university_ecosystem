@@ -598,8 +598,16 @@ class TestHierarchicalRules(unittest.TestCase):
         self.assertIn("Tier 0 files", content)
         self.assertIn("100% line", content)
         self.assertIn("current contract floors until ADR-047 stage Q3", content)
-        self.assertIn("existing CI", content)
-        self.assertIn("dependencies remain enforced", content)
+        self.assertIn("ADR-047 stage Q1 keeps full", content)
+        self.assertIn("nightly/manual lanes outside the MVP release gate", content)
+        self.assertIn("Q1/Q4 source migration is", content)
+        self.assertIn(
+            "integrated; every new source SHA still needs its own required-check evidence",
+            content,
+        )
+        self.assertIn("nightly no-regression check is planned for stage Q2", content)
+        self.assertIn("it is not implemented by", content)
+        self.assertIn("remaining required checks for the current MVP source", content)
         self.assertIn("feat(waveXX):", content)
         self.assertIn("Co-Authored-By", content)
         self.assertIn("NEVER", content)
