@@ -199,7 +199,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
     )
 
     try:
-        dispatcher = MessageDispatcher(manager)
+        dispatcher = MessageDispatcher(
+            manager,
+            container=getattr(websocket.app.state, "dishka_container", None),
+        )
         while True:
             try:
                 text_data = await websocket.receive_text()

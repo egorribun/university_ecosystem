@@ -11,10 +11,29 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
+_AXE_CORE_PATH_JOIN = re.compile(
+    r"""
+    path\.join\(
+        \s* PROJECT_ROOT \s* ,
+        \s* ["'] node_modules ["'] \s* ,
+        \s* ["'] axe-core ["'] \s* ,
+        \s* ["'] axe \. min \. js ["'] \s*
+    \)
+    """,
+    re.VERBOSE,
+)
+
+
+def _uses_local_axe_core_asset(source: str) -> bool:
+    return (
+        "node_modules/axe-core/axe.min.js" in source
+        or _AXE_CORE_PATH_JOIN.search(source) is not None
+    )
 
 
 def _read_frontend(relative_path: str) -> str:
@@ -145,7 +164,7 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
         for path in root.rglob("*")
         if path.is_file()
         and path.suffix in {".js", ".mjs", ".ts", ".tsx"}
-        and "node_modules/axe-core/axe.min.js" in path.read_text(encoding="utf-8")
+        and _uses_local_axe_core_asset(path.read_text(encoding="utf-8"))
     }
     assert actual_asset_users == asset_users
 
