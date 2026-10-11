@@ -46,6 +46,15 @@ if TYPE_CHECKING:
         server_hostname: str
 
 
+_WebPushErrorStage = Literal[
+    "endpoint_url_validation",
+    "endpoint_host_validation",
+    "dns_resolution",
+    "resolved_address_validation",
+    "pinned_session_creation",
+    "webpush_request",
+]
+
 logger = get_logger(__name__)
 _URL_IN_ERROR_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
@@ -663,13 +672,17 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     user_id = getattr(sub, "user_id", None)
     session: _NoRedirectWebPushSession | None = None
     try:
+        error_stage: _WebPushErrorStage = "endpoint_url_validation"
         validate_public_https_url(endpoint)
+        error_stage = "endpoint_host_validation"
         _reject_non_global_endpoint_host(endpoint)
         # Resolve immediately before delivery and bind the transport to the
         # returned address.  Never fall back to requests' resolver after this
         # check: a failed/empty lookup could otherwise be rebound to a private
         # target between validation and connection.
+        error_stage = "dns_resolution"
         resolved_addresses = validate_and_resolve(endpoint)
+        error_stage = "resolved_address_validation"
         if not isinstance(resolved_addresses, list):
             # The resolver contract is a list.  Treat an invalid result as a
             # failure rather than accidentally taking the unvalidated
@@ -678,7 +691,9 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         if not resolved_addresses:
             raise ValueError("DNS resolver returned no addresses")
         _reject_non_global_resolved_addresses(resolved_addresses)
+        error_stage = "pinned_session_creation"
         session = _create_pinned_webpush_session(endpoint, resolved_addresses[0])
+        error_stage = "webpush_request"
         webpush(
             subscription_info=subscription_info,
             data=json_dumps(normalized_payload),
@@ -708,6 +723,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
                 endpoint=sub.endpoint,
                 status="gone",
                 status_code=status_code,
+                error_stage=error_stage,
             )
             return WebPushResult(
                 subscription_id=sub.id,
@@ -723,6 +739,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             endpoint=sub.endpoint,
             status="error",
             status_code=status_code,
+            error_stage=error_stage,
         )
         return WebPushResult(
             subscription_id=sub.id,
@@ -742,6 +759,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             endpoint=sub.endpoint,
             status="error",
             error_type=type(exc).__name__,
+            error_stage=error_stage,
         )
         logger.error(
             "webpush.send",
@@ -749,6 +767,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
                 "user_id": user_id,
                 "endpoint": _mask_endpoint(str(sub.endpoint)),
                 "error_type": type(exc).__name__,
+                "error_stage": error_stage,
                 "error": safe_message,
             },
         )

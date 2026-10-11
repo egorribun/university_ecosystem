@@ -1,6 +1,16 @@
-import axios, { AxiosHeaders, type AxiosRequestConfig } from "axios"
+import axios, {
+  AxiosHeaders,
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from "axios"
 import { client as generatedClient } from "@/api/generated/client.gen"
 import { resolveSsrBackendOrigin } from "./backendOrigin"
+import {
+  getBrowserSessionGeneration,
+  getSessionEpoch,
+  hasFailedBrowserSessionRotation,
+  hasStaleBrowserSessionBinding,
+} from "@/stores/sessionEpoch"
 import { applyLanguageHeader } from "./interceptors/language"
 import { updateTraceContext } from "./interceptors/traceContext"
 import {
@@ -24,6 +34,7 @@ import {
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
 const API_TIMEOUT_MS = 8000
+const SESSION_CHANGED_CANCEL_MESSAGE = "Request canceled because the browser session changed"
 
 /**
  * Endpoints that are allowed to bypass the client-side rate-limit queue.
@@ -54,9 +65,24 @@ export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {
   __rateLimitRetryCount?: number
   __clientRateLimitAcquired?: boolean
   etagCacheKey?: string
+  /** Internal owner captured before asynchronous request preflight. */
+  __sessionIsCurrent?: () => boolean
 }
 
 export type TypedRequestOptions<_T extends string, _M extends string = "get"> = ApiRequestConfig
+
+const captureRequestSession = (): (() => boolean) => {
+  const epoch = getSessionEpoch()
+  const generation = getBrowserSessionGeneration()
+  return () => epoch === getSessionEpoch() && generation === getBrowserSessionGeneration()
+}
+
+const assertCurrentRequestSession = (config: InternalAxiosRequestConfig): void => {
+  const ownsSession = (config as ApiRequestConfig).__sessionIsCurrent
+  if (typeof ownsSession === "function" && !ownsSession()) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
+  }
+}
 
 const api = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
@@ -259,8 +285,82 @@ const splitRequestUrl = (url: string | undefined): { origin: string; path?: stri
   }
 }
 
+const SESSION_BOOTSTRAP_PATHS = new Set(["/users/me", "/auth/session/signing-key"])
+
+const resolveSameOriginCanonicalPath = (config: InternalAxiosRequestConfig) => {
+  if (typeof config.url !== "string") return null
+
+  const rawUrl = config.url
+  const rawBaseUrl = config.baseURL ?? api.defaults.baseURL ?? ""
+  const isAbsoluteUrl = rawUrl.startsWith("//") || /^[a-z][a-z\d+.-]*:\/\//iu.test(rawUrl)
+  const hasApiVersionBase = rawBaseUrl.replace(/\/+$/u, "").endsWith("/api/v1")
+  const combinedUrl = isAbsoluteUrl
+    ? rawUrl
+    : rawBaseUrl.replace(/\/+$/u, "") + "/" + rawUrl.replace(/^\/+/, "")
+
+  let parsed: URL
+  try {
+    parsed = new URL(combinedUrl, window.location.origin)
+  } catch {
+    return null
+  }
+
+  if (
+    parsed.origin !== window.location.origin ||
+    parsed.username.length > 0 ||
+    parsed.password.length > 0 ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0
+  ) {
+    return null
+  }
+
+  const path = parsed.pathname.startsWith("/api/v1/")
+    ? parsed.pathname.slice("/api/v1".length)
+    : parsed.pathname
+  return { hasApiVersionBase, isAbsoluteUrl, path }
+}
+
+const isSessionBootstrapRequest = (config: InternalAxiosRequestConfig): boolean => {
+  if (config.method?.toLowerCase() !== "get") return false
+
+  const resolved = resolveSameOriginCanonicalPath(config)
+  if (!resolved) return false
+
+  if (
+    resolved.isAbsoluteUrl &&
+    resolved.hasApiVersionBase &&
+    SESSION_BOOTSTRAP_PATHS.has(resolved.path)
+  ) {
+    return false
+  }
+  return SESSION_BOOTSTRAP_PATHS.has(resolved.path)
+}
+
+const FAILED_ROTATION_AUTH_RECOVERY_PATHS = new Set(["/auth/login", "/auth/mfa/verify"])
+
+const isFailedRotationAuthRecoveryRequest = (config: InternalAxiosRequestConfig): boolean => {
+  if (!hasFailedBrowserSessionRotation() || config.method?.toLowerCase() !== "post") {
+    return false
+  }
+
+  const resolved = resolveSameOriginCanonicalPath(config)
+  return (
+    resolved !== null &&
+    !resolved.isAbsoluteUrl &&
+    FAILED_ROTATION_AUTH_RECOVERY_PATHS.has(resolved.path)
+  )
+}
+
 api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
+
+  // Bind every browser request before its first asynchronous preflight. The
+  // closure reads the shared generation so an old tab cannot dispatch with a
+  // newer tab's browser-wide authentication cookie. Axios retries preserve it.
+  if (!isSsrRuntime) {
+    candidate.__sessionIsCurrent ??= captureRequestSession()
+  }
 
   // FIX-44-01: Normalize doubled /api/v1 prefix.
   // The @hey-api/client-axios `buildUrl()` reads our axios instance's baseURL ("/api/v1")
@@ -276,6 +376,20 @@ api.interceptors.request.use(async (config) => {
   } else if (urlPath?.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
     urlPath = urlPath.slice("/api/v1".length)
     config.url = urlOrigin + urlPath
+  }
+
+  // A newly-started request from an old tab otherwise captures the remote
+  // generation and can dispatch with that tab's browser-wide authentication
+  // cookie. Keep only the two read-only requests required to identify and
+  // establish the current profile. Missing generation retains live-network
+  // auth behavior when browser storage is unavailable.
+  if (
+    !isSsrRuntime &&
+    hasStaleBrowserSessionBinding() &&
+    !isSessionBootstrapRequest(config) &&
+    !isFailedRotationAuthRecoveryRequest(config)
+  ) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
   }
 
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
@@ -361,6 +475,8 @@ api.interceptors.request.use(async (config) => {
     config.headers = headers
   }
 
+  if (!isSsrRuntime) assertCurrentRequestSession(config)
+
   return config
 })
 
@@ -390,10 +506,9 @@ api.interceptors.response.use(
     return response
   },
   async (error) => {
-    const config = error?.config as ApiRequestConfig | undefined
+    const config = error?.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
     const responseStatus = error?.response?.status
     _cleanupIdempotencyKey(config)
-    // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
 
     if (error?.response?.headers) {
@@ -411,8 +526,12 @@ api.interceptors.response.use(
       const retryCount = config.__rateLimitRetryCount ?? 0
       if (retryCount < RATE_LIMIT_MAX_RETRY && !config.signal?.aborted && !isAbortError(error)) {
         config.__rateLimitRetryCount = retryCount + 1
+        // Do not keep a stale tab in the shared retry wait, and check again
+        // after the asynchronous window before Axios can attach current cookies.
+        assertCurrentRequestSession(config)
         // RZ-31-04: Propagate AbortSignal so navigation cancels the wait.
         await waitForRateLimitWindow(config.signal)
+        assertCurrentRequestSession(config)
         return api.request(config)
       }
     }

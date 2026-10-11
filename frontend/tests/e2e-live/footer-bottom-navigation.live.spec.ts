@@ -9,6 +9,56 @@ const SEEDED_LONG_ARTICLE =
 
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
+async function waitForStableViewportLayout(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const navigation = document.querySelector<HTMLElement>(
+          'nav:has(a[data-tab-key="/dashboard"])'
+        )
+        if (navigation === null) {
+          reject(new Error("mobile navigation is missing after viewport resize"))
+          return
+        }
+
+        const sample = () => {
+          const navigationRect = navigation.getBoundingClientRect()
+          const bodyRect = document.body.getBoundingClientRect()
+          return [
+            window.innerWidth,
+            window.innerHeight,
+            bodyRect.left,
+            bodyRect.right,
+            bodyRect.width,
+            navigationRect.left,
+            navigationRect.right,
+            navigationRect.top,
+            navigationRect.bottom,
+            navigationRect.width,
+          ].map((value) => Math.round(value * 100))
+        }
+
+        let previous = sample()
+        let stableFrames = 0
+        const check = () => {
+          const current = sample()
+          if (current.every((value, index) => value === previous[index])) {
+            stableFrames += 1
+          } else {
+            stableFrames = 0
+          }
+          if (stableFrames >= 2) {
+            resolve()
+            return
+          }
+          previous = current
+          window.requestAnimationFrame(check)
+        }
+        window.requestAnimationFrame(check)
+      })
+  )
+}
+
 async function verifyFooterDoesNotOverlapBottomNavigation(page: Page): Promise<void> {
   const footer = page.getByRole("contentinfo")
   const bottomNavigation = page.locator('nav:has(a[data-tab-key="/dashboard"])')
@@ -57,6 +107,7 @@ test("bottom navigation fits phones and the navbar drawer works at the tablet bo
   for (const width of [390, 360]) {
     await page.setViewportSize({ width, height: 844 })
     await expect(bottomNavigation).toBeVisible()
+    await waitForStableViewportLayout(page)
     const navigationRect = await bottomNavigation.evaluate((element) => {
       const rect = element.getBoundingClientRect()
       const nav = element as HTMLElement
@@ -121,6 +172,10 @@ test("bottom navigation fits phones and the navbar drawer works at the tablet bo
         innerHeight: window.innerHeight,
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
+        usableLayoutLeft: document.body.getBoundingClientRect().left,
+        usableLayoutRight: document.body.getBoundingClientRect().right,
+        usableLayoutWidth: document.body.getBoundingClientRect().width,
+        position: navStyle.position,
         navTransformPresent:
           navStyle.transform !== "none" || (translateValue !== "" && translateValue !== "none"),
         navTransformX: matrix === null ? 0 : matrix.is2D ? matrix.e : matrix.m41,
@@ -156,20 +211,20 @@ test("bottom navigation fits phones and the navbar drawer works at the tablet bo
       navigationRect.containingBlockTop,
       navigationRect.containingBlockBottom
     )
+    expect(navigationRect.position, width + "px nav remains fixed").toBe("fixed")
     expect(navigationRect.left, `${width}px nav left edge`).toBeCloseTo(0, 0)
-    // The stable scrollbar gutter can make innerWidth wider than the usable layout viewport.
-    expect(navigationRect.right, `${width}px nav right edge`).toBeCloseTo(
-      navigationRect.clientWidth,
+    expect(navigationRect.right, width + "px nav right edge").toBeCloseTo(
+      navigationRect.usableLayoutRight,
       0
     )
-    expect(navigationRect.width, `${width}px nav usable width`).toBeCloseTo(
-      navigationRect.clientWidth,
+    expect(navigationRect.width, width + "px nav usable width").toBeCloseTo(
+      navigationRect.usableLayoutWidth,
       0
     )
     expect(
       navigationRect.scrollWidth,
-      `${width}px page should not overflow the usable viewport`
-    ).toBeLessThanOrEqual(navigationRect.clientWidth + 1)
+      width + "px page should not overflow its usable layout viewport"
+    ).toBeLessThanOrEqual(navigationRect.usableLayoutWidth + 1)
     expect(navigationRect.top, `${width}px nav height`).toBeLessThanOrEqual(844 - 64)
     expect(navigationRect.bottom, `${width}px nav bottom edge`).toBeCloseTo(844, 0)
 

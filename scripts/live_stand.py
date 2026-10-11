@@ -4309,6 +4309,435 @@ _PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
 )
 _PLAYWRIGHT_PUSH_OBSERVATION_LIMIT = 4
 
+_PLAYWRIGHT_STORY_MEMORY_PREFIX = "STORY_MEMORY_DIAG "
+_PLAYWRIGHT_STORY_MEMORY_LINE_BYTES_LIMIT = 8192
+_PLAYWRIGHT_STORY_MEMORY_RECORD_LIMIT = 4
+_PLAYWRIGHT_STORY_MEMORY_MAX_COUNT = 9_007_199_254_740_991
+_PLAYWRIGHT_STORY_MEMORY_DOM_KEYS = ("documents", "nodes", "jsEventListeners")
+_PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS = ("window", "document", "documentTree")
+_PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS = (
+    "total",
+    "visibilitychange",
+    "focus",
+    "blur",
+    "focusin",
+    "focusout",
+    "keydown",
+    "keyup",
+    "click",
+    "mousedown",
+    "mouseup",
+    "pointerdown",
+    "pointerup",
+    "touchstart",
+    "touchend",
+    "online",
+    "offline",
+    "resize",
+    "scroll",
+    "other",
+)
+_PLAYWRIGHT_STORY_MEMORY_RECORD_KEYS = (
+    "schema",
+    "project",
+    "phase",
+    "diagnosticStatus",
+    "warmDOM",
+    "cycle0DOM",
+    "warmListeners",
+    "cycle0Listeners",
+)
+_PlaywrightStoryMemoryRecord = dict[str, object]
+
+
+def _story_memory_object(
+    value: object, expected_keys: tuple[str, ...]
+) -> Mapping[str, object] | None:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        return None
+    if set(value) != set(expected_keys):
+        return None
+    return value
+
+
+def _story_memory_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate Story diagnostic key")
+        value[key] = item
+    return value
+
+
+def _reject_story_memory_json_constant(value: str) -> None:
+    raise ValueError(f"invalid Story diagnostic number: {value}")
+
+
+def _story_memory_counts(
+    value: object, expected_keys: tuple[str, ...], *, unavailable: bool
+) -> dict[str, int | None] | None:
+    record = _story_memory_object(value, expected_keys)
+    if record is None:
+        return None
+    counts: dict[str, int | None] = {}
+    for key in expected_keys:
+        count = record[key]
+        if unavailable:
+            if count is not None:
+                return None
+            counts[key] = None
+            continue
+        if (
+            not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+            or count > _PLAYWRIGHT_STORY_MEMORY_MAX_COUNT
+        ):
+            return None
+        counts[key] = count
+    if not unavailable and "total" in counts:
+        bucket_total = sum(
+            count
+            for key, count in counts.items()
+            if key != "total" and count is not None
+        )
+        if bucket_total != counts["total"]:
+            return None
+    return counts
+
+
+def _validated_story_memory_record(
+    value: object,
+) -> _PlaywrightStoryMemoryRecord | None:
+    record = _story_memory_object(value, _PLAYWRIGHT_STORY_MEMORY_RECORD_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    project = record["project"]
+    phase = record["phase"]
+    status = record["diagnosticStatus"]
+    if project not in ("desktop", "mobile"):
+        return None
+    if phase != "cycle0-after-settle-before-assertion":
+        return None
+    if status not in ("available", "unavailable"):
+        return None
+
+    unavailable = status == "unavailable"
+    warm_dom = _story_memory_counts(
+        record["warmDOM"], _PLAYWRIGHT_STORY_MEMORY_DOM_KEYS, unavailable=unavailable
+    )
+    cycle0_dom = _story_memory_counts(
+        record["cycle0DOM"], _PLAYWRIGHT_STORY_MEMORY_DOM_KEYS, unavailable=unavailable
+    )
+    warm_listeners = _story_memory_object(
+        record["warmListeners"], _PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS
+    )
+    cycle0_listeners = _story_memory_object(
+        record["cycle0Listeners"], _PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS
+    )
+    if (
+        warm_dom is None
+        or cycle0_dom is None
+        or warm_listeners is None
+        or cycle0_listeners is None
+    ):
+        return None
+
+    normalized_warm_listeners: dict[str, dict[str, int | None]] = {}
+    normalized_cycle0_listeners: dict[str, dict[str, int | None]] = {}
+    for target in _PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS:
+        warm_counts = _story_memory_counts(
+            warm_listeners[target],
+            _PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS,
+            unavailable=unavailable,
+        )
+        cycle0_counts = _story_memory_counts(
+            cycle0_listeners[target],
+            _PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS,
+            unavailable=unavailable,
+        )
+        if warm_counts is None or cycle0_counts is None:
+            return None
+        normalized_warm_listeners[target] = warm_counts
+        normalized_cycle0_listeners[target] = cycle0_counts
+
+    return {
+        "schema": 1,
+        "project": project,
+        "phase": "cycle0-after-settle-before-assertion",
+        "diagnosticStatus": status,
+        "warmDOM": warm_dom,
+        "cycle0DOM": cycle0_dom,
+        "warmListeners": normalized_warm_listeners,
+        "cycle0Listeners": normalized_cycle0_listeners,
+    }
+
+
+def _live_playwright_story_memory_records(
+    output: str,
+) -> list[_PlaywrightStoryMemoryRecord]:
+    """Accept only the closed, byte-bounded Story memory diagnostic protocol."""
+    records: list[_PlaywrightStoryMemoryRecord] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _PLAYWRIGHT_STORY_MEMORY_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_PLAYWRIGHT_STORY_MEMORY_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_PLAYWRIGHT_STORY_MEMORY_PREFIX) :],
+                object_pairs_hook=_story_memory_json_object,
+                parse_constant=_reject_story_memory_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_story_memory_record(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _PLAYWRIGHT_STORY_MEMORY_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
+_AUTH_UI_DIAG_PREFIX = "AUTH_UI_DIAG "
+_AUTH_HTTP_DIAG_PREFIX = "AUTH_HTTP_DIAG "
+_AUTH_DIAG_LINE_BYTES_LIMIT = 1024
+_AUTH_DIAG_RECORD_LIMIT = 16
+_AUTH_UI_DIAG_KEYS = (
+    "schema",
+    "project",
+    "scenario",
+    "status",
+    "detailClass",
+    "alertCount",
+    "alertCountCapped",
+    "alertVisible",
+    "currentFieldInvalid",
+    "loginChallenge",
+    "pageError",
+)
+_AUTH_UI_DIAG_SCENARIOS = ("password_current_invalid", "totp_recovery_replay")
+_AUTH_UI_DIAG_DETAIL_CLASSES = ("expected", "other-string", "non-string", "missing")
+_AUTH_HTTP_DIAG_KEYS = ("schema", "project", "operation", "expectedStatus", "status")
+_AUTH_HTTP_DIAG_EXPECTED_STATUS = {
+    operation: (
+        403
+        if operation == "student_admin_read"
+        else 400
+        if operation in {"password_change_invalid", "totp_recovery_replay"}
+        else 200
+    )
+    for operation in (
+        "profile_read",
+        "profile_identity_read",
+        "password_change_invalid",
+        "password_change_save",
+        "totp_recovery_accept",
+        "totp_recovery_replay",
+        "push_topics_read",
+        "push_subscribe",
+        "push_topics_initial",
+        "push_topics_optout",
+        "push_unsubscribe",
+        "push_rebind",
+        "profile_update_enable",
+        "profile_update_start",
+        "profile_update_end",
+        "profile_update_midnight_start",
+        "profile_update_midnight_end",
+        "profile_update_disable",
+        "student_admin_read",
+        "admin_topics_read",
+        "admin_account_search",
+        "admin_account_delete",
+    )
+}
+
+
+def _auth_diag_object(
+    value: object, expected_keys: tuple[str, ...]
+) -> Mapping[str, object] | None:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        return None
+    if set(value) != set(expected_keys):
+        return None
+    return value
+
+
+def _auth_diag_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate auth diagnostic key")
+        value[key] = item
+    return value
+
+
+def _reject_auth_diag_json_constant(value: str) -> None:
+    raise ValueError(f"invalid auth diagnostic number: {value}")
+
+
+def _validated_auth_ui_diag(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _AUTH_UI_DIAG_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    project = record["project"]
+    scenario = record["scenario"]
+    status = record["status"]
+    detail_class = record["detailClass"]
+    alert_count = record["alertCount"]
+    capped = record["alertCountCapped"]
+    alert_visible = record["alertVisible"]
+    current_invalid = record["currentFieldInvalid"]
+    login_challenge = record["loginChallenge"]
+    page_error = record["pageError"]
+    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
+        return None
+    if not isinstance(scenario, str) or scenario not in _AUTH_UI_DIAG_SCENARIOS:
+        return None
+    if type(status) is not int or not 100 <= status <= 599:
+        return None
+    if (
+        not isinstance(detail_class, str)
+        or detail_class not in _AUTH_UI_DIAG_DETAIL_CLASSES
+    ):
+        return None
+    if type(alert_count) is not int or not 0 <= alert_count <= 8:
+        return None
+    if type(capped) is not bool or (capped and alert_count != 8):
+        return None
+    if type(alert_visible) is not bool:
+        return None
+    if type(page_error) is not bool:
+        return None
+    if scenario == "password_current_invalid":
+        if type(current_invalid) is not bool or login_challenge is not None:
+            return None
+    elif current_invalid is not None or type(login_challenge) is not bool:
+        return None
+    return {
+        "schema": 1,
+        "project": project,
+        "scenario": scenario,
+        "status": status,
+        "detailClass": detail_class,
+        "alertCount": alert_count,
+        "alertCountCapped": capped,
+        "alertVisible": alert_visible,
+        "currentFieldInvalid": current_invalid,
+        "loginChallenge": login_challenge,
+        "pageError": page_error,
+    }
+
+
+def _live_playwright_auth_ui_diagnostics(output: str) -> list[dict[str, object]]:
+    """Retain only complete bounded Auth UI failure records from stdout."""
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _AUTH_DIAG_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_AUTH_UI_DIAG_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_AUTH_UI_DIAG_PREFIX) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_auth_ui_diag(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _AUTH_DIAG_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
+def _validated_auth_http_diag(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _AUTH_HTTP_DIAG_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    project = record["project"]
+    operation = record["operation"]
+    expected_status = record["expectedStatus"]
+    status = record["status"]
+    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
+        return None
+    if (
+        not isinstance(operation, str)
+        or operation not in _AUTH_HTTP_DIAG_EXPECTED_STATUS
+    ):
+        return None
+    if (
+        type(expected_status) is not int
+        or expected_status != _AUTH_HTTP_DIAG_EXPECTED_STATUS[operation]
+    ):
+        return None
+    if type(status) is not int or not 100 <= status <= 599:
+        return None
+    if status == expected_status:
+        return None
+    return {
+        "schema": 1,
+        "project": project,
+        "operation": operation,
+        "expectedStatus": expected_status,
+        "status": status,
+    }
+
+
+def _live_playwright_auth_http_diagnostics(output: str) -> list[dict[str, object]]:
+    """Retain only complete bounded Auth HTTP status mismatches from stdout."""
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _AUTH_DIAG_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_AUTH_HTTP_DIAG_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_AUTH_HTTP_DIAG_PREFIX) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_auth_http_diag(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _AUTH_DIAG_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
@@ -5231,6 +5660,13 @@ def _run_live_playwright(
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
     push_observations = _live_playwright_push_observations(stdout)
+    story_memory_records = _live_playwright_story_memory_records(stdout)
+    auth_ui_diagnostics = (
+        _live_playwright_auth_ui_diagnostics(stdout) if return_code != 0 else []
+    )
+    auth_http_diagnostics = (
+        _live_playwright_auth_http_diagnostics(stdout) if return_code != 0 else []
+    )
     a11y_contrast_diagnostics = _live_playwright_a11y_contrasts(stdout)
     a11y_paint_states = _live_playwright_a11y_paint_states(stdout)
     a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
@@ -5320,6 +5756,21 @@ def _run_live_playwright(
             f"live E2E push project={project} permission={permission} ready={ready} "
             f"state={state} controller={str(controller).lower()} "
             f"subscription={str(subscription).lower()} matches={matches}",
+            flush=True,
+        )
+    for record in story_memory_records:
+        print(
+            "live E2E story memory " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for record in auth_ui_diagnostics:
+        print(
+            "live E2E auth UI " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for record in auth_http_diagnostics:
+        print(
+            "live E2E auth HTTP " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
     for (

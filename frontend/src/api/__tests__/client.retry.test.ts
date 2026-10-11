@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { AxiosHeaders } from "axios"
+import { AxiosHeaders, isCancel } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 
 // Stable module-level mock for the trace-context sink. The traceContext
@@ -15,6 +15,8 @@ vi.mock("@/app/logger", async (importOriginal) => {
 /**
  * Build a 429 error matching what axios surfaces to the response interceptor.
  */
+const SESSION_GENERATION_KEY = "ecosystem.session.generation.v1"
+
 const make429 = (config: InternalAxiosRequestConfig, headers: Record<string, string> = {}) =>
   Object.assign(new Error("Too Many Requests"), {
     config,
@@ -31,6 +33,7 @@ describe("API client 429 retry loop", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.resetModules()
+    localStorage.removeItem(SESSION_GENERATION_KEY)
     vi.unstubAllEnvs()
     // Generous client-side queue so the queue logic never interferes with the
     // server-side 429 retry path we are exercising here.
@@ -39,6 +42,7 @@ describe("API client 429 retry loop", () => {
   })
 
   afterEach(() => {
+    localStorage.removeItem(SESSION_GENERATION_KEY)
     vi.unstubAllEnvs()
     vi.useRealTimers()
   })
@@ -74,6 +78,59 @@ describe("API client 429 retry loop", () => {
 
     await expect(pending).resolves.toMatchObject({ status: 200, data: { ok: true } })
     expect(adapter).toHaveBeenCalledTimes(2)
+  })
+
+  it("cancels a 429 retry when another tab rotates the browser session", async () => {
+    localStorage.setItem(
+      SESSION_GENERATION_KEY,
+      JSON.stringify({ nonce: "tab-a-generation", hash: "profile-a" })
+    )
+    const { default: api } = await import("@/api/client")
+
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => {
+      throw make429(config, { "retry-after": "1" })
+    })
+    api.defaults.adapter = adapter
+
+    const pending = api.get("/news")
+    const settled = pending.catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(0)
+
+    // A storage write models the origin-wide generation update from another tab.
+    localStorage.setItem(
+      SESSION_GENERATION_KEY,
+      JSON.stringify({ nonce: "tab-b-generation", hash: "profile-b" })
+    )
+    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(0)
+
+    const result = await settled
+    expect(isCancel(result)).toBe(true)
+    expect(adapter).toHaveBeenCalledOnce()
+  })
+
+  it("does not dispatch or enter retry handling when a request starts in a stale tab", async () => {
+    localStorage.setItem(
+      SESSION_GENERATION_KEY,
+      JSON.stringify({ nonce: "tab-a-generation", hash: "profile-a" })
+    )
+    const { default: api } = await import("@/api/client")
+    localStorage.setItem(
+      SESSION_GENERATION_KEY,
+      JSON.stringify({ nonce: "tab-b-generation", hash: "profile-b" })
+    )
+
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => {
+      throw make429(config, { "retry-after": "1" })
+    })
+    api.defaults.adapter = adapter
+
+    const pending = api.get("/news").catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(0)
+    const result = await pending
+
+    expect(isCancel(result)).toBe(true)
+    expect(adapter).not.toHaveBeenCalled()
   })
 
   it("rejects with the 429 once the retry count reaches RATE_LIMIT_MAX_RETRY", async () => {

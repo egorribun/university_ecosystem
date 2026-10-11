@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test"
 import { expect, freshPassword, loginAs, loginWith, stubBreachedPasswordLookup } from "./fixtures"
 import { test } from "./native-push-profile-fixtures"
+import { reportAuthHttpStatus } from "./auth-notification-diagnostic"
 
 test.use({ channel: "chromium" })
 test.use({ nativePushChannel: "chromium" })
@@ -41,6 +42,9 @@ interface AdminUserRow {
   full_name: string | null
 }
 
+const diagnosticProject = (projectName: string): "desktop" | "mobile" =>
+  projectName.toLowerCase().includes("mobile") ? "mobile" : "desktop"
+
 const TOPICS = [
   { key: "news.published", label: "Опубликованные новости" },
   { key: "schedule.changed", label: "Изменения расписания" },
@@ -64,17 +68,23 @@ const waitForPushAction = (page: Page, path: string, method: string) =>
       new URL(response.url()).pathname === path && response.request().method() === method
   )
 
-const readProfile = async (page: Page): Promise<UserProfileResponse> => {
+const readProfile = async (
+  page: Page,
+  project: "desktop" | "mobile"
+): Promise<UserProfileResponse> => {
   const response = await page.request.get("/api/v1/users/me")
+  reportAuthHttpStatus(project, "profile_read", response.status())
   expect(response.status(), "the signed-in synthetic user can read its profile").toBe(200)
   return (await response.json()) as UserProfileResponse
 }
 
 const waitForOwnedProfileIdentityReady = async (
   page: Page,
-  expectedEmail: string
+  expectedEmail: string,
+  project: "desktop" | "mobile"
 ): Promise<void> => {
   const response = await page.request.get("/api/v1/users/me")
+  reportAuthHttpStatus(project, "profile_identity_read", response.status())
   if (response.status() !== 200) {
     throw new Error("the notification-settings owner profile is not available")
   }
@@ -118,17 +128,23 @@ const waitForOwnedProfileIdentityReady = async (
     .toBe(true)
 }
 
-const readTopicPreferences = async (page: Page): Promise<PushTopicsResponse> => {
+const readTopicPreferences = async (
+  page: Page,
+  project: "desktop" | "mobile"
+): Promise<PushTopicsResponse> => {
   const response = await page.request.get("/api/v1/push/topics")
+  reportAuthHttpStatus(project, "push_topics_read", response.status())
   expect(response.status(), "the signed-in user can read only its canonical preferences").toBe(200)
   return (await response.json()) as PushTopicsResponse
 }
 
 const readAdminTopicPreferences = async (
   adminPage: Page,
-  userId: string
+  userId: string,
+  project: "desktop" | "mobile"
 ): Promise<AdminUserTopicsResponse> => {
   const response = await adminPage.request.get(`/api/v1/push/admin/topics/${userId}`)
+  reportAuthHttpStatus(project, "admin_topics_read", response.status())
   expect(response.status(), "admin can inspect the exact target's persisted preferences").toBe(200)
   return (await response.json()) as AdminUserTopicsResponse
 }
@@ -144,10 +160,12 @@ const expectTopicSelection = async (page: Page, selectedTopics: readonly string[
 const deleteOnlyCreatedAccount = async (
   adminPage: Page,
   email: string,
-  fullName: string
+  fullName: string,
+  project: "desktop" | "mobile"
 ): Promise<void> => {
   const query = new URLSearchParams({ search: fullName, limit: "200" })
   const response = await adminPage.request.get(`/api/v1/users?${query.toString()}`)
+  reportAuthHttpStatus(project, "admin_account_search", response.status())
   expect(response.status(), "admin can locate the test-owned synthetic account").toBe(200)
 
   const users = (await response.json()) as AdminUserRow[]
@@ -176,6 +194,7 @@ const deleteOnlyCreatedAccount = async (
     const body = (await result.json().catch(() => null)) as { deleted?: boolean } | null
     return { status: result.status, deleted: body?.deleted === true }
   }, match.id)
+  reportAuthHttpStatus(project, "admin_account_delete", deleted.status)
   expect(deleted.status, "cleanup uses the CSRF-protected admin endpoint").toBe(200)
   expect(deleted.deleted, "cleanup deletes only the exact generated account id").toBe(true)
 }
@@ -227,7 +246,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expect(page).toHaveURL(/\/login/u)
     await loginWith(page, email, password)
 
-    const createdProfile = await readProfile(page)
+    const createdProfile = await readProfile(page, diagnosticProject(testInfo.project.name))
     expect(createdProfile.email).toBe(email)
     expect(createdProfile.role, "registration creates the expected least-privileged role").toBe(
       "student"
@@ -249,7 +268,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     expect(browserBeforeOptIn.permission).toBe("granted")
     expect(browserBeforeOptIn.hasSubscription).toBe(false)
 
-    const initialTopics = await readTopicPreferences(page)
+    const initialTopics = await readTopicPreferences(page, diagnosticProject(testInfo.project.name))
     expect(initialTopics.allowed).toEqual(TOPICS.map((topic) => topic.key))
     expect(initialTopics.topics).toEqual([])
     expect(initialTopics.has_preferences).toBe(false)
@@ -273,25 +292,44 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     subscriptionMayExist = true
     await pushSwitch.click()
     const subscriptionResponse = await subscriptionSaved
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "push_subscribe",
+      subscriptionResponse.status()
+    )
     expect(subscriptionResponse.status(), "explicit opt-in binds a native endpoint").toBe(200)
     const topicSelectionResponse = await topicSelectionSaved
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "push_topics_initial",
+      topicSelectionResponse.status()
+    )
     expect(topicSelectionResponse.status(), "the selected topics persist for this endpoint").toBe(
       200
     )
     await expect(pushSwitch).toBeChecked()
 
-    const ownerTopics = await readTopicPreferences(page)
+    const ownerTopics = await readTopicPreferences(page, diagnosticProject(testInfo.project.name))
     expect(ownerTopics.allowed).toEqual(TOPICS.map((topic) => topic.key))
     expect(ownerTopics.topics).toEqual(SELECTED_TOPICS)
     expect(ownerTopics.has_preferences).toBe(true)
     const studentAdminRead = await page.request.get(
       `/api/v1/push/admin/topics/${createdProfile.id}`
     )
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "student_admin_read",
+      studentAdminRead.status()
+    )
     expect(
       studentAdminRead.status(),
       "a student cannot use the administrator-only topic inspection route"
     ).toBe(403)
-    const adminTopics = await readAdminTopicPreferences(adminPage, createdProfile.id)
+    const adminTopics = await readAdminTopicPreferences(
+      adminPage,
+      createdProfile.id,
+      diagnosticProject(testInfo.project.name)
+    )
     expect(adminTopics.user_id).toBe(createdProfile.id)
     expect(adminTopics.email).toBe(email)
     expect(adminTopics.allowed_topics).toEqual(TOPICS.map((topic) => topic.key))
@@ -303,7 +341,9 @@ test("notification topics and quiet hours persist across reload and opt-out", as
       page.getByRole("switch", { name: "Включить уведомления", exact: true })
     ).toBeChecked()
     await expectTopicSelection(page, SELECTED_TOPICS)
-    expect((await readTopicPreferences(page)).topics).toEqual(SELECTED_TOPICS)
+    expect(
+      (await readTopicPreferences(page, diagnosticProject(testInfo.project.name))).topics
+    ).toEqual(SELECTED_TOPICS)
 
     // An explicit empty topic list means opt out of every push topic. It must
     // remain distinct from the no-preference default after endpoint removal.
@@ -311,17 +351,38 @@ test("notification topics and quiet hours persist across reload and opt-out", as
       const topicSave = waitForPushAction(page, "/api/v1/push/subscribe/topics", "PATCH")
       await page.getByRole("switch", { name: topic.label, exact: true }).click()
       const response = await topicSave
+      reportAuthHttpStatus(
+        diagnosticProject(testInfo.project.name),
+        "push_topics_optout",
+        response.status()
+      )
       expect(response.status(), `opting out of ${topic.key} persists`).toBe(200)
     }
     await expectTopicSelection(page, [])
-    const allTopicsOptedOut = await readTopicPreferences(page)
+    const allTopicsOptedOut = await readTopicPreferences(
+      page,
+      diagnosticProject(testInfo.project.name)
+    )
     expect(allTopicsOptedOut.has_preferences).toBe(true)
     expect(allTopicsOptedOut.topics).toEqual([])
-    expect((await readAdminTopicPreferences(adminPage, createdProfile.id)).topics).toEqual([])
+    expect(
+      (
+        await readAdminTopicPreferences(
+          adminPage,
+          createdProfile.id,
+          diagnosticProject(testInfo.project.name)
+        )
+      ).topics
+    ).toEqual([])
 
     const pushOptOut = waitForPushAction(page, "/api/v1/push/unsubscribe", "POST")
     await page.getByRole("switch", { name: "Включить уведомления", exact: true }).click()
     const pushOptOutResponse = await pushOptOut
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "push_unsubscribe",
+      pushOptOutResponse.status()
+    )
     expect(
       pushOptOutResponse.status(),
       "push opt-out removes the endpoint owned by this user"
@@ -343,10 +404,17 @@ test("notification topics and quiet hours persist across reload and opt-out", as
       page.getByRole("switch", { name: "Включить уведомления", exact: true })
     ).not.toBeChecked()
     await expectTopicSelection(page, [])
-    const optedOutTopicsAfterReload = await readTopicPreferences(page)
+    const optedOutTopicsAfterReload = await readTopicPreferences(
+      page,
+      diagnosticProject(testInfo.project.name)
+    )
     expect(optedOutTopicsAfterReload.has_preferences).toBe(true)
     expect(optedOutTopicsAfterReload.topics).toEqual([])
-    const optedOutAdminTopics = await readAdminTopicPreferences(adminPage, createdProfile.id)
+    const optedOutAdminTopics = await readAdminTopicPreferences(
+      adminPage,
+      createdProfile.id,
+      diagnosticProject(testInfo.project.name)
+    )
     expect(optedOutAdminTopics.user_id).toBe(createdProfile.id)
     expect(optedOutAdminTopics.topics).toEqual([])
     expect(topicPatchRequests).toBe(1 + SELECTED_TOPICS.length)
@@ -356,13 +424,18 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     subscriptionMayExist = true
     await pushSwitch.click()
     const reboundSubscription = await optedOutPushRebind
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "push_rebind",
+      reboundSubscription.status()
+    )
     expect(
       reboundSubscription.status(),
       "push can be re-enabled after explicit topic opt-out"
     ).toBe(200)
     await expect(pushSwitch).toBeChecked()
     await expectTopicSelection(page, [])
-    const reboundTopics = await readTopicPreferences(page)
+    const reboundTopics = await readTopicPreferences(page, diagnosticProject(testInfo.project.name))
     expect(reboundTopics.has_preferences).toBe(true)
     expect(reboundTopics.topics).toEqual([])
     expect(topicPatchRequests).toBe(topicPatchRequestsBeforeRebind)
@@ -371,12 +444,27 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expandPushAccordion(page)
     await expect(pushSwitch).toBeChecked()
     await expectTopicSelection(page, [])
-    const reboundTopicsAfterReload = await readTopicPreferences(page)
+    const reboundTopicsAfterReload = await readTopicPreferences(
+      page,
+      diagnosticProject(testInfo.project.name)
+    )
     expect(reboundTopicsAfterReload.has_preferences).toBe(true)
     expect(reboundTopicsAfterReload.topics).toEqual([])
-    expect((await readAdminTopicPreferences(adminPage, createdProfile.id)).topics).toEqual([])
+    expect(
+      (
+        await readAdminTopicPreferences(
+          adminPage,
+          createdProfile.id,
+          diagnosticProject(testInfo.project.name)
+        )
+      ).topics
+    ).toEqual([])
 
-    await waitForOwnedProfileIdentityReady(page, createdProfile.email)
+    await waitForOwnedProfileIdentityReady(
+      page,
+      createdProfile.email,
+      diagnosticProject(testInfo.project.name)
+    )
     const quietHours = page.getByRole("switch", { name: "Включить тихий период" })
     const startTime = page.getByLabel("С", { exact: true })
     const endTime = page.getByLabel("До", { exact: true })
@@ -387,6 +475,11 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     const enableSave = waitForProfileUpdate(page)
     await quietHours.click()
     const enabledResponse = await enableSave
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "profile_update_enable",
+      enabledResponse.status()
+    )
     expect(enabledResponse.status(), "enabling quiet hours persists through /users/me").toBe(200)
     await expect(quietHours).toBeChecked()
     await expect(startTime).toHaveValue("22:00")
@@ -396,6 +489,11 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await startTime.fill("21:35")
     await startTime.press("Tab")
     const startResponse = await startSave
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "profile_update_start",
+      startResponse.status()
+    )
     expect(startResponse.status(), "editing the start time persists through /users/me").toBe(200)
     await expect(startTime).toBeEnabled()
 
@@ -403,6 +501,11 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await endTime.fill("06:45")
     await endTime.press("Tab")
     const endResponse = await endSave
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "profile_update_end",
+      endResponse.status()
+    )
     expect(endResponse.status(), "editing the end time persists through /users/me").toBe(200)
     await expect(endTime).toBeEnabled()
 
@@ -412,7 +515,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expect(page.getByLabel("С", { exact: true })).toHaveValue("21:35")
     await expect(page.getByLabel("До", { exact: true })).toHaveValue("06:45")
 
-    const persistedProfile = await readProfile(page)
+    const persistedProfile = await readProfile(page, diagnosticProject(testInfo.project.name))
     expect(persistedProfile.dnd_enabled).toBe(true)
     expect(persistedProfile.dnd_start).toMatch(/^21:35(?::00)?$/u)
     expect(persistedProfile.dnd_end).toMatch(/^06:45(?::00)?$/u)
@@ -422,12 +525,22 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await startTime.fill("00:00")
     await startTime.press("Tab")
     const equalStartResponse = await equalStartSave
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "profile_update_midnight_start",
+      equalStartResponse.status()
+    )
     expect(equalStartResponse.status(), "the midnight start boundary is accepted").toBe(200)
 
     const equalEndSave = waitForProfileUpdate(page)
     await endTime.fill("00:00")
     await endTime.press("Tab")
     const equalEndResponse = await equalEndSave
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "profile_update_midnight_end",
+      equalEndResponse.status()
+    )
     expect(equalEndResponse.status(), "matching midnight endpoints are accepted").toBe(200)
 
     await page.reload()
@@ -435,7 +548,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expect(quietHours).toBeChecked()
     await expect(startTime).toHaveValue("00:00")
     await expect(endTime).toHaveValue("00:00")
-    const equalBoundaryProfile = await readProfile(page)
+    const equalBoundaryProfile = await readProfile(page, diagnosticProject(testInfo.project.name))
     expect(equalBoundaryProfile.dnd_enabled).toBe(true)
     expect(equalBoundaryProfile.dnd_start).toMatch(/^00:00(?::00)?$/u)
     expect(equalBoundaryProfile.dnd_end).toMatch(/^00:00(?::00)?$/u)
@@ -443,6 +556,11 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     const disableSave = waitForProfileUpdate(page)
     await quietHours.click()
     const disabledResponse = await disableSave
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "profile_update_disable",
+      disabledResponse.status()
+    )
     expect(disabledResponse.status(), "disabling quiet hours persists through /users/me").toBe(200)
     await expect(quietHours).not.toBeChecked()
 
@@ -450,7 +568,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expandPushAccordion(page)
     const quietHoursAfterOptOut = page.getByRole("switch", { name: "Включить тихий период" })
     await expect(quietHoursAfterOptOut).not.toBeChecked()
-    const optedOutProfile = await readProfile(page)
+    const optedOutProfile = await readProfile(page, diagnosticProject(testInfo.project.name))
     expect(optedOutProfile.dnd_enabled).toBe(false)
     expect(optedOutProfile.dnd_start).toBeNull()
     expect(optedOutProfile.dnd_end).toBeNull()
@@ -497,7 +615,13 @@ test("notification topics and quiet hours persist across reload and opt-out", as
       }
     } finally {
       try {
-        if (registrationAttempted) await deleteOnlyCreatedAccount(adminPage, email, fullName)
+        if (registrationAttempted)
+          await deleteOnlyCreatedAccount(
+            adminPage,
+            email,
+            fullName,
+            diagnosticProject(testInfo.project.name)
+          )
       } finally {
         await adminContext.close()
       }

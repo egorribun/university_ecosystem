@@ -7,6 +7,7 @@ import {
   stubBreachedPasswordLookup,
   test,
 } from "./fixtures"
+import { reportAuthHttpStatus, reportAuthUiFailure } from "./auth-notification-diagnostic"
 
 interface OwnerProfileResponse {
   id: string
@@ -18,6 +19,36 @@ interface AdminUserRow {
   id: string
   email: string
   full_name: string | null
+}
+
+const diagnosticProject = (projectName: string): "desktop" | "mobile" =>
+  projectName.toLowerCase().includes("mobile") ? "mobile" : "desktop"
+
+async function readFailureDetail(response: { json(): Promise<unknown> }): Promise<unknown> {
+  try {
+    const body = await response.json()
+    return body && typeof body === "object" && "detail" in body
+      ? (body as { detail?: unknown }).detail
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function inspectAlertState(page: Page) {
+  const alerts = page.getByRole("alert")
+  const rawCount = await alerts.count().catch(() => 0)
+  let visible = false
+  for (let index = 0; index < Math.min(rawCount, 8); index += 1) {
+    if (
+      await alerts
+        .nth(index)
+        .isVisible()
+        .catch(() => false)
+    )
+      visible = true
+  }
+  return { count: Math.min(rawCount, 8), capped: rawCount > 8, visible }
 }
 
 const waitForPasswordChange = (page: Page) =>
@@ -124,6 +155,10 @@ test("password settings reject a wrong current password and persist a corrected 
   })
   const adminPage = await adminContext.newPage()
   let passwordChangeRequests = 0
+  let pageErrorOccurred = false
+  page.on("pageerror", () => {
+    pageErrorOccurred = true
+  })
   page.on("request", (request) => {
     if (
       request.method() === "POST" &&
@@ -173,9 +208,37 @@ test("password settings reject a wrong current password and persist a corrected 
     const failedResponseWait = waitForPasswordChange(page)
     await updatePasswordButton.click()
     const failedResponse = await failedResponseWait
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "password_change_invalid",
+      failedResponse.status()
+    )
     expect(failedResponse.status(), "the server rejects an incorrect current password").toBe(400)
-    await expect(currentPasswordField).toHaveAttribute("aria-invalid", "true")
-    await expect(page.getByRole("alert")).toContainText("Текущий пароль указан неверно")
+    try {
+      await expect(currentPasswordField).toHaveAttribute("aria-invalid", "true")
+      await expect(page.getByRole("alert")).toContainText("Текущий пароль указан неверно")
+    } catch (error) {
+      try {
+        const alertState = await inspectAlertState(page)
+        const currentFieldInvalid =
+          (await currentPasswordField.getAttribute("aria-invalid").catch(() => null)) === "true"
+        reportAuthUiFailure({
+          project: diagnosticProject(testInfo.project.name),
+          scenario: "password_current_invalid",
+          status: failedResponse.status(),
+          detail: await readFailureDetail(failedResponse),
+          alertCount: alertState.count,
+          alertCountCapped: alertState.capped,
+          alertVisible: alertState.visible,
+          currentFieldInvalid,
+          loginChallenge: null,
+          pageError: pageErrorOccurred,
+        })
+      } catch {
+        // Telemetry is best-effort; retain the original assertion failure.
+      }
+      throw error
+    }
     expect(passwordChangeRequests).toBe(1)
 
     await page.reload()
@@ -230,6 +293,11 @@ test("password settings reject a wrong current password and persist a corrected 
     const savedResponseWait = waitForPasswordChange(page)
     await updatePasswordButton.click()
     const savedResponse = await savedResponseWait
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "password_change_save",
+      savedResponse.status()
+    )
     expect(savedResponse.status(), "a corrected password change is saved by the real API").toBe(200)
     expect(passwordChangeRequests).toBe(2)
 

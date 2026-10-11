@@ -29,6 +29,7 @@ from app.services.webpush import (
     _prepare_actions,
     _resolve_ttl,
     _sanitize_vibrate,
+    coalesce_push_results,
     process_push_results,
     send_web_push,
 )
@@ -78,9 +79,13 @@ class TestSendWebPush:
             lambda _endpoint: [("93.184.216.35", 443)],
         )
 
-    def test_success(self, mock_pywebpush):
+    def test_success(self, mock_pywebpush, caplog):
+        import logging
+
         sub = self._make_sub()
-        result = send_web_push(sub, {"title": "Hello"})
+
+        with caplog.at_level(logging.INFO, logger="app.services.webpush"):
+            result = send_web_push(sub, {"title": "Hello"})
         assert result.status == "sent"
         assert result.subscription_id == sub.id
         mock_pywebpush.assert_called_once()
@@ -89,6 +94,10 @@ class TestSendWebPush:
             "endpoint": sub.endpoint,
             "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
         }
+        events = _structured_webpush_send_events(caplog.records)
+        assert len(events) == 1
+        assert events[0]["status"] == "sent"
+        assert "error_stage" not in events[0]
 
     @pytest.mark.parametrize(
         ("endpoint", "message"),
@@ -949,6 +958,107 @@ class TestWebPushResult:
         assert r.status_code == 500
 
 
+def test_coalesce_push_results_normalizes_untrusted_adapter_values() -> None:
+    """Keep aggregates stable when adapters return malformed or duplicate rows."""
+    subscription_id = uuid.uuid4()
+    other_subscription_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+
+    invalid_id: Any = "not-a-uuid"
+    invalid_id_result = WebPushResult(
+        subscription_id=invalid_id,
+        endpoint="https://push.example.test/invalid-id",
+        user_id=user_id,
+        status="sent",
+    )
+    error_result = WebPushResult(
+        subscription_id=subscription_id,
+        endpoint="https://push.example.test/priority",
+        user_id=user_id,
+        status="error",
+        status_code=503,
+        error="temporary provider failure",
+    )
+    string_id: Any = str(subscription_id)
+    sent_result = WebPushResult(
+        subscription_id=string_id,
+        endpoint="https://push.example.test/priority",
+        user_id=user_id,
+        status="sent",
+        status_code=201,
+    )
+    gone_result = WebPushResult(
+        subscription_id=subscription_id,
+        endpoint="https://push.example.test/priority",
+        user_id=user_id,
+        status="gone",
+        status_code=410,
+    )
+    late_sent_result = WebPushResult(
+        subscription_id=subscription_id,
+        endpoint="https://push.example.test/priority",
+        user_id=user_id,
+        status="sent",
+    )
+    invalid_status: Any = "queued"
+    malformed_status_result = WebPushResult(
+        subscription_id=other_subscription_id,
+        endpoint="https://push.example.test/invalid-status",
+        user_id=user_id,
+        status=invalid_status,
+        status_code=422,
+    )
+
+    results = coalesce_push_results(
+        [
+            object(),
+            invalid_id_result,
+            error_result,
+            sent_result,
+            gone_result,
+            late_sent_result,
+            malformed_status_result,
+        ]
+    )
+
+    assert len(results) == 2
+    assert results[0] is gone_result
+    assert results[0].subscription_id == subscription_id
+    assert results[0].status == "gone"
+    assert results[0].status_code == 410
+    assert results[1].subscription_id == other_subscription_id
+    assert results[1].status == "error"
+    assert results[1].status_code == 422
+    assert results[1].error == "invalid push result status"
+
+
+def _structured_webpush_send_events(records: list[Any]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for record in records:
+        if record.name != "app.services.webpush" or not isinstance(record.msg, dict):
+            continue
+        event = record.msg
+        extra = event.get("extra")
+        if (
+            event.get("message") == "webpush.send"
+            and isinstance(extra, dict)
+            and extra.get("event") == "send"
+        ):
+            events.append(extra)
+    return events
+
+
+def _synthetic_log_subscription() -> MagicMock:
+    subscription = MagicMock()
+    subscription.id = uuid.uuid4()
+    subscription.endpoint = "https://push.example.test/synthetic-path"
+    subscription.user_id = uuid.uuid4()
+    subscription.p256dh = "synthetic-key"
+    subscription.auth = "synthetic-auth"
+    subscription.user = None
+    return subscription
+
+
 def test_send_failure_retains_structured_send_event(monkeypatch, caplog):
     import logging
 
@@ -989,7 +1099,82 @@ def test_send_failure_retains_structured_send_event(monkeypatch, caplog):
             and fields.get("event") == "send"
             and fields.get("status") == result.status
             and fields.get("error_type") == "OSError"
+            and fields.get("error_stage") == "dns_resolution"
         ):
             send_events.append(fields)
 
     assert len(send_events) == 1
+    assert send_events[0]["error_stage"] == "dns_resolution"
+
+
+def test_send_url_validation_error_logs_fixed_stage(monkeypatch, caplog):
+    import logging
+
+    import app.services.webpush as webpush_module
+
+    subscription = _synthetic_log_subscription()
+
+    def fail_validation(_endpoint):
+        raise ValueError("synthetic URL validation failure")
+
+    monkeypatch.setattr(webpush_module, "validate_public_https_url", fail_validation)
+    delivery_call = MagicMock()
+    monkeypatch.setattr(webpush_module, "webpush", delivery_call)
+
+    with caplog.at_level(logging.ERROR, logger="app.services.webpush"):
+        result = webpush_module.send_web_push(
+            subscription, {"title": "Synthetic failure"}
+        )
+
+    delivery_call.assert_not_called()
+    assert result.status == "error"
+    assert result.error == "synthetic URL validation failure"
+    events = _structured_webpush_send_events(caplog.records)
+    assert len(events) == 1
+    assert events[0]["error_stage"] == "endpoint_url_validation"
+
+
+def test_send_provider_error_logs_fixed_stage(monkeypatch, caplog):
+    import logging
+
+    import app.services.webpush as webpush_module
+
+    subscription = _synthetic_log_subscription()
+    monkeypatch.setattr(
+        webpush_module, "_reject_non_global_endpoint_host", lambda _endpoint: None
+    )
+    monkeypatch.setattr(
+        webpush_module, "validate_public_https_url", lambda _endpoint: None
+    )
+    monkeypatch.setattr(
+        webpush_module,
+        "validate_and_resolve",
+        lambda _endpoint: [("93.184.216.34", 443)],
+    )
+    monkeypatch.setattr(
+        webpush_module,
+        "_reject_non_global_resolved_addresses",
+        lambda _addresses: None,
+    )
+    session = MagicMock()
+    monkeypatch.setattr(
+        webpush_module,
+        "_create_pinned_webpush_session",
+        lambda *_args: session,
+    )
+    delivery_call = MagicMock(
+        side_effect=webpush_module.WebPushException("synthetic provider failure")
+    )
+    monkeypatch.setattr(webpush_module, "webpush", delivery_call)
+
+    # WebPushException is recorded as the standard structured send event at INFO.
+    with caplog.at_level(logging.INFO, logger="app.services.webpush"):
+        result = webpush_module.send_web_push(
+            subscription, {"title": "Synthetic failure"}
+        )
+
+    session.close.assert_called_once()
+    assert result.status == "error"
+    events = _structured_webpush_send_events(caplog.records)
+    assert len(events) == 1
+    assert events[0]["error_stage"] == "webpush_request"

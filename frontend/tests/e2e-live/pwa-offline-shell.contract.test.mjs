@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises"
 import { clearTimeout as clearNodeTimeout, setTimeout as setNodeTimeout } from "node:timers"
 import { URL } from "node:url"
 import test from "node:test"
+const { replacePrecacheRevision } = await import("./pwa-precache-revision.ts")
 
 const specUrl = new URL("./pwa-offline-shell.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
@@ -37,6 +38,53 @@ const [
 function assertProxySource(pattern, message) {
   assert.ok(pattern.test(updateProxy), message)
 }
+
+test("rewrites only the selected generated Workbox precache record", () => {
+  const siblingEntry = '{"revision":"sibling-revision","url":"assets/route-chunk.js"}'
+  const workerSource =
+    'precacheAndRoute([{"revision":"old-app-revision","url":"assets/app-build.js"},' +
+    siblingEntry +
+    "]);"
+
+  const transformed = replacePrecacheRevision(
+    workerSource,
+    "/assets/app-build.js",
+    "pwa-build-marker-test"
+  )
+
+  assert.equal(
+    transformed,
+    workerSource.replace('"revision":"old-app-revision"', '"revision":"pwa-build-marker-test"'),
+    "the generated quoted-key, revision-before-url entry changes only its selected revision"
+  )
+  assert.ok(transformed.includes(siblingEntry), "unselected precache records remain byte-identical")
+})
+
+test("retains support for the older bare-key Workbox precache form", () => {
+  const workerSource =
+    'precacheAndRoute([{revision:"old-app-revision",url:"assets/app-build.js"}]);'
+  const transformed = replacePrecacheRevision(
+    workerSource,
+    "/assets/app-build.js",
+    "pwa-build-marker-test"
+  )
+
+  assert.equal(
+    transformed,
+    workerSource.replace('revision:"old-app-revision"', 'revision:"pwa-build-marker-test"')
+  )
+})
+
+test("fails closed when the selected bundle has multiple precache records", () => {
+  const duplicateWorkerSource =
+    'precacheAndRoute([{"revision":"first","url":"assets/app-build.js"},' +
+    '{"revision":"second","url":"assets/app-build.js"}]);'
+
+  assert.throws(
+    () => replacePrecacheRevision(duplicateWorkerSource, "/assets/app-build.js", "marker"),
+    /Expected exactly one precache entry for the selected app bundle/u
+  )
+})
 
 test("live PWA shell acceptance exercises the real worker without server mutations or mocks", () => {
   assert.match(config, /testDir:\s*["']\.\/tests\/e2e-live["']/u)
@@ -79,6 +127,7 @@ test("live PWA update replaces the active precache and proves the new app bundle
     /updates the active service worker online and serves the new precached bundle offline/u
   )
   assert.match(spec, /replacePrecacheRevision/u)
+  assert.match(spec, /import \{ replacePrecacheRevision \} from ["']\.\/pwa-precache-revision["']/u)
   assert.match(spec, /startPwaUpdateProxy\(context,\s*ownedSessionOrigin\(\)\)/u)
   assert.match(spec, /setWorkerResponseTransform/u)
   assert.doesNotMatch(spec, /context\.route\(["']\*\*\/sw\.js["']/u)
@@ -133,6 +182,15 @@ test("live PWA update replaces the active precache and proves the new app bundle
     "proxy rejects any target outside the signed upstream origin"
   )
   assertProxySource(
+    /const upstreamPort = Number\(upstreamOrigin\.port\)[\s\S]*?Number\.isSafeInteger\(upstreamPort\)[\s\S]*?upstreamPort < LIVE_STAND_MIN_PORT[\s\S]*?upstreamPort > LIVE_STAND_MAX_PORT/u,
+    "proxy validates the numeric destination port before opening a socket"
+  )
+  assertProxySource(
+    /requestHeaders\.host = upstreamOrigin\.host[\s\S]*?httpRequest\(\s*["']http:\/\/127\.0\.0\.1["']\s*,\s*\{\s*hostname:\s*["']127\.0\.0\.1["']\s*,\s*port:\s*upstreamPort\s*,\s*method:\s*request\.method\s*,\s*path:\s*`\$\{upstreamTarget\.pathname\}\$\{upstreamTarget\.search\}`\s*,\s*headers:\s*requestHeaders/u,
+    "proxy fixes the socket authority and forwards only the validated request path"
+  )
+  assert.doesNotMatch(updateProxy, /httpRequest\(\s*upstreamTarget/u)
+  assertProxySource(
     /request\.method\s*===\s*["\x27]GET["\x27]\s*&&\s*upstreamTarget\.pathname\s*===\s*["\x27]\/sw\.js["\x27]/u,
     "only GET /sw.js receives the worker transform"
   )
@@ -166,7 +224,7 @@ test("live PWA update replaces the active precache and proves the new app bundle
 
 // Exercise the proxy with a transport-only loopback peer. This server exposes no
 // application, API, or authentication behavior; all sentinel values are synthetic.
-const { createServer } = await import("node:http")
+const { createServer, request: httpRequest } = await import("node:http")
 const { EventEmitter } = await import("node:events")
 const { startPwaUpdateProxy } = await import("./pwa-update-proxy.ts")
 
@@ -216,6 +274,28 @@ async function closeTransportServer(server) {
   })
 }
 
+function requestRawProxyTarget(proxyOrigin, requestTarget) {
+  const target = new URL(proxyOrigin)
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port,
+        method: "GET",
+        path: requestTarget,
+      },
+      (response) => {
+        response.resume()
+        response.once("end", () => resolve(response.statusCode ?? 0))
+        response.once("error", reject)
+      }
+    )
+    request.once("error", reject)
+    request.end()
+  })
+}
+
 test(
   "PWA update proxy preserves ordinary transport, rejects unsafe forwarding, and closes stalled upstreams",
   { timeout: 12_000 },
@@ -235,6 +315,7 @@ test(
       const record = {
         method: request.method,
         url: request.url,
+        host: request.headers.host,
         cookie: request.headers.cookie,
         origin: request.headers.origin,
         csrf: request.headers["x-csrf-token"],
@@ -293,6 +374,7 @@ test(
       assert.deepEqual(forwarded[0], {
         method: "GET",
         url: "/transport-probe?probe=1",
+        host: originServer.host,
         cookie: syntheticHeaders.cookie,
         origin: syntheticHeaders.origin,
         csrf: syntheticHeaders["x-csrf-token"],
@@ -326,6 +408,33 @@ test(
       }
       assert.equal(forwarded[2].method, "GET")
       assert.equal(forwarded[2].url, "/sw.js")
+
+      const beforeAuthorityAttacks = forwarded.length
+      assert.equal(
+        await requestRawProxyTarget(proxy.origin, "http://example.invalid/private"),
+        403,
+        "absolute-form request targets cannot change the proxy's upstream authority"
+      )
+      assert.equal(
+        await requestRawProxyTarget(proxy.origin, "//example.invalid/private"),
+        403,
+        "protocol-relative request targets cannot change the proxy's upstream authority"
+      )
+      assert.equal(forwarded.length, beforeAuthorityAttacks)
+
+      assert.equal(
+        await requestRawProxyTarget(proxy.origin, "/%2f%2fexample.invalid/private"),
+        200,
+        "an encoded slash path remains a path on the owned upstream"
+      )
+      assert.deepEqual(forwarded[beforeAuthorityAttacks], {
+        method: "GET",
+        url: "/%2f%2fexample.invalid/private",
+        host: originServer.host,
+        cookie: undefined,
+        origin: undefined,
+        csrf: undefined,
+      })
 
       const beforeUnsafeMethod = forwarded.length
       const unsafeResponse = await globalThis.fetch(new URL("/transport-probe", proxy.origin), {

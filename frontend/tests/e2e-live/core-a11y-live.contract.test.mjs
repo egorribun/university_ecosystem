@@ -28,6 +28,13 @@ test("real authenticated core-route axe acceptance checks serious and critical f
   assert.match(spec, /CORE_ROUTES\s*=\s*\[[\s\S]*?["']\/dashboard["'][\s\S]*?["']\/settings["']/u)
   assert.match(spec, /for\s*\(const route of CORE_ROUTES\)[\s\S]*?page\.goto\(route\)/u)
   assert.match(spec, /WCAG_TAGS\s*=\s*\[[\s\S]*?["']wcag22aa["']/u)
+  const finalPaintWait = spec.indexOf("await waitForFinalLayoutPaint(page)")
+  const axeRun = spec.indexOf("new AxeBuilder({ page })")
+  assert.ok(finalPaintWait >= 0 && finalPaintWait < axeRun)
+  assert.match(
+    spec,
+    /data-page-fade[\s\S]*data-ready[\s\S]*getAnimations\(\)[\s\S]*playState !== ["']running["'][\s\S]*frame\.opacity/u
+  )
   assert.match(spec, /new AxeBuilder\(\{\s*page\s*\}\)\.withTags\(WCAG_TAGS\)\.analyze\(\)/u)
   assert.match(spec, /impact === ["']critical["'][\s\S]*?impact === ["']serious["']/u)
   assert.match(spec, /blocking\.map\(\s*\(\{\s*impact,\s*id\s*\}/u)

@@ -75,6 +75,15 @@ def test_user_out_flattens_dict_and_orm_inputs() -> None:
     assert from_orm.spotify_is_connected is False
 
 
+def test_user_out_preserves_email_verification_timestamp_from_orm() -> None:
+    orm_user = _orm_user()
+    orm_user.email_verified_at = NOW
+
+    profile = schemas.UserOut.model_validate(orm_user)
+
+    assert profile.email_verified_at == NOW
+
+
 def test_public_user_flattens_dict_and_orm_inputs() -> None:
     from_dict = schemas.UserPublicOut.model_validate({"id": USER_ID, "is_active": True})
     assert from_dict.id == USER_ID

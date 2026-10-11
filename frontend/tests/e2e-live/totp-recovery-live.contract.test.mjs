@@ -73,11 +73,11 @@ test("live TOTP enrollment, login, recovery use, and replay rejection stay secre
     "successful MFA logins reach the authenticated app"
   )
   requireMatch(
-    /verifyRecoveryCodeOnLogin\(replayLogin\.page,\s*recoveryCode,\s*400\)/u,
+    /verifyRecoveryCodeOnLogin\(replayLogin\.page,\s*recoveryCode,\s*400,\s*\{\s*project:\s*diagnosticProject\(testInfo\.project\.name\),\s*operation:\s*["']totp_recovery_replay["'],\s*\}\)/u,
     "a consumed recovery code is rejected on a fresh challenge"
   )
   requireMatch(
-    /verifyRecoveryCodeOnLogin\(replayLogin\.page,\s*recoveryCode,\s*400\)[\s\S]*?const postReplayTotpLogin = await createIsolatedPage[\s\S]*?loginToMfaChallenge\([\s\S]*?waitForTotpCode\(authenticatorSecret,\s*loginTotp\.step\)[\s\S]*?verifyTotpOnLogin\(postReplayTotpLogin\.page/u,
+    /verifyRecoveryCodeOnLogin\(replayLogin\.page,\s*recoveryCode,\s*400,\s*\{\s*project:\s*diagnosticProject\(testInfo\.project\.name\),\s*operation:\s*["']totp_recovery_replay["'],\s*\}\)[\s\S]*?const postReplayTotpLogin = await createIsolatedPage[\s\S]*?loginToMfaChallenge\([\s\S]*?waitForTotpCode\(authenticatorSecret,\s*loginTotp\.step\)[\s\S]*?verifyTotpOnLogin\(postReplayTotpLogin\.page/u,
     "replay rejection must leave the enrolled TOTP factor usable in a fresh session"
   )
 

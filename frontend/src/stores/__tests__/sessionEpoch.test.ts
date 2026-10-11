@@ -5,6 +5,8 @@ import {
   establishBrowserSession,
   getBrowserSessionGeneration,
   getSessionEpoch,
+  hasFailedBrowserSessionRotation,
+  hasStaleBrowserSessionBinding,
   invalidateSessionEpoch,
   isCurrentBrowserSession,
   matchesBrowserSession,
@@ -106,6 +108,100 @@ describe("account lifetime epochs", () => {
     expect(getBrowserSessionGeneration()).toBeNull()
   })
 
+  it("distinguishes failed rotation from a later remote generation", () => {
+    localStorage.setItem(KEY, JSON.stringify({ nonce: "prior-generation", hash: "prior-profile" }))
+    acceptBrowserSessionGeneration()
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+
+    try {
+      rotateBrowserSession()
+      expect(getBrowserSessionGeneration()).toBe("prior-generation")
+      expect(isCurrentBrowserSession()).toBe(false)
+      expect(hasStaleBrowserSessionBinding()).toBe(false)
+
+      storageWrite.mockRestore()
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({ nonce: "remote-generation", hash: "remote-profile" })
+      )
+      expect(hasStaleBrowserSessionBinding()).toBe(true)
+    } finally {
+      storageWrite.mockRestore()
+    }
+  })
+
+  it("clears failed-rotation state after a successful retry", () => {
+    localStorage.setItem(KEY, JSON.stringify({ nonce: "prior-generation", hash: "prior-profile" }))
+    acceptBrowserSessionGeneration()
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+
+    try {
+      rotateBrowserSession()
+      expect(hasFailedBrowserSessionRotation()).toBe(true)
+      expect(hasStaleBrowserSessionBinding()).toBe(false)
+
+      storageWrite.mockRestore()
+      rotateBrowserSession()
+      expect(hasFailedBrowserSessionRotation()).toBe(false)
+      expect(hasStaleBrowserSessionBinding()).toBe(false)
+      expect(getBrowserSessionGeneration()).not.toBe("prior-generation")
+      expect(isCurrentBrowserSession()).toBe(true)
+    } finally {
+      storageWrite.mockRestore()
+    }
+  })
+  it("keeps a prior stale binding stale when rotation storage write fails", () => {
+    localStorage.setItem(KEY, JSON.stringify({ nonce: "tab-a-generation", hash: "profile-a" }))
+    acceptBrowserSessionGeneration()
+    localStorage.setItem(KEY, JSON.stringify({ nonce: "tab-b-generation", hash: "profile-b" }))
+    expect(hasStaleBrowserSessionBinding()).toBe(true)
+
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    try {
+      rotateBrowserSession()
+      expect(hasFailedBrowserSessionRotation()).toBe(true)
+      expect(getBrowserSessionGeneration()).toBe("tab-b-generation")
+      expect(hasStaleBrowserSessionBinding()).toBe(true)
+    } finally {
+      storageWrite.mockRestore()
+    }
+  })
+
+  it("preserves a stale binding when generation storage becomes unreadable after failed rotation", () => {
+    localStorage.setItem(KEY, JSON.stringify({ nonce: "tab-a-generation", hash: "profile-a" }))
+    acceptBrowserSessionGeneration()
+    localStorage.setItem(KEY, JSON.stringify({ nonce: "tab-b-generation", hash: "profile-b" }))
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+
+    let restoreStorageRead: (() => void) | undefined
+    try {
+      rotateBrowserSession()
+      expect(hasStaleBrowserSessionBinding()).toBe(true)
+      const storageRead = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new DOMException("blocked", "SecurityError")
+      })
+      restoreStorageRead = () => storageRead.mockRestore()
+      expect(getBrowserSessionGeneration()).toBeNull()
+      expect(hasStaleBrowserSessionBinding()).toBe(true)
+
+      storageRead.mockRestore()
+      restoreStorageRead = undefined
+      localStorage.removeItem(KEY)
+      expect(getBrowserSessionGeneration()).toBeNull()
+      expect(hasStaleBrowserSessionBinding()).toBe(true)
+    } finally {
+      storageWrite.mockRestore()
+      restoreStorageRead?.()
+    }
+  })
   it("fails closed on unreadable storage", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new DOMException("blocked", "SecurityError")

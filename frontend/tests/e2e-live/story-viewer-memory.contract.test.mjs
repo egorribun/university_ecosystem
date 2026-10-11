@@ -62,6 +62,17 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
   )
   assert.match(spec, /const WARM_UP_CYCLES = 1/u)
   assert.match(spec, /const MEASURED_CYCLES = 20/u)
+  assert.ok(spec.includes('const STORY_MEMORY_DIAGNOSTIC_PREFIX = "STORY_MEMORY_DIAG "'))
+  assert.ok(spec.includes('phase: "cycle0-after-settle-before-assertion"'))
+  assert.match(spec, /DOMDebugger\.getEventListeners[\s\S]*?pierce:\s*false/u)
+  assert.match(spec, /Runtime\.releaseObject[\s\S]*?Runtime\.releaseObjectGroup/u)
+  const measuredLoop = spec.indexOf("for (let cycle = 0; cycle < MEASURED_CYCLES; cycle += 1)")
+  const diagnosticCall = spec.indexOf("emitStoryMemoryDiagnosticRecord(", measuredLoop)
+  const strictCounterAssertion = spec.indexOf(
+    "expect(snapshot.domCounters).toEqual(warmSnapshot.domCounters)"
+  )
+  assert.match(spec, /if \(cycle === 0\) \{[\s\S]*?emitStoryMemoryDiagnosticRecord\(/u)
+  assert.ok(diagnosticCall >= 0 && diagnosticCall < strictCounterAssertion)
   assert.match(spec, /await loginAs\(page,\s*["']student["']\)/u)
   assert.match(
     spec,

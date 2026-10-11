@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, loginAs, test } from "./fixtures"
+import type { Page } from "@playwright/test"
 import {
   reportLiveA11yPhaseState,
   reportLiveAxeColorContrast,
@@ -10,6 +11,28 @@ const CORE_ROUTES = ["/dashboard", "/settings"] as const
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]
 
 test.use({ trace: "off", screenshot: "off", video: "off" })
+
+async function waitForFinalLayoutPaint(page: Page): Promise<void> {
+  const pageFade = page.locator("[data-page-fade]")
+  await expect(pageFade).toHaveAttribute("data-ready", "true")
+
+  const layout = page.locator("[data-scroll-root]")
+  await expect(layout).toHaveCount(1)
+  await expect
+    .poll(() =>
+      layout.evaluate((element) => {
+        const opacity = Number.parseFloat(window.getComputedStyle(element).opacity)
+        const runningOpacityAnimation = element.getAnimations().some((animation) => {
+          if (animation.playState !== "running" || !(animation.effect instanceof KeyframeEffect)) {
+            return false
+          }
+          return animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)
+        })
+        return opacity === 1 && !runningOpacityAnimation
+      })
+    )
+    .toBe(true)
+}
 
 test("real student dashboard and settings have no serious or critical axe findings", async ({
   page,
@@ -23,6 +46,7 @@ test("real student dashboard and settings have no serious or critical axe findin
     if (route === "/settings") {
       await expect(page.getByRole("tablist")).toBeVisible()
     }
+    await waitForFinalLayoutPaint(page)
 
     const routeName = route === "/dashboard" ? "dashboard" : "settings"
     const reportPageA11yPhase = async (phase: "before_axe" | "after_axe") => {

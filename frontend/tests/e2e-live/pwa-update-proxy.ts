@@ -137,6 +137,14 @@ export async function startPwaUpdateProxy(
   liveBaseUrl: string
 ): Promise<PwaUpdateProxy> {
   const upstreamOrigin = validateSignedLiveBaseUrl(liveBaseUrl)
+  const upstreamPort = Number(upstreamOrigin.port)
+  if (
+    !Number.isSafeInteger(upstreamPort) ||
+    upstreamPort < LIVE_STAND_MIN_PORT ||
+    upstreamPort > LIVE_STAND_MAX_PORT
+  ) {
+    throw new Error("PWA update proxy requires a verified live-stand port")
+  }
   const proxyOrigin = new URL("http://localhost:0")
   let proxyReady = false
   let workerTransform: WorkerResponseTransform | undefined
@@ -187,9 +195,18 @@ export async function startPwaUpdateProxy(
       delete requestHeaders["if-modified-since"]
     }
 
+    // Keep the socket destination literal and loopback-only. The inbound URL
+    // contributes a parsed request path, never a destination authority.
+    requestHeaders.host = upstreamOrigin.host
     const upstreamRequest = httpRequest(
-      upstreamTarget,
-      { method: request.method, headers: requestHeaders },
+      "http://127.0.0.1",
+      {
+        hostname: "127.0.0.1",
+        port: upstreamPort,
+        method: request.method,
+        path: `${upstreamTarget.pathname}${upstreamTarget.search}`,
+        headers: requestHeaders,
+      },
       (upstreamResponse) => {
         const statusCode = upstreamResponse.statusCode ?? 502
         const headers = forwardedResponseHeaders(

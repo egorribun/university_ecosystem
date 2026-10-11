@@ -8,12 +8,43 @@ import {
   submitLogin,
   test,
 } from "./fixtures"
+import { reportAuthHttpStatus, reportAuthUiFailure } from "./auth-notification-diagnostic"
 
 const TOTP_PERIOD_MS = 30_000
 const TOTP_DIGITS = 6
 const TOTP_SECRET_INPUT = "#totp-manual-code"
 const OTP_INPUTS = 'input[inputmode="numeric"][maxlength="1"]'
 const RECOVERY_INPUT = 'input[placeholder="XXXX-XXXX-XXXX-XXXX"]'
+
+const diagnosticProject = (projectName: string): "desktop" | "mobile" =>
+  projectName.toLowerCase().includes("mobile") ? "mobile" : "desktop"
+
+async function readFailureDetail(response: { json(): Promise<unknown> }): Promise<unknown> {
+  try {
+    const body = await response.json()
+    return body && typeof body === "object" && "detail" in body
+      ? (body as { detail?: unknown }).detail
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function inspectAlertState(page: Page) {
+  const alerts = page.getByRole("alert")
+  const rawCount = await alerts.count().catch(() => 0)
+  let visible = false
+  for (let index = 0; index < Math.min(rawCount, 8); index += 1) {
+    if (
+      await alerts
+        .nth(index)
+        .isVisible()
+        .catch(() => false)
+    )
+      visible = true
+  }
+  return { count: Math.min(rawCount, 8), capped: rawCount > 8, visible }
+}
 
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
@@ -200,7 +231,15 @@ async function verifyTotpOnLogin(page: Page, code: string) {
   await expect(page).toHaveURL(/\/dashboard$/u)
 }
 
-async function verifyRecoveryCodeOnLogin(page: Page, recoveryCode: string, expectedStatus: number) {
+async function verifyRecoveryCodeOnLogin(
+  page: Page,
+  recoveryCode: string,
+  expectedStatus: number,
+  diagnostic?: {
+    project: "desktop" | "mobile"
+    operation: "totp_recovery_accept" | "totp_recovery_replay"
+  }
+) {
   await page.locator("#use-recovery-code-toggle").click()
   const input = page.locator(RECOVERY_INPUT)
   await expect(input).toBeVisible()
@@ -208,6 +247,7 @@ async function verifyRecoveryCodeOnLogin(page: Page, recoveryCode: string, expec
   await input.fill(recoveryCode)
   await input.press("Enter")
   const response = await verifyPromise
+  if (diagnostic) reportAuthHttpStatus(diagnostic.project, diagnostic.operation, response.status())
   expect(response.status()).toBe(expectedStatus)
   return response
 }
@@ -334,16 +374,51 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
       email,
       password
     )
-    await verifyRecoveryCodeOnLogin(recoveryLogin.page, recoveryCode, 200)
+    await verifyRecoveryCodeOnLogin(recoveryLogin.page, recoveryCode, 200, {
+      project: diagnosticProject(testInfo.project.name),
+      operation: "totp_recovery_accept",
+    })
     await expect(recoveryLogin.page).toHaveURL(/\/dashboard$/u)
     checkRecoveryLoginPageErrors()
 
     const replayLogin = await createIsolatedPage(browser, page, testInfo)
     ownedContexts.push(replayLogin.context)
+    let replayPageErrorOccurred = false
+    replayLogin.page.on("pageerror", () => {
+      replayPageErrorOccurred = true
+    })
     const checkReplayLoginPageErrors = await loginToMfaChallenge(replayLogin.page, email, password)
-    await verifyRecoveryCodeOnLogin(replayLogin.page, recoveryCode, 400)
-    await expect(replayLogin.page.getByRole("alert")).toBeVisible()
-    checkReplayLoginPageErrors()
+    const replayResponse = await verifyRecoveryCodeOnLogin(replayLogin.page, recoveryCode, 400, {
+      project: diagnosticProject(testInfo.project.name),
+      operation: "totp_recovery_replay",
+    })
+    try {
+      await expect(replayLogin.page.getByRole("alert")).toBeVisible()
+      checkReplayLoginPageErrors()
+    } catch (error) {
+      try {
+        const alertState = await inspectAlertState(replayLogin.page)
+        const loginChallenge = await replayLogin.page
+          .locator(RECOVERY_INPUT)
+          .isVisible()
+          .catch(() => false)
+        reportAuthUiFailure({
+          project: diagnosticProject(testInfo.project.name),
+          scenario: "totp_recovery_replay",
+          status: replayResponse.status(),
+          detail: await readFailureDetail(replayResponse),
+          alertCount: alertState.count,
+          alertCountCapped: alertState.capped,
+          alertVisible: alertState.visible,
+          currentFieldInvalid: null,
+          loginChallenge,
+          pageError: replayPageErrorOccurred,
+        })
+      } catch {
+        // Telemetry is best-effort; retain the original assertion failure.
+      }
+      throw error
+    }
 
     const postReplayTotpLogin = await createIsolatedPage(browser, page, testInfo)
     ownedContexts.push(postReplayTotpLogin.context)

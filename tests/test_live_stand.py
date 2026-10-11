@@ -2611,6 +2611,194 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
     assert completed.stdout == completed.stderr == b""
 
 
+_STORY_MEMORY_EVENT_KEYS = (
+    "visibilitychange",
+    "focus",
+    "blur",
+    "focusin",
+    "focusout",
+    "keydown",
+    "keyup",
+    "click",
+    "mousedown",
+    "mouseup",
+    "pointerdown",
+    "pointerup",
+    "touchstart",
+    "touchend",
+    "online",
+    "offline",
+    "resize",
+    "scroll",
+    "other",
+)
+
+
+def _story_memory_record(
+    *, project: str = "desktop", status: str = "available", count: int = 1
+) -> dict[str, Any]:
+    unavailable = status == "unavailable"
+    dom: dict[str, int | None] = {
+        "documents": None if unavailable else count,
+        "nodes": None if unavailable else count + 1,
+        "jsEventListeners": None if unavailable else count + 2,
+    }
+    listener_counts: dict[str, int | None] = {
+        "total": None if unavailable else count,
+        **{
+            key: None if unavailable else (count if index == 0 else 0)
+            for index, key in enumerate(_STORY_MEMORY_EVENT_KEYS)
+        },
+    }
+    listeners = {
+        "window": listener_counts.copy(),
+        "document": listener_counts.copy(),
+        "documentTree": listener_counts.copy(),
+    }
+    return {
+        "schema": 1,
+        "project": project,
+        "phase": "cycle0-after-settle-before-assertion",
+        "diagnosticStatus": status,
+        "warmDOM": dom.copy(),
+        "cycle0DOM": dom.copy(),
+        "warmListeners": listeners,
+        "cycle0Listeners": {
+            target: counts.copy() for target, counts in listeners.items()
+        },
+    }
+
+
+def _story_memory_row(record: dict[str, Any], newline: str = "\n") -> str:
+    return "STORY_MEMORY_DIAG " + json.dumps(record, separators=(",", ":")) + newline
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_story_memory_parser_accepts_closed_available_records(
+    project: str, newline: str
+) -> None:
+    record = _story_memory_record(project=project, count=7)
+    assert live_stand._live_playwright_story_memory_records(
+        _story_memory_row(record, newline)
+    ) == [record]
+
+
+def test_live_playwright_story_memory_accepts_unavailable_records() -> None:
+    record = _story_memory_record(project="mobile", status="unavailable")
+    assert live_stand._live_playwright_story_memory_records(
+        _story_memory_row(record)
+    ) == [record]
+
+
+def test_live_playwright_story_memory_rejects_malformed_records() -> None:
+    valid = _story_memory_record()
+    malformed: list[dict[str, object]] = []
+    for key, value in (
+        ("schema", True),
+        ("schema", 2),
+        ("project", "private-project"),
+        ("phase", "before-assertion"),
+        ("diagnosticStatus", "error with private details"),
+        ("extra", "credential-shaped-private-value"),
+    ):
+        record = json.loads(json.dumps(valid))
+        record[key] = value
+        malformed.append(record)
+
+    record = json.loads(json.dumps(valid))
+    record["warmDOM"]["nodes"] = None
+    malformed.append(record)
+    record = json.loads(json.dumps(valid))
+    record["warmDOM"]["nodes"] = -1
+    malformed.append(record)
+    record = json.loads(json.dumps(valid))
+    record["warmDOM"]["nodes"] = 9_007_199_254_740_992
+    malformed.append(record)
+    record = json.loads(json.dumps(valid))
+    record["warmDOM"]["nodes"] = True
+    malformed.append(record)
+    record = json.loads(json.dumps(valid))
+    record["warmDOM"]["nodes"] = 1.0
+    malformed.append(record)
+    record = json.loads(json.dumps(valid))
+    record["warmListeners"]["window"]["private-event-name"] = 1
+    malformed.append(record)
+    unavailable = _story_memory_record(status="unavailable")
+    unavailable["cycle0Listeners"]["documentTree"]["click"] = 1
+    malformed.append(unavailable)
+    inconsistent_total = _story_memory_record()
+    inconsistent_total["warmListeners"]["window"]["focus"] = 1
+    malformed.append(inconsistent_total)
+
+    for record in malformed:
+        assert (
+            live_stand._live_playwright_story_memory_records(_story_memory_row(record))
+            == []
+        )
+
+    row = _story_memory_row(valid)
+    malformed_rows = (
+        row.rstrip("\n"),
+        row[:-1] + " private-url\n",
+        "private title " + row,
+        row.replace("\n", "\x00\n"),
+        row[:-1].replace('"schema":1', '"schema":1,"schema":1') + "\n",
+        row[:-1].replace('"nodes":2', '"nodes":NaN') + "\n",
+        "STORY_MEMORY_DIAG " + " " * 8200 + row.split(" ", 1)[1],
+    )
+    for malformed_row in malformed_rows:
+        assert live_stand._live_playwright_story_memory_records(malformed_row) == []
+
+
+def test_live_playwright_story_memory_parser_deduplicates_and_caps_records() -> None:
+    records = [
+        _story_memory_record(project="desktop", count=number) for number in range(5)
+    ]
+    rows = (
+        _story_memory_row(records[0])
+        + _story_memory_row(records[1])
+        + _story_memory_row(records[0])
+        + _story_memory_row(records[2])
+        + _story_memory_row(records[3])
+        + _story_memory_row(records[4])
+    )
+    assert live_stand._live_playwright_story_memory_records(rows) == records[:4]
+
+
+def test_live_playwright_emits_only_validated_story_memory_records_from_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    record = _story_memory_record(project="mobile", count=5)
+    valid = _story_memory_row(record)
+    private = "private listener function token=not-for-output https://private.invalid"
+    malformed = _story_memory_row({**record, "phase": private})
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(valid + malformed + private + "\n").encode(),
+        stderr=(valid + private + "\n").encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    expected = json.dumps(record, separators=(",", ":"))
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E story memory " + expected,
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize("newline", [chr(10), chr(13) + chr(10)])
 @pytest.mark.parametrize(
@@ -6880,3 +7068,333 @@ def test_up_port_conflict_preserves_the_running_stand_and_never_builds(
         live_stand._up_locked("HEAD")
 
     assert events == []
+
+
+_AUTH_HTTP_DIAG_TEST_OPERATIONS = (
+    "profile_read",
+    "profile_identity_read",
+    "password_change_invalid",
+    "password_change_save",
+    "totp_recovery_accept",
+    "totp_recovery_replay",
+    "push_topics_read",
+    "push_subscribe",
+    "push_topics_initial",
+    "push_topics_optout",
+    "push_unsubscribe",
+    "push_rebind",
+    "profile_update_enable",
+    "profile_update_start",
+    "profile_update_end",
+    "profile_update_midnight_start",
+    "profile_update_midnight_end",
+    "profile_update_disable",
+    "student_admin_read",
+    "admin_topics_read",
+    "admin_account_search",
+    "admin_account_delete",
+)
+
+
+def _auth_ui_diag_record(
+    *,
+    project: str = "desktop",
+    scenario: str = "password_current_invalid",
+    status: int = 422,
+    **overrides: object,
+) -> dict[str, object]:
+    record: dict[str, object] = {
+        "schema": 1,
+        "project": project,
+        "scenario": scenario,
+        "status": status,
+        "detailClass": "expected",
+        "alertCount": 1,
+        "alertCountCapped": False,
+        "alertVisible": True,
+        "currentFieldInvalid": True if scenario == "password_current_invalid" else None,
+        "loginChallenge": None if scenario == "password_current_invalid" else True,
+        "pageError": False,
+    }
+    record.update(overrides)
+    return record
+
+
+def _auth_http_diag_record(
+    operation: str = "profile_read",
+    *,
+    project: str = "desktop",
+    status: int | None = None,
+    expected_status: int | None = None,
+    **overrides: object,
+) -> dict[str, object]:
+    required_status = (
+        403
+        if operation == "student_admin_read"
+        else 400
+        if operation in {"password_change_invalid", "totp_recovery_replay"}
+        else 200
+    )
+    record: dict[str, object] = {
+        "schema": 1,
+        "project": project,
+        "operation": operation,
+        "expectedStatus": (
+            required_status if expected_status is None else expected_status
+        ),
+        "status": (
+            (500 if required_status == 200 else 200) if status is None else status
+        ),
+    }
+    record.update(overrides)
+    return record
+
+
+def _auth_diag_row(prefix: str, record: dict[str, object], newline: str = "\n") -> str:
+    return prefix + json.dumps(record, separators=(",", ":")) + newline
+
+
+@pytest.mark.parametrize(
+    ("project", "scenario", "current_invalid", "login_challenge"),
+    [
+        ("desktop", "password_current_invalid", True, None),
+        ("mobile", "password_current_invalid", False, None),
+        ("desktop", "totp_recovery_replay", None, True),
+        ("mobile", "totp_recovery_replay", None, False),
+    ],
+)
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_auth_ui_parser_accepts_exact_failure_records(
+    project: str,
+    scenario: str,
+    current_invalid: bool | None,
+    login_challenge: bool | None,
+    newline: str,
+) -> None:
+    record = _auth_ui_diag_record(
+        project=project,
+        scenario=scenario,
+        currentFieldInvalid=current_invalid,
+        loginChallenge=login_challenge,
+    )
+    assert live_stand._live_playwright_auth_ui_diagnostics(
+        _auth_diag_row("AUTH_UI_DIAG ", record, newline)
+    ) == [record]
+
+
+def test_live_playwright_auth_ui_parser_accepts_capped_alerts_and_details() -> None:
+    for detail_class in ("expected", "other-string", "non-string", "missing"):
+        record = _auth_ui_diag_record(
+            scenario="totp_recovery_replay",
+            detailClass=detail_class,
+            alertCount=8,
+            alertCountCapped=True,
+        )
+        assert live_stand._live_playwright_auth_ui_diagnostics(
+            _auth_diag_row("AUTH_UI_DIAG ", record)
+        ) == [record]
+
+
+def test_live_playwright_auth_ui_parser_rejects_malformed_or_private_rows() -> None:
+    valid = _auth_ui_diag_record()
+    malformed: list[dict[str, object]] = []
+    for key, value in (
+        ("schema", True),
+        ("schema", 2),
+        ("project", "private-project"),
+        ("scenario", "password_current_invalid https://private.invalid"),
+        ("status", True),
+        ("status", 99),
+        ("status", 600),
+        ("detailClass", "expected private alert text"),
+        ("alertCount", True),
+        ("alertCount", -1),
+        ("alertCount", 9),
+        ("alertCountCapped", 1),
+        ("alertVisible", "true"),
+        ("pageError", None),
+        ("extra", "private token"),
+    ):
+        malformed.append({**valid, key: value})
+    malformed.append(_auth_ui_diag_record(alertCountCapped=True))
+    malformed.append(
+        _auth_ui_diag_record(
+            scenario="totp_recovery_replay",
+            currentFieldInvalid=False,
+            loginChallenge=True,
+        )
+    )
+    malformed.append(
+        _auth_ui_diag_record(
+            scenario="password_current_invalid",
+            currentFieldInvalid=True,
+            loginChallenge=False,
+        )
+    )
+
+    for record in malformed:
+        assert (
+            live_stand._live_playwright_auth_ui_diagnostics(
+                _auth_diag_row("AUTH_UI_DIAG ", record)
+            )
+            == []
+        )
+
+    row = _auth_diag_row("AUTH_UI_DIAG ", valid)
+    malformed_rows = (
+        row.rstrip("\n"),
+        row[:-1] + " private-url\n",
+        "private title " + row,
+        row[:-1].replace('"schema":1', '"schema":1,"schema":1') + "\n",
+        row[:-1].replace('"status":422', '"status":NaN') + "\n",
+        row[:-1].replace('"status":422', '"status":422.0') + "\n",
+        row.replace("\n", "\x00\n"),
+        "AUTH_UI_DIAG " + "x" * 1025 + "\n",
+    )
+    for malformed_row in malformed_rows:
+        assert live_stand._live_playwright_auth_ui_diagnostics(malformed_row) == []
+
+
+def test_live_playwright_auth_ui_parser_deduplicates_and_caps_records() -> None:
+    records = [
+        _auth_ui_diag_record(status=100 + index, alertCount=index % 9)
+        for index in range(17)
+    ]
+    rows = "".join(
+        _auth_diag_row("AUTH_UI_DIAG ", record)
+        for record in [records[0], records[1], records[0], *records[2:]]
+    )
+    assert live_stand._live_playwright_auth_ui_diagnostics(rows) == records[:16]
+
+
+@pytest.mark.parametrize("operation", _AUTH_HTTP_DIAG_TEST_OPERATIONS)
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+def test_live_playwright_auth_http_parser_accepts_closed_status_mismatches(
+    operation: str, project: str
+) -> None:
+    record = _auth_http_diag_record(operation, project=project)
+    assert live_stand._live_playwright_auth_http_diagnostics(
+        _auth_diag_row("AUTH_HTTP_DIAG ", record)
+    ) == [record]
+
+
+def test_live_playwright_auth_http_parser_rejects_unexpected_or_private_rows() -> None:
+    valid = _auth_http_diag_record()
+    malformed = (
+        {**valid, "schema": True},
+        {**valid, "project": "private"},
+        {**valid, "operation": "profile_read?token=private"},
+        {**valid, "expectedStatus": 403},
+        {**valid, "expectedStatus": True},
+        {**valid, "status": 200},
+        {**valid, "status": 99},
+        {**valid, "status": 600},
+        {**valid, "status": 503.0},
+        {**valid, "status": True},
+        {**valid, "extra": "https://private.invalid/path"},
+        _auth_http_diag_record("student_admin_read", expected_status=200),
+        _auth_http_diag_record("student_admin_read", expected_status=403, status=403),
+        _auth_http_diag_record("password_change_invalid", expected_status=200),
+        _auth_http_diag_record(
+            "password_change_invalid", expected_status=400, status=400
+        ),
+        _auth_http_diag_record("totp_recovery_replay", expected_status=200),
+        _auth_http_diag_record("totp_recovery_replay", expected_status=400, status=400),
+    )
+    for record in malformed:
+        assert (
+            live_stand._live_playwright_auth_http_diagnostics(
+                _auth_diag_row("AUTH_HTTP_DIAG ", record)
+            )
+            == []
+        )
+
+    row = _auth_diag_row("AUTH_HTTP_DIAG ", valid)
+    malformed_rows = (
+        row.rstrip("\n"),
+        row[:-1].replace('"schema":1', '"schema":1,"schema":1') + "\n",
+        row[:-1].replace('"status":500', '"status":Infinity') + "\n",
+        row.replace("\n", "\x00\n"),
+        "AUTH_HTTP_DIAG " + "x" * 1025 + "\n",
+    )
+    for malformed_row in malformed_rows:
+        assert live_stand._live_playwright_auth_http_diagnostics(malformed_row) == []
+
+
+def test_live_playwright_auth_http_parser_deduplicates_and_caps_records() -> None:
+    records = [
+        _auth_http_diag_record(operation, status=501 + index)
+        for index, operation in enumerate(_AUTH_HTTP_DIAG_TEST_OPERATIONS)
+    ]
+    rows = "".join(
+        _auth_diag_row("AUTH_HTTP_DIAG ", record)
+        for record in [records[0], records[1], records[0], *records[2:]]
+    )
+    assert live_stand._live_playwright_auth_http_diagnostics(rows) == records[:16]
+
+
+def test_live_playwright_auth_diagnostics_are_failure_only(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    rows = _auth_diag_row("AUTH_UI_DIAG ", _auth_ui_diag_record()) + _auth_diag_row(
+        "AUTH_HTTP_DIAG ", _auth_http_diag_record()
+    )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        0,
+        stdout=rows.encode(),
+        stderr=b"",
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E outcome=passed exit_code=0",
+    ]
+    assert "live E2E auth UI" not in printed.out
+    assert "live E2E auth HTTP" not in printed.out
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    ui_record = _auth_ui_diag_record(project="mobile", scenario="totp_recovery_replay")
+    http_record = _auth_http_diag_record("push_subscribe", project="mobile", status=503)
+    private = (
+        "private alert text password=not-for-output https://private.invalid/user/123"
+    )
+    valid_ui = _auth_diag_row("AUTH_UI_DIAG ", ui_record)
+    valid_http = _auth_diag_row("AUTH_HTTP_DIAG ", http_record)
+    malformed_ui = _auth_diag_row("AUTH_UI_DIAG ", {**ui_record, "scenario": private})
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(valid_ui + valid_http + malformed_ui + private + "\n").encode(),
+        stderr=(valid_ui + valid_http + private + "\n").encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E auth UI " + json.dumps(ui_record, separators=(",", ":")),
+        "live E2E auth HTTP " + json.dumps(http_record, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""

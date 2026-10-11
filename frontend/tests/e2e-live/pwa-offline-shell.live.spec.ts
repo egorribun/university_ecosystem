@@ -1,61 +1,9 @@
 import { expect, ownedSessionOrigin, test } from "./fixtures"
 import type { Page, Request } from "@playwright/test"
 import { startPwaUpdateProxy } from "./pwa-update-proxy"
+import { replacePrecacheRevision } from "./pwa-precache-revision"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
-
-function replacePrecacheRevision(
-  workerSource: string,
-  appBundlePath: string,
-  revision: string
-): string {
-  const relativePath = appBundlePath.replace(/^\//u, "")
-  const pathIndexes: number[] = []
-  let searchFrom = 0
-  while (true) {
-    const index = workerSource.indexOf(relativePath, searchFrom)
-    if (index < 0) break
-    pathIndexes.push(index)
-    searchFrom = index + relativePath.length
-  }
-
-  const entries = pathIndexes.flatMap((index) => {
-    const start = workerSource.lastIndexOf("{", index)
-    const end = workerSource.indexOf("}", index)
-    if (start < 0 || end < 0) return []
-
-    const entry = workerSource.slice(start, end + 1)
-    const urlMatch = entry.match(/\burl\s*:\s*(["'])(.*?)\1/u)
-    const manifestUrl = urlMatch?.[2]
-    if (!manifestUrl) return []
-
-    try {
-      const manifestPath = new URL(manifestUrl, "https://pwa-update.invalid").pathname
-      return manifestPath === appBundlePath ? [{ start, end, entry }] : []
-    } catch {
-      return []
-    }
-  })
-
-  if (entries.length !== 1) {
-    throw new Error("Expected exactly one precache entry for the selected app bundle")
-  }
-
-  const manifestEntry = entries[0]
-  if (!manifestEntry) {
-    throw new Error("Expected exactly one precache entry for the selected app bundle")
-  }
-  const { start, end, entry } = manifestEntry
-  const updatedEntry = entry.replace(
-    /(["']?revision["']?\s*:\s*)(?:null|["'][^"']*["'])/u,
-    `$1${JSON.stringify(revision)}`
-  )
-  if (updatedEntry === entry) {
-    throw new Error("The selected precache entry has no replaceable revision")
-  }
-
-  return `${workerSource.slice(0, start)}${updatedEntry}${workerSource.slice(end + 1)}`
-}
 
 function withoutStaleEntityHeaders(headers: Record<string, string>): Record<string, string> {
   const safeHeaders = { ...headers }

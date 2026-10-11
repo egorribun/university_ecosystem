@@ -59,7 +59,7 @@ test("live notification acceptance uses an owned account and cleans up only that
   )
   assert.match(
     spec,
-    /equalBoundaryProfile = await readProfile\(page\)[\s\S]*?dnd_start[\s\S]*?00:00[\s\S]*?dnd_end[\s\S]*?00:00/u,
+    /equalBoundaryProfile = await readProfile\(page,\s*diagnosticProject\(testInfo\.project\.name\)\)[\s\S]*?dnd_start[\s\S]*?00:00[\s\S]*?dnd_end[\s\S]*?00:00/u,
     "the live profile read verifies both equal boundary values persisted"
   )
   assert.match(
@@ -183,12 +183,15 @@ test("live notification preferences cover every topic, owner scope, and post-rel
   assert.match(spec, /topics\)\.toEqual\(\[\]\)/u)
   assert.match(spec, /await page\.reload\(\)/u)
   assert.match(spec, /const pushOptOut = waitForPushAction[\s\S]*?\/api\/v1\/push\/unsubscribe/u)
-  assert.match(spec, /optedOutTopicsAfterReload = await readTopicPreferences\(page\)/u)
+  assert.match(
+    spec,
+    /optedOutTopicsAfterReload = await readTopicPreferences\(\s*page,\s*diagnosticProject\(testInfo\.project\.name\)\s*\)/u
+  )
   assert.match(spec, /optedOutAdminTopics = await readAdminTopicPreferences/u)
   assert.match(spec, /topicPatchRequests\)\.toBe\(1 \+ SELECTED_TOPICS\.length\)/u)
   assert.match(
     spec,
-    /optedOutTopicsAfterReload = await readTopicPreferences\(page\)[\s\S]*?const optedOutPushRebind = waitForPushAction\(page, "\/api\/v1\/push\/subscribe", "POST"\)[\s\S]*?const reboundTopics = await readTopicPreferences\(page\)[\s\S]*?reboundTopics\.has_preferences\)\.toBe\(true\)[\s\S]*?reboundTopics\.topics\)\.toEqual\(\[\]\)[\s\S]*?await page\.reload\(\)[\s\S]*?expectTopicSelection\(page, \[\]\)/u,
+    /optedOutTopicsAfterReload = await readTopicPreferences\(\s*page,\s*diagnosticProject\(testInfo\.project\.name\)\s*\)[\s\S]*?const optedOutPushRebind = waitForPushAction\(page, "\/api\/v1\/push\/subscribe", "POST"\)[\s\S]*?const reboundTopics = await readTopicPreferences\(page,\s*diagnosticProject\(testInfo\.project\.name\)\)[\s\S]*?reboundTopics\.has_preferences\)\.toBe\(true\)[\s\S]*?reboundTopics\.topics\)\.toEqual\(\[\]\)[\s\S]*?await page\.reload\(\)[\s\S]*?expectTopicSelection\(page, \[\]\)/u,
     "re-enabling the endpoint must preserve an explicit empty topic opt-out across reload"
   )
   assert.match(
@@ -201,10 +204,15 @@ test("live notification preferences cover every topic, owner scope, and post-rel
     "await expectTopicSelection(page, SELECTED_TOPICS)",
     topicReloadStart
   )
-  const canonicalTopicsAfterReload = spec.indexOf(
-    "expect((await readTopicPreferences(page)).topics).toEqual(SELECTED_TOPICS)",
-    selectedTopicsAfterReload
-  )
+  const canonicalTopicsAfterReloadMatch = spec
+    .slice(selectedTopicsAfterReload)
+    .match(
+      /expect\s*\(\s*\(\s*await\s+readTopicPreferences\s*\(\s*page\s*,\s*diagnosticProject\s*\(\s*testInfo\.project\.name\s*\)\s*\)\s*\)\s*\.topics\s*\)\s*\.toEqual\s*\(\s*SELECTED_TOPICS\s*\)/u
+    )
+  const canonicalTopicsAfterReload =
+    canonicalTopicsAfterReloadMatch?.index === undefined
+      ? -1
+      : selectedTopicsAfterReload + canonicalTopicsAfterReloadMatch.index
   const selectedTopicOptOutStart = spec.indexOf(
     "for (const topic of TOPICS.filter((entry) => SELECTED_TOPICS.includes(entry.key)))",
     canonicalTopicsAfterReload
@@ -230,7 +238,10 @@ test("live notification preferences cover every topic, owner scope, and post-rel
   )
   assert.match(quietHoursReload, /getByLabel\("С", \{ exact: true \}\)\)\.toHaveValue\("21:35"\)/u)
   assert.match(quietHoursReload, /getByLabel\("До", \{ exact: true \}\)\)\.toHaveValue\("06:45"\)/u)
-  assert.match(quietHoursReload, /persistedProfile = await readProfile\(page\)/u)
+  assert.match(
+    quietHoursReload,
+    /persistedProfile = await readProfile\(page,\s*diagnosticProject\(testInfo\.project\.name\)\)/u
+  )
   assert.match(quietHoursReload, /persistedProfile\.dnd_enabled\)\.toBe\(true\)/u)
   assert.match(quietHoursReload, /persistedProfile\.dnd_start\)\.toMatch\(\/\^21:35/u)
   assert.match(quietHoursReload, /persistedProfile\.dnd_end\)\.toMatch\(\/\^06:45/u)
