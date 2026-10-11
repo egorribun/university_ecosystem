@@ -16,6 +16,10 @@ release claims require fresh evidence under the master plan.
   Q1/Q4 are mandatory, and current coverage floors stay enforced until Q3.
 - [Findings ledger](#findings-ledger) — all 63 platform finding IDs, retained
   rationale and current source references. Current-RC revalidation remains open.
+- [Full platform audit, October 2026](AUDIT-2026-10.md) — current open-finding
+  register for `e9a6bd18c` (AUD-001…AUD-163 revalidated, AUD-164+ new),
+  including security, live-stand, migration and full test-run results. It
+  supersedes the interim `7818284` checkpoint report kept outside the repository.
 - [Codebase consolidation decisions](../adr/ADR-046-codebase-consolidation-audit.md)
   — outcome of the 2026-10 dead-code, duplication and contract-drift audit:
   what was fixed, retired and deliberately kept, with the evidence rules used.

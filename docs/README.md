@@ -49,6 +49,8 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
+- [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
+  open-finding register
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
@@ -69,6 +71,7 @@ implementation guidance.
 | Enforced quality and check inventory | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/) |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md) |
+| Current open findings | [Platform audit, October 2026](audits/AUDIT-2026-10.md) |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable
