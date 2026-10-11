@@ -195,4 +195,48 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
   assert.match(spec, /expect\(snapshot\.domCounters\)\.toEqual\(warmSnapshot\.domCounters\)/u)
   assert.match(spec, /for \(let cycle = 0; cycle < MEASURED_CYCLES; cycle \+= 1\)/u)
   assert.doesNotMatch(spec, /randomUUID|freshPassword|request\.(?:post|put|patch|delete)|\.fill\(/u)
+
+  assert.match(
+    visibilityFixture,
+    /export type StorySetupDiagnosticStage =([\s\S]*?\| "browser-launch"[\s\S]*?\| "cleanup")/u
+  )
+  assert.match(visibilityFixture, /const record = \{ schema: 1, project, stage, exceptionKind \}/u)
+  assert.match(visibilityFixture, /if \(project !== "desktop" && project !== "mobile"\) return/u)
+  assert.ok(
+    visibilityFixture.includes(
+      "process.stdout.write(`STORY_SETUP_DIAG ${JSON.stringify(record)}\\n`)"
+    )
+  )
+  assert.match(
+    visibilityFixture,
+    /const testFailed = testInfo\.status !== testInfo\.expectedStatus/u
+  )
+  assert.match(visibilityFixture, /if \(fixtureFailed \|\| testFailed \|\| cleanupFailed\)/u)
+  assert.match(
+    visibilityFixture,
+    /state\?\.setupFailureStage[\s\S]*?emitStorySetupDiagnostic\([\s\S]*?throwFixtureOutcome\(/u
+  )
+  assert.match(
+    spec,
+    /let bodyFailed = false[\s\S]*?catch \(error\) \{\s*recordStorySetupFailure\(page, error\)[\s\S]*?bodyFailed = true[\s\S]*?bodyError = error[\s\S]*?await cdp\.detach\(\)[\s\S]*?if \(bodyFailed\) throw bodyError/u
+  )
+  assert.match(
+    spec,
+    /recordStorySetupCleanupFailure\(page\)\s*cleanupFailed = true\s*cleanupError = error[\s\S]*?if \(cleanupFailed\) throw cleanupError/u
+  )
+  assert.doesNotMatch(spec, /finally \{\s*markStorySetupStage\(page, ["']cleanup["']\)/u)
+  assert.doesNotMatch(visibilityFixture, /error\.stack|JSON\.stringify\(error|error\.message/u)
+  for (const marker of [
+    'markStorySetupStage(page, "bootstrap-listener")',
+    'markStorySetupStage(page, "login")',
+    'markStorySetupStage(page, "dashboard")',
+    'markStorySetupStage(page, "bootstrap")',
+    'markStorySetupStage(page, "story-trigger")',
+    'markStorySetupStage(page, "baseline")',
+    'markStorySetupStage(page, "warm-up")',
+    'cycle === 0 ? "cycle0" : "measured-cycle"',
+    'markStorySetupStage(page, "acceptance")',
+  ]) {
+    assert.ok(spec.includes(marker), `missing Story setup diagnostic stage marker: ${marker}`)
+  }
 })

@@ -1,19 +1,27 @@
 import { randomUUID } from "node:crypto"
 import type { Locator, Page, Request, Response, TestInfo } from "@playwright/test"
-import { reportLiveHttpStatus } from "./http-status-diagnostic"
+import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import {
   awaitMail,
+  assessLiveRateLimitRetry,
   expect,
   freshPassword,
   loginAs,
   loginWith,
+  liveDeadlineBoundedTimeoutMs,
   mailFor,
   mailText,
+  parseLiveRateLimitRetryAfter,
   stubBreachedPasswordLookup,
+  waitForLiveRateLimitRetry,
   test,
 } from "./fixtures"
 
 const EMAIL_CODE = /(?:Verification code|Код подтверждения):\s*(\d{6})/iu
+const OTP_RETRY_REQUEST_BUDGET_MS = 20_000
+const OTP_RETRY_ACTION_TIMEOUT_MS = 15_000
+const OTP_RETRY_MAIL_WAIT_BUDGET_MS = 30_000
+const OTP_RETRY_FINAL_RESERVE_MS = 20_000
 
 async function expectOwnedProfileIdentityReady(page: Page, fullName: string, isMobile: boolean) {
   if (isMobile) {
@@ -37,10 +45,20 @@ async function expectOwnedProfileIdentityReady(page: Page, fullName: string, isM
   await expect(profileAction).toBeEnabled()
 }
 
-async function enterCode(inputs: Locator, code: string) {
-  await expect(inputs).toHaveCount(6)
+function retryActionTimeout(deadlineAtMs: number): number {
+  const timeoutMs = liveDeadlineBoundedTimeoutMs(deadlineAtMs, OTP_RETRY_ACTION_TIMEOUT_MS)
+  if (timeoutMs === null) throw new Error("Email OTP retry action deadline exhausted")
+  return timeoutMs
+}
+
+async function enterCode(inputs: Locator, code: string, actionDeadlineAtMs?: number) {
+  const actionOptions = () =>
+    actionDeadlineAtMs === undefined
+      ? undefined
+      : { timeout: retryActionTimeout(actionDeadlineAtMs) }
+  await expect(inputs).toHaveCount(6, actionOptions())
   for (const [index, digit] of Array.from(code).entries()) {
-    await inputs.nth(index).fill(digit)
+    await inputs.nth(index).fill(digit, actionOptions())
   }
 }
 
@@ -160,12 +178,101 @@ test("email verification retries, rotates its code on resend, and rejects replay
 
     const rejectedResponse = page.waitForResponse(verifyResponse)
     await enterCode(inputs, wrongCode)
-    const rejected = await rejectedResponse
+    let rejected = await rejectedResponse
     reportLiveHttpStatus(
       testInfo.project.name,
       "email-otp-verification-wrong-code",
       rejected.status()
     )
+    let retryDecision: "retry" | "declined-header" | "declined-deadline" | null = null
+    if (rejected.status() === 429) {
+      await expect(inputs.first()).toHaveValue("")
+      const retryAfter = parseLiveRateLimitRetryAfter(rejected.headers()["retry-after"])
+      const resendAvailableAtMs = Date.parse(initialChallenge.resend_available_at)
+      const remainingResendWaitMs = Number.isFinite(resendAvailableAtMs)
+        ? Math.max(0, resendAvailableAtMs - Date.now() + 500)
+        : OTP_RETRY_FINAL_RESERVE_MS
+      const retryTailBudgetMs =
+        remainingResendWaitMs + OTP_RETRY_MAIL_WAIT_BUDGET_MS + OTP_RETRY_FINAL_RESERVE_MS
+      const initialDecision = assessLiveRateLimitRetry(
+        testInfo,
+        retryAfter,
+        OTP_RETRY_REQUEST_BUDGET_MS,
+        retryTailBudgetMs
+      )
+      retryDecision = initialDecision.decision
+      let retryDeadlineAtMs = initialDecision.deadlineAtMs
+
+      if (initialDecision.decision === "retry" && retryAfter !== null) {
+        await waitForLiveRateLimitRetry(retryAfter)
+        const afterWait = assessLiveRateLimitRetry(
+          testInfo,
+          0,
+          OTP_RETRY_REQUEST_BUDGET_MS,
+          retryTailBudgetMs
+        )
+        retryDecision = afterWait.decision
+        retryDeadlineAtMs = afterWait.deadlineAtMs
+
+        if (afterWait.decision === "retry" && afterWait.deadlineAtMs !== null) {
+          const requestDeadlineAtMs = afterWait.deadlineAtMs - retryTailBudgetMs
+          const responseTimeoutMs = liveDeadlineBoundedTimeoutMs(
+            requestDeadlineAtMs,
+            OTP_RETRY_REQUEST_BUDGET_MS
+          )
+          const retryActionDeadlineAtMs = Math.min(
+            requestDeadlineAtMs,
+            performance.now() + OTP_RETRY_ACTION_TIMEOUT_MS
+          )
+          const actionBudgetMs = liveDeadlineBoundedTimeoutMs(
+            retryActionDeadlineAtMs,
+            OTP_RETRY_ACTION_TIMEOUT_MS
+          )
+          if (responseTimeoutMs !== null && actionBudgetMs !== null) {
+            const verifyButton = page.getByRole("button", {
+              name: /^(?:Verify|Подтвердить)$/iu,
+            })
+            const retryResponse = page.waitForResponse(verifyResponse, {
+              timeout: responseTimeoutMs,
+            })
+            const retryAction = (async () => {
+              await enterCode(inputs, wrongCode, retryActionDeadlineAtMs)
+              await expect(verifyButton).toBeEnabled({
+                timeout: retryActionTimeout(retryActionDeadlineAtMs),
+              })
+              await verifyButton.click({
+                timeout: retryActionTimeout(retryActionDeadlineAtMs),
+              })
+            })()
+            const [responseOutcome, actionOutcome] = await Promise.allSettled([
+              retryResponse,
+              retryAction,
+            ])
+            if (responseOutcome.status === "rejected") throw responseOutcome.reason
+            if (actionOutcome.status === "rejected") throw actionOutcome.reason
+            rejected = responseOutcome.value
+            retryDecision = "retry"
+            reportLiveHttpStatus(
+              testInfo.project.name,
+              "email-otp-verification-wrong-code",
+              rejected.status()
+            )
+          } else {
+            retryDecision = "declined-deadline"
+          }
+        }
+      }
+
+      reportLiveRateLimitRetry(
+        testInfo.project.name,
+        "email-otp-verification-wrong-code",
+        retryAfter,
+        retryDecision,
+        retryDeadlineAtMs === null
+          ? 0
+          : Math.max(0, Math.min(60_000, Math.floor(retryDeadlineAtMs - performance.now())))
+      )
+    }
     expect(rejected.status()).toBe(400)
     await expect(inputs.first()).toHaveValue("")
 

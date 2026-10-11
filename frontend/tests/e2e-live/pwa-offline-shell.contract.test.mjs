@@ -97,6 +97,38 @@ test("live PWA shell acceptance exercises the real worker without server mutatio
   assert.match(spec, /context\.setOffline\(false\)/u)
   assert.match(spec, /Network\.setCacheDisabled/u)
   assert.match(spec, /data-render-mode/u)
+  assert.match(
+    spec,
+    /async function assertStaticSpaDocumentResponse\([\s\S]*?response!\.text\(\)[\s\S]*?data-render-mode/u,
+    "the static shell marker is read from the original navigation response"
+  )
+  assert.match(spec, /expect\(response\?\.status\(\)\)\.toBe\(200\)/u)
+  const staticSpaRootPattern =
+    /<html(?=\s|>)[^>]*\sdata-render-mode=["']static-spa["'](?=\s|>)[^>]*>/iu
+  assert.ok(
+    spec.includes(
+      String.raw`/<html(?=\s|>)[^>]*\sdata-render-mode=["']static-spa["'](?=\s|>)[^>]*>/iu`
+    ),
+    "the response check pins the exact HTML attribute boundary"
+  )
+  assert.match('<html data-render-mode="static-spa">', staticSpaRootPattern)
+  assert.doesNotMatch('<html fake-data-render-mode="static-spa">', staticSpaRootPattern)
+  assert.doesNotMatch('<htmlx data-render-mode="static-spa">', staticSpaRootPattern)
+  assert.doesNotMatch(spec, /\\bdata-render-mode/u)
+  assert.equal(
+    (
+      spec.match(
+        /await assertStaticSpaDocumentResponse\((?:response|offlineResponse|updatedOfflineResponse)\)/gu
+      ) ?? []
+    ).length,
+    3,
+    "each offline shell response is checked before client bootstrap removes its marker"
+  )
+  assert.doesNotMatch(
+    spec,
+    /page\.locator\(["']html["']\)\)\.toHaveAttribute\(["']data-render-mode["']/u,
+    "the consumed marker is not asserted against the post-bootstrap DOM"
+  )
   assert.match(spec, /window\.__APP_HYDRATED/u)
   assert.match(spec, /workbox-precache/u)
   assert.match(spec, /requestfailed/u)
@@ -132,6 +164,27 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assert.match(spec, /setWorkerResponseTransform/u)
   assert.doesNotMatch(spec, /context\.route\(["']\*\*\/sw\.js["']/u)
   assert.match(spec, /context\.route\(["']\*\*\/assets\/\*\*["']/u)
+  assert.match(spec, /const bundleRouteCounterLimit = 64/u)
+  assert.match(spec, /PWA_BUNDLE_ROUTE_DIAG /u)
+  assert.match(
+    spec,
+    /bundleUpdateResponses\)\.toBeGreaterThan\(0\)[\s\S]*?catch \(assertionFailure\)[\s\S]*?PWA_BUNDLE_ROUTE_DIAG/u,
+    "route diagnostics are emitted only when the unchanged bundle-response assertion fails"
+  )
+  assert.match(
+    spec,
+    /PWA_BUNDLE_ROUTE_DIAG \$\{JSON\.stringify\(\{\s*schema: 1,\s*project,\s*routeEntries,\s*originMatches,\s*bundlePathMatches,\s*serviceWorkerRequestSeen,\s*\}\)\}/u,
+    "the route failure record contains only its closed numeric and boolean fields"
+  )
+  assert.match(spec, /routeEntries = incrementBundleRouteCounter\(routeEntries\)/u)
+  assert.match(spec, /originMatches = incrementBundleRouteCounter\(originMatches\)/u)
+  assert.match(spec, /bundlePathMatches = incrementBundleRouteCounter\(bundlePathMatches\)/u)
+  assert.match(spec, /request\.serviceWorker\(\) !== null/u)
+  assert.doesNotMatch(
+    spec,
+    /PWA_BUNDLE_ROUTE_DIAG[\s\S]{0,500}(?:request\.url\(\)|url\.href|error\.message)/u,
+    "the failure record contains only bounded counters and a boolean"
+  )
   assertProxySource(
     /import \{ isIP, type AddressInfo \} from ["\x27]node:net["\x27]/u,
     "proxy uses Node loopback address helpers"

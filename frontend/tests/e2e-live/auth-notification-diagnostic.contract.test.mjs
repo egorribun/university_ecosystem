@@ -13,7 +13,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { reportAuthHttpStatus, reportAuthUiFailure } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
+      `import { reportAuthHttpStatus, reportAuthUiFailure, reportAuthRegistrationFailure } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -168,13 +168,101 @@ test("auth HTTP diagnostics reject private labels, invalid statuses, and cap uni
   assert.doesNotMatch(output, /private/u)
 })
 
+test("registration failure diagnostics emit only bounded closed state", () => {
+  const calls = [
+    'reportAuthRegistrationFailure("desktop", "password-settings", { phase: "response-wait", formValid: true, submitEnabled: true, requestObserved: false, status: null })',
+    'reportAuthRegistrationFailure("mobile", "totp", { phase: "response-received", formValid: true, submitEnabled: true, requestObserved: true, status: 422 })',
+    'reportAuthRegistrationFailure("desktop", "password-settings", { phase: "navigation", formValid: true, submitEnabled: true, requestObserved: true, status: 200 })',
+    'reportAuthRegistrationFailure("mobile", "totp", { phase: "before-submit", formValid: false, submitEnabled: false, requestObserved: false, status: null })',
+    'reportAuthRegistrationFailure("mobile", "other", { phase: "response-received", formValid: true, submitEnabled: true, requestObserved: true, status: 500 })',
+  ]
+  const output = reportInChild(calls.join("\n"))
+  const rows = output.trim().split(/\r?\n/u)
+  assert.equal(rows.length, 4)
+  assert.ok(rows.every((line) => line.length <= 512))
+  assert.deepEqual(
+    rows.map((line) => JSON.parse(line.slice("AUTH_REGISTRATION_DIAG ".length))),
+    [
+      {
+        schema: 1,
+        project: "desktop",
+        scenario: "password-settings",
+        phase: "response-wait",
+        formValid: true,
+        submitEnabled: true,
+        requestObserved: false,
+        status: null,
+      },
+      {
+        schema: 1,
+        project: "mobile",
+        scenario: "totp",
+        phase: "response-received",
+        formValid: true,
+        submitEnabled: true,
+        requestObserved: true,
+        status: 422,
+      },
+      {
+        schema: 1,
+        project: "desktop",
+        scenario: "password-settings",
+        phase: "navigation",
+        formValid: true,
+        submitEnabled: true,
+        requestObserved: true,
+        status: 200,
+      },
+      {
+        schema: 1,
+        project: "mobile",
+        scenario: "totp",
+        phase: "before-submit",
+        formValid: false,
+        submitEnabled: false,
+        requestObserved: false,
+        status: null,
+      },
+    ]
+  )
+  assert.doesNotMatch(output, /other|private|credential|https?:/iu)
+})
+
+test("registration diagnostics reject inconsistent phases and cap distinct records", () => {
+  const calls = [
+    'reportAuthRegistrationFailure("desktop", "password-settings", { phase: "before-submit", formValid: true, submitEnabled: true, requestObserved: true, status: null })',
+    'reportAuthRegistrationFailure("desktop", "totp", { phase: "response-wait", formValid: true, submitEnabled: true, requestObserved: true, status: 500 })',
+  ]
+  for (const scenario of ["password-settings", "totp"]) {
+    for (const project of ["desktop", "mobile"]) {
+      calls.push(
+        'reportAuthRegistrationFailure("' +
+          project +
+          '", "' +
+          scenario +
+          '", { phase: "response-wait", formValid: true, submitEnabled: true, requestObserved: false, status: null })'
+      )
+    }
+  }
+  calls.push(
+    'reportAuthRegistrationFailure("desktop", "totp", { phase: "response-wait", formValid: false, submitEnabled: false, requestObserved: false, status: null })'
+  )
+  const output = reportInChild(calls.join("\n"))
+  const rows = output.trim().split(/\r?\n/u)
+  assert.equal(rows.length, 4)
+  assert.equal(new Set(rows).size, 4)
+})
+
 test("auth diagnostic helper is browser-independent and cannot replace a failure", async () => {
   const source = await readFile(helperUrl, "utf8")
+  const sourceWithoutClosedRegistrationPhases = source
+    .replaceAll('"response-wait"', "")
+    .replaceAll('"response-received"', "")
   assert.doesNotMatch(
-    source,
+    sourceWithoutClosedRegistrationPhases,
     /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\b(?:page|browser|context|response|request|URL)\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
   )
-  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 2)
+  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 3)
   assert.equal(
     reportInChild(`
       process.stdout.write = () => { throw new Error("synthetic-write-failure") };

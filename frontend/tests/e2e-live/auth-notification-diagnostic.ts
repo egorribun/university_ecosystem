@@ -25,12 +25,16 @@ export type AuthHttpOperation =
   | "password_change_save"
   | "totp_recovery_accept"
   | "totp_recovery_replay"
+  | "password_settings_register"
+  | "totp_register"
 
 const PASSWORD_EXPECTED_DETAIL = "Текущий пароль указан неверно"
 const MAX_ALERT_COUNT = 8
 const MAX_DIAGNOSTIC_RECORDS = 16
 const emittedUiRecords = new Set<string>()
 const emittedHttpRecords = new Set<string>()
+const emittedRegistrationRecords = new Set<string>()
+const MAX_REGISTRATION_DIAGNOSTIC_RECORDS = 4
 
 const EXPECTED_STATUS: Readonly<Record<AuthHttpOperation, 200 | 400 | 403>> = {
   profile_read: 200,
@@ -55,6 +59,8 @@ const EXPECTED_STATUS: Readonly<Record<AuthHttpOperation, 200 | 400 | 403>> = {
   password_change_save: 200,
   totp_recovery_accept: 200,
   totp_recovery_replay: 400,
+  password_settings_register: 200,
+  totp_register: 200,
 }
 
 function classifyDetail(scenario: AuthUiScenario, detail: unknown): AuthUiDetailClass {
@@ -130,6 +136,78 @@ export function reportAuthUiFailure(value: unknown): void {
   }
 }
 
+export type AuthRegistrationScenario = "password-settings" | "totp"
+export type AuthRegistrationPhase =
+  "before-submit" | "response-wait" | "response-received" | "navigation"
+
+export interface AuthRegistrationObservation {
+  phase: AuthRegistrationPhase
+  formValid: boolean
+  submitEnabled: boolean
+  requestObserved: boolean
+  status: number | null
+}
+
+export function reportAuthRegistrationFailure(
+  project: AuthDiagnosticProject,
+  scenario: AuthRegistrationScenario,
+  observation: AuthRegistrationObservation
+): void {
+  if (
+    (project !== "desktop" && project !== "mobile") ||
+    (scenario !== "password-settings" && scenario !== "totp") ||
+    observation === null ||
+    typeof observation !== "object" ||
+    (observation.phase !== "before-submit" &&
+      observation.phase !== "response-wait" &&
+      observation.phase !== "response-received" &&
+      observation.phase !== "navigation") ||
+    typeof observation.formValid !== "boolean" ||
+    typeof observation.submitEnabled !== "boolean" ||
+    typeof observation.requestObserved !== "boolean" ||
+    (observation.status !== null &&
+      (!Number.isInteger(observation.status) ||
+        observation.status < 100 ||
+        observation.status > 599)) ||
+    (observation.phase === "before-submit" &&
+      (observation.requestObserved || observation.status !== null)) ||
+    (observation.phase === "response-wait" && observation.status !== null) ||
+    ((observation.phase === "response-received" || observation.phase === "navigation") &&
+      (!observation.requestObserved ||
+        observation.status === null ||
+        (observation.phase === "navigation" &&
+          (observation.status < 200 || observation.status > 299))))
+  ) {
+    return
+  }
+
+  const record =
+    "AUTH_REGISTRATION_DIAG " +
+    JSON.stringify({
+      schema: 1,
+      project,
+      scenario,
+      phase: observation.phase,
+      formValid: observation.formValid,
+      submitEnabled: observation.submitEnabled,
+      requestObserved: observation.requestObserved,
+      status: observation.status,
+    }) +
+    "\n"
+  if (
+    record.length > 512 ||
+    emittedRegistrationRecords.has(record) ||
+    emittedRegistrationRecords.size >= MAX_REGISTRATION_DIAGNOSTIC_RECORDS
+  ) {
+    return
+  }
+  emittedRegistrationRecords.add(record)
+  try {
+    process.stdout.write(record)
+  } catch {
+    // Registration diagnostics must never replace the live assertion result.
+  }
+}
 export function reportAuthHttpStatus(
   project: string,
   operation: AuthHttpOperation,

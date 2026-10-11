@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test"
+import type { Page, Request, Response } from "@playwright/test"
 import {
   expect,
   freshPassword,
@@ -7,7 +7,11 @@ import {
   stubBreachedPasswordLookup,
   test,
 } from "./fixtures"
-import { reportAuthHttpStatus, reportAuthUiFailure } from "./auth-notification-diagnostic"
+import {
+  reportAuthHttpStatus,
+  reportAuthRegistrationFailure,
+  reportAuthUiFailure,
+} from "./auth-notification-diagnostic"
 
 interface OwnerProfileResponse {
   id: string
@@ -147,6 +151,24 @@ test("password settings reject a wrong current password and persist a corrected 
   const incorrectCurrentPassword = `${currentPassword}-incorrect`
   const updatedPassword = freshPassword()
   let registrationAttempted = false
+  let registrationCompleted = false
+  let registrationFormValid = false
+  let registrationSubmitEnabled = false
+  let registrationRequestObserved = false
+  let registrationStatus: number | null = null
+  let registrationPhase: "before-submit" | "response-wait" | "response-received" | "navigation" =
+    "before-submit"
+  const isRegistrationRequest = (request: Request) =>
+    request.method() === "POST" && new URL(request.url()).pathname.endsWith("/auth/register")
+  const observeRegistrationRequest = (request: Request) => {
+    if (isRegistrationRequest(request)) registrationRequestObserved = true
+  }
+  const observeRegistrationResponse = (response: Response) => {
+    if (!isRegistrationRequest(response.request())) return
+    registrationRequestObserved = true
+    registrationStatus = response.status()
+    registrationPhase = "response-received"
+  }
 
   const adminContext = await browser.newContext({
     baseURL: liveBaseUrl,
@@ -169,6 +191,8 @@ test("password settings reject a wrong current password and persist a corrected 
   })
 
   try {
+    page.on("request", observeRegistrationRequest)
+    page.on("response", observeRegistrationResponse)
     await loginAs(adminPage, "admin")
     await stubBreachedPasswordLookup(page)
 
@@ -177,9 +201,38 @@ test("password settings reject a wrong current password and persist a corrected 
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(currentPassword)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(currentPassword)
+    const registerButton = page.getByRole("button", { name: "Зарегистрироваться" })
+    registrationFormValid = await page
+      .locator("form")
+      .first()
+      .evaluate((form) => form.matches(":valid"))
+    registrationSubmitEnabled = await registerButton.isEnabled()
     registrationAttempted = true
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    registrationPhase = "response-wait"
+    const registrationResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/auth/register")
+    )
+    const [registrationClick, registrationResponse] = await Promise.allSettled([
+      registerButton.click(),
+      registrationResponsePromise,
+    ])
+    if (registrationClick.status === "rejected") throw registrationClick.reason
+    if (registrationResponse.status === "rejected") throw registrationResponse.reason
+    const registered = registrationResponse.value
+    registrationStatus = registered.status()
+    registrationRequestObserved = true
+    registrationPhase = "response-received"
+    reportAuthHttpStatus(
+      diagnosticProject(testInfo.project.name),
+      "password_settings_register",
+      registered.status()
+    )
+    expect(registered.ok()).toBe(true)
+    registrationPhase = "navigation"
     await expect(page).toHaveURL(/\/login$/u)
+    registrationCompleted = true
     await loginWith(page, email, currentPassword)
 
     const createdProfile = await readOwnerProfile(page)
@@ -216,7 +269,30 @@ test("password settings reject a wrong current password and persist a corrected 
     expect(failedResponse.status(), "the server rejects an incorrect current password").toBe(400)
     try {
       await expect(currentPasswordField).toHaveAttribute("aria-invalid", "true")
-      await expect(page.getByRole("alert")).toContainText("Текущий пароль указан неверно")
+      await expect
+        .poll(
+          () =>
+            currentPasswordField.evaluate((input, expectedText) => {
+              const describedIds = (input.getAttribute("aria-describedby") ?? "")
+                .split(/\s+/u)
+                .filter(Boolean)
+              return describedIds.some((id) => {
+                const helper = document.getElementById(id)
+                if (!helper || helper.getAttribute("role") !== "alert") return false
+                const bounds = helper.getBoundingClientRect()
+                const visibility = window.getComputedStyle(helper).visibility
+                return (
+                  helper.textContent?.includes(expectedText) === true &&
+                  bounds.width > 0 &&
+                  bounds.height > 0 &&
+                  visibility !== "hidden" &&
+                  visibility !== "collapse"
+                )
+              })
+            }, "Текущий пароль указан неверно"),
+          { message: "the current-password field links to its invalid-password alert" }
+        )
+        .toBe(true)
     } catch (error) {
       try {
         const alertState = await inspectAlertState(page)
@@ -257,9 +333,18 @@ test("password settings reject a wrong current password and persist a corrected 
     ])
     const passwordInputsAreCleared = reloadedPasswordInputValues.every((value) => value === "")
     const passwordErrorIsCleared = (await page.getByRole("alert").count()) === 0
+    const currentPasswordErrorIsCleared = await currentPasswordField.evaluate((input) => {
+      const describedIds = (input.getAttribute("aria-describedby") ?? "")
+        .split(/\s+/u)
+        .filter(Boolean)
+      return describedIds.every(
+        (id) => document.getElementById(id)?.getAttribute("role") !== "alert"
+      )
+    })
     const passwordFormRestoredAfterReload =
       passwordInputsAreCleared &&
       passwordErrorIsCleared &&
+      currentPasswordErrorIsCleared &&
       (await currentPasswordField.getAttribute("aria-invalid")) !== "true"
     expect(
       passwordFormRestoredAfterReload,
@@ -318,7 +403,20 @@ test("password settings reject a wrong current password and persist a corrected 
     }
 
     expect(createdProfile.id).toMatch(/^[0-9a-f-]{36}$/iu)
+  } catch (error) {
+    if (registrationAttempted && !registrationCompleted) {
+      reportAuthRegistrationFailure(diagnosticProject(testInfo.project.name), "password-settings", {
+        phase: registrationPhase,
+        formValid: registrationFormValid,
+        submitEnabled: registrationSubmitEnabled,
+        requestObserved: registrationRequestObserved,
+        status: registrationStatus,
+      })
+    }
+    throw error
   } finally {
+    page.off("request", observeRegistrationRequest)
+    page.off("response", observeRegistrationResponse)
     try {
       if (registrationAttempted) await deleteOnlyCreatedAccount(adminPage, email, fullName)
     } finally {

@@ -7,7 +7,8 @@ const emittedRateLimitRecords = new Set<string>()
 const MAX_RETRY_RECORDS = 32
 const MAX_RATE_LIMIT_RECORDS = 32
 
-export type LiveRateLimitRetryCheck = "auth-logout" | "password-reset-replay"
+export type LiveRateLimitRetryCheck =
+  "auth-logout" | "password-reset-replay" | "email-otp-verification-wrong-code"
 export type LiveRateLimitRetryDecision = "retry" | "declined-header" | "declined-deadline"
 
 export type LiveHttpStatusCheck =
@@ -146,7 +147,9 @@ export function reportLiveRateLimitRetry(
     (Number.isSafeInteger(retryAfterSeconds) && retryAfterSeconds >= 1 && retryAfterSeconds <= 60)
   if (
     (project !== "desktop" && project !== "mobile") ||
-    (check !== "auth-logout" && check !== "password-reset-replay") ||
+    (check !== "auth-logout" &&
+      check !== "password-reset-replay" &&
+      check !== "email-otp-verification-wrong-code") ||
     !validRetryAfter ||
     (decision !== "retry" && decision !== "declined-header" && decision !== "declined-deadline") ||
     (decision === "retry" && retryAfterSeconds === null) ||

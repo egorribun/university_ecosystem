@@ -123,6 +123,8 @@ test("session-cap diagnostics accept only the forbidden status", () => {
 test("retry decisions retain the original V1 five-field protocol", () => {
   const calls = [
     'reportLiveRateLimitRetry("desktop", "auth-logout", 40, "retry", 60000)',
+    'reportLiveRateLimitRetry("mobile", "email-otp-verification-wrong-code", 5, "retry", 50000)',
+    'reportLiveRateLimitRetry("mobile", "email-otp-verification-wrong-code", 5, "retry", 50000)',
     'reportLiveRateLimitRetry("mobile", "password-reset-replay", 60, "declined-deadline", 12345)',
     'reportLiveRateLimitRetry("desktop", "auth-logout", null, "declined-header", 0)',
   ].join("\n")
@@ -131,6 +133,7 @@ test("retry decisions retain the original V1 five-field protocol", () => {
     [
       "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=60000\n",
       "UE_LIVE_RATE_LIMIT_V1 project=desktop check=auth-logout x_ratelimit_limit=invalid x_ratelimit_remaining=invalid\n",
+      "UE_LIVE_RETRY_V1 project=mobile check=email-otp-verification-wrong-code retry_after_seconds=5 decision=retry remaining_ms=50000\n",
       "UE_LIVE_RETRY_V1 project=mobile check=password-reset-replay retry_after_seconds=60 decision=declined-deadline remaining_ms=12345\n",
       "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=invalid decision=declined-header remaining_ms=0\n",
     ].join("")

@@ -32,7 +32,36 @@ type StoryProjectUse = {
   userAgent?: string
   viewport?: Size | null
 }
+export type StorySetupDiagnosticStage =
+  | "browser-launch"
+  | "fixture-policy"
+  | "owner-cdp"
+  | "command-line"
+  | "debug-port"
+  | "cdp-attach"
+  | "default-context"
+  | "cookies"
+  | "main-target"
+  | "project-options"
+  | "bootstrap-listener"
+  | "login"
+  | "dashboard"
+  | "bootstrap"
+  | "story-trigger"
+  | "warm-up"
+  | "baseline"
+  | "cycle0"
+  | "measured-cycle"
+  | "acceptance"
+  | "cleanup"
+type StorySetupPrimaryExceptionKind = "error" | "non-error"
+type StorySetupExceptionKind =
+  StorySetupPrimaryExceptionKind | "cleanup" | "error-with-cleanup" | "non-error-with-cleanup"
 type PageState = {
+  setupStage: StorySetupDiagnosticStage
+  setupFailureStage?: StorySetupDiagnosticStage
+  setupFailureKind?: StorySetupPrimaryExceptionKind
+  cleanupFailed: boolean
   context: BrowserContext
   browserCdp: CDPSession
   mainTargetId: string
@@ -77,6 +106,82 @@ const STORY_CHROMIUM_ARGS = [
   "--disable-background-networking",
 ]
 const pageStates = new WeakMap<Page, PageState>()
+
+function storySetupExceptionKind(
+  fixtureFailed: boolean,
+  fixtureError: unknown,
+  cleanupFailed: boolean
+): StorySetupExceptionKind {
+  if (!fixtureFailed) return "cleanup"
+  const errorKind = fixtureError instanceof Error ? "error" : "non-error"
+  if (!cleanupFailed) return errorKind
+  return fixtureError instanceof Error ? "error-with-cleanup" : "non-error-with-cleanup"
+}
+
+function emitStorySetupDiagnostic(
+  testInfo: TestInfo,
+  stage: StorySetupDiagnosticStage,
+  exceptionKind: StorySetupExceptionKind
+): void {
+  const project = testInfo.project.name
+  if (project !== "desktop" && project !== "mobile") return
+  const record = { schema: 1, project, stage, exceptionKind }
+  try {
+    process.stdout.write(`STORY_SETUP_DIAG ${JSON.stringify(record)}\n`)
+  } catch {
+    // A failure-only diagnostic must not change the original test outcome.
+  }
+}
+
+export function markStorySetupStage(page: Page, stage: StorySetupDiagnosticStage): void {
+  const state = pageStates.get(page)
+  if (state) state.setupStage = stage
+}
+
+export function recordStorySetupFailure(page: Page, error: unknown): void {
+  const state = pageStates.get(page)
+  if (!state || state.setupFailureStage !== undefined || state.cleanupFailed) return
+  state.setupFailureStage = state.setupStage
+  state.setupFailureKind = error instanceof Error ? "error" : "non-error"
+}
+
+export function recordStorySetupCleanupFailure(page: Page): void {
+  const state = pageStates.get(page)
+  if (!state) return
+  state.cleanupFailed = true
+  if (state.setupFailureStage === undefined) state.setupStage = "cleanup"
+}
+
+function storySetupFailureKind(
+  state: PageState | undefined,
+  fixtureFailed: boolean,
+  fixtureError: unknown,
+  testFailed: boolean,
+  testError: TestInfo["error"],
+  cleanupFailed: boolean
+): StorySetupExceptionKind {
+  const cleanupOnly =
+    cleanupFailed &&
+    !fixtureFailed &&
+    state?.setupFailureStage === undefined &&
+    state?.setupStage === "cleanup"
+  if (cleanupOnly) return "cleanup"
+  const hasPrimaryFailure = fixtureFailed || testFailed || state?.setupFailureStage !== undefined
+  if (!hasPrimaryFailure) return "cleanup"
+  const primaryKind =
+    state?.setupFailureKind ??
+    (fixtureFailed
+      ? fixtureError instanceof Error
+        ? "error"
+        : "non-error"
+      : testFailed
+        ? testError === undefined
+          ? "non-error"
+          : "error"
+        : "error")
+  if (!cleanupFailed) return primaryKind
+  return primaryKind === "error" ? "error-with-cleanup" : "non-error-with-cleanup"
+}
 
 function requiredSize(value: unknown, name: string): Size {
   if (typeof value !== "object" || value === null)
@@ -343,26 +448,36 @@ async function applyProjectOptions(
 }
 
 export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page: Page }>({
-  storyBrowser: async ({ browserName, launchOptions, playwright }, runFixture) => {
-    if (browserName !== "chromium") throw new Error("Story visibility proof requires Chromium")
+  storyBrowser: async ({ browserName, launchOptions, playwright }, runFixture, testInfo) => {
+    let stage: StorySetupDiagnosticStage = "fixture-policy"
     const launchArgs = launchOptions.args ?? []
-    if (
-      launchArgs.some((argument) =>
-        /^--(?:user-data-dir|remote-debugging-port)(?:=|$)/u.test(argument)
-      )
-    ) {
-      throw new Error(
-        "Story visibility fixture requires a managed temporary Chromium profile and port"
-      )
+    let owner: Browser
+    try {
+      if (browserName !== "chromium") {
+        throw new Error("Story visibility proof requires Chromium")
+      }
+      if (
+        launchArgs.some((argument) =>
+          /^--(?:user-data-dir|remote-debugging-port)(?:=|$)/u.test(argument)
+        )
+      ) {
+        throw new Error(
+          "Story visibility fixture requires a managed temporary Chromium profile and port"
+        )
+      }
+      // A fresh managed launch gives each Story test its own temporary profile and default context.
+      stage = "browser-launch"
+      owner = await playwright.chromium.launch({
+        ...launchOptions,
+        handleSIGINT: false,
+        channel: "chromium",
+        headless: true,
+        args: [...launchArgs, ...STORY_CHROMIUM_ARGS],
+      })
+    } catch (error) {
+      emitStorySetupDiagnostic(testInfo, stage, error instanceof Error ? "error" : "non-error")
+      throw error
     }
-    // A fresh managed launch gives each Story test its own temporary profile and default context.
-    const owner = await playwright.chromium.launch({
-      ...launchOptions,
-      handleSIGINT: false,
-      channel: "chromium",
-      headless: true,
-      args: [...launchArgs, ...STORY_CHROMIUM_ARGS],
-    })
     let fixtureError: unknown
     let fixtureFailed = false
     const cleanupFailures: CleanupFailure[] = []
@@ -387,6 +502,13 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
     } catch (error) {
       cleanupFailures.push({ step: "owner-connection-check", error })
     }
+    if (cleanupFailures.length > 0) {
+      emitStorySetupDiagnostic(
+        testInfo,
+        "cleanup",
+        storySetupExceptionKind(fixtureFailed, fixtureError, true)
+      )
+    }
     throwFixtureOutcome(
       fixtureFailed,
       fixtureError,
@@ -395,11 +517,8 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
     )
   },
   page: async ({ storyBrowser, browserName, playwright }, runFixture, testInfo) => {
-    if (browserName !== "chromium") throw new Error("Story visibility proof requires Chromium")
-    if (storyBrowser.contexts().length !== 0) {
-      throw new Error("Managed Story browser unexpectedly has an existing Playwright context")
-    }
-
+    let diagnosticStage: StorySetupDiagnosticStage = "fixture-policy"
+    let mainPage: Page | undefined
     let ownerCdp: CDPSession | undefined
     let attached: Browser | undefined
     let browserCdp: CDPSession | undefined
@@ -409,7 +528,15 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
     let fixtureError: unknown
     let fixtureFailed = false
     try {
+      if (browserName !== "chromium") {
+        throw new Error("Story visibility proof requires Chromium")
+      }
+      if (storyBrowser.contexts().length !== 0) {
+        throw new Error("Managed Story browser unexpectedly has an existing Playwright context")
+      }
+      diagnosticStage = "owner-cdp"
       ownerCdp = await storyBrowser.newBrowserCDPSession()
+      diagnosticStage = "command-line"
       const commandLine = (await ownerCdp.send("Browser.getBrowserCommandLine")) as {
         arguments?: unknown
       }
@@ -419,13 +546,16 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
       ) {
         throw new Error("Managed Chromium command line response is invalid")
       }
+      diagnosticStage = "debug-port"
       const port = await waitForDebuggingPort(profileDirectory(commandLine.arguments as string[]))
+      diagnosticStage = "cdp-attach"
       attached = await playwright.chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
         // Standard Playwright CDP defaults install visible-capture emulation that masks real tab hiding.
         noDefaults: true,
         isLocal: true,
         timeout: 3_000,
       })
+      diagnosticStage = "default-context"
       const contexts = attached.contexts()
       if (contexts.length !== 1)
         throw new Error("Expected exactly one managed Chromium default context")
@@ -434,14 +564,17 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
       if (context.pages().length !== 0) {
         throw new Error("Managed Chromium default context contains a page before Story setup")
       }
+      diagnosticStage = "owner-cdp"
       browserCdp = await attached.newBrowserCDPSession()
 
       const origin = ownedSessionOrigin()
+      diagnosticStage = "cookies"
       await context.clearCookies()
       if ((await context.cookies(origin)).length !== 0) {
         throw new Error("Owned-origin cookies leaked into Story test setup")
       }
 
+      diagnosticStage = "main-target"
       const [page, target] = await Promise.all([
         context.waitForEvent("page", { timeout: 3_000 }),
         browserCdp.send("Target.createTarget", {
@@ -450,6 +583,7 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
           background: false,
         }),
       ])
+      mainPage = page
       const mainTargetId = (target as { targetId?: unknown }).targetId
       if (typeof mainTargetId !== "string" || mainTargetId.length === 0) {
         throw new Error("Managed Chromium did not return the Story main target id")
@@ -457,15 +591,19 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
       if (context.pages().length !== 1 || context.pages()[0] !== page) {
         throw new Error("Managed Chromium main target did not create exactly one Story page")
       }
+      diagnosticStage = "project-options"
       const pageCdp = await context.newCDPSession(page)
       pageSessions.push({ page, session: pageCdp })
       await applyProjectOptions(page, pageCdp, testInfo, origin)
       pageStates.set(page, {
+        setupStage: "bootstrap-listener",
+        cleanupFailed: false,
         context,
         browserCdp,
         mainTargetId,
         pageSessions,
       })
+      diagnosticStage = "bootstrap-listener"
       await runFixture(page)
     } catch (error) {
       fixtureError = error
@@ -533,6 +671,28 @@ export const storyVisibilityTest = liveTest.extend<{ storyBrowser: Browser; page
       } catch (error) {
         cleanupFailures.push({ step: "owner-CDP-session", error })
       }
+    }
+    const state = mainPage ? pageStates.get(mainPage) : undefined
+    const testFailed = testInfo.status !== testInfo.expectedStatus
+    const cleanupFailed = cleanupFailures.length > 0 || (state?.cleanupFailed ?? false)
+    if (fixtureFailed || testFailed || cleanupFailed) {
+      const stage =
+        state?.setupFailureStage ??
+        (cleanupFailed && !fixtureFailed && !testFailed
+          ? "cleanup"
+          : (state?.setupStage ?? diagnosticStage))
+      emitStorySetupDiagnostic(
+        testInfo,
+        stage,
+        storySetupFailureKind(
+          state,
+          fixtureFailed,
+          fixtureError,
+          testFailed,
+          testInfo.error,
+          cleanupFailed
+        )
+      )
     }
     throwFixtureOutcome(
       fixtureFailed,

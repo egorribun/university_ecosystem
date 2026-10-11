@@ -53,10 +53,10 @@
 
 import { Buffer } from "node:buffer"
 import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
-import { chromium } from "playwright"
 
 import { loginBrowserContext, withOwnedSessionCleanup } from "./visual-smoke-auth.mjs"
 import {
@@ -67,15 +67,22 @@ import {
 // Inject the audited, locally installed axe-core bundle as an init script.
 // Playwright evaluates init scripts before page code and independently of the
 // document CSP, avoiding both remote CDN trust and runtime eval().
-const AXE_SOURCE_PATH = path.resolve(
-  fileURLToPath(import.meta.url),
-  "../../node_modules/axe-core/axe.min.js"
-)
-
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, "..")
-const CHECKOUT_ROOT = path.resolve(PROJECT_ROOT, "..")
+const repositoryRootValue = process.env.REPO_ROOT
+if (
+  repositoryRootValue !== undefined &&
+  (!path.isAbsolute(repositoryRootValue) ||
+    path.resolve(repositoryRootValue) !== repositoryRootValue)
+) {
+  throw new Error("REPO_ROOT must be an absolute canonical path")
+}
+const CHECKOUT_ROOT =
+  repositoryRootValue === undefined ? path.resolve(__dirname, "..", "..") : repositoryRootValue
+const PROJECT_ROOT = path.join(CHECKOUT_ROOT, "frontend")
+const requireFromProject = createRequire(path.join(PROJECT_ROOT, "package.json"))
+const { chromium } = requireFromProject("playwright")
+const AXE_SOURCE_PATH = path.join(PROJECT_ROOT, "node_modules", "axe-core", "axe.min.js")
 
 const ORIGIN = process.env.ORIGIN ?? "http://localhost"
 const TEST_EMAIL = process.env.TEST_EMAIL ?? "test@university.dev"
@@ -207,6 +214,23 @@ async function assertPrivateOutputDirectory(outputDirectory, checkoutRoot = CHEC
   }
 }
 
+const SELECTED_VISUAL_ROUTES = new Set(["/news", "/events", "/schedule"])
+
+export function parseAuthenticatedSelectedVisualRoute(environment = process.env) {
+  const selectedRoute = environment.VISUAL_SELECTED_ROUTE
+  if (selectedRoute === undefined) return null
+  const routes = parseAuthenticatedVisualRoutes(environment)
+  if (
+    typeof selectedRoute !== "string" ||
+    !SELECTED_VISUAL_ROUTES.has(selectedRoute) ||
+    routes.length !== 1 ||
+    routes[0] !== selectedRoute
+  ) {
+    throw new Error("VISUAL_SELECTED_ROUTE must match one supported single ROUTES entry")
+  }
+  return selectedRoute
+}
+
 export function parseAuthenticatedVisualCaptureMatrix(
   environment = process.env,
   { checkoutRoot = CHECKOUT_ROOT } = {}
@@ -215,6 +239,7 @@ export function parseAuthenticatedVisualCaptureMatrix(
   // intentionally environment-parameterized so contract tests exercise the
   // caller's exact ROUTES value without opening a browser or making a request.
   parseAuthenticatedVisualRoutes(environment)
+  const selectedRoute = parseAuthenticatedSelectedVisualRoute(environment)
   const enabled = environment.VISUAL_CAPTURE_MATRIX
   if (enabled === undefined || enabled === "" || enabled === "0") return null
   if (enabled !== "1") throw new Error("VISUAL_CAPTURE_MATRIX must be 1 when enabled")
@@ -287,6 +312,7 @@ export function parseAuthenticatedVisualCaptureMatrix(
     themes,
     widths,
     height,
+    ...(selectedRoute === null ? {} : { selectedRoute }),
   }
 }
 
@@ -567,11 +593,92 @@ function authenticatedNewsStateInPage(locale) {
       rect.height > 0
     )
   }
+  const opacityMotionActive = (element) => {
+    if (!element || typeof element.getAnimations !== "function") return true
+    try {
+      return element.getAnimations().some((animation) => {
+        if (!["pending", "running", "paused"].includes(animation.playState)) return false
+        const keyframes = animation.effect?.getKeyframes?.()
+        if (!Array.isArray(keyframes)) return true
+        return keyframes.some((frame) => Object.hasOwn(frame, "opacity"))
+      })
+    } catch {
+      return true
+    }
+  }
+  const opacityPermille = (element) => {
+    if (!element) return null
+    const opacity = Number.parseFloat(globalThis.window.getComputedStyle(element).opacity)
+    if (!Number.isFinite(opacity)) return null
+    return Math.min(1000, Math.max(0, Math.round(opacity * 1000)))
+  }
+  const paintFailureCategory = (element) => {
+    if (!element) return "missing"
+    const style = globalThis.window.getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    if (style.display === "none") return "display_none"
+    if (style.visibility !== "visible") return "visibility_hidden"
+    if (!(rect.width > 0 && rect.height > 0)) return "zero_geometry"
+    const opacity = Number.parseFloat(style.opacity)
+    if (!(Number.isFinite(opacity) && opacity >= 0.999)) return "low_opacity"
+    if (opacityMotionActive(element)) return "opacity_animation"
+    return "none"
+  }
+  const activeOpacityAnimationCounts = (element) => {
+    if (!element || typeof element.getAnimations !== "function") {
+      return { available: false, count: null, capped: false }
+    }
+    try {
+      const animations = element.getAnimations()
+      if (!Array.isArray(animations)) {
+        return { available: false, count: null, capped: false }
+      }
+      let count = 0
+      for (const animation of animations) {
+        if (!["pending", "running", "paused"].includes(animation.playState)) continue
+        const keyframes = animation.effect?.getKeyframes?.()
+        if (!Array.isArray(keyframes)) {
+          return { available: false, count: null, capped: false }
+        }
+        if (keyframes.some((frame) => Object.hasOwn(frame, "opacity"))) {
+          count += 1
+          if (count > 9999) return { available: true, count: 9999, capped: true }
+        }
+      }
+      return { available: true, count, capped: false }
+    } catch {
+      return { available: false, count: null, capped: false }
+    }
+  }
+  const opaqueThroughLayout = (element, layout) => {
+    let current = element
+    while (current) {
+      const style = globalThis.window.getComputedStyle(current)
+      if (
+        style.display === "none" ||
+        style.visibility !== "visible" ||
+        !(Number.parseFloat(style.opacity) >= 0.999) ||
+        opacityMotionActive(current)
+      ) {
+        return false
+      }
+      if (current === layout) return true
+      current = current.parentElement
+    }
+    return false
+  }
 
   const heading = globalThis.document.querySelector("h1")
   const headingPattern =
     locale === "ru" ? /^Новости университета\s*\d*$/u : /^University news\s*\d*$/u
   const headingMatches = isVisible(heading) && headingPattern.test(normalize(heading.innerText))
+  const headingBucket = !heading
+    ? "missing"
+    : !isVisible(heading)
+      ? "not_visible"
+      : headingPattern.test(normalize(heading.innerText))
+        ? "expected"
+        : "unexpected"
   const toolbar = globalThis.document.querySelector('[role="toolbar"]')
   const activeFilters = toolbar
     ? Array.from(toolbar.querySelectorAll('button[aria-current="page"]'))
@@ -583,14 +690,77 @@ function authenticatedNewsStateInPage(locale) {
   const defaultFilterUrl =
     !query.has("cat") && !query.has("q") && (!query.has("sort") || query.get("sort") === "newest")
 
+  const layout = globalThis.document.querySelector("[data-scroll-root]")
+  const layoutPaintReady = isVisible(layout) && opaqueThroughLayout(layout, layout)
+  const layoutFailure = paintFailureCategory(layout)
   const section = globalThis.document.querySelector("section[aria-label]")
   const cards = section
     ? Array.from(section.querySelectorAll('article[data-testid="news-card"]'))
     : []
-  const visibleArticleCount = cards.filter((card) => {
+  const cardPainted = (card) => {
     const link = card.querySelector('h2 a[href^="/news/"]')
-    return isVisible(card) && isVisible(link) && normalize(link?.textContent).length > 0
-  }).length
+    return (
+      isVisible(card) &&
+      isVisible(link) &&
+      normalize(link?.textContent).length > 0 &&
+      opaqueThroughLayout(card, layout)
+    )
+  }
+  const articlePaintReady = layoutPaintReady && cards.length > 0 && cards.every(cardPainted)
+  const visibleArticleCount = cards.filter(cardPainted).length
+  const diagnosticArticleFailureCategory = (card) => {
+    if (!layout) return "layout_missing"
+    const cardVisibilityFailure = paintFailureCategory(card)
+    if (cardVisibilityFailure !== "none") return `article_${cardVisibilityFailure}`
+    const link = card.querySelector('h2 a[href^="/news/"]')
+    if (!link) return "article_link_missing"
+    const linkVisibilityFailure = paintFailureCategory(link)
+    if (linkVisibilityFailure !== "none") return `article_link_${linkVisibilityFailure}`
+    if (normalize(link.textContent).length === 0) return "article_heading_empty"
+    let current = card
+    let isArticle = true
+    let ancestorCount = 0
+    while (current) {
+      const failure = paintFailureCategory(current)
+      if (failure !== "none") {
+        return `${isArticle ? "article" : "ancestor"}_${failure}`
+      }
+      if (current === globalThis.document.documentElement) return "none"
+      current = current.parentElement
+      isArticle = false
+      ancestorCount += 1
+      if (ancestorCount > 128) return "ancestor_depth_limit"
+    }
+    return "layout_or_root_not_ancestor"
+  }
+  const diagnosticCountLimit = 9999
+  const diagnosticCards = cards.slice(0, diagnosticCountLimit)
+  const diagnosticArticleFailureCategories = diagnosticCards.map(diagnosticArticleFailureCategory)
+  const firstArticleAncestorFailureCategory =
+    diagnosticArticleFailureCategories[0] ?? (layout ? "no_articles" : "layout_missing")
+  const diagnosticPaintedArticleCount = diagnosticArticleFailureCategories.filter(
+    (category) => category === "none"
+  ).length
+  const layoutAnimations = activeOpacityAnimationCounts(layout)
+  const layoutRect = layout?.getBoundingClientRect()
+  const paintDiagnostics = {
+    schema: 1,
+    status: "available",
+    rootHydrated: globalThis.window.__APP_HYDRATED === true,
+    headingBucket,
+    layoutPresent: layout !== null,
+    layoutGeometryVisible: Boolean(layoutRect && layoutRect.width > 0 && layoutRect.height > 0),
+    layoutOpacityPermille: opacityPermille(layout),
+    layoutFailureCategory: layout === null ? "missing" : layoutFailure,
+    layoutOpacityAnimationProbeAvailable: layoutAnimations.available,
+    layoutActiveOpacityAnimations: layoutAnimations.count,
+    layoutActiveOpacityAnimationsCapped: layoutAnimations.capped,
+    domArticleCount: Math.min(cards.length, diagnosticCountLimit),
+    domArticleCountCapped: cards.length > diagnosticCountLimit,
+    paintedArticleCount: Math.min(diagnosticPaintedArticleCount, diagnosticCountLimit),
+    paintedArticleCountCapped: cards.length > diagnosticCountLimit,
+    firstArticleAncestorFailureCategory,
+  }
   const hasNextPageSkeleton = Boolean(
     section &&
     Array.from(section.querySelectorAll("article")).some(
@@ -609,12 +779,14 @@ function authenticatedNewsStateInPage(locale) {
     activeFilterCount: activeFilters.length,
     activeFilterAll,
     defaultFilterUrl,
+    layoutPaintReady,
+    articlePaintReady,
     visibleArticleCount,
+    paintDiagnostics,
     hasNextPageSkeleton,
     hasRefetchIndicator,
   }
 }
-
 export function isAuthenticatedNewsCaptureReady(state) {
   return Boolean(
     state &&
@@ -624,11 +796,34 @@ export function isAuthenticatedNewsCaptureReady(state) {
     state.activeFilterCount === 1 &&
     state.activeFilterAll === true &&
     state.defaultFilterUrl === true &&
+    state.layoutPaintReady === true &&
+    state.articlePaintReady === true &&
     Number.isInteger(state.visibleArticleCount) &&
     state.visibleArticleCount > 0 &&
     state.hasNextPageSkeleton === false &&
     state.hasRefetchIndicator === false
   )
+}
+
+export function unavailableNewsPaintDiagnostics() {
+  return {
+    schema: 1,
+    status: "unavailable",
+    rootHydrated: null,
+    headingBucket: null,
+    layoutPresent: null,
+    layoutGeometryVisible: null,
+    layoutOpacityPermille: null,
+    layoutFailureCategory: null,
+    layoutOpacityAnimationProbeAvailable: null,
+    layoutActiveOpacityAnimations: null,
+    layoutActiveOpacityAnimationsCapped: null,
+    domArticleCount: null,
+    domArticleCountCapped: null,
+    paintedArticleCount: null,
+    paintedArticleCountCapped: null,
+    firstArticleAncestorFailureCategory: null,
+  }
 }
 
 async function waitForAuthenticatedNewsReady(page, locale) {
@@ -664,6 +859,8 @@ async function waitForAuthenticatedNewsReady(page, locale) {
         lastState.activeFilterAll,
         lastState.defaultFilterUrl,
         lastState.visibleArticleCount,
+        lastState.layoutPaintReady,
+        lastState.articlePaintReady,
         lastState.hasNextPageSkeleton,
         lastState.hasRefetchIndicator,
       ])
@@ -674,6 +871,9 @@ async function waitForAuthenticatedNewsReady(page, locale) {
           ready: true,
           articleCount: lastState.visibleArticleCount,
           activeFilterState: "all",
+          layoutPaintReady: lastState.layoutPaintReady,
+          articlePaintReady: lastState.articlePaintReady,
+          paintDiagnostics: lastState.paintDiagnostics ?? unavailableNewsPaintDiagnostics(),
           error: null,
         }
       }
@@ -693,6 +893,9 @@ async function waitForAuthenticatedNewsReady(page, locale) {
       ? lastState.visibleArticleCount
       : 0,
     activeFilterState: lastState?.activeFilterAll ? "all" : "unexpected",
+    layoutPaintReady: lastState?.layoutPaintReady === true,
+    articlePaintReady: lastState?.articlePaintReady === true,
+    paintDiagnostics: lastState?.paintDiagnostics ?? unavailableNewsPaintDiagnostics(),
     error: "news_heading_filter_or_nonempty_list_not_stable",
   }
 }
@@ -707,6 +910,336 @@ export function findNewsReadinessIssues(summaries) {
         !Number.isInteger(summary.newsArticleCount) ||
         summary.newsArticleCount < 1)
   )
+}
+
+function authenticatedEventsStateInPage(locale) {
+  const normalize = (value) => (value ?? "").replace(/\s+/gu, " ").trim()
+  const isVisible = (element) => {
+    if (!element) return false
+    const style = globalThis.window.getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    return (
+      style.display !== "none" &&
+      style.visibility === "visible" &&
+      Number.parseFloat(style.opacity) >= 0.999 &&
+      rect.width > 0 &&
+      rect.height > 0
+    )
+  }
+  const expectedTitle = locale === "ru" ? "Мероприятия" : "Events"
+  const heading = globalThis.document.querySelector("main h1")
+  const normalizedHeadingText = heading
+    ? Array.from(heading.childNodes)
+        .filter((node) => node.nodeType === 3)
+        .map((node) => node.textContent ?? "")
+        .join("")
+        .replace(/\s+/gu, " ")
+        .trim()
+    : ""
+  const panel = globalThis.document.querySelector('#events-tabpanel[role="tabpanel"]')
+  const tablist = globalThis.document.querySelector('[role="tablist"][aria-label]')
+  const selectedTabs = tablist
+    ? Array.from(tablist.querySelectorAll('[role="tab"][aria-selected="true"]'))
+    : []
+  const labelledBy = panel?.getAttribute("aria-labelledby") ?? ""
+  const activeTab = labelledBy ? globalThis.document.getElementById(labelledBy) : null
+  const cards = panel ? Array.from(panel.querySelectorAll('article[data-testid="event-card"]')) : []
+  const visibleCardCount = cards.filter((card) => {
+    const title = card.querySelector("h3")
+    return isVisible(card) && isVisible(title) && normalize(title?.textContent).length > 0
+  }).length
+  const hasRefetchIndicator = Boolean(
+    panel &&
+    Array.from(panel.children).some((element) => element.classList.contains("animate-pulse"))
+  )
+  return {
+    pathnameMatches: globalThis.location.pathname === "/events",
+    headingMatches: isVisible(heading) && normalizedHeadingText === expectedTitle,
+    panelVisible: isVisible(panel) && panel.getAttribute("aria-label") === expectedTitle,
+    busyCleared: panel?.getAttribute("aria-busy") !== "true",
+    activeTabLinked:
+      selectedTabs.length === 1 &&
+      activeTab === selectedTabs[0] &&
+      activeTab?.getAttribute("aria-controls") === "events-tabpanel" &&
+      isVisible(activeTab),
+    visibleCardCount,
+    hasRefetchIndicator,
+  }
+}
+
+export function isAuthenticatedEventsCaptureReady(state) {
+  return Boolean(
+    state &&
+    state.pathnameMatches === true &&
+    state.headingMatches === true &&
+    state.panelVisible === true &&
+    state.busyCleared === true &&
+    state.activeTabLinked === true &&
+    Number.isInteger(state.visibleCardCount) &&
+    state.visibleCardCount > 0 &&
+    state.hasRefetchIndicator === false
+  )
+}
+
+async function waitForAuthenticatedEventsReady(page, locale) {
+  const deadline = Date.now() + 30_000
+  let previousSignature = null
+  let stableSamples = 0
+  let lastState = null
+  while (Date.now() < deadline) {
+    const remainingBeforeProbe = Math.max(0, deadline - Date.now())
+    if (remainingBeforeProbe === 0) break
+    const probeTimeout = "EVENTS_READINESS_PROBE_TIMEOUT"
+    let timer
+    try {
+      lastState = await Promise.race([
+        page.evaluate(authenticatedEventsStateInPage, locale),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(probeTimeout), remainingBeforeProbe)
+        }),
+      ])
+    } catch (error) {
+      if (error === probeTimeout) break
+      throw error
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+    if (Date.now() >= deadline) break
+    if (isAuthenticatedEventsCaptureReady(lastState)) {
+      const signature = JSON.stringify([
+        lastState.pathnameMatches,
+        lastState.headingMatches,
+        lastState.panelVisible,
+        lastState.busyCleared,
+        lastState.activeTabLinked,
+        lastState.visibleCardCount,
+        lastState.hasRefetchIndicator,
+      ])
+      stableSamples = signature === previousSignature ? stableSamples + 1 : 1
+      previousSignature = signature
+      if (stableSamples >= 3) {
+        return {
+          ready: true,
+          cardCount: lastState.visibleCardCount,
+          busyCleared: lastState.busyCleared,
+          error: null,
+        }
+      }
+    } else {
+      previousSignature = null
+      stableSamples = 0
+    }
+    const remainingAfterProbe = Math.max(0, deadline - Date.now())
+    const settleWaitMs = Math.min(250, remainingAfterProbe)
+    if (settleWaitMs === 0) break
+    await page.waitForTimeout(settleWaitMs)
+  }
+  return {
+    ready: false,
+    cardCount: Number.isInteger(lastState?.visibleCardCount) ? lastState.visibleCardCount : 0,
+    busyCleared: lastState?.busyCleared === true,
+    error: "events_tabpanel_or_seeded_cards_not_stable",
+  }
+}
+
+export function findEventsReadinessIssues(summaries) {
+  return summaries.filter(
+    (summary) =>
+      summary.path === "/events" &&
+      summary.eventsReadinessRequired === true &&
+      (summary.eventsReady !== true ||
+        !Number.isInteger(summary.eventsCardCount) ||
+        summary.eventsCardCount < 1 ||
+        summary.eventsReadinessError !== null)
+  )
+}
+
+function authenticatedScheduleStateInPage(locale) {
+  const isVisible = (element) => {
+    if (!element) return false
+    const style = globalThis.window.getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    return (
+      style.display !== "none" &&
+      style.visibility === "visible" &&
+      Number.parseFloat(style.opacity) >= 0.999 &&
+      rect.width > 0 &&
+      rect.height > 0
+    )
+  }
+  const expectedTitle = locale === "ru" ? "Расписание" : "Schedule"
+  const expectedStudentTitle = locale === "ru" ? "Моё расписание" : "My schedule"
+  const mainHeading = globalThis.document.querySelector("main h1")
+  const normalizedStudentHeading = mainHeading
+    ? Array.from(mainHeading.childNodes)
+        .filter((node) => node.nodeType === 3)
+        .map((node) => node.textContent ?? "")
+        .join("")
+        .replace(/\s+/gu, " ")
+        .trim()
+    : ""
+  const studentHeadingMatches = normalizedStudentHeading === expectedStudentTitle
+  const content = globalThis.document.querySelector('.skeleton-morph-content[data-loaded="true"]')
+  const section = globalThis.document.querySelector('section[aria-label="' + expectedTitle + '"]')
+  const errorBanner = section?.querySelector('[class*="border-error"]') ?? null
+  const desktop = globalThis.innerWidth > 1280
+  const grid = globalThis.document.querySelector('[role="grid"][aria-label]')
+  const tablist = globalThis.document.querySelector('[role="tablist"][aria-label]')
+  const selectedTabs = tablist
+    ? Array.from(tablist.querySelectorAll('[role="tab"][aria-selected="true"]'))
+    : []
+  const selectedTab = selectedTabs.length === 1 ? selectedTabs[0] : null
+  const selectedPanelId = selectedTab?.getAttribute("aria-controls") ?? ""
+  const selectedPanel = selectedPanelId ? globalThis.document.getElementById(selectedPanelId) : null
+  const selectedPanelHeading = selectedPanel?.querySelector("h2") ?? null
+  const lessonContentRoot = desktop ? grid : selectedPanel
+  const lessonCards = lessonContentRoot
+    ? Array.from(lessonContentRoot.querySelectorAll('[id^="lesson-card-"]'))
+    : []
+  const visibleLessonCardCount = lessonCards.filter(isVisible).length
+  return {
+    pathnameMatches: globalThis.location.pathname === "/schedule",
+    mainHeadingVisible: isVisible(mainHeading),
+    studentHeadingMatches: isVisible(mainHeading) && studentHeadingMatches,
+    loadedContentVisible: isVisible(content),
+    errorBannerVisible: isVisible(errorBanner),
+    desktop,
+    viewLabelMatches: desktop
+      ? isVisible(grid) && grid.getAttribute("aria-label") === expectedTitle
+      : isVisible(tablist) && tablist.getAttribute("aria-label") === expectedTitle,
+    visibleLessonCardCount,
+    selectedDayTabCount: selectedTabs.length,
+    selectedDayWeekend: selectedTab?.id === "day-tab-saturday",
+    selectedDayPanelVisible:
+      !desktop &&
+      isVisible(selectedPanel) &&
+      selectedPanel?.getAttribute("role") === "tabpanel" &&
+      selectedPanel?.getAttribute("aria-labelledby") === selectedTab?.id &&
+      isVisible(selectedPanelHeading),
+  }
+}
+
+export function isAuthenticatedScheduleCaptureReady(state) {
+  if (
+    !state ||
+    state.pathnameMatches !== true ||
+    state.mainHeadingVisible !== true ||
+    state.studentHeadingMatches !== true ||
+    state.loadedContentVisible !== true ||
+    state.errorBannerVisible !== false ||
+    state.viewLabelMatches !== true
+  ) {
+    return false
+  }
+  if (state.desktop === true) {
+    return Number.isInteger(state.visibleLessonCardCount) && state.visibleLessonCardCount > 0
+  }
+  return (
+    state.desktop === false &&
+    state.selectedDayTabCount === 1 &&
+    state.selectedDayPanelVisible === true &&
+    Number.isInteger(state.visibleLessonCardCount) &&
+    (state.visibleLessonCardCount > 0 || state.selectedDayWeekend === true)
+  )
+}
+
+async function waitForAuthenticatedScheduleReady(page, locale) {
+  const deadline = Date.now() + 30_000
+  let previousSignature = null
+  let stableSamples = 0
+  let lastState = null
+  while (Date.now() < deadline) {
+    const remainingBeforeProbe = Math.max(0, deadline - Date.now())
+    if (remainingBeforeProbe === 0) break
+    const probeTimeout = "SCHEDULE_READINESS_PROBE_TIMEOUT"
+    let timer
+    try {
+      lastState = await Promise.race([
+        page.evaluate(authenticatedScheduleStateInPage, locale),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(probeTimeout), remainingBeforeProbe)
+        }),
+      ])
+    } catch (error) {
+      if (error === probeTimeout) break
+      throw error
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+    if (Date.now() >= deadline) break
+    if (isAuthenticatedScheduleCaptureReady(lastState)) {
+      const signature = JSON.stringify([
+        lastState.pathnameMatches,
+        lastState.mainHeadingVisible,
+        lastState.studentHeadingMatches,
+        lastState.loadedContentVisible,
+        lastState.errorBannerVisible,
+        lastState.desktop,
+        lastState.viewLabelMatches,
+        lastState.visibleLessonCardCount,
+        lastState.selectedDayTabCount,
+        lastState.selectedDayWeekend,
+        lastState.selectedDayPanelVisible,
+      ])
+      stableSamples = signature === previousSignature ? stableSamples + 1 : 1
+      previousSignature = signature
+      if (stableSamples >= 3) {
+        return {
+          ready: true,
+          loaded: true,
+          headingMatches: lastState.studentHeadingMatches,
+          viewMode: lastState.desktop ? "desktop" : "mobile",
+          lessonCardCount: lastState.visibleLessonCardCount,
+          selectedDayPanelVisible: lastState.selectedDayPanelVisible,
+          selectedDayWeekend: lastState.selectedDayWeekend,
+          errorVisible: false,
+          error: null,
+        }
+      }
+    } else {
+      previousSignature = null
+      stableSamples = 0
+    }
+    const remainingAfterProbe = Math.max(0, deadline - Date.now())
+    const settleWaitMs = Math.min(250, remainingAfterProbe)
+    if (settleWaitMs === 0) break
+    await page.waitForTimeout(settleWaitMs)
+  }
+  return {
+    ready: false,
+    loaded: lastState?.loadedContentVisible === true,
+    headingMatches: lastState?.studentHeadingMatches === true,
+    viewMode:
+      lastState?.desktop === true ? "desktop" : lastState?.desktop === false ? "mobile" : "unknown",
+    lessonCardCount: Number.isInteger(lastState?.visibleLessonCardCount)
+      ? lastState.visibleLessonCardCount
+      : 0,
+    selectedDayPanelVisible: lastState?.selectedDayPanelVisible === true,
+    selectedDayWeekend: lastState?.selectedDayWeekend === true,
+    errorVisible: lastState?.errorBannerVisible === true,
+    error: "schedule_loaded_view_or_content_not_stable",
+  }
+}
+
+export function findScheduleReadinessIssues(summaries) {
+  return summaries.filter((summary) => {
+    if (summary.path !== "/schedule" || summary.scheduleReadinessRequired !== true) return false
+    const expectedMode = summary.viewportWidth > 1280 ? "desktop" : "mobile"
+    return (
+      summary.scheduleReady !== true ||
+      summary.scheduleLoaded !== true ||
+      summary.scheduleHeadingMatches !== true ||
+      summary.scheduleViewMode !== expectedMode ||
+      !Number.isInteger(summary.scheduleLessonCardCount) ||
+      summary.scheduleLessonCardCount < (expectedMode === "desktop" ? 1 : 0) ||
+      (expectedMode === "mobile" &&
+        summary.scheduleLessonCardCount === 0 &&
+        summary.scheduleSelectedDayWeekend !== true) ||
+      summary.scheduleErrorVisible !== false ||
+      summary.scheduleReadinessError !== null ||
+      (expectedMode === "mobile" && summary.scheduleSelectedDayPanelVisible !== true)
+    )
+  })
 }
 
 /**
@@ -762,6 +1295,10 @@ export function canCaptureAuthenticatedScreenshot({
   dashboardCardsVisible,
   newsReadinessRequired = false,
   newsReady = null,
+  eventsReadinessRequired = false,
+  eventsReady = null,
+  scheduleReadinessRequired = false,
+  scheduleReady = null,
 }) {
   return Boolean(
     captureConfig &&
@@ -771,7 +1308,9 @@ export function canCaptureAuthenticatedScreenshot({
     finalUrl &&
     new URL(finalUrl).pathname === routePath &&
     (routePath !== "/dashboard" || dashboardCardsVisible === true) &&
-    (!newsReadinessRequired || newsReady === true)
+    (!newsReadinessRequired || newsReady === true) &&
+    (!eventsReadinessRequired || eventsReady === true) &&
+    (!scheduleReadinessRequired || scheduleReady === true)
   )
 }
 
@@ -781,6 +1320,153 @@ export function findDashboardReadinessIssues(summaries) {
   )
 }
 
+const DIAGNOSTIC_COUNT_LIMIT = 9999
+const VISUAL_CONSOLE_TYPES = ["error", "warning", "log", "info", "debug", "pageerror", "other"]
+const VISUAL_CONSOLE_CLASSES = [
+  "react_key_warning",
+  "react_hydration",
+  "react_minified_error",
+  "preload_notice",
+  "resource_failure",
+  "react_other",
+  "other",
+]
+const VISUAL_REQUEST_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "other"]
+const VISUAL_REQUEST_ORIGINS = ["same_origin", "external", "invalid"]
+const VISUAL_REQUEST_ENDPOINTS = [
+  "avatar_fallback",
+  "api",
+  "service_worker",
+  "document_news",
+  "static_asset",
+  "other",
+]
+const VISUAL_REQUEST_REASONS = [
+  "aborted",
+  "blocked",
+  "dns",
+  "timeout",
+  "tls",
+  "connection",
+  "other_network",
+  "unknown",
+]
+
+function createDiagnosticCounts(keys) {
+  return Object.fromEntries(keys.map((key) => [key, 0]))
+}
+
+function incrementDiagnosticCount(counts, key) {
+  if (counts[key] >= DIAGNOSTIC_COUNT_LIMIT) return true
+  counts[key] += 1
+  return false
+}
+
+function classifyVisualConsoleMessage(message) {
+  const value = typeof message === "string" ? message.toLowerCase() : ""
+  if (/each child in a list should have a unique .?key.? prop/u.test(value)) {
+    return "react_key_warning"
+  }
+  if (/hydration|server rendered html|did not match|didn't match/u.test(value)) {
+    return "react_hydration"
+  }
+  if (/minified react error #\d+/u.test(value)) return "react_minified_error"
+  if (/preload|preloaded using link preload/u.test(value)) return "preload_notice"
+  if (/failed to load resource|net::err_|resource .*failed|network .*failed/u.test(value)) {
+    return "resource_failure"
+  }
+  if (/react|react-dom|react-router/u.test(value)) return "react_other"
+  return "other"
+}
+
+function classifyVisualRequestFailure(request, expectedOrigin) {
+  const method =
+    typeof request?.method === "string" && VISUAL_REQUEST_METHODS.includes(request.method)
+      ? request.method
+      : "other"
+  let parsedUrl
+  try {
+    parsedUrl = new URL(request?.url)
+  } catch {
+    return { method, origin: "invalid", endpoint: "other", reason: "unknown" }
+  }
+
+  const origin = parsedUrl.origin === expectedOrigin ? "same_origin" : "external"
+  const pathname = parsedUrl.pathname
+  let endpoint = "other"
+  if (pathname === "/fallbacks/default_avatar.png") endpoint = "avatar_fallback"
+  else if (pathname.startsWith("/api/v1/")) endpoint = "api"
+  else if (pathname === "/sw.js" || pathname === "/service-worker.js") endpoint = "service_worker"
+  else if (pathname === "/news") endpoint = "document_news"
+  else if (/\.(?:css|html|ico|js|png|svg|webp|woff2?)$/iu.test(pathname)) {
+    endpoint = "static_asset"
+  }
+
+  const errorText = typeof request?.errorText === "string" ? request.errorText.toLowerCase() : ""
+  let reason = "unknown"
+  if (/err_aborted|aborted/u.test(errorText)) reason = "aborted"
+  else if (/err_blocked|blocked/u.test(errorText)) reason = "blocked"
+  else if (/err_name_not_resolved|dns/u.test(errorText)) reason = "dns"
+  else if (/err_timed_out|timeout/u.test(errorText)) reason = "timeout"
+  else if (/err_cert|tls|ssl/u.test(errorText)) reason = "tls"
+  else if (/err_connection|connection refused|connection reset/u.test(errorText)) {
+    reason = "connection"
+  } else if (errorText) reason = "other_network"
+  return { method, origin, endpoint, reason }
+}
+
+export function summarizeAuthenticatedVisualDiagnostics({
+  consoleMessages = [],
+  requestFailures = [],
+  httpFailures = [],
+  expectedOrigin = new URL(ORIGIN).origin,
+} = {}) {
+  const consoleTypeCounts = createDiagnosticCounts(VISUAL_CONSOLE_TYPES)
+  const consoleClassCounts = createDiagnosticCounts(VISUAL_CONSOLE_CLASSES)
+  const requestMethodCounts = createDiagnosticCounts(VISUAL_REQUEST_METHODS)
+  const requestOriginCounts = createDiagnosticCounts(VISUAL_REQUEST_ORIGINS)
+  const requestEndpointCounts = createDiagnosticCounts(VISUAL_REQUEST_ENDPOINTS)
+  const requestReasonCounts = createDiagnosticCounts(VISUAL_REQUEST_REASONS)
+  const httpStatusClassCounts = { "4xx": 0, "5xx": 0, other: 0 }
+  let capped =
+    consoleMessages.length > DIAGNOSTIC_COUNT_LIMIT ||
+    requestFailures.length > DIAGNOSTIC_COUNT_LIMIT ||
+    httpFailures.length > DIAGNOSTIC_COUNT_LIMIT
+
+  for (const message of consoleMessages) {
+    const type = VISUAL_CONSOLE_TYPES.includes(message?.type) ? message.type : "other"
+    capped = incrementDiagnosticCount(consoleTypeCounts, type) || capped
+    const messageClass = classifyVisualConsoleMessage(message?.text)
+    capped = incrementDiagnosticCount(consoleClassCounts, messageClass) || capped
+  }
+  for (const request of requestFailures) {
+    const classified = classifyVisualRequestFailure(request, expectedOrigin)
+    capped = incrementDiagnosticCount(requestMethodCounts, classified.method) || capped
+    capped = incrementDiagnosticCount(requestOriginCounts, classified.origin) || capped
+    capped = incrementDiagnosticCount(requestEndpointCounts, classified.endpoint) || capped
+    capped = incrementDiagnosticCount(requestReasonCounts, classified.reason) || capped
+  }
+  for (const response of httpFailures) {
+    const status = Number.isInteger(response?.status) ? response.status : 0
+    const statusClass =
+      status >= 500 && status <= 599 ? "5xx" : status >= 400 && status <= 499 ? "4xx" : "other"
+    capped = incrementDiagnosticCount(httpStatusClassCounts, statusClass) || capped
+  }
+
+  return {
+    schema: 1,
+    capped,
+    consoleTypeCounts,
+    consoleClassCounts,
+    requestFailureCount: Math.min(requestFailures.length, DIAGNOSTIC_COUNT_LIMIT),
+    requestMethodCounts,
+    requestOriginCounts,
+    requestEndpointCounts,
+    requestReasonCounts,
+    httpFailureCount: Math.min(httpFailures.length, DIAGNOSTIC_COUNT_LIMIT),
+    httpStatusClassCounts,
+  }
+}
 async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {
   const consoleMessages = []
   const networkRequests = []
@@ -830,6 +1516,24 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
   let newsArticleCount = newsReadinessRequired ? 0 : null
   let newsActiveFilterState = newsReadinessRequired ? "unavailable" : null
   let newsReadinessError = null
+  let newsLayoutPaintReady = newsReadinessRequired ? false : null
+  let newsArticlePaintReady = newsReadinessRequired ? false : null
+  let newsPaintDiagnostics = newsReadinessRequired ? unavailableNewsPaintDiagnostics() : null
+  const eventsReadinessRequired = Boolean(captureConfig && routePath === "/events")
+  let eventsReady = eventsReadinessRequired ? false : null
+  let eventsCardCount = eventsReadinessRequired ? 0 : null
+  let eventsBusyCleared = eventsReadinessRequired ? false : null
+  let eventsReadinessError = null
+  const scheduleReadinessRequired = Boolean(captureConfig && routePath === "/schedule")
+  let scheduleReady = scheduleReadinessRequired ? false : null
+  let scheduleLoaded = scheduleReadinessRequired ? false : null
+  let scheduleHeadingMatches = scheduleReadinessRequired ? false : null
+  let scheduleViewMode = scheduleReadinessRequired ? "unavailable" : null
+  let scheduleLessonCardCount = scheduleReadinessRequired ? 0 : null
+  let scheduleSelectedDayPanelVisible = scheduleReadinessRequired ? false : null
+  let scheduleSelectedDayWeekend = scheduleReadinessRequired ? false : null
+  let scheduleErrorVisible = scheduleReadinessRequired ? true : null
+  let scheduleReadinessError = null
   let screenshotPath = null
 
   // emulateMedia + reducedMotion settles Framer Motion at end-state for
@@ -904,10 +1608,47 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         newsReady = readiness.ready
         newsArticleCount = readiness.articleCount
         newsActiveFilterState = readiness.activeFilterState
+        newsLayoutPaintReady = readiness.layoutPaintReady
+        newsArticlePaintReady = readiness.articlePaintReady
+        newsPaintDiagnostics = readiness.paintDiagnostics
         newsReadinessError = readiness.error
       } catch {
         newsReady = false
+        newsLayoutPaintReady = false
+        newsArticlePaintReady = false
+        newsPaintDiagnostics = unavailableNewsPaintDiagnostics()
         newsReadinessError = "news_readiness_probe_failed"
+      }
+    }
+
+    if (eventsReadinessRequired) {
+      try {
+        const readiness = await waitForAuthenticatedEventsReady(page, captureConfig.locale)
+        eventsReady = readiness.ready
+        eventsCardCount = readiness.cardCount
+        eventsBusyCleared = readiness.busyCleared
+        eventsReadinessError = readiness.error
+      } catch {
+        eventsReady = false
+        eventsReadinessError = "events_readiness_probe_failed"
+      }
+    }
+
+    if (scheduleReadinessRequired) {
+      try {
+        const readiness = await waitForAuthenticatedScheduleReady(page, captureConfig.locale)
+        scheduleReady = readiness.ready
+        scheduleLoaded = readiness.loaded
+        scheduleHeadingMatches = readiness.headingMatches
+        scheduleViewMode = readiness.viewMode
+        scheduleLessonCardCount = readiness.lessonCardCount
+        scheduleSelectedDayPanelVisible = readiness.selectedDayPanelVisible
+        scheduleSelectedDayWeekend = readiness.selectedDayWeekend
+        scheduleErrorVisible = readiness.errorVisible
+        scheduleReadinessError = readiness.error
+      } catch {
+        scheduleReady = false
+        scheduleReadinessError = "schedule_readiness_probe_failed"
       }
     }
 
@@ -979,6 +1720,12 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     (request) => typeof request.status === "number" && request.status >= 400
   )
 
+  const visualDiagnostics = summarizeAuthenticatedVisualDiagnostics({
+    consoleMessages,
+    requestFailures: networkFailures,
+    httpFailures: failedNetworkRequests,
+  })
+
   const hydrationErrors = consoleMessages.filter(
     (m) =>
       m.text.includes("hydrat") || m.text.includes("Hydration") || m.text.includes("did not match")
@@ -997,6 +1744,10 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
       dashboardCardsVisible,
       newsReadinessRequired,
       newsReady,
+      eventsReadinessRequired,
+      eventsReady,
+      scheduleReadinessRequired,
+      scheduleReady,
     })
   ) {
     const filename = `${buildAuthenticatedCaptureBasename(routePath, captureConfig)}.png`
@@ -1020,6 +1771,7 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         finalUrl: finalUrl ? safeAuditUrl(finalUrl) : null,
         httpStatus,
         navigationError: navError ? redactDiagnostic(navError.message) : null,
+        visualDiagnostics,
         consoleMessages: consoleMessages.map((message) => ({
           type: message.type,
           text: redactDiagnostic(message.text),
@@ -1036,6 +1788,24 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         newsArticleCount,
         newsActiveFilterState,
         newsReadinessError,
+        newsLayoutPaintReady,
+        newsArticlePaintReady,
+        newsPaintDiagnostics,
+        eventsReadinessRequired,
+        eventsReady,
+        eventsCardCount,
+        eventsBusyCleared,
+        eventsReadinessError,
+        scheduleReadinessRequired,
+        scheduleReady,
+        scheduleLoaded,
+        scheduleHeadingMatches,
+        scheduleViewMode,
+        scheduleLessonCardCount,
+        scheduleSelectedDayPanelVisible,
+        scheduleSelectedDayWeekend,
+        scheduleErrorVisible,
+        scheduleReadinessError,
         axeViolationCount: axeViolations.length,
         axeViolations: axeViolations.map((violation) => ({
           id: violation.id,
@@ -1086,6 +1856,26 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     newsArticleCount,
     newsActiveFilterState,
     newsReadinessError,
+    newsLayoutPaintReady,
+    newsArticlePaintReady,
+    newsPaintDiagnostics,
+    visualDiagnostics,
+    eventsReadinessRequired,
+    eventsReady,
+    eventsCardCount,
+    eventsBusyCleared,
+    eventsReadinessError,
+    scheduleReadinessRequired,
+    scheduleReady,
+    scheduleLoaded,
+    scheduleHeadingMatches,
+    scheduleViewMode,
+    scheduleLessonCardCount,
+    scheduleSelectedDayPanelVisible,
+    scheduleSelectedDayWeekend,
+    scheduleErrorVisible,
+    scheduleReadinessError,
+    viewportWidth: captureConfig?.width ?? null,
     screenshotPath: screenshotPath ? path.basename(screenshotPath) : null,
   }
 }
@@ -1244,6 +2034,9 @@ async function main() {
               sourceSha: captureMatrix.sourceSha,
               origin: captureMatrix.origin,
               routes,
+              ...(captureMatrix.selectedRoute
+                ? { selectedRoute: captureMatrix.selectedRoute }
+                : {}),
               locales: captureMatrix.locales,
               themes: captureMatrix.themes,
               widths: captureMatrix.widths,
@@ -1298,6 +2091,8 @@ async function main() {
             result.captureConfigMatches !== false &&
             result.dashboardCardsVisible !== false &&
             (!result.newsReadinessRequired || result.newsReady === true) &&
+            (!result.eventsReadinessRequired || result.eventsReady === true) &&
+            (!result.scheduleReadinessRequired || result.scheduleReady === true) &&
             (!captureConfig || Boolean(result.screenshotPath))
               ? "✓"
               : "✗"
@@ -1345,6 +2140,30 @@ async function main() {
               " News captures did not prove a stable non-empty list and default filter"
           ),
           9
+        )
+      }
+      const eventsReadinessIssues = findEventsReadinessIssues(summaries)
+      if (eventsReadinessIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            eventsReadinessIssues.length +
+              "/" +
+              summaries.length +
+              " Events captures did not prove a stable loaded panel and visible seeded cards"
+          ),
+          10
+        )
+      }
+      const scheduleReadinessIssues = findScheduleReadinessIssues(summaries)
+      if (scheduleReadinessIssues.length > 0) {
+        throw setVisualExitCode(
+          new Error(
+            scheduleReadinessIssues.length +
+              "/" +
+              summaries.length +
+              " Schedule captures did not prove a loaded responsive view"
+          ),
+          11
         )
       }
       const dashboardReadinessIssues = findDashboardReadinessIssues(summaries)

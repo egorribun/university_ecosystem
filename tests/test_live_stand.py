@@ -2443,15 +2443,16 @@ def test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions(
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
-def test_live_playwright_retry_diagnostic_accepts_invalid_header_decline(
-    project: str,
+@pytest.mark.parametrize("check", ["auth-logout", "email-otp-verification-wrong-code"])
+def test_live_playwright_retry_diagnostic_accepts_closed_check_values(
+    project: str, check: str
 ) -> None:
     row = (
-        f"UE_LIVE_RETRY_V1 project={project} check=auth-logout "
+        f"UE_LIVE_RETRY_V1 project={project} check={check} "
         "retry_after_seconds=invalid decision=declined-header remaining_ms=0\n"
     )
     assert live_stand._live_playwright_retry_decisions(row) == [
-        (project, "auth-logout", None, "declined-header", 0)
+        (project, check, None, "declined-header", 0)
     ]
 
 
@@ -2975,6 +2976,8 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
     retry_sentinels = (
         "UE_LIVE_RETRY_V1 project=mobile check=auth-logout "
         "retry_after_seconds=40 decision=retry remaining_ms=30000\n"
+        "UE_LIVE_RETRY_V1 project=mobile check=email-otp-verification-wrong-code "
+        "retry_after_seconds=2 decision=retry remaining_ms=1200\n"
         "UE_LIVE_RETRY_V1 project=desktop check=password-reset-replay "
         "retry_after_seconds=invalid decision=declined-header remaining_ms=0\n"
     )
@@ -3021,6 +3024,7 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
         "live E2E HTTP project=desktop check=auth-session-preflight status=403",
         "live E2E HTTP project=mobile check=admin-feature-flags status=403",
         "live E2E retry project=mobile check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=30000",
+        "live E2E retry project=mobile check=email-otp-verification-wrong-code retry_after_seconds=2 decision=retry remaining_ms=1200",
         "live E2E retry project=desktop check=password-reset-replay retry_after_seconds=invalid decision=declined-header remaining_ms=0",
         "live E2E rate-limit project=mobile check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0",
         f"live E2E outcome={outcome} exit_code={return_code}",
@@ -7073,6 +7077,8 @@ def test_up_port_conflict_preserves_the_running_stand_and_never_builds(
 _AUTH_HTTP_DIAG_TEST_OPERATIONS = (
     "profile_read",
     "profile_identity_read",
+    "password_settings_register",
+    "totp_register",
     "password_change_invalid",
     "password_change_save",
     "totp_recovery_accept",
@@ -7398,3 +7404,491 @@ def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
     assert private not in printed.out + printed.err
     assert printed.err == ""
     assert completed.stdout == completed.stderr == b""
+
+
+_STORY_SETUP_STAGES = (
+    "browser-launch",
+    "fixture-policy",
+    "owner-cdp",
+    "command-line",
+    "debug-port",
+    "cdp-attach",
+    "default-context",
+    "cookies",
+    "main-target",
+    "project-options",
+    "bootstrap-listener",
+    "login",
+    "dashboard",
+    "bootstrap",
+    "story-trigger",
+    "warm-up",
+    "baseline",
+    "cycle0",
+    "measured-cycle",
+    "acceptance",
+    "cleanup",
+)
+
+
+def _story_setup_diag_record(
+    *, project: str = "desktop", stage: str = "login", exception_kind: str = "error"
+) -> dict[str, object]:
+    return {
+        "schema": 1,
+        "project": project,
+        "stage": stage,
+        "exceptionKind": exception_kind,
+    }
+
+
+def _story_setup_diag_row(record: dict[str, object], newline: str = "\n") -> str:
+    return "STORY_SETUP_DIAG " + json.dumps(record, separators=(",", ":")) + newline
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("stage", _STORY_SETUP_STAGES)
+def test_live_playwright_story_setup_parser_accepts_closed_stages(
+    project: str, stage: str
+) -> None:
+    record = _story_setup_diag_record(project=project, stage=stage)
+    assert live_stand._live_playwright_story_setup_diagnostics(
+        _story_setup_diag_row(record)
+    ) == [record]
+
+
+@pytest.mark.parametrize(
+    "exception_kind",
+    ["error", "non-error", "cleanup", "error-with-cleanup", "non-error-with-cleanup"],
+)
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_story_setup_parser_accepts_closed_exception_kinds(
+    exception_kind: str, newline: str
+) -> None:
+    record = _story_setup_diag_record(exception_kind=exception_kind)
+    assert live_stand._live_playwright_story_setup_diagnostics(
+        _story_setup_diag_row(record, newline)
+    ) == [record]
+
+
+def test_live_playwright_story_setup_parser_rejects_private_or_malformed_rows() -> None:
+    valid = _story_setup_diag_record()
+    invalid = (
+        {**valid, "schema": True},
+        {**valid, "schema": 2},
+        {**valid, "project": "private-project"},
+        {**valid, "stage": "login https://private.invalid"},
+        {**valid, "exceptionKind": "RuntimeError: private token"},
+        {**valid, "extra": "private URL"},
+    )
+    assert all(
+        live_stand._live_playwright_story_setup_diagnostics(
+            _story_setup_diag_row(record)
+        )
+        == []
+        for record in invalid
+    )
+    row = _story_setup_diag_row(valid)
+    malformed = (
+        row.rstrip("\n"),
+        row[:-1].replace('"schema":1', '"schema":1,"schema":1') + "\n",
+        row[:-1].replace('"schema":1', '"schema":NaN') + "\n",
+        row.replace("\n", "\x00\n"),
+        "STORY_SETUP_DIAG " + "x" * 513 + "\n",
+    )
+    assert all(
+        live_stand._live_playwright_story_setup_diagnostics(value) == []
+        for value in malformed
+    )
+
+
+def test_live_playwright_story_setup_parser_deduplicates_and_caps_records() -> None:
+    records = [
+        _story_setup_diag_record(stage=stage)
+        for stage in ("login", "dashboard", "bootstrap", "cycle0", "acceptance")
+    ]
+    rows = "".join(
+        _story_setup_diag_row(record)
+        for record in (records[0], records[1], records[0], *records[2:])
+    )
+    assert live_stand._live_playwright_story_setup_diagnostics(rows) == records[:4]
+
+
+def test_live_playwright_emits_story_setup_diagnostics_from_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    record = _story_setup_diag_record(project="mobile", stage="cycle0")
+    private = "private exception https://private.invalid token=not-for-output"
+    valid = _story_setup_diag_row(record)
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(valid + private + "\n").encode(),
+        stderr=valid.encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E story setup " + json.dumps(record, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_suppresses_story_setup_diagnostics_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = _story_setup_diag_row(_story_setup_diag_record())
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E outcome=passed exit_code=0",
+    ]
+
+
+_AUTH_REGISTRATION_PHASES = (
+    "before-submit",
+    "response-wait",
+    "response-received",
+    "navigation",
+)
+
+
+def _auth_registration_diag_record(
+    *,
+    project: str = "desktop",
+    scenario: str = "password-settings",
+    phase: str = "response-received",
+    form_valid: bool = True,
+    submit_enabled: bool = True,
+    request_observed: bool = True,
+    status: int | None = 422,
+) -> dict[str, object]:
+    return {
+        "schema": 1,
+        "project": project,
+        "scenario": scenario,
+        "phase": phase,
+        "formValid": form_valid,
+        "submitEnabled": submit_enabled,
+        "requestObserved": request_observed,
+        "status": status,
+    }
+
+
+def _auth_registration_diag_row(record: dict[str, object], newline: str = "\n") -> str:
+    return (
+        "AUTH_REGISTRATION_DIAG " + json.dumps(record, separators=(",", ":")) + newline
+    )
+
+
+def test_live_playwright_auth_registration_parser_accepts_closed_records() -> None:
+    records = (
+        _auth_registration_diag_record(
+            project="desktop",
+            phase="before-submit",
+            form_valid=False,
+            submit_enabled=False,
+            request_observed=False,
+            status=None,
+        ),
+        _auth_registration_diag_record(
+            project="mobile",
+            scenario="totp",
+            phase="response-wait",
+            request_observed=True,
+            status=None,
+        ),
+        _auth_registration_diag_record(project="desktop", phase="response-received"),
+        _auth_registration_diag_record(
+            project="mobile", scenario="totp", phase="navigation", status=200
+        ),
+    )
+    for record in records:
+        assert live_stand._live_playwright_auth_registration_diagnostics(
+            _auth_diag_row("AUTH_REGISTRATION_DIAG ", record)
+        ) == [record]
+
+
+@pytest.mark.parametrize(
+    "phase_record",
+    [
+        _auth_registration_diag_record(phase="before-submit", request_observed=True),
+        _auth_registration_diag_record(
+            phase="before-submit", request_observed=False, status=200
+        ),
+        _auth_registration_diag_record(phase="response-wait", status=200),
+        _auth_registration_diag_record(
+            phase="response-received", request_observed=False
+        ),
+        _auth_registration_diag_record(phase="response-received", status=None),
+        _auth_registration_diag_record(
+            phase="navigation", request_observed=False, status=200
+        ),
+        _auth_registration_diag_record(phase="navigation", status=None),
+    ],
+)
+def test_live_playwright_auth_registration_parser_rejects_inconsistent_phases(
+    phase_record: dict[str, object],
+) -> None:
+    assert (
+        live_stand._live_playwright_auth_registration_diagnostics(
+            _auth_diag_row("AUTH_REGISTRATION_DIAG ", phase_record)
+        )
+        == []
+    )
+
+
+def test_live_playwright_auth_registration_parser_rejects_malformed_or_private_rows() -> (
+    None
+):
+    valid = _auth_registration_diag_record()
+    invalid = (
+        {**valid, "schema": True},
+        {**valid, "schema": 2},
+        {**valid, "project": "private-project"},
+        {**valid, "scenario": "private-scenario"},
+        {**valid, "phase": "response https://private.invalid"},
+        {**valid, "formValid": 1},
+        {**valid, "submitEnabled": "yes"},
+        {**valid, "requestObserved": 0},
+        {**valid, "status": True},
+        {**valid, "status": 99},
+        {**valid, "status": 600},
+        {**valid, "status": 200.0},
+        {**valid, "extra": "private token"},
+    )
+    assert all(
+        live_stand._live_playwright_auth_registration_diagnostics(
+            _auth_diag_row("AUTH_REGISTRATION_DIAG ", record)
+        )
+        == []
+        for record in invalid
+    )
+    missing_scenario = dict(valid)
+    del missing_scenario["scenario"]
+    assert (
+        live_stand._live_playwright_auth_registration_diagnostics(
+            _auth_diag_row("AUTH_REGISTRATION_DIAG ", missing_scenario)
+        )
+        == []
+    )
+    row = _auth_diag_row("AUTH_REGISTRATION_DIAG ", valid)
+    malformed = (
+        row.rstrip("\n"),
+        row[:-1].replace('"schema":1', '"schema":1,"schema":1') + "\n",
+        row[:-1].replace('"status":422', '"status":NaN') + "\n",
+        row.replace("\n", "\x00\n"),
+        "AUTH_REGISTRATION_DIAG " + "x" * 513 + "\n",
+    )
+    assert all(
+        live_stand._live_playwright_auth_registration_diagnostics(value) == []
+        for value in malformed
+    )
+
+
+def test_live_playwright_auth_registration_parser_deduplicates_and_caps_records() -> (
+    None
+):
+    records = [
+        _auth_registration_diag_record(phase="response-received", status=400 + index)
+        for index in range(5)
+    ]
+    rows = "".join(
+        _auth_diag_row("AUTH_REGISTRATION_DIAG ", record)
+        for record in (records[0], records[1], records[0], *records[2:])
+    )
+    assert (
+        live_stand._live_playwright_auth_registration_diagnostics(rows) == records[:4]
+    )
+
+
+def test_live_playwright_emits_registration_diagnostics_only_from_failure_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    record = _auth_registration_diag_record(
+        project="mobile", scenario="totp", phase="navigation", status=200
+    )
+    private = "private response body https://private.invalid token=hidden"
+    valid = _auth_registration_diag_row(record)
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(valid + private + "\n").encode(),
+        stderr=valid.encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+
+
+def test_live_playwright_suppresses_registration_diagnostics_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = _auth_registration_diag_row(_auth_registration_diag_record())
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E outcome=passed exit_code=0",
+    ]
+
+
+def _pwa_bundle_route_diag_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "schema": 1,
+        "project": "desktop",
+        "routeEntries": 1,
+        "originMatches": 1,
+        "bundlePathMatches": 1,
+        "serviceWorkerRequestSeen": False,
+    }
+    record.update(overrides)
+    return record
+
+
+def _pwa_bundle_route_diag_row(record: dict[str, object], newline: str = "\n") -> str:
+    return (
+        "PWA_BUNDLE_ROUTE_DIAG " + json.dumps(record, separators=(",", ":")) + newline
+    )
+
+
+def test_live_playwright_pwa_route_parser_accepts_closed_records() -> None:
+    ordinary = _pwa_bundle_route_diag_record()
+    saturated = _pwa_bundle_route_diag_record(
+        project="mobile",
+        routeEntries=64,
+        originMatches=64,
+        bundlePathMatches=64,
+        serviceWorkerRequestSeen=True,
+    )
+    assert live_stand._live_playwright_pwa_bundle_route_diagnostics(
+        _pwa_bundle_route_diag_row(ordinary) + _pwa_bundle_route_diag_row(saturated)
+    ) == [ordinary, saturated]
+
+
+def test_live_playwright_pwa_bundle_route_parser_rejects_bad_or_private_rows() -> None:
+    valid = _pwa_bundle_route_diag_record()
+    invalid_records = (
+        {**valid, "schema": True},
+        {**valid, "project": "private-project"},
+        {**valid, "routeEntries": True},
+        {**valid, "routeEntries": 65},
+        {**valid, "originMatches": 2},
+        {**valid, "bundlePathMatches": 2},
+        {**valid, "serviceWorkerRequestSeen": 1},
+        {**valid, "serviceWorkerRequestSeen": True, "routeEntries": 0},
+        {**valid, "requestUrl": "https://private.invalid/path"},
+    )
+    rows = "".join(_pwa_bundle_route_diag_row(record) for record in invalid_records)
+    rows += 'PWA_BUNDLE_ROUTE_DIAG {"schema":1,"schema":1}\n'
+    rows += 'PWA_BUNDLE_ROUTE_DIAG {"schema":NaN}\n'
+    rows += "PWA_BUNDLE_ROUTE_DIAG " + "x" * 513 + "\n"
+    rows += _pwa_bundle_route_diag_row(valid, newline="")
+    assert live_stand._live_playwright_pwa_bundle_route_diagnostics(rows) == []
+
+
+def test_live_playwright_pwa_bundle_route_parser_deduplicates_and_caps() -> None:
+    records = [
+        _pwa_bundle_route_diag_record(
+            project="desktop" if index % 2 == 0 else "mobile",
+            routeEntries=index,
+            originMatches=index,
+            bundlePathMatches=index,
+        )
+        for index in range(1, 6)
+    ]
+    rows = "".join(
+        _pwa_bundle_route_diag_row(record)
+        for record in (records[0], records[1], records[0], *records[2:])
+    )
+    assert live_stand._live_playwright_pwa_bundle_route_diagnostics(rows) == records[:4]
+
+
+def test_live_playwright_emits_only_validated_pwa_route_diagnostics_from_failure_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    record = _pwa_bundle_route_diag_record(
+        project="mobile", routeEntries=4, originMatches=2, bundlePathMatches=0
+    )
+    private = "https://private.invalid/assets/app.js token=hidden response body"
+    valid = _pwa_bundle_route_diag_row(record)
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(valid + private + "\n").encode(),
+        stderr=valid.encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E PWA bundle route " + json.dumps(record, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+
+
+def test_live_playwright_suppresses_pwa_bundle_route_diagnostics_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = _pwa_bundle_route_diag_row(_pwa_bundle_route_diag_record())
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E outcome=passed exit_code=0",
+    ]

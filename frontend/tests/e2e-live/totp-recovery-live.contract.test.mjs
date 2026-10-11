@@ -31,6 +31,22 @@ test("live TOTP enrollment, login, recovery use, and replay rejection stay secre
   requireMatch(/randomUUID\(\)/u, "the test account identity is unique")
   requireMatch(/freshPassword\(\)/u, "the account password is generated in memory")
   requireMatch(/isApiResponse\(["']\/auth\/register["']\)/u, "registration uses the live endpoint")
+  requireMatch(
+    /reportAuthHttpStatus\(testInfo\.project\.name,\s*["']totp_register["'],\s*registered\.status\(\)\)/u,
+    "registration status is observed from the real response"
+  )
+  requireMatch(
+    /reportAuthRegistrationFailure\(diagnosticProject\(testInfo\.project\.name\),\s*["']totp["']/u,
+    "failed registration reports only closed phase state"
+  )
+  requireMatch(
+    /registrationResponsePromise = page\.waitForResponse\(isApiResponse\(["']\/auth\/register["']\)\)[\s\S]*?const \[registrationClick, registrationResponse\] = await Promise\.allSettled\(\[[\s\S]*?registerButton\.click\(\)[\s\S]*?registrationResponsePromise/u,
+    "the registration response wait is armed immediately before a rejection-safe click"
+  )
+  requireMatch(
+    /if \(registrationClick\.status === "rejected"\) throw registrationClick\.reason[\s\S]*?if \(registrationResponse\.status === "rejected"\) throw registrationResponse\.reason/u,
+    "click and response failures remain explicit test failures"
+  )
   requireMatch(/#totp-manual-code/u, "the TOTP seed is read from the enrollment UI only in memory")
 
   requireMatch(

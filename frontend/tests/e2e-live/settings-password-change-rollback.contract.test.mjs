@@ -84,8 +84,35 @@ test("live password-settings acceptance proves invalid-change rollback and persi
   )
   assert.match(
     spec,
-    /await page\.reload\(\)[\s\S]*?await openPasswordSection\(page\)[\s\S]*?const reloadedPasswordInputValues = await Promise\.all\([\s\S]*?currentPasswordField\.inputValue\(\)[\s\S]*?newPasswordField\.inputValue\(\)[\s\S]*?confirmPasswordField\.inputValue\(\)[\s\S]*?const passwordInputsAreCleared = reloadedPasswordInputValues\.every\(\(value\) => value === ""\)[\s\S]*?const passwordErrorIsCleared = \(await page\.getByRole\("alert"\)\.count\(\)\) === 0[\s\S]*?const passwordFormRestoredAfterReload =[\s\S]*?expect\(\s*passwordFormRestoredAfterReload,[\s\S]*?\.toBe\(true\)/u,
+    /aria-describedby[\s\S]*?describedIds\.some\(\(id\) => \{[\s\S]*?document\.getElementById\(id\)[\s\S]*?helper\.getAttribute\("role"\) !== "alert"[\s\S]*?const bounds = helper\.getBoundingClientRect\(\)[\s\S]*?const visibility = window\.getComputedStyle\(helper\)\.visibility[\s\S]*?helper\.textContent\?\.includes\(expectedText\) === true[\s\S]*?bounds\.width > 0[\s\S]*?bounds\.height > 0[\s\S]*?visibility !== "hidden"[\s\S]*?visibility !== "collapse"/u,
+    "the visible invalid-password alert remains linked to the current-password field"
+  )
+  assert.match(
+    spec,
+    /reportAuthHttpStatus\(\s*diagnosticProject\(\s*testInfo\.project\.name\s*\)\s*,\s*"password_settings_register"\s*,\s*registered\.status\(\s*\)\s*,?\s*\)/u
+  )
+  assert.match(
+    spec,
+    /reportAuthRegistrationFailure\(diagnosticProject\(testInfo\.project\.name\),\s*"password-settings"/u
+  )
+  assert.match(
+    spec,
+    /await page\.reload\(\)[\s\S]*?await openPasswordSection\(page\)[\s\S]*?const reloadedPasswordInputValues = await Promise\.all\([\s\S]*?currentPasswordField\.inputValue\(\)[\s\S]*?newPasswordField\.inputValue\(\)[\s\S]*?confirmPasswordField\.inputValue\(\)[\s\S]*?const passwordInputsAreCleared = reloadedPasswordInputValues\.every\(\(value\) => value === ""\)[\s\S]*?const currentPasswordErrorIsCleared = await currentPasswordField\.evaluate\(\(input\) => \{[\s\S]*?const passwordFormRestoredAfterReload =[\s\S]*?expect\(\s*passwordFormRestoredAfterReload,[\s\S]*?\.toBe\(true\)/u,
     "after the server rejects a change, reload restores the original empty password form without exposing field contents"
+  )
+  assert.match(
+    spec,
+    /const passwordErrorIsCleared = \(await page\.getByRole\("alert"\)\.count\(\)\) === 0[\s\S]*?const currentPasswordErrorIsCleared = await currentPasswordField\.evaluate\([\s\S]*?const passwordFormRestoredAfterReload =[\s\S]*?passwordErrorIsCleared &&[\s\S]*?currentPasswordErrorIsCleared &&/u,
+    "reload retains the global no-alert check and the current-password field association check"
+  )
+  assert.match(
+    spec,
+    /const registrationResponsePromise = page\.waitForResponse\([\s\S]*?const \[registrationClick, registrationResponse\] = await Promise\.allSettled\(\[[\s\S]*?registerButton\.click\(\)[\s\S]*?registrationResponsePromise[\s\S]*?if \(registrationClick\.status === "rejected"\) throw registrationClick\.reason/u,
+    "registration click and response failures are both handled while preserving the click error"
+  )
+  assert.match(
+    spec,
+    /if \(registrationResponse\.status === "rejected"\) throw registrationResponse\.reason/u
   )
   assert.match(spec, /loginWith\(verificationPage, email, currentPassword\)/u)
   assert.match(spec, /savedResponse\.status\(\)[\s\S]*?\.toBe\(200\)/u)

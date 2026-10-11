@@ -4508,6 +4508,101 @@ def _live_playwright_story_memory_records(
     return records
 
 
+_PLAYWRIGHT_STORY_SETUP_PREFIX = "STORY_SETUP_DIAG "
+_PLAYWRIGHT_STORY_SETUP_LINE_BYTES_LIMIT = 512
+_PLAYWRIGHT_STORY_SETUP_RECORD_LIMIT = 4
+_PLAYWRIGHT_STORY_SETUP_KEYS = ("schema", "project", "stage", "exceptionKind")
+_PLAYWRIGHT_STORY_SETUP_STAGES = (
+    "browser-launch",
+    "fixture-policy",
+    "owner-cdp",
+    "command-line",
+    "debug-port",
+    "cdp-attach",
+    "default-context",
+    "cookies",
+    "main-target",
+    "project-options",
+    "bootstrap-listener",
+    "login",
+    "dashboard",
+    "bootstrap",
+    "story-trigger",
+    "warm-up",
+    "baseline",
+    "cycle0",
+    "measured-cycle",
+    "acceptance",
+    "cleanup",
+)
+_PLAYWRIGHT_STORY_SETUP_EXCEPTION_KINDS = (
+    "error",
+    "non-error",
+    "cleanup",
+    "error-with-cleanup",
+    "non-error-with-cleanup",
+)
+
+
+def _validated_story_setup_record(value: object) -> dict[str, object] | None:
+    record = _story_memory_object(value, _PLAYWRIGHT_STORY_SETUP_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    project = record["project"]
+    stage = record["stage"]
+    exception_kind = record["exceptionKind"]
+    if not isinstance(project, str) or project not in ("desktop", "mobile"):
+        return None
+    if not isinstance(stage, str) or stage not in _PLAYWRIGHT_STORY_SETUP_STAGES:
+        return None
+    if (
+        not isinstance(exception_kind, str)
+        or exception_kind not in _PLAYWRIGHT_STORY_SETUP_EXCEPTION_KINDS
+    ):
+        return None
+    return {
+        "schema": 1,
+        "project": project,
+        "stage": stage,
+        "exceptionKind": exception_kind,
+    }
+
+
+def _live_playwright_story_setup_diagnostics(
+    output: str,
+) -> list[dict[str, object]]:
+    """Accept only closed, byte-bounded Story setup failures from stdout."""
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _PLAYWRIGHT_STORY_SETUP_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_PLAYWRIGHT_STORY_SETUP_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_PLAYWRIGHT_STORY_SETUP_PREFIX) :],
+                object_pairs_hook=_story_memory_json_object,
+                parse_constant=_reject_story_memory_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_story_setup_record(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _PLAYWRIGHT_STORY_SETUP_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
 _AUTH_UI_DIAG_PREFIX = "AUTH_UI_DIAG "
 _AUTH_HTTP_DIAG_PREFIX = "AUTH_HTTP_DIAG "
 _AUTH_DIAG_LINE_BYTES_LIMIT = 1024
@@ -4539,6 +4634,8 @@ _AUTH_HTTP_DIAG_EXPECTED_STATUS = {
     for operation in (
         "profile_read",
         "profile_identity_read",
+        "password_settings_register",
+        "totp_register",
         "password_change_invalid",
         "password_change_save",
         "totp_recovery_accept",
@@ -4705,6 +4802,191 @@ def _validated_auth_http_diag(value: object) -> dict[str, object] | None:
     }
 
 
+_AUTH_REGISTRATION_DIAG_PREFIX = "AUTH_REGISTRATION_DIAG "
+_AUTH_REGISTRATION_DIAG_KEYS = (
+    "schema",
+    "project",
+    "scenario",
+    "phase",
+    "formValid",
+    "submitEnabled",
+    "requestObserved",
+    "status",
+)
+_AUTH_REGISTRATION_DIAG_SCENARIOS = ("password-settings", "totp")
+_AUTH_REGISTRATION_DIAG_PHASES = (
+    "before-submit",
+    "response-wait",
+    "response-received",
+    "navigation",
+)
+_AUTH_REGISTRATION_DIAG_LINE_BYTES_LIMIT = 512
+_AUTH_REGISTRATION_DIAG_RECORD_LIMIT = 4
+
+
+def _validated_auth_registration_diag(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _AUTH_REGISTRATION_DIAG_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    project = record["project"]
+    scenario = record["scenario"]
+    phase = record["phase"]
+    form_valid = record["formValid"]
+    submit_enabled = record["submitEnabled"]
+    request_observed = record["requestObserved"]
+    status = record["status"]
+    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
+        return None
+    if (
+        not isinstance(scenario, str)
+        or scenario not in _AUTH_REGISTRATION_DIAG_SCENARIOS
+    ):
+        return None
+    if not isinstance(phase, str) or phase not in _AUTH_REGISTRATION_DIAG_PHASES:
+        return None
+    if type(form_valid) is not bool or type(submit_enabled) is not bool:
+        return None
+    if type(request_observed) is not bool:
+        return None
+    if status is not None and (type(status) is not int or not 100 <= status <= 599):
+        return None
+    if phase == "before-submit" and (request_observed or status is not None):
+        return None
+    if phase == "response-wait" and status is not None:
+        return None
+    if phase in {"response-received", "navigation"} and (
+        not request_observed or status is None
+    ):
+        return None
+    return {
+        "schema": 1,
+        "project": project,
+        "scenario": scenario,
+        "phase": phase,
+        "formValid": form_valid,
+        "submitEnabled": submit_enabled,
+        "requestObserved": request_observed,
+        "status": status,
+    }
+
+
+def _live_playwright_auth_registration_diagnostics(
+    output: str,
+) -> list[dict[str, object]]:
+    """Retain only closed registration-failure rows from complete stdout lines."""
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _AUTH_REGISTRATION_DIAG_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_AUTH_REGISTRATION_DIAG_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_AUTH_REGISTRATION_DIAG_PREFIX) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_auth_registration_diag(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _AUTH_REGISTRATION_DIAG_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
+_PWA_BUNDLE_ROUTE_DIAG_PREFIX = "PWA_BUNDLE_ROUTE_DIAG "
+_PWA_BUNDLE_ROUTE_DIAG_KEYS = (
+    "schema",
+    "project",
+    "routeEntries",
+    "originMatches",
+    "bundlePathMatches",
+    "serviceWorkerRequestSeen",
+)
+_PWA_BUNDLE_ROUTE_DIAG_LINE_BYTES_LIMIT = 512
+_PWA_BUNDLE_ROUTE_DIAG_RECORD_LIMIT = 4
+_PWA_BUNDLE_ROUTE_DIAG_MAX_COUNT = 64
+
+
+def _validated_pwa_bundle_route_diag(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _PWA_BUNDLE_ROUTE_DIAG_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    project = record["project"]
+    route_entries = record["routeEntries"]
+    origin_matches = record["originMatches"]
+    bundle_path_matches = record["bundlePathMatches"]
+    service_worker_seen = record["serviceWorkerRequestSeen"]
+    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
+        return None
+    counts = (route_entries, origin_matches, bundle_path_matches)
+    if any(
+        type(count) is not int or not 0 <= count <= _PWA_BUNDLE_ROUTE_DIAG_MAX_COUNT
+        for count in counts
+    ):
+        return None
+    if origin_matches > route_entries or bundle_path_matches > origin_matches:
+        return None
+    if type(service_worker_seen) is not bool:
+        return None
+    if service_worker_seen and route_entries == 0:
+        return None
+    return {
+        "schema": 1,
+        "project": project,
+        "routeEntries": route_entries,
+        "originMatches": origin_matches,
+        "bundlePathMatches": bundle_path_matches,
+        "serviceWorkerRequestSeen": service_worker_seen,
+    }
+
+
+def _live_playwright_pwa_bundle_route_diagnostics(
+    output: str,
+) -> list[dict[str, object]]:
+    """Retain only closed, bounded PWA route observations from complete stdout lines."""
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _PWA_BUNDLE_ROUTE_DIAG_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_PWA_BUNDLE_ROUTE_DIAG_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_PWA_BUNDLE_ROUTE_DIAG_PREFIX) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_pwa_bundle_route_diag(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _PWA_BUNDLE_ROUTE_DIAG_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
 def _live_playwright_auth_http_diagnostics(output: str) -> list[dict[str, object]]:
     """Retain only complete bounded Auth HTTP status mismatches from stdout."""
     records: list[dict[str, object]] = []
@@ -4788,7 +5070,8 @@ _PLAYWRIGHT_HTTP_STATUS_LIMIT = 104
 
 _PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
     r"UE_LIVE_RETRY_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>auth-logout|password-reset-replay) "
+    r"check=(?P<check>auth-logout|password-reset-replay|"
+    r"email-otp-verification-wrong-code) "
     r"retry_after_seconds=(?P<retry_after>invalid|[1-9]|[1-5][0-9]|60) "
     r"decision=(?P<decision>retry|declined-header|declined-deadline) "
     r"remaining_ms=(?P<remaining>0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|60000)"
@@ -5661,11 +5944,24 @@ def _run_live_playwright(
     http_statuses = _live_playwright_http_statuses(stdout)
     push_observations = _live_playwright_push_observations(stdout)
     story_memory_records = _live_playwright_story_memory_records(stdout)
+    story_setup_diagnostics = (
+        _live_playwright_story_setup_diagnostics(stdout) if return_code != 0 else []
+    )
     auth_ui_diagnostics = (
         _live_playwright_auth_ui_diagnostics(stdout) if return_code != 0 else []
     )
     auth_http_diagnostics = (
         _live_playwright_auth_http_diagnostics(stdout) if return_code != 0 else []
+    )
+    auth_registration_diagnostics = (
+        _live_playwright_auth_registration_diagnostics(stdout)
+        if return_code != 0
+        else []
+    )
+    pwa_bundle_route_diagnostics = (
+        _live_playwright_pwa_bundle_route_diagnostics(stdout)
+        if return_code != 0
+        else []
     )
     a11y_contrast_diagnostics = _live_playwright_a11y_contrasts(stdout)
     a11y_paint_states = _live_playwright_a11y_paint_states(stdout)
@@ -5758,6 +6054,11 @@ def _run_live_playwright(
             f"subscription={str(subscription).lower()} matches={matches}",
             flush=True,
         )
+    for record in story_setup_diagnostics:
+        print(
+            "live E2E story setup " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
     for record in story_memory_records:
         print(
             "live E2E story memory " + json.dumps(record, separators=(",", ":")),
@@ -5766,6 +6067,16 @@ def _run_live_playwright(
     for record in auth_ui_diagnostics:
         print(
             "live E2E auth UI " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for record in auth_registration_diagnostics:
+        print(
+            "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for record in pwa_bundle_route_diagnostics:
+        print(
+            "live E2E PWA bundle route " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
     for record in auth_http_diagnostics:

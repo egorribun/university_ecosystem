@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto"
-import type { Browser, BrowserContext, Page, TestInfo } from "@playwright/test"
+import type { Browser, BrowserContext, Page, Request, Response, TestInfo } from "@playwright/test"
 import {
   expect,
   freshPassword,
@@ -8,7 +8,11 @@ import {
   submitLogin,
   test,
 } from "./fixtures"
-import { reportAuthHttpStatus, reportAuthUiFailure } from "./auth-notification-diagnostic"
+import {
+  reportAuthHttpStatus,
+  reportAuthRegistrationFailure,
+  reportAuthUiFailure,
+} from "./auth-notification-diagnostic"
 
 const TOTP_PERIOD_MS = 30_000
 const TOTP_DIGITS = 6
@@ -295,26 +299,64 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
   const password = freshPassword()
   const fullName = `Live TOTP recovery acceptance ${testInfo.project.name} ${identity}`
   let createdUserId: string | null = null
+  let registrationAttempted = false
+  let registrationCompleted = false
+  let registrationFormValid = false
+  let registrationSubmitEnabled = false
+  let registrationRequestObserved = false
+  let registrationStatus: number | null = null
+  let registrationPhase: "before-submit" | "response-wait" | "response-received" | "navigation" =
+    "before-submit"
+  const isRegistrationRequest = (request: Request) =>
+    request.method() === "POST" && new URL(request.url()).pathname.endsWith("/auth/register")
+  const observeRegistrationRequest = (request: Request) => {
+    if (isRegistrationRequest(request)) registrationRequestObserved = true
+  }
+  const observeRegistrationResponse = (response: Response) => {
+    if (!isRegistrationRequest(response.request())) return
+    registrationRequestObserved = true
+    registrationStatus = response.status()
+    registrationPhase = "response-received"
+  }
   const ownedContexts: BrowserContext[] = []
 
   await stubBreachedPasswordLookup(page)
 
   try {
-    const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
+    page.on("request", observeRegistrationRequest)
+    page.on("response", observeRegistrationResponse)
     await page.goto("/register")
     await page.locator("#full_name").fill(fullName)
     await page.locator("#email").fill(email)
     await page.locator("#password").fill(password)
     await page.locator("#confirmPassword").fill(password)
-    await page.locator("#register-submit").click()
-
-    const registered = await registrationResponsePromise
+    const registerButton = page.locator("#register-submit")
+    registrationFormValid = await page
+      .locator("form")
+      .first()
+      .evaluate((form) => form.matches(":valid"))
+    registrationSubmitEnabled = await registerButton.isEnabled()
+    registrationAttempted = true
+    registrationPhase = "response-wait"
+    const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
+    const [registrationClick, registrationResponse] = await Promise.allSettled([
+      registerButton.click(),
+      registrationResponsePromise,
+    ])
+    if (registrationClick.status === "rejected") throw registrationClick.reason
+    if (registrationResponse.status === "rejected") throw registrationResponse.reason
+    const registered = registrationResponse.value
+    registrationStatus = registered.status()
+    registrationRequestObserved = true
+    registrationPhase = "response-received"
+    reportAuthHttpStatus(testInfo.project.name, "totp_register", registered.status())
     expect(registered.ok()).toBe(true)
     const registrationBody = (await registered.json()) as { id?: unknown }
     if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
       throw new Error("Synthetic account registration returned no account id")
     }
     createdUserId = registrationBody.id
+    registrationCompleted = true
 
     await submitLogin(page, email, password)
     await expect(page).toHaveURL(/\/dashboard$/u)
@@ -430,7 +472,20 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     const postReplayTotp = await waitForTotpCode(authenticatorSecret, loginTotp.step)
     await verifyTotpOnLogin(postReplayTotpLogin.page, postReplayTotp.code)
     checkPostReplayTotpLoginPageErrors()
+  } catch (error) {
+    if (registrationAttempted && !registrationCompleted) {
+      reportAuthRegistrationFailure(diagnosticProject(testInfo.project.name), "totp", {
+        phase: registrationPhase,
+        formValid: registrationFormValid,
+        submitEnabled: registrationSubmitEnabled,
+        requestObserved: registrationRequestObserved,
+        status: registrationStatus,
+      })
+    }
+    throw error
   } finally {
+    page.off("request", observeRegistrationRequest)
+    page.off("response", observeRegistrationResponse)
     for (const context of ownedContexts) await context.close()
     if (createdUserId) await deleteOwnedAccount(browser, createdUserId)
   }

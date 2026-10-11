@@ -49,12 +49,13 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
     "email-otp-register",
     "email-otp-verification-start",
     "email-otp-verification-wrong-code",
+    "email-otp-verification-wrong-code",
     "email-otp-verification-resend",
     "email-otp-verification-stale-code",
     "email-otp-verification-accept",
   ]
   requireMatch(
-    /import \{ reportLiveHttpStatus \} from ["']\.\/http-status-diagnostic/u,
+    /import\s*\{[^}]*\breportLiveHttpStatus\b[^}]*\}\s*from\s*["']\.\/http-status-diagnostic["']/u,
     "verification HTTP status observations use the bounded diagnostic helper",
     verificationSpec
   )
@@ -68,6 +69,31 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
     "each verification stage reports only its real response status under a closed check label"
   )
 
+  requireMatch(
+    /test\.setTimeout\(150_000\)/u,
+    "the OTP retry preserves the existing 150 second deadline",
+    verificationSpec
+  )
+  requireMatch(
+    /if \(rejected\.status\(\) === 429\)[\s\S]*?parseLiveRateLimitRetryAfter\(rejected\.headers\(\)\["retry-after"\]\)/u,
+    "wrong-code retries are gated by the actual bounded Retry-After header",
+    verificationSpec
+  )
+  requireMatch(
+    /await waitForLiveRateLimitRetry\(retryAfter\)[\s\S]*?const afterWait = assessLiveRateLimitRetry/u,
+    "the remaining slot budget is rechecked after waiting",
+    verificationSpec
+  )
+  requireMatch(
+    /const retryResponse = page\.waitForResponse\(verifyResponse,\s*\{\s*timeout: responseTimeoutMs,?\s*\}\)[\s\S]*?const retryAction = \(async \(\) => \{\s*await enterCode\(inputs, wrongCode, retryActionDeadlineAtMs\)[\s\S]*?await expect\(verifyButton\)\.toBeEnabled\(\{\s*timeout: retryActionTimeout\(retryActionDeadlineAtMs\),?\s*\}\)[\s\S]*?await verifyButton\.click\(\{\s*timeout: retryActionTimeout\(retryActionDeadlineAtMs\),?\s*\}\)[\s\S]*?Promise\.allSettled\(\[\s*retryResponse,\s*retryAction,?\s*\]\)/u,
+    "the bounded retry shares one action deadline across input, enablement, and submission while awaiting its response",
+    verificationSpec
+  )
+  requireMatch(
+    /expect\(rejected\.status\(\)\)\.toBe\(400\)/u,
+    "the retry remains required to be rejected as an invalid code",
+    verificationSpec
+  )
   requireMatch(/testDir:\s*["']\.\/tests\/e2e-live["']/u, "the live config owns this spec", config)
   requireMatch(/testMatch:\s*\/\.\*\\\.live\\\.spec\\\.ts\$\//u, "the spec is discoverable", config)
   requireMatch(

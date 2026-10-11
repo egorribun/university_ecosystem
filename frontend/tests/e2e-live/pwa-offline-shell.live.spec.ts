@@ -5,6 +5,17 @@ import { replacePrecacheRevision } from "./pwa-precache-revision"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
 
+async function assertStaticSpaDocumentResponse(
+  response: { status(): number; text(): Promise<string> } | null | undefined
+): Promise<void> {
+  expect(response?.status()).toBe(200)
+  expect(response).not.toBeNull()
+  // main.tsx consumes this marker synchronously before the live DOM is observable.
+  expect(await response!.text()).toMatch(
+    /<html(?=\s|>)[^>]*\sdata-render-mode=["']static-spa["'](?=\s|>)[^>]*>/iu
+  )
+}
+
 function withoutStaleEntityHeaders(headers: Record<string, string>): Record<string, string> {
   const safeHeaders = { ...headers }
   delete safeHeaders["content-length"]
@@ -124,8 +135,7 @@ test.describe("PWA offline app shell on the live stack", () => {
       // /register was not opened online, so this verifies the unvisited-route
       // fallback plus lazy route code from the same real Workbox precache.
       const response = await page.goto("/register", { waitUntil: "domcontentloaded" })
-      expect(response?.status()).toBe(200)
-      await expect(page.locator("html")).toHaveAttribute("data-render-mode", "static-spa")
+      await assertStaticSpaDocumentResponse(response)
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page.getByLabel("E-mail")).toBeVisible()
       await expect(page).toHaveURL(/\/register$/)
@@ -146,7 +156,7 @@ test.describe("PWA offline app shell on the live stack", () => {
     page,
     context,
     browserName,
-  }) => {
+  }, testInfo) => {
     test.skip(browserName !== "chromium", "the Service Worker update acceptance requires Chromium")
 
     const updateProxy = await startPwaUpdateProxy(context, ownedSessionOrigin())
@@ -214,8 +224,7 @@ test.describe("PWA offline app shell on the live stack", () => {
         new URL("/forgot-password", updateProxy.origin).toString(),
         { waitUntil: "domcontentloaded" }
       )
-      expect(offlineResponse?.status()).toBe(200)
-      await expect(page.locator("html")).toHaveAttribute("data-render-mode", "static-spa")
+      await assertStaticSpaDocumentResponse(offlineResponse)
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page).toHaveURL(/\/forgot-password$/u)
       await context.setOffline(false)
@@ -225,6 +234,13 @@ test.describe("PWA offline app shell on the live stack", () => {
       const updateRevision = `pwa-update-${marker}`
       let workerUpdateResponses = 0
       let bundleUpdateResponses = 0
+      const bundleRouteCounterLimit = 64
+      const incrementBundleRouteCounter = (current: number): number =>
+        Math.min(current + 1, bundleRouteCounterLimit)
+      let routeEntries = 0
+      let originMatches = 0
+      let bundlePathMatches = 0
+      let serviceWorkerRequestSeen = false
 
       // The loopback proxy handles the actual service-worker update fetch; Chromium
       // browser routes do not intercept service-worker main script updates.
@@ -234,11 +250,20 @@ test.describe("PWA offline app shell on the live stack", () => {
         return updatedSource
       })
       await context.route("**/assets/**", async (route) => {
-        const url = new URL(route.request().url())
-        if (url.origin !== appOrigin || url.pathname !== appBundlePath) {
+        const request = route.request()
+        routeEntries = incrementBundleRouteCounter(routeEntries)
+        if (request.serviceWorker() !== null) serviceWorkerRequestSeen = true
+        const url = new URL(request.url())
+        if (url.origin !== appOrigin) {
           await route.continue()
           return
         }
+        originMatches = incrementBundleRouteCounter(originMatches)
+        if (url.pathname !== appBundlePath) {
+          await route.continue()
+          return
+        }
+        bundlePathMatches = incrementBundleRouteCounter(bundlePathMatches)
 
         const response = await route.fetch()
         const source = await response.text()
@@ -259,7 +284,28 @@ test.describe("PWA offline app shell on the live stack", () => {
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page).toHaveURL(/\/forgot-password$/u)
       expect(workerUpdateResponses).toBeGreaterThan(0)
-      expect(bundleUpdateResponses).toBeGreaterThan(0)
+      try {
+        expect(bundleUpdateResponses).toBeGreaterThan(0)
+      } catch (assertionFailure) {
+        try {
+          const project = testInfo.project.name
+          if (project === "desktop" || project === "mobile") {
+            process.stdout.write(
+              `PWA_BUNDLE_ROUTE_DIAG ${JSON.stringify({
+                schema: 1,
+                project,
+                routeEntries,
+                originMatches,
+                bundlePathMatches,
+                serviceWorkerRequestSeen,
+              })}\n`
+            )
+          }
+        } catch {
+          // Failure diagnostics must not alter the original acceptance result.
+        }
+        throw assertionFailure
+      }
       expect(
         await page.evaluate(
           (storageKey) => Number(sessionStorage.getItem(storageKey) ?? "0"),
@@ -287,8 +333,7 @@ test.describe("PWA offline app shell on the live stack", () => {
           waitUntil: "domcontentloaded",
         }
       )
-      expect(updatedOfflineResponse?.status()).toBe(200)
-      await expect(page.locator("html")).toHaveAttribute("data-render-mode", "static-spa")
+      await assertStaticSpaDocumentResponse(updatedOfflineResponse)
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page.locator("#pwa-build-marker")).toHaveAttribute(
         "data-pwa-build-marker",

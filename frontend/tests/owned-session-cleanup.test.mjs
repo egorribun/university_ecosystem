@@ -329,6 +329,28 @@ it("declines once delay, request and shared assertion tail no longer fit", () =>
   expect(fixtureModule.liveDeadlineBoundedTimeoutMs(60_000, 15_000, 59_800)).toBeNull()
 })
 
+it("accepts the existing 150 second OTP slot but fails closed above the approved 180 second ceiling", () => {
+  const info = {
+    ...testInfo({ timeout: 150_000 }),
+    _deadline: () => ({ deadline: 150_000, timeout: 150_000 }),
+  }
+  expect(fixtureModule.liveTestSlotDeadlineAtMs(info, 1_000)).toBe(150_000)
+  expect(fixtureModule.assessLiveRateLimitRetry(info, 5, 20_000, 50_000, 1_000)).toEqual({
+    decision: "retry",
+    deadlineAtMs: 150_000,
+  })
+
+  const overCeiling = {
+    ...testInfo({ timeout: 180_001 }),
+    _deadline: () => ({ deadline: 180_001, timeout: 180_001 }),
+  }
+  expect(fixtureModule.liveTestSlotDeadlineAtMs(overCeiling, 1_000)).toBeNull()
+  expect(fixtureModule.assessLiveRateLimitRetry(overCeiling, 5, 20_000, 50_000, 1_000)).toEqual({
+    decision: "declined-deadline",
+    deadlineAtMs: null,
+  })
+})
+
 it("pins the private slot-deadline adapter to Playwright 1.63.0", () => {
   expect(packageJson.devDependencies["@playwright/test"]).toBe("1.63.0")
   expect(packageLock.packages["node_modules/@playwright/test"].version).toBe("1.63.0")

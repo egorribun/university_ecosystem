@@ -1,6 +1,8 @@
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import type { HTMLAttributes, ReactNode } from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { hydrateRoot } from "react-dom/client"
+import { renderToString } from "react-dom/server"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const state = vi.hoisted(() => ({ online: true }))
 const translation = vi.hoisted(() => ({
@@ -52,10 +54,12 @@ import Layout from "@/components/Layout"
 describe("Layout", () => {
   beforeEach(() => {
     state.online = true
+    delete window.__APP_HYDRATED
     translation.useTranslation.mockClear()
   })
 
   afterEach(() => {
+    delete window.__APP_HYDRATED
     vi.unstubAllEnvs()
   })
 
@@ -91,20 +95,70 @@ describe("Layout", () => {
     expect(screen.getByText("Audit content")).toBeInTheDocument()
   })
 
-  it("uses the composed entrance outside Lighthouse audits", () => {
-    const { container } = render(<Layout>Animated content</Layout>)
-    const shell = container.firstElementChild
+  it("uses the composed entrance for client route mounts after hydration", () => {
+    window.__APP_HYDRATED = true
+    const route = (name: string) => <Layout key={name}>{name} content</Layout>
+    const { container, rerender } = render(route("News"))
 
-    expect(shell).toHaveAttribute("data-motion-initial", "hidden")
-    expect(shell).toHaveAttribute("data-motion-animate", "visible")
-    expect(shell).toHaveAttribute("data-motion-exit", "exit")
-    expect(shell).toHaveClass(
+    const firstRouteShell = container.firstElementChild
+    expect(firstRouteShell).toHaveAttribute("data-motion-initial", "hidden")
+    expect(firstRouteShell).toHaveAttribute("data-motion-animate", "visible")
+    expect(firstRouteShell).toHaveAttribute("data-motion-exit", "exit")
+
+    rerender(route("Events"))
+    const nextRouteShell = container.firstElementChild
+    expect(nextRouteShell).toHaveAttribute("data-motion-initial", "hidden")
+    expect(nextRouteShell).toHaveAttribute("data-motion-animate", "visible")
+    expect(nextRouteShell).toHaveAttribute("data-motion-exit", "exit")
+    expect(nextRouteShell).toHaveClass(
       "box-border",
       "min-h-screen",
       "w-full",
       "bg-page",
       "text-text-primary"
     )
+  })
+
+  it("keeps SSR and first hydration visible when the sentinel is already published", async () => {
+    window.__APP_HYDRATED = true
+    const serverMarkup = renderToString(<Layout>Hydrated route</Layout>)
+
+    expect(serverMarkup).toContain('data-motion-initial="false"')
+    expect(serverMarkup).toContain("Hydrated route")
+
+    const container = document.createElement("div")
+    container.innerHTML = serverMarkup
+    document.body.append(container)
+    const recoverableErrors: unknown[] = []
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    let root: ReturnType<typeof hydrateRoot> | undefined
+
+    try {
+      await act(async () => {
+        root = hydrateRoot(container, <Layout>Hydrated route</Layout>, {
+          onRecoverableError: (error) => recoverableErrors.push(error),
+        })
+      })
+
+      expect(recoverableErrors).toEqual([])
+      expect(consoleError).not.toHaveBeenCalled()
+      expect(container.querySelector("[data-scroll-root]")).toHaveAttribute(
+        "data-motion-initial",
+        "hidden"
+      )
+      expect(container.querySelector("[data-scroll-root]")).toHaveAttribute(
+        "data-motion-animate",
+        "visible"
+      )
+    } finally {
+      if (root) {
+        await act(async () => {
+          root?.unmount()
+        })
+      }
+      container.remove()
+      consoleError.mockRestore()
+    }
   })
 
   it("disables the entrance animation for Lighthouse audits", () => {
