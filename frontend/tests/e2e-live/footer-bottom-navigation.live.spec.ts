@@ -1,5 +1,6 @@
 import { expect, loginAs, test } from "./fixtures"
 import type { Page } from "@playwright/test"
+import { reportLiveFooterGeometry } from "./live-ui-diagnostic"
 
 const NAVIGATION_PATHS = ["/dashboard", "/news", "/events", "/schedule", "/profile"] as const
 const SHORT_ACTIVITY_EMPTY_STATE = '.activity-theme section[aria-live="polite"]'
@@ -46,7 +47,7 @@ async function verifyFooterDoesNotOverlapBottomNavigation(page: Page): Promise<v
 
 test("bottom navigation fits phones and the navbar drawer works at the tablet boundary", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await loginAs(page, "student")
   await page.goto("/dashboard")
@@ -58,8 +59,103 @@ test("bottom navigation fits phones and the navbar drawer works at the tablet bo
     await expect(bottomNavigation).toBeVisible()
     const navigationRect = await bottomNavigation.evaluate((element) => {
       const rect = element.getBoundingClientRect()
-      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
+      const nav = element as HTMLElement
+      const navStyle = window.getComputedStyle(nav)
+      const matrix =
+        navStyle.transform === "none"
+          ? null
+          : (() => {
+              try {
+                return new DOMMatrixReadOnly(navStyle.transform)
+              } catch {
+                return null
+              }
+            })()
+      let fixedContainingBlock: Element | null = null
+      let fixedContainingBlockDepth = 0
+      let depth = 0
+      for (
+        let ancestor = nav.parentElement;
+        ancestor !== null && depth < 32;
+        ancestor = ancestor.parentElement
+      ) {
+        depth += 1
+        const style = window.getComputedStyle(ancestor)
+        const containCreatesBlock = /(?:^|\s)(?:layout|paint|strict|content)(?:\s|$)/u.test(
+          style.contain
+        )
+        const willChangeCreatesBlock = style.willChange
+          .split(",")
+          .some((value) =>
+            /^(?:transform|perspective|filter|backdrop-filter|contain|content-visibility)$/u.test(
+              value.trim()
+            )
+          )
+        const backdropFilter = style.getPropertyValue("backdrop-filter")
+        const containerType = style.getPropertyValue("container-type")
+        const contentVisibility = style.getPropertyValue("content-visibility")
+        if (
+          style.transform !== "none" ||
+          style.perspective !== "none" ||
+          style.filter !== "none" ||
+          (backdropFilter !== "" && backdropFilter !== "none") ||
+          (containerType !== "" && containerType !== "normal") ||
+          (contentVisibility !== "" && contentVisibility !== "visible") ||
+          containCreatesBlock ||
+          willChangeCreatesBlock
+        ) {
+          fixedContainingBlock = ancestor
+          fixedContainingBlockDepth = depth
+          break
+        }
+      }
+      const containingBlockRect = fixedContainingBlock?.getBoundingClientRect()
+      const translateValue = navStyle.getPropertyValue("translate")
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        navTransformPresent:
+          navStyle.transform !== "none" || (translateValue !== "" && translateValue !== "none"),
+        navTransformX: matrix === null ? 0 : matrix.is2D ? matrix.e : matrix.m41,
+        navTransformY: matrix === null ? 0 : matrix.is2D ? matrix.f : matrix.m42,
+        fixedContainingBlockFound: fixedContainingBlock !== null,
+        fixedContainingBlockDepth,
+        containingBlockLeft: containingBlockRect?.left ?? 0,
+        containingBlockRight: containingBlockRect?.right ?? 0,
+        containingBlockTop: containingBlockRect?.top ?? 0,
+        containingBlockBottom: containingBlockRect?.bottom ?? 0,
+      }
     })
+    reportLiveFooterGeometry(
+      testInfo.project.name,
+      width,
+      844,
+      navigationRect.innerWidth,
+      navigationRect.innerHeight,
+      navigationRect.clientWidth,
+      navigationRect.scrollWidth,
+      navigationRect.left,
+      navigationRect.right,
+      navigationRect.top,
+      navigationRect.bottom,
+      navigationRect.width,
+      navigationRect.navTransformPresent,
+      navigationRect.navTransformX,
+      navigationRect.navTransformY,
+      navigationRect.fixedContainingBlockFound,
+      navigationRect.fixedContainingBlockDepth,
+      navigationRect.containingBlockLeft,
+      navigationRect.containingBlockRight,
+      navigationRect.containingBlockTop,
+      navigationRect.containingBlockBottom
+    )
     expect(navigationRect.left, `${width}px nav left edge`).toBeCloseTo(0, 0)
     expect(navigationRect.right, `${width}px nav right edge`).toBeCloseTo(width, 0)
     expect(navigationRect.top, `${width}px nav height`).toBeLessThanOrEqual(844 - 64)

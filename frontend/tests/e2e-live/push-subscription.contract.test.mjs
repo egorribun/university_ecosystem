@@ -51,6 +51,8 @@ test("live Web Push acceptance is selected and stays inside native opt-in and su
     /Chromium push opt-in persists one native subscription and removes it on opt-out/u
   )
   assert.match(spec, /randomUUID\(\)/u)
+  assert.match(spec, /test\.use\(\{ channel: "chromium" \}\)/u)
+  assert.match(spec, /test\.use\(\{ nativePushChannel: "chromium" \}\)/u)
   assert.match(spec, /freshPassword\(\)/u)
   assert.match(spec, /loginAs\(adminPage,\s*["']admin["']\)/u)
   assert.match(spec, /await page\.goto\(["']\/register["']\)/u)

@@ -40,6 +40,22 @@ test("HTTP diagnostics emit only fixed project/check labels and integer status b
         "auth-session-preflight",
         "messenger-message-send",
         "chat-attachment-create",
+        "email-otp-register",
+        "email-otp-verification-start",
+        "email-otp-verification-wrong-code",
+        "email-otp-verification-resend",
+        "email-otp-verification-stale-code",
+        "email-otp-verification-accept",
+        "email-mfa-register",
+        "email-mfa-initial-login",
+        "email-mfa-sibling-login",
+        "email-mfa-verification-start",
+        "email-mfa-verification-accept",
+        "email-mfa-enable-start",
+        "email-mfa-enable-accept",
+        "email-mfa-enabled-login",
+        "email-mfa-login-resend-early",
+        "email-mfa-login-accept",
       ]) {
         calls.push(
           `reportLiveHttpStatus(${JSON.stringify(project)}, ${JSON.stringify(check)}, ${status})`
@@ -69,7 +85,7 @@ test("HTTP diagnostics silently reject out-of-domain runtime values without coer
   )
 })
 
-test("HTTP diagnostics deduplicate records and stop at forty records per worker process", () => {
+test("HTTP diagnostics deduplicate records and stop at 104 records per worker process", () => {
   const output = reportInChild(`
     for (let status = 100; status < 600; status += 1) {
       for (let duplicate = 0; duplicate < 10; duplicate += 1) {
@@ -80,7 +96,7 @@ test("HTTP diagnostics deduplicate records and stop at forty records per worker 
   assert.equal(
     output,
     Array.from(
-      { length: 40 },
+      { length: 104 },
       (_, index) =>
         `UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=${100 + index}\n`
     ).join("")

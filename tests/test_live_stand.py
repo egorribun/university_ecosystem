@@ -1979,6 +1979,303 @@ def test_live_playwright_emits_only_bounded_a11y_contrast_values(
     assert printed.err == ""
 
 
+def _a11y_paint_row(**overrides: str) -> str:
+    fields = {
+        "project": "desktop",
+        "route": "settings",
+        "axe_fg": "#8691a3",
+        "axe_bg": "#f8fafc",
+        "ratio_milli": "3040",
+        "css_fg": "#8691a3",
+        "text_color": "opaque",
+        "css_alpha_milli": "1000",
+        "node_opacity_milli": "800",
+        "ancestor_opacity_milli": "750",
+        "opacity_tag": "multiple",
+        "page_ready": "true",
+        "page_opacity_milli": "900",
+        "layout_opacity_milli": "800",
+        "animation": "opacity",
+        "active_animations": "2",
+    }
+    fields.update(overrides)
+    return (
+        f"UE_LIVE_A11Y_PAINT_V1 project={fields['project']} route={fields['route']} "
+        f"axe_fg={fields['axe_fg']} axe_bg={fields['axe_bg']} ratio_milli={fields['ratio_milli']} "
+        f"css_fg={fields['css_fg']} text_color={fields['text_color']} "
+        f"css_alpha_milli={fields['css_alpha_milli']} "
+        f"node_opacity_milli={fields['node_opacity_milli']} "
+        f"ancestor_opacity_milli={fields['ancestor_opacity_milli']} "
+        f"opacity_tag={fields['opacity_tag']} "
+        f"page_ready={fields['page_ready']} page_opacity_milli={fields['page_opacity_milli']} "
+        f"layout_opacity_milli={fields['layout_opacity_milli']} animation={fields['animation']} "
+        f"active_animations={fields['active_animations']}\n"
+    )
+
+
+def _a11y_phase_row(**overrides: str) -> str:
+    fields = {
+        "project": "desktop",
+        "route": "settings",
+        "phase": "before_axe",
+        "page_ready": "true",
+        "page_opacity_milli": "900",
+        "root_opacity_milli": "1000",
+        "layout_opacity_milli": "800",
+        "animation": "opacity",
+        "active_animations": "2",
+    }
+    fields.update(overrides)
+    return (
+        "UE_LIVE_A11Y_PHASE_V1 "
+        + " ".join(f"{name}={value}" for name, value in fields.items())
+        + "\n"
+    )
+
+
+def _footer_geometry_row(**overrides: str) -> str:
+    fields = {
+        "project": "mobile",
+        "req_w_milli": "390000",
+        "req_h_milli": "844000",
+        "inner_w_milli": "390000",
+        "inner_h_milli": "844000",
+        "client_w_milli": "390000",
+        "scroll_w_milli": "390000",
+        "nav_left_milli": "0",
+        "nav_right_milli": "390000",
+        "nav_top_milli": "780000",
+        "nav_bottom_milli": "844000",
+        "nav_width_milli": "390000",
+        "nav_transform_present": "false",
+        "nav_tx_milli": "0",
+        "nav_ty_milli": "0",
+        "fixed_cb_found": "false",
+        "fixed_cb_depth": "0",
+        "cb_left_milli": "0",
+        "cb_right_milli": "0",
+        "cb_top_milli": "0",
+        "cb_bottom_milli": "0",
+    }
+    fields.update(overrides)
+    return (
+        "UE_LIVE_FOOTER_GEOM_V1 "
+        + " ".join(f"{name}={value}" for name, value in fields.items())
+        + "\n"
+    )
+
+
+def test_live_playwright_a11y_phase_parser_accepts_two_fixed_phases_per_route() -> None:
+    rows = (
+        _a11y_phase_row()
+        + _a11y_phase_row(page_opacity_milli="700")
+        + _a11y_phase_row(
+            phase="after_axe",
+            page_opacity_milli="1000",
+            animation="none",
+            active_animations="0",
+        )
+    )
+    assert live_stand._live_playwright_a11y_phase_states(rows) == [
+        ("desktop", "settings", "before_axe", True, 900, 1000, 800, "opacity", 2),
+        ("desktop", "settings", "after_axe", True, 1000, 1000, 800, "none", 0),
+    ]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        _a11y_phase_row(project="private-project"),
+        _a11y_phase_row(phase="private-phase"),
+        _a11y_phase_row(page_opacity_milli="1001"),
+        _a11y_phase_row(root_opacity_milli="1001"),
+        _a11y_phase_row(animation="private-css-property"),
+        _a11y_phase_row(active_animations="1000"),
+        _a11y_phase_row().rstrip("\n"),
+        _a11y_phase_row().replace("\n", "\x1b[0m\n"),
+        _a11y_phase_row()[:-1] + " private-selector\n",
+    ],
+)
+def test_live_playwright_a11y_phase_parser_rejects_malformed_rows(row: str) -> None:
+    assert live_stand._live_playwright_a11y_phase_states(row) == []
+
+
+def test_live_playwright_a11y_paint_parser_accepts_closed_finite_tags() -> None:
+    row = _a11y_paint_row().replace("#8691a3", "#A1b2C3")
+    assert live_stand._live_playwright_a11y_paint_states(row) == [
+        (
+            "desktop",
+            "settings",
+            "#a1b2c3",
+            "#f8fafc",
+            3040,
+            "#a1b2c3",
+            "opaque",
+            1000,
+            800,
+            750,
+            "multiple",
+            True,
+            900,
+            800,
+            "opacity",
+            2,
+        )
+    ]
+    assert (
+        live_stand._live_playwright_a11y_paint_states(
+            _a11y_paint_row(page_ready="false")
+        )[0][11]
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        _a11y_paint_row(project="private-project"),
+        _a11y_paint_row(text_color="private-token"),
+        _a11y_paint_row(opacity_tag="opacity=0.5"),
+        _a11y_paint_row(animation="private-css-property"),
+        _a11y_paint_row(active_animations="1000"),
+        _a11y_paint_row(css_alpha_milli="1001"),
+        _a11y_paint_row(ratio_milli="21001"),
+        _a11y_paint_row().rstrip("\n"),
+        _a11y_paint_row().replace("\n", "\x1b[0m\n"),
+        _a11y_paint_row()[:-1] + " private-response-token\n",
+    ],
+)
+def test_live_playwright_a11y_paint_parser_rejects_malformed_rows(row: str) -> None:
+    assert live_stand._live_playwright_a11y_paint_states(row) == []
+
+
+def test_live_playwright_a11y_paint_parser_deduplicates_and_caps_per_route() -> None:
+    rows = "".join(_a11y_paint_row(ratio_milli=str(value)) for value in range(8))
+    rows += _a11y_paint_row(route="dashboard")
+    rows += _a11y_paint_row(project="mobile")
+    parsed = live_stand._live_playwright_a11y_paint_states(rows)
+    assert len(parsed) == 6
+    assert [row[4] for row in parsed[:4]] == [0, 1, 2, 3]
+    assert [(row[0], row[1]) for row in parsed[4:]] == [
+        ("desktop", "dashboard"),
+        ("mobile", "settings"),
+    ]
+
+
+def test_live_playwright_footer_parser_bounds_geometry_and_fixed_block_flags() -> None:
+    row = _footer_geometry_row().replace("\n", "\r\n")
+    parsed = live_stand._live_playwright_footer_geometries(row)
+    assert parsed == [
+        (
+            "mobile",
+            390000,
+            844000,
+            390000,
+            844000,
+            390000,
+            390000,
+            0,
+            390000,
+            780000,
+            844000,
+            390000,
+            False,
+            0,
+            0,
+            False,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+    ]
+    containing_block = _footer_geometry_row(
+        project="desktop",
+        nav_left_milli="-11250",
+        nav_right_milli="400000",
+        nav_width_milli="411250",
+        nav_transform_present="true",
+        nav_tx_milli="-11250",
+        fixed_cb_found="true",
+        fixed_cb_depth="2",
+        cb_left_milli="-12000",
+        cb_right_milli="412000",
+        cb_bottom_milli="800000",
+    )
+    assert live_stand._live_playwright_footer_geometries(containing_block)[0][
+        15:17
+    ] == (True, 2)
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        _footer_geometry_row(project="private-project"),
+        _footer_geometry_row(req_w_milli="0"),
+        _footer_geometry_row(inner_w_milli="0"),
+        _footer_geometry_row(inner_h_milli="0"),
+        _footer_geometry_row(nav_width_milli="-1"),
+        _footer_geometry_row(nav_left_milli="5000001"),
+        _footer_geometry_row(fixed_cb_found="true"),
+        _footer_geometry_row(fixed_cb_depth="33"),
+        _footer_geometry_row(cb_left_milli="1"),
+        _footer_geometry_row().rstrip("\n"),
+        _footer_geometry_row()[:-1] + " private-selector\n",
+        _footer_geometry_row().replace("\n", "\x00\n"),
+    ],
+)
+def test_live_playwright_footer_parser_rejects_malformed_rows(row: str) -> None:
+    assert live_stand._live_playwright_footer_geometries(row) == []
+
+
+def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    paint = _a11y_paint_row()
+    footer = _footer_geometry_row()
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(
+            paint
+            + footer
+            + "private response body password=not-for-output\n"
+            + _a11y_paint_row(text_color="private-token")
+        ).encode(),
+        stderr=b"private traceback and credential\n" + _footer_geometry_row().encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E a11y paint project=desktop route=settings axe_fg=#8691a3 "
+        "axe_bg=#f8fafc ratio_milli=3040 css_fg=#8691a3 text_color=opaque "
+        "css_alpha_milli=1000 node_opacity_milli=800 ancestor_opacity_milli=750 "
+        "opacity_tag=multiple page_ready=true page_opacity_milli=900 "
+        "layout_opacity_milli=800 animation=opacity active_animations=2",
+        "live E2E footer geometry project=mobile req_w_milli=390000 req_h_milli=844000 "
+        "inner_w_milli=390000 inner_h_milli=844000 client_w_milli=390000 "
+        "scroll_w_milli=390000 nav_left_milli=0 nav_right_milli=390000 "
+        "nav_top_milli=780000 nav_bottom_milli=844000 nav_width_milli=390000 "
+        "nav_transform_present=false nav_tx_milli=0 nav_ty_milli=0 "
+        "fixed_cb_found=false fixed_cb_depth=0 cb_left_milli=0 cb_right_milli=0 "
+        "cb_top_milli=0 cb_bottom_milli=0",
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert "private" not in printed.out + printed.err
+    assert "credential" not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize(
     "check",
@@ -2017,6 +2314,42 @@ def test_live_playwright_http_status_accepts_auth_status_checks(
     assert live_stand._live_playwright_http_statuses(sentinel) == [
         (project, check, status)
     ]
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize(
+    "check",
+    [
+        "email-otp-register",
+        "email-otp-verification-start",
+        "email-otp-verification-wrong-code",
+        "email-otp-verification-resend",
+        "email-otp-verification-stale-code",
+        "email-otp-verification-accept",
+        "email-mfa-register",
+        "email-mfa-initial-login",
+        "email-mfa-sibling-login",
+        "email-mfa-verification-start",
+        "email-mfa-verification-accept",
+        "email-mfa-enable-start",
+        "email-mfa-enable-accept",
+        "email-mfa-enabled-login",
+        "email-mfa-login-resend-early",
+        "email-mfa-login-accept",
+    ],
+)
+@pytest.mark.parametrize(("status", "newline"), [(202, "\n"), (429, "\r\n")])
+def test_live_playwright_email_otp_and_mfa_http_statuses_are_closed(
+    project: str, check: str, status: int, newline: str
+) -> None:
+    row = f"UE_LIVE_HTTP_STATUS_V1 project={project} check={check} status={status}{newline}"
+    assert live_stand._live_playwright_http_statuses(row) == [(project, check, status)]
+    assert (
+        live_stand._live_playwright_http_statuses(
+            row.replace(f"check={check}", "check=email-mfa-login-accept-private")
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
@@ -2179,6 +2512,8 @@ def test_live_playwright_auth_status_rows_accept_lf_and_crlf(
     "line",
     [
         "UE_LIVE_HTTP_STATUS_V1 project=private-project check=admin-users status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=email-mfa-login-accept-private status=200\n",
+        "UE_LIVE_HTTP_STATUS_V1 project=desktop check=email-otp-register status=600\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=private-check status=200\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=messenger-message-send status=503 url=https://private.invalid/path\n",
         "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=99\n",
@@ -2214,6 +2549,56 @@ def test_live_playwright_http_status_rejects_malformed_records(line: str) -> Non
     assert live_stand._live_playwright_http_statuses(line) == []
 
 
+def test_live_playwright_emits_only_closed_email_otp_and_mfa_http_statuses(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    checks = (
+        "email-otp-register",
+        "email-otp-verification-start",
+        "email-otp-verification-wrong-code",
+        "email-otp-verification-resend",
+        "email-otp-verification-stale-code",
+        "email-otp-verification-accept",
+        "email-mfa-register",
+        "email-mfa-initial-login",
+        "email-mfa-sibling-login",
+        "email-mfa-verification-start",
+        "email-mfa-verification-accept",
+        "email-mfa-enable-start",
+        "email-mfa-enable-accept",
+        "email-mfa-enabled-login",
+        "email-mfa-login-resend-early",
+        "email-mfa-login-accept",
+    )
+    rows = "".join(
+        f"UE_LIVE_HTTP_STATUS_V1 project=desktop check={check} status=202\n"
+        for check in checks
+    )
+    private = "private OTP response code=do-not-print token=secret"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(rows + private + "\n").encode(),
+        stderr=(rows + private + "\n").encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    output_rows = printed.out.splitlines()[1:-1]
+    assert output_rows == [
+        f"live E2E HTTP project=desktop check={check} status=202" for check in checks
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
 def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
     output = "".join(
         f"UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status={status}\n"
@@ -2221,8 +2606,22 @@ def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
         for status in range(100, 600)
     )
     assert live_stand._live_playwright_http_statuses(output) == [
-        ("desktop", "admin-users", status) for status in range(100, 140)
+        ("desktop", "admin-users", status) for status in range(100, 204)
     ]
+
+
+def test_live_playwright_http_status_discards_rows_after_the_closed_cap() -> None:
+    output = "".join(
+        f"UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status={status}\n"
+        for status in range(100, 205)
+    )
+    output += "UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=205 private-url\n"
+    records = live_stand._live_playwright_http_statuses(output)
+    assert len(records) == 104
+    assert records[0] == ("desktop", "admin-users", 100)
+    assert records[-1] == ("desktop", "admin-users", 203)
+    assert ("desktop", "admin-users", 204) not in records
+    assert ("desktop", "admin-users", 205) not in records
 
 
 def test_live_playwright_http_status_retains_retry_after_eight_initial_records() -> (

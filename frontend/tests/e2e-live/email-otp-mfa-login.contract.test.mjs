@@ -4,6 +4,7 @@ import test from "node:test"
 import { URL } from "node:url"
 
 const specUrl = new URL("./email-otp-mfa-login.live.spec.ts", import.meta.url)
+const verificationSpecUrl = new URL("./email-otp-verification.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 
 test("email OTP MFA login uses a live synthetic account without exposing challenge values", async () => {
@@ -16,6 +17,56 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
 
   const config = await readFile(configUrl, "utf8")
   const requireMatch = (pattern, message, source = spec) => assert.ok(pattern.test(source), message)
+
+  const expectedMfaChecks = [
+    "email-mfa-register",
+    "email-mfa-initial-login",
+    "email-mfa-sibling-login",
+    "email-mfa-verification-start",
+    "email-mfa-verification-accept",
+    "email-mfa-enable-start",
+    "email-mfa-enable-accept",
+    "email-mfa-enabled-login",
+    "email-mfa-login-resend-early",
+    "email-mfa-login-accept",
+  ]
+  requireMatch(
+    /import \{ reportLiveHttpStatus \} from ["']\.\/http-status-diagnostic/u,
+    "MFA HTTP status observations use the bounded diagnostic helper"
+  )
+  assert.deepEqual(
+    [
+      ...spec.matchAll(
+        /reportLiveHttpStatus\(\s*testInfo\.project\.name\s*,\s*["']([^"']+)["']\s*,\s*[A-Za-z]\w*\.status\(\)\s*\)/gu
+      ),
+    ].map((match) => match[1]),
+    expectedMfaChecks,
+    "each MFA stage reports only its real response status under a closed check label"
+  )
+
+  const verificationSpec = await readFile(verificationSpecUrl, "utf8")
+  const expectedVerificationChecks = [
+    "email-otp-register",
+    "email-otp-verification-start",
+    "email-otp-verification-wrong-code",
+    "email-otp-verification-resend",
+    "email-otp-verification-stale-code",
+    "email-otp-verification-accept",
+  ]
+  requireMatch(
+    /import \{ reportLiveHttpStatus \} from ["']\.\/http-status-diagnostic/u,
+    "verification HTTP status observations use the bounded diagnostic helper",
+    verificationSpec
+  )
+  assert.deepEqual(
+    [
+      ...verificationSpec.matchAll(
+        /reportLiveHttpStatus\(\s*testInfo\.project\.name\s*,\s*["']([^"']+)["']\s*,\s*[A-Za-z]\w*\.status\(\)\s*\)/gu
+      ),
+    ].map((match) => match[1]),
+    expectedVerificationChecks,
+    "each verification stage reports only its real response status under a closed check label"
+  )
 
   requireMatch(/testDir:\s*["']\.\/tests\/e2e-live["']/u, "the live config owns this spec", config)
   requireMatch(/testMatch:\s*\/\.\*\\\.live\\\.spec\\\.ts\$\//u, "the spec is discoverable", config)

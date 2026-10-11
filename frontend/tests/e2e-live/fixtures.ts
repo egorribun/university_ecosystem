@@ -114,7 +114,7 @@ export async function submitLogin(
             Math.min(normalMaximumMs, maximumOperationTimeoutMs)
           ),
         }
-  await page.goto("/login", operationOptions(45_000))
+  await page.goto(new URL("/login", ownedSessionOrigin()).toString(), operationOptions(45_000))
   await page.getByRole("textbox", { name: "E-mail" }).fill(email, operationOptions(15_000))
   await page.getByLabel("Пароль", { exact: true }).fill(password, operationOptions(15_000))
   await page.getByRole("button", { name: "Войти" }).click(operationOptions(15_000))

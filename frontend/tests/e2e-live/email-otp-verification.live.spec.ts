@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
-import type { Locator, Request, Response } from "@playwright/test"
+import type { Locator, Request, Response, TestInfo } from "@playwright/test"
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
 import {
   awaitMail,
   expect,
@@ -55,7 +56,7 @@ async function awaitNewMail(address: string, previousMessageIds: Set<string>): P
 test("email verification retries, rotates its code on resend, and rejects replay", async ({
   browser,
   page,
-}) => {
+}, testInfo: TestInfo) => {
   test.setTimeout(150_000)
   const address = `live-email-otp-${randomUUID()}@university.dev`
   const password = freshPassword()
@@ -77,6 +78,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
     await page.locator("#register-submit").click()
 
     const registered = await registrationResponse
+    reportLiveHttpStatus(testInfo.project.name, "email-otp-register", registered.status())
     expect(registered.ok()).toBe(true)
     const registrationBody = (await registered.json()) as { id?: unknown }
     if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
@@ -101,6 +103,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
       ),
       verifyEmailButton.click(),
     ])
+    reportLiveHttpStatus(testInfo.project.name, "email-otp-verification-start", started.status())
     expect(started.status()).toBe(200)
     const initialChallenge = (await started.json()) as {
       challenge_token?: unknown
@@ -128,6 +131,11 @@ test("email verification retries, rotates its code on resend, and rejects replay
     const rejectedResponse = page.waitForResponse(verifyResponse)
     await enterCode(inputs, wrongCode)
     const rejected = await rejectedResponse
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-otp-verification-wrong-code",
+      rejected.status()
+    )
     expect(rejected.status()).toBe(400)
     await expect(inputs.first()).toHaveValue("")
 
@@ -139,6 +147,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
     )
     await page.getByRole("button", { name: /Отправить новый код|Send a new code/iu }).click()
     const resent = await resendResponse
+    reportLiveHttpStatus(testInfo.project.name, "email-otp-verification-resend", resent.status())
     expect(resent.status()).toBe(200)
     const rotatedChallenge = (await resent.json()) as {
       challenge_token?: unknown
@@ -160,6 +169,11 @@ test("email verification retries, rotates its code on resend, and rejects replay
       const staleCodeResponse = page.waitForResponse(verifyResponse)
       await enterCode(inputs, firstCode)
       const staleCodeRejected = await staleCodeResponse
+      reportLiveHttpStatus(
+        testInfo.project.name,
+        "email-otp-verification-stale-code",
+        staleCodeRejected.status()
+      )
       expect(staleCodeRejected.status()).toBe(400)
       await expect(inputs.first()).toHaveValue("")
     }
@@ -178,6 +192,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
       verifiedResponse,
       refreshedProfile,
     ])
+    reportLiveHttpStatus(testInfo.project.name, "email-otp-verification-accept", verified.status())
     expect(verified.status()).toBe(200)
 
     const profile = (await profileResponse.json()) as { email_verified_at?: string | null }

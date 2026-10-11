@@ -6,6 +6,14 @@ import test from "node:test"
 import { URL } from "node:url"
 
 const helperUrl = new URL("./live-ui-diagnostic.ts", import.meta.url)
+const helperExports = [
+  "reportLiveActivityGeometry",
+  "reportLiveAdminQueueState",
+  "reportLiveAxeColorContrast",
+  "reportLiveAxePaintState",
+  "reportLiveA11yPhaseState",
+  "reportLiveFooterGeometry",
+].join(", ")
 
 function reportInChild(calls) {
   const result = spawnSync(
@@ -13,7 +21,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { reportLiveActivityGeometry, reportLiveAdminQueueState, reportLiveAxeColorContrast } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
+      `import { ${helperExports} } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -121,6 +129,110 @@ test("UI diagnostic records are deduplicated and capped per worker process", () 
   assert.equal(
     lines.at(-1),
     "UE_LIVE_ADMIN_QUEUE_V1 project=desktop status=115 items_array=true items_count=115 total_valid=true table_visible=true progressbar_visible=false alert_visible=false row_count=115"
+  )
+})
+
+test("UI phase diagnostics emit one bounded before and after page state per route", () => {
+  const output = reportInChild(
+    'reportLiveA11yPhaseState("desktop", "settings", "before_axe", true, 0.9, 1, 0.8, "opacity", 2);' +
+      'reportLiveA11yPhaseState("desktop", "settings", "before_axe", true, 0.7, 0.8, 0.6, "mixed", 3);' +
+      'reportLiveA11yPhaseState("desktop", "settings", "after_axe", true, 1, 1, 1, "none", 0);'
+  )
+  assert.equal(
+    output,
+    "UE_LIVE_A11Y_PHASE_V1 project=desktop route=settings phase=before_axe " +
+      "page_ready=true page_opacity_milli=900 root_opacity_milli=1000 " +
+      "layout_opacity_milli=800 animation=opacity active_animations=2\n" +
+      "UE_LIVE_A11Y_PHASE_V1 project=desktop route=settings phase=after_axe " +
+      "page_ready=true page_opacity_milli=1000 root_opacity_milli=1000 " +
+      "layout_opacity_milli=1000 animation=none active_animations=0\n"
+  )
+})
+test("UI paint diagnostics emit bounded opacity, text-color, and animation tags", () => {
+  const output = reportInChild(`
+    reportLiveAxePaintState(
+      "desktop", "settings", "#8691a3", "#f8fafc", 3.04, "#8691a3", "opaque", 1,
+      0.8, 0.75, "multiple", true, 0.9, 0.8, "opacity", 2
+    );
+  `)
+  assert.equal(
+    output,
+    "UE_LIVE_A11Y_PAINT_V1 project=desktop route=settings axe_fg=#8691a3 " +
+      "axe_bg=#f8fafc ratio_milli=3040 css_fg=#8691a3 text_color=opaque " +
+      "css_alpha_milli=1000 node_opacity_milli=800 " +
+      "ancestor_opacity_milli=750 opacity_tag=multiple page_ready=true page_opacity_milli=900 " +
+      "layout_opacity_milli=800 animation=opacity active_animations=2\n"
+  )
+})
+
+test("UI paint diagnostics reject private labels, tags, and out-of-range measurements", () => {
+  assert.equal(
+    reportInChild(`
+      const privateValue = { toString() { throw new Error("private-value") } };
+      reportLiveAxePaintState(
+        "private", "settings", "#ffffff", "#000000", 4.5, "#ffffff", "opaque", 1,
+        1, 1, "none", true, 1, 1, "none", 0
+      );
+      reportLiveAxePaintState(
+        "desktop", "private", "#ffffff", "#000000", 4.5, "#ffffff", "opaque", 1,
+        1, 1, "none", true, 1, 1, "none", 0
+      );
+      reportLiveAxePaintState(
+        "desktop", "settings", "#ffffff", "#000000", 4.5, "#ffffff", "private-tag", 1,
+        1, 1, "none", true, 1, 1, "none", 0
+      );
+      reportLiveAxePaintState(
+        "desktop", "settings", "#ffffff", "#000000", 4.5, "#ffffff", "opaque", 1.001,
+        1, 1, "none", true, 1, 1, "none", 0
+      );
+      reportLiveAxePaintState(
+        "desktop", "settings", "#ffffff", "#000000", 4.5, "#ffffff", "opaque", 1,
+        1, 1, "none", true, 1, 1, privateValue, 0
+      );
+      reportLiveA11yPhaseState("private", "settings", "before_axe", true, 1, 1, 1, "none", 0);
+      reportLiveA11yPhaseState("desktop", "settings", "private", true, 1, 1, 1, "none", 0);
+      reportLiveA11yPhaseState("desktop", "settings", "after_axe", true, 1.001, 1, 1, "none", 0);
+      reportLiveFooterGeometry(
+        "desktop", 390, 844, 0, 844, 390, 390, 0, 390, 780, 844, 390, false, 0, 0,
+        false, 0, 0, 0, 0, 0
+      );
+      reportLiveFooterGeometry(
+        "desktop", 390, 844, 390, 844, 390, 390, 0, 390, 780, 844, 390, false, 0, 0,
+        false, 0, 1, 0, 0, 0
+      );
+      reportLiveFooterGeometry(
+        "desktop", 390, 844, 390, 844, 390, 390, 0, 390, 780, 844, 390, false, 0, 0,
+        false, 0, 9000, 0, 0, 0
+      );
+    `),
+    ""
+  )
+})
+
+test("UI footer diagnostics emit bounded geometry", () => {
+  assert.equal(
+    reportInChild(`
+      reportLiveFooterGeometry(
+        "mobile", 390, 844, 390, 844, 390, 390, 0, 390, 780, 844, 390, false, 0, 0,
+        false, 0, 0, 0, 0, 0
+      );
+      reportLiveFooterGeometry(
+        "desktop", 390, 844, 390, 844, 390, 412, -11.25, 400, 780, 844, 411.25,
+        true, -11.25, 0, true, 2, -12, 412, 0, 800
+      );
+    `),
+    "UE_LIVE_FOOTER_GEOM_V1 project=mobile req_w_milli=390000 req_h_milli=844000 " +
+      "inner_w_milli=390000 inner_h_milli=844000 client_w_milli=390000 scroll_w_milli=390000 " +
+      "nav_left_milli=0 nav_right_milli=390000 nav_top_milli=780000 nav_bottom_milli=844000 " +
+      "nav_width_milli=390000 nav_transform_present=false nav_tx_milli=0 nav_ty_milli=0 " +
+      "fixed_cb_found=false fixed_cb_depth=0 " +
+      "cb_left_milli=0 cb_right_milli=0 cb_top_milli=0 cb_bottom_milli=0\n" +
+      "UE_LIVE_FOOTER_GEOM_V1 project=desktop req_w_milli=390000 req_h_milli=844000 " +
+      "inner_w_milli=390000 inner_h_milli=844000 client_w_milli=390000 scroll_w_milli=412000 " +
+      "nav_left_milli=-11250 nav_right_milli=400000 nav_top_milli=780000 nav_bottom_milli=844000 " +
+      "nav_width_milli=411250 nav_transform_present=true nav_tx_milli=-11250 nav_ty_milli=0 " +
+      "fixed_cb_found=true fixed_cb_depth=2 " +
+      "cb_left_milli=-12000 cb_right_milli=412000 cb_top_milli=0 cb_bottom_milli=800000\n"
   )
 })
 

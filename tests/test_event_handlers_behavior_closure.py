@@ -393,7 +393,7 @@ async def test_message_handlers_set_rls_identity_before_reading_messages(
             return SimpleNamespace()
         raise AssertionError("unexpected SQL in message event handler")
 
-    async def get(model, identity):
+    async def get(model, identity, **_kwargs):
         if model is event_handlers.models.Message:
             operations.append("message_read")
             assert identity == message_id

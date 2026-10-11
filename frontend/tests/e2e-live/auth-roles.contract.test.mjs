@@ -46,7 +46,7 @@ test("role authentication uses the real login form and does not intercept auth t
   assert.ok(loginHelpers, "login helper implementation is present in the shared fixture")
   assert.match(
     fixtures,
-    /export async function submitLogin\(\s*page: Page,\s*email: string,\s*password: string,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{[\s\S]*?await page\.goto\(["']\/login["'],\s*operationOptions\(45_000\)\)/u
+    /export async function submitLogin\(\s*page: Page,\s*email: string,\s*password: string,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{[\s\S]*?await page\.goto\(new URL\(["']\/login["'],\s*ownedSessionOrigin\(\)\)\.toString\(\),\s*operationOptions\(45_000\)\)/u
   )
   assert.match(
     loginHelpers,

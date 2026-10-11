@@ -27,6 +27,8 @@ test("live Chromium leaves default notification permission untouched until opt-i
     /Chromium leaves notification permission at default when settings are only opened/u
   )
   assert.match(spec, /browserName !== "chromium"/u)
+  assert.match(spec, /test\.use\(\{ channel: "chromium" \}\)/u)
+  assert.match(spec, /test\.use\(\{ nativePushChannel: "chromium" \}\)/u)
   assert.match(spec, /await loginAs\(page, "student"\)/u)
   assert.match(spec, /await page\.goto\(["']\/settings\?tab=3["']\)/u)
   assert.match(spec, /navigator\.serviceWorker\.ready/u)

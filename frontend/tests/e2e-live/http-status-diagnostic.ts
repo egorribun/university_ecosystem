@@ -1,6 +1,6 @@
-// Bound both projects × ten checks × two attempts (CI retries once).
+// Bound both projects x twenty-six checks x two attempts (CI retries once).
 const emittedRecords = new Set<string>()
-const MAX_RECORDS = 40
+const MAX_RECORDS = 104
 const emittedRetryRecords = new Set<string>()
 const emittedRateLimitRecords = new Set<string>()
 // Bound retry decisions across both projects and all E2E retries.
@@ -21,6 +21,22 @@ export type LiveHttpStatusCheck =
   | "auth-session-preflight"
   | "messenger-message-send"
   | "chat-attachment-create"
+  | "email-otp-register"
+  | "email-otp-verification-start"
+  | "email-otp-verification-wrong-code"
+  | "email-otp-verification-resend"
+  | "email-otp-verification-stale-code"
+  | "email-otp-verification-accept"
+  | "email-mfa-register"
+  | "email-mfa-initial-login"
+  | "email-mfa-sibling-login"
+  | "email-mfa-verification-start"
+  | "email-mfa-verification-accept"
+  | "email-mfa-enable-start"
+  | "email-mfa-enable-accept"
+  | "email-mfa-enabled-login"
+  | "email-mfa-login-resend-early"
+  | "email-mfa-login-accept"
 
 const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
   "admin-users",
@@ -33,6 +49,22 @@ const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
   "auth-session-preflight",
   "messenger-message-send",
   "chat-attachment-create",
+  "email-otp-register",
+  "email-otp-verification-start",
+  "email-otp-verification-wrong-code",
+  "email-otp-verification-resend",
+  "email-otp-verification-stale-code",
+  "email-otp-verification-accept",
+  "email-mfa-register",
+  "email-mfa-initial-login",
+  "email-mfa-sibling-login",
+  "email-mfa-verification-start",
+  "email-mfa-verification-accept",
+  "email-mfa-enable-start",
+  "email-mfa-enable-accept",
+  "email-mfa-enabled-login",
+  "email-mfa-login-resend-early",
+  "email-mfa-login-accept",
 ])
 
 export function reportLiveHttpStatus(

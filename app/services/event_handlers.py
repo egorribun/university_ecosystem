@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 import app.models as models
 from app.core.config import settings
@@ -313,18 +314,16 @@ async def handle_message_sent(event: MessageSent) -> None:
             )
             return
 
-        # 1b. Fetch the sender EXPLICITLY. Message.sender is lazy="noload" (the
-        # N+1 guard — CLAUDE.md "ALL relationships must have explicit lazy=noload"),
-        # so db.get(Message) leaves message.sender == None. Passing message.sender
-        # straight to notify_new_message crashed on `sender.id` (AttributeError:
-        # 'NoneType' has no attribute 'id') the first time this handler ran
-        # end-to-end — the bug sat dormant for waves because the outbox produced
-        # ZERO events until the Wave 205 SW-A capture-on-commit fix restored the
-        # domain-event subsystem. Loading the User by sender_id makes new_message
-        # broadcasts actually fire (and notification_service's
-        # `(sender.profile and ...)` push-title guard already tolerates a
-        # noload profile == None).
-        sender = await db.get(models.User, message.sender_id)
+        # 1b. Fetch the sender and profile EXPLICITLY. Message.sender is lazy="noload",
+        # so db.get(Message) leaves message.sender == None. The existing User may
+        # also already be in this session with its noload profile unset; force the
+        # refresh so group notification bodies retain the sender's display name.
+        sender = await db.get(
+            models.User,
+            message.sender_id,
+            options=[selectinload(models.User.profile)],
+            populate_existing=True,
+        )
         if sender is None:
             logger.error(
                 "Sender %s not found for message %s",

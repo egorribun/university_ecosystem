@@ -4,6 +4,9 @@ import { test } from "./native-push-profile-fixtures"
 import type { NativePushProfile } from "./native-push-profile-fixtures"
 import type { Page } from "@playwright/test"
 
+test.use({ channel: "chromium" })
+test.use({ nativePushChannel: "chromium" })
+
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
   if ((await accordion.getAttribute("aria-expanded")) !== "true") {

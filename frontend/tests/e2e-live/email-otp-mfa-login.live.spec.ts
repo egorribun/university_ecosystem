@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type { Browser, BrowserContext, Page, Response, TestInfo } from "@playwright/test"
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
 import {
   expect,
   freshPassword,
@@ -376,6 +377,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     await page.locator("#register-submit").click()
 
     const registrationResponse = await registrationResponsePromise
+    reportLiveHttpStatus(testInfo.project.name, "email-mfa-register", registrationResponse.status())
     expect(registrationResponse.ok()).toBe(true)
     const registrationBody = (await registrationResponse.json()) as { id?: unknown }
     if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
@@ -383,7 +385,14 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     }
     createdUserId = registrationBody.id
 
+    const initiatingLoginResponsePromise = page.waitForResponse(isApiResponse("/auth/login"))
     await submitLogin(page, email, password)
+    const initiatingLoginResponse = await initiatingLoginResponsePromise
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-mfa-initial-login",
+      initiatingLoginResponse.status()
+    )
     await expect(page).toHaveURL(/\/dashboard$/u)
 
     const initiatingSessionId = uniqueCurrentSessionId(await readActiveSessions(page))
@@ -391,7 +400,14 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     siblingContext = sibling.context
     const siblingPage = sibling.page
     siblingPageForCleanup = siblingPage
+    const siblingLoginResponsePromise = siblingPage.waitForResponse(isApiResponse("/auth/login"))
     await loginWith(siblingPage, email, password)
+    const siblingLoginResponse = await siblingLoginResponsePromise
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-mfa-sibling-login",
+      siblingLoginResponse.status()
+    )
     const siblingSessionId = uniqueCurrentSessionId(await readActiveSessions(siblingPage))
     if (siblingSessionId === initiatingSessionId) {
       throw new Error("Separate browser contexts did not establish distinct sessions")
@@ -414,7 +430,13 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     await page
       .getByRole("button", { name: /Сначала подтвердить почту|Verify email first/iu })
       .click()
-    expect((await verificationStartPromise).status()).toBe(200)
+    const verificationStart = await verificationStartPromise
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-mfa-verification-start",
+      verificationStart.status()
+    )
+    expect(verificationStart.status()).toBe(200)
 
     const verificationCode = await awaitNewCode(email, priorVerificationMessages)
     const verificationPromise = page.waitForResponse(isApiResponse("/auth/mfa/verify"))
@@ -424,6 +446,11 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       verificationPromise,
       verifiedProfilePromise,
     ])
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-mfa-verification-accept",
+      emailVerification.status()
+    )
     expect(emailVerification.status()).toBe(200)
     const verifiedProfile = (await verifiedProfileResponse.json()) as {
       email_verified_at?: string | null
@@ -437,7 +464,9 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     const priorEnablementMessages = new Set((await mailFor(email)).map((message) => message.ID))
     const enablementStartPromise = page.waitForResponse(isApiResponse("/auth/mfa/email/enable"))
     await page.getByRole("button", { name: /Включить коды по почте|Enable email codes/iu }).click()
-    expect((await enablementStartPromise).status()).toBe(200)
+    const enablementStart = await enablementStartPromise
+    reportLiveHttpStatus(testInfo.project.name, "email-mfa-enable-start", enablementStart.status())
+    expect(enablementStart.status()).toBe(200)
     await expectSiblingRevocationSocketOpen(siblingPage)
 
     const enablementCode = await awaitNewCode(email, priorEnablementMessages)
@@ -448,6 +477,11 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       enablementVerifyPromise,
       enabledProfilePromise,
     ])
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-mfa-enable-accept",
+      enablementVerification.status()
+    )
     expect(enablementVerification.status()).toBe(200)
     await expectSiblingRevocationSocketClosed(siblingPage)
     const enabledProfile = (await enabledProfileResponse.json()) as {
@@ -484,6 +518,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     const loginResponsePromise = login.page.waitForResponse(isApiResponse("/auth/login"))
     await submitLogin(login.page, email, password)
     const loginResponse = await loginResponsePromise
+    reportLiveHttpStatus(testInfo.project.name, "email-mfa-enabled-login", loginResponse.status())
     expect(loginResponse.status()).toBe(202)
     const pendingChallenge = (await loginResponse.json()) as {
       methods?: Array<{
@@ -540,13 +575,24 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       })
     }, emailLoginChallenge.challenge_token)
     const earlyResendResponse = await earlyResendResponsePromise
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-mfa-login-resend-early",
+      earlyResendResponse.status()
+    )
     expect(earlyResendResponse.status()).toBe(429)
     expect(earlyResendResponse.headers()["retry-after"]).toBeUndefined()
 
     const loginCode = await awaitNewCode(email, priorLoginMessages)
     const loginVerificationPromise = login.page.waitForResponse(isApiResponse("/auth/mfa/verify"))
     await enterCode(login.page, loginCode)
-    expect((await loginVerificationPromise).status()).toBe(200)
+    const loginVerification = await loginVerificationPromise
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      "email-mfa-login-accept",
+      loginVerification.status()
+    )
+    expect(loginVerification.status()).toBe(200)
     await expect(login.page).toHaveURL(/\/dashboard$/u)
     if (pageError) throw new Error("Email MFA login raised an uncaught page exception")
   } catch (error) {

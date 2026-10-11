@@ -10,18 +10,32 @@ const dashboardStoriesUrl = new URL(
   "../../src/components/stories/DashboardStories.tsx",
   import.meta.url
 )
+const visibilityFixtureUrl = new URL("./story-visibility-fixtures.ts", import.meta.url)
 
 test("live Stories acceptance proves heap plateau and hidden-tab pause after viewer cycles", async () => {
-  const [spec, config, seed, dashboardStories] = await Promise.all([
+  const [spec, config, seed, dashboardStories, visibilityFixture] = await Promise.all([
     readFile(specUrl, "utf8"),
     readFile(configUrl, "utf8"),
     readFile(seedUrl, "utf8"),
     readFile(dashboardStoriesUrl, "utf8"),
+    readFile(visibilityFixtureUrl, "utf8"),
   ])
 
   assert.match(config, /testDir:\s*["']\.\/tests\/e2e-live["']/u)
   assert.match(config, /name:\s*["']desktop["']/u)
   assert.match(config, /name:\s*["']mobile["']/u)
+  assert.match(config, /actionTimeout:\s*15_000/u)
+  assert.match(config, /navigationTimeout:\s*45_000/u)
+  assert.match(config, /ignoreHTTPSErrors:\s*true/u)
+  assert.match(config, /locale:\s*["']ru-RU["']/u)
+  assert.match(
+    config,
+    /name:\s*["']desktop["'],\s*use:\s*\{\s*\.\.\.devices\[["']Desktop Chrome["']\],\s*viewport:\s*\{\s*width:\s*1440,\s*height:\s*900\s*\}\s*\}/u
+  )
+  assert.match(
+    config,
+    /name:\s*["']mobile["'],\s*use:\s*\{\s*\.\.\.devices\[["']Pixel 7["']\],\s*viewport:\s*\{\s*width:\s*390,\s*height:\s*844\s*\}\s*\}/u
+  )
   assert.match(config, /trace:\s*["']off["']/u)
   assert.match(config, /screenshot:\s*["']off["']/u)
   assert.match(config, /video:\s*["']off["']/u)
@@ -44,12 +58,15 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
 
   assert.match(
     spec,
-    /test\(["']a seeded story viewer reaches a memory plateau after 20 open-close cycles["']/u
+    /storyVisibilityTest\(\s*["']a seeded story viewer reaches a memory plateau after 20 open-close cycles["']/u
   )
   assert.match(spec, /const WARM_UP_CYCLES = 1/u)
   assert.match(spec, /const MEASURED_CYCLES = 20/u)
   assert.match(spec, /await loginAs\(page,\s*["']student["']\)/u)
-  assert.match(spec, /await page\.goto\(["']\/dashboard["']\)/u)
+  assert.match(
+    spec,
+    /await page\.goto\(new URL\(["']\/dashboard["'],\s*ownedSessionOrigin\(\)\)\.toString\(\)\)/u
+  )
   assert.doesNotMatch(spec, /page\.route\(|routeWebSocket\(|\.fulfill\(/u)
   assert.match(spec, /newCDPSession\(page\)/u)
   assert.match(spec, /HeapProfiler\.collectGarbage/u)
@@ -61,7 +78,9 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
   assert.match(spec, /jsEventListeners/u)
   assert.match(spec, /await expect\.poll\(readProgress\)\.toBeGreaterThan\(0\)/u)
   assert.match(spec, /await expect\(dialog\)\.toHaveCount\(1\)/u)
-  assert.match(spec, /context\(\)\.newPage\(\)/u)
+  assert.match(spec, /openStoryBackgroundTab\(page\)/u)
+  assert.match(spec, /backgroundPage\.waitForTimeout\(1_000\)/u)
+  assert.match(spec, /await backgroundPage\.bringToFront\(\)/u)
   assert.match(spec, /document\.visibilityState/u)
   assert.match(spec, /toBe\(["']hidden["']\)/u)
   assert.match(spec, /backgroundPage\.waitForTimeout\(/u)
@@ -71,6 +90,90 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
   assert.match(spec, /storyWriteRequests[\s\S]*?pathname\.startsWith\(["']\/api\/v1\/stories["']/u)
   assert.match(spec, /expect\(storyWriteRequests\)\.toEqual\(\[\]\)/u)
   assert.match(spec, /await backgroundPage\.close\(\)/u)
+  assert.match(visibilityFixture, /connectOverCDP[\s\S]*?noDefaults:\s*true/u)
+  assert.match(visibilityFixture, /noDefaults:\s*true,\s*isLocal:\s*true,\s*timeout:\s*3_000/u)
+  assert.match(
+    visibilityFixture,
+    /const contexts = attached\.contexts\(\)\s*if \(contexts\.length !== 1\)/u
+  )
+  assert.match(visibilityFixture, /if \(context\.pages\(\)\.length !== 0\)/u)
+  assert.match(
+    visibilityFixture,
+    /url:\s*["']about:blank["'],\s*newWindow:\s*true,\s*background:\s*false/u
+  )
+  assert.match(
+    visibilityFixture,
+    /browserCdp\.send\(["']Target\.createTarget["'][\s\S]*?newWindow:\s*true,[\s\S]*?background:\s*false/u
+  )
+  assert.match(
+    visibilityFixture,
+    /state\.browserCdp\.send\(["']Target\.createTarget["'][\s\S]*?newWindow:\s*false,[\s\S]*?background:\s*true/u
+  )
+  assert.match(
+    visibilityFixture,
+    /newWindow:\s*false,\s*\/\/ Create an actual background tab[\s\S]*?background:\s*true/u
+  )
+  assert.match(
+    visibilityFixture,
+    /context\.pages\(\)\.length !== 1 \|\| context\.pages\(\)\[0\] !== page/u
+  )
+  assert.match(visibilityFixture, /state\.context\.pages\(\)\.length !== 2/u)
+  assert.match(
+    visibilityFixture,
+    /Emulation\.setFocusEmulationEnabled[\s\S]*?\{ enabled: false \}/u
+  )
+  assert.match(
+    visibilityFixture,
+    /attached\.close\(\)[\s\S]*?attached\.isConnected\(\)[\s\S]*?storyBrowser\.isConnected\(\)/u
+  )
+  assert.match(visibilityFixture, /owner\.close\(\)[\s\S]*?owner\.isConnected\(\)/u)
+  assert.match(
+    visibilityFixture,
+    /const unsupportedOptions = \[[\s\S]*?"bypassCSP"[\s\S]*?"storageState"[\s\S]*?"javaScriptEnabled"/u
+  )
+  assert.match(
+    visibilityFixture,
+    /use\.serviceWorkers !== undefined && use\.serviceWorkers !== "allow"/u
+  )
+  assert.match(
+    visibilityFixture,
+    /use\.acceptDownloads !== undefined && use\.acceptDownloads !== true/u
+  )
+  assert.match(visibilityFixture, /use\.colorScheme \?\? "light"/u)
+  assert.match(visibilityFixture, /use\.reducedMotion \?\? "no-preference"/u)
+  assert.match(visibilityFixture, /use\.forcedColors \?\? "none"/u)
+  assert.match(visibilityFixture, /use\.contrast \?\? "no-preference"/u)
+  assert.match(visibilityFixture, /use\.media \?\? ""/u)
+  assert.match(
+    visibilityFixture,
+    /Emulation\.setTouchEmulationEnabled[\s\S]*?\{\s*enabled: use\.hasTouch as boolean,?\s*\}/u
+  )
+  assert.match(visibilityFixture, /liveTest\.extend<\{ storyBrowser: Browser; page: Page \}>/u)
+  assert.match(visibilityFixture, /storyBrowser:\s*async\s*\(/u)
+  assert.doesNotMatch(visibilityFixture, /storyBrowser:\s*\[\s*async/u)
+  assert.doesNotMatch(visibilityFixture, /^\s+browser:\s*\[/mu)
+  assert.match(visibilityFixture, /channel:\s*["']chromium["']/u)
+  assert.match(visibilityFixture, /headless:\s*true/u)
+  assert.match(visibilityFixture, /Browser\.getWindowForTarget/u)
+  assert.match(visibilityFixture, /mainWindowId !== backgroundWindowId/u)
+  assert.match(visibilityFixture, /testInfo\.project\.use/u)
+  assert.match(
+    visibilityFixture,
+    /use\.screen === undefined \? viewport : requiredSize\(use\.screen,\s*["']screen["']\)/u
+  )
+  assert.match(
+    visibilityFixture,
+    /Emulation\.setDeviceMetricsOverride[\s\S]*?deviceScaleFactor,[\s\S]*?mobile,[\s\S]*?screenWidth: screen\.width,[\s\S]*?screenHeight: screen\.height/u
+  )
+  assert.match(visibilityFixture, /Emulation\.setTouchEmulationEnabled[\s\S]*?use\.hasTouch/u)
+  assert.match(
+    visibilityFixture,
+    /Emulation\.setUserAgentOverride[\s\S]*?userAgent,[\s\S]*?acceptLanguage: locale,[\s\S]*?userAgentMetadata/u
+  )
+  assert.match(visibilityFixture, /Emulation\.setLocaleOverride[\s\S]*?locale/u)
+  assert.match(visibilityFixture, /page\.setDefaultTimeout\(actionTimeout\)/u)
+  assert.match(visibilityFixture, /page\.setDefaultNavigationTimeout\(navigationTimeout\)/u)
+  assert.doesNotMatch(visibilityFixture, /document\.visibilityState\s*=|dispatchEvent\(/u)
   assert.match(spec, /page\.keyboard\.press\(["']Escape["']\)/u)
   assert.match(spec, /await expect\(dialog\)\.toHaveCount\(0\)/u)
   assert.match(spec, /await expect\(trigger\)\.toBeFocused\(\)/u)

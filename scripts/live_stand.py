@@ -4210,12 +4210,104 @@ _PLAYWRIGHT_A11Y_CONTRAST_LIMIT = 16
 _PLAYWRIGHT_A11Y_CONTRAST_PER_ROUTE_LIMIT = 4
 _PlaywrightA11yContrast = tuple[str, str, str, str, int]
 
+_PLAYWRIGHT_A11Y_PAINT_LINE = re.compile(
+    r"UE_LIVE_A11Y_PAINT_V1 project=(?P<project>desktop|mobile) "
+    r"route=(?P<route>dashboard|settings) "
+    r"axe_fg=(?P<axe_foreground>#[0-9a-fA-F]{6}) "
+    r"axe_bg=(?P<axe_background>#[0-9a-fA-F]{6}) "
+    r"ratio_milli=(?P<ratio>0|[1-9][0-9]{0,4}) "
+    r"css_fg=(?P<css_foreground>#[0-9a-fA-F]{6}) "
+    r"text_color=(?P<text_color>opaque|translucent|transparent) "
+    r"css_alpha_milli=(?P<css_alpha>0|[1-9][0-9]{0,2}|1000) "
+    r"node_opacity_milli=(?P<node_opacity>0|[1-9][0-9]{0,2}|1000) "
+    r"ancestor_opacity_milli=(?P<ancestor_opacity>0|[1-9][0-9]{0,2}|1000) "
+    r"opacity_tag=(?P<opacity_tag>none|node|ancestor|fade|layout|fade-pending|multiple) "
+    r"page_ready=(?P<page_ready>true|false) "
+    r"page_opacity_milli=(?P<page_opacity>0|[1-9][0-9]{0,2}|1000) "
+    r"layout_opacity_milli=(?P<layout_opacity>0|[1-9][0-9]{0,2}|1000) "
+    r"animation=(?P<animation>none|opacity|transform|color|other|mixed) "
+    r"active_animations=(?P<active_animations>0|[1-9][0-9]{0,2})"
+)
+_PLAYWRIGHT_A11Y_PAINT_LIMIT = 16
+_PLAYWRIGHT_A11Y_PAINT_PER_ROUTE_LIMIT = 4
+_PlaywrightA11yPaintState = tuple[
+    str, str, str, str, int, str, str, int, int, int, str, bool, int, int, str, int
+]
+
+_PLAYWRIGHT_A11Y_PHASE_LINE = re.compile(
+    r"UE_LIVE_A11Y_PHASE_V1 project=(?P<project>desktop|mobile) "
+    r"route=(?P<route>dashboard|settings) "
+    r"phase=(?P<phase>before_axe|after_axe) "
+    r"page_ready=(?P<page_ready>true|false) "
+    r"page_opacity_milli=(?P<page_opacity>0|[1-9][0-9]{0,2}|1000) "
+    r"root_opacity_milli=(?P<root_opacity>0|[1-9][0-9]{0,2}|1000) "
+    r"layout_opacity_milli=(?P<layout_opacity>0|[1-9][0-9]{0,2}|1000) "
+    r"animation=(?P<animation>none|opacity|transform|color|other|mixed) "
+    r"active_animations=(?P<active_animations>0|[1-9][0-9]{0,2})"
+)
+_PLAYWRIGHT_A11Y_PHASE_LIMIT = 16
+_PlaywrightA11yPhaseState = tuple[str, str, str, bool, int, int, int, str, int]
+
+_PLAYWRIGHT_FOOTER_GEOMETRY_LINE = re.compile(
+    r"UE_LIVE_FOOTER_GEOM_V1 project=(?P<project>desktop|mobile) "
+    r"req_w_milli=(?P<requested_width>-?(?:0|[1-9][0-9]{0,6})) "
+    r"req_h_milli=(?P<requested_height>-?(?:0|[1-9][0-9]{0,6})) "
+    r"inner_w_milli=(?P<inner_width>-?(?:0|[1-9][0-9]{0,6})) "
+    r"inner_h_milli=(?P<inner_height>-?(?:0|[1-9][0-9]{0,6})) "
+    r"client_w_milli=(?P<client_width>-?(?:0|[1-9][0-9]{0,6})) "
+    r"scroll_w_milli=(?P<scroll_width>-?(?:0|[1-9][0-9]{0,6})) "
+    r"nav_left_milli=(?P<nav_left>-?(?:0|[1-9][0-9]{0,6})) "
+    r"nav_right_milli=(?P<nav_right>-?(?:0|[1-9][0-9]{0,6})) "
+    r"nav_top_milli=(?P<nav_top>-?(?:0|[1-9][0-9]{0,6})) "
+    r"nav_bottom_milli=(?P<nav_bottom>-?(?:0|[1-9][0-9]{0,6})) "
+    r"nav_width_milli=(?P<nav_width>-?(?:0|[1-9][0-9]{0,6})) "
+    r"nav_transform_present=(?P<nav_transform_present>true|false) "
+    r"nav_tx_milli=(?P<nav_tx>-?(?:0|[1-9][0-9]{0,6})) "
+    r"nav_ty_milli=(?P<nav_ty>-?(?:0|[1-9][0-9]{0,6})) "
+    r"fixed_cb_found=(?P<fixed_cb_found>true|false) "
+    r"fixed_cb_depth=(?P<fixed_cb_depth>0|[1-9][0-9]{0,1}|32) "
+    r"cb_left_milli=(?P<cb_left>-?(?:0|[1-9][0-9]{0,6})) "
+    r"cb_right_milli=(?P<cb_right>-?(?:0|[1-9][0-9]{0,6})) "
+    r"cb_top_milli=(?P<cb_top>-?(?:0|[1-9][0-9]{0,6})) "
+    r"cb_bottom_milli=(?P<cb_bottom>-?(?:0|[1-9][0-9]{0,6}))"
+)
+_PLAYWRIGHT_FOOTER_GEOMETRY_LIMIT = 16
+_PlaywrightFooterGeometry = tuple[
+    str,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    bool,
+    int,
+    int,
+    bool,
+    int,
+    int,
+    int,
+    int,
+    int,
+]
+
 
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
     r"auth-login|auth-session-cap|auth-logout|auth-session-preflight|"
-    r"messenger-message-send|chat-attachment-create) "
+    r"messenger-message-send|chat-attachment-create|email-otp-register|"
+    r"email-otp-verification-start|email-otp-verification-wrong-code|"
+    r"email-otp-verification-resend|email-otp-verification-stale-code|"
+    r"email-otp-verification-accept|email-mfa-register|email-mfa-initial-login|"
+    r"email-mfa-sibling-login|email-mfa-verification-start|"
+    r"email-mfa-verification-accept|email-mfa-enable-start|email-mfa-enable-accept|"
+    r"email-mfa-enabled-login|email-mfa-login-resend-early|email-mfa-login-accept) "
     r"status=(?P<status>[1-5][0-9]{2})"
 )
 _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
@@ -4231,10 +4323,26 @@ _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
         "auth-session-preflight",
         "messenger-message-send",
         "chat-attachment-create",
+        "email-otp-register",
+        "email-otp-verification-start",
+        "email-otp-verification-wrong-code",
+        "email-otp-verification-resend",
+        "email-otp-verification-stale-code",
+        "email-otp-verification-accept",
+        "email-mfa-register",
+        "email-mfa-initial-login",
+        "email-mfa-sibling-login",
+        "email-mfa-verification-start",
+        "email-mfa-verification-accept",
+        "email-mfa-enable-start",
+        "email-mfa-enable-accept",
+        "email-mfa-enabled-login",
+        "email-mfa-login-resend-early",
+        "email-mfa-login-accept",
     )
 }
-# Both projects × ten checks × two attempts (CI retries once).
-_PLAYWRIGHT_HTTP_STATUS_LIMIT = 40
+# 26 closed checks × two projects × two attempts (initial plus one retry).
+_PLAYWRIGHT_HTTP_STATUS_LIMIT = 104
 
 
 _PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
@@ -4290,6 +4398,166 @@ def _live_playwright_a11y_contrasts(output: str) -> list[_PlaywrightA11yContrast
         route_counts[route_key] = route_counts.get(route_key, 0) + 1
         if len(records) == _PLAYWRIGHT_A11Y_CONTRAST_LIMIT:
             break
+    return records
+
+
+def _live_playwright_a11y_paint_states(output: str) -> list[_PlaywrightA11yPaintState]:
+    """Accept only fixed paint, opacity, text-color and animation tags."""
+    records: list[_PlaywrightA11yPaintState] = []
+    route_counts: dict[tuple[str, str], int] = {}
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 480 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_A11Y_PAINT_LINE.fullmatch(line)
+        if match is None:
+            continue
+        ratio_milli = int(match["ratio"])
+        if ratio_milli > 21_000:
+            continue
+        record: _PlaywrightA11yPaintState = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            match["route"],
+            match["axe_foreground"].lower(),
+            match["axe_background"].lower(),
+            ratio_milli,
+            match["css_foreground"].lower(),
+            match["text_color"],
+            int(match["css_alpha"]),
+            int(match["node_opacity"]),
+            int(match["ancestor_opacity"]),
+            match["opacity_tag"],
+            match["page_ready"] == "true",
+            int(match["page_opacity"]),
+            int(match["layout_opacity"]),
+            match["animation"],
+            int(match["active_animations"]),
+        )
+        route_key = (record[0], record[1])
+        if record in records or route_counts.get(route_key, 0) >= (
+            _PLAYWRIGHT_A11Y_PAINT_PER_ROUTE_LIMIT
+        ):
+            continue
+        records.append(record)
+        route_counts[route_key] = route_counts.get(route_key, 0) + 1
+        if len(records) == _PLAYWRIGHT_A11Y_PAINT_LIMIT:
+            break
+    return records
+
+
+def _live_playwright_a11y_phase_states(output: str) -> list[_PlaywrightA11yPhaseState]:
+    """Accept only fixed phase, page/root opacity and animation measurements."""
+    records: list[_PlaywrightA11yPhaseState] = []
+    phases_by_route: dict[tuple[str, str], set[str]] = {}
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 400 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_A11Y_PHASE_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record: _PlaywrightA11yPhaseState = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            match["route"],
+            match["phase"],
+            match["page_ready"] == "true",
+            int(match["page_opacity"]),
+            int(match["root_opacity"]),
+            int(match["layout_opacity"]),
+            match["animation"],
+            int(match["active_animations"]),
+        )
+        route_key = (record[0], record[1])
+        phase_set = phases_by_route.setdefault(route_key, set())
+        if record[2] in phase_set:
+            continue
+        records.append(record)
+        phase_set.add(record[2])
+        if len(records) == _PLAYWRIGHT_A11Y_PHASE_LIMIT:
+            break
+    return records
+
+
+def _live_playwright_footer_geometries(output: str) -> list[_PlaywrightFooterGeometry]:
+    """Accept bounded viewport/nav measurements and fixed-block flags only."""
+    records: list[_PlaywrightFooterGeometry] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 768 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_FOOTER_GEOMETRY_LINE.fullmatch(line)
+        if match is None:
+            continue
+        number_names = (
+            "requested_width",
+            "requested_height",
+            "inner_width",
+            "inner_height",
+            "client_width",
+            "scroll_width",
+            "nav_left",
+            "nav_right",
+            "nav_top",
+            "nav_bottom",
+            "nav_width",
+            "nav_tx",
+            "nav_ty",
+            "fixed_cb_depth",
+            "cb_left",
+            "cb_right",
+            "cb_top",
+            "cb_bottom",
+        )
+        values = {name: int(match[name]) for name in number_names}
+        if any(abs(value) > 5_000_000 for value in values.values()):
+            continue
+        if (
+            values["requested_width"] <= 0
+            or values["requested_height"] <= 0
+            or values["inner_width"] <= 0
+            or values["inner_height"] <= 0
+            or values["client_width"] < 0
+            or values["scroll_width"] < 0
+            or values["nav_width"] < 0
+            or values["fixed_cb_depth"] > 32
+        ):
+            continue
+        fixed_found = match["fixed_cb_found"] == "true"
+        depth = values["fixed_cb_depth"]
+        cb_rect = tuple(
+            values[name] for name in ("cb_left", "cb_right", "cb_top", "cb_bottom")
+        )
+        if (fixed_found and depth == 0) or (
+            not fixed_found and (depth != 0 or any(cb_rect))
+        ):
+            continue
+        record: _PlaywrightFooterGeometry = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            values["requested_width"],
+            values["requested_height"],
+            values["inner_width"],
+            values["inner_height"],
+            values["client_width"],
+            values["scroll_width"],
+            values["nav_left"],
+            values["nav_right"],
+            values["nav_top"],
+            values["nav_bottom"],
+            values["nav_width"],
+            match["nav_transform_present"] == "true",
+            values["nav_tx"],
+            values["nav_ty"],
+            fixed_found,
+            depth,
+            values["cb_left"],
+            values["cb_right"],
+            values["cb_top"],
+            values["cb_bottom"],
+        )
+        if record not in records:
+            records.append(record)
+            if len(records) == _PLAYWRIGHT_FOOTER_GEOMETRY_LIMIT:
+                break
     return records
 
 
@@ -4922,6 +5190,9 @@ def _run_live_playwright(
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
     a11y_contrast_diagnostics = _live_playwright_a11y_contrasts(stdout)
+    a11y_paint_states = _live_playwright_a11y_paint_states(stdout)
+    a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
+    footer_geometries = _live_playwright_footer_geometries(stdout)
     retry_decisions = _live_playwright_retry_decisions(stdout)
     rate_limit_headers = _live_playwright_rate_limit_headers(stdout)
     page_errors = _live_playwright_page_errors(stdout)
@@ -5004,6 +5275,89 @@ def _run_live_playwright(
         print(
             f"live E2E a11y contrast project={project} route={route} fg={foreground} "
             f"bg={background} ratio_milli={ratio_milli}",
+            flush=True,
+        )
+    for (
+        project,
+        route,
+        phase,
+        page_ready,
+        page_opacity,
+        root_opacity,
+        layout_opacity,
+        animation,
+        active_animations,
+    ) in a11y_phase_states:
+        print(
+            f"live E2E a11y phase project={project} route={route} phase={phase} "
+            f"page_ready={str(page_ready).lower()} page_opacity_milli={page_opacity} "
+            f"root_opacity_milli={root_opacity} layout_opacity_milli={layout_opacity} "
+            f"animation={animation} active_animations={active_animations}",
+            flush=True,
+        )
+    for (
+        project,
+        route,
+        axe_foreground,
+        axe_background,
+        ratio_milli,
+        css_foreground,
+        text_color,
+        css_alpha,
+        node_opacity,
+        ancestor_opacity,
+        opacity_tag,
+        page_ready,
+        page_opacity,
+        layout_opacity,
+        animation,
+        active_animations,
+    ) in a11y_paint_states:
+        print(
+            f"live E2E a11y paint project={project} route={route} "
+            f"axe_fg={axe_foreground} axe_bg={axe_background} ratio_milli={ratio_milli} "
+            f"css_fg={css_foreground} text_color={text_color} css_alpha_milli={css_alpha} "
+            f"node_opacity_milli={node_opacity} ancestor_opacity_milli={ancestor_opacity} "
+            f"opacity_tag={opacity_tag} page_ready={str(page_ready).lower()} "
+            f"page_opacity_milli={page_opacity} layout_opacity_milli={layout_opacity} "
+            f"animation={animation} active_animations={active_animations}",
+            flush=True,
+        )
+    for (
+        project,
+        requested_width,
+        requested_height,
+        inner_width,
+        inner_height,
+        client_width,
+        scroll_width,
+        nav_left,
+        nav_right,
+        nav_top,
+        nav_bottom,
+        nav_width,
+        nav_transform_present,
+        nav_tx,
+        nav_ty,
+        fixed_cb_found,
+        fixed_cb_depth,
+        cb_left,
+        cb_right,
+        cb_top,
+        cb_bottom,
+    ) in footer_geometries:
+        print(
+            f"live E2E footer geometry project={project} req_w_milli={requested_width} "
+            f"req_h_milli={requested_height} inner_w_milli={inner_width} "
+            f"inner_h_milli={inner_height} client_w_milli={client_width} "
+            f"scroll_w_milli={scroll_width} nav_left_milli={nav_left} "
+            f"nav_right_milli={nav_right} nav_top_milli={nav_top} "
+            f"nav_bottom_milli={nav_bottom} nav_width_milli={nav_width} "
+            f"nav_transform_present={str(nav_transform_present).lower()} "
+            f"nav_tx_milli={nav_tx} nav_ty_milli={nav_ty} "
+            f"fixed_cb_found={str(fixed_cb_found).lower()} fixed_cb_depth={fixed_cb_depth} "
+            f"cb_left_milli={cb_left} cb_right_milli={cb_right} "
+            f"cb_top_milli={cb_top} cb_bottom_milli={cb_bottom}",
             flush=True,
         )
     for project, check, retry_after, decision, remaining_ms in retry_decisions:
