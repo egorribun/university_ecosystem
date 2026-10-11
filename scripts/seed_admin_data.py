@@ -396,18 +396,16 @@ async def seed_extra_users(db, groups: dict[str, Group]) -> list[User]:
     return created
 
 
-def should_seed_live_notification_fixture(
-    *, seed_target: str, admin_preexisted: bool
-) -> bool:
-    """Allow notification fixture preparation only on the first owned-stand seed."""
-    return seed_target != ADMIN_SMOKE_PROJECT and not admin_preexisted
+def should_seed_live_notification_fixture(*, seed_target: str) -> bool:
+    """Prepare notification topics on every full owned-stand seed."""
+    return seed_target != ADMIN_SMOKE_PROJECT
 
 
 async def seed_live_notification_delivery_fixture(db) -> Group:
     """Prepare the isolated schedule group and explicit topic rows for known seeds.
 
-    This is called only by ``main`` after the owned-stand seed target has been
-    verified and the admin was confirmed absent. It never changes an existing
+    This is called only by main after the full owned-stand seed target has been
+    verified and the exact synthetic roster exists. It never changes an existing
     topic preference and never discovers accounts by a broad email pattern.
     """
     matching_groups = list(
@@ -589,12 +587,8 @@ async def main() -> None:
 
     async with async_session() as db:
         try:
-            admin_preexisted = (
-                await db.scalar(select(User.id).where(User.email == ADMIN_EMAIL))
-            ) is not None
             seed_notification_fixture = should_seed_live_notification_fixture(
                 seed_target=seed_target,
-                admin_preexisted=admin_preexisted,
             )
 
             print("\n[1/6] Admin user")
@@ -614,7 +608,7 @@ async def main() -> None:
             others = await seed_extra_users(db, groups)
 
             if seed_notification_fixture:
-                print("\n[4/6] Fresh owned-stand notification fixture")
+                print("\n[4/6] Owned-stand notification fixture")
                 await seed_live_notification_delivery_fixture(db)
 
             print("\n[5/6] Audit logs")

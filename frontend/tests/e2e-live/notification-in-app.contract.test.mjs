@@ -44,13 +44,15 @@ test("live in-app chat notification stays unique and read after reload", async (
   assert.match(chatNotifications, /url=f["']\/messenger\/\{message\.chat_id\}["']/u)
   assert.match(
     spec,
-    /await enableAllDayQuietHours\(recipientPage\)/u,
+    /await enableAllDayQuietHours\(recipientPage,\s*recipientEmail\)/u,
     "the live notification must be delivered while its owner has active quiet hours"
   )
   assert.match(spec, /quietHoursProfile\.dnd_enabled\)\.toBe\(true\)/u)
   assert.match(spec, /quietHoursProfile\.dnd_start\)\.toMatch\(\/\^00:00/u)
   assert.match(spec, /quietHoursProfile\.dnd_end\)\.toMatch\(\/\^00:00/u)
-  const quietHoursSetup = spec.indexOf("await enableAllDayQuietHours(recipientPage)")
+  const quietHoursSetup = spec.indexOf(
+    "await enableAllDayQuietHours(recipientPage, recipientEmail)"
+  )
   const messageCreation = spec.indexOf("const messageResponsePromise")
   assert.ok(
     quietHoursSetup >= 0 && messageCreation > quietHoursSetup,

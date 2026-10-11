@@ -1,4 +1,8 @@
-import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "@/app/pwaEvents"
+import {
+  PWA_REFRESH_EVENT,
+  dispatchServiceWorkerBootstrap,
+  type ServiceWorkerUpdateEventDetail,
+} from "@/app/pwaEvents"
 import { createTrustedScriptURL } from "@/utils/trustedTypes"
 import { logError } from "@/app/logger"
 import {
@@ -42,7 +46,10 @@ const requestQueueProcessing = (registration: ServiceWorkerRegistration) => {
 }
 
 export async function registerServiceWorker(path = "/sw.js") {
-  if (!("serviceWorker" in navigator)) return null
+  if (!("serviceWorker" in navigator)) {
+    dispatchServiceWorkerBootstrap("unsupported")
+    return null
+  }
   const hadController = Boolean(navigator.serviceWorker.controller)
 
   try {
@@ -117,8 +124,10 @@ export async function registerServiceWorker(path = "/sw.js") {
       window.location.reload()
     })
 
+    dispatchServiceWorkerBootstrap("ready")
     return registration
   } catch (error) {
+    dispatchServiceWorkerBootstrap("failed")
     logError("Service worker registration failed", error)
     return null
   }

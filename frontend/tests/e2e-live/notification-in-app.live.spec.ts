@@ -68,8 +68,57 @@ const waitForProfileUpdate = (page: Page) =>
       response.request().method() === "PUT"
   )
 
-const enableAllDayQuietHours = async (page: Page): Promise<void> => {
+const waitForOwnedProfileIdentityReady = async (
+  page: Page,
+  expectedEmail: string
+): Promise<void> => {
+  const response = await page.request.get("/api/v1/users/me")
+  if (response.status() !== 200) {
+    throw new Error("the notification-settings owner profile is not available")
+  }
+  const profile = (await response.json()) as { email?: unknown; full_name?: unknown }
+  if (
+    profile.email !== expectedEmail ||
+    typeof profile.full_name !== "string" ||
+    profile.full_name.length === 0
+  ) {
+    throw new Error("the notification-settings owner identity could not be verified")
+  }
+
+  const isMobile = (page.viewportSize()?.width ?? 1280) <= 1024
+  await expect
+    .poll(async () => {
+      if (isMobile) {
+        const buttons = page.getByRole("button", { name: "Открыть профиль", exact: true })
+        const buttonCount = await buttons.count()
+        let matchingVisibleButtons = 0
+        for (let index = 0; index < buttonCount; index += 1) {
+          const button = buttons.nth(index)
+          if (!(await button.isVisible()) || !(await button.isEnabled())) continue
+          const avatar = button.locator("img")
+          if (
+            (await avatar.count()) === 1 &&
+            (await avatar.getAttribute("alt")) === `Аватар пользователя ${profile.full_name}`
+          ) {
+            matchingVisibleButtons += 1
+          }
+        }
+        return matchingVisibleButtons === 1
+      }
+
+      const button = page.getByRole("button", {
+        name: `Открыть профиль: ${profile.full_name}`,
+        exact: true,
+        includeHidden: true,
+      })
+      return (await button.count()) === 1 && (await button.isEnabled())
+    }, "the signed-in notification owner is rendered in the profile navigation")
+    .toBe(true)
+}
+
+const enableAllDayQuietHours = async (page: Page, expectedEmail: string): Promise<void> => {
   await page.goto("/settings?tab=3")
+  await waitForOwnedProfileIdentityReady(page, expectedEmail)
   await expandPushAccordion(page)
   const quietHours = page.getByRole("switch", { name: "Включить тихий период", exact: true })
   await expect(quietHours).toBeVisible()
@@ -264,7 +313,7 @@ test("chat message creates one in-app notification during quiet hours and remain
     const initialNotifications = await readNotifications(recipientPage)
     const initialUnreadCount = initialNotifications.unread_count
     await expect(recipientPage.locator("#global-notifications-btn")).toBeVisible()
-    await enableAllDayQuietHours(recipientPage)
+    await enableAllDayQuietHours(recipientPage, recipientEmail)
     expect((await readNotifications(recipientPage)).unread_count).toBe(initialUnreadCount)
 
     await page.goto("/messenger")

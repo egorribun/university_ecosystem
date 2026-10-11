@@ -8,7 +8,7 @@ export const BRAND_BOOT_LOADER_CSS = String.raw`
   --brand-boot-loader-size: clamp(9rem, 22vmin, 30rem);
   --brand-boot-loader-gap: clamp(1.125rem, 3vmin, 3rem);
   --brand-boot-loader-status-size: clamp(0.6875rem, 1.4vmin, 1.125rem);
-  --brand-boot-loader-status-color: #8490a2;
+  --brand-boot-loader-status-color: #334155;
   --brand-boot-loader-draw-ease: cubic-bezier(0.61, 0.06, 0.35, 1);
   --brand-boot-loader-exit-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --z-boot-loader: 999998;
@@ -70,6 +70,12 @@ html:has(.brand-boot-loader) {
   animation: none;
   transition: opacity var(--brand-boot-loader-exit)
     var(--brand-boot-loader-exit-ease);
+}
+
+/* Keep only the decorative mark in the exit fade; status text is not useful
+   while the application is ready and its parent opacity is changing. */
+.brand-boot-loader[data-state="exiting"] .brand-boot-loader__status {
+  visibility: hidden;
 }
 
 .lhci-mode .brand-boot-loader {

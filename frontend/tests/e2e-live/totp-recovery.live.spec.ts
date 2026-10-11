@@ -75,6 +75,28 @@ function isApiResponse(suffix: string) {
     response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(suffix)
 }
 
+async function expectOwnedProfileIdentityReady(page: Page, fullName: string, isMobile: boolean) {
+  if (isMobile) {
+    const profileAction = page.getByRole("button", { name: "Открыть профиль", exact: true })
+    await expect(profileAction).toHaveCount(1)
+    await expect(profileAction).toBeVisible()
+    await expect(profileAction).toBeEnabled()
+    await expect(profileAction.locator("img")).toHaveAttribute(
+      "alt",
+      `Аватар пользователя ${fullName}`
+    )
+    return
+  }
+
+  const profileAction = page.getByRole("button", {
+    name: `Открыть профиль: ${fullName}`,
+    exact: true,
+    includeHidden: true,
+  })
+  await expect(profileAction).toHaveCount(1)
+  await expect(profileAction).toBeEnabled()
+}
+
 async function fillOtpInputs(page: Page, code: string) {
   const inputs = page.locator(OTP_INPUTS)
   await expect(inputs).toHaveCount(6)
@@ -228,8 +250,10 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
   page,
 }, testInfo) => {
   test.setTimeout(180_000)
-  const email = `live-totp-${randomUUID()}@university.dev`
+  const identity = randomUUID()
+  const email = `live-totp-${identity}@university.dev`
   const password = freshPassword()
+  const fullName = `Live TOTP recovery acceptance ${testInfo.project.name} ${identity}`
   let createdUserId: string | null = null
   const ownedContexts: BrowserContext[] = []
 
@@ -238,7 +262,7 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
   try {
     const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
     await page.goto("/register")
-    await page.locator("#full_name").fill("Live TOTP recovery acceptance")
+    await page.locator("#full_name").fill(fullName)
     await page.locator("#email").fill(email)
     await page.locator("#password").fill(password)
     await page.locator("#confirmPassword").fill(password)
@@ -256,6 +280,11 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     await expect(page).toHaveURL(/\/dashboard$/u)
 
     await page.goto("/settings?tab=2")
+    await expectOwnedProfileIdentityReady(
+      page,
+      fullName,
+      testInfo.project.name.toLowerCase().includes("mobile")
+    )
     const authenticatorAccordion = page.getByRole("button", {
       name: /^(?:Приложение-аутентификатор|Authenticator app)/iu,
     })
@@ -266,6 +295,8 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     const addAuthenticator = page.getByRole("button", {
       name: /Подключить приложение|Set up authenticator app/iu,
     })
+    await expect(addAuthenticator).toBeVisible()
+    await expect(addAuthenticator).toBeEnabled()
     const enrollmentStartPromise = page.waitForResponse(isApiResponse("/auth/mfa/totp/start"))
     await addAuthenticator.click()
     const enrollmentStart = await enrollmentStartPromise

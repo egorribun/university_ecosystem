@@ -70,6 +70,7 @@ describe("BrandBootLoader", () => {
     expect(loader).toHaveAttribute("aria-live", "polite")
     expect(loader).toHaveAttribute("aria-atomic", "true")
     expect(loader).toHaveAttribute("aria-busy", "true")
+    expect(loader).not.toHaveAttribute("aria-hidden")
     expect(screen.getByText("Загрузка")).toBeVisible()
     expect(loader).not.toHaveAttribute("data-paused")
     expect(loader.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
@@ -104,9 +105,12 @@ describe("BrandBootLoader", () => {
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
     expect(loader).toHaveAttribute("data-state", "exiting")
     expect(loader).toHaveAttribute("aria-busy", "false")
+    expect(loader).toHaveAttribute("aria-hidden", "true")
+    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+    expect(loader.querySelector(".brand-boot-loader__status")).not.toBeNull()
 
     fireEvent.transitionEnd(loader, { propertyName: "opacity" })
-    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+    expect(document.querySelector("[data-brand-boot-loader]")).toBeNull()
   })
 
   it("ignores unrelated transition events while exiting", () => {
@@ -119,10 +123,8 @@ describe("BrandBootLoader", () => {
       propertyName: "opacity",
     })
 
-    expect(screen.getByRole("status", { name: "Загрузка" })).toHaveAttribute(
-      "data-state",
-      "exiting"
-    )
+    expect(loader).toHaveAttribute("data-state", "exiting")
+    expect(loader).toHaveAttribute("aria-hidden", "true")
   })
 
   it("uses the timeout fallback when transitionend is unavailable", () => {
@@ -130,7 +132,7 @@ describe("BrandBootLoader", () => {
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
 
     act(() => vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS))
-    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+    expect(document.querySelector("[data-brand-boot-loader]")).toBeNull()
   })
 
   it("does not schedule an exit timeout before hydration", () => {
@@ -143,12 +145,13 @@ describe("BrandBootLoader", () => {
 
   it("keeps the active phase when hydration is dispatched more than once", () => {
     render(<BrandBootLoader />)
-    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
     const loader = screen.getByRole("status", { name: "Загрузка" })
+    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
 
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
 
     expect(loader).toHaveAttribute("data-state", "exiting")
+    expect(loader).toHaveAttribute("aria-hidden", "true")
   })
 
   it("commits the timeout fallback when the browser timer fires", () => {
@@ -157,7 +160,7 @@ describe("BrandBootLoader", () => {
 
     act(() => vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS))
 
-    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+    expect(document.querySelector("[data-brand-boot-loader]")).toBeNull()
   })
 
   it("uses a concurrent timeout hand-off for Lighthouse runs", () => {
@@ -166,7 +169,7 @@ describe("BrandBootLoader", () => {
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
 
     act(() => vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS))
-    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+    expect(document.querySelector("[data-brand-boot-loader]")).toBeNull()
   })
 
   it("cancels the timeout fallback when the exiting loader unmounts", () => {
@@ -183,11 +186,12 @@ describe("BrandBootLoader", () => {
   it("does not miss hydration that completed before its effect subscribed", () => {
     window.__APP_HYDRATED = true
     render(<BrandBootLoader />)
+    const loader = document.querySelector<HTMLElement>("[data-brand-boot-loader]")
 
-    expect(screen.getByRole("status", { name: "Загрузка" })).toHaveAttribute(
-      "data-state",
-      "exiting"
-    )
+    expect(loader).not.toBeNull()
+    expect(loader).toHaveAttribute("data-state", "exiting")
+    expect(loader).toHaveAttribute("aria-hidden", "true")
+    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
   })
 
   it("reflects an initially hidden document without waiting for an event", () => {
@@ -256,21 +260,20 @@ describe("BrandBootLoader", () => {
       </StrictMode>
     )
 
+    const loader = screen.getByRole("status", { name: "Загрузка" })
     act(() => {
       window.dispatchEvent(new Event(APP_HYDRATED_EVENT))
       window.dispatchEvent(new Event(APP_HYDRATED_EVENT))
     })
 
-    expect(screen.getByRole("status", { name: "Загрузка" })).toHaveAttribute(
-      "data-state",
-      "exiting"
-    )
+    expect(loader).toHaveAttribute("data-state", "exiting")
+    expect(loader).toHaveAttribute("aria-hidden", "true")
 
     act(() => {
       vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     })
 
-    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+    expect(document.querySelector("[data-brand-boot-loader]")).toBeNull()
   })
 
   it("pauses and resumes the logo timeline with document visibility", () => {

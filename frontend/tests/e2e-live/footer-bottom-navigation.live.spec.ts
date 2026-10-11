@@ -157,7 +157,19 @@ test("bottom navigation fits phones and the navbar drawer works at the tablet bo
       navigationRect.containingBlockBottom
     )
     expect(navigationRect.left, `${width}px nav left edge`).toBeCloseTo(0, 0)
-    expect(navigationRect.right, `${width}px nav right edge`).toBeCloseTo(width, 0)
+    // The stable scrollbar gutter can make innerWidth wider than the usable layout viewport.
+    expect(navigationRect.right, `${width}px nav right edge`).toBeCloseTo(
+      navigationRect.clientWidth,
+      0
+    )
+    expect(navigationRect.width, `${width}px nav usable width`).toBeCloseTo(
+      navigationRect.clientWidth,
+      0
+    )
+    expect(
+      navigationRect.scrollWidth,
+      `${width}px page should not overflow the usable viewport`
+    ).toBeLessThanOrEqual(navigationRect.clientWidth + 1)
     expect(navigationRect.top, `${width}px nav height`).toBeLessThanOrEqual(844 - 64)
     expect(navigationRect.bottom, `${width}px nav bottom edge`).toBeCloseTo(844, 0)
 

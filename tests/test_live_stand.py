@@ -2488,6 +2488,130 @@ def test_live_playwright_retry_diagnostics_deduplicate_and_bound_records() -> No
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize(
+    ("permission", "ready", "state", "controller", "subscription", "matches"),
+    [
+        ("default", "resolved", "installing", "0", "0", "0"),
+        ("granted", "timeout", "installed", "1", "1", "1"),
+        ("denied", "error", "activating", "0", "1", "0"),
+        ("unsupported", "resolved", "activated", "1", "0", "1"),
+        ("default", "timeout", "redundant", "0", "1", "0"),
+        ("granted", "error", "missing", "1", "0", "1"),
+        ("denied", "resolved", "error", "0", "0", "0"),
+    ],
+)
+def test_live_playwright_push_observation_accepts_closed_records(
+    project: str,
+    newline: str,
+    permission: str,
+    ready: str,
+    state: str,
+    controller: str,
+    subscription: str,
+    matches: str,
+) -> None:
+    row = (
+        f"UE_LIVE_PUSH_OBS_V1 project={project} permission={permission} "
+        f"ready={ready} state={state} controller={controller} "
+        f"subscription={subscription} matches={matches}" + newline
+    )
+    assert live_stand._live_playwright_push_observations(row) == [
+        (
+            project,
+            permission,
+            ready,
+            state,
+            controller == "1",
+            subscription == "1",
+            int(matches),
+        )
+    ]
+
+
+def test_live_playwright_push_observation_rejects_malformed_records() -> None:
+    valid = (
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
+        "state=activated controller=1 subscription=1 matches=1\n"
+    )
+    malformed = (
+        valid.replace("project=desktop", "project=private-project"),
+        valid.replace("permission=granted", "permission=private"),
+        valid.replace("ready=resolved", "ready=private"),
+        valid.replace("state=activated", "state=private"),
+        valid.replace("controller=1", "controller=true"),
+        valid.replace("matches=1", "matches=2"),
+        valid[:-1] + " private-url\n",
+        "private " + valid,
+        valid[:-1] + " \n",
+        valid[:-1],
+        valid.replace("permission=granted", "permission=granted\x1b[0m"),
+        valid.replace("matches=1\n", "matches=1\u202e\n"),
+        valid[:-1] + " " + "x" * 300 + "\n",
+    )
+    for row in malformed:
+        assert live_stand._live_playwright_push_observations(row) == []
+
+
+def test_live_playwright_push_observation_caps_and_deduplicates() -> None:
+    rows = [
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=default "
+        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted "
+        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=denied "
+        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=unsupported "
+        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
+        "UE_LIVE_PUSH_OBS_V1 project=mobile permission=default "
+        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
+    ]
+    parsed = live_stand._live_playwright_push_observations(
+        rows[0] + rows[1] + rows[0] + rows[2] + rows[3] + rows[4]
+    )
+    assert parsed == [
+        ("desktop", "default", "resolved", "activated", True, True, 0),
+        ("desktop", "granted", "resolved", "activated", True, True, 0),
+        ("desktop", "denied", "resolved", "activated", True, True, 0),
+        ("desktop", "unsupported", "resolved", "activated", True, True, 0),
+    ]
+
+
+def test_live_playwright_emits_only_validated_push_observations_from_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        "UE_LIVE_PUSH_OBS_V1 project=mobile permission=granted ready=timeout "
+        "state=activated controller=1 subscription=1 matches=0\n"
+    )
+    private = "private push endpoint notification-id message-content raw-error"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(row + private + "\n").encode(),
+        stderr=(row + private + "\n").encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E push project=mobile permission=granted ready=timeout "
+        "state=activated controller=true subscription=true matches=0",
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize("newline", [chr(10), chr(13) + chr(10)])
 @pytest.mark.parametrize(
     ("check", "status"),

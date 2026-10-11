@@ -1396,7 +1396,8 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
   // before its ID reaches ownedNotificationIds. Recover only this recipient's
   // rows by exact entity routes/version or the exact schedule marker before
   // deleting any producer entity or the synthetic account.
-  if (page) {
+  // Before registration/login, page has no recipient credentials for this GET.
+  if (page && recipientId !== null) {
     let recoveredRows: NotificationRow[] = []
     await attemptCleanup(async () => {
       recoveredRows = await listAllNotifications(page)

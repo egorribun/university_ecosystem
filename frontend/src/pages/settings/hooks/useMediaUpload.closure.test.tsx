@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     delete: vi.fn(),
   },
   fetchCurrentUser: vi.fn(),
+  cancelQueries: vi.fn(),
   fetchQuery: vi.fn(),
   setUser: vi.fn(),
   useAuth: vi.fn(),
@@ -20,7 +21,10 @@ vi.mock("@/hooks/auth/useProfileSync", () => ({
   fetchCurrentUser: mocks.fetchCurrentUser,
 }))
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ fetchQuery: mocks.fetchQuery }),
+  useQueryClient: () => ({
+    cancelQueries: mocks.cancelQueries,
+    fetchQuery: mocks.fetchQuery,
+  }),
 }))
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mocks.t }),
@@ -51,6 +55,7 @@ const oversizedImage = () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.cancelQueries.mockResolvedValue(undefined)
   mocks.useAuth.mockReturnValue({ user, setUser: mocks.setUser })
   mocks.fetchQuery.mockImplementation(
     async (options: { queryFn: (context: { signal: AbortSignal }) => Promise<unknown> }) => {

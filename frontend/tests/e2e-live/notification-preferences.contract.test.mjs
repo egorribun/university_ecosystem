@@ -13,6 +13,7 @@ const notificationRouterUrl = new URL("../../../app/routers/notifications.py", i
 const preferencesHookUrl = new URL("../../src/hooks/usePushPreferences.ts", import.meta.url)
 const notificationsApiUrl = new URL("../../src/api/notifications.ts", import.meta.url)
 const fixtureUrl = new URL("./fixtures.ts", import.meta.url)
+const nativeProfileFixtureUrl = new URL("./native-push-profile-fixtures.ts", import.meta.url)
 
 test("live notification acceptance uses an owned account and cleans up only that account", async () => {
   let spec
@@ -21,13 +22,28 @@ test("live notification acceptance uses an owned account and cleans up only that
   } catch {
     assert.fail("the live notification-preferences browser scenario must exist")
   }
-  const [config, quietHours, fixtures] = await Promise.all([
+  const [config, quietHours, fixtures, nativeProfileFixture] = await Promise.all([
     readFile(configUrl, "utf8"),
     readFile(quietHoursUrl, "utf8"),
     readFile(fixtureUrl, "utf8"),
+    readFile(nativeProfileFixtureUrl, "utf8"),
   ])
 
   assert.match(spec, /notification topics and quiet hours persist across reload and opt-out/u)
+  assert.match(spec, /import \{ test \} from "\.\/native-push-profile-fixtures"/u)
+  assert.match(spec, /test\.use\(\{ channel: "chromium" \}\)/u)
+  assert.match(spec, /test\.use\(\{ nativePushChannel: "chromium" \}\)/u)
+  assert.match(
+    nativeProfileFixture,
+    /page:\s*async\s*\(\{\s*nativePushProfiles\s*\},\s*provideFixture\)\s*=>\s*\{[\s\S]*?provideFixture\(nativePushProfiles\.primary\.page\)/u,
+    "permission state is measured in the existing owned persistent native profile"
+  )
+  assert.match(
+    spec,
+    /page\.context\(\)\.grantPermissions\(\["notifications"\],\s*\{\s*origin\s*\}\)/u,
+    "the test grants permission only to the live app origin in that native context"
+  )
+  assert.match(spec, /expect\(browserBeforeOptIn\.permission\)\.toBe\("granted"\)/u)
   assert.match(spec, /crypto\.randomUUID\(\)/u)
   assert.match(spec, /freshPassword\(\)/u)
   assert.match(spec, /loginWith\(page, email, password\)/u)

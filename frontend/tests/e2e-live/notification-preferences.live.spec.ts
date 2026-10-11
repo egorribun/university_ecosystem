@@ -1,12 +1,9 @@
 import type { Page } from "@playwright/test"
-import {
-  expect,
-  freshPassword,
-  loginAs,
-  loginWith,
-  stubBreachedPasswordLookup,
-  test,
-} from "./fixtures"
+import { expect, freshPassword, loginAs, loginWith, stubBreachedPasswordLookup } from "./fixtures"
+import { test } from "./native-push-profile-fixtures"
+
+test.use({ channel: "chromium" })
+test.use({ nativePushChannel: "chromium" })
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -71,6 +68,54 @@ const readProfile = async (page: Page): Promise<UserProfileResponse> => {
   const response = await page.request.get("/api/v1/users/me")
   expect(response.status(), "the signed-in synthetic user can read its profile").toBe(200)
   return (await response.json()) as UserProfileResponse
+}
+
+const waitForOwnedProfileIdentityReady = async (
+  page: Page,
+  expectedEmail: string
+): Promise<void> => {
+  const response = await page.request.get("/api/v1/users/me")
+  if (response.status() !== 200) {
+    throw new Error("the notification-settings owner profile is not available")
+  }
+  const profile = (await response.json()) as { email?: unknown; full_name?: unknown }
+  if (
+    profile.email !== expectedEmail ||
+    typeof profile.full_name !== "string" ||
+    profile.full_name.length === 0
+  ) {
+    throw new Error("the notification-settings owner identity could not be verified")
+  }
+
+  const isMobile = (page.viewportSize()?.width ?? 1280) <= 1024
+  await expect
+    .poll(async () => {
+      if (isMobile) {
+        const buttons = page.getByRole("button", { name: "Открыть профиль", exact: true })
+        const buttonCount = await buttons.count()
+        let matchingVisibleButtons = 0
+        for (let index = 0; index < buttonCount; index += 1) {
+          const button = buttons.nth(index)
+          if (!(await button.isVisible()) || !(await button.isEnabled())) continue
+          const avatar = button.locator("img")
+          if (
+            (await avatar.count()) === 1 &&
+            (await avatar.getAttribute("alt")) === `Аватар пользователя ${profile.full_name}`
+          ) {
+            matchingVisibleButtons += 1
+          }
+        }
+        return matchingVisibleButtons === 1
+      }
+
+      const button = page.getByRole("button", {
+        name: `Открыть профиль: ${profile.full_name}`,
+        exact: true,
+        includeHidden: true,
+      })
+      return (await button.count()) === 1 && (await button.isEnabled())
+    }, "the signed-in notification owner is rendered in the profile navigation")
+    .toBe(true)
 }
 
 const readTopicPreferences = async (page: Page): Promise<PushTopicsResponse> => {
@@ -331,6 +376,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     expect(reboundTopicsAfterReload.topics).toEqual([])
     expect((await readAdminTopicPreferences(adminPage, createdProfile.id)).topics).toEqual([])
 
+    await waitForOwnedProfileIdentityReady(page, createdProfile.email)
     const quietHours = page.getByRole("switch", { name: "Включить тихий период" })
     const startTime = page.getByLabel("С", { exact: true })
     const endTime = page.getByLabel("До", { exact: true })

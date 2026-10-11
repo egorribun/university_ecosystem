@@ -1,3 +1,7 @@
+import {
+  SERVICE_WORKER_BOOTSTRAP_EVENT,
+  type ServiceWorkerBootstrapEventDetail,
+} from "../../src/app/pwaEvents"
 import { expect, loginAs, ownedSessionOrigin } from "./fixtures"
 import type { CDPSession, Page } from "@playwright/test"
 import { openStoryBackgroundTab, storyVisibilityTest } from "./story-visibility-fixtures"
@@ -18,6 +22,11 @@ type MemorySnapshot = {
   jsHeapUsedBytes: number
 }
 
+type StoryBootstrapStatus = ServiceWorkerBootstrapEventDetail["status"] | null
+type StoryBootstrapProbeWindow = Window & {
+  __ueServiceWorkerBootstrapStatus?: StoryBootstrapStatus
+}
+
 async function settleViewerCleanup(page: Page, cdp: CDPSession): Promise<MemorySnapshot> {
   await page.evaluate(
     () =>
@@ -36,8 +45,29 @@ async function settleViewerCleanup(page: Page, cdp: CDPSession): Promise<MemoryS
 storyVisibilityTest(
   "a seeded story viewer reaches a memory plateau after 20 open-close cycles",
   async ({ page }) => {
+    await page.addInitScript((eventName: string) => {
+      const observedWindow = window as StoryBootstrapProbeWindow
+      observedWindow.__ueServiceWorkerBootstrapStatus = null
+      window.addEventListener(
+        eventName,
+        (event) => {
+          observedWindow.__ueServiceWorkerBootstrapStatus = (
+            event as CustomEvent<ServiceWorkerBootstrapEventDetail>
+          ).detail.status
+        },
+        { once: true }
+      )
+    }, SERVICE_WORKER_BOOTSTRAP_EVENT)
     await loginAs(page, "student")
     await page.goto(new URL("/dashboard", ownedSessionOrigin()).toString())
+    await page.waitForFunction(() => {
+      const status = (window as StoryBootstrapProbeWindow).__ueServiceWorkerBootstrapStatus
+      return status !== null && status !== undefined
+    })
+    const serviceWorkerBootstrapStatus = await page.evaluate(
+      () => (window as StoryBootstrapProbeWindow).__ueServiceWorkerBootstrapStatus
+    )
+    expect(serviceWorkerBootstrapStatus).toBe("ready")
 
     const trigger = page.getByRole("button", { name: SEEDED_STORY_TITLE })
     const dialog = page.getByRole("dialog")

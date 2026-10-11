@@ -6,6 +6,7 @@ import App from "./App"
 import { ErrorBoundary } from "@/components/feedback/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
+import { dispatchServiceWorkerBootstrap } from "./app/pwaEvents"
 // W149 SW2 — PersistQueryClientProvider + queryClient + idbPersister moved to
 // __root.tsx RootComponent (client branch) to match SsrRoot's provider tree
 // for hydrateRoot reconciliation. createRoot → hydrateRoot reuses the
@@ -82,8 +83,15 @@ function deferObservability(bootstrapStart: number): void {
 }
 
 async function setupServiceWorker() {
-  if (!import.meta.env.PROD) return
-  if (!("serviceWorker" in navigator)) return
+  if (!import.meta.env.PROD) {
+    dispatchServiceWorkerBootstrap("disabled")
+    return
+  }
+  if (!("serviceWorker" in navigator)) {
+    dispatchServiceWorkerBootstrap("unsupported")
+    return
+  }
+  let registrationResolved = false
   try {
     const [SWMod, PushMod] = await Promise.all([
       import("./push/register-sw"),
@@ -92,6 +100,7 @@ async function setupServiceWorker() {
     const { registerServiceWorker } = SWMod
     const registration = await registerServiceWorker("/sw.js")
     if (!registration) return
+    registrationResolved = true
 
     // Push persistence must wait for auth hydration to confirm a real
     // account; SSR stubs and cached placeholders must never own an endpoint.
@@ -99,6 +108,7 @@ async function setupServiceWorker() {
       logError("Failed to sync push subscription", error)
     })
   } catch (error) {
+    if (!registrationResolved) dispatchServiceWorkerBootstrap("failed")
     logError("Service worker registration failed", error)
   }
 }
@@ -175,6 +185,7 @@ if (isLHCI) {
 
 if (isLHCI) {
   // Skip Service Worker setup
+  dispatchServiceWorkerBootstrap("disabled")
 } else if (document.readyState === "complete") {
   void setupServiceWorker()
 } else {

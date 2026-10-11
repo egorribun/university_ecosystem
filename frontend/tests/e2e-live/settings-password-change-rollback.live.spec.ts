@@ -33,6 +33,28 @@ const readOwnerProfile = async (page: Page): Promise<OwnerProfileResponse> => {
   return (await response.json()) as OwnerProfileResponse
 }
 
+const expectOwnedProfileIdentityReady = async (page: Page, fullName: string, isMobile: boolean) => {
+  if (isMobile) {
+    const profileAction = page.getByRole("button", { name: "Открыть профиль", exact: true })
+    await expect(profileAction).toHaveCount(1)
+    await expect(profileAction).toBeVisible()
+    await expect(profileAction).toBeEnabled()
+    await expect(profileAction.locator("img")).toHaveAttribute(
+      "alt",
+      `Аватар пользователя ${fullName}`
+    )
+    return
+  }
+
+  const profileAction = page.getByRole("button", {
+    name: `Открыть профиль: ${fullName}`,
+    exact: true,
+    includeHidden: true,
+  })
+  await expect(profileAction).toHaveCount(1)
+  await expect(profileAction).toBeEnabled()
+}
+
 const openPasswordSection = async (page: Page) => {
   const section = page.getByRole("button", { name: /Пароль/u })
   await expect(section).toBeVisible()
@@ -130,6 +152,11 @@ test("password settings reject a wrong current password and persist a corrected 
     expect(createdProfile.full_name).toBe(fullName)
 
     await page.goto("/settings?tab=2")
+    await expectOwnedProfileIdentityReady(
+      page,
+      fullName,
+      testInfo.project.name.toLowerCase().includes("mobile")
+    )
     const passwordSection = await openPasswordSection(page)
     const currentPasswordField = passwordSection.getByLabel("Текущий пароль", { exact: true })
     const newPasswordField = passwordSection.getByLabel("Новый пароль", { exact: true })
@@ -141,6 +168,8 @@ test("password settings reject a wrong current password and persist a corrected 
     await currentPasswordField.fill(incorrectCurrentPassword)
     await newPasswordField.fill(updatedPassword)
     await confirmPasswordField.fill(updatedPassword)
+    await expect(updatePasswordButton).toBeVisible()
+    await expect(updatePasswordButton).toBeEnabled()
     const failedResponseWait = waitForPasswordChange(page)
     await updatePasswordButton.click()
     const failedResponse = await failedResponseWait
@@ -150,6 +179,11 @@ test("password settings reject a wrong current password and persist a corrected 
     expect(passwordChangeRequests).toBe(1)
 
     await page.reload()
+    await expectOwnedProfileIdentityReady(
+      page,
+      fullName,
+      testInfo.project.name.toLowerCase().includes("mobile")
+    )
     const stillSignedInProfile = await readOwnerProfile(page)
     expect(stillSignedInProfile.email).toBe(email)
     await openPasswordSection(page)
@@ -182,12 +216,19 @@ test("password settings reject a wrong current password and persist a corrected 
     }
 
     await page.goto("/settings?tab=2")
+    await expectOwnedProfileIdentityReady(
+      page,
+      fullName,
+      testInfo.project.name.toLowerCase().includes("mobile")
+    )
     await openPasswordSection(page)
     await page.getByLabel("Текущий пароль", { exact: true }).fill(currentPassword)
     await page.getByLabel("Новый пароль", { exact: true }).fill(updatedPassword)
     await page.getByLabel("Повторите новый пароль", { exact: true }).fill(updatedPassword)
+    await expect(updatePasswordButton).toBeVisible()
+    await expect(updatePasswordButton).toBeEnabled()
     const savedResponseWait = waitForPasswordChange(page)
-    await page.getByRole("button", { name: "Обновить пароль", exact: true }).click()
+    await updatePasswordButton.click()
     const savedResponse = await savedResponseWait
     expect(savedResponse.status(), "a corrected password change is saved by the real API").toBe(200)
     expect(passwordChangeRequests).toBe(2)

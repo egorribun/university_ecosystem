@@ -105,6 +105,18 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
   )
   requireMatch(/Enable email codes|Включить коды по почте/u, "email MFA is enabled through its UI")
   requireMatch(/email_verified_at/u, "the verified address is confirmed from the live profile")
+  const acceptedVerificationIndex = spec.indexOf("expect(emailVerification.status()).toBe(200)")
+  const freshProfileReadIndex = spec.indexOf(
+    'const verifiedProfileResponse = await page.request.get("/api/v1/users/me")'
+  )
+  assert.ok(
+    acceptedVerificationIndex >= 0 && freshProfileReadIndex > acceptedVerificationIndex,
+    "the fresh profile read follows the accepted email OTP response"
+  )
+  requireMatch(
+    /expect\(verifiedProfileResponse\.status\(\)\)\.toBe\(200\)/u,
+    "the fresh profile read must return HTTP 200"
+  )
   requireMatch(/email_mfa_enabled_at/u, "MFA enablement is confirmed from the live profile")
   requireMatch(/methods\.some\([\s\S]*?email_otp/u, "login must actually require the email factor")
   requireMatch(

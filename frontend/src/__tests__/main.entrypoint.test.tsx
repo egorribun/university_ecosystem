@@ -1,5 +1,10 @@
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  dispatchServiceWorkerBootstrap,
+  SERVICE_WORKER_BOOTSTRAP_EVENT,
+  type ServiceWorkerBootstrapEventDetail,
+} from "../app/pwaEvents"
 
 const mocks = vi.hoisted(() => ({
   createRoot: vi.fn(),
@@ -66,6 +71,18 @@ const setServiceWorkerSupport = (supported: boolean) => {
   }
 }
 
+const observeServiceWorkerBootstrap = () => {
+  let status: ServiceWorkerBootstrapEventDetail["status"] | undefined
+  window.addEventListener(
+    SERVICE_WORKER_BOOTSTRAP_EVENT,
+    (event) => {
+      status = (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail.status
+    },
+    { once: true }
+  )
+  return () => status
+}
+
 const runIdleImmediately = () => {
   Object.defineProperty(window, "requestIdleCallback", {
     configurable: true,
@@ -119,6 +136,7 @@ afterEach(async () => {
 describe("browser entrypoint", () => {
   it("installs bootstrap guards, hydrates the document, and reports deferred TTI", async () => {
     vi.stubEnv("PROD", false)
+    const readBootstrapStatus = observeServiceWorkerBootstrap()
 
     await importMain()
     await waitForDeferredWork()
@@ -131,6 +149,7 @@ describe("browser entrypoint", () => {
     expect(requestedIdleOptions).toEqual({ timeout: 10_000 })
     expect(mocks.reportBootstrapTTI).toHaveBeenCalledWith(45)
     expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
+    expect(readBootstrapStatus()).toBe("disabled")
   })
 
   it("mounts the static SPA fallback instead of hydrating route-specific shell content", async () => {
@@ -169,6 +188,17 @@ describe("browser entrypoint", () => {
 
     expect(mocks.initWebVitals).toHaveBeenCalledOnce()
     expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+    expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
+  })
+
+  it("reports unsupported when production bootstrap lacks the service-worker API", async () => {
+    vi.stubEnv("PROD", true)
+    setServiceWorkerSupport(false)
+    const readBootstrapStatus = observeServiceWorkerBootstrap()
+
+    await importMain()
+
+    expect(readBootstrapStatus()).toBe("unsupported")
     expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
   })
 
@@ -220,6 +250,40 @@ describe("browser entrypoint", () => {
     }
   })
 
+  it("keeps worker readiness when push sync throws synchronously", async () => {
+    vi.stubEnv("PROD", true)
+    setServiceWorkerSupport(true)
+    const registration = { scope: "/sw.js" }
+    const failure = new Error("push sync threw synchronously")
+    const bootstrapStatuses: ServiceWorkerBootstrapEventDetail["status"][] = []
+    const captureBootstrapStatus = (event: Event) => {
+      bootstrapStatuses.push(
+        (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail.status
+      )
+    }
+    window.addEventListener(SERVICE_WORKER_BOOTSTRAP_EVENT, captureBootstrapStatus)
+    mocks.registerServiceWorker.mockImplementation(async () => {
+      dispatchServiceWorkerBootstrap("ready")
+      return registration
+    })
+    mocks.syncPushForConfirmedIdentity.mockImplementation(() => {
+      throw failure
+    })
+
+    try {
+      await importMain()
+
+      await vi.waitFor(() =>
+        expect(mocks.logError).toHaveBeenCalledWith(expect.any(String), failure)
+      )
+      expect(mocks.registerServiceWorker).toHaveBeenCalledOnce()
+      expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledWith({ registration })
+      expect(bootstrapStatuses).toEqual(["ready"])
+    } finally {
+      window.removeEventListener(SERVICE_WORKER_BOOTSTRAP_EVENT, captureBootstrapStatus)
+    }
+  })
+
   it("logs push sync errors without failing bootstrap", async () => {
     vi.stubEnv("PROD", true)
     setServiceWorkerSupport(true)
@@ -235,6 +299,32 @@ describe("browser entrypoint", () => {
       "Service worker registration failed",
       expect.anything()
     )
+  })
+
+  it("reports failure when a lazy service-worker module cannot be imported", async () => {
+    vi.stubEnv("PROD", true)
+    setServiceWorkerSupport(true)
+    const failure = new Error("service-worker module import failed")
+    const readBootstrapStatus = observeServiceWorkerBootstrap()
+    vi.doMock("../push/subscribe", () => {
+      throw failure
+    })
+
+    try {
+      await importMain()
+      await vi.waitFor(() => expect(readBootstrapStatus()).toBe("failed"))
+      expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
+      expect(mocks.logError).toHaveBeenCalledWith(
+        "Service worker registration failed",
+        expect.objectContaining({ cause: failure })
+      )
+    } finally {
+      vi.doMock("../push/subscribe", () => ({
+        syncPushForConfirmedIdentity: mocks.syncPushForConfirmedIdentity,
+        recoverPushConsentFromBrowser: mocks.recoverPushConsentFromBrowser,
+        ensurePushSubscription: mocks.ensurePushSubscription,
+      }))
+    }
   })
 
   it("logs service-worker registration failures without failing bootstrap", async () => {
@@ -266,12 +356,14 @@ describe("browser entrypoint", () => {
     vi.stubEnv("PROD", true)
     vi.stubEnv("VITE_LHCI", "true")
     setServiceWorkerSupport(true)
+    const readBootstrapStatus = observeServiceWorkerBootstrap()
 
     await importMain()
     await vi.waitFor(() => expect(mocks.hydrateRoot).toHaveBeenCalledOnce())
 
     expect(document.getElementById("lhci-marker")).toHaveStyle({ display: "none" })
     expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
+    expect(readBootstrapStatus()).toBe("disabled")
   })
 
   it("keeps synchronous error guards but skips optional telemetry in LHCI mode", async () => {

@@ -440,18 +440,16 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
 
     const verificationCode = await awaitNewCode(email, priorVerificationMessages)
     const verificationPromise = page.waitForResponse(isApiResponse("/auth/mfa/verify"))
-    const verifiedProfilePromise = page.waitForResponse(isProfileResponse)
     await enterCode(page, verificationCode)
-    const [emailVerification, verifiedProfileResponse] = await Promise.all([
-      verificationPromise,
-      verifiedProfilePromise,
-    ])
+    const emailVerification = await verificationPromise
     reportLiveHttpStatus(
       testInfo.project.name,
       "email-mfa-verification-accept",
       emailVerification.status()
     )
     expect(emailVerification.status()).toBe(200)
+    const verifiedProfileResponse = await page.request.get("/api/v1/users/me")
+    expect(verifiedProfileResponse.status()).toBe(200)
     const verifiedProfile = (await verifiedProfileResponse.json()) as {
       email_verified_at?: string | null
     }

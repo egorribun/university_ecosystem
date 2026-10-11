@@ -1,5 +1,6 @@
-import { expect, test } from "./fixtures"
+import { expect, ownedSessionOrigin, test } from "./fixtures"
 import type { Page, Request } from "@playwright/test"
+import { startPwaUpdateProxy } from "./pwa-update-proxy"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
 
@@ -200,113 +201,108 @@ test.describe("PWA offline app shell on the live stack", () => {
   }) => {
     test.skip(browserName !== "chromium", "the Service Worker update acceptance requires Chromium")
 
-    await page.addInitScript((storageKey) => {
-      navigator.serviceWorker?.addEventListener("controllerchange", () => {
-        const current = Number(sessionStorage.getItem(storageKey) ?? "0")
-        sessionStorage.setItem(storageKey, String(current + 1))
-      })
-    }, CONTROLLER_CHANGE_COUNT)
-
-    await page.goto("/login", { waitUntil: "domcontentloaded" })
-    await expect(page.getByRole("textbox", { name: "E-mail" })).toBeVisible()
-    await page.waitForFunction(() => window.__APP_HYDRATED === true)
-    await ensureServiceWorkerControlsPage(page)
-    await page.evaluate(
-      (storageKey) => sessionStorage.removeItem(storageKey),
-      CONTROLLER_CHANGE_COUNT
-    )
-
-    const initialEvidence = await page.evaluate(async () => {
-      const bundlePaths = [...document.scripts]
-        .map((script) => (script.src ? new URL(script.src).pathname : null))
-        .filter((pathname): pathname is string => pathname?.endsWith(".js") ?? false)
-      const precacheNames = (await caches.keys()).filter((name) =>
-        name.startsWith("workbox-precache")
-      )
-      const precacheEntries = (
-        await Promise.all(
-          precacheNames.map(async (cacheName) => {
-            const cache = await caches.open(cacheName)
-            return (await cache.keys()).map((request) => ({
-              cacheName,
-              requestUrl: request.url,
-              path: new URL(request.url).pathname,
-            }))
-          })
-        )
-      ).flat()
-      const appBundlePath = bundlePaths.find((path) =>
-        precacheEntries.some((entry) => entry.path === path)
-      )
-
-      return { appBundlePath: appBundlePath ?? null, precacheEntries }
-    })
-
-    expect(initialEvidence.appBundlePath).not.toBeNull()
-    const appBundlePath = initialEvidence.appBundlePath!
-    const oldBundleCacheKeys = initialEvidence.precacheEntries
-      .filter((entry) => entry.path === appBundlePath)
-      .map((entry) => entry.requestUrl)
-    expect(oldBundleCacheKeys.length).toBeGreaterThan(0)
-
-    const cdp = await context.newCDPSession(page)
-    await cdp.send("Network.setCacheDisabled", { cacheDisabled: true })
-
-    // First prove a public route can still load from the original precache while
-    // offline. No account is created and no application API is intercepted.
-    await context.setOffline(true)
-    const offlineResponse = await page.goto("/forgot-password", { waitUntil: "domcontentloaded" })
-    expect(offlineResponse?.status()).toBe(200)
-    await expect(page.locator("html")).toHaveAttribute("data-render-mode", "static-spa")
-    await page.waitForFunction(() => window.__APP_HYDRATED === true)
-    await expect(page).toHaveURL(/\/forgot-password$/u)
-    await context.setOffline(false)
-
-    const appOrigin = new URL(page.url()).origin
-    const marker = `pwa-build-marker-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    const updateRevision = `pwa-update-${marker}`
-    let workerUpdateResponses = 0
-    let bundleUpdateResponses = 0
-
-    // These routes alter only the real worker script and one exact, already
-    // precached, versioned app bundle. All other traffic continues upstream.
-    await context.route("**/sw.js", async (route) => {
-      const url = new URL(route.request().url())
-      if (url.origin !== appOrigin || url.pathname !== "/sw.js") {
-        await route.continue()
-        return
-      }
-
-      const response = await route.fetch()
-      const source = await response.text()
-      const updatedSource = replacePrecacheRevision(source, appBundlePath, updateRevision)
-      workerUpdateResponses += 1
-      await route.fulfill({
-        response,
-        body: updatedSource,
-        headers: withoutStaleEntityHeaders(response.headers()),
-      })
-    })
-
-    await context.route("**/assets/**", async (route) => {
-      const url = new URL(route.request().url())
-      if (url.origin !== appOrigin || url.pathname !== appBundlePath) {
-        await route.continue()
-        return
-      }
-
-      const response = await route.fetch()
-      const source = await response.text()
-      const markerScript = `\n;(() => { const marker = document.createElement("output"); marker.id = "pwa-build-marker"; marker.dataset.pwaBuildMarker = ${JSON.stringify(marker)}; marker.textContent = ${JSON.stringify(marker)}; marker.style.cssText = "position:fixed;top:0;left:0;z-index:2147483647;background:#fff;color:#000;padding:4px"; document.body.append(marker); })();\n`
-      bundleUpdateResponses += 1
-      await route.fulfill({
-        response,
-        body: `${source}${markerScript}`,
-        headers: withoutStaleEntityHeaders(response.headers()),
-      })
-    })
+    const updateProxy = await startPwaUpdateProxy(context, ownedSessionOrigin())
+    let cdp: Awaited<ReturnType<typeof context.newCDPSession>> | undefined
 
     try {
+      await page.addInitScript((storageKey) => {
+        navigator.serviceWorker?.addEventListener("controllerchange", () => {
+          const current = Number(sessionStorage.getItem(storageKey) ?? "0")
+          sessionStorage.setItem(storageKey, String(current + 1))
+        })
+      }, CONTROLLER_CHANGE_COUNT)
+
+      await page.goto(new URL("/login", updateProxy.origin).toString(), {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.getByRole("textbox", { name: "E-mail" })).toBeVisible()
+      await page.waitForFunction(() => window.__APP_HYDRATED === true)
+      await ensureServiceWorkerControlsPage(page)
+      await page.evaluate(
+        (storageKey) => sessionStorage.removeItem(storageKey),
+        CONTROLLER_CHANGE_COUNT
+      )
+
+      const initialEvidence = await page.evaluate(async () => {
+        const bundlePaths = [...document.scripts]
+          .map((script) => (script.src ? new URL(script.src).pathname : null))
+          .filter((pathname): pathname is string => pathname?.endsWith(".js") ?? false)
+        const precacheNames = (await caches.keys()).filter((name) =>
+          name.startsWith("workbox-precache")
+        )
+        const precacheEntries = (
+          await Promise.all(
+            precacheNames.map(async (cacheName) => {
+              const cache = await caches.open(cacheName)
+              return (await cache.keys()).map((request) => ({
+                cacheName,
+                requestUrl: request.url,
+                path: new URL(request.url).pathname,
+              }))
+            })
+          )
+        ).flat()
+        const appBundlePath = bundlePaths.find((path) =>
+          precacheEntries.some((entry) => entry.path === path)
+        )
+
+        return { appBundlePath: appBundlePath ?? null, precacheEntries }
+      })
+
+      expect(initialEvidence.appBundlePath).not.toBeNull()
+      const appBundlePath = initialEvidence.appBundlePath!
+      const oldBundleCacheKeys = initialEvidence.precacheEntries
+        .filter((entry) => entry.path === appBundlePath)
+        .map((entry) => entry.requestUrl)
+      expect(oldBundleCacheKeys.length).toBeGreaterThan(0)
+
+      cdp = await context.newCDPSession(page)
+      await cdp.send("Network.setCacheDisabled", { cacheDisabled: true })
+
+      // First prove a public route can still load from the original precache while
+      // offline. No account is created and no application API is intercepted.
+      await context.setOffline(true)
+      const offlineResponse = await page.goto(
+        new URL("/forgot-password", updateProxy.origin).toString(),
+        { waitUntil: "domcontentloaded" }
+      )
+      expect(offlineResponse?.status()).toBe(200)
+      await expect(page.locator("html")).toHaveAttribute("data-render-mode", "static-spa")
+      await page.waitForFunction(() => window.__APP_HYDRATED === true)
+      await expect(page).toHaveURL(/\/forgot-password$/u)
+      await context.setOffline(false)
+
+      const appOrigin = new URL(page.url()).origin
+      const marker = `pwa-build-marker-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const updateRevision = `pwa-update-${marker}`
+      let workerUpdateResponses = 0
+      let bundleUpdateResponses = 0
+
+      // The loopback proxy handles the actual service-worker update fetch; Chromium
+      // browser routes do not intercept service-worker main script updates.
+      updateProxy.setWorkerResponseTransform((source) => {
+        const updatedSource = replacePrecacheRevision(source, appBundlePath, updateRevision)
+        workerUpdateResponses += 1
+        return updatedSource
+      })
+      await context.route("**/assets/**", async (route) => {
+        const url = new URL(route.request().url())
+        if (url.origin !== appOrigin || url.pathname !== appBundlePath) {
+          await route.continue()
+          return
+        }
+
+        const response = await route.fetch()
+        const source = await response.text()
+        const markerScript = `\n;(() => { const marker = document.createElement("output"); marker.id = "pwa-build-marker"; marker.dataset.pwaBuildMarker = ${JSON.stringify(marker)}; marker.textContent = ${JSON.stringify(marker)}; marker.style.cssText = "position:fixed;top:0;left:0;z-index:2147483647;background:#fff;color:#000;padding:4px"; document.body.append(marker); })();\n`
+        bundleUpdateResponses += 1
+        await route.fulfill({
+          response,
+          body: `${source}${markerScript}`,
+          headers: withoutStaleEntityHeaders(response.headers()),
+        })
+      })
+
       await page.evaluate(async () => {
         const activeRegistration = await navigator.serviceWorker.ready
         await activeRegistration.update()
@@ -337,9 +333,12 @@ test.describe("PWA offline app shell on the live stack", () => {
       }
 
       await context.setOffline(true)
-      const updatedOfflineResponse = await page.goto("/forgot-password", {
-        waitUntil: "domcontentloaded",
-      })
+      const updatedOfflineResponse = await page.goto(
+        new URL("/forgot-password", updateProxy.origin).toString(),
+        {
+          waitUntil: "domcontentloaded",
+        }
+      )
       expect(updatedOfflineResponse?.status()).toBe(200)
       await expect(page.locator("html")).toHaveAttribute("data-render-mode", "static-spa")
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
@@ -349,10 +348,19 @@ test.describe("PWA offline app shell on the live stack", () => {
       )
       await expect(page).toHaveURL(/\/forgot-password$/u)
     } finally {
-      await context.unroute("**/sw.js")
-      await context.unroute("**/assets/**")
-      await context.setOffline(false)
-      await cdp.detach()
+      try {
+        await context.unroute("**/assets/**")
+      } finally {
+        try {
+          await context.setOffline(false)
+        } finally {
+          try {
+            if (cdp) await cdp.detach()
+          } finally {
+            await updateProxy.close()
+          }
+        }
+      }
     }
   })
 })

@@ -1,9 +1,9 @@
 # MVP — оперативный статус
 
-Контрольная точка на 2026-10-11, 14:17 UTC.
+Контрольная точка на 2026-10-11, 16:11 UTC.
 [Мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md) и
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) действуют.
-Работа продолжается по поручению владельца; выпуск `v1.0.0` ещё не подтверждён.
+Работа продолжается; выпуск `v1.0.0` ещё не подтверждён.
 
 ## Границы работы
 
@@ -11,105 +11,106 @@
   Root владеет Git/интеграцией; до трёх GPT-6 Luna Max работают в непересекающихся областях.
 - Q1/Q4 migration и разрешённые 14+1 removals выполнены. Ruleset `8335285`:
   76 required context/integration pairs; остальные правила сохранены.
-  CodeQL blocking, Semgrep в pre-commit; Tier 0 и нынешние floors/100% patch сохраняются.
+  CodeQL blocking, Semgrep в pre-commit; Tier 0, нынешние floors и 100% patch сохраняются.
 - Q2/Q3, global mutation score, comparable CI runs, kind certification,
   RPO/RTO и deployed BE-02/MIG-PASS — v1.1. Один paired DB/S3 restore нужен для MVP.
 - ADR-006 сохраняет tombstone/WS revoke до commit и conservative sibling logout
   при rollback. ГУУ — внутреннее демо; данные синтетические.
 
-## Завершённый hosted checkpoint
+## Hosted CI
 
-Последние завершённые результаты относятся к `d133559c3b55321ffc5b5be83a38e3daa9beb9cc`,
-tree `401ca2fe501954a37b7b715327d5071d018f2482`.
-PR открыт, non-draft; branch/origin/PR head совпадали при проверке 2026-10-11.
+Последний проверенный published SHA:
+`7167b218791ebb64cd93393255aa9c74a6e122e5`,
+tree `bdce879fe9d6848e3e2ce85e460173efab3729e0`.
+Branch/origin/PR head совпадают; PR открыт, non-draft.
 
-- [Matrix 38138706326](https://github.com/egorribun/university_ecosystem/actions/runs/38138706326)
-  SUCCESS. Rollup136:113 SUCCESS/23 SKIPPED, failures/running0.
-  Exact required join:76/76 SUCCESS, missing/duplicates0; все skips вне required set.
-- Backend shard3 SUCCESS: семь прежних MFA stderr failures устранены.
-  Integration shard0 SUCCESS; это whole-job proof, отдельный per-node JUnit не получен.
-  BE-04 также проверен локально на isolated pgvector17 + Alembic head:1/1 PASS,
-  real session identity, ORM attachment, commit/rollback/pool/close и row persistence.
-- Свежий timing receipt: unit-start → aggregate38m21, lint-start → aggregate41m23.
-  Pytest shards19m22/17m48/15m29/15m38; max-parallel2 даёт две очереди запуска.
-  Цель CI≤15min остаётся открытой; условный cap4 не принят без доказанного headroom.
-- Каждый successor SHA требует собственных hosted results; d133 не заменяет их.
+- [Matrix 38146996494](https://github.com/egorribun/university_ecosystem/actions/runs/38146996494)
+  завершён FAILURE:86 jobs, failures в Frontend Unit shards1/3, их aggregate и CI Success.
+  Девять unit failures воспроизведены: три старых QueryClient mocks не содержали
+  нового `cancelQueries`. Исправлены именно эти fixtures; assertions сохранены.
+- Backend и integration jobs этого Matrix прошли. Failed frontend steps не дали
+  полного coverage artifact; их coverage не заявляется.
+- Исторический `d133559c`:76/76 required SUCCESS. Он не заменяет проверки successor SHA.
+  Измеренный CI budget38m21 unit-start → aggregate и41m23 lint-start → aggregate;
+  цель≤15min открыта, max-parallel2 сохранён без недоказанного повышения нагрузки.
+- Следующий reviewed пакет требует обычного commit/push и собственных76 required results.
 
-## Принятый пакет изменений
+## Подготовленный и локально проверенный пакет
 
-- Settings сохраняет один route match при смене вкладки; клавиатурный фокус
-  больше не теряется из-за pending UI. Прямой Sessions deep link сохраняет prefetch.
-- Post-commit profile refresh отменяет старый in-flight `users/me` и сериализует
-  запросы общего QueryClient. Session/identity guards и обработка ошибок сохранены.
-  Два независимых avatar/cover callers больше не отменяют refresh друг друга.
-- Outbox message handler явно обновляет sender вместе с profile даже при уже
-  загруженном User. Регрессионный тест воспроизводит identity-map/noload случай
-  и проверяет настоящее построение имени в group notification.
-- Story fixture использует управляемый Chromium и CDP attachment с `noDefaults`,
-  чтобы получить настоящий hidden-tab transition. Desktop/mobile project options,
-  owned-origin/session cleanup и полная проверка teardown сохранены.
-  Canonical hidden/20-cycle proof на этом пакете ещё не выполнен.
-- Native permission/subscription specs используют тот же полный Chromium channel,
-  что delivery fixture. Совпадение режима исправлено; причинность прежних failures
-  и живой результат ещё требуют проверки.
-- HTTP diagnostics добавляет только конечные labels и реальные integer statuses
-  OTP/MFA. UI diagnostics измеряет bounded paint/opacity/animation и footer geometry;
-  selectors, текст, IDs, endpoints и response bodies в протокол не входят.
-- Локально: live contracts173/173; Settings route/sessions18+4 и profile9/9 PASS.
-  Profile hook:100% lines/statements/branches/functions на focused coverage.
-  Parser1490/1490 и chat helpers34/34 PASS; event-handler regressions66/66 PASS.
-  TypeScript, frontend lint, Ruff/Prettier и diff check PASS.
-  Новые проверки не заменяют canonical live acceptance или hosted gates.
+- BrandBootLoader: контраст status foreground исправлен; уходящий status скрыт
+  семантически и визуально. Существующие fade/reduced-motion и сроки удаления сохранены.
+- Service Worker сообщает terminal bootstrap status; ready испускается после установки
+  постоянных queue listeners. Story memory baseline ждёт эту границу перед прежним
+  warm-up и всеми20 cycles. Exact DOM/heap/focus/hidden assertions не ослаблены.
+- PWA update использует настоящий HTTP proxy для worker script. GET/HEAD, cookie/
+  Origin/CSRF forwarding, POST405, замена script bytes/валидаторов и отмена stalled
+  запроса проверены реальным локальным transport test:3/3 PASS. Browser update ещё не принят.
+- OTP retry выполняет требуемое явное подтверждение после stale-code error;
+  MFA проверяет свежий API profile после verify. Password/TOTP/OTP и DND scenarios
+  ждут идентичность своего синтетического аккаунта в UI. Production guard defect
+  этими изменениями не доказан; API/UI acceptance assertions сохранены.
+- Notification preferences использует тот же full Chromium native profile,
+  что остальные Push specs. Full demo seed идемпотентно добавляет недостающие topic
+  preferences только точному roster; admin-only seed не меняется, чужие accounts/
+  existing preferences сохраняются.
+- Footer geometry сравнивает usable client viewport с учётом stable scrollbar gutter
+  и дополнительно запрещает горизонтальный overflow; hit targets/overlap checks сохранены.
+- DM/group Push failure observation ограничена временем и числом записей, печатает
+  только finite enums/boolean/count fields до owned-profile cleanup; delivery gate сохранён.
+- Локально:113/113 focused units; пять изменённых production files имеют100%
+  statements/branches/functions/lines (191/97/46/172), точный состав JSON проверен.
+  Это focused evidence, не глобальный coverage proof.
+- Full TypeScript, frontend lint, live contracts181/181, Ruff/Prettier и diff check PASS.
+  Parser1521/1521 и seed14/14 PASS. Quality guards: source stable,
+  ownership schema3, remaining recorded owned children0. Hosted/live gates ещё нужны.
+
+Предыдущие исправления Settings route/focus, сериализованного post-commit profile
+refresh и outbox sender identity уже находятся в published source; повторно не выполнять.
+BE-04 isolated PostgreSQL attachment/transaction/persistence proof выполнен ранее.
 
 ## Core и ресурсы
 
-- Fresh d133 Core `run-66d56e70-f16d-4a12-987d-a14503eebbc3`,
-  project `ue-live-bc2bf9bb0b334dcb`, signed schema11/23 services:
-  up, admin-only seed до demo seed, readiness14 healthchecks/4 initializers PASS.
+- Fresh7167 Core `run-d257cb1c-5c74-4515-b3a2-d259e054c02a`,
+  project `ue-live-07f326d6b3da293d`, signed schema11/23 services:
+  up → admin-only seed → demo seed → readiness14 healthchecks/4 initializers PASS.
   Effective cookie policy:Secure=false, development=true, strictHeaders=false.
-- Раздельные targeted прогоны на d133: a11y/footer3 PASS/3 FAIL из6;
-  affected cohort14 PASS/28 FAIL из42; native Push4 PASS/8 FAIL из12.
-  Это диагностика, не full gate; результаты не складываются в один прогон.
-- Core штатно остановлен13:24 UTC:23 containers stopped,6 mounted volumes,
-  env и signed owner сохранены; source stable, owned children0.
-  На successor SHA нужен новый уникальный state; strict resume не обходить.
-- Исправлен private process guard: PID подтверждается вместе с временем рождения
-  и текущей цепочкой родителей; cleanup действует только на доказанные owned handles.
-  Прежнее число77 якобы оставшихся процессов было недостоверным; по нему ничего не удалено.
-  Новые quality receipts используют ownership schema3, remaining children0.
+- Targeted7167 результаты раздельны: Stories/Settings8 PASS/2 FAIL из10;
+  a11y/footer3 PASS/3 FAIL из6; Auth/Notifications0 PASS/14 FAIL;
+  native Push7 PASS/5 FAIL из12. Это диагностика, не full gate.
+- V15 на7167 выполнил20 cycles: baseline659 nodes/2 documents/434 listeners;
+  каждый close659/2/435. Heap plateau, focus, hidden pause7001ms, reduced motion
+  и scroll PASS; exact listener gate FAIL. Structural DOM идентичен, bootloader отсутствует.
+  Runtime показал document visibilitychange4→5; source registration добавляет
+  постоянную visibility/online пару. Runtime owner window online прямо не установлен.
+- Footer diagnostic: innerWidth390, clientWidth/scrollWidth/visualViewport/nav375;
+  причина15px — stable scrollbar gutter. Контраст bootloader3.09 требовал исправления.
+  Native Push дошёл до persisted in-app rows; provider/outbox/SW cause ещё не установлена.
+- Core штатно остановлен15:26 UTC:23 containers stopped,6 volumes, env и signed owner
+  сохранены. На successor SHA нужен новый уникальный state; strict resume не обходить.
 - Один heavy workload: start RAM≤75%/free≥8GiB, stop≥85%/free<4GiB.
   Serial Linux screenshots: owner exception≤80%/≥6GiB, browser1GiB/2CPU.
-  Owned builder stopped, cap4GiB/no swap/2CPU; полезный cache сохранён.
-  Рабочий isolated Windows browser cache сохранён; одинаковые binary hashes
-  не подтверждают гипотезу повреждения глобального cache.
+  Owned builder stopped, cap4GiB/no swap/2CPU; полезные caches сохранены.
+  Cleanup только по подтверждённым PID+birth+parent handles; чужие процессы/
+  Docker/WSL и глобальные caches не очищать.
 
 ## Открытые критерии и следующий порядок
 
-1. Опубликовать reviewed пакет с ordinary hooks; получить новые76 required results.
+1. Ordinary hooks/commit/push reviewed пакета; fresh76 required results.
    Fresh unique Core:admin-only seed перед demo seed, readiness/cookie policy,
-   затем затронутые Stories/Settings/OTP/MFA/Push/a11y/footer scenarios.
-2. Устранить оставшиеся Core failures и выполнить два consecutive full runs:
-   198 total,190 PASS + exact8 expected SKIP. Последний исторический full на e537
-   дал117 PASS/73 FAIL/8 SKIP; он не является текущим acceptance proof.
-3. В V15 strict DOM baseline716 nodes/437 listeners после первого close стал670/435
-   и далее не менялся все20 cycles; docs2. Heap plateau/hidden pause пройдены,
-   exact-DOM не пройден; источник одноразового уменьшения46/2 не доказан.
-   Canonical прежнего bd248 отдельно падал до DOM на hidden transition.
-4. Full-page axe contrast и desktop footer geometry требуют новых измерений.
-   Direct native Push дошёл до subscription/message200 и persisted in-app row,
-   но native notification отсутствовала; provider/outbox/SW cause не установлена.
-   PWA worker update требует проверки маршрутизации настоящего worker script.
-5. Visual News/Events/Schedule, LHCI21/7 routes, seed stop/start persistence,
+   затем затронутые Stories/UI/Auth/PWA/Push/Notifications scenarios.
+2. Устранить оставшиеся failures; два consecutive full Core runs на неизменном source:
+   198 total,190 PASS + exact8 expected SKIP. Исторический full e537:
+   117 PASS/73 FAIL/8 SKIP, текущим acceptance proof не является.
+3. Visual News/Events/Schedule, LHCI21/7 routes, seed stop/start persistence,
    paired isolated DB/S3 restore и чтение объекта по восстановленной DB reference.
-   Owner утвердил только Home12 `ddbbc84d`; новые bytes требуют отдельного утверждения.
-6. [63 audit IDs](../../audits/INDEX.md#findings-ledger): historical60 CLOSED/2 DECLINED/1 OPEN
-   не являются RC certification. SEC-03 требует backup/read-only inventory перед rotation;
-   SEC-07 и RUST-P3-03 — final-source evidence. CodeQL3382/3383 уже dismissed,
+   Owner утвердил только Home12 `ddbbc84d`; новые pixels требуют отдельного утверждения.
+4. [63 audit IDs](../../audits/INDEX.md#findings-ledger): historical60 CLOSED/2 DECLINED/1 OPEN
+   не являются RC certification. SEC-03:backup/read-only inventory перед rotation;
+   SEC-07 и RUST-P3-03:final-source evidence. CodeQL3382/3383 уже dismissed,
    не повторять и не расширять разрешение.
-7. Frozen-RC full smoke → ordinary merge → fresh main gates → шесть signed
+5. Frozen-RC full smoke → ordinary merge → fresh main gates → шесть signed
    source-bound images/SBOM/provenance → tag/release notes `v1.0.0`.
 
-Документационная консолидация и [canonical ownership](../../README.md#documentation-ownership)
-сохранены; одноразовый prompt и superseded audits не восстанавливать.
-Git history, migrations, env/data/backups, private rescue bundle и его inventory
-сохраняются. Чужие процессы, Docker/WSL и глобальные caches не очищать.
+[Canonical documentation ownership](../../README.md#documentation-ownership)
+и audit retention сохранены; одноразовый prompt и superseded audits не восстанавливать.
+Git history, migrations, env/data/backups, private rescue bundle и его inventory сохраняются.

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     email_mfa_enabled_at: null as string | null,
   },
   setUser: vi.fn(),
+  cancelQueries: vi.fn(),
   fetchQuery: vi.fn(),
   startEmailVerification: vi.fn(),
   startEmailMfaEnablement: vi.fn(),
@@ -21,7 +22,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ fetchQuery: mocks.fetchQuery }),
+  useQueryClient: () => ({
+    cancelQueries: mocks.cancelQueries,
+    fetchQuery: mocks.fetchQuery,
+  }),
 }))
 
 vi.mock("@/api/mfa", () => ({
@@ -70,6 +74,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.cancelQueries.mockResolvedValue(undefined)
   mocks.user.email_verified_at = "2026-08-01T00:00:00Z"
   mocks.user.email_mfa_enabled_at = null
   mocks.startEmailMfaEnablement.mockResolvedValue(challenge)

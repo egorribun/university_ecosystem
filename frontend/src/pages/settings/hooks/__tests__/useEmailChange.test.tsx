@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   } | null,
   setUser: vi.fn(),
   post: vi.fn(),
+  cancelQueries: vi.fn(),
   fetchQuery: vi.fn(),
   fetchCurrentUser: vi.fn(),
   t: (key: string, options?: { email?: string }) =>
@@ -19,7 +20,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: mocks.t }) }))
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ fetchQuery: mocks.fetchQuery }),
+  useQueryClient: () => ({
+    cancelQueries: mocks.cancelQueries,
+    fetchQuery: mocks.fetchQuery,
+  }),
 }))
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: mocks.user, setUser: mocks.setUser }),
@@ -60,6 +64,8 @@ describe("useEmailChange", () => {
     mocks.user = { id: "user-1", email: "current@example.test", pending_email: null }
     mocks.post.mockReset()
     mocks.fetchQuery.mockReset()
+    mocks.cancelQueries.mockReset()
+    mocks.cancelQueries.mockResolvedValue(undefined)
     mocks.fetchCurrentUser.mockReset()
     mocks.setUser.mockReset()
   })

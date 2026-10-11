@@ -493,6 +493,7 @@ test("chat message reaches Chromium through its real push subscription", async (
   page,
   browser,
   browserName,
+  nativePushProfiles,
 }, testInfo) => {
   test.skip(browserName !== "chromium", "native Notifications and PushManager require Chromium")
 
@@ -664,6 +665,7 @@ test("chat message reaches Chromium through its real push subscription", async (
       throw new Error("the persisted test notification did not have an identity")
     }
 
+    const failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
     await expect
       .poll(
         async () =>
@@ -679,6 +681,7 @@ test("chat message reaches Chromium through its real push subscription", async (
         }
       )
       .toBe(1)
+    failureObservation.disarm()
 
     const notificationsWithTag = await page.evaluate(async (expectedId) => {
       const registration = await navigator.serviceWorker.ready
@@ -762,6 +765,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
   page,
   browser,
   browserName,
+  nativePushProfiles,
 }, testInfo) => {
   test.skip(browserName !== "chromium", "native Notifications and PushManager require Chromium")
 
@@ -1095,6 +1099,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
     if (!expectedNotificationId) {
       throw new Error("the persisted group reply notification did not have an identity")
     }
+    const failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
     await expect
       .poll(
         async () =>
@@ -1110,6 +1115,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
         }
       )
       .toBe(1)
+    failureObservation.disarm()
 
     const nativeReplyNotifications = await page.evaluate(async (expectedId) => {
       const registration = await navigator.serviceWorker.ready

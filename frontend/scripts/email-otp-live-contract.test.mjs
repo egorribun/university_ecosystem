@@ -12,7 +12,8 @@ test("email OTP live acceptance rejects wrong and replayed codes, and cleans up 
   const source = readFileSync(specPath, "utf8")
   const config = readFileSync(configPath, "utf8")
 
-  assert.match(source, /live-email-otp-\$\{randomUUID\(\)\}@university\.dev/u)
+  assert.match(source, /const identity = randomUUID\(\)/u)
+  assert.match(source, /const address = `live-email-otp-\$\{identity\}@university\.dev`/u)
   assert.match(source, /const EMAIL_CODE = .*Verification code.*\\d\{6\}/u)
   assert.match(source, /Код подтверждения/u)
   assert.match(source, /wrongCode/u)

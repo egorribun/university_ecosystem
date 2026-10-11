@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import type { Locator, Request, Response, TestInfo } from "@playwright/test"
+import type { Locator, Page, Request, Response, TestInfo } from "@playwright/test"
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
 import {
   awaitMail,
@@ -14,6 +14,28 @@ import {
 } from "./fixtures"
 
 const EMAIL_CODE = /(?:Verification code|Код подтверждения):\s*(\d{6})/iu
+
+async function expectOwnedProfileIdentityReady(page: Page, fullName: string, isMobile: boolean) {
+  if (isMobile) {
+    const profileAction = page.getByRole("button", { name: "Открыть профиль", exact: true })
+    await expect(profileAction).toHaveCount(1)
+    await expect(profileAction).toBeVisible()
+    await expect(profileAction).toBeEnabled()
+    await expect(profileAction.locator("img")).toHaveAttribute(
+      "alt",
+      `Аватар пользователя ${fullName}`
+    )
+    return
+  }
+
+  const profileAction = page.getByRole("button", {
+    name: `Открыть профиль: ${fullName}`,
+    exact: true,
+    includeHidden: true,
+  })
+  await expect(profileAction).toHaveCount(1)
+  await expect(profileAction).toBeEnabled()
+}
 
 async function enterCode(inputs: Locator, code: string) {
   await expect(inputs).toHaveCount(6)
@@ -58,7 +80,9 @@ test("email verification retries, rotates its code on resend, and rejects replay
   page,
 }, testInfo: TestInfo) => {
   test.setTimeout(150_000)
-  const address = `live-email-otp-${randomUUID()}@university.dev`
+  const identity = randomUUID()
+  const address = `live-email-otp-${identity}@university.dev`
+  const fullName = `Live email OTP acceptance ${testInfo.project.name} ${identity}`
   const password = freshPassword()
   let createdUserId: string | null = null
 
@@ -71,7 +95,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
         new URL(response.url()).pathname.endsWith("/auth/register")
     )
     await page.goto("/register")
-    await page.locator("#full_name").fill("Live email OTP acceptance")
+    await page.locator("#full_name").fill(fullName)
     await page.locator("#email").fill(address)
     await page.locator("#password").fill(password)
     await page.locator("#confirmPassword").fill(password)
@@ -90,11 +114,17 @@ test("email verification retries, rotates its code on resend, and rejects replay
 
     await loginWith(page, address, password)
     await page.goto("/settings?tab=2")
+    await expectOwnedProfileIdentityReady(
+      page,
+      fullName,
+      testInfo.project.name.toLowerCase().includes("mobile")
+    )
     await page.getByRole("button", { name: /Коды по электронной почте/iu }).click()
     const verifyEmailButton = page.getByRole("button", {
       name: /Verify email first|Сначала подтвердить почту/iu,
     })
     await expect(verifyEmailButton).toBeVisible()
+    await expect(verifyEmailButton).toBeEnabled()
     const [started] = await Promise.all([
       page.waitForResponse(
         (response) =>
@@ -165,6 +195,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
     const rotatedCode = await awaitNewMail(address, previousMessageIds)
     // A random six-digit OTP can coincide by chance. The challenge token and
     // revision still prove rotation, but there is no distinct old value to try.
+    let staleCodeWasRejected = false
     if (rotatedCode !== firstCode) {
       const staleCodeResponse = page.waitForResponse(verifyResponse)
       await enterCode(inputs, firstCode)
@@ -176,6 +207,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
       )
       expect(staleCodeRejected.status()).toBe(400)
       await expect(inputs.first()).toHaveValue("")
+      staleCodeWasRejected = true
     }
 
     const acceptedRequest = page.waitForRequest(verifyRequest)
@@ -187,6 +219,12 @@ test("email verification retries, rotates its code on resend, and rejects replay
         response.ok()
     )
     await enterCode(inputs, rotatedCode)
+    if (staleCodeWasRejected) {
+      // Server errors suppress auto-submit; a fresh code is retried with the explicit Verify action.
+      const verifyButton = page.getByRole("button", { name: /^(?:Verify|Подтвердить)$/iu })
+      await expect(verifyButton).toBeEnabled()
+      await verifyButton.click()
+    }
     const [accepted, verified, profileResponse] = await Promise.all([
       acceptedRequest,
       verifiedResponse,

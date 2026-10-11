@@ -4297,6 +4297,18 @@ _PlaywrightFooterGeometry = tuple[
 ]
 
 
+_PlaywrightPushObservation = tuple[str, str, str, str, bool, bool, int]
+_PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
+    r"UE_LIVE_PUSH_OBS_V1 project=(?P<project>desktop|mobile) "
+    r"permission=(?P<permission>default|granted|denied|unsupported) "
+    r"ready=(?P<ready>resolved|timeout|error) "
+    r"state=(?P<state>missing|installing|installed|activating|"
+    r"activated|redundant|error) "
+    r"controller=(?P<controller>[01]) subscription=(?P<subscription>[01]) "
+    r"matches=(?P<matches>[01])"
+)
+_PLAYWRIGHT_PUSH_OBSERVATION_LIMIT = 4
+
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
@@ -4559,6 +4571,35 @@ def _live_playwright_footer_geometries(output: str) -> list[_PlaywrightFooterGeo
             if len(records) == _PLAYWRIGHT_FOOTER_GEOMETRY_LIMIT:
                 break
     return records
+
+
+def _live_playwright_push_observations(
+    output: str,
+) -> list[_PlaywrightPushObservation]:
+    """Accept only closed, bounded browser-only Push observations from stdout."""
+    observations: list[_PlaywrightPushObservation] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 240 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_PUSH_OBSERVATION_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record: _PlaywrightPushObservation = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            match["permission"],
+            match["ready"],
+            match["state"],
+            match["controller"] == "1",
+            match["subscription"] == "1",
+            int(match["matches"]),
+        )
+        if record in observations:
+            continue
+        if len(observations) >= _PLAYWRIGHT_PUSH_OBSERVATION_LIMIT:
+            break
+        observations.append(record)
+    return observations
 
 
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
@@ -5189,6 +5230,7 @@ def _run_live_playwright(
         )
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
+    push_observations = _live_playwright_push_observations(stdout)
     a11y_contrast_diagnostics = _live_playwright_a11y_contrasts(stdout)
     a11y_paint_states = _live_playwright_a11y_paint_states(stdout)
     a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
@@ -5263,6 +5305,21 @@ def _run_live_playwright(
     for project, check, status in http_statuses:
         print(
             f"live E2E HTTP project={project} check={check} status={status}",
+            flush=True,
+        )
+    for (
+        project,
+        permission,
+        ready,
+        state,
+        controller,
+        subscription,
+        matches,
+    ) in push_observations:
+        print(
+            f"live E2E push project={project} permission={permission} ready={ready} "
+            f"state={state} controller={str(controller).lower()} "
+            f"subscription={str(subscription).lower()} matches={matches}",
             flush=True,
         )
     for (

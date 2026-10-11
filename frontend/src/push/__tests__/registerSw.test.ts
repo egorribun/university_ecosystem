@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { registerServiceWorker } from "../register-sw"
-import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
+import {
+  PWA_REFRESH_EVENT,
+  SERVICE_WORKER_BOOTSTRAP_EVENT,
+  type ServiceWorkerBootstrapEventDetail,
+} from "@/app/pwaEvents"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import { withExpectedConsole } from "@/tests/strictConsole"
 
@@ -56,10 +60,19 @@ describe("registerServiceWorker", () => {
     }
   })
 
-  it("returns null if serviceWorker is not supported by browser", async () => {
+  it("returns null and reports unsupported when serviceWorker is not available", async () => {
     vi.stubGlobal("navigator", {})
+    let bootstrapStatus: ServiceWorkerBootstrapEventDetail["status"] | undefined
+    window.addEventListener(
+      SERVICE_WORKER_BOOTSTRAP_EVENT,
+      (event) => {
+        bootstrapStatus = (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail.status
+      },
+      { once: true }
+    )
     const reg = await registerServiceWorker()
     expect(reg).toBeNull()
+    expect(bootstrapStatus).toBe("unsupported")
   })
 
   it("registers service worker successfully and sets up listeners", async () => {
@@ -101,9 +114,24 @@ describe("registerServiceWorker", () => {
       onLine: true,
     })
 
-    // 1. Success run
+    let bootstrapDetail: ServiceWorkerBootstrapEventDetail | undefined
+    let queueListenersReadyAtSignal = false
+    window.addEventListener(
+      SERVICE_WORKER_BOOTSTRAP_EVENT,
+      (event) => {
+        bootstrapDetail = (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail
+        queueListenersReadyAtSignal =
+          addEventListenerSpy.mock.calls.some((call: unknown[]) => call[0] === "online") &&
+          documentAddEventListenerSpy.mock.calls.some(
+            (call: unknown[]) => call[0] === "visibilitychange"
+          )
+      },
+      { once: true }
+    )
     const reg = await registerServiceWorker("/custom-sw.js")
     expect(reg).toBe(mockRegistration)
+    expect(bootstrapDetail).toEqual({ status: "ready" })
+    expect(queueListenersReadyAtSignal).toBe(true)
     expect(mockServiceWorkerContainer.register).toHaveBeenCalledWith("/custom-sw.js", {
       scope: "/",
       updateViaCache: "none",
@@ -367,9 +395,18 @@ describe("registerServiceWorker", () => {
       serviceWorker: mockServiceWorkerContainer,
     })
 
+    let bootstrapStatus: ServiceWorkerBootstrapEventDetail["status"] | undefined
+    window.addEventListener(
+      SERVICE_WORKER_BOOTSTRAP_EVENT,
+      (event) => {
+        bootstrapStatus = (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail.status
+      },
+      { once: true }
+    )
     const result = await withExpectedConsole("error", "Service worker registration failed", () =>
       registerServiceWorker()
     )
     expect(result).toBeNull()
+    expect(bootstrapStatus).toBe("failed")
   })
 })

@@ -8,6 +8,7 @@ import {
   withVerifiedNativePushBrowserExit,
 } from "./native-push-profile-cleanup"
 import { test as liveTest, ownedSessionOrigin } from "./fixtures"
+import { reportLivePushDeliveryObservation } from "./push-delivery-observation"
 import type {
   Browser,
   BrowserContext,
@@ -30,6 +31,7 @@ export type NativePushProfile = {
 export type NativePushProfileRegistry = {
   primary: NativePushProfile
   create: () => Promise<NativePushProfile>
+  armFailureObservation: (expectedTag: string) => { disarm: () => void }
 }
 
 type NativePushProfileFixtures = {
@@ -270,11 +272,42 @@ export const test = liveTest.extend<NativePushProfileFixtures & NativePushProfil
     let testFailed = false
     try {
       const primary = await createOwnedProfile(browser, testInfo, nativePushChannel, records)
+      let pendingFailureObservation: (() => Promise<void>) | undefined
       const registry: NativePushProfileRegistry = {
         primary,
         create: () => createOwnedProfile(browser, testInfo, nativePushChannel, records),
+        armFailureObservation: (expectedTag) => {
+          if (pendingFailureObservation) {
+            throw new Error("Native Push failure observation is already armed")
+          }
+          const observation = () =>
+            reportLivePushDeliveryObservation(primary.page, testInfo.project.name, expectedTag)
+          pendingFailureObservation = observation
+          let armed = true
+          return {
+            disarm: () => {
+              if (!armed) return
+              armed = false
+              if (pendingFailureObservation === observation) {
+                pendingFailureObservation = undefined
+              }
+            },
+          }
+        },
       }
       await provideFixture(registry)
+
+      if (testInfo.status !== testInfo.expectedStatus) {
+        const failureObservation = pendingFailureObservation
+        pendingFailureObservation = undefined
+        if (failureObservation) {
+          try {
+            await failureObservation()
+          } catch {
+            // Observation must not replace the original assertion or timeout.
+          }
+        }
+      }
     } catch (error) {
       testFailure = error
       testFailed = true

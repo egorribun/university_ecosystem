@@ -67,6 +67,10 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
     spec,
     /await page\.goto\(new URL\(["']\/dashboard["'],\s*ownedSessionOrigin\(\)\)\.toString\(\)\)/u
   )
+  assert.match(
+    spec,
+    /await page\.addInitScript\([\s\S]*?SERVICE_WORKER_BOOTSTRAP_EVENT[\s\S]*?await loginAs\(page,[\s\S]*?await page\.goto\(new URL\(["']\/dashboard["'],[\s\S]*?await page\.waitForFunction\([\s\S]*?__ueServiceWorkerBootstrapStatus[\s\S]*?expect\(serviceWorkerBootstrapStatus\)\.toBe\(["']ready["']\)[\s\S]*?const trigger =/u
+  )
   assert.doesNotMatch(spec, /page\.route\(|routeWebSocket\(|\.fulfill\(/u)
   assert.match(spec, /newCDPSession\(page\)/u)
   assert.match(spec, /HeapProfiler\.collectGarbage/u)

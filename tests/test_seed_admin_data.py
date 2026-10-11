@@ -152,18 +152,16 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
 
 
 @pytest.mark.parametrize(
-    ("seed_target", "admin_preexisted", "should_prepare"),
+    ("seed_target", "should_prepare"),
     (
-        ("ue-live-0123456789abcdef", False, True),
-        ("ue-live-0123456789abcdef", True, False),
-        ("ci-admin-smoke", False, False),
+        ("ue-live-0123456789abcdef", True),
+        ("ci-admin-smoke", False),
     ),
 )
-async def test_notification_fixture_runs_only_for_a_fresh_owned_stand(
+async def test_notification_fixture_runs_for_a_full_owned_stand(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     seed_target: str,
-    admin_preexisted: bool,
     should_prepare: bool,
 ) -> None:
     from scripts import seed_admin_data
@@ -182,9 +180,6 @@ async def test_notification_fixture_runs_only_for_a_fresh_owned_stand(
 
         async def __aexit__(self, exc_type, exc, traceback) -> bool:
             return False
-
-        async def scalar(self, statement):
-            return object() if admin_preexisted else None
 
         async def commit(self) -> None:
             return None
@@ -227,11 +222,14 @@ async def test_notification_fixture_runs_only_for_a_fresh_owned_stand(
     assert "Live-Seed-Test-Password9!" not in output.err
 
 
-async def test_notification_fixture_uses_exact_seed_roster_and_preserves_preferences(
+async def test_notification_fixture_reseed_is_idempotent_after_admin_preseed(
     db_session, user_factory
 ) -> None:
     from scripts import seed_admin_data
 
+    assert set(seed_admin_data.LIVE_NOTIFICATION_DELIVERY_TOPICS).isdisjoint(
+        {"news.published", "events.published", "schedule.changed", "system.release"}
+    )
     role_by_email = {
         email: role
         for email, _password, _name, role, _telegram, _institute, _course, _group in (
@@ -245,6 +243,7 @@ async def test_notification_fixture_uses_exact_seed_roster_and_preserves_prefere
             role = "admin"
         roster_users[email] = await user_factory(email=email, role=role)
 
+    assert roster_users[seed_admin_data.ADMIN_EMAIL].role == models.UserRole.ADMIN
     unknown_account = await user_factory(
         email="unlisted.acceptance@university.dev",
         role="student",
@@ -278,6 +277,7 @@ async def test_notification_fixture_uses_exact_seed_roster_and_preserves_prefere
         is None
     )
 
+    first_preference_state = {}
     for email, seeded_user in roster_users.items():
         preference = await db_session.get(models.UserPushTopic, seeded_user.id)
         assert preference is not None
@@ -286,7 +286,31 @@ async def test_notification_fixture_uses_exact_seed_roster_and_preserves_prefere
             assert preference.updated_at == original_updated_at
         else:
             assert preference.topics == ["chat.message.created"]
+        await db_session.refresh(preference)
+        first_preference_state[seeded_user.id] = (
+            list(preference.topics),
+            preference.updated_at,
+        )
 
+    assert await db_session.get(models.UserPushTopic, unknown_account.id) is None
+
+    repeated_group = await seed_admin_data.seed_live_notification_delivery_fixture(
+        db_session
+    )
+    await db_session.flush()
+    assert repeated_group.id == group.id
+    for email, seeded_user in roster_users.items():
+        preference = await db_session.get(models.UserPushTopic, seeded_user.id)
+        assert preference is not None
+        await db_session.refresh(preference)
+        expected_topics = (
+            custom_topics
+            if email == "test@university.dev"
+            else ["chat.message.created"]
+        )
+        assert preference.topics == expected_topics
+        assert preference.topics == first_preference_state[seeded_user.id][0]
+        assert preference.updated_at == first_preference_state[seeded_user.id][1]
     assert await db_session.get(models.UserPushTopic, unknown_account.id) is None
 
 
