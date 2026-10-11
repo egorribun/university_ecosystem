@@ -1,9 +1,9 @@
 # MVP — оперативный статус
 
-Контрольная точка на 2026-10-10, 04:28 UTC.
+Контрольная точка на 2026-10-11, 12:17 UTC.
 [Мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md) и
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) действуют.
-Работа безопасно приостановлена по запросу владельца; выпуск `v1.0.0` ещё не подтверждён.
+Работа возобновлена по поручению владельца; выпуск `v1.0.0` ещё не подтверждён.
 
 ## Границы работы
 
@@ -20,10 +20,15 @@
 ## Опубликованный CI checkpoint
 
 Reviewed пакет опубликован с ordinary hooks на `bd248ae7274f97630c67743775abff4be4db52e8`,
-tree `0113feb8101086af3fcc81019b4a33809b6422d0`; следующий commit содержит только STATUS.
-PR #1306 открыт; branch и origin совпадали перед этой записью.
-Снимок 04:24 UTC для bd248:129 checks — 107 SUCCESS/20 SKIPPED/2 IN_PROGRESS,
-failures0. Это промежуточный снимок, не итоговый exact required join76/76.
+tree `0113feb8101086af3fcc81019b4a33809b6422d0`; docs checkpoint — `d71d3990`.
+Fetch 2026-10-11: PR #1306 открыт, branch/origin/PR head совпадают с d71.
+Итог d71:136 checks — 108 SUCCESS/26 SKIPPED/2 FAILURE. Exact required join:
+76 уникальных pairs,71 SUCCESS/2 FAILURE/3 SKIPPED, missing0.
+[Matrix 38024156084](https://github.com/egorribun/university_ecosystem/actions/runs/38024156084):
+семь MFA stderr assertions в backend shard3 и downstream CI Success красные.
+Reviewed исправление нормализует только ANSI/переносы stderr и проверяет полные
+MFA messages; returncode, неизменность файлов и отсутствие ключей в выводе сохранены.
+Windows весь файл:15 PASS/1 POSIX-only SKIP, warnings0; Linux proof ждёт нового CI SHA.
 
 Предыдущий завершённый hosted evidence относится к `e537137a917c3ec647f3c7ef7126f21e144a7673`,
 tree `56180c1656fba5cfe6d5660a31b87b7b778dc4a3`.
@@ -77,11 +82,12 @@ Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
   и effective cookie policy PASS; proof привязан к source SHA/state.
 - Неизменный canonical Story20:2/2 FAIL в desktop/mobile на ожидании
   `visibilityState === hidden`, до DOM assertions. Heap/DOM acceptance этим не проверена.
-  Default headless shell имеет документированное ограничение background target;
-  это source-backed гипотеза причины, а не подтверждённое исправление.
+  Изолированные Linux probes на pinned Chromium153 не дали hidden в headless,
+  channel Chromium, headed/Xvfb и native target flow. Отключение focus emulation
+  вернуло blur/focus, но само по себе не visibilitychange; исправление ещё не доказано.
 - Fresh Core штатно остановлен 04:24 UTC;23 containers stopped,6 mounted volumes
   и все три env-файла сохранены. Guard:source stable,dirty0,owned children0.
-  Builder остаётся stopped с сохранённым cache; активных заданий агентов нет.
+  Builder остаётся stopped с сохранённым cache; три агента возобновили независимые задачи.
 
 ## Открытые критерии
 
@@ -103,6 +109,10 @@ Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
   не являются RC certification. Root проверил три private source-bound static receipts
   по всем63 IDs; execution/final-RC evidence остаётся открытым. BE-04 по ADR-033 требует
   PostgreSQL session-ownership integration proof; SQLite probe его не заменяет.
+  Новый [PG integration test](../../../tests/integration/test_request_session_ownership_postgres.py)
+  после независимого ревью: isolated pgvector17 + Alembic upgrade head,1/1 PASS,
+  auth/handler identity, ORM attachment, commit/rollback/pool/close и row persistence.
+  Owned test container удалён, children0; новый source SHA ещё требует hosted proof.
   CodeQL3382/3383 уже dismissed,
   не повторять и не расширять разрешение.
 - Full frozen-RC smoke, ordinary merge, fresh main checks, шесть signed source-bound
@@ -110,8 +120,8 @@ Fetch 03:37 UTC: origin/egorribun совпадает; main/merge-base
 
 ## Следующие действия и ресурсы
 
-1. После возобновления освежить Git/PR/required CI/resources. Проверить реальный переход
-   страницы в hidden в поддерживаемом browser mode без ослабления assertions; BE-04 PG proof.
+1. Проверить MFA fix и BE-04 на новом hosted SHA. Доказать реальный переход Stories
+   в hidden без ослабления assertions; static/source hypotheses не считать исправлениями.
 2. Fresh unique Core на clean текущем SHA:admin-only seed перед demo seed,
    readiness/cookie policy и затронутые live scenarios; затем два consecutive full190+8.
    Остановленный bd248 state не переиспользовать на successor SHA через обход strict resume.
@@ -127,5 +137,5 @@ Git history, migrations, private rescue bundle и его inventory сохран�
 Serial Linux screenshots: owner exception≤80%/≥6GiB, browser1GiB/2CPU.
 После остановки Core ресурсы повторно измеряются в private checkpoint; диск C≈198GiB свободно.
 Owned builder stopped, cap4GiB/no swap/2CPU; полезный cache сохранён.
-Account refresh04:23 UTC:40% weekly consumed/60% remaining, ordinary usage allowed.
+Account refresh2026-10-11:0% weekly consumed, ordinary usage allowed; RAM≈45%,free≈17GiB.
 Чужие процессы, Docker/WSL, env/data/backups и rescue bundle не очищать.

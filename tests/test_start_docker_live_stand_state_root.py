@@ -8,6 +8,7 @@ import hmac
 import importlib.util
 import json
 import os
+import re
 import secrets
 import shutil
 import stat
@@ -20,6 +21,15 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _stderr_reports(result: subprocess.CompletedProcess[str], reason: str) -> bool:
+    """Match a PowerShell error despite ANSI colour and mid-word wrapping."""
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.stderr)
+    text = re.sub(r"\n\s*\|", "", text)
+    return re.sub(r"\s+", "", reason).casefold() in re.sub(r"\s+", "", text).casefold()
+
+
 # The launcher fixtures use PowerShell 7, whose redirected text output is UTF-8.
 POWERSHELL = shutil.which("pwsh")
 PORT_NAMES = (
@@ -617,7 +627,10 @@ def test_launcher_generates_and_preserves_run_local_audit_and_email_mfa_keys(
     )
     mismatch_fails_closed = (
         mismatched_result.returncode != 0
-        and "refusing to replace key material" in mismatched_result.stderr.lower()
+        and _stderr_reports(
+            mismatched_result,
+            "Email MFA key configuration is incomplete or invalid; refusing to replace key material.",
+        )
         and mismatch_stays_unmodified
         and docker_rings_unchanged
     )
@@ -635,7 +648,10 @@ def test_launcher_generates_and_preserves_run_local_audit_and_email_mfa_keys(
     failed_closed = _run_prepare(project, state_root, env)
     after_invalid = _read_env_file(docker_env_path)
     assert failed_closed.returncode != 0
-    assert "refusing to replace key material" in failed_closed.stderr.lower()
+    assert _stderr_reports(
+        failed_closed,
+        "Email MFA key configuration is incomplete or invalid; refusing to replace key material.",
+    )
     invalid_ring_remains_empty = after_invalid.get("MFA_EMAIL_DELIVERY_KEKS") == ""
     assert invalid_ring_remains_empty
     otp_ring_preserved = hmac.compare_digest(
@@ -1049,6 +1065,11 @@ def test_prepare_only_rejects_ambiguous_or_malformed_mfa_key_material(
         if material
     )
     assert failed.returncode != 0, f"{case}: malformed configuration was accepted"
-    assert "refusing to replace key material" in failed.stderr.lower()
+    expected_error = (
+        "Email MFA key configuration is ambiguous; refusing to replace key material."
+        if mutation == "duplicate_field"
+        else "Email MFA key configuration is incomplete or invalid; refusing to replace key material."
+    )
+    assert _stderr_reports(failed, expected_error)
     assert files_unchanged, f"{case}: env files changed after rejected configuration"
     assert key_material_not_printed, f"{case}: key material appeared in command output"
