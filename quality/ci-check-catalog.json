@@ -4216,7 +4216,7 @@
         },
         "vuln-gate": {
           "profile": "required-pr-main",
-          "check_name_template": "Vulnerability gate (CRITICAL/HIGH)",
+          "check_name_template": "Vulnerability gate (CRITICAL/HIGH, main)",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",

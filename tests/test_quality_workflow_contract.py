@@ -1612,9 +1612,12 @@ def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
 
     workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
     gate = workflow["jobs"]["vuln-gate"]
-    # Keep the main-CI check context from existing run history stable even when
-    # the implementation enforces a stricter policy.
-    assert gate["name"] == "Vulnerability gate (CRITICAL/HIGH)"
+    # The push gate carries a distinct name so the skipped push job on pull
+    # requests cannot satisfy the required PR context of ``vuln-gate-pr``.
+    assert gate["name"] == "Vulnerability gate (CRITICAL/HIGH, main)"
+    assert (
+        workflow["jobs"]["vuln-gate-pr"]["name"] == "Vulnerability gate (CRITICAL/HIGH)"
+    )
     # A cold gate compiles cargo-audit and runs Python, Go, and Rust network
     # scanners sequentially; fifteen minutes is too close to observed cold time.
     assert gate["timeout-minutes"] >= 30

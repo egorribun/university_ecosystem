@@ -23,6 +23,8 @@ release claims require fresh evidence under the master plan.
 - [Dependency update report, October 2026](dependency-updates-2026-10/README.md)
   — read-only inventory of patch/minor/major updates and security fixes for
   `04fdd84c2`; no update has been applied.
+- [Merge exceptions](merge-exceptions.md) — break-glass log of every Admin
+  bypass merge into `main` (AGENTS.md §5).
 - [Codebase consolidation decisions](../adr/ADR-046-codebase-consolidation-audit.md)
   — outcome of the 2026-10 dead-code, duplication and contract-drift audit:
   what was fixed, retired and deliberately kept, with the evidence rules used.

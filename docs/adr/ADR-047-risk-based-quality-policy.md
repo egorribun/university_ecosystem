@@ -154,6 +154,18 @@ The exact scope of the 2026-10-09 authorization for ruleset `8335285` is:
 | Q4 | `TruffleHog Scan` |
 
 The subsequent approval adds only `Security Audit / Semgrep SAST` to this list.
+
+On 2026-10-12 the owner approved a further, separately recorded ruleset change:
+the two compatibility contexts `Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)`
+and `Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)` were removed
+because they reported skipped (green) when backend tests failed; `CI Success`
+keeps aggregating the real backend jobs. The same change added
+`Security Policy Integrity`, `Vulnerability gate (CRITICAL/HIGH)`,
+`Cargo Deny Scan` and `Zizmor Actions Scan` as required contexts and a CodeQL
+`code_scanning` rule (security alerts high or higher). The push-only gate is
+named `Vulnerability gate (CRITICAL/HIGH, main)` so its skipped pull-request
+instance cannot satisfy the required pull-request context.
+
 This records the approved boundary, not a fresh ruleset readback or permission
 to remove other contexts. Preserve every other rule, blocking CodeQL, coverage,
 Gitleaks, migration and supply-chain gates. Do not emit compatibility checks

@@ -85,7 +85,7 @@
           "rationale": "GitHub Actions security analysis must pass independently."
         },
         {
-          "name": "Vulnerability gate (CRITICAL/HIGH)",
+          "name": "Vulnerability gate (CRITICAL/HIGH, main)",
           "workflow_path": ".github/workflows/sbom.yml",
           "category": "security",
           "allowed_conclusions": ["success"],

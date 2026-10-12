@@ -266,7 +266,7 @@ jobs:
   #     are never silently ignored by this workflow.
   vuln-gate:
     # Keep the externally visible main-CI check context stable for run history.
-    name: Vulnerability gate (CRITICAL/HIGH)
+    name: Vulnerability gate (CRITICAL/HIGH, main)
     if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     # Cold runs compile cargo-audit and execute three ecosystems sequentially.

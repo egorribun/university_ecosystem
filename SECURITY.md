@@ -4,7 +4,7 @@
 We actively maintain and provide security updates for the latest released version of this project. Older versions may no longer receive security fixes, so upgrading to the most recent release is strongly recommended.
 
 ## Reporting a Vulnerability
-If you discover a vulnerability, please report it privately so we can address it promptly. We aim to acknowledge new reports within 24 hours for Critical vulnerabilities and 48 hours for High vulnerabilities.
+If you discover a vulnerability, do not publish technical details in an issue, pull request, or discussion. Open a GitHub issue titled **"Security contact request"** that contains no vulnerability details; the maintainer will reply with a private channel for the full report. We aim to acknowledge new reports within 24 hours for Critical vulnerabilities and 48 hours for High vulnerabilities.
 
 ---
 
@@ -76,7 +76,7 @@ If you discover a vulnerability, please report it privately so we can address it
 
 - **Automated Dependency Audits**: CI runs `npm audit` on `frontend/package-lock.json`, `pip audit` on Python packages, and `govulncheck` on Go services.
 - **Automated Scanners**: Local pre-commit runs Semgrep (Docker-backed), Bandit, Gitleaks, and detect-secrets against `.secrets.baseline`. Hosted CI skips only the Semgrep hook, runs the other named hooks, performs Trivy image scans, and runs CodeQL analysis.
-- **Reporting Vulnerabilities**: Submit a private GitHub Security Advisory via the repository's **Security** tab.
+- **Reporting Vulnerabilities**: Follow [Reporting a Vulnerability](#reporting-a-vulnerability): request a private channel through a detail-free "Security contact request" issue. Private vulnerability reporting through the **Security** tab is not enabled.
 
 ### Response SLA (MOD-W8-03)
 

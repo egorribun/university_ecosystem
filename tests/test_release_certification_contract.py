@@ -1110,12 +1110,20 @@ def test_canonical_policy_requires_independent_release_security_gates() -> None:
         ("cargo-deny.yml", "cargo-deny"),
         ("checkov.yml", "checkov"),
         ("zizmor.yml", "zizmor"),
-        ("sbom.yml", "vuln-gate"),
     ]:
         workflow = yaml.safe_load(
             (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
         )
         independent_gates.add(workflow["jobs"][job_name]["name"])
+    # The vulnerability gate has an event-specific job: ``vuln-gate`` on push
+    # to main and ``vuln-gate-pr`` on pull requests, with distinct names.
+    sbom = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "sbom.yml").read_text(encoding="utf-8")
+    )
+    vuln_gate_by_event = {
+        "push_main": sbom["jobs"]["vuln-gate"]["name"],
+        "pull_request_main": sbom["jobs"]["vuln-gate-pr"]["name"],
+    }
 
     codeql = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
@@ -1132,7 +1140,8 @@ def test_canonical_policy_requires_independent_release_security_gates() -> None:
         for event in ("push_main", "pull_request_main")
     }
     for event, required_names in names_by_event.items():
-        assert independent_gates | codeql_gates <= required_names, event
+        expected = independent_gates | codeql_gates | {vuln_gate_by_event[event]}
+        assert expected <= required_names, event
 
     moved_gates: set[str] = set()
     for workflow_name, job_name in [

@@ -400,7 +400,9 @@ def test_release_policy_declares_a_pr_event_without_removing_push_policy() -> No
     assert "CI Success" in pr_names
     assert "Vulnerability gate (CRITICAL/HIGH)" in pr_names
     assert "Trusted Codecov Upload" not in pr_names
-    assert push_names - {"Trusted Codecov Upload"} <= pr_names
+    assert "Vulnerability gate (CRITICAL/HIGH, main)" in push_names
+    push_only = {"Trusted Codecov Upload", "Vulnerability gate (CRITICAL/HIGH, main)"}
+    assert push_names - push_only <= pr_names
 
 
 def test_base_branch_policy_uses_the_pull_request_target_event_alias() -> None:
