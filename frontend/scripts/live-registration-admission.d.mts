@@ -35,7 +35,11 @@ export declare function computeRegistrationWaitMs(
 export declare function readPlaywrightTestSlotDeadlineAtMs(
   testInfo: unknown,
   maximumTimeoutMs?: number,
-  nowMonotonicMs?: number
+  sampleClockPair?: () => {
+    localBeforeMs: number
+    playwrightNowMs: number
+    localAfterMs: number
+  } | null
 ): number | null
 
 export declare function assertRegistrationWaitFits(

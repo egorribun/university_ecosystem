@@ -1,95 +1,25 @@
 # MVP — оперативный статус
 
-Контрольная точка: 2026-10-12 03:57 UTC. Основания приёмки — [мастер-план](MVP_MASTER_PLAN.md),
-[ТЗ](University_Ecosystem_MVP.md), [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md)
-и [audit ledger](../../audits/INDEX.md).
-Сводка отражает опубликованный source 05b и проверенные локальные результаты кандидата; выпуск v1.0.0 не подтверждён.
+Контрольная точка: 2026-10-12 06:29:17 UTC. Основания приёмки — [мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md), [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и [audit ledger](../../audits/INDEX.md).
+Опубликованный source snapshot и база текущего пакета PR #1306 на egorribun: 04fdd84c23bf7e021dc16af5ab0a48101d6aabc2, tree 89eb1fd49cb8dadf9b5f82547ddd9055c2e38941. Source receipt связывает 75 входных hashes и 9 changed files; ordinary hooks прошли. Выпуск v1.0.0 не подтверждён.
 
-## Опубликованный source и проверки
+## Опубликованный source и required checks
 
-- Последний опубликованный source на egorribun, PR #1306: 05b57d5cf048365124ac376ae5592ac21bfbad6c,
-  tree cf3272085518f95f7877666da8e9811bb75033c0. Обычные commit/push hooks прошли.
-  Source receipt фиксирует 69 уникальных входных hashes и 42 changed files.
-  Рабочая ветка — egorribun; используется один checkout, Git остаётся под управлением root.
-- Точный снимок 76 required checks для 05b на 03:07 UTC: 69 SUCCESS, 0 PENDING,
-  4 FAILURE, 3 SKIPPED, 0 ABSENT, 0 INVALID. Две прямые первичные required failures —
-  Alembic и Frontend unit shard 2/4; два failed summaries — Frontend aggregate и CI
-  Success. Все три первичные причины workflow уже имели failures до этого snapshot:
-  Alembic/Squawk сообщил о двух ALTER случаях, frontend shard не загрузил
-  owned-session-cleanup.test.mjs из-за TypeError: The URL must be of scheme file,
-  а отдельный backend integration shard 0 сообщил RuntimeError: quiet-hour wall-clock
-  conversion теряет per-value TIMETZ offsets. Backend shard 0 сам не является отдельной
-  строкой 76 required checks; его связанный aggregate/skip effect отражён в снимке.
-  Это точный snapshot на 03:07 UTC до локальных исправлений, не результат следующего
-  source SHA.
+- Проверенный snapshot 76 required checks, 2026-10-12 05:19:01 UTC: 71 SUCCESS, 2 FAILURE, 3 SKIPPED, 0 PENDING, 0 ABSENT, 0 INVALID. Receipt ci-required76-04fdd84c-resume-20261012-1791782331289.json, SHA-256 3F1EDAE7398679AC58A50CD36C712734F10AA5041F6A5D52B1DCEEE7DC243A58; source SHA — 04fdd84c. Единственные failure rows — backend shard 0 и агрегат CI Success; все остальные backend shards прошли. Ранее блокировавшие Alembic и Frontend shard теперь SUCCESS.
+- В Run pytest shard 0 summary: 2 failed, 4479 passed, 30 skipped. tests/test_auth_cookie_flow.py::test_profile_audit_writes_use_default_session_when_read_component_is_read_only падает в setup: get_password_hash сообщает Password must include: symbols; secrets.token_urlsafe(24) не гарантирует все обязательные password classes.
+- tests/test_route_dependency_inventory.py::test_repository_route_dependency_inventory_is_current_and_has_no_mixed_owner падает на assert violations == [] из-за двух изменённых строк: app.api.users:get_users:GET: и app.api.users:me:GET:/me. В 04fdd обе DB зависимости переключены на default writable FromDishka; checked-in inventory устарел.
+- Текущий локальный working packet содержит 6 файлов поверх опубликованного 04fdd: auth-cookie fixture с гарантированными password classes, обновление двух route inventory rows, password-change rollback regression и frontend deadline-clock fix. Combined focused suite — 31/31 PASS в 06:29:17 UTC под guard backend-focused-security-working7-04fdd84c-root-v4-e1cb156cc18e4bc5bf2d3f3c9b46b814.guard.json (source stable, exit 0, stderr 0, owned processes 0); Ruff для 2 Python-файлов PASS, форматирование без изменений; Frontend ESLint — 0 warnings в 06:14:40 UTC. Node contract 12/12 PASS в 06:02:14 UTC, Playwright clock probe v2 GREEN в 06:04:31 UTC под guard actual-playwright-clock-probe-v2-working5-04fdd84c-root-v2-2f1c89f68ccc4f2090ddc10c4e938737.guard.json. Первый ordinary commit attempt остановил detect-secrets на generated-password false positive. После UUID-backed генерации detector проходит без waivers или baseline исключений; остальные ordinary hooks ожидаются. Пакет локальный, ещё не опубликован; strict76 остаётся историческим snapshot 04fdd, hosted CI/runtime acceptance не заявляются, PASS между SHA не переносится.
+- Предыдущие scoped local доказательства остаются привязаны к своим SHA: migration render/Squawk 2.44 дал baseline 2 -> candidate 0, а внесённое отрицательное правило было поймано; migration suite 27/27, PostgreSQL 9/9, owned-session cleanup 24/24 и Node admission contract 11/11. Это не заменяет текущие required checks и не переносится между SHA.
+- Q1/Q4 интегрированы; разрешённые removals ограничены 14 contexts и Security Audit / Semgrep SAST. CodeQL остаётся blocking, Semgrep — в pre-commit. Quality floors и Tier 0 100% сохранены; Q2/Q3 остаются в v1.1.
 
-- В локальном migration candidate SQL render/Squawk 2.44 подтвердил: baseline=2,
-  candidate=0, намеренно внедрённое несвязанное негативное правило=1 caught.
-  Это показывает, что правило сохраняет обнаружение постороннего случая; это не hosted CI.
-- Migration policy/integrity suite прошёл 27/27. Scoped PostgreSQL/asyncpg rerun
-  прошёл 9/9 и подтвердил удаление ровно owned test container и временного env-file.
-- owned-session-cleanup.test.mjs прошёл 24/24 Vitest tests; Prettier подтвердил
-  неизменённые candidate bytes. Реальный Node contract для admission helper прошёл 11/11.
-  Полный TypeScript и полный frontend ESLint (0 errors/warnings) прошли; Prettier изменённых файлов и backend Ruff
-  также прошёл. Эти scoped checks не заменяют полную unit suite или свежие required checks.
-- Локальный RED через HTTP и read-replica proxy подтвердил отказ audit write.
-  Затем GET /users/me и GET /users переведены на writable default FromDishka dependency;
-  regression прошёл 1/1, auth-cookie selection — 9/9. В этом run stderr=0, source stability
-  подтверждена, children=0. Это локальная проверка, не fresh hosted check.
-- Для migration остаётся обязательной проверка на новом source/Core, включая настоящий
-  DND/profile HTTP 200. Scoped PostgreSQL результат проверяет codec и migration,
-  но не live HTTP путь.
-- Все required CodeQL rows в 05b snapshot имеют SUCCESS. Отдельный исторический f3 alert
-  query относился к PR synthetic merge e5047bc8, не к main; в проверенном PR ref open
-  alerts было 0. Для 05b свежий alert query не выполнялся. В историческом query у 3384
-  latest instance был fixed на 07742145, но top-level state API это не возвращал;
-  3382/3383 — прежние отдельно разрешённые false-positive dismissals. Нужны свежие
-  обязательные checks на следующем source SHA.
-- Q1/Q4 уже интегрированы. Ранее разрешены ровно 14 removals и отдельно
-  Security Audit / Semgrep SAST; все остальные правила и contexts сохранены.
-  CodeQL остаётся blocking, Semgrep — в pre-commit. Q2/Q3 и mutation/nightly policy
-  gates не продвигаются из v1.1. Quality floors и Tier 0 100% не снижались.
 ## Core и продуктовые проверки
 
-- Core на 05b прошёл up: state C:\Temp\ue-live-acceptance\run-87a0640e-ac37-41a7-91e5-4b1fac6ae46b,
-  project ue-live-ae71e7cc6d3304fa. В этой сессии не выполнялись новые seed/readiness/cookie
-  probes. В 02:37 UTC штатный stop подтвердил 23 остановленных контейнера и сохранение
-  шести volumes; receipt core-stop-before-ci-fixes-05b-root-v3-dfb9a69325a1495cb3e1cb23724a53d5.guard.json.
-- На 05b нет нового полного targeted cohort. Последний cohort 32 относится к f3:
-  G1 8 PASS / 4 FAIL, G2 0 PASS / 14 FAIL, G3 0 PASS / 6 FAIL; без skips, flakes,
-  interruption или source drift. Это диагностика, не продуктовая приёмка.
-- Фокусированный Story run на f3 дошёл до строгого cycle-0 DOM сравнения и упал в обоих
-  проектах. Listener totals warm→cycle 0: desktop 445→452, mobile 456→457. Buckets показали
-  document visibilitychange +1, keydown +1 и window other +4; documentTree без изменения.
-  Это наблюдение, не attribution конкретным callback. Readiness change остаётся
-  непроверенным live на 05b; exact DOM/heap/20-cycle/hidden-tab assertions не менялись.
-- Исторический News V7 capture завершился capture_validation exit 9, cleanup не подтверждён.
-  12 diagnostic sidecars содержали layout geometry; opacity=0, PNG=0. Четыре aborted avatar
-  requests были на 1440px. News не принят и baseline не обновлён; для нового source требуется
-  новый capture и отдельное owner approval.
-- Четыре native permission cases на прежнем source прошли; это не подтверждает subscription
-  или delivery.
-- Traceability inventory: Home12 ddbbc84d уже утверждён владельцем для layout; это
-  одобрение сохраняется, а оставшиеся News/Events/Schedule visuals требуют новых
-  current-source captures и отдельного owner approval. Existing Events keyboard/ARIA
-  coverage проверяет поведение; ожидаемый Events12 visual должен также дать reviewable
-  evidence вертикального центрирования активного tab.
-  Profile в ТЗ §7 требует адаптивную сетку. Отдельный mocked browser scenario
-  frontend/tests/e2e/profile-responsive.spec.ts (SHA-256
-  47ba87360324808b302c08810bf5b4a10f2e64c052e7f1665bab5fd5b269b2d3) прошёл Chromium
-  1/1 на 390/768/1440px; guard profile-responsive-split-mocked-working6-05b-root-v3-85c3a850bd7c4b4684aa61a07266dc27.guard.json
-  SHA-256 82b057e3a7b1f6e17e064df8d3b038b3c5f31058aaa4b8a07f8a20e9a4f3194e подтвердил
-  source stability, 0 children, stderr=0, peak RAM 57.88% и 13.40GiB free. Firefox/WebKit
-  projects остаются pending final matrix.
-  Отдельный существующий Profile screenshot run на Windows завершился 14% diff до новых
-  geometry assertions; причина не установлена. Screenshot spec восстановлен к parent
-  версии, baseline не обновлялся, Profile visual acceptance не заявлена.
-  Source inventory охватывает все 63 audit IDs; per-ID RC dispositions остаются pending,
-  owner acceptance не заявлена. В ограниченном frontend inventory не найден WebAuthn/passkey flow; это
-  соответствует явному требованию ТЗ §1 убрать аппаратные security keys.
-
-- Открытые traceability/visual confirmations остаются частью закрытия ТЗ 2–13; не считать их
-  выполненными только по наличию компонента или отдельного unit test.
+- Попытка Core на 04fdd собрала образы, но docker compose up не запустил runtime: Docker IPAM сообщил, что все predefined address pools полностью заняты subnet-ами. Failed state run-10a4… содержит 0 контейнеров. 2026-10-12 05:44:45 UTC завершена очистка ровно 4 пустых owned networks: inventory 32→28; containers, volumes, images и markers не изменились, child processes 0. Runtime acceptance на 04fdd не пройдена; PASS со старых SHA не переносится.
+- Предыдущий Core state C:/Temp/ue-live-acceptance/run-87a0640e-ac37-41a7-91e5-4b1fac6ae46b относился к 05b; штатный stop сохранил шесть volumes и подтвердил остановку 23 контейнеров. На паузе root в 04:54 UTC Docker показывал 0 running; отдельный снимок RAM в 04:54 показывал 44.59% и 17.62 GiB free. При resume в 05:16 RAM составляла 35%, free — 20.7 GiB; это моментальные снимки, не постоянное состояние.
+- Отдельная advisory password-reset lane показала 2 failures до регистрации; причина остаётся в расследовании. Deadline-clock prerequisite исправлен в локальном кандидате и прошёл локальные проверки, но свежий hosted rerun pending; lane не считается закрытой и не входит в strict76.
+- Текущего полного Core или targeted cohort на 04fdd нет. Последний cohort 32 относится к f3: G1 8 PASS / 4 FAIL, G2 0 / 14, G3 0 / 6; это диагностика, не продуктовая приёмка.
+- Старый News V7 capture завершился capture_validation exit 9, cleanup не подтверждён; baseline не обновлялся. Исторический Profile screenshot дал 14% diff с неизвестной причиной; baseline не утверждён. Home12 ddbbc84d остаётся единственным утверждённым visual пакетом; News, Events и Schedule требуют новых current-source captures и owner approval.
+- Mocked Profile responsive scenario прошёл Chromium 1/1 на 390/768/1440px на прежнем SHA; Firefox/WebKit проекты остаются pending. Все 63 audit IDs покрыты inventory, но per-ID RC dispositions и owner acceptance pending.
 
 ## Следующие критерии MVP
 

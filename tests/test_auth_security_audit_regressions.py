@@ -660,3 +660,178 @@ async def test_email_change_revokes_every_session_before_commit_and_keeps_tombst
         with pytest.raises(HTTPException) as rejected:
             await _resolve_current_user(auth_request, access_token, db_session)
         assert rejected.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_password_change_commit_failure_rolls_back_rows_but_keeps_revocations(
+    db_session, test_user, user_factory, mock_global_redis, monkeypatch
+) -> None:
+    from fastapi import status
+
+    from app.api.deps.auth import _resolve_current_user
+    from app.repositories.active_session_repository import ActiveSessionRepository
+    from app.repositories.auth_repository import AuthRepository
+    from app.repositories.unit_of_work import uow_from_session
+    from app.repositories.user_repository import UserRepository
+    from app.schemas.schemas import UserPasswordChangeIn
+    from app.services.auth_service import AuthService
+    from tests.fixtures.auth.auth_fixtures import create_access_token
+
+    old_password_hash = test_user.hashed_password
+    test_user.mfa_epoch = 0
+    foreign_user = await user_factory()
+    await db_session.commit()
+
+    test_user_id = test_user.id
+    foreign_user_id = foreign_user.id
+    current_token, current = await create_access_token(str(test_user_id), db_session)
+    sibling_token, sibling = await create_access_token(str(test_user_id), db_session)
+    foreign_token, foreign = await create_access_token(str(foreign_user_id), db_session)
+    current_jti = str(current.jti)
+    sibling_jti = str(sibling.jti)
+    foreign_jti = str(foreign.jti)
+    current_state = (
+        current.revoked_at,
+        current.mfa_epoch,
+        current.signing_key,
+        current.mfa_verified_at,
+    )
+    sibling_state = (
+        sibling.revoked_at,
+        sibling.mfa_epoch,
+        sibling.signing_key,
+        sibling.mfa_verified_at,
+    )
+    foreign_state = (
+        foreign.revoked_at,
+        foreign.mfa_epoch,
+        foreign.signing_key,
+        foreign.mfa_verified_at,
+    )
+
+    service = AuthService(
+        audit=MagicMock(),
+        auth_repo=AuthRepository(db_session),
+        user_repo=UserRepository(db_session),
+        session_repo=ActiveSessionRepository(db_session),
+        uow=uow_from_session(db_session),
+    )
+    request = Request(
+        {
+            "type": "http",
+            "headers": [],
+            "query_string": b"",
+            "path": "/auth/password",
+            "method": "POST",
+        }
+    )
+    request.state.active_session = current
+
+    current_password = f"Old-{uuid4().hex}!1"
+    new_password = f"New-{uuid4().hex}!2"
+    payload = UserPasswordChangeIn(
+        current_password=current_password,
+        new_password=new_password,
+    )
+    replacement_hash = "replacement-hash-" + uuid4().hex
+    published: list[tuple[str, str]] = []
+    real_publish = mock_global_redis.publish
+
+    async def observe_publish(channel: str, message: str) -> int:
+        published.append((channel, message))
+        return await real_publish(channel, message)
+
+    monkeypatch.setattr(mock_global_redis, "publish", observe_publish)
+
+    commit_observations: list[tuple[int, int, int, tuple[tuple[str, str], ...]]] = []
+    real_commit = db_session.commit
+
+    async def fail_commit() -> None:
+        commit_observations.append(
+            (
+                await mock_global_redis.exists("revoked:jti:" + current_jti),
+                await mock_global_redis.exists("revoked:jti:" + sibling_jti),
+                await mock_global_redis.exists("revoked:jti:" + foreign_jti),
+                tuple(published),
+            )
+        )
+        raise RuntimeError("simulated database commit failure")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            AsyncMock(side_effect=[True, False]),
+        ),
+        patch("app.services.auth_service.validate_password_hibp", AsyncMock()),
+        patch(
+            "app.services.auth_service.get_password_hash",
+            AsyncMock(return_value=replacement_hash),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="simulated database commit failure"):
+            await service.change_password(
+                test_user,
+                payload,
+                request,
+            )
+
+    expected_publish = ("session:revocations", sibling_jti)
+    assert published == [expected_publish]
+    assert commit_observations == [(0, 1, 0, (expected_publish,))]
+    assert await mock_global_redis.exists("revoked:jti:" + sibling_jti) == 1
+    assert await mock_global_redis.exists("revoked:jti:" + current_jti) == 0
+    assert await mock_global_redis.exists("revoked:jti:" + foreign_jti) == 0
+
+    await db_session.refresh(test_user)
+    await db_session.refresh(current)
+    await db_session.refresh(sibling)
+    await db_session.refresh(foreign)
+    assert test_user.hashed_password == old_password_hash
+    assert test_user.mfa_epoch == 0
+    assert (
+        current.revoked_at,
+        current.mfa_epoch,
+        current.signing_key,
+        current.mfa_verified_at,
+    ) == current_state
+    assert current.mfa_verified_at is not None
+    assert (
+        sibling.revoked_at,
+        sibling.mfa_epoch,
+        sibling.signing_key,
+        sibling.mfa_verified_at,
+    ) == sibling_state
+    assert sibling.revoked_at is None
+    assert (
+        foreign.revoked_at,
+        foreign.mfa_epoch,
+        foreign.signing_key,
+        foreign.mfa_verified_at,
+    ) == foreign_state
+
+    monkeypatch.setattr(db_session, "commit", real_commit)
+
+    def auth_request() -> Request:
+        return Request(
+            {
+                "type": "http",
+                "headers": [],
+                "query_string": b"",
+                "path": "/protected",
+                "method": "GET",
+            }
+        )
+
+    current_user = await _resolve_current_user(
+        auth_request(), current_token, db_session
+    )
+    assert current_user.id == test_user_id
+    foreign_user_result = await _resolve_current_user(
+        auth_request(), foreign_token, db_session
+    )
+    assert foreign_user_result.id == foreign_user_id
+
+    with pytest.raises(HTTPException) as sibling_rejected:
+        await _resolve_current_user(auth_request(), sibling_token, db_session)
+    assert sibling_rejected.value.status_code == status.HTTP_401_UNAUTHORIZED

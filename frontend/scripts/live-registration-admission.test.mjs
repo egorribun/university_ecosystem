@@ -81,12 +81,15 @@ test("deadline fit preserves action reserve and rejects an over-budget wait", ()
   )
 })
 
-test("pinned TestInfo slot deadline works without a public startTime", () => {
-  const nowMonotonicMs = 12_345
+test("pinned TestInfo slot deadline is translated into the local performance clock", () => {
+  const localBeforeMs = 12_345
+  const playwrightNowMs = 50_000
+  const localAfterMs = localBeforeMs + 0.25
+  const sampleClockPair = () => ({ localBeforeMs, playwrightNowMs, localAfterMs })
   const makeTestInfo = (timeout) => ({
     timeout,
     _deadline() {
-      return { deadline: nowMonotonicMs + timeout, timeout }
+      return { deadline: playwrightNowMs + timeout - 250, timeout }
     },
   })
 
@@ -97,17 +100,50 @@ test("pinned TestInfo slot deadline works without a public startTime", () => {
       readPlaywrightTestSlotDeadlineAtMs(
         testInfo,
         REGISTRATION_MAX_TEST_TIMEOUT_MS,
-        nowMonotonicMs
+        sampleClockPair
       ),
-      nowMonotonicMs + timeout
+      localBeforeMs + timeout - 250
     )
   }
   assert.equal(
     readPlaywrightTestSlotDeadlineAtMs(
       makeTestInfo(360_001),
       REGISTRATION_MAX_TEST_TIMEOUT_MS,
-      nowMonotonicMs
+      sampleClockPair
     ),
+    null
+  )
+})
+
+test("pinned TestInfo deadline clock translation remains fail closed", () => {
+  const timeout = 1_000
+  const localBeforeMs = 100
+  const localAfterMs = 100.25
+  const playwrightNowMs = 500
+  const sample =
+    (values = {}) =>
+    () => ({
+      localBeforeMs,
+      playwrightNowMs,
+      localAfterMs,
+      ...values,
+    })
+  const makeTestInfo = (deadline, slotTimeout = timeout) => ({
+    timeout,
+    _deadline() {
+      return { deadline, timeout: slotTimeout }
+    },
+  })
+  const read = (deadline, slotTimeout, clock) =>
+    readPlaywrightTestSlotDeadlineAtMs(makeTestInfo(deadline, slotTimeout), timeout, clock)
+
+  assert.equal(read(playwrightNowMs + timeout + 1, timeout, sample()), localBeforeMs + timeout + 1)
+  assert.equal(read(playwrightNowMs + timeout + 1.001, timeout, sample()), null)
+  assert.equal(read(playwrightNowMs, timeout, sample()), null)
+  assert.equal(read(playwrightNowMs + 500, timeout - 1, sample()), null)
+  assert.equal(read(playwrightNowMs + 500, timeout, sample({ playwrightNowMs: Number.NaN })), null)
+  assert.equal(
+    read(playwrightNowMs + 0.1, timeout, sample({ localAfterMs: localBeforeMs + 0.2 })),
     null
   )
 })

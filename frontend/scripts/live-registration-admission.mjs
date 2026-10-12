@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
+import { createRequire } from "node:module"
 import { mkdir, open, lstat, readFile, readdir, realpath, rename, unlink } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -15,6 +16,7 @@ const MIN_ACTION_RESERVE_MS = 15_000
 const MAX_LEDGER_BYTES = 4_096
 const MAX_OWNER_BYTES = 65_536
 const MODULE_REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url))
+const PLAYWRIGHT_CORE_REQUIRE = createRequire(import.meta.url)
 const LEDGER_DIRECTORY = ".live-registration-admission"
 const LEDGER_FILE = "ledger.json"
 
@@ -189,37 +191,65 @@ export function computeRegistrationWaitMs(events, cost, nowMs = Date.now()) {
 }
 
 /**
- * Reads the monotonic slot deadline exposed by the pinned Playwright TestInfo.
- * TestInfo has no public startTime; fail closed if the pinned shape changes.
+ * Samples both clocks around Playwright's pinned worker clock read. The returned
+ * local deadline is conservative because localBeforeMs precedes playwrightNowMs.
+ */
+function samplePlaywrightDeadlineClockPair() {
+  let localBeforeMs
+  let playwrightNowMs
+  let localAfterMs
+  try {
+    localBeforeMs = performance.now()
+    const coreBundle = PLAYWRIGHT_CORE_REQUIRE("playwright-core/lib/coreBundle")
+    const iso = Reflect.get(coreBundle, "iso")
+    const monotonicTime = isRecord(iso) ? Reflect.get(iso, "monotonicTime") : null
+    if (typeof monotonicTime !== "function") return null
+    playwrightNowMs = Reflect.apply(monotonicTime, iso, [])
+    localAfterMs = performance.now()
+  } catch {
+    return null
+  }
+
+  if (
+    !Number.isFinite(localBeforeMs) ||
+    !Number.isFinite(playwrightNowMs) ||
+    !Number.isFinite(localAfterMs) ||
+    localBeforeMs < 0 ||
+    localAfterMs < localBeforeMs
+  ) {
+    return null
+  }
+  return { localBeforeMs, playwrightNowMs, localAfterMs }
+}
+
+/**
+ * Reads the pinned Playwright TestInfo slot and translates its active deadline
+ * into this process's performance.now() domain. TestInfo exposes no public
+ * current deadline; fail closed if the pinned slot or clock shape changes.
  */
 export function readPlaywrightTestSlotDeadlineAtMs(
   testInfo,
   maximumTimeoutMs = REGISTRATION_MAX_TEST_TIMEOUT_MS,
-  nowMs = performance.now()
+  sampleClockPair = samplePlaywrightDeadlineClockPair
 ) {
   if (
-    !Number.isFinite(nowMs) ||
     !Number.isSafeInteger(maximumTimeoutMs) ||
     maximumTimeoutMs < 1 ||
-    !isRecord(testInfo)
+    !isRecord(testInfo) ||
+    typeof sampleClockPair !== "function"
   ) {
     return null
   }
 
   let timeoutMs
+  let deadlineMethod
   try {
     timeoutMs = Reflect.get(testInfo, "timeout")
+    deadlineMethod = Reflect.get(testInfo, "_deadline")
   } catch {
     return null
   }
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > maximumTimeoutMs) {
-    return null
-  }
-
-  let deadlineMethod
-  try {
-    deadlineMethod = Reflect.get(testInfo, "_deadline")
-  } catch {
     return null
   }
   if (typeof deadlineMethod !== "function") return null
@@ -231,17 +261,61 @@ export function readPlaywrightTestSlotDeadlineAtMs(
     return null
   }
   if (!isRecord(slot)) return null
-  const deadlineAtMs = slot.deadline
+
+  let deadlineAtMs
+  let slotTimeoutMs
+  try {
+    deadlineAtMs = Reflect.get(slot, "deadline")
+    slotTimeoutMs = Reflect.get(slot, "timeout")
+  } catch {
+    return null
+  }
   if (
     typeof deadlineAtMs !== "number" ||
     !Number.isFinite(deadlineAtMs) ||
-    slot.timeout !== timeoutMs ||
-    deadlineAtMs <= nowMs ||
-    deadlineAtMs > nowMs + timeoutMs + 1
+    slotTimeoutMs !== timeoutMs
   ) {
     return null
   }
-  return deadlineAtMs
+
+  let clockPair
+  try {
+    clockPair = Reflect.apply(sampleClockPair, undefined, [])
+  } catch {
+    return null
+  }
+  if (!isRecord(clockPair)) return null
+
+  let localBeforeMs
+  let playwrightNowMs
+  let localAfterMs
+  try {
+    localBeforeMs = Reflect.get(clockPair, "localBeforeMs")
+    playwrightNowMs = Reflect.get(clockPair, "playwrightNowMs")
+    localAfterMs = Reflect.get(clockPair, "localAfterMs")
+  } catch {
+    return null
+  }
+  if (
+    !Number.isFinite(localBeforeMs) ||
+    !Number.isFinite(playwrightNowMs) ||
+    !Number.isFinite(localAfterMs) ||
+    localBeforeMs < 0 ||
+    localAfterMs < localBeforeMs
+  ) {
+    return null
+  }
+
+  const remainingMs = deadlineAtMs - playwrightNowMs
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0 || remainingMs > timeoutMs + 1) {
+    return null
+  }
+
+  const translatedDeadlineAtMs = localBeforeMs + remainingMs
+  if (!Number.isFinite(translatedDeadlineAtMs) || translatedDeadlineAtMs <= localAfterMs) {
+    return null
+  }
+  return translatedDeadlineAtMs
 }
 
 export function assertRegistrationWaitFits(

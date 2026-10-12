@@ -369,7 +369,7 @@ async def test_register_rate_limit(async_client, monkeypatch):
 async def test_profile_audit_writes_use_default_session_when_read_component_is_read_only(
     app, async_client, user_factory, db_session, monkeypatch
 ):
-    password = secrets.token_urlsafe(24)
+    password = f"Aa1!{secrets.token_urlsafe(24)}"
     user = await user_factory(
         hashed_password=await get_password_hash(password),
         is_active=True,
