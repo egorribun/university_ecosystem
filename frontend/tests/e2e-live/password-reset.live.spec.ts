@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
-import type { Page, Response } from "@playwright/test"
+import { Page, Response } from "@playwright/test"
 import {
+  withLiveRegistrationAdmission,
   awaitMail,
   expect,
   freshPassword,
@@ -84,18 +85,20 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   const firstPassword = freshPassword()
   const newPassword = freshPassword()
 
-  const registrationResponse = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname.endsWith("/auth/register")
-  )
   await page.goto("/register")
   await page.getByLabel("Имя", { exact: true }).fill("Live Acceptance")
   await page.getByRole("textbox", { name: "E-mail" }).fill(email)
   await page.getByLabel("Пароль", { exact: true }).fill(firstPassword)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(firstPassword)
-  await page.getByRole("button", { name: "Зарегистрироваться" }).click()
-  const registered = await registrationResponse
+  const registered = await withLiveRegistrationAdmission(page, 1, async () => {
+    const registrationResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/auth/register")
+    )
+    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    return registrationResponse
+  })
   expect(registered.ok()).toBe(true)
   const registrationBody = (await registered.json()) as { id?: unknown }
   if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {

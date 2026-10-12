@@ -1,8 +1,15 @@
 import { randomUUID } from "node:crypto"
-import { expect, freshPassword, loginAs, loginWith, stubBreachedPasswordLookup } from "./fixtures"
+import {
+  withLiveRegistrationAdmission,
+  expect,
+  freshPassword,
+  loginAs,
+  loginWith,
+  stubBreachedPasswordLookup,
+} from "./fixtures"
 import { test } from "./native-push-profile-fixtures"
-import type { NativePushProfile } from "./native-push-profile-fixtures"
-import type { Page } from "@playwright/test"
+import { NativePushProfile } from "./native-push-profile-fixtures"
+import { Page } from "@playwright/test"
 
 test.use({ channel: "chromium" })
 test.use({ nativePushChannel: "chromium" })
@@ -165,8 +172,10 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(password)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
-    registrationAttempted = true
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    })
     await expect(page).toHaveURL(/\/login$/u)
     await loginWith(page, email, password)
 
@@ -214,8 +223,10 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     await secondPage.getByRole("textbox", { name: "E-mail" }).fill(foreignEmail)
     await secondPage.getByLabel("Пароль", { exact: true }).fill(foreignPassword)
     await secondPage.getByLabel("Повторите пароль", { exact: true }).fill(foreignPassword)
-    foreignRegistrationAttempted = true
-    await secondPage.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await withLiveRegistrationAdmission(secondPage, 1, async () => {
+      foreignRegistrationAttempted = true
+      await secondPage.getByRole("button", { name: "Зарегистрироваться" }).click()
+    })
     await expect(secondPage).toHaveURL(/\/login$/u)
     await loginWith(secondPage, foreignEmail, foreignPassword)
     const foreignProfileResponse = await secondPage.request.get("/api/v1/users/me")

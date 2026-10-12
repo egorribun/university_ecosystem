@@ -1,5 +1,6 @@
-import type { Page, Request, Response } from "@playwright/test"
+import { Page, Request, Response } from "@playwright/test"
 import {
+  withLiveRegistrationAdmission,
   expect,
   freshPassword,
   loginAs,
@@ -207,20 +208,22 @@ test("password settings reject a wrong current password and persist a corrected 
       .first()
       .evaluate((form) => form.matches(":valid"))
     registrationSubmitEnabled = await registerButton.isEnabled()
-    registrationAttempted = true
-    registrationPhase = "response-wait"
-    const registrationResponsePromise = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname.endsWith("/auth/register")
-    )
-    const [registrationClick, registrationResponse] = await Promise.allSettled([
-      registerButton.click(),
-      registrationResponsePromise,
-    ])
-    if (registrationClick.status === "rejected") throw registrationClick.reason
-    if (registrationResponse.status === "rejected") throw registrationResponse.reason
-    const registered = registrationResponse.value
+    const registered = await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      registrationPhase = "response-wait"
+      const registrationResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname.endsWith("/auth/register")
+      )
+      const [registrationClick, registrationResponse] = await Promise.allSettled([
+        registerButton.click(),
+        registrationResponsePromise,
+      ])
+      if (registrationClick.status === "rejected") throw registrationClick.reason
+      if (registrationResponse.status === "rejected") throw registrationResponse.reason
+      return registrationResponse.value
+    })
     registrationStatus = registered.status()
     registrationRequestObserved = true
     registrationPhase = "response-received"

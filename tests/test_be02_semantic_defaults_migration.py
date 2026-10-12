@@ -91,9 +91,9 @@ def test_phase_four_policy_accounts_for_all_remaining_exceptions() -> None:
             Path(__file__).resolve().parents[1] / "quality/model-default-policy.json"
         ).read_text(encoding="utf-8")
     )
-    # Additive demo ownership migrations advance the inventory head; BE-02 phase
-    # four itself remains pinned to its original revision.
-    assert policy["expected"]["migration_head"] == "202610010001"
+    # Later schema revisions advance the inventory head; BE-02 phase four
+    # itself remains pinned to its original revision.
+    assert policy["expected"]["migration_head"] == "202610120001"
     assert policy["expected"]["effective_counts"] == {
         "both": 80,
         "python_only": 39,

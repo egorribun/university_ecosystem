@@ -285,6 +285,14 @@ test.describe("PWA offline app shell on the live stack", () => {
       await expect(page).toHaveURL(/\/forgot-password$/u)
       expect(workerUpdateResponses).toBeGreaterThan(0)
       try {
+        await expect
+          .poll(() =>
+            page.evaluate(
+              (storageKey) => Number(sessionStorage.getItem(storageKey) ?? "0"),
+              CONTROLLER_CHANGE_COUNT
+            )
+          )
+          .toBeGreaterThan(0)
         expect(bundleUpdateResponses).toBeGreaterThan(0)
       } catch (assertionFailure) {
         try {
@@ -306,12 +314,6 @@ test.describe("PWA offline app shell on the live stack", () => {
         }
         throw assertionFailure
       }
-      expect(
-        await page.evaluate(
-          (storageKey) => Number(sessionStorage.getItem(storageKey) ?? "0"),
-          CONTROLLER_CHANGE_COUNT
-        )
-      ).toBeGreaterThan(0)
 
       const newBundleCacheEntries = await readBundleCacheEvidence(page, appBundlePath, marker)
       const newBundleCacheKeys = newBundleCacheEntries.map((entry) => entry.requestUrl)

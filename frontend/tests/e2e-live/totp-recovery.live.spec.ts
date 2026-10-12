@@ -1,6 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto"
-import type { Browser, BrowserContext, Page, Request, Response, TestInfo } from "@playwright/test"
+import { Browser, BrowserContext, Page, Request, Response, TestInfo } from "@playwright/test"
 import {
+  withLiveRegistrationAdmission,
   expect,
   freshPassword,
   loginAs,
@@ -336,16 +337,18 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
       .first()
       .evaluate((form) => form.matches(":valid"))
     registrationSubmitEnabled = await registerButton.isEnabled()
-    registrationAttempted = true
-    registrationPhase = "response-wait"
-    const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
-    const [registrationClick, registrationResponse] = await Promise.allSettled([
-      registerButton.click(),
-      registrationResponsePromise,
-    ])
-    if (registrationClick.status === "rejected") throw registrationClick.reason
-    if (registrationResponse.status === "rejected") throw registrationResponse.reason
-    const registered = registrationResponse.value
+    const registered = await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      registrationPhase = "response-wait"
+      const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
+      const [registrationClick, registrationResponse] = await Promise.allSettled([
+        registerButton.click(),
+        registrationResponsePromise,
+      ])
+      if (registrationClick.status === "rejected") throw registrationClick.reason
+      if (registrationResponse.status === "rejected") throw registrationResponse.reason
+      return registrationResponse.value
+    })
     registrationStatus = registered.status()
     registrationRequestObserved = true
     registrationPhase = "response-received"

@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
-import { useEffect, useState } from "react"
+import { StrictMode, useEffect, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   cancelDeferredIdle,
@@ -10,9 +10,46 @@ import {
   createDeferredMountLifecycle,
   DEFERRED_INTERACTION_EVENTS,
   DEFERRED_INTERACTION_OPTIONS,
+  DEFERRED_GLOBAL_OVERLAYS_READY_EVENT,
   DEFERRED_OVERLAY_DELAY_MS,
   DeferredGlobalOverlays,
 } from "../DeferredGlobalOverlays"
+
+const deferredOverlayEffects = {
+  search: false,
+  livePush: false,
+  install: false,
+}
+
+function MockSearchDialog() {
+  useEffect(() => {
+    deferredOverlayEffects.search = true
+    return () => {
+      deferredOverlayEffects.search = false
+    }
+  }, [])
+  return <div data-testid="deferred-search" />
+}
+
+function MockLivePushToasts() {
+  useEffect(() => {
+    deferredOverlayEffects.livePush = true
+    return () => {
+      deferredOverlayEffects.livePush = false
+    }
+  }, [])
+  return <div data-testid="deferred-live-push" />
+}
+
+function MockInstallPrompt() {
+  useEffect(() => {
+    deferredOverlayEffects.install = true
+    return () => {
+      deferredOverlayEffects.install = false
+    }
+  }, [])
+  return <div data-testid="deferred-install" />
+}
 
 function MockOfflineIndicator() {
   const [mounted, setMounted] = useState(false)
@@ -24,16 +61,16 @@ const pushBridge = vi.hoisted(() => ({ ensure: vi.fn() }))
 vi.mock("@/push/pushMessageBus", () => ({ ensurePushMessageBridge: pushBridge.ensure }))
 
 vi.mock("@/components/search/SearchDialog", () => ({
-  SearchDialog: () => <div data-testid="deferred-search" />,
+  SearchDialog: MockSearchDialog,
 }))
 vi.mock("@/components/feedback/LivePushToasts", () => ({
-  default: () => <div data-testid="deferred-live-push" />,
+  default: MockLivePushToasts,
 }))
 vi.mock("@/components/feedback/OfflineIndicator", () => ({
   OfflineIndicator: MockOfflineIndicator,
 }))
 vi.mock("@/components/pwa/InstallPrompt", () => ({
-  default: () => <div data-testid="deferred-install" />,
+  default: MockInstallPrompt,
 }))
 
 describe("DeferredGlobalOverlays", () => {
@@ -77,7 +114,10 @@ describe("DeferredGlobalOverlays", () => {
       "touchstart",
       "focusin",
     ])
-    expect(DEFERRED_INTERACTION_OPTIONS).toStrictEqual({ once: true, passive: true })
+    expect(DEFERRED_INTERACTION_OPTIONS).toStrictEqual({
+      once: true,
+      passive: true,
+    })
   })
 
   it("shares one deferred lifecycle until the final subscriber leaves and can restart", () => {
@@ -121,22 +161,55 @@ describe("DeferredGlobalOverlays", () => {
     }
   })
 
-  it("keeps the server and first client render empty, then mounts every overlay", async () => {
-    expect(renderToString(<DeferredGlobalOverlays />)).toBe("")
-
+  it("signals after deferred overlay effects commit while SSR stays silent", async () => {
     vi.useFakeTimers()
-    render(<DeferredGlobalOverlays />)
-    expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+    deferredOverlayEffects.search = false
+    deferredOverlayEffects.livePush = false
+    deferredOverlayEffects.install = false
+    const readinessAtDispatch: boolean[][] = []
+    const onReady = () => {
+      readinessAtDispatch.push([
+        deferredOverlayEffects.search,
+        deferredOverlayEffects.livePush,
+        deferredOverlayEffects.install,
+      ])
+    }
+    window.addEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, onReady)
+    const overlays = (
+      <StrictMode>
+        <DeferredGlobalOverlays />
+      </StrictMode>
+    )
+    let rendered: ReturnType<typeof render> | null = null
 
-    await act(async () => {
-      vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
-    expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
-    expect(screen.getByTestId("deferred-offline")).toBeInTheDocument()
-    expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
+    try {
+      expect(renderToString(overlays)).toBe("")
+      expect(readinessAtDispatch).toEqual([])
+
+      rendered = render(overlays)
+      expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+      expect(readinessAtDispatch).toEqual([])
+
+      await act(async () => {
+        vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
+      expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
+      expect(screen.getByTestId("deferred-offline")).toBeInTheDocument()
+      expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
+      expect(readinessAtDispatch).toEqual([[true, true, true]])
+
+      rendered.rerender(overlays)
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(readinessAtDispatch).toEqual([[true, true, true]])
+    } finally {
+      rendered?.unmount()
+      window.removeEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, onReady)
+    }
   })
 
   it("promotes optional overlays immediately after an explicit interaction", async () => {
@@ -221,17 +294,24 @@ describe("DeferredGlobalOverlays", () => {
     expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
   })
 
-  it("cancels the deferred task when the tree unmounts", () => {
+  it("cancels the deferred task without signaling readiness after unmount", () => {
     vi.useFakeTimers()
     const clearTimeout = vi.spyOn(window, "clearTimeout")
-    const { unmount } = render(<DeferredGlobalOverlays />)
+    const readiness = vi.fn()
+    window.addEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, readiness)
 
-    unmount()
-    vi.runOnlyPendingTimers()
+    try {
+      const { unmount } = render(<DeferredGlobalOverlays />)
+      unmount()
+      vi.runOnlyPendingTimers()
 
-    expect(clearTimeout).toHaveBeenCalled()
-    expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
-    clearTimeout.mockRestore()
+      expect(clearTimeout).toHaveBeenCalled()
+      expect(readiness).not.toHaveBeenCalled()
+      expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+    } finally {
+      window.removeEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, readiness)
+      clearTimeout.mockRestore()
+    }
   })
 
   it("uses requestIdleCallback when the browser provides it", async () => {

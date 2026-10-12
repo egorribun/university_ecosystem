@@ -32,10 +32,16 @@ type StoryBootstrapStatus = ServiceWorkerBootstrapEventDetail["status"] | null
 type StoryBootstrapProbeWindow = Window & {
   __ueServiceWorkerBootstrapStatus?: StoryBootstrapStatus
 }
+type StoryDeferredOverlaysProbeWindow = Window & {
+  __ueDeferredGlobalOverlaysReady?: boolean
+}
 
-const STORY_MEMORY_DIAGNOSTIC_SCHEMA = 1
+const STORY_MEMORY_DIAGNOSTIC_SCHEMA = 2
+const STORY_DEFERRED_OVERLAYS_READY_EVENT = "ue:deferred-global-overlays-ready"
 const STORY_MEMORY_DIAGNOSTIC_PREFIX = "STORY_MEMORY_DIAG "
 const STORY_MEMORY_LISTENER_EVENTS = [
+  "appinstalled",
+  "beforeinstallprompt",
   "visibilitychange",
   "focus",
   "blur",
@@ -44,6 +50,7 @@ const STORY_MEMORY_LISTENER_EVENTS = [
   "keydown",
   "keyup",
   "click",
+  "ecosystem:push-education-requested",
   "mousedown",
   "mouseup",
   "pointerdown",
@@ -52,6 +59,7 @@ const STORY_MEMORY_LISTENER_EVENTS = [
   "touchend",
   "online",
   "offline",
+  "pwa:need-refresh",
   "resize",
   "scroll",
 ] as const
@@ -78,7 +86,7 @@ type StoryMemoryDiagnosticDOM = {
   jsEventListeners: number | null
 }
 type StoryMemoryDiagnosticRecord = {
-  schema: 1
+  schema: 2
   project: StoryMemoryDiagnosticProject
   phase: "cycle0-after-settle-before-assertion"
   diagnosticStatus: "available" | "unavailable"
@@ -100,6 +108,8 @@ function newStoryMemoryListenerCounts<Value extends number | null>(
   return {
     total: value,
     other: value,
+    appinstalled: value,
+    beforeinstallprompt: value,
     visibilitychange: value,
     focus: value,
     blur: value,
@@ -108,6 +118,7 @@ function newStoryMemoryListenerCounts<Value extends number | null>(
     keydown: value,
     keyup: value,
     click: value,
+    "ecosystem:push-education-requested": value,
     mousedown: value,
     mouseup: value,
     pointerdown: value,
@@ -116,6 +127,7 @@ function newStoryMemoryListenerCounts<Value extends number | null>(
     touchend: value,
     online: value,
     offline: value,
+    "pwa:need-refresh": value,
     resize: value,
     scroll: value,
   }
@@ -320,6 +332,17 @@ storyVisibilityTest(
           { once: true }
         )
       }, SERVICE_WORKER_BOOTSTRAP_EVENT)
+      await page.addInitScript((eventName: string) => {
+        const observedWindow = window as StoryDeferredOverlaysProbeWindow
+        observedWindow.__ueDeferredGlobalOverlaysReady = false
+        window.addEventListener(
+          eventName,
+          () => {
+            observedWindow.__ueDeferredGlobalOverlaysReady = true
+          },
+          { once: true }
+        )
+      }, STORY_DEFERRED_OVERLAYS_READY_EVENT)
       markStorySetupStage(page, "login")
       await loginAs(page, "student")
       markStorySetupStage(page, "dashboard")
@@ -400,6 +423,10 @@ storyVisibilityTest(
         }
 
         markStorySetupStage(page, "baseline")
+        await page.waitForFunction(
+          () =>
+            (window as StoryDeferredOverlaysProbeWindow).__ueDeferredGlobalOverlaysReady === true
+        )
         const warmSnapshot = await settleViewerCleanup(page, cdp)
         const warmListenerCounts = await captureStoryMemoryListeners(cdp)
         const measuredHeapSamples: number[] = []

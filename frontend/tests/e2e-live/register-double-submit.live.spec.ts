@@ -1,5 +1,12 @@
 import { type Browser, type Request } from "@playwright/test"
-import { expect, freshPassword, loginAs, stubBreachedPasswordLookup, test } from "./fixtures"
+import {
+  withLiveRegistrationAdmission,
+  expect,
+  freshPassword,
+  loginAs,
+  stubBreachedPasswordLookup,
+  test,
+} from "./fixtures"
 
 function isRegistrationPost(request: Request): boolean {
   return request.method() === "POST" && new URL(request.url()).pathname.endsWith("/auth/register")
@@ -96,44 +103,47 @@ test("rapid double submit on a 360px registration form creates one account", asy
   }
   page.on("request", countRegistrationPosts)
 
-  const registrationResponsePromise = page
-    .waitForResponse((response) => isRegistrationPost(response.request()), { timeout: 15_000 })
-    .catch(() => null)
   const cdp = await context.newCDPSession(page)
 
   try {
-    // Keep the real API path but give the UI time to enter its pending state
-    // before the second physical input arrives, as on a slow mobile connection.
     await cdp.send("Network.enable")
-    await cdp.send("Network.emulateNetworkConditions", {
-      offline: false,
-      latency: 250,
-      downloadThroughput: 1_500_000,
-      uploadThroughput: 750_000,
-      connectionType: "cellular3g",
+    const registrationResponse = await withLiveRegistrationAdmission(page, 2, async () => {
+      const registrationResponsePromise = page
+        .waitForResponse((response) => isRegistrationPost(response.request()), { timeout: 15_000 })
+        .catch(() => null)
+      // Keep the real API path but give the UI time to enter its pending state
+      // before the second physical input arrives, as on a slow mobile connection.
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: 250,
+        downloadThroughput: 1_500_000,
+        uploadThroughput: 750_000,
+        connectionType: "cellular3g",
+      })
+
+      if (testInfo.project.name.toLowerCase().includes("mobile")) {
+        const bounds = await submitButton.boundingBox()
+        if (!bounds) throw new Error("Registration submit control is not visible")
+        const x = bounds.x + bounds.width / 2
+        const y = bounds.y + bounds.height / 2
+        await page.touchscreen.tap(x, y)
+        await page.touchscreen.tap(x, y)
+      } else {
+        await submitButton.dblclick({ delay: 0 })
+      }
+
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: 0,
+        downloadThroughput: -1,
+        uploadThroughput: -1,
+        connectionType: "none",
+      })
+
+      const response = await registrationResponsePromise
+      if (!response) throw new Error("Registration request did not receive a response")
+      return response
     })
-
-    if (testInfo.project.name.toLowerCase().includes("mobile")) {
-      const bounds = await submitButton.boundingBox()
-      if (!bounds) throw new Error("Registration submit control is not visible")
-      const x = bounds.x + bounds.width / 2
-      const y = bounds.y + bounds.height / 2
-      await page.touchscreen.tap(x, y)
-      await page.touchscreen.tap(x, y)
-    } else {
-      await submitButton.dblclick({ delay: 0 })
-    }
-
-    await cdp.send("Network.emulateNetworkConditions", {
-      offline: false,
-      latency: 0,
-      downloadThroughput: -1,
-      uploadThroughput: -1,
-      connectionType: "none",
-    })
-
-    const registrationResponse = await registrationResponsePromise
-    if (!registrationResponse) throw new Error("Registration request did not receive a response")
     const registrationBody = (await registrationResponse.json().catch(() => null)) as {
       status?: unknown
       id?: unknown

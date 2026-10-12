@@ -16,6 +16,11 @@ import {
 } from "./page-error-diagnostic"
 import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
 import {
+  readPlaywrightTestSlotDeadlineAtMs,
+  REGISTRATION_MAX_TEST_TIMEOUT_MS,
+  runLiveRegistrationAdmission,
+} from "../../scripts/live-registration-admission.mjs"
+import {
   parseLiveRateLimitHeader,
   reportLiveHttpStatus,
   reportLiveRateLimitRetry,
@@ -991,5 +996,20 @@ export const test = base.extend<{
     { auto: true },
   ],
 })
+
+export async function withLiveRegistrationAdmission<T>(
+  page: Page,
+  cost: 1 | 2,
+  action: () => Promise<T>
+): Promise<T> {
+  const deadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(
+    test.info(),
+    REGISTRATION_MAX_TEST_TIMEOUT_MS
+  )
+  if (deadlineAtMs === null) {
+    throw new Error("live registration admission cannot read the current test deadline")
+  }
+  return runLiveRegistrationAdmission(page, deadlineAtMs, cost, action)
+}
 
 export { expect }

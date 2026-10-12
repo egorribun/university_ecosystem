@@ -1,16 +1,14 @@
 {
   "schema_version": 1,
   "expected": {
-    "computed_columns": [
-      "events.search_vector"
-    ],
+    "computed_columns": ["events.search_vector"],
     "effective_counts": {
       "both": 80,
       "python_only": 39,
       "server_only": 0
     },
     "effective_default_count": 119,
-    "migration_head": "202610010001",
+    "migration_head": "202610120001",
     "source_counts": {
       "both": 80,
       "python_only": 17,

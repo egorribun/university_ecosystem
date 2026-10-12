@@ -1,5 +1,6 @@
-import type { Page } from "@playwright/test"
+import { Page } from "@playwright/test"
 import {
+  withLiveRegistrationAdmission,
   expect,
   freshPassword,
   loginAs,
@@ -127,8 +128,10 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(password)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
-    registrationAttempted = true
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    })
     await expect(page).toHaveURL(/\/login$/u)
     await loginWith(page, email, password)
 

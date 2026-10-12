@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
-import type { Locator, Page, Request, Response, TestInfo } from "@playwright/test"
+import { Locator, Page, Request, Response, TestInfo } from "@playwright/test"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import {
+  withLiveRegistrationAdmission,
   awaitMail,
   assessLiveRateLimitRetry,
   expect,
@@ -107,19 +108,20 @@ test("email verification retries, rotates its code on resend, and rejects replay
   await stubBreachedPasswordLookup(page)
 
   try {
-    const registrationResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname.endsWith("/auth/register")
-    )
     await page.goto("/register")
     await page.locator("#full_name").fill(fullName)
     await page.locator("#email").fill(address)
     await page.locator("#password").fill(password)
     await page.locator("#confirmPassword").fill(password)
-    await page.locator("#register-submit").click()
-
-    const registered = await registrationResponse
+    const registered = await withLiveRegistrationAdmission(page, 1, async () => {
+      const registrationResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname.endsWith("/auth/register")
+      )
+      await page.locator("#register-submit").click()
+      return registrationResponse
+    })
     reportLiveHttpStatus(testInfo.project.name, "email-otp-register", registered.status())
     expect(registered.ok()).toBe(true)
     const registrationBody = (await registered.json()) as { id?: unknown }

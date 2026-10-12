@@ -40,6 +40,16 @@ class UserPreferencesBase(OrmModel):
     dnd_end: time | None = None
     timezone: str | None = Field(default=None, max_length=64)
 
+    @field_validator("dnd_start", "dnd_end")
+    @classmethod
+    def _require_local_wall_clock_time(cls, value: time | None) -> time | None:
+        """DND boundaries are wall-clock values; the IANA zone is separate."""
+        if value is not None and value.utcoffset() is not None:
+            raise ValueError(
+                "DND times must be local wall-clock values without a UTC offset."
+            )
+        return value
+
     @field_validator("dnd_enabled", mode="before")
     @classmethod
     def _default_dnd_enabled(cls, value: bool | None) -> bool:

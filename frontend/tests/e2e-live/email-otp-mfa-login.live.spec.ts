@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
-import type { Browser, BrowserContext, Page, Response, TestInfo } from "@playwright/test"
+import { Browser, BrowserContext, Page, Response, TestInfo } from "@playwright/test"
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
 import {
+  withLiveRegistrationAdmission,
   expect,
   freshPassword,
   loginAs,
@@ -368,15 +369,16 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
   await stubBreachedPasswordLookup(page)
 
   try {
-    const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
     await page.goto("/register")
     await page.locator("#full_name").fill("Live email MFA login acceptance")
     await page.locator("#email").fill(email)
     await page.locator("#password").fill(password)
     await page.locator("#confirmPassword").fill(password)
-    await page.locator("#register-submit").click()
-
-    const registrationResponse = await registrationResponsePromise
+    const registrationResponse = await withLiveRegistrationAdmission(page, 1, async () => {
+      const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
+      await page.locator("#register-submit").click()
+      return registrationResponsePromise
+    })
     reportLiveHttpStatus(testInfo.project.name, "email-mfa-register", registrationResponse.status())
     expect(registrationResponse.ok()).toBe(true)
     const registrationBody = (await registrationResponse.json()) as { id?: unknown }

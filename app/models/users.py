@@ -328,14 +328,13 @@ class UserPreferences(Base):
         primary_key=True,
     )
 
-    # TD-2: Use timezone-aware Time so the application can correctly compare DnD
-    # window boundaries against UTC server time regardless of the user's locale.
-    # Requires a new Alembic migration (ALTER COLUMN ... TYPE TIMETZ).
+    # Quiet-hour bounds are local wall-clock times; timezone stores the
+    # separate IANA zone used to calculate the user's current local time.
     dnd_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
-    dnd_start: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
-    dnd_end: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
+    dnd_start: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
+    dnd_end: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user = relationship("User", back_populates="preferences", lazy="noload")  # RZ-33-06

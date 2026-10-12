@@ -414,6 +414,7 @@ test("the actual automatic fixture emits only reset counts and still fails uncau
     projects: [{ name: "desktop" }, { name: "mobile" }, { name: "private-project" }]
   }`
   )
+  await writeFile(path.join(temporaryRoot, "package.json"), JSON.stringify({ type: "module" }))
   const fixtureImport = `
     import { EventEmitter } from "node:events";
     import { test as base } from ${JSON.stringify(fileURLToPath(fixtureUrl))};

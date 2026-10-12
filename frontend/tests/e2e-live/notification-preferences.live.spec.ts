@@ -1,5 +1,12 @@
-import type { Page } from "@playwright/test"
-import { expect, freshPassword, loginAs, loginWith, stubBreachedPasswordLookup } from "./fixtures"
+import { Page } from "@playwright/test"
+import {
+  withLiveRegistrationAdmission,
+  expect,
+  freshPassword,
+  loginAs,
+  loginWith,
+  stubBreachedPasswordLookup,
+} from "./fixtures"
 import { test } from "./native-push-profile-fixtures"
 import { reportAuthHttpStatus } from "./auth-notification-diagnostic"
 
@@ -241,8 +248,10 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(password)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
-    registrationAttempted = true
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    })
     await expect(page).toHaveURL(/\/login/u)
     await loginWith(page, email, password)
 

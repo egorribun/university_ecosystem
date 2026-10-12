@@ -11,14 +11,32 @@ const dashboardStoriesUrl = new URL(
   import.meta.url
 )
 const visibilityFixtureUrl = new URL("./story-visibility-fixtures.ts", import.meta.url)
+const deferredOverlaysUrl = new URL(
+  "../../src/components/layout/DeferredGlobalOverlays.tsx",
+  import.meta.url
+)
+const installPromptUrl = new URL("../../src/components/pwa/InstallPrompt.tsx", import.meta.url)
+const pwaEventsUrl = new URL("../../src/app/pwaEvents.ts", import.meta.url)
 
 test("live Stories acceptance proves heap plateau and hidden-tab pause after viewer cycles", async () => {
-  const [spec, config, seed, dashboardStories, visibilityFixture] = await Promise.all([
+  const [
+    spec,
+    config,
+    seed,
+    dashboardStories,
+    visibilityFixture,
+    deferredOverlays,
+    installPrompt,
+    pwaEvents,
+  ] = await Promise.all([
     readFile(specUrl, "utf8"),
     readFile(configUrl, "utf8"),
     readFile(seedUrl, "utf8"),
     readFile(dashboardStoriesUrl, "utf8"),
     readFile(visibilityFixtureUrl, "utf8"),
+    readFile(deferredOverlaysUrl, "utf8"),
+    readFile(installPromptUrl, "utf8"),
+    readFile(pwaEventsUrl, "utf8"),
   ])
 
   assert.match(config, /testDir:\s*["']\.\/tests\/e2e-live["']/u)
@@ -62,8 +80,42 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
   )
   assert.match(spec, /const WARM_UP_CYCLES = 1/u)
   assert.match(spec, /const MEASURED_CYCLES = 20/u)
+  assert.ok(spec.includes("const STORY_MEMORY_DIAGNOSTIC_SCHEMA = 2"))
   assert.ok(spec.includes('const STORY_MEMORY_DIAGNOSTIC_PREFIX = "STORY_MEMORY_DIAG "'))
+  assert.ok(
+    spec.includes('const STORY_DEFERRED_OVERLAYS_READY_EVENT = "ue:deferred-global-overlays-ready"')
+  )
   assert.ok(spec.includes('phase: "cycle0-after-settle-before-assertion"'))
+  assert.match(
+    spec,
+    /STORY_MEMORY_LISTENER_EVENTS = \[[\s\S]*?"appinstalled"[\s\S]*?"beforeinstallprompt"[\s\S]*?"ecosystem:push-education-requested"[\s\S]*?"pwa:need-refresh"/u
+  )
+  assert.match(
+    deferredOverlays,
+    /DEFERRED_GLOBAL_OVERLAYS_READY_EVENT = "ue:deferred-global-overlays-ready"/u
+  )
+  assert.match(
+    deferredOverlays,
+    /useEffect\([\s\S]*?window\.dispatchEvent\(new Event\(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT\)\)/u
+  )
+  assert.match(
+    deferredOverlays,
+    /<Suspense fallback=\{null\}>[\s\S]*?<InstallPrompt \/>[\s\S]*?<DeferredOverlayReadinessSignal \/>[\s\S]*?<\/Suspense>/u
+  )
+  assert.match(
+    spec,
+    /__ueDeferredGlobalOverlaysReady = false[\s\S]*?STORY_DEFERRED_OVERLAYS_READY_EVENT/u
+  )
+  assert.match(
+    spec,
+    /__ueDeferredGlobalOverlaysReady === true[\s\S]*?const warmSnapshot = await settleViewerCleanup/u
+  )
+  assert.match(installPrompt, /window\.addEventListener\(PWA_REFRESH_EVENT/u)
+  assert.match(pwaEvents, /PWA_REFRESH_EVENT = "pwa:need-refresh"/u)
+  assert.match(installPrompt, /window\.addEventListener\(PUSH_EDUCATION_REQUEST_EVENT/u)
+  assert.match(pwaEvents, /PUSH_EDUCATION_REQUEST_EVENT = "ecosystem:push-education-requested"/u)
+  assert.match(installPrompt, /window\.addEventListener\("beforeinstallprompt"/u)
+  assert.match(installPrompt, /window\.addEventListener\("appinstalled"/u)
   assert.match(spec, /DOMDebugger\.getEventListeners[\s\S]*?pierce:\s*false/u)
   assert.match(spec, /Runtime\.releaseObject[\s\S]*?Runtime\.releaseObjectGroup/u)
   const measuredLoop = spec.indexOf("for (let cycle = 0; cycle < MEASURED_CYCLES; cycle += 1)")

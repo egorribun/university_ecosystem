@@ -2613,6 +2613,8 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
 
 
 _STORY_MEMORY_EVENT_KEYS = (
+    "appinstalled",
+    "beforeinstallprompt",
     "visibilitychange",
     "focus",
     "blur",
@@ -2621,6 +2623,7 @@ _STORY_MEMORY_EVENT_KEYS = (
     "keydown",
     "keyup",
     "click",
+    "ecosystem:push-education-requested",
     "mousedown",
     "mouseup",
     "pointerdown",
@@ -2629,6 +2632,7 @@ _STORY_MEMORY_EVENT_KEYS = (
     "touchend",
     "online",
     "offline",
+    "pwa:need-refresh",
     "resize",
     "scroll",
     "other",
@@ -2657,7 +2661,7 @@ def _story_memory_record(
         "documentTree": listener_counts.copy(),
     }
     return {
-        "schema": 1,
+        "schema": 2,
         "project": project,
         "phase": "cycle0-after-settle-before-assertion",
         "diagnosticStatus": status,
@@ -2692,12 +2696,32 @@ def test_live_playwright_story_memory_accepts_unavailable_records() -> None:
     ) == [record]
 
 
+def test_live_playwright_story_memory_accepts_the_install_prompt_event_buckets() -> (
+    None
+):
+    record = _story_memory_record(count=1)
+    window_counts = record["warmListeners"]["window"]
+    for event_name in (
+        "appinstalled",
+        "beforeinstallprompt",
+        "ecosystem:push-education-requested",
+        "pwa:need-refresh",
+    ):
+        window_counts[event_name] = 1
+    window_counts["total"] += 3
+
+    assert live_stand._live_playwright_story_memory_records(
+        _story_memory_row(record)
+    ) == [record]
+
+
 def test_live_playwright_story_memory_rejects_malformed_records() -> None:
     valid = _story_memory_record()
     malformed: list[dict[str, object]] = []
     for key, value in (
         ("schema", True),
-        ("schema", 2),
+        ("schema", 1),
+        ("schema", 3),
         ("project", "private-project"),
         ("phase", "before-assertion"),
         ("diagnosticStatus", "error with private details"),
@@ -2744,7 +2768,7 @@ def test_live_playwright_story_memory_rejects_malformed_records() -> None:
         row[:-1] + " private-url\n",
         "private title " + row,
         row.replace("\n", "\x00\n"),
-        row[:-1].replace('"schema":1', '"schema":1,"schema":1') + "\n",
+        row[:-1].replace('"schema":2', '"schema":2,"schema":2') + "\n",
         row[:-1].replace('"nodes":2', '"nodes":NaN') + "\n",
         "STORY_MEMORY_DIAG " + " " * 8200 + row.split(" ", 1)[1],
     )

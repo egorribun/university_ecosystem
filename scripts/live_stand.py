@@ -4317,6 +4317,8 @@ _PLAYWRIGHT_STORY_MEMORY_DOM_KEYS = ("documents", "nodes", "jsEventListeners")
 _PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS = ("window", "document", "documentTree")
 _PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS = (
     "total",
+    "appinstalled",
+    "beforeinstallprompt",
     "visibilitychange",
     "focus",
     "blur",
@@ -4325,6 +4327,7 @@ _PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS = (
     "keydown",
     "keyup",
     "click",
+    "ecosystem:push-education-requested",
     "mousedown",
     "mouseup",
     "pointerdown",
@@ -4333,6 +4336,7 @@ _PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS = (
     "touchend",
     "online",
     "offline",
+    "pwa:need-refresh",
     "resize",
     "scroll",
     "other",
@@ -4410,7 +4414,7 @@ def _validated_story_memory_record(
     value: object,
 ) -> _PlaywrightStoryMemoryRecord | None:
     record = _story_memory_object(value, _PLAYWRIGHT_STORY_MEMORY_RECORD_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+    if record is None or type(record["schema"]) is not int or record["schema"] != 2:
         return None
     project = record["project"]
     phase = record["phase"]
@@ -4462,7 +4466,7 @@ def _validated_story_memory_record(
         normalized_cycle0_listeners[target] = cycle0_counts
 
     return {
-        "schema": 1,
+        "schema": 2,
         "project": project,
         "phase": "cycle0-after-settle-before-assertion",
         "diagnosticStatus": status,

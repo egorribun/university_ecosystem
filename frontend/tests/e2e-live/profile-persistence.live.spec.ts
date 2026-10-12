@@ -1,7 +1,8 @@
-import type { Page } from "@playwright/test"
+import { Page } from "@playwright/test"
 import { isProfileMutationRequest } from "./profile-mutation-domain.mjs"
 import { reportLiveProfileSaveFailure } from "./profile-save-diagnostic"
 import {
+  withLiveRegistrationAdmission,
   expect,
   freshPassword,
   loginAs,
@@ -140,8 +141,10 @@ test("profile editor cancellation and rejected oversized save preserve values be
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(password)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
-    registrationAttempted = true
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    })
     await expect(page).toHaveURL(/\/login/u)
     await loginWith(page, email, password)
 
@@ -311,8 +314,10 @@ test("profile API rejects email changes outside the verified change flow", async
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(password)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
-    registrationAttempted = true
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    })
     await expect(page).toHaveURL(/\/login$/u)
     await loginWith(page, email, password)
 

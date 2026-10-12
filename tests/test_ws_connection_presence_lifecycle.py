@@ -16,6 +16,7 @@ class _HeldWebSocket:
     """In-memory socket double that stays connected until released."""
 
     def __init__(self) -> None:
+        self.app = SimpleNamespace(state=SimpleNamespace())
         self.accepted = asyncio.Event()
         self.release = asyncio.Event()
 

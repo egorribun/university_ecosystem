@@ -259,6 +259,19 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assert.match(spec, /url\.pathname !== appBundlePath/u)
   assert.match(spec, /pwa-build-marker/u)
   assert.match(spec, /controllerchange/u)
+  const updateStartIndex = spec.indexOf("await activeRegistration.update()")
+  const bundleAssertionIndex = spec.indexOf("expect(bundleUpdateResponses).toBeGreaterThan(0)")
+  const activationWaitSource = spec.slice(updateStartIndex, bundleAssertionIndex)
+  assert.match(
+    activationWaitSource,
+    /await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)/u,
+    "the bundle response is asserted after the existing controllerchange readiness signal"
+  )
+  assert.match(
+    spec,
+    /try\s*\{\s*await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)\s*expect\(bundleUpdateResponses\)\.toBeGreaterThan\(0\)\s*\}\s*catch\s*\(assertionFailure\)[\s\S]*?PWA_BUNDLE_ROUTE_DIAG/u,
+    "controllerchange and bundle failures share the bounded diagnostic and original rethrow path"
+  )
   assert.match(spec, /await activeRegistration\.update\(\)/u)
   assert.match(spec, /setOffline\(true\)[\s\S]*?setOffline\(false\)[\s\S]*?setOffline\(true\)/u)
   assert.match(spec, /oldBundleCacheKeys[\s\S]*?not\.toContain/u)

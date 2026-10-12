@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { devices, type BrowserContext, type Locator, type Page } from "@playwright/test"
 import {
+  withLiveRegistrationAdmission,
   expect,
   freshPassword,
   loginAs,
@@ -121,15 +122,17 @@ async function registerSyntheticUser(page: Page, account: SyntheticAccount): Pro
   await page.getByLabel("Пароль", { exact: true }).fill(account.password)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(account.password)
 
-  const registrationResponsePromise = page.waitForResponse((response) => {
-    const request = response.request()
-    return (
-      request.method() === "POST" && new URL(response.url()).pathname.endsWith("/auth/register")
-    )
+  const registrationResponse = await withLiveRegistrationAdmission(page, 1, async () => {
+    const registrationResponsePromise = page.waitForResponse((response) => {
+      const request = response.request()
+      return (
+        request.method() === "POST" && new URL(response.url()).pathname.endsWith("/auth/register")
+      )
+    })
+    account.registrationAttempted = true
+    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    return registrationResponsePromise
   })
-  account.registrationAttempted = true
-  await page.getByRole("button", { name: "Зарегистрироваться" }).click()
-  const registrationResponse = await registrationResponsePromise
   expect(registrationResponse.ok(), "the unique synthetic account registers in the live app").toBe(
     true
   )

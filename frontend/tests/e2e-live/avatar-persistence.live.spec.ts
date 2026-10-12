@@ -1,5 +1,6 @@
-import type { Locator, Page } from "@playwright/test"
+import { Locator, Page } from "@playwright/test"
 import {
+  withLiveRegistrationAdmission,
   expect,
   freshPassword,
   loginAs,
@@ -201,8 +202,10 @@ test("avatar upload persists across reload and rolls back server-rejected conten
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(password)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
-    registrationAttempted = true
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    await withLiveRegistrationAdmission(page, 1, async () => {
+      registrationAttempted = true
+      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    })
     await expect(page).toHaveURL(/\/login/u)
     await loginWith(page, email, password)
     ownerAuthenticated = true

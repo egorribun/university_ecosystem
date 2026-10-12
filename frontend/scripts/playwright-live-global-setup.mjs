@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process"
 import { isAbsolute, resolve } from "node:path"
+import { initializeLiveRegistrationAdmission } from "./live-registration-admission.mjs"
 import { fileURLToPath } from "node:url"
 
 const liveWorktreeRoot = fileURLToPath(new URL("../../", import.meta.url))
@@ -126,6 +127,8 @@ export function createLiveStandSetup({
   }
 }
 
-export default function validateLiveStandEnvironment() {
-  return createLiveStandSetup()()
+export default async function validateLiveStandEnvironment() {
+  const inPlaceStateRoot = getInPlaceStateRoot(process.env)
+  await createLiveStandSetup()()
+  await initializeLiveRegistrationAdmission(inPlaceStateRoot ?? liveWorktreeRoot)
 }
