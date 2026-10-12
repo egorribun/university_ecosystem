@@ -24,6 +24,7 @@ def map_user_orm_to_dict(user: Any) -> dict[str, Any]:
         "mfa_last_verified_at": user.mfa_last_verified_at,
         "created_at": getattr(user, "created_at", None),
         "email_verified_at": get_attr(user, "email_verified_at"),
+        "email_mfa_enabled_at": get_attr(user, "email_mfa_enabled_at"),
     }
 
     # Profile fields

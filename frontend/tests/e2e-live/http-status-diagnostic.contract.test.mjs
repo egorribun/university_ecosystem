@@ -16,7 +16,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { parseLiveRateLimitHeader, reportLiveHttpStatus, reportLiveRateLimitRetry } from ${JSON.stringify(helperUrl.href)};\nimport { reportLiveProfileSaveFailure } from ${JSON.stringify(profileHelperUrl.href)};\n${calls}`,
+      `import { parseLiveRateLimitHeader, parseLiveRateLimitRetryAfterForDiagnostic, reportLiveHttpStatus, reportLiveRateLimitRetry } from ${JSON.stringify(helperUrl.href)};\nimport { reportLiveProfileSaveFailure } from ${JSON.stringify(profileHelperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -136,6 +136,27 @@ test("retry decisions retain the original V1 five-field protocol", () => {
       "UE_LIVE_RETRY_V1 project=mobile check=email-otp-verification-wrong-code retry_after_seconds=5 decision=retry remaining_ms=50000\n",
       "UE_LIVE_RETRY_V1 project=mobile check=password-reset-replay retry_after_seconds=60 decision=declined-deadline remaining_ms=12345\n",
       "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=invalid decision=declined-header remaining_ms=0\n",
+    ].join("")
+  )
+})
+
+test("stale-code throttling records bounded Retry-After without retrying", () => {
+  const output = reportInChild(`
+    const shortWindow = parseLiveRateLimitRetryAfterForDiagnostic("61");
+    const serviceWindow = parseLiveRateLimitRetryAfterForDiagnostic("600");
+    const missingWindow = parseLiveRateLimitRetryAfterForDiagnostic("601");
+    reportLiveRateLimitRetry("desktop", "email-otp-verification-stale-code", shortWindow, "not-retried", 12345);
+    reportLiveRateLimitRetry("mobile", "email-otp-verification-stale-code", serviceWindow, "not-retried", 0);
+    reportLiveRateLimitRetry("desktop", "email-otp-verification-stale-code", missingWindow, "not-retried", 0);
+    reportLiveRateLimitRetry("desktop", "auth-logout", serviceWindow, "not-retried", 12345);
+    reportLiveRateLimitRetry("desktop", "email-otp-verification-stale-code", serviceWindow, "retry", 12345);
+  `)
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=61 decision=not-retried remaining_ms=12345\n",
+      "UE_LIVE_RETRY_V1 project=mobile check=email-otp-verification-stale-code retry_after_seconds=600 decision=not-retried remaining_ms=0\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=invalid decision=not-retried remaining_ms=0\n",
     ].join("")
   )
 })

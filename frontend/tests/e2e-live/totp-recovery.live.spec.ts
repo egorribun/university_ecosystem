@@ -9,6 +9,7 @@ import {
   submitLogin,
   test,
 } from "./fixtures"
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
 import {
   reportAuthHttpStatus,
   reportAuthRegistrationFailure,
@@ -205,15 +206,28 @@ async function createIsolatedPage(
   return { context, page: await context.newPage() }
 }
 
-async function loginToMfaChallenge(page: Page, email: string, password: string) {
+async function loginToMfaChallenge(
+  page: Page,
+  email: string,
+  password: string,
+  testInfo: TestInfo
+) {
   let pageError = false
   page.on("pageerror", () => {
     pageError = true
   })
 
   const loginResponsePromise = page.waitForResponse(isApiResponse("/auth/login"))
-  await submitLogin(page, email, password)
-  const response = await loginResponsePromise
+  const [loginActionResult, loginResponseResult] = await Promise.allSettled([
+    submitLogin(page, email, password),
+    loginResponsePromise,
+  ])
+  if (loginResponseResult.status === "fulfilled") {
+    reportLiveHttpStatus(testInfo.project.name, "auth-login", loginResponseResult.value.status())
+  }
+  if (loginActionResult.status === "rejected") throw loginActionResult.reason
+  if (loginResponseResult.status === "rejected") throw loginResponseResult.reason
+  const response = loginResponseResult.value
   expect(response.status()).toBe(202)
 
   const challenge = (await response.json()) as { methods?: Array<{ method?: unknown }> }
@@ -407,7 +421,12 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
 
     const totpLogin = await createIsolatedPage(browser, page, testInfo)
     ownedContexts.push(totpLogin.context)
-    const checkTotpLoginPageErrors = await loginToMfaChallenge(totpLogin.page, email, password)
+    const checkTotpLoginPageErrors = await loginToMfaChallenge(
+      totpLogin.page,
+      email,
+      password,
+      testInfo
+    )
     const loginTotp = await waitForTotpCode(authenticatorSecret, minimumLoginTotpStep)
     await verifyTotpOnLogin(totpLogin.page, loginTotp.code)
     checkTotpLoginPageErrors()
@@ -417,7 +436,8 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     const checkRecoveryLoginPageErrors = await loginToMfaChallenge(
       recoveryLogin.page,
       email,
-      password
+      password,
+      testInfo
     )
     await verifyRecoveryCodeOnLogin(recoveryLogin.page, recoveryCode, 200, {
       project: diagnosticProject(testInfo.project.name),
@@ -432,7 +452,12 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     replayLogin.page.on("pageerror", () => {
       replayPageErrorOccurred = true
     })
-    const checkReplayLoginPageErrors = await loginToMfaChallenge(replayLogin.page, email, password)
+    const checkReplayLoginPageErrors = await loginToMfaChallenge(
+      replayLogin.page,
+      email,
+      password,
+      testInfo
+    )
     const replayResponse = await verifyRecoveryCodeOnLogin(replayLogin.page, recoveryCode, 400, {
       project: diagnosticProject(testInfo.project.name),
       operation: "totp_recovery_replay",
@@ -472,7 +497,8 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     const checkPostReplayTotpLoginPageErrors = await loginToMfaChallenge(
       postReplayTotpLogin.page,
       email,
-      password
+      password,
+      testInfo
     )
     const postReplayTotp = await waitForTotpCode(authenticatorSecret, loginTotp.step)
     await verifyTotpOnLogin(postReplayTotpLogin.page, postReplayTotp.code)

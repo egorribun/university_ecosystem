@@ -74,6 +74,14 @@ test("live TOTP enrollment, login, recovery use, and replay rejection stay secre
   requireMatch(/codes\[0\]/u, "only one recovery code is retained by the test")
   requireMatch(/isApiResponse\(["']\/auth\/login["']\)/u, "login uses the live endpoint")
   requireMatch(
+    /import \{ reportLiveHttpStatus \} from ["']\.\/http-status-diagnostic["']/u,
+    "login HTTP status uses the existing bounded diagnostic helper"
+  )
+  requireMatch(
+    /loginResponsePromise = page\.waitForResponse\(isApiResponse\(["']\/auth\/login["']\)\)[\s\S]*?const \[loginActionResult, loginResponseResult\] = await Promise\.allSettled\([\s\S]*?submitLogin\(page, email, password\)[\s\S]*?loginResponsePromise[\s\S]*?if \(loginResponseResult\.status === "fulfilled"\) \{\s*reportLiveHttpStatus\(testInfo\.project\.name, ["']auth-login["'], loginResponseResult\.value\.status\(\)\)\s*\}[\s\S]*?if \(loginActionResult\.status === "rejected"\) throw loginActionResult\.reason[\s\S]*?if \(loginResponseResult\.status === "rejected"\) throw loginResponseResult\.reason[\s\S]*?expect\(response\.status\(\)\)\.toBe\(202\)/u,
+    "login observes both action outcomes, reports only an actual POST response, and preserves the 202 assertion"
+  )
+  requireMatch(
     /isApiResponse\(["']\/auth\/mfa\/verify["']\)/u,
     "factor challenges use the real MFA verification endpoint"
   )

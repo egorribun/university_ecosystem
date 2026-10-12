@@ -380,10 +380,17 @@ test.describe("PWA offline app shell on the live stack", () => {
         })
       })
 
-      await page.evaluate(async () => {
-        const activeRegistration = await navigator.serviceWorker.ready
-        await activeRegistration.update()
+      const updateReload = page.waitForEvent("framenavigated", {
+        predicate: (frame) => frame === page.mainFrame(),
+        timeout: 15_000,
       })
+      await Promise.all([
+        page.evaluate(async () => {
+          const activeRegistration = await navigator.serviceWorker.ready
+          await activeRegistration.update()
+        }),
+        updateReload,
+      ])
 
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page).toHaveURL(/\/forgot-password$/u)

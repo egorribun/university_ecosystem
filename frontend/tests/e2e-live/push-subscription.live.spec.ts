@@ -174,7 +174,23 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
     await withLiveRegistrationAdmission(page, 1, async () => {
       registrationAttempted = true
-      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+      const expectedOrigin = new URL(page.url()).origin
+      const registrationResponsePromise = page.waitForResponse((response) => {
+        const request = response.request()
+        const responseUrl = new URL(response.url())
+        return (
+          request.method() === "POST" &&
+          responseUrl.origin === expectedOrigin &&
+          responseUrl.pathname === "/api/v1/auth/register" &&
+          responseUrl.search === "" &&
+          responseUrl.hash === ""
+        )
+      })
+      const result = await Promise.all([
+        page.getByRole("button", { name: "Зарегистрироваться" }).click(),
+        registrationResponsePromise,
+      ])
+      return result[1]
     })
     await expect(page).toHaveURL(/\/login$/u)
     await loginWith(page, email, password)
@@ -225,7 +241,23 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     await secondPage.getByLabel("Повторите пароль", { exact: true }).fill(foreignPassword)
     await withLiveRegistrationAdmission(secondPage, 1, async () => {
       foreignRegistrationAttempted = true
-      await secondPage.getByRole("button", { name: "Зарегистрироваться" }).click()
+      const expectedOrigin = new URL(secondPage.url()).origin
+      const registrationResponsePromise = secondPage.waitForResponse((response) => {
+        const request = response.request()
+        const responseUrl = new URL(response.url())
+        return (
+          request.method() === "POST" &&
+          responseUrl.origin === expectedOrigin &&
+          responseUrl.pathname === "/api/v1/auth/register" &&
+          responseUrl.search === "" &&
+          responseUrl.hash === ""
+        )
+      })
+      const result = await Promise.all([
+        secondPage.getByRole("button", { name: "Зарегистрироваться" }).click(),
+        registrationResponsePromise,
+      ])
+      return result[1]
     })
     await expect(secondPage).toHaveURL(/\/login$/u)
     await loginWith(secondPage, foreignEmail, foreignPassword)

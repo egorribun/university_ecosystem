@@ -253,6 +253,26 @@ test("registration diagnostics reject inconsistent phases and cap distinct recor
   assert.equal(new Set(rows).size, 4)
 })
 
+test("registration diagnostics reject a click status without a matched request", () => {
+  assert.equal(
+    reportInChild(
+      'reportAuthRegistrationFailure("desktop", "email-otp", { phase: "submit-click", formValid: true, submitEnabled: true, requestObserved: false, status: 200 })'
+    ),
+    ""
+  )
+})
+
+test("email OTP click diagnostics accept only the existing bounded registration fields", () => {
+  const output = reportInChild(
+    'reportAuthRegistrationFailure("desktop", "email-otp", { phase: "submit-click", formValid: true, submitEnabled: true, requestObserved: true, status: 200 })'
+  )
+  assert.equal(
+    output,
+    'AUTH_REGISTRATION_DIAG {"schema":1,"project":"desktop","scenario":"email-otp","phase":"submit-click","formValid":true,"submitEnabled":true,"requestObserved":true,"status":200}\n'
+  )
+  assert.doesNotMatch(output, /url|credential|password|stack|message/iu)
+})
+
 test("auth diagnostic helper is browser-independent and cannot replace a failure", async () => {
   const source = await readFile(helperUrl, "utf8")
   const sourceWithoutClosedRegistrationPhases = source

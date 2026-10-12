@@ -8,8 +8,12 @@ const MAX_RETRY_RECORDS = 32
 const MAX_RATE_LIMIT_RECORDS = 32
 
 export type LiveRateLimitRetryCheck =
-  "auth-logout" | "password-reset-replay" | "email-otp-verification-wrong-code"
-export type LiveRateLimitRetryDecision = "retry" | "declined-header" | "declined-deadline"
+  | "auth-logout"
+  | "password-reset-replay"
+  | "email-otp-verification-wrong-code"
+  | "email-otp-verification-stale-code"
+export type LiveRateLimitRetryDecision =
+  "retry" | "declined-header" | "declined-deadline" | "not-retried"
 
 export type LiveHttpStatusCheck =
   | "admin-users"
@@ -121,6 +125,18 @@ export function parseLiveRateLimitHeader(
   return parsed
 }
 
+const MAX_DIAGNOSTIC_RETRY_AFTER_SECONDS = 600
+
+export function parseLiveRateLimitRetryAfterForDiagnostic(
+  value: string | undefined
+): number | null {
+  if (typeof value !== "string" || !/^[1-9][0-9]{0,2}$/u.test(value)) return null
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed <= MAX_DIAGNOSTIC_RETRY_AFTER_SECONDS
+    ? parsed
+    : null
+}
+
 function formatLiveRateLimitHeader(value: unknown, minimum: number): string {
   if (
     typeof value !== "number" ||
@@ -144,14 +160,23 @@ export function reportLiveRateLimitRetry(
 ): void {
   const validRetryAfter =
     retryAfterSeconds === null ||
-    (Number.isSafeInteger(retryAfterSeconds) && retryAfterSeconds >= 1 && retryAfterSeconds <= 60)
+    (Number.isSafeInteger(retryAfterSeconds) &&
+      retryAfterSeconds >= 1 &&
+      retryAfterSeconds <=
+        (check === "email-otp-verification-stale-code" ? MAX_DIAGNOSTIC_RETRY_AFTER_SECONDS : 60))
   if (
     (project !== "desktop" && project !== "mobile") ||
     (check !== "auth-logout" &&
       check !== "password-reset-replay" &&
-      check !== "email-otp-verification-wrong-code") ||
+      check !== "email-otp-verification-wrong-code" &&
+      check !== "email-otp-verification-stale-code") ||
     !validRetryAfter ||
-    (decision !== "retry" && decision !== "declined-header" && decision !== "declined-deadline") ||
+    (decision !== "retry" &&
+      decision !== "declined-header" &&
+      decision !== "declined-deadline" &&
+      decision !== "not-retried") ||
+    (decision === "not-retried" && check !== "email-otp-verification-stale-code") ||
+    (check === "email-otp-verification-stale-code" && decision !== "not-retried") ||
     (decision === "retry" && retryAfterSeconds === null) ||
     (decision === "retry" && remainingMs === 0) ||
     (decision === "declined-header" && retryAfterSeconds !== null) ||

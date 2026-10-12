@@ -483,7 +483,7 @@ storyVisibilityTest(
       try {
         markStorySetupStage(page, "warm-up")
         for (let cycle = 0; cycle < WARM_UP_CYCLES; cycle += 1) {
-          await openAndClose()
+          await openAndClose(true)
         }
 
         markStorySetupStage(page, "baseline")

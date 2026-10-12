@@ -45,6 +45,26 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
   )
 
   const verificationSpec = await readFile(verificationSpecUrl, "utf8")
+  requireMatch(
+    /import \{ reportAuthRegistrationFailure \} from ["']\.\/auth-notification-diagnostic["']/u,
+    "email OTP registration failure telemetry uses the existing closed diagnostic helper",
+    verificationSpec
+  )
+  requireMatch(
+    /const registrationResponsePromise = page\.waitForResponse\([\s\S]*?const \[registrationClick, registrationResponse\] = await Promise\.allSettled\(\[\s*registerButton\.click\(\),\s*registrationResponsePromise,?\s*\]\)[\s\S]*?if \(registrationClick\.status === "rejected"\) \{\s*registrationPhase = "submit-click"\s*throw registrationClick\.reason\s*\}[\s\S]*?if \(registrationResponse\.status === "rejected"\) \{\s*registrationPhase = "response-wait"\s*throw registrationResponse\.reason\s*\}/u,
+    "registration distinguishes click from response-wait failure and observes both outcomes",
+    verificationSpec
+  )
+  requireMatch(
+    /reportAuthRegistrationFailure\([\s\S]*?"email-otp"[\s\S]*?phase: registrationPhase[\s\S]*?requestObserved: registrationRequestObserved[\s\S]*?status: registrationStatus/u,
+    "registration failure output contains only its closed phase and request/status state",
+    verificationSpec
+  )
+  requireMatch(
+    /expect\(registered\.ok\(\)\)\.toBe\(true\)/u,
+    "registration continues to require a successful response",
+    verificationSpec
+  )
   const expectedVerificationChecks = [
     "email-otp-register",
     "email-otp-verification-start",
@@ -92,6 +112,11 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
   requireMatch(
     /expect\(rejected\.status\(\)\)\.toBe\(400\)/u,
     "the retry remains required to be rejected as an invalid code",
+    verificationSpec
+  )
+  requireMatch(
+    /if \(staleCodeRejected\.status\(\) === 429\)[\s\S]*?reportLiveRateLimitRetry\([\s\S]*?"email-otp-verification-stale-code"[\s\S]*?parseLiveRateLimitRetryAfterForDiagnostic\(staleCodeRejected\.headers\(\)\["retry-after"\]\)[\s\S]*?"not-retried"[\s\S]*?expect\(staleCodeRejected\.status\(\)\)\.toBe\(400\)/u,
+    "a stale-code 429 records only bounded Retry-After metadata and remains a hard failure",
     verificationSpec
   )
   requireMatch(/testDir:\s*["']\.\/tests\/e2e-live["']/u, "the live config owns this spec", config)

@@ -4921,9 +4921,10 @@ _AUTH_REGISTRATION_DIAG_KEYS = (
     "requestObserved",
     "status",
 )
-_AUTH_REGISTRATION_DIAG_SCENARIOS = ("password-settings", "totp")
+_AUTH_REGISTRATION_DIAG_SCENARIOS = ("password-settings", "totp", "email-otp")
 _AUTH_REGISTRATION_DIAG_PHASES = (
     "before-submit",
+    "submit-click",
     "response-wait",
     "response-received",
     "navigation",
@@ -4959,6 +4960,8 @@ def _validated_auth_registration_diag(value: object) -> dict[str, object] | None
     if status is not None and (type(status) is not int or not 100 <= status <= 599):
         return None
     if phase == "before-submit" and (request_observed or status is not None):
+        return None
+    if phase == "submit-click" and status is not None and not request_observed:
         return None
     if phase == "response-wait" and status is not None:
         return None
@@ -5487,9 +5490,9 @@ _PLAYWRIGHT_HTTP_STATUS_LIMIT = 104
 _PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
     r"UE_LIVE_RETRY_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>auth-logout|password-reset-replay|"
-    r"email-otp-verification-wrong-code) "
-    r"retry_after_seconds=(?P<retry_after>invalid|[1-9]|[1-5][0-9]|60) "
-    r"decision=(?P<decision>retry|declined-header|declined-deadline) "
+    r"email-otp-verification-wrong-code|email-otp-verification-stale-code) "
+    r"retry_after_seconds=(?P<retry_after>invalid|[1-9][0-9]{0,2}) "
+    r"decision=(?P<decision>retry|declined-header|declined-deadline|not-retried) "
     r"remaining_ms=(?P<remaining>0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|60000)"
 )
 _PLAYWRIGHT_RETRY_DECISION_LIMIT = 32
@@ -5772,14 +5775,25 @@ def _live_playwright_retry_decisions(output: str) -> list[_PlaywrightRetryDecisi
         retry_after_text = match["retry_after"]
         retry_after = None if retry_after_text == "invalid" else int(retry_after_text)
         decision = match["decision"]
-        if (retry_after is None) != (decision == "declined-header"):
-            continue
+        check = match["check"]
+        if check == "email-otp-verification-stale-code":
+            if decision != "not-retried" or (
+                retry_after is not None and retry_after > 600
+            ):
+                continue
+        else:
+            if decision == "not-retried" or (
+                retry_after is not None and retry_after > 60
+            ):
+                continue
+            if (retry_after is None) != (decision == "declined-header"):
+                continue
         remaining_ms = int(match["remaining"])
         if decision == "retry" and remaining_ms == 0:
             continue
         record: _PlaywrightRetryDecision = (
             _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            match["check"],
+            check,
             retry_after,
             decision,
             remaining_ms,
@@ -6164,6 +6178,7 @@ _PLAYWRIGHT_FAILURE_TIMEOUT_LINE = re.compile(
     r"^ {4}(?:"
     r"Error: (?:(?:locator|page)\.[A-Za-z]+: )?"
     r"Timeout [0-9]{1,6}(?:\.[0-9]{1,3})?(?:ms|s) exceeded\."
+    r'|Error: page\.waitForResponse: Timeout [0-9]{1,6}ms exceeded while waiting for event "response"'
     r"|Test timeout of [0-9]{1,6}ms exceeded\."
     r"|Test timeout of [0-9]{1,6}ms exceeded while setting up "
     r'"[^"\r\n]{0,256}"\.'

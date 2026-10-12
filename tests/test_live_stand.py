@@ -2456,6 +2456,26 @@ def test_live_playwright_retry_diagnostic_accepts_closed_check_values(
     ]
 
 
+@pytest.mark.parametrize("retry_after", [None, 61, 600])
+def test_live_playwright_stale_code_throttle_diagnostic_is_not_retried(
+    retry_after: int | None,
+) -> None:
+    retry_after_text = "invalid" if retry_after is None else str(retry_after)
+    row = (
+        "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code "
+        f"retry_after_seconds={retry_after_text} decision=not-retried remaining_ms=12345\n"
+    )
+    assert live_stand._live_playwright_retry_decisions(row) == [
+        (
+            "desktop",
+            "email-otp-verification-stale-code",
+            retry_after,
+            "not-retried",
+            12345,
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     "row",
     [
@@ -2466,6 +2486,10 @@ def test_live_playwright_retry_diagnostic_accepts_closed_check_values(
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=01 decision=retry remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=declined-header remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=invalid decision=declined-deadline remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=601 decision=not-retried remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=61 decision=retry remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=61 decision=declined-deadline remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=61 decision=not-retried remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=60001\n",
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=99999\n",
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=retry remaining_ms=10 credential\n",
@@ -3630,6 +3654,74 @@ def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_l
     assert marker not in printed.out + printed.err
     assert printed.err == ""
     assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_classifies_pinned_wait_for_response_timeout(
+    tmp_path: Path,
+) -> None:
+    source_name = "tests/e2e-live/totp-recovery.live.spec.ts"
+    source_path = tmp_path / source_name
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("// public source\n", encoding="utf-8")
+    output = (
+        f"  1) [desktop] › {source_name}:1:1 › waits for auth response\n\n"
+        '    Error: page.waitForResponse: Timeout 30000ms exceeded while waiting for event "response"\n'
+    )
+
+    assert live_stand._live_playwright_failure_diagnostics(output, cwd=tmp_path) == [
+        ("desktop", source_name, 1, "timeout", "none", "none")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("timeout_line", "expected"),
+    [
+        (
+            '    Error: page.waitForResponse: Timeout 30000ms exceeded while waiting for event "request"\n',
+            "unknown",
+        ),
+        (
+            '    Error: page.waitForRequest: Timeout 30000ms exceeded while waiting for event "response"\n',
+            "unknown",
+        ),
+        (
+            '    Error: page.waitForResponse: Timeout 30000ms exceeded while waiting for event "response" private\n',
+            "unknown",
+        ),
+        (
+            '    Error: page.waitForResponse: Timeout 1000000ms exceeded while waiting for event "response"\n',
+            "unknown",
+        ),
+        (
+            '\x1b[31m    Error: page.waitForResponse: Timeout 30000ms exceeded while waiting for event "response"\x1b[0m\n',
+            "unknown",
+        ),
+        (
+            '    Error: page.waitForResponse: Timeout 30000ms exceeded while waiting for event "response"\x00\n',
+            None,
+        ),
+    ],
+)
+def test_live_playwright_wait_for_response_timeout_classifier_fails_closed(
+    tmp_path: Path,
+    timeout_line: str,
+    expected: str | None,
+) -> None:
+    source_name = "tests/e2e-live/totp-recovery.live.spec.ts"
+    source_path = tmp_path / source_name
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("// public source\n", encoding="utf-8")
+    output = (
+        f"  1) [desktop] › {source_name}:1:1 › waits for auth response\n\n"
+        + timeout_line
+        + "1 failed\n"
+    )
+
+    diagnostics = live_stand._live_playwright_failure_diagnostics(output, cwd=tmp_path)
+    if expected is None:
+        assert diagnostics == []
+    else:
+        assert diagnostics == [("desktop", source_name, 1, expected, "none", "none")]
 
 
 @pytest.mark.parametrize(
@@ -7590,6 +7682,7 @@ def test_live_playwright_suppresses_story_setup_diagnostics_on_success(
 
 _AUTH_REGISTRATION_PHASES = (
     "before-submit",
+    "submit-click",
     "response-wait",
     "response-received",
     "navigation",
@@ -7641,6 +7734,13 @@ def test_live_playwright_auth_registration_parser_accepts_closed_records() -> No
             request_observed=True,
             status=None,
         ),
+        _auth_registration_diag_record(
+            project="desktop",
+            scenario="email-otp",
+            phase="submit-click",
+            request_observed=True,
+            status=200,
+        ),
         _auth_registration_diag_record(project="desktop", phase="response-received"),
         _auth_registration_diag_record(
             project="mobile", scenario="totp", phase="navigation", status=200
@@ -7660,6 +7760,12 @@ def test_live_playwright_auth_registration_parser_accepts_closed_records() -> No
             phase="before-submit", request_observed=False, status=200
         ),
         _auth_registration_diag_record(phase="response-wait", status=200),
+        _auth_registration_diag_record(
+            scenario="email-otp",
+            phase="submit-click",
+            request_observed=False,
+            status=200,
+        ),
         _auth_registration_diag_record(
             phase="response-received", request_observed=False
         ),

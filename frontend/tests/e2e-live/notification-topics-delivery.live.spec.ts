@@ -367,7 +367,23 @@ const registerSyntheticAccount = async (
   await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
   await withLiveRegistrationAdmission(page, 1, async () => {
     markRegistrationAttempted()
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+    const expectedOrigin = new URL(page.url()).origin
+    const registrationResponsePromise = page.waitForResponse((response) => {
+      const request = response.request()
+      const responseUrl = new URL(response.url())
+      return (
+        request.method() === "POST" &&
+        responseUrl.origin === expectedOrigin &&
+        responseUrl.pathname === "/api/v1/auth/register" &&
+        responseUrl.search === "" &&
+        responseUrl.hash === ""
+      )
+    })
+    const result = await Promise.all([
+      page.getByRole("button", { name: "Зарегистрироваться" }).click(),
+      registrationResponsePromise,
+    ])
+    return result[1]
   })
   await expect(page).toHaveURL(/\/login$/u)
   await loginWith(page, email, password)

@@ -136,9 +136,9 @@ export function reportAuthUiFailure(value: unknown): void {
   }
 }
 
-export type AuthRegistrationScenario = "password-settings" | "totp"
+export type AuthRegistrationScenario = "password-settings" | "totp" | "email-otp"
 export type AuthRegistrationPhase =
-  "before-submit" | "response-wait" | "response-received" | "navigation"
+  "before-submit" | "submit-click" | "response-wait" | "response-received" | "navigation"
 
 export interface AuthRegistrationObservation {
   phase: AuthRegistrationPhase
@@ -155,10 +155,11 @@ export function reportAuthRegistrationFailure(
 ): void {
   if (
     (project !== "desktop" && project !== "mobile") ||
-    (scenario !== "password-settings" && scenario !== "totp") ||
+    (scenario !== "password-settings" && scenario !== "totp" && scenario !== "email-otp") ||
     observation === null ||
     typeof observation !== "object" ||
     (observation.phase !== "before-submit" &&
+      observation.phase !== "submit-click" &&
       observation.phase !== "response-wait" &&
       observation.phase !== "response-received" &&
       observation.phase !== "navigation") ||
@@ -171,6 +172,9 @@ export function reportAuthRegistrationFailure(
         observation.status > 599)) ||
     (observation.phase === "before-submit" &&
       (observation.requestObserved || observation.status !== null)) ||
+    (observation.phase === "submit-click" &&
+      observation.status !== null &&
+      !observation.requestObserved) ||
     (observation.phase === "response-wait" && observation.status !== null) ||
     ((observation.phase === "response-received" || observation.phase === "navigation") &&
       (!observation.requestObserved ||

@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto"
 import { Locator, Page, Request, Response, TestInfo } from "@playwright/test"
-import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
+import { reportAuthRegistrationFailure } from "./auth-notification-diagnostic"
+import {
+  parseLiveRateLimitRetryAfterForDiagnostic,
+  reportLiveHttpStatus,
+  reportLiveRateLimitRetry,
+} from "./http-status-diagnostic"
 import {
   withLiveRegistrationAdmission,
   awaitMail,
@@ -104,24 +109,86 @@ test("email verification retries, rotates its code on resend, and rejects replay
   const fullName = `Live email OTP acceptance ${testInfo.project.name} ${identity}`
   const password = freshPassword()
   let createdUserId: string | null = null
+  let registrationAttempted = false
+  let registrationRequestObserved = false
+  let registrationStatus: number | null = null
+  let registrationPhase: "before-submit" | "submit-click" | "response-wait" | "response-received" =
+    "before-submit"
+  const isRegistrationRequest = (request: Request) =>
+    request.method() === "POST" && new URL(request.url()).pathname.endsWith("/auth/register")
+  const observeRegistrationRequest = (request: Request) => {
+    if (isRegistrationRequest(request)) registrationRequestObserved = true
+  }
+  const observeRegistrationResponse = (response: Response) => {
+    if (!isRegistrationRequest(response.request())) return
+    registrationRequestObserved = true
+    registrationStatus = response.status()
+    registrationPhase = "response-received"
+  }
 
   await stubBreachedPasswordLookup(page)
 
   try {
+    page.on("request", observeRegistrationRequest)
+    page.on("response", observeRegistrationResponse)
     await page.goto("/register")
     await page.locator("#full_name").fill(fullName)
     await page.locator("#email").fill(address)
     await page.locator("#password").fill(password)
     await page.locator("#confirmPassword").fill(password)
-    const registered = await withLiveRegistrationAdmission(page, 1, async () => {
-      const registrationResponse = page.waitForResponse(
-        (response) =>
-          response.request().method() === "POST" &&
-          new URL(response.url()).pathname.endsWith("/auth/register")
-      )
-      await page.locator("#register-submit").click()
-      return registrationResponse
-    })
+    const registerButton = page.locator("#register-submit")
+    const registrationFormValid = await page
+      .locator("form")
+      .first()
+      .evaluate((form) => form.matches(":valid"))
+    const registrationSubmitEnabled = await registerButton.isEnabled()
+    let registered: Response
+    try {
+      registered = await withLiveRegistrationAdmission(page, 1, async () => {
+        registrationAttempted = true
+        registrationPhase = "submit-click"
+        const registrationResponsePromise = page.waitForResponse((response) =>
+          isRegistrationRequest(response.request())
+        )
+        const [registrationClick, registrationResponse] = await Promise.allSettled([
+          registerButton.click(),
+          registrationResponsePromise,
+        ])
+        if (registrationResponse.status === "fulfilled") {
+          registrationRequestObserved = true
+          registrationStatus = registrationResponse.value.status()
+        }
+        if (registrationClick.status === "rejected") {
+          registrationPhase = "submit-click"
+          throw registrationClick.reason
+        }
+        if (registrationResponse.status === "rejected") {
+          registrationPhase = "response-wait"
+          throw registrationResponse.reason
+        }
+        registrationPhase = "response-received"
+        return registrationResponse.value
+      })
+    } catch (error) {
+      if (registrationAttempted) {
+        try {
+          reportAuthRegistrationFailure(
+            testInfo.project.name.toLowerCase().includes("mobile") ? "mobile" : "desktop",
+            "email-otp",
+            {
+              phase: registrationPhase,
+              formValid: registrationFormValid,
+              submitEnabled: registrationSubmitEnabled,
+              requestObserved: registrationRequestObserved,
+              status: registrationStatus,
+            }
+          )
+        } catch {
+          // Diagnostics are best-effort and must preserve the original failure.
+        }
+      }
+      throw error
+    }
     reportLiveHttpStatus(testInfo.project.name, "email-otp-register", registered.status())
     expect(registered.ok()).toBe(true)
     const registrationBody = (await registered.json()) as { id?: unknown }
@@ -314,6 +381,15 @@ test("email verification retries, rotates its code on resend, and rejects replay
         "email-otp-verification-stale-code",
         staleCodeRejected.status()
       )
+      if (staleCodeRejected.status() === 429) {
+        reportLiveRateLimitRetry(
+          testInfo.project.name,
+          "email-otp-verification-stale-code",
+          parseLiveRateLimitRetryAfterForDiagnostic(staleCodeRejected.headers()["retry-after"]),
+          "not-retried",
+          Math.max(0, Math.min(60_000, Math.floor(testInfo.timeout - testInfo.duration)))
+        )
+      }
       expect(staleCodeRejected.status()).toBe(400)
       await expect(inputs.first()).toHaveValue("")
       staleCodeWasRejected = true
@@ -372,6 +448,8 @@ test("email verification retries, rotates its code on resend, and rejects replay
     )
     expect(replayed.status).toBe(400)
   } finally {
+    page.off("request", observeRegistrationRequest)
+    page.off("response", observeRegistrationResponse)
     if (createdUserId) {
       const cleanupContext = await browser.newContext({
         baseURL: process.env.LIVE_BASE_URL,
