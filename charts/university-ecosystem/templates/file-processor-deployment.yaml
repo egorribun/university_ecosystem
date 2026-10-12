@@ -21,6 +21,7 @@ spec:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: file-processor
         {{ printf "%s-nats-client" .Release.Name }}: "true"
+        {{ printf "%s-revocation-redis-client" .Release.Name }}: "true"
       annotations:
         university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
         prometheus.io/scrape: "true"

@@ -229,9 +229,14 @@ def check_gate_state_errors() -> tuple[bool, str]:
     """Check recent failures recorded in .gate_state.json."""
     state_path = get_gate_state_path()
     try:
-        state = load_gate_state(state_path)
+        state = load_gate_state(state_path, require_existing=True)
     except FileNotFoundError:
-        return True, ""
+        return (
+            False,
+            "Automated quality gate state is missing. Run a supported PostToolUse "
+            "quality check on a source file to initialize it; do not create an "
+            "empty state file manually.",
+        )
     except (OSError, RuntimeError, UnicodeError, RecursionError):
         return False, "Automated quality gate state is unreadable or malformed."
 

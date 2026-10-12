@@ -208,6 +208,17 @@ func TestRejectOversizedMessage_DropsWhenSendFull(t *testing.T) {
 		"drop is still counted even when the client notice can't be enqueued")
 }
 
+func TestRejectOversizedMessage_DropsWhenSendClosed(t *testing.T) {
+	h := setupTestHub()
+	serverConn, _ := newConnPair(t)
+	client := newClientOn(h, serverConn, "closed-send-oversized", "closed-send-user")
+	safeClose(client.Send)
+
+	require.NotPanics(t, func() {
+		assert.True(t, client.rejectOversizedMessage(make([]byte, 61*1024)))
+	})
+}
+
 // ---------------------------------------------------------------------------
 // handleIncomingMessage dispatch (direct)
 // ---------------------------------------------------------------------------

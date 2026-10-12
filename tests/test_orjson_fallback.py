@@ -11,9 +11,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -52,6 +54,27 @@ def test_fallback_options_and_sentinels(fallback: Any) -> None:
     assert fallback.orjson.OPT_NAIVE_UTC == 1
     assert fallback.orjson.OPT_SERIALIZE_NUMPY == 0
     assert fallback.orjson.OPT_UTC_Z == 0
+
+
+async def test_task_enqueue_uuid_roundtrip_uses_fallback_serializer(
+    fallback: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import nats_broker
+
+    task_broker = nats_broker.NatsTaskBroker()
+    jetstream = AsyncMock()
+    task_broker._js = jetstream
+    monkeypatch.setattr(nats_broker, "orjson", fallback.orjson)
+    task_id = uuid.uuid4()
+
+    await task_broker.enqueue("notifications.uuid", task_id, related={"id": task_id})
+
+    payload = json.loads(jetstream.publish.await_args.args[1])
+    assert payload["args"] == [str(task_id)]
+    assert payload["kwargs"] == {"related": {"id": str(task_id)}}
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        await task_broker.enqueue("notifications.uuid", object())
+    assert jetstream.publish.await_count == 1
 
 
 def test_fallback_dumps_and_loads_roundtrip(fallback: Any) -> None:

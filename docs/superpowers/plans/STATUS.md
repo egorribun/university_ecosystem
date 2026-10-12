@@ -1,73 +1,131 @@
 # MVP — оперативный статус
 
-Контрольная точка: 2026-10-12 10:36 UTC. Основания приёмки — [мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md), [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и [audit ledger](../../audits/INDEX.md).
-Опубликованный PR #1306 на `egorribun`: `8295b807d8448ef9d4490f4d8c9bfccddaab9ca1`, tree `62730ed4c2cf956570a0c71ec72e1cf181ce0480`. Source receipt `integration-source-8295b807-root-20261012.json` связывает 80 hashes; SHA-256 `403027ADE425E8DA555DEDD6A0B5221D4E5B539D996B11CE016CFC4CCC1ECBDB`. Следующий локальный кандидат описан ниже; его live acceptance и required checks ещё не подтверждены. Выпуск v1.0.0 не подтверждён.
+Срез: 2026-10-12 18:31 UTC. Автономная работа возобновлена по поручению
+владельца; root интегрирует проверенный локальный пакет. Основания:
+[мастер-план](MVP_MASTER_PLAN.md), [ТЗ](University_Ecosystem_MVP.md),
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и
+[audit index](../../audits/INDEX.md). Выпуск v1.0.0 ещё не подтверждён.
 
-## Опубликованный source и required checks
+## Git, CI и дополнительный объём
 
-- Ordinary commit/push hooks опубликованного source прошли. MFA transport использует configured Axios POST с типизированным `ApiRequestConfig`, сохраняет allowlisted bypass и data/error; общий retry policy не менялся. Локальный transport RED→GREEN, focused frontend/AST/contracts и полный TypeScript check прошли. Это локальное доказательство, не live acceptance.
-- Strict76 snapshot для `8295b807`, 2026-10-12 10:28 UTC: 65 SUCCESS, 7 PENDING, 4 ABSENT, 0 FAILURE/NEUTRAL/SKIPPED/INVALID. Receipt `ci-required76-8295b807-progress-20261012-1791800891741.json`, SHA-256 `B9C751DED3F57813F84B679200C50A428ADBDE193415279F7CDC1FFF1C92FFAB`. Все 76 результатов ещё не получены; coverage gate и CI Success pending.
-- Четыре frontend shards прошли. Artifact `11736106552` shard 2 подтверждает SSR/no-window ветку `Layout.tsx:16`: statements 3/3, functions 1/1, branches 2/2. Официальный PR merge `8f891a674af260666a57425865afc5acef0cbe31` имеет parents `6fa133b57f62c554162876d4e6d8349f8060fce9` и текущий head; tree и Layout bytes совпадают. Это не подтверждение полного merged coverage gate.
-- Q1/Q4 интегрированы; разрешённые removals ограничены 14 contexts и `Security Audit / Semgrep SAST`. CodeQL остаётся blocking, Semgrep — в pre-commit; остальные 76 contexts и действующие coverage floors сохранены. Q2/Q3 — v1.1. Целевой PR CI wall time 15 минут пока не подтверждён.
+- Один checkout, ветка `egorribun`, существующий PR #1306. Опубликованный
+  HEAD `def2832269c525d0ecc2f77b7534469a3c249911`, tree
+  `7595564d461730d56479a471d267ff8606971330`. Коммиты владельца и merge main
+  сохранены. Текущий локальный пакет не закоммичен и не опубликован;
+  изменения и приватные кандидаты сохранены для продолжения.
+- Ruleset `8335285`: 78 уникальных context/integration pairs и CodeQL
+  `code_scanning`. Решение владельца 2026-10-12 добавило четыре security checks
+  вместо двух compatibility contexts. Q1/Q4 сохранены; CodeQL blocking,
+  Semgrep в pre-commit; coverage floors и 100% patch не снижались.
+- Последний strict78 snapshot опубликованного `def283226`: 73 SUCCESS,
+  4 FAILURE, 1 SKIPPED. Receipt
+  `ci-required78-def283-refresh-20261012-1791811962175.json`,
+  SHA-256 `A1733C90B663EAEF94B73BB1175E9DC084AA3DA1B59FF1CA6C93ED63553E9EB2`.
+  CodeQL SUCCESS; новых alerts нет. Три первичных failures — backend shard 0,
+  backend shard 2 и Renovate Strict; CI Success зависит от них, Coverage skipped.
+  Локальные совместимые исправления pins/contracts подготовлены и проверены;
+  исправленный опубликованный SHA и свежие required results ещё нужны.
+- В объём включены [AUDIT-2026-10](../../audits/AUDIT-2026-10.md) и
+  [dependency updates](../../audits/dependency-updates-2026-10/README.md).
+  Это исходные снимки, а не подтверждение текущих OPEN/CLOSED.
+  Сначала P1/security/data, затем остальные подтверждённые находки и обновления.
 
-## Core и продуктовые проверки
+## Локальные исправления и границы доказательств
 
-- На чистом `8295b807` Core up, admin/demo seed и readiness прошли; state `C:/Temp/ue-live-acceptance/run-5bb1e30d-14bc-4995-b4d3-4412cc520727`, project `ue-live-cf7f10902821fada`. Inventory: 19 persistent / 4 init containers. Windows browser cache launch/close проверен без загрузок; это не Linux visual proof.
-- Cohort32, 09:29:16–09:40:38 UTC: 10 PASS / 22 FAIL, без skipped/flaky/interrupted/did-not-run. G1 — 9/3, G2 — 0/14, G3 — 1/5. Batch summary SHA-256 `6D729111F73A4AD0282D7EBF635BC9129D95FFD3C8BA97D0076698186AFD0526`; guard SHA-256 `CC7C221CF83DD45A6B4636C55B7D5784731F2AC2AD8CBB83B5C39220AA9A8DD0`: source stable, stopReason null, owned processes 0, peak RAM 72.64%, free ≥8.70 GiB. Full double run не допущен.
-- G1: PWA diagnostics показывают controller change и загруженный изменённый bundle; локальный кандидат ожидает production reload перед assertions. Story mobile PASS; desktop DOM totals уменьшаются после первого hidden/visible цикла, per-target listener buckets совпадают. Production leak не доказан. Warm-up приведён к измеряемому lifecycle, 20 циклов и строгие assertions сохранены; новая живая проверка pending.
-- G2: click-only registration callback заканчивается до наблюдения matching request; следующий fail-closed quiet drain не помещается в прежний deadline. Нулевой счётчик не доказывает отсутствие HTTP. Локальный кандидат ожидает реальный ответ до выхода из шести callbacks в пяти specs; лимиты, deadlines и fail-closed сохранены.
-- G3: mobile TOTP PASS. Email MFA обоих проектов получает enablement HTTP 200, затем не видит `email_mfa_enabled_at` в свежем профиле. Найдена потеря поля в приватном `UserOut` mapper: regression test воспроизвёл RED; после копирования поля 10 schema/mapper tests PASS. Публичный `UserPublicOut` поле не раскрывает. Живая проверка исправления pending.
-- Email verification mobile получает stale-code HTTP 429; общий per-IP verify budget 5/600s — возможная причина, но статус сам её не доказывает. Кандидат G3 различает submit-click/response-wait, фиксирует фактический TOTP login status и ограниченный numeric Retry-After для stale-code 429 без повторов или ожидания; production quotas, assertions и case deadlines сохранены.
-- G1/G2 прошли 25 Node contracts, полный TypeScript check, ESLint/Prettier и Ruff без ошибок. Guard contracts SHA-256 `527D2D4D2DD283481A595D35E10D9E80F485E149E20CDC65B3F1849FE381E236`, lint/types `4A7889553D2FB9E1EDBCD122A404F5217F9CF2638085A943816BF95AACE2781A`, mapper GREEN `44AEDDD93D82623AB728C8E62461BE449933079C6B51051EF7CA51B1D131F865`. Результаты локальные; ordinary hooks нового пакета и live acceptance pending.
-- G3 прошёл 29 Node contracts, 66 focused Python parser tests, полный TypeScript check, ESLint/Prettier и Ruff без ошибок. Guard SHA-256 `1558FF8F58E4D3ED46CA5F08721BD520E6166E93A43E2D13C029DDF441C73BD6`: source stable, exit 0, owned processes 0. Это локальная проверка кандидата; причины оставшихся runtime failures ещё не подтверждены.
-- Core штатно остановлен 09:51:41 UTC; stop guard SHA-256 `8CA43AEEFE07954E2A6ABAC7D9F679965DEF8851D8BD500288DC72FC7404E907`: PASS, source stable, owned processes 0. Затем после signed-owner и zero-endpoint проверки удалены ровно три пустые сети этого стенда; число сетей 31→28, все 23 контейнера, тома, образы и owner/key bytes сохранены. Cleanup guard SHA-256 `187166FBF7EE262E98BCEA7C453B5109906E02B48F4D55891B71CDB1A8A6C6F0`. Остановленный стенд с удалёнными сетями не использовать для нового прогона.
-- Home12 `ddbbc84d` — единственный утверждённый visual пакет. News/Events/Schedule current-source captures и owner approval pending; Linux baselines не обновлялись. Старые visual/hosted snapshots не являются приёмкой нового source.
+- Сохранены исправления AUD-005/008, 025/026/028, 164/167, 165, 166/458,
+  168/169, 170/171/172 и 173/174. Дальнейшие изменения включают durable outbox
+  для news/events/comments (AUD-197/198), проверку владельца event image и
+  сохранение media с недоказанной принадлежностью (AUD-180), JWKS egress и
+  привязку NetworkPolicy к release (AUD-188), обязательный ENVIRONMENT (AUD-190).
+  Сохранение legacy news media — ограниченная защита от удаления чужого файла;
+  полный owner-bearing contract и retention ещё открыты.
+- Backend: широкий прогон дал 1029 PASS / 17 SKIP и два устаревших ожидания
+  немедленного enqueue. Оба заменены проверкой pending source event в outbox,
+  связанного с созданной сущностью и locale; узкий итоговый прогон ниже зелёный.
+  Mypy прошёл для 345 файлов, Ruff для app прошёл. Полный повтор после последних
+  тестовых изменений и current-source coverage остаются pending.
+- Реальный PostgreSQL 17: пять AUD-038 проверок прошли, включая историческую
+  цепочку миграций с непустой DEFAULT partition, UUID/data/PK/FK и routing.
+  Четыре outbox integration tests прошли с rollback/commit, повторной обработкой
+  и deduplication. Тестовые БД и контейнеры завершены; исходные данные сохранены.
+  AUD-230: регрессия воспроизвела потерю tenant_id, затем 10 проверок прошли
+  с сохранением tenant/user до head и реальным `alembic check` без drift.
+  Девять nullable tenant columns/FK/indexes принадлежат migration metadata;
+  runtime ORM не менялся. Guard `817f27c23b204ac0813c93766bb879c7`:
+  source stable, owned children 0. ADR-036 фиксирует утверждённый rollback barrier;
+  исторический тест не сертифицирует production downgrade ниже него (AUD-324).
+- Helm: 381 PASS / 15 POSIX SKIP; затем все шесть затронутых соседних контрактов
+  прошли после актуализации точного backend egress. Ruff/actionlint прошли.
+  Это render/contract evidence, не kind deployment proof.
+- AUD-185: Gitleaks теперь расширяет стандартные правила; существующий allowlist
+  не расширен. Реальный scanner через stdin: synthetic canary пропускается старой
+  конфигурацией, обнаруживается новой, чистый ввод проходит; содержимое не
+  выводилось. Обычный pre-commit: Gitleaks прошёл; ошибки типов, тестовых secret
+  fixtures и SSR HTML assertions исправлены без новых suppressions/baseline
+  entries. Повторный контроль: 21 Python PASS с реальным PG17, Mypy 345 файлов
+  PASS, 14 Node SSR PASS; guard `9888966181f4449b8f8654be9e045bfd`, source stable,
+  owned children 0. Полный pre-commit прошёл все code/scanner checks; остановился
+  только на обновлении номеров строк baseline. Root подтвердил неизменность
+  finding identities и scanner settings и повторно включил baseline в staging.
+  Обычный commit должен повторно пройти hooks без изменения исходников.
+- AUD-186/187: новые inline secret suppressions проверяются по immutable Git
+  delta; quoted Unicode paths и недоступный Git обрабатываются корректно.
+  Protected-path matcher дополнен восемью точными verifier paths и двумя
+  прямыми contract tests без изменения доверия к owner PR или permissions.
+  Итоговый guard `33088e9964094df8be0cb778c596f401`: 62 PASS,
+  Ruff PASS, actionlint PASS; source stable, owned children 0.
+- AUD-231: native TanStack nonce и no-store HTML интегрированы; Node static/offline
+  контракты — 23 PASS, Python CSP/default-policy parity и Gitleaks — 10 PASS.
+  После исправления типов тестов и public-HTML ожидания контрольный прогон дал
+  13 PASS; TypeScript и ESLint без предупреждений прошли. Production build и
+  реальный concurrent SSR nonce probe прошли с действующими CI caps 2048 MiB RSS /
+  1536 MiB heap: guard `fc67e7b871ce496f8714de1d3d15f6c7`, source stable,
+  owned children 0. E2E проверяет nonce inline scripts/CSP, разные request nonce,
+  no-store HTML, immutable assets и health response.
+- AUD-462: v4 интегрирован после peer review; все четыре Go package tests прошли
+  на Windows. Guard `19f1778ec9184eb192b9c0ad04763bb9`: source stable,
+  owned children 0. Bounded write drain, временный fail-closed fence и join/replay
+  epoch сохраняются; mutex не удерживается на socket I/O. Linux race pending:
+  загрузка pinned образа не уложилась в 360 секунд; Windows PASS её не заменяет.
+- AUD-223: удаление failed gate state больше не разрешает Stop. RED воспроизведён;
+  полный contract/shared-loader прогон — 47 PASS, guard
+  `77f2e83183d54e999f608db50c0192b3`. Writer bootstrap сохранён.
+- AUD-226: Alembic включён в существующую Python coverage/provenance цепочку,
+  Tier 0/floors/required contexts сохранены. Contract-прогон: 266 PASS / 1 SKIP,
+  один неверный workflow-step assertion исправлен и отдельно прошёл; actionlint
+  прошёл. Диагностический PG17-прогон и существующие migration unit tests дали
+  59,53% statements / 29,98% branches; это частичная выборка, не полный backend
+  aggregate. Действующий 100% floor не пройден и не снижался; дополнительные
+  семантические PG-тесты готовятся, current-source gate остаётся pending.
+  Backend GraphQL retirement и ограниченный Gateway egress — private candidates,
+  ещё не интегрированы; news media ownership/retention продолжается.
+- urllib3/Werkzeug lock обновлён и синхронизирован. Ammonia 4.2.1 допускается
+  cooldown, но кандидат не применён; нужен реальный WASM rebuild/provenance.
+  Caddy 2.11.7 не допущен до 2026-10-13 05:52:45 UTC.
+  Остальной dependency report не считается закрытым.
 
-## Следующие критерии MVP
+## Следующие действия
 
-1. Пройти ordinary commit/push hooks и свежие 76 required checks; поднять новый Core
-   на опубликованном чистом source. Пройти targeted cohort 32, проверить DND HTTP 200,
-   Story/PWA, первый paint News и оставшиеся реальные сбои. PASS между SHA не переносить.
-2. На неизменном source пройти два последовательных full Core runs: каждый 198 tests,
-   190 PASS и ровно 8 ожидаемых SKIP. Завершить seed persistence через stop/start.
-   Каждое применимое требование ТЗ 2–13 связать со сценарием/результатом/SHA либо
-   обоснованной ручной проверкой; пройти mocked Firefox/WebKit/mobile-WebKit lane.
-3. Завершить visual acceptance News, Events и Schedule: 36 изображений (12 на раздел),
-   RU/EN, light/dark, 390/768/1440. Утверждён только Home пакет `ddbbc84d`;
-   новые pixels требуют отдельного owner approval до обновления Linux baselines.
-   Проверить 360/1024 risk cases, accessibility/reduced motion/axe.
-   Main JS budget <500 KB и key-route Lighthouse pass — отдельные gates;
-   authenticated LHCI остаётся 21 sample (7 routes × 3).
-4. Провести один согласованный paired DB/S3 backup/restore в изолированные цели;
-   прочитать объект по restored DB reference, проверить bytes/hashes и сохранность исходной среды.
-5. Закрыть final-source SEC-07 и RUST-P3-03 evidence, независимый auth/session/data
-   review и ADR-006 ordering: tombstone/WebSocket revocation до commit,
-   rollback sibling logout. Переклассифицировать все 63 audit IDs на RC,
-   не оставлять P0/P1 security открытыми. Исторические 60 CLOSED / 2 DECLINED /
-   1 OPEN не являются RC dispositions. Bounded SEC-07 review на `829a1e78`
-   не выявил конкретного дефекта; это не runtime/final-source приёмка.
-6. Заморозить code/dependencies/config/docs и пройти финальные Core scenarios,
-   backup/restore и full smoke на RC. Новое поведение после freeze требует
-   нового кандидата и повторения затронутой приёмки.
+1. Пройти обычные hooks с повторным stage `.secrets.baseline`, опубликовать
+   согласованный пакет в существующий PR и получить свежие 78 required results
+   и CodeQL. Измерить current-source migration coverage, завершить Linux race
+   и проверить следующие private candidates; закрытия привязать к evidence.
+2. Новый Core на чистом опубликованном source: Core32, затем два последовательных
+   full runs (inventory 198, ожидаемо 190 PASS/8 SKIP), seed stop/start.
+   Старый Core `8295b807` остановлен, данные сохранены; не перезапускать.
+3. News/Events/Schedule: 36 captures RU/EN light/dark 390/768/1440;
+   отдельно 360/1024 risk/a11y/reduced motion, main JS <500 KB и LHCI 21 sample.
+   Утверждён только Home12 `ddbbc84d`; остальные pixels/baselines pending.
+4. Один paired DB/S3 backup/restore в изолированные цели с чтением объекта по
+   restored DB reference; final-source SEC-07/RUST-P3-03 и auth/session/data review.
+   Продолжить audit/dependency пакет и согласование решений владельца с ТЗ/ADR.
+5. Frozen RC, full smoke, ordinary merge, свежие resulting-main checks,
+   producer шести образов и release `v1.0.0`.
 
-SEC-03 historical source review CLOSED: владелец подтвердил только ephemeral CI/demo use;
-это само по себе не указывает на необходимость production rotation. Перед любой migration
-сохраняемых подписанных записей нужны protected consistent backup и read-only inventory;
-учесть оба DataAccessLog legacy verifiers и hash-linked/nullable StoredEvent rows, выполнять
-migration атомарно и fail closed. См. [audit ledger](../../audits/INDEX.md#findings-ledger).
-
-После frozen RC: ordinary merge и свежие resulting-main push checks согласно
-`quality/release-required-checks.json`. Готовый producer должен опубликовать ровно
-шесть images (backend/frontend/gateway/ws-hub/file-processor/caddy) с Trivy,
-signatures, SBOM/provenance и WASM parity. Проверить actual published digests
-и связь с source/run/attempt manifest; затем tag/release notes `v1.0.0`.
-Kind certification, три comparable CI runs, RPO/RTO, Q2/Q3 и global mutation score остаются
-в v1.1, но разовый paired restore обязателен для MVP. Бренд ГУУ — только внутреннее
-синтетическое демо до отдельного решения о публичном использовании.
-
-Ограничения ресурсов: перед одним heavy workload RAM≤75% и free≥8GiB; остановка при
-RAM≥85% или free<4GiB. Исключение только для serial Linux screenshots: старт≤80%/≥6GiB,
-browser≤1GiB/2CPU; guard остановки неизменен. Owned builder≤4GiB/2CPU/no swap.
-Сохранять Core data и полезные caches; не очищать чужие процессы, Docker/WSL или global caches.
-Git history, migrations и environment/data state сохранять; приватный rescue bundle держать отдельно.
-Не восстанавливать superseded audits или одноразовые session prompts.
+Живой стенд остановлен, данные сохранены; тестовые контейнеры завершены.
+Root и три GPT-6 Luna Max работают в одном checkout, Git только у root.
+Один heavy workload: admission RAM≤75%/free≥8GiB,
+остановка ≥85%/<4GiB. Исключение только serial Linux screenshots:
+старт≤80%/≥6GiB, browser≤1GiB/2CPU. Удалять только доказанно owned временные
+ресурсы; Core data, caches, env/volumes/backups и rescue bundle сохранять.
+Q2/Q3, global mutation, kind certification, три comparable CI и RPO/RTO — v1.1.

@@ -19,7 +19,21 @@ test("both boundary consumers resolve the repository-owned adapter and its origi
   for (const consumer of ["eslint-plugin-boundaries", "@boundaries/elements"]) {
     const consumerRequire = createRequire(require.resolve(consumer))
     assert.equal(consumerRequire.resolve("micromatch"), adapterPath)
-    assert.throws(() => consumerRequire.resolve("braces"), { code: "MODULE_NOT_FOUND" })
+    let resolvedBraces
+    try {
+      resolvedBraces = consumerRequire.resolve("braces")
+    } catch (error) {
+      assert.equal(error.code, "MODULE_NOT_FOUND")
+    }
+    if (resolvedBraces !== undefined) {
+      // Node also searches the parent workspace, whose CLI dependencies are separate.
+      const frontendRoot = path.resolve(import.meta.dirname, "..")
+      assert.equal(
+        path.relative(frontendRoot, resolvedBraces).startsWith(`..${path.sep}`),
+        true,
+        `braces must not resolve inside the frontend installation: ${resolvedBraces}`
+      )
+    }
   }
 })
 

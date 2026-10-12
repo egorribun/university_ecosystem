@@ -114,6 +114,91 @@ def test_retained_metadata_matches_historical_postgresql_schema():
     assert actual == expected
 
 
+_EXPECTED_MIGRATION_OWNED_TENANT_TABLES = (
+    "users",
+    "groups",
+    "schedule",
+    "events",
+    "chats",
+    "messages",
+    "news",
+    "stories",
+    "notifications",
+)
+
+
+def _runtime_metadata_with_tenant_tables():
+    metadata = sa.MetaData()
+    sa.Table("tenants", metadata, sa.Column("id", sa.UUID(), primary_key=True))
+    for table_name in _EXPECTED_MIGRATION_OWNED_TENANT_TABLES:
+        sa.Table(table_name, metadata, sa.Column("id", sa.UUID(), primary_key=True))
+    return metadata
+
+
+def test_migration_owned_tenant_metadata_matches_parent_revision():
+    from sqlalchemy.dialects import postgresql
+
+    from app.core.db.retained_table_metadata import (
+        MIGRATION_OWNED_TENANT_TABLES,
+        build_migration_metadata,
+    )
+
+    assert MIGRATION_OWNED_TENANT_TABLES == _EXPECTED_MIGRATION_OWNED_TENANT_TABLES
+    runtime = _runtime_metadata_with_tenant_tables()
+    metadata = build_migration_metadata(runtime)
+    assert all(
+        "tenant_id" not in runtime.tables[name].c
+        for name in MIGRATION_OWNED_TENANT_TABLES
+    )
+
+    for table_name in MIGRATION_OWNED_TENANT_TABLES:
+        tenant_id = metadata.tables[table_name].c.tenant_id
+        assert tenant_id.type.compile(dialect=postgresql.dialect()) == "UUID"
+        assert tenant_id.nullable is True
+        assert tenant_id.info["migration_owned_by_revision"] == "202607230001"
+        (foreign_key,) = tenant_id.foreign_keys
+        assert foreign_key.target_fullname == "tenants.id"
+        assert foreign_key.ondelete == "CASCADE"
+        assert {index.name for index in metadata.tables[table_name].indexes} == {
+            f"ix_{table_name}_tenant_id"
+        }
+
+
+def test_autogenerate_keeps_parent_owned_tenant_columns_fk_and_indexes():
+    from alembic.autogenerate import compare_metadata
+    from pgvector.sqlalchemy import Vector
+
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _runtime_metadata_with_tenant_tables()
+    target = build_migration_metadata(runtime)
+    engine = sa.create_engine("sqlite://")
+    engine.dialect.ischema_names = {
+        **engine.dialect.ischema_names,
+        "VECTOR": Vector,
+        "UUID": sa.UUID,
+    }
+    try:
+        with engine.begin() as connection:
+            target.create_all(connection)
+            context = MigrationContext.configure(
+                connection, opts={"compare_type": True}
+            )
+            assert compare_metadata(context, target) == []
+            runtime_drift = compare_metadata(context, runtime)
+            removed_tenant_columns = {
+                (diff[2], diff[3].name)
+                for diff in runtime_drift
+                if diff[0] == "remove_column" and diff[3].name == "tenant_id"
+            }
+            assert removed_tenant_columns == {
+                (table_name, "tenant_id")
+                for table_name in _EXPECTED_MIGRATION_OWNED_TENANT_TABLES
+            }
+    finally:
+        engine.dispose()
+
+
 def test_retained_tables_have_one_explicit_owner():
     import pytest
 

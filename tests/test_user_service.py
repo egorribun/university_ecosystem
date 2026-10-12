@@ -135,15 +135,18 @@ def mock_user():
 @pytest.mark.asyncio
 async def test_delete_avatar_with_existing(service, mock_db, mock_user):
     """Test delete_avatar when user has avatar."""
-    mock_user.profile.avatar_url = "/static/avatars/test.jpg"
-    mock_user.avatar_url = "/static/avatars/test.jpg"
+    avatar_url = f"/static/avatars/user_{mock_user.id}_avatar_{'a' * 32}.jpg"
+    mock_user.profile.avatar_url = avatar_url
+    mock_user.avatar_url = avatar_url
     service.repo._get_orm.return_value = mock_user
     service.repo._to_dto.return_value = mock_user
 
     with patch("app.services.user.media_service.delete_static_file") as mock_delete:
         await service.delete_avatar(mock_user)
 
-    mock_delete.assert_called_once_with("/static/avatars/test.jpg")
+    mock_delete.assert_called_once_with(
+        avatar_url, owner_id=mock_user.id, media_kind="avatar"
+    )
     service.uow.commit.assert_called_once()
 
 
@@ -164,14 +167,17 @@ async def test_delete_avatar_without_existing(service, mock_db, mock_user):
 @pytest.mark.asyncio
 async def test_delete_cover_with_existing(service, mock_db, mock_user):
     """Test delete_cover when user has cover."""
-    mock_user.profile.cover_url = "/static/covers/test.jpg"
+    cover_url = f"/static/covers/user_{mock_user.id}_cover_{'b' * 32}.jpg"
+    mock_user.profile.cover_url = cover_url
     service.repo._get_orm.return_value = mock_user
     service.repo._to_dto.return_value = mock_user
 
     with patch("app.services.user.media_service.delete_static_file") as mock_delete:
         await service.delete_cover(mock_user)
 
-    mock_delete.assert_called_once()
+    mock_delete.assert_called_once_with(
+        cover_url, owner_id=mock_user.id, media_kind="cover"
+    )
 
 
 # ... (skipping unchanged parts) ...
@@ -204,13 +210,14 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
 async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_request):
     """Test avatar upload rolls back on commit failure."""
     service.repo._get_orm.return_value = mock_user
-    mock_user.profile.avatar_url = "/old.jpg"
+    old_avatar_url = f"/static/avatars/user_{mock_user.id}_avatar_{'c' * 32}.jpg"
+    mock_user.profile.avatar_url = old_avatar_url
     service.uow.commit.side_effect = Exception("Commit failed")
     mock_file = MagicMock()
     mock_file.content_type = "image/jpeg"
 
     # Ensure current state is mocked for UserMediaService.delete_avatar check
-    mock_user.avatar_url = "/old.jpg"
+    mock_user.avatar_url = old_avatar_url
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         with patch(
@@ -225,8 +232,12 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
 
     service.uow.rollback.assert_called_once()
     assert mock_delete.call_count == 2
-    mock_delete.assert_any_call("/old.jpg")
-    mock_delete.assert_any_call("/static/avatars/new.jpg")
+    mock_delete.assert_any_call(
+        old_avatar_url, owner_id=mock_user.id, media_kind="avatar"
+    )
+    mock_delete.assert_any_call(
+        "/static/avatars/new.jpg", owner_id=mock_user.id, media_kind="avatar"
+    )
 
 
 @pytest.fixture

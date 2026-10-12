@@ -57,6 +57,31 @@ def event_service_closure():
 
 
 @pytest.mark.asyncio
+async def test_create_event_forwards_locale_to_repository(event_service_closure):
+    service, uow, repo = event_service_closure
+    now = datetime.now(UTC)
+    data = schemas.EventCreate(
+        title="Localized event",
+        description="Description",
+        location="Room",
+        event_type="meeting",
+        starts_at=now,
+        ends_at=now + timedelta(hours=1),
+    )
+    user_id = uuid4()
+    record = _event()
+    repo.create.return_value = record
+
+    result = await service.create_event(data, user_id, locale="en")
+
+    assert result is record
+    expected = data.model_dump()
+    expected["created_by"] = user_id
+    repo.create.assert_awaited_once_with(expected, locale="en")
+    uow.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_get_event_by_id_delegates_to_repository(event_service_closure):
     service, _, repo = event_service_closure
     expected = _event()

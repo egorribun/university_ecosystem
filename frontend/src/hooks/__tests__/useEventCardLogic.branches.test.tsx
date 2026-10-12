@@ -2,6 +2,8 @@ import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import { useEventCardLogic } from "../useEventCardLogic"
 
+const { language } = vi.hoisted(() => ({ language: { current: "ru" } }))
+
 // Mock dependencies (mirrors the existing useEventCardLogic.test.tsx scaffold).
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(() => ({ user: { id: 1, role: "admin" } })),
@@ -13,7 +15,14 @@ vi.mock("@tanstack/react-router", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: vi.fn(() => ({ t: (s: string) => s })),
+  useTranslation: vi.fn(() => ({
+    t: (s: string) => s,
+    i18n: {
+      get language() {
+        return language.current
+      },
+    },
+  })),
 }))
 
 vi.mock("@/components/ui/Spotlight", () => ({
@@ -54,6 +63,7 @@ describe("useEventCardLogic (branches)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    language.current = "ru"
     createObjectURL = vi.fn(() => "blob:preview-url")
     revokeObjectURL = vi.fn()
     ;(globalThis.URL as any).createObjectURL = createObjectURL
@@ -216,6 +226,41 @@ describe("useEventCardLogic (branches)", () => {
     )
     expect(onChange).toHaveBeenCalled()
     await waitFor(() => expect(result.current.snackbar).toBe("events:card.messages.saveSuccess"))
+  })
+
+  it("handleEdit: English card saves translated fields without overwriting Russian source fields", async () => {
+    language.current = "en"
+    const { result } = renderHook(() =>
+      useEventCardLogic({
+        ...eventProps,
+        title: "Localized English display",
+        title_en: "Stored English title",
+        description: "Localized English description",
+        description_en: "Stored English description",
+        event_type: "English display type",
+        event_type_en: "Stored English type",
+        location: "English display location",
+        location_en: "Stored English location",
+      })
+    )
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    const payload = mockPatch.mock.calls.at(-1)?.[1] as Record<string, unknown>
+    expect(payload).toMatchObject({
+      title_en: "Stored English title",
+      description_en: "Stored English description",
+      event_type_en: "Stored English type",
+      location_en: "Stored English location",
+    })
+    expect(payload).not.toHaveProperty("title")
+    expect(payload).not.toHaveProperty("description")
+    expect(payload).not.toHaveProperty("event_type")
+    expect(payload).not.toHaveProperty("location")
+    expect(payload).toHaveProperty("starts_at")
+    expect(payload).toHaveProperty("ends_at")
   })
 
   it("handleEdit: api failure → saveFailure snackbar + loading reset (145-149)", async () => {

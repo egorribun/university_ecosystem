@@ -32,6 +32,7 @@ import ctypes
 import errno
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -43,6 +44,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -212,6 +215,12 @@ LIVE_CORE_EXPECTED_SERVICES = (
     "tempo-healthprobe",
     "ws-hub",
 )
+LIVE_TRUSTED_PROXY_SERVICES = ("backend", "caddy", "gateway", "ws-hub")
+LIVE_TRUSTED_PROXY_SETTINGS = (
+    "TRUSTED_PROXIES",
+    "GATEWAY_TRUSTED_PROXIES",
+    "WS_HUB_TRUSTED_PROXIES",
+)
 LIVE_CORE_QUIESCE_DATA_STORES = frozenset({"minio", "postgres"})
 DAEMON_FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
@@ -309,6 +318,8 @@ class ComposeResourceEvidence:
     stack: str = LIVE_STACK_FULL
     service_roots: tuple[str, ...] = ()
     selected_services: tuple[str, ...] = ()
+    network_bindings: tuple[tuple[str, str, bool], ...] = ()
+    service_networks: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1913,6 +1924,10 @@ def stand_environment(
     env["LIVE_VAPID_PUBLIC_KEY"] = keys["public"]
     env["LIVE_VAPID_PRIVATE_KEY"] = keys["private"]
     env["LIVE_BASE_URL"] = _stand_base_url(ports)
+    # Keep desktop-shell proxy settings out of the initial live Compose model.
+    # The owned run derives exact peers from inspected network attachments.
+    for name in LIVE_TRUSTED_PROXY_SETTINGS:
+        env[name] = ""
     if IN_PLACE_MODE:
         env["LIVE_STAND_STATE_ROOT"] = str(WORKTREE.resolve(strict=True))
         if SOURCE_SHA is not None:
@@ -1945,6 +1960,8 @@ def compose_control_environment(
     # recreate containers, so a fixed non-secret placeholder is sufficient.
     env["LIVE_VAPID_PUBLIC_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
     env["LIVE_VAPID_PRIVATE_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
+    for name in LIVE_TRUSTED_PROXY_SETTINGS:
+        env[name] = ""
     if IN_PLACE_MODE:
         env["LIVE_STAND_STATE_ROOT"] = str(WORKTREE.resolve(strict=True))
         if SOURCE_SHA is not None:
@@ -2346,6 +2363,18 @@ def _compose_resource_evidence(
         stack=stack,
         service_roots=resolved_roots,
         selected_services=selected_services,
+        network_bindings=tuple(
+            sorted(
+                (key, str(value["resolved_name"]), bool(value["external"]))
+                for key, value in networks.items()
+            )
+        ),
+        service_networks=tuple(
+            sorted(
+                (service, tuple(details["networks"]))
+                for service, details in service_mounts.items()
+            )
+        ),
     )
 
 
@@ -2949,6 +2978,553 @@ def _verify_core_container_record(
         container_id, owner, evidence, record
     )
     return inspected.identity, inspected.running
+
+
+def _trusted_proxy_address(
+    value: object,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    if not isinstance(value, str) or not value or "/" in value or "%" in value:
+        raise StandError("live proxy network address is invalid")
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        raise StandError("live proxy network address is invalid") from None
+    if address.is_unspecified:
+        return None
+    if address.version == 4:
+        first, second = address.packed[:2]
+        private_bridge = (
+            first == 10
+            or (first == 172 and 16 <= second <= 31)
+            or (first == 192 and second == 168)
+        )
+    else:
+        private_bridge = address.packed[0] & 0xFE == 0xFC
+    if (
+        value != address.compressed.lower()
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_global
+        or not private_bridge
+    ):
+        raise StandError("live proxy network address is outside the owned bridge range")
+    return address
+
+
+def _trusted_proxy_settings_from_inspects(
+    owner: StandOwner,
+    evidence: ComposeResourceEvidence,
+    containers: Mapping[str, dict[str, object]],
+    networks: Mapping[str, dict[str, object]],
+) -> tuple[dict[str, tuple[str, ...]], dict[str, dict[str, tuple[str, ...]]]]:
+    """Derive exact proxy peers from signed Compose names and inspected attachments."""
+    required = set(LIVE_TRUSTED_PROXY_SERVICES)
+    if (
+        owner.stack != evidence.stack
+        or owner.selected_services != evidence.selected_services
+        or not required <= set(owner.selected_services)
+        or not required <= set(evidence.managed_services)
+        or set(containers) != required
+    ):
+        raise StandError("live trusted proxy selection differs from signed ownership")
+
+    binding_rows = evidence.network_bindings
+    network_bindings = {key: (name, external) for key, name, external in binding_rows}
+    if (
+        not binding_rows
+        or len(network_bindings) != len(binding_rows)
+        or len({name for _, name, _ in binding_rows}) != len(binding_rows)
+        or any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(name, str)
+            or not name
+            or not isinstance(external, bool)
+            for key, name, external in binding_rows
+        )
+    ):
+        raise StandError("signed live network identity evidence is incomplete")
+    service_network_rows = evidence.service_networks
+    service_networks = {service: names for service, names in service_network_rows}
+    if len(service_networks) != len(service_network_rows):
+        raise StandError("signed live service network evidence is ambiguous")
+
+    expected_network_names: set[str] = set()
+    for service in LIVE_TRUSTED_PROXY_SERVICES:
+        logical_names = service_networks.get(service)
+        if (
+            not isinstance(logical_names, tuple)
+            or not logical_names
+            or len(set(logical_names)) != len(logical_names)
+            or any(name not in network_bindings for name in logical_names)
+        ):
+            raise StandError("signed live service network evidence is incomplete")
+        expected_network_names.update(
+            network_bindings[name][0] for name in logical_names
+        )
+    if set(networks) != expected_network_names:
+        raise StandError("inspected live network inventory differs from signed names")
+
+    network_ids: dict[str, str] = {}
+    network_subnets: dict[
+        str, tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]
+    ] = {}
+    resolved_to_logical = {name: key for key, (name, _) in network_bindings.items()}
+    for name, record in networks.items():
+        if record.get("Name") != name:
+            raise StandError("inspected live network name differs from signed evidence")
+        network_id = record.get("Id")
+        labels = record.get("Labels")
+        if not isinstance(network_id, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", network_id
+        ):
+            raise StandError("inspected live network identity is ambiguous")
+        logical_name = resolved_to_logical.get(name)
+        if logical_name is None:
+            raise StandError(
+                "inspected live network is not in signed resource evidence"
+            )
+        _, external = network_bindings[logical_name]
+        if not external and (
+            not isinstance(labels, dict)
+            or labels.get("com.docker.compose.project") != owner.project_name
+            or labels.get("com.docker.compose.network") != logical_name
+        ):
+            raise StandError("owned live network labels differ from signed identity")
+        ipam = record.get("IPAM")
+        raw_subnets = ipam.get("Config") if isinstance(ipam, dict) else None
+        if not isinstance(raw_subnets, list) or not raw_subnets:
+            raise StandError("inspected live network IPAM evidence is incomplete")
+        subnets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+        for item in raw_subnets:
+            subnet = item.get("Subnet") if isinstance(item, dict) else None
+            if not isinstance(subnet, str) or not subnet:
+                raise StandError("inspected live network IPAM evidence is ambiguous")
+            try:
+                subnets.append(ipaddress.ip_network(subnet, strict=False))
+            except ValueError:
+                raise StandError(
+                    "inspected live network IPAM evidence is ambiguous"
+                ) from None
+        network_ids[name] = network_id
+        network_subnets[name] = tuple(subnets)
+
+    addresses_by_service: dict[str, dict[str, tuple[str, ...]]] = {}
+    for service, record in containers.items():
+        container_id = record.get("Id")
+        if not isinstance(container_id, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", container_id
+        ):
+            raise StandError("live trusted proxy container identity is ambiguous")
+        inspected = _core_container_record_from_inspect(
+            container_id, owner, evidence, record
+        )
+        if (
+            inspected.service != service
+            or not inspected.running
+            or inspected.status != "running"
+            or (service == "backend" and inspected.health != "healthy")
+        ):
+            raise StandError("live trusted proxy target is not healthy and owned")
+        settings = record.get("NetworkSettings")
+        raw_attachments = (
+            settings.get("Networks") if isinstance(settings, dict) else None
+        )
+        logical_names = service_networks.get(service)
+        if not isinstance(raw_attachments, dict) or not isinstance(
+            logical_names, tuple
+        ):
+            raise StandError("live trusted proxy attachment inventory is ambiguous")
+        expected_names = {network_bindings[key][0] for key in logical_names}
+        if set(raw_attachments) != expected_names:
+            raise StandError(
+                "live trusted proxy attachments differ from signed network names"
+            )
+        per_network: dict[str, tuple[str, ...]] = {}
+        for logical_name in logical_names:
+            network_name, _ = network_bindings[logical_name]
+            attachment = raw_attachments.get(network_name)
+            if (
+                not isinstance(attachment, dict)
+                or attachment.get("NetworkID") != network_ids[network_name]
+            ):
+                raise StandError(
+                    "live proxy NetworkID differs from inspected signed network"
+                )
+            raw_addresses = [
+                attachment.get("IPAddress"),
+                attachment.get("GlobalIPv6Address"),
+            ]
+            parsed: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+            for raw_address in raw_addresses:
+                if raw_address in (None, ""):
+                    continue
+                address = _trusted_proxy_address(raw_address)
+                if address is None:
+                    continue
+                if not any(
+                    address.version == subnet.version and address in subnet
+                    for subnet in network_subnets[network_name]
+                ):
+                    raise StandError(
+                        "live proxy address is outside inspected network IPAM"
+                    )
+                parsed.append(address)
+            if not parsed:
+                raise StandError("live proxy network attachment has no usable address")
+            per_network[logical_name] = tuple(
+                sorted({address.compressed.lower() for address in parsed})
+            )
+        addresses_by_service[service] = per_network
+
+    def peers(receiver: str, sources: Sequence[str]) -> tuple[str, ...]:
+        result: set[str] = set()
+        receiver_networks = addresses_by_service[receiver]
+        for source in sources:
+            source_networks = addresses_by_service[source]
+            for logical_name in set(receiver_networks) & set(source_networks):
+                result.update(source_networks[logical_name])
+        if not result:
+            raise StandError("live proxy chain has no inspected shared network peer")
+        return tuple(sorted(result))
+
+    settings = {
+        "TRUSTED_PROXIES": peers("backend", ("caddy", "gateway")),
+        "GATEWAY_TRUSTED_PROXIES": peers("gateway", ("caddy",)),
+        "WS_HUB_TRUSTED_PROXIES": peers("ws-hub", ("caddy",)),
+    }
+    if set(settings) != set(LIVE_TRUSTED_PROXY_SETTINGS):
+        raise StandError("live trusted proxy setting inventory is invalid")
+    return settings, addresses_by_service
+
+
+def _capture_live_trusted_proxy_inventory(
+    owner: StandOwner, evidence: ComposeResourceEvidence
+) -> tuple[
+    dict[str, CoreContainerRecord],
+    dict[str, tuple[str, ...]],
+    dict[str, dict[str, tuple[str, ...]]],
+    dict[str, str],
+]:
+    if (
+        owner.stack != evidence.stack
+        or owner.selected_services != evidence.selected_services
+        or not set(LIVE_TRUSTED_PROXY_SERVICES) <= set(owner.selected_services)
+    ):
+        raise StandError("live trusted proxy selection differs from signed ownership")
+    records: dict[str, CoreContainerRecord] = {}
+    containers: dict[str, dict[str, object]] = {}
+    service_ids: dict[str, str] = {}
+    for container_id in _project_container_ids(owner.project_name):
+        raw = _docker_inspect_object(
+            ["inspect", container_id],
+            "cannot verify live trusted proxy container identity",
+        )
+        inspected = _core_container_record_from_inspect(
+            container_id, owner, evidence, raw
+        )
+        records[container_id] = inspected
+        if inspected.service in LIVE_TRUSTED_PROXY_SERVICES:
+            if inspected.service in service_ids:
+                raise StandError(
+                    "live trusted proxy service has multiple owned containers"
+                )
+            service_ids[inspected.service] = container_id
+            containers[inspected.service] = raw
+    if set(containers) != set(LIVE_TRUSTED_PROXY_SERVICES):
+        raise StandError("live trusted proxy container inventory is incomplete")
+
+    network_bindings = {key: name for key, name, _ in evidence.network_bindings}
+    logical_by_name = {name: key for key, name in network_bindings.items()}
+    service_networks = dict(evidence.service_networks)
+    names: set[str] = set()
+    for service in LIVE_TRUSTED_PROXY_SERVICES:
+        logical = service_networks.get(service)
+        if (
+            not isinstance(logical, tuple)
+            or not logical
+            or any(key not in network_bindings for key in logical)
+        ):
+            raise StandError("signed live service network evidence is incomplete")
+        names.update(network_bindings[key] for key in logical)
+    networks = {
+        name: _docker_inspect_object(
+            ["network", "inspect", name], "cannot verify signed live network identity"
+        )
+        for name in sorted(names)
+    }
+    settings, addresses_by_service = _trusted_proxy_settings_from_inspects(
+        owner, evidence, containers, networks
+    )
+    return (
+        records,
+        settings,
+        addresses_by_service,
+        {logical_by_name[name]: str(record["Id"]) for name, record in networks.items()},
+    )
+
+
+def _assert_live_trusted_proxy_source_current(owner: StandOwner) -> None:
+    try:
+        if load_stand_owner(WORKTREE) != owner or not owner.source_sha:
+            raise StandError("live trusted proxy owner or source identity changed")
+        if IN_PLACE_MODE:
+            if (
+                SOURCE_SHA != owner.source_sha
+                or _git("rev-parse", "HEAD") != owner.source_sha
+            ):
+                raise StandError("live trusted proxy source identity changed")
+            if _git("status", "--porcelain", "--untracked-files=normal"):
+                raise StandError("live trusted proxy source tree changed")
+        else:
+            if _git("-C", str(WORKTREE), "rev-parse", "HEAD") != owner.source_sha:
+                raise StandError("live trusted proxy source identity changed")
+            _assert_worktree_clean(WORKTREE)
+    except subprocess.CalledProcessError:
+        raise StandError(
+            "live trusted proxy source identity cannot be verified"
+        ) from None
+
+
+def _assert_live_trusted_proxy_container_delta(
+    before: Mapping[str, CoreContainerRecord],
+    after: Mapping[str, CoreContainerRecord],
+    allowed_services: set[str],
+) -> None:
+    before_stable = {
+        container_id: (
+            record.service,
+            record.identity,
+            record.running,
+            record.status,
+            record.health,
+        )
+        for container_id, record in before.items()
+        if record.service not in allowed_services
+    }
+    after_stable = {
+        container_id: (
+            record.service,
+            record.identity,
+            record.running,
+            record.status,
+            record.health,
+        )
+        for container_id, record in after.items()
+        if record.service not in allowed_services
+    }
+    if before_stable != after_stable:
+        raise StandError(
+            "non-target live containers changed during trusted proxy refresh"
+        )
+
+
+def _assert_live_trusted_proxy_network_ids_unchanged(
+    before: Mapping[str, str], after: Mapping[str, str]
+) -> None:
+    if not before or before != after:
+        raise StandError("live trusted proxy network identity changed during refresh")
+
+
+def _require_live_trusted_proxy_http_health(owner: StandOwner) -> None:
+    ports = dict(owner.published_ports)
+    probes = (
+        ("CADDY_HTTP", "/healthz"),
+        ("GATEWAY", "/health"),
+        ("WS_HUB", "/health"),
+        ("BACKEND", "/health/ready"),
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for port_name, path in probes:
+        try:
+            with opener.open(
+                f"http://127.0.0.1:{ports[port_name]}{path}", timeout=5
+            ) as response:
+                if response.status < 200 or response.status >= 300:
+                    raise StandError("live trusted proxy health probe failed")
+        except (OSError, urllib.error.URLError, KeyError):
+            raise StandError("live trusted proxy health probe failed") from None
+
+
+def _run_live_trusted_proxy_refresh(
+    owner: StandOwner,
+    base_environment: Mapping[str, str],
+    settings: Mapping[str, tuple[str, ...]],
+    stage: str,
+) -> None:
+    if stage not in {"edge", "backend"} or set(settings) != set(
+        LIVE_TRUSTED_PROXY_SETTINGS
+    ):
+        raise StandError("live trusted proxy refresh selection is invalid")
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        raise StandError(
+            "PowerShell is required to refresh live trusted proxy settings"
+        )
+    launcher_path = (
+        REPO_ROOT / "start-docker.ps1" if IN_PLACE_MODE else Path("start-docker.ps1")
+    )
+    command = [
+        powershell,
+        "-NoProfile",
+        "-File",
+        str(launcher_path),
+        "-RefreshTrustedProxyPeers",
+        "-TrustedProxyRefreshStage",
+        stage,
+        "-TrustedProxyPeersJson",
+        json.dumps(settings, sort_keys=True, separators=(",", ":")),
+        "-ExtraCompose",
+        OVERLAY,
+        "-LiveAcceptanceStack",
+        owner.stack,
+        "-LiveAcceptanceServicesJson",
+        json.dumps(owner.selected_services, separators=(",", ":")),
+    ]
+    if IN_PLACE_MODE:
+        command.extend(("-LiveStandStateRoot", str(WORKTREE.resolve(strict=True))))
+    environment = dict(base_environment)
+    environment.update(
+        {
+            "TRUSTED_PROXIES": ",".join(settings["TRUSTED_PROXIES"]),
+            "GATEWAY_TRUSTED_PROXIES": ",".join(settings["GATEWAY_TRUSTED_PROXIES"]),
+            "WS_HUB_TRUSTED_PROXIES": ",".join(settings["WS_HUB_TRUSTED_PROXIES"]),
+        }
+    )
+    try:
+        # Fixed launcher plus address data that has already passed the closed
+        # inspected-network validator; no untrusted command text reaches a shell.
+        result = subprocess.run(  # noqa: S603 - fixed PowerShell launcher and validated arguments
+            command,
+            cwd=WORKTREE,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise StandError("cannot refresh signed live trusted proxy services") from None
+    if result.returncode != 0:
+        raise StandError("cannot refresh signed live trusted proxy services")
+
+
+def _assert_live_trusted_proxy_environment(
+    records: Mapping[str, CoreContainerRecord],
+    settings: Mapping[str, tuple[str, ...]],
+) -> None:
+    env_names = {
+        "backend": ("TRUSTED_PROXIES", "TRUSTED_PROXIES"),
+        "gateway": ("GATEWAY_TRUSTED_PROXIES", "GATEWAY_TRUSTED_PROXIES"),
+        "ws-hub": ("TRUSTED_PROXIES", "WS_HUB_TRUSTED_PROXIES"),
+    }
+    found = {service: 0 for service in env_names}
+    for container_id, record in records.items():
+        service = record.service
+        if service not in env_names:
+            continue
+        inspect = _docker_inspect_object(
+            ["inspect", container_id], "cannot verify live trusted proxy environment"
+        )
+        config = inspect.get("Config")
+        env = config.get("Env") if isinstance(config, dict) else None
+        if not isinstance(env, list) or any(not isinstance(item, str) for item in env):
+            raise StandError("live trusted proxy environment is ambiguous")
+        variable, settings_name = env_names[service]
+        matches = [
+            item[len(variable) + 1 :] for item in env if item.startswith(f"{variable}=")
+        ]
+        expected = ",".join(settings[settings_name])
+        if len(matches) != 1 or matches[0] != expected:
+            raise StandError(
+                "live trusted proxy environment differs from inspected peers"
+            )
+        found[service] += 1
+    if any(count != 1 for count in found.values()):
+        raise StandError("live trusted proxy environment inventory is incomplete")
+
+
+def _configure_live_trusted_proxy_peers(
+    owner: StandOwner,
+    base_environment: Mapping[str, str],
+    evidence: ComposeResourceEvidence,
+) -> str:
+    """Bind only this run's proxy settings to current signed network peers."""
+    _assert_live_trusted_proxy_source_current(owner)
+    _require_owned_docker_daemon(owner)
+    current_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+    if current_evidence.fingerprint != evidence.fingerprint:
+        raise StandError("live trusted proxy resource identity changed")
+    _require_live_trusted_proxy_http_health(owner)
+    before, initial_settings, initial_addresses, initial_network_ids = (
+        _capture_live_trusted_proxy_inventory(owner, current_evidence)
+    )
+
+    edge_settings = {
+        "TRUSTED_PROXIES": (),
+        "GATEWAY_TRUSTED_PROXIES": initial_settings["GATEWAY_TRUSTED_PROXIES"],
+        "WS_HUB_TRUSTED_PROXIES": initial_settings["WS_HUB_TRUSTED_PROXIES"],
+    }
+    if (
+        edge_settings["GATEWAY_TRUSTED_PROXIES"]
+        != edge_settings["WS_HUB_TRUSTED_PROXIES"]
+    ):
+        raise StandError(
+            "live edge proxy peers do not share the signed Caddy attachment"
+        )
+    _run_live_trusted_proxy_refresh(owner, base_environment, edge_settings, "edge")
+    _assert_live_trusted_proxy_source_current(owner)
+    _require_owned_docker_daemon(owner)
+    edge_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+    if edge_evidence.fingerprint != evidence.fingerprint:
+        raise StandError("live trusted proxy resource identity changed")
+    _require_live_trusted_proxy_http_health(owner)
+    after_edge, edge_settings, edge_addresses, edge_network_ids = (
+        _capture_live_trusted_proxy_inventory(owner, edge_evidence)
+    )
+    _assert_live_trusted_proxy_container_delta(
+        before, after_edge, {"gateway", "ws-hub"}
+    )
+    _assert_live_trusted_proxy_network_ids_unchanged(
+        initial_network_ids, edge_network_ids
+    )
+    if initial_addresses["caddy"] != edge_addresses["caddy"]:
+        raise StandError("non-target live proxy network attachment changed")
+    _run_live_trusted_proxy_refresh(owner, base_environment, edge_settings, "backend")
+    _assert_live_trusted_proxy_source_current(owner)
+    _require_owned_docker_daemon(owner)
+    final_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+    if final_evidence.fingerprint != evidence.fingerprint:
+        raise StandError("live trusted proxy resource identity changed")
+    after_backend, actual_settings, actual_addresses, final_network_ids = (
+        _capture_live_trusted_proxy_inventory(owner, final_evidence)
+    )
+    _assert_live_trusted_proxy_container_delta(after_edge, after_backend, {"backend"})
+    _assert_live_trusted_proxy_container_delta(
+        before, after_backend, {"backend", "gateway", "ws-hub"}
+    )
+    _assert_live_trusted_proxy_network_ids_unchanged(
+        edge_network_ids, final_network_ids
+    )
+    if edge_settings != actual_settings or any(
+        actual_addresses[service] != edge_addresses[service]
+        for service in ("caddy", "gateway", "ws-hub")
+    ):
+        raise StandError("live trusted proxy topology changed during refresh")
+    _require_live_trusted_proxy_http_health(owner)
+    _assert_live_trusted_proxy_environment(after_backend, actual_settings)
+    _assert_live_trusted_proxy_source_current(owner)
+    _require_owned_docker_daemon(owner)
+    final_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
+    if final_evidence.fingerprint != evidence.fingerprint:
+        raise StandError("live trusted proxy resource identity changed")
+    return hashlib.sha256(
+        json.dumps(actual_settings, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
 
 
 def _core_quiesce_container_inventory(
@@ -3557,6 +4133,7 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
         "-File",
         str(launcher_path),
         "-PrepareOnly",
+        "-InitializeTrustedProxyBootstrap",
         "-ExtraCompose",
         OVERLAY,
     ]
@@ -3630,6 +4207,12 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
     if allow_existing_owned_volumes:
         start_command.append("-AllowExistingOwnedVolumes")
     _run(start_command, cwd=WORKTREE, env=env)
+    trusted_proxy_fingerprint = _configure_live_trusted_proxy_peers(
+        owner, env, _verify_stand_owner_compose_resources(WORKTREE, owner)
+    )
+    print(
+        f"trusted_proxy_peers configured=true fingerprint={trusted_proxy_fingerprint}"
+    )
     published = dict(owner.published_ports)
     base_url = _stand_base_url(published)
     mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"

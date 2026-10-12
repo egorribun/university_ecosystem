@@ -25,8 +25,10 @@
 // auth context server-side; until a route enables `ssr: true`, it stays SPA
 // and the auth context is irrelevant for that route.
 import { AsyncLocalStorage } from "node:async_hooks"
+import { randomBytes } from "node:crypto"
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry"
 import type { i18n as I18nInstance } from "i18next"
+import { applyNodeCspToHtmlResponse, CSP_NONCE_PLACEHOLDER } from "../scripts/server-csp.mjs"
 import { createI18nInstance } from "./i18n/config"
 import { extractAuthFromRequest, SSR_AUTH_UNAUTH, type SsrAuthState } from "./ssrAuth"
 import {
@@ -45,7 +47,7 @@ import {
 // node:async_hooks is server-only — Vite's environments build keeps this
 // import in the server chunk only; client bundle never loads it.
 //
-// Six storages (W126 + W127 + W133):
+// Seven storages (W126 + W127 + W133 + W231):
 //   - requestAuthStorage: SSR auth state from access_token_v2 cookie (W126 SW3)
 //   - requestCookieStorage: raw Cookie header for SSR-side authenticated
 //     backend calls via axios interceptor (W133 SW1 — see api/client.ts)
@@ -53,8 +55,9 @@ import {
 //     same SSR backend calls, preserving the session security binding
 //   - requestThemeStorage: resolved theme from ue-mode cookie (W127 SW4)
 //   - requestLangStorage: resolved lang from ue:language cookie (W127 SW4)
+//   - requestNonceStorage: per-response CSP nonce passed to TanStack SSR (W231)
 //
-// Layered as nested .run() calls so all four are visible to the handler.
+// Layered as nested .run() calls so all request stores are visible to the handler.
 const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
 const requestCookieStorage = new AsyncLocalStorage<string>()
 type SsrFingerprintHeaders = { userAgent: string; acceptLanguage: string }
@@ -62,8 +65,9 @@ const requestFingerprintHeadersStorage = new AsyncLocalStorage<SsrFingerprintHea
 const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
 const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
 const requestI18nStorage = new AsyncLocalStorage<I18nInstance>()
+const requestNonceStorage = new AsyncLocalStorage<string>()
 
-// Globally-accessible getters so `src/router.ts` (W126 SW4) and
+// Globally-accessible getters so `src/router.ts` (W126 SW4 / W231) and
 // `src/routes/__root.tsx` RootShell (W127 SW5) can read per-request state
 // without a circular import (router.ts + __root.tsx are also imported by
 // client code, so they cannot import server.ts directly). Getters set ONCE
@@ -78,6 +82,7 @@ declare global {
   var __ssrThemeGetter__: (() => ResolvedTheme | undefined) | undefined
   var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
   var __ssrI18nGetter__: (() => I18nInstance | undefined) | undefined
+  var __ssrNonceGetter__: (() => string | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
 globalThis.__ssrCookieGetter__ = () => requestCookieStorage.getStore()
@@ -85,6 +90,7 @@ globalThis.__ssrFingerprintHeadersGetter__ = () => requestFingerprintHeadersStor
 globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 globalThis.__ssrI18nGetter__ = () => requestI18nStorage.getStore()
+globalThis.__ssrNonceGetter__ = () => requestNonceStorage.getStore()
 
 // Wave 131 SW2 — Phase 4 deploy infrastructure /healthz endpoint.
 // Caddy `health_uri /healthz` (Caddyfile, W131 SW4) + k8s livenessProbe /
@@ -141,7 +147,7 @@ const augmentResponseForPrivateSsr = (response: Response): Response => {
 }
 
 export default createServerEntry({
-  async fetch(request) {
+  async fetch(request, options) {
     // Wave 131 SW2 — Phase 4 healthz fast path. URL parsing is cheap; we
     // explicitly do NOT hit `extractAuthFromRequest` (avoids JWKS network
     // round-trip on cold start) or `extractThemeFromRequest` /
@@ -151,6 +157,14 @@ export default createServerEntry({
     if (url.pathname === "/healthz") {
       return new Response(HEALTHZ_RESPONSE_BODY, HEALTHZ_RESPONSE_INIT)
     }
+
+    // TanStack Start sets TSS_PRERENDERING while it renders the reusable SPA
+    // shell. Preserve a marker there; Node replaces only that controlled
+    // marker when the file is served. Every live request gets a fresh nonce.
+    const nonce =
+      process.env.TSS_PRERENDERING === "true"
+        ? CSP_NONCE_PLACEHOLDER
+        : randomBytes(16).toString("base64")
 
     let auth: SsrAuthState
     try {
@@ -187,10 +201,21 @@ export default createServerEntry({
           requestThemeStorage.run(theme, () =>
             requestLangStorage.run(lang, () =>
               requestI18nStorage.run(requestI18n, async () => {
-                const response = await handler.fetch(request)
-                return auth.isAuth || isMessengerPath
-                  ? augmentResponseForPrivateSsr(response)
-                  : response
+                return requestNonceStorage.run(nonce, async () => {
+                  const requestOptions = {
+                    ...(options ?? {}),
+                    context: {
+                      ...options?.context,
+                      nonce,
+                    },
+                  }
+                  let response = await handler.fetch(request, requestOptions)
+                  response =
+                    auth.isAuth || isMessengerPath
+                      ? augmentResponseForPrivateSsr(response)
+                      : response
+                  return applyNodeCspToHtmlResponse(response, nonce)
+                })
               })
             )
           )

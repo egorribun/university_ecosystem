@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ComponentProps } from "react"
@@ -11,6 +11,7 @@ const translationMocks = vi.hoisted(() => ({
 }))
 
 const apiMocks = vi.hoisted(() => ({
+  fetchNewsItem: vi.fn(),
   updateNews: vi.fn(),
   uploadNewsImage: vi.fn(),
 }))
@@ -31,6 +32,7 @@ vi.mock("react-i18next", () => ({
   },
 }))
 vi.mock("@/api/news", () => ({
+  fetchNewsItem: apiMocks.fetchNewsItem,
   updateNews: apiMocks.updateNews,
   uploadNewsImage: apiMocks.uploadNewsImage,
 }))
@@ -81,6 +83,7 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     translationMocks.returnUndefined = false
     translationMocks.namespaceCalls = []
     translationMocks.tCalls = []
+    apiMocks.fetchNewsItem.mockReset()
     apiMocks.updateNews.mockReset().mockResolvedValue({ data: { ...initialData } })
     apiMocks.uploadNewsImage.mockReset().mockResolvedValue("https://example.test/uploaded.png")
   })
@@ -266,6 +269,144 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     )
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["news", "list"] })
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("loads Russian source fields before saving from the English editor", async () => {
+    const user = userEvent.setup()
+    const russianSource = {
+      id: "news-contract",
+      title: "Русский оригинал",
+      content: "Текст на русском языке.",
+      title_en: "English original",
+      content_en: "English source body.",
+      image_url: "https://example.test/source.png",
+    }
+    apiMocks.fetchNewsItem.mockResolvedValue({ status: 200, data: russianSource })
+    renderDialog({
+      language: "en",
+      initialData: {
+        ...initialData,
+        title: "Localized English title",
+        content: "Localized English body.",
+      },
+    })
+
+    await waitFor(() => expect(screen.getByDisplayValue(russianSource.title)).toBeInTheDocument())
+    expect(screen.getByDisplayValue(russianSource.content)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(russianSource.title_en)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(russianSource.content_en)).toBeInTheDocument()
+    expect(apiMocks.fetchNewsItem).toHaveBeenCalledWith(
+      "news-contract",
+      expect.objectContaining({ language: "ru", signal: expect.any(AbortSignal) })
+    )
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+    expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", {
+      title: russianSource.title,
+      content: russianSource.content,
+      title_en: russianSource.title_en,
+      content_en: russianSource.content_en,
+      image_url: russianSource.image_url,
+    })
+  })
+
+  it("keeps saving disabled while the Russian source request is pending", async () => {
+    let resolveSource!: (value: { status: number; data: Record<string, string> }) => void
+    apiMocks.fetchNewsItem.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSource = resolve
+      })
+    )
+    renderDialog({ language: "en" })
+
+    expect(screen.getByRole("status")).toHaveTextContent("common:buttons.loading")
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveSource({ status: 200, data: { ...initialData } })
+    })
+    await waitFor(() => expect(save).toBeEnabled())
+  })
+
+  it("fails closed when the Russian source request rejects", async () => {
+    apiMocks.fetchNewsItem.mockRejectedValueOnce(new Error("source unavailable"))
+    renderDialog({ language: "en" })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+  })
+
+  it("fails closed when the Russian source request returns not-modified", async () => {
+    apiMocks.fetchNewsItem.mockResolvedValueOnce({ status: 304, data: undefined })
+    renderDialog({ language: "en" })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+  })
+
+  it("ignores an aborted Russian source response after the news ID changes", async () => {
+    const requests: Array<{
+      newsId: string
+      signal: AbortSignal
+      resolve: (value: { status: number; data: Record<string, string> }) => void
+    }> = []
+    apiMocks.fetchNewsItem.mockImplementation(
+      (newsId: string, options: { signal: AbortSignal }) =>
+        new Promise<{ status: number; data: Record<string, string> }>((resolve) => {
+          requests.push({ newsId, signal: options.signal, resolve })
+        })
+    )
+    const { rerender, client } = renderDialog({ language: "en", newsId: "news-old" })
+
+    expect(requests).toHaveLength(1)
+    rerender(
+      <QueryClientProvider client={client}>
+        <NewsDetailEditDialog {...makeProps({ language: "en", newsId: "news-new" })} />
+      </QueryClientProvider>
+    )
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.newsId).toBe("news-old")
+    expect(requests[0]?.signal.aborted).toBe(true)
+    expect(requests[1]?.newsId).toBe("news-new")
+
+    await act(async () => {
+      requests[0]?.resolve({
+        status: 200,
+        data: { ...initialData, title: "Stale Russian title", content: "Stale Russian body" },
+      })
+    })
+    expect(screen.queryByDisplayValue("Stale Russian title")).not.toBeInTheDocument()
+
+    await act(async () => {
+      requests[1]?.resolve({
+        status: 200,
+        data: { ...initialData, title: "Current Russian title", content: "Current Russian body" },
+      })
+    })
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Current Russian title")).toBeInTheDocument()
+    )
+    expect(screen.queryByDisplayValue("Stale Russian title")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+    expect(apiMocks.updateNews).toHaveBeenCalledWith(
+      "news-new",
+      expect.objectContaining({
+        title: "Current Russian title",
+        content: "Current Russian body",
+      })
+    )
   })
 
   it("renders no image block without an image and preserves exact fallback labels", () => {

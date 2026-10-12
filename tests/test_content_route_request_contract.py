@@ -10,7 +10,7 @@ from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import FastAPI, Request
 
 from app.api import events, news
 from app.core.cache_versioning import CacheVersionManager
@@ -76,8 +76,6 @@ async def test_mutations_keep_localization_and_optional_cache_contract(
     record = SimpleNamespace(id=uuid.UUID(int=17), image_url=None)
     user = SimpleNamespace(id=uuid.UUID(int=19), role=UserRole.ADMIN)
     service = MagicMock()
-    notifications = AsyncMock()
-    background = BackgroundTasks()
     kwargs = {"request": request, "user": user}
     module = news if handler.__module__ == news.__name__ else events
     if module is news:
@@ -86,8 +84,7 @@ async def test_mutations_keep_localization_and_optional_cache_contract(
         if handler is news.create_news:
             data = schemas.NewsCreate(title="Title", content="Content")
             service.create_news = AsyncMock(return_value=record)
-            kwargs.update(data=data, background=background)
-            kwargs["provides"]["NotificationService"] = notifications
+            kwargs.update(data=data)
         else:
             kwargs["id"] = record.id
             if handler is news.update_news:
@@ -139,10 +136,7 @@ async def test_mutations_keep_localization_and_optional_cache_contract(
         )
         assert serialize.call_args.args == (record, "ru")
         if handler is news.create_news:
-            service.create_news.assert_awaited_once_with(data)
-            notifications.dispatch_news_created.assert_awaited_once_with(
-                record.id, "ru", background
-            )
+            service.create_news.assert_awaited_once_with(data, locale="ru")
         else:
             getattr(service, handler.__name__).assert_awaited_once_with(record.id, data)
         if handler is events.update_event:

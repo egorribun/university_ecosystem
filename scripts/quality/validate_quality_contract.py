@@ -707,12 +707,10 @@ def _validate_coverage_scope(
 ) -> None:
     """Validate the toolchain-measured subset of each source root.
 
-    ``source_roots`` is the identity boundary for report paths.  A coverage
-    producer may intentionally measure a narrower, independently verified
-    subset: the Python producer uses ``--cov=app`` while Alembic revisions are
-    exercised by the dedicated PostgreSQL migration gate.  Keeping this scope
-    explicit prevents a filesystem walk from silently turning an unmeasured
-    structural source into a false coverage obligation.
+    ``source_roots`` is the identity boundary for report paths. A producer may
+    omit non-Tier-0 structural sources, but Tier-0 files stay in coverage scope.
+    Python coverage combines backend pytest data with the PostgreSQL migration
+    gate artifact, so Alembic revisions participate in the same 100% policy.
     """
     scope = _require_object(value, "coverage_scope", errors)
     if scope is None:
@@ -1262,7 +1260,8 @@ def _tier0_source_requires_coverage(
 
     Applicability is deliberately contract-driven.  ``source_roots`` remains
     the report identity boundary, while ``coverage_scope`` is the exact set of
-    roots instrumented by the producer (Python uses ``--cov=app``).  No
+    roots instrumented by the producer (Python covers ``app`` and
+    ``alembic/versions``).  No
     component-specific filename exception is allowed here: a future toolchain
     change must update the contract and its producer together.
     """
@@ -1389,10 +1388,9 @@ def _expected_tier0_inventory(
     """Return Tier0 files that the active coverage producers can measure.
 
     ``source_roots`` remains the report identity boundary, while
-    ``coverage_scope`` is the explicit producer scope.  In particular, the
-    Python report is produced with ``--cov=app``; Alembic revisions remain
-    structurally validated by the migration job and are not fabricated as
-    Python coverage evidence.
+    ``coverage_scope`` is the explicit producer scope. Python includes
+    ``app`` unit-test data and Alembic migration-gate data in the normalized
+    report; each matched Tier-0 revision must have measured evidence.
     """
     inventory: set[tuple[str, str]] = set()
     frontend_policy = _load_frontend_source_policy(repository_root)

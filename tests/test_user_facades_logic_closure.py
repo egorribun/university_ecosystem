@@ -167,8 +167,9 @@ def test_update_user_attributes_reuses_existing_nested_relations():
 
 @pytest.mark.asyncio
 async def test_anonymize_user_data_cleans_existing_relations_and_files():
+    user_id = uuid4()
     user = SimpleNamespace(
-        id=uuid4(),
+        id=user_id,
         email="user@example.com",
         hashed_password="hash",  # pragma: allowlist secret
         is_active=True,
@@ -176,8 +177,8 @@ async def test_anonymize_user_data_cleans_existing_relations_and_files():
         mfa_default_method="totp",
         mfa_last_verified_at=object(),
         profile=SimpleNamespace(
-            avatar_url="/avatar.jpg",
-            cover_url="/cover.jpg",
+            avatar_url=f"/static/avatars/user_{user_id}_avatar_{'a' * 32}.png",
+            cover_url=f"/static/covers/user_{user_id}_cover_{'b' * 32}.png",
             full_name="User",
             about="About",
             telegram="@user",

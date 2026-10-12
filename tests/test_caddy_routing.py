@@ -129,12 +129,13 @@ def test_websocket_ticket_is_redacted_from_access_logs() -> None:
         ), f"Caddy access-log URI must redact ticket query values in {relative_path}"
 
 
-def test_password_reset_bearers_are_redacted_from_access_and_runtime_logs() -> None:
-    """Reset bearer values must not reach Caddy's persistent/collected logs."""
+def test_password_and_bearers_are_redacted_from_access_and_runtime_logs() -> None:
+    """Passwords and bearer values must not reach Caddy logs."""
     required_redactions = (
         "regexp ^/reset-password/[^/?]+ /reset-password/REDACTED",
         "regexp ([?&]token=)[^&]* ${1}REDACTED",
         "regexp ([?&]ticket=)[^&]* ${1}REDACTED",
+        "regexp ([?&]password=)[^&]* ${1}REDACTED",
     )
 
     for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
@@ -158,13 +159,15 @@ def test_password_reset_bearers_are_redacted_from_access_and_runtime_logs() -> N
             all(redaction in block for redaction in required_redactions)
             for block in global_uri_filters
         ), (
-            f"Caddy runtime logs must redact reset and WS bearer values in {relative_path}"
+            f"Caddy runtime logs must redact passwords, reset tokens, and WS tickets "
+            f"in {relative_path}"
         )
         assert any(
             all(redaction in block for redaction in required_redactions)
             for block in site_uri_filters
         ), (
-            f"Caddy access logs must redact reset and WS bearer values in {relative_path}"
+            f"Caddy access logs must redact passwords, reset tokens, and WS tickets "
+            f"in {relative_path}"
         )
 
 

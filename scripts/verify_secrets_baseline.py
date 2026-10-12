@@ -10,12 +10,15 @@ Usage::
 
     python scripts/verify_secrets_baseline.py BASELINE CURRENT_SCAN
     python scripts/verify_secrets_baseline.py BASELINE CURRENT_SCAN \
-        --trusted-base-baseline TRUSTED_BASELINE
+        --trusted-base-baseline TRUSTED_BASELINE \
+        --trusted-base-source-sha BASE_SHA
 
 Exit code 0 means no unsuppressed findings were detected.  Exit code 1 means
 the current scan found a finding that is not in the committed baseline, or a
-pull request added a suppression for a finding relative to its trusted base.
-Exit code 2 means an artifact is missing or malformed.
+pull request added a suppression for a finding relative to its trusted base, or
+the source delta added an inline secret-allowlist pragma. The source check
+runs when --trusted-base-source-sha is supplied. Exit code 2 means an
+artifact or trusted source delta is missing or malformed.
 """
 
 from __future__ import annotations
@@ -23,6 +26,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -32,6 +37,198 @@ from typing import Any
 
 class BaselineArtifactError(ValueError):
     """Raised when a baseline or scan artifact cannot be trusted."""
+
+
+class SourceDeltaError(ValueError):
+    """Raised when a trusted source delta cannot be verified safely."""
+
+
+_SOURCE_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+_INLINE_SECRET_ALLOWLIST_PATTERN = re.compile(
+    r"\bpragma\s*:\s*allowlist\s+secret\b", re.IGNORECASE
+)
+_DIFF_HUNK_PATTERN = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _decode_git_quoted_path(value: str) -> str:
+    """Decode Git's C-quoted pathname form without interpreting source text."""
+
+    if not (value.startswith('"') and value.endswith('"')):
+        return value
+
+    escaped = value[1:-1]
+    decoded = bytearray()
+    simple_escapes = {
+        '"': b'"',
+        "\\": b"\\",
+        "a": b"\a",
+        "b": b"\b",
+        "f": b"\f",
+        "n": b"\n",
+        "r": b"\r",
+        "t": b"\t",
+        "v": b"\v",
+    }
+    index = 0
+    while index < len(escaped):
+        character = escaped[index]
+        if character != "\\":
+            decoded.extend(character.encode("utf-8", errors="surrogateescape"))
+            index += 1
+            continue
+
+        index += 1
+        if index >= len(escaped):
+            raise SourceDeltaError("malformed quoted Git pathname")
+        escape = escaped[index]
+        if escape in simple_escapes:
+            decoded.extend(simple_escapes[escape])
+            index += 1
+            continue
+        if escape not in "01234567":
+            raise SourceDeltaError("unsupported quoted Git pathname escape")
+
+        digits = escape
+        index += 1
+        while index < len(escaped) and len(digits) < 3 and escaped[index] in "01234567":
+            digits += escaped[index]
+            index += 1
+        decoded.append(int(digits, 8))
+
+    return decoded.decode("utf-8", errors="surrogateescape")
+
+
+def _path_from_added_file_header(header: str) -> str | None:
+    # Git uses a literal tab after a quoted pathname as its header delimiter;
+    # tabs inside a quoted pathname are escaped and are therefore preserved.
+    raw_path = header[4:].split("\t", 1)[0]
+    if raw_path == "/dev/null":
+        return None
+    if raw_path.startswith('"'):
+        path = _decode_git_quoted_path(raw_path)
+    else:
+        path = raw_path
+    if not path.startswith("b/"):
+        raise SourceDeltaError("unexpected Git diff path prefix")
+    return path[2:]
+
+
+def _find_added_inline_secret_pragmas(diff_text: str) -> list[tuple[str, int]]:
+    """Return only safe path/line identities for newly added marker lines."""
+
+    findings: list[tuple[str, int]] = []
+    current_path: str | None = None
+    new_line_number: int | None = None
+
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            current_path = None
+            new_line_number = None
+            continue
+
+        if new_line_number is None and line.startswith("+++ "):
+            current_path = _path_from_added_file_header(line)
+            continue
+
+        hunk = _DIFF_HUNK_PATTERN.match(line)
+        if line.startswith("@@"):
+            if hunk is None:
+                raise SourceDeltaError("unrecognized Git diff hunk header")
+            new_line_number = int(hunk.group(1))
+            continue
+
+        if new_line_number is None:
+            if line.startswith("+") and not line.startswith("+++ "):
+                raise SourceDeltaError("Git diff addition has no hunk header")
+            continue
+
+        if line.startswith("+"):
+            if current_path is None:
+                raise SourceDeltaError("Git diff addition has no destination path")
+            if _INLINE_SECRET_ALLOWLIST_PATTERN.search(line[1:]) is not None:
+                findings.append((current_path, new_line_number))
+            new_line_number += 1
+        elif line.startswith("-"):
+            continue
+        elif line.startswith(" "):
+            new_line_number += 1
+        elif line.startswith("\\ No newline at end of file"):
+            continue
+        else:
+            raise SourceDeltaError("unrecognized Git diff hunk format")
+
+    return findings
+
+
+def find_new_inline_secret_pragmas(
+    trusted_base_sha: str, *, repository_root: str | Path
+) -> list[tuple[str, int]]:
+    """Compare two immutable Git trees and find newly added suppression markers.
+
+    The trusted base must be a full, nonzero commit SHA. Git diagnostics and
+    source lines are never returned to the caller.
+    """
+
+    if (
+        not isinstance(trusted_base_sha, str)
+        or _SOURCE_SHA_PATTERN.fullmatch(trusted_base_sha) is None
+        or trusted_base_sha == "0" * 40
+    ):
+        raise SourceDeltaError("trusted source base SHA is invalid")
+
+    try:
+        root = Path(repository_root).resolve(strict=True)
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise SourceDeltaError("repository root is unavailable") from error
+
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise SourceDeltaError("Git source comparison could not run")
+    try:
+        git_executable = str(Path(git_executable).resolve(strict=True))
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise SourceDeltaError("Git source comparison could not run") from error
+
+    def run_git(*arguments: str) -> str:
+        try:
+            # Git arguments are fixed except for the already-validated full source SHA.
+            # The executable is absolute and shell interpretation is disabled.
+            result = subprocess.run(  # noqa: S603
+                [git_executable, *arguments],
+                cwd=root,
+                capture_output=True,
+                check=False,
+                encoding="utf-8",
+                errors="surrogateescape",
+                text=True,
+                shell=False,
+            )
+        except (OSError, UnicodeError) as error:
+            raise SourceDeltaError("Git source comparison could not run") from error
+        if result.returncode != 0:
+            raise SourceDeltaError("Git source comparison failed")
+        return result.stdout
+
+    run_git("cat-file", "-e", f"{trusted_base_sha}^{{commit}}")
+    head_sha = run_git("rev-parse", "--verify", "HEAD^{commit}").strip()
+    if _SOURCE_SHA_PATTERN.fullmatch(head_sha) is None:
+        raise SourceDeltaError("current source commit is unavailable")
+
+    diff_text = run_git(
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--unified=0",
+        "--no-renames",
+        "--text",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        trusted_base_sha,
+        head_sha,
+        "--",
+    )
+    return _find_added_inline_secret_pragmas(diff_text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +456,10 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="trusted_base_baseline",
         help="trusted target-branch baseline used to detect new PR suppressions",
     )
+    parser.add_argument(
+        "--trusted-base-source-sha",
+        help="immutable trusted source commit used to detect new inline suppressions",
+    )
     return parser
 
 
@@ -288,6 +489,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 
+    source_pragma_findings: list[tuple[str, int]] = []
+    if arguments.trusted_base_source_sha is not None:
+        try:
+            source_pragma_findings = find_new_inline_secret_pragmas(
+                arguments.trusted_base_source_sha,
+                repository_root=Path(__file__).resolve().parents[1],
+            )
+        except SourceDeltaError:
+            print(
+                "ERROR: trusted source delta could not be verified.",
+                file=sys.stderr,
+            )
+            return 2
+
     new_findings = current_findings - baseline_findings
     stale_suppressions = baseline_findings - current_findings
     # Only a newly added baseline entry that actually suppresses a finding in
@@ -309,7 +524,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if new_findings:
         print(
             "ERROR: current scan contains "
-            f"{len(new_findings)} new finding(s) not present in the committed baseline: "
+            f"{len(new_findings)} new finding(s) not present in the "
+            "committed baseline: "
             f"{_describe_findings(new_findings)}",
             file=sys.stderr,
         )
@@ -323,7 +539,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    if new_findings or new_trusted_suppressions:
+    if source_pragma_findings:
+        locations = ", ".join(
+            f"{json.dumps(path, ensure_ascii=True)}:{line_number}"
+            for path, line_number in source_pragma_findings[:20]
+        )
+        overflow = len(source_pragma_findings) - 20
+        if overflow > 0:
+            locations += f", ... (+{overflow} more)"
+        print(
+            "ERROR: source delta adds "
+            f"{len(source_pragma_findings)} inline secret-allowlist pragma line(s): "
+            f"{locations}",
+            file=sys.stderr,
+        )
+
+    if new_findings or new_trusted_suppressions or source_pragma_findings:
         return 1
 
     baseline_paths = {finding.path for finding in baseline_findings}

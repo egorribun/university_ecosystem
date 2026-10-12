@@ -3,13 +3,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import status
-from prometheus_client import CollectorRegistry
+from sqlalchemy import select
 
 import app.models as models
 from app.api import events
 from app.auth.security import get_password_hash
-from app.core import observability
-from app.services import attendance_tokens, notification_queue
+from app.models.domain_events import StoredEvent
+from app.services import attendance_tokens
 
 # Skip marker for tests that require PostgreSQL full-text search
 _database_url = os.environ.get("DATABASE_URL", "")
@@ -138,48 +138,37 @@ async def test_events_localization(async_client, db_session, user_factory):
 
 
 @pytest.mark.asyncio
-async def test_create_event_records_enqueue_failure(
-    async_client, db_session, user_factory, monkeypatch
+async def test_create_event_persists_notification_source_outbox_event(
+    async_client, db_session, user_factory
 ):
-    registry = CollectorRegistry()
-    metrics = observability.reinitialize_notification_queue_metrics(registry=registry)
-    notification_queue._queue_metrics = metrics
-
     password = "TeacherPass123!"
     teacher = await user_factory(
         role="teacher",
         hashed_password=await get_password_hash(password),
         is_active=True,
     )
-
     headers = await _login(async_client, teacher.email, password)
-
-    def _failing_add_task(self, func, *args, **kwargs):
-        raise RuntimeError("notification queue unavailable")
-
-    monkeypatch.setattr(events.BackgroundTasks, "add_task", _failing_add_task)
 
     now = datetime.now(UTC)
     payload = {
-        "title": "Queue Failure",
-        "description": "Test enqueue failure handling",
+        "title": "Durable notification source",
+        "description": "Notification delivery follows the committed source event",
         "starts_at": (now + timedelta(days=1)).isoformat(),
         "ends_at": (now + timedelta(days=1, hours=1)).isoformat(),
     }
 
     response = await async_client.post("/events", headers=headers, json=payload)
     assert response.status_code == status.HTTP_200_OK
-
     body = response.json()
-    assert body["title"] == "Queue Failure"
 
-    counter_value = metrics.enqueue_failures_total.labels(kind="event")._value.get()
-    assert counter_value == pytest.approx(1.0)
-
-    import uuid
-
-    stored = await db_session.get(models.Event, uuid.UUID(body["id"]))
+    stored = await db_session.scalar(
+        select(StoredEvent).where(
+            StoredEvent.event_type == "event.created",
+            StoredEvent.aggregate_id == body["id"],
+        )
+    )
     assert stored is not None
+    assert stored.payload["event_id_entity"] == body["id"]
 
 
 @pytest.mark.asyncio

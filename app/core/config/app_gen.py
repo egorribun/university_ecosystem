@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 from typing import Literal, cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationInfo, field_validator
 
@@ -27,7 +28,8 @@ _VALID_APP_PROCESS_ROLES: frozenset[str] = frozenset(
 
 
 class AppGeneralSettings(BaseAppSettings):
-    environment: str = "development"
+    environment: str
+    campus_timezone: str = "UTC"
     # The deployment manifests set these explicitly for background workers.
     # API/migration processes retain the secure defaults and therefore cannot
     # start with the revocation capability silently disabled.
@@ -101,6 +103,23 @@ class AppGeneralSettings(BaseAppSettings):
                 f"Unknown ENVIRONMENT value {v!r}. "
                 f"Accepted values: {sorted(_VALID_ENVIRONMENTS)}"
             )
+        return normalized
+
+    @field_validator("campus_timezone", mode="before")
+    @classmethod
+    def _validate_campus_timezone(cls, value: object) -> str:
+        """Require the server's campus wall-time zone to be a valid IANA key."""
+        normalized = str(value).strip()
+        if not normalized:
+            raise ValueError(
+                "CAMPUS_TIMEZONE must be a valid IANA time zone identifier"
+            )
+        try:
+            ZoneInfo(normalized)
+        except (ValueError, ZoneInfoNotFoundError) as exc:
+            raise ValueError(
+                "CAMPUS_TIMEZONE must be a valid IANA time zone identifier"
+            ) from exc
         return normalized
 
     @field_validator("app_process_role", mode="before")

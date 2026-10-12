@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import BackgroundTasks, HTTPException, Response
+from fastapi import HTTPException, Response
 
 import app.api.news as news_api
 from app.models.enums import UserRole
@@ -71,34 +71,28 @@ async def test_cache_helpers_normalize_fallbacks_and_increment() -> None:
     manager.get_version.assert_awaited_once_with(cache)
 
 
-async def test_create_news_requires_admin_and_dispatches_notification() -> None:
+async def test_create_news_requires_admin_and_serializes_record() -> None:
     handler = inspect.unwrap(news_api.create_news)
     service = AsyncMock()
-    notifications = AsyncMock()
     record = _news_record()
     service.create_news.return_value = record
     service.serialize_news = MagicMock(return_value={"id": NEWS_ID})
     request = _request(cache=object())
-    background = BackgroundTasks()
-
+    data = MagicMock()
     with patch.object(
         news_api, "_increment_news_list_version", new_callable=AsyncMock
     ) as increment:
         result = await call_injected(
             handler,
-            data=MagicMock(),
+            data=data,
             request=request,
-            background=background,
             user=_admin(),
-            provides={"NewsService": service, "NotificationService": notifications},
+            provides={"NewsService": service},
         )
 
     assert result == {"id": NEWS_ID}
-    service.create_news.assert_awaited_once()
+    service.create_news.assert_awaited_once_with(data, locale="en")
     service.serialize_news.assert_called_once_with(record, "en")
-    notifications.dispatch_news_created.assert_awaited_once_with(
-        NEWS_ID, "en", background
-    )
     increment.assert_awaited_once_with(request.app.state.cache)
 
     with patch.object(news_api, "_increment_news_list_version", new_callable=AsyncMock):
@@ -106,9 +100,8 @@ async def test_create_news_requires_admin_and_dispatches_notification() -> None:
             handler,
             data=MagicMock(),
             request=None,
-            background=background,
             user=_admin(),
-            provides={"NewsService": service, "NotificationService": notifications},
+            provides={"NewsService": service},
         )
     assert result == {"id": NEWS_ID}
 
@@ -338,7 +331,6 @@ async def test_like_news_success_and_missing_paths() -> None:
 async def test_comment_news_validates_news_content_and_profile_fallback() -> None:
     handler = inspect.unwrap(news_api.comment_on_news)
     service = AsyncMock()
-    notifications = AsyncMock()
     user = _user()
     comment = SimpleNamespace(
         id=uuid.UUID(int=3),
@@ -353,23 +345,23 @@ async def test_comment_news_validates_news_content_and_profile_fallback() -> Non
         handler,
         id=NEWS_ID,
         request=_request(),
-        background=BackgroundTasks(),
         content=" A comment ",
         user=user,
-        provides={"NewsService": service, "NotificationService": notifications},
+        provides={"NewsService": service},
     )
     assert result["user_name"] == str(user.email)
-    notifications.dispatch_comment_created.assert_awaited_once()
+    service.create_comment.assert_awaited_once_with(
+        NEWS_ID, user.id, " A comment ", locale="en"
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await call_injected(
             handler,
             id=NEWS_ID,
             request=_request(),
-            background=BackgroundTasks(),
             content="   ",
             user=user,
-            provides={"NewsService": service, "NotificationService": notifications},
+            provides={"NewsService": service},
         )
     assert exc_info.value.status_code == 400
 
@@ -379,10 +371,9 @@ async def test_comment_news_validates_news_content_and_profile_fallback() -> Non
             handler,
             id=NEWS_ID,
             request=_request(),
-            background=BackgroundTasks(),
             content="comment",
             user=user,
-            provides={"NewsService": service, "NotificationService": notifications},
+            provides={"NewsService": service},
         )
     assert exc_info.value.status_code == 404
 

@@ -343,6 +343,34 @@ server {
 
 > A same-origin edge is preferred for browsers. `BACKEND_ORIGIN` is the runtime SSR setting, while `VITE_BACKEND_ORIGIN` is only a build-time fallback; never expose internal service DNS in the client bundle.
 
+## Campus timezone
+
+`CAMPUS_TIMEZONE` sets the IANA timezone used for recurring lessons,
+reminders, and calendar exports; the default is `UTC`. Set it in `.env.docker`
+for Compose or `backend.env.CAMPUS_TIMEZONE` for Helm. The server calculates
+lesson dates in the campus timezone, and the browser formats the resulting
+instants for display.
+
+## Client-IP rate-limit configuration
+
+Rate-limit code trusts forwarding headers only when the immediate peer and
+chain are configured. In Compose, GATEWAY_TRUSTED_PROXIES names the exact proxy
+addresses seen by Gateway, WS_HUB_TRUSTED_PROXIES names those seen by ws-hub,
+and backend TRUSTED_PROXIES comes from .env.docker. The full Compose stack has
+dynamically addressed shared networks, and scripts/live_stand.py does not
+discover proxy addresses. Do not trust the whole public bridge or another
+broad private range. Supply values from the actual network layout and refresh
+them when addresses change. If an external load balancer sits before Caddy,
+configure Caddy to trust only that real upstream and verify the sanitized
+forwarded chain.
+
+For Helm, set gateway.config.trustedProxies and wsHub.config.trustedProxies to
+the real ingress source IPs/CIDRs. Set backend.env.TRUSTED_PROXIES to the
+Gateway and any upstream hops remaining in the sanitized chain. NetworkPolicy
+selectors restrict reachability but do not configure application header trust.
+Never use guessed addresses or a cluster-wide/private CIDR. Staging inherits
+the loopback-only ws-hub default until its deployment supplies actual peers.
+
 ## Backend system dependencies
 
 - The backend uses `python-magic` to inspect file contents, so install the `libmagic` packages on hosts running the backend (for example, `apt install libmagic1 libmagic-dev` on Debian/Ubuntu or `apk add file` on Alpine).

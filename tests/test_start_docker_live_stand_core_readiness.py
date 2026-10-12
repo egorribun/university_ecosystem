@@ -138,6 +138,125 @@ LEGACY_CORE_SERVICES = (
     "ws-hub",
 )
 
+_TRUSTED_PROXY_POWERSHELL_RUNNER = r"""
+param(
+    [Parameter(Mandatory=$true)][string]$SourcePath,
+    [Parameter(Mandatory=$true)][string]$EnvPath
+)
+$tokens = $null
+$parseErrors = $null
+$sourceAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    $SourcePath, [ref]$tokens, [ref]$parseErrors
+)
+if ($parseErrors.Count -gt 0) { throw "trusted_proxy_source_parse_failed" }
+function Get-UniqueFunctionText([string]$Name) {
+    $matches = @($sourceAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -ceq $Name
+    }, $true))
+    if ($matches.Count -ne 1) { throw "trusted_proxy_function_binding_failed" }
+    return $matches[0].Extent.Text
+}
+function Resolve-StatePath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $StateRoot $Path))
+}
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    $absolutePath = Resolve-StatePath -Path $Path
+    [System.IO.File]::WriteAllText(
+        $absolutePath,
+        $Content,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+}
+Invoke-Expression (Get-UniqueFunctionText "Set-EnvEntry")
+Invoke-Expression (Get-UniqueFunctionText "Set-LiveTrustedProxyEnvironment")
+Invoke-Expression (Get-UniqueFunctionText "ConvertFrom-TrustedProxyPeers")
+Invoke-Expression (Get-UniqueFunctionText "Resolve-TrustedProxyRefreshServices")
+$StateRoot = [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($EnvPath))
+$EnvFile = ".env.docker"
+$bootstrap = ConvertFrom-TrustedProxyPeers -Stage bootstrap -Json '{"GATEWAY_TRUSTED_PROXIES":[],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":[]}'
+Set-LiveTrustedProxyEnvironment -Settings $bootstrap
+$writtenProxyLines = @(Get-Content -LiteralPath $EnvPath | Where-Object {
+    $_ -match '^(TRUSTED_PROXIES|GATEWAY_TRUSTED_PROXIES|WS_HUB_TRUSTED_PROXIES)='
+})
+$rejectedProxyWithoutFlag = $false
+try {
+    Set-EnvEntry -Path $EnvFile -Key "TRUSTED_PROXIES" -Value ""
+} catch { $rejectedProxyWithoutFlag = $true }
+$rejectedUnrelatedEmpty = $false
+try {
+    Set-EnvEntry -Path $EnvFile -Key "UNRELATED_SETTING" -Value "" -AllowEmptyTrustedProxyValue
+} catch { $rejectedUnrelatedEmpty = $true }
+$unrelatedLine = @(Get-Content -LiteralPath $EnvPath | Where-Object {
+    $_.StartsWith("UNRELATED_SETTING=", [StringComparison]::Ordinal)
+})
+$edgeJson = '{"GATEWAY_TRUSTED_PROXIES":["172.28.0.2"],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":["172.28.0.2"]}'
+$edge = ConvertFrom-TrustedProxyPeers -Stage edge -Json $edgeJson
+$ipv6Json = '{"GATEWAY_TRUSTED_PROXIES":["fd00::2"],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":["fd00::2"]}'
+$ipv6 = ConvertFrom-TrustedProxyPeers -Stage edge -Json $ipv6Json
+$rejectedIPv6Any = $false
+try {
+    ConvertFrom-TrustedProxyPeers -Stage edge -Json '{"GATEWAY_TRUSTED_PROXIES":["::"],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":["::"]}' | Out-Null
+} catch { $rejectedIPv6Any = $true }
+$rejectedIPv6Loopback = $false
+try {
+    ConvertFrom-TrustedProxyPeers -Stage edge -Json '{"GATEWAY_TRUSTED_PROXIES":["::1"],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":["::1"]}' | Out-Null
+} catch { $rejectedIPv6Loopback = $true }
+$backendJson = '{"GATEWAY_TRUSTED_PROXIES":["172.28.0.2"],"TRUSTED_PROXIES":["172.28.0.2","172.29.0.4"],"WS_HUB_TRUSTED_PROXIES":["172.28.0.2"]}'
+$backend = ConvertFrom-TrustedProxyPeers -Stage backend -Json $backendJson
+$rejectedCidr = $false
+try {
+    ConvertFrom-TrustedProxyPeers -Stage edge -Json '{"GATEWAY_TRUSTED_PROXIES":["172.28.0.0/24"],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":["172.28.0.0/24"]}' | Out-Null
+} catch { $rejectedCidr = $true }
+$rejectedPublic = $false
+try {
+    ConvertFrom-TrustedProxyPeers -Stage edge -Json '{"GATEWAY_TRUSTED_PROXIES":["8.8.8.8"],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":["8.8.8.8"]}' | Out-Null
+} catch { $rejectedPublic = $true }
+$rejectedExtraKey = $false
+try {
+    ConvertFrom-TrustedProxyPeers -Stage edge -Json '{"GATEWAY_TRUSTED_PROXIES":["172.28.0.2"],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":["172.28.0.2"],"unexpected":[]}' | Out-Null
+} catch { $rejectedExtraKey = $true }
+$rejectedEmptyBackend = $false
+try {
+    ConvertFrom-TrustedProxyPeers -Stage backend -Json $edgeJson | Out-Null
+} catch { $rejectedEmptyBackend = $true }
+$selected = [string[]]@("backend", "caddy", "gateway", "ws-hub", "postgres")
+$edgeServices = Resolve-TrustedProxyRefreshServices -Stage edge -SelectedServices $selected
+$backendServices = Resolve-TrustedProxyRefreshServices -Stage backend -SelectedServices $selected
+$rejectedMissingPeer = $false
+try {
+    Resolve-TrustedProxyRefreshServices -Stage edge -SelectedServices @("backend", "gateway", "ws-hub") | Out-Null
+} catch { $rejectedMissingPeer = $true }
+$result = [pscustomobject]@{
+    bootstrapEmpty = @($bootstrap.Values | Where-Object { $_.Length -gt 0 }).Count -eq 0
+    emptyProxyLinesWritten = $writtenProxyLines.Count -eq 3 -and @($writtenProxyLines | Where-Object { $_ -notmatch "=$" }).Count -eq 0
+    proxyEmptyRequiresOptIn = $rejectedProxyWithoutFlag
+    unrelatedEmptyRejected = $rejectedUnrelatedEmpty
+    unrelatedValuePreserved = $unrelatedLine.Count -eq 1 -and $unrelatedLine[0] -ceq "UNRELATED_SETTING=preserved"
+    edgeGateway = [string]$edge["GATEWAY_TRUSTED_PROXIES"]
+    ipv6Gateway = [string]$ipv6["GATEWAY_TRUSTED_PROXIES"]
+    rejectedIPv6Any = $rejectedIPv6Any
+    rejectedIPv6Loopback = $rejectedIPv6Loopback
+    edgeBackendEmpty = [string]$edge["TRUSTED_PROXIES"] -ceq ""
+    backendPeers = [string]$backend["TRUSTED_PROXIES"]
+    edgeServices = @($edgeServices)
+    backendServices = @($backendServices)
+    rejectedCidr = $rejectedCidr
+    rejectedPublic = $rejectedPublic
+    rejectedExtraKey = $rejectedExtraKey
+    rejectedEmptyBackend = $rejectedEmptyBackend
+    rejectedMissingPeer = $rejectedMissingPeer
+}
+ConvertTo-Json -InputObject $result -Depth 4 -Compress
+"""
+
+
 _POWERSHELL_RUNNER = r"""
 param(
     [Parameter(Mandatory=$true)][string]$SourcePath,
@@ -350,6 +469,65 @@ ConvertTo-Json -InputObject $result -Depth 6 -Compress
 """
 
 
+def _run_trusted_proxy_powershell_contract(tmp_path: Path) -> dict[str, object]:
+    assert POWERSHELL is not None
+    runner = tmp_path / "trusted-proxy-contract.ps1"
+    runner.write_text(_TRUSTED_PROXY_POWERSHELL_RUNNER, encoding="utf-8")
+    env_path = tmp_path / ".env.docker"
+    env_path.write_text(
+        "UNRELATED_SETTING=preserved\n"
+        "TRUSTED_PROXIES=172.28.0.9\n"
+        "GATEWAY_TRUSTED_PROXIES=172.28.0.9\n"
+        "WS_HUB_TRUSTED_PROXIES=172.28.0.9\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(  # noqa: S603 - fixed pwsh executable and test-owned runner
+        [
+            POWERSHELL,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(runner),
+            "-SourcePath",
+            str(LAUNCHER),
+            "-EnvPath",
+            str(env_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, "powershell_trusted_proxy_contract_failed"
+    return json.loads(result.stdout)
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
+def test_trusted_proxy_refresh_parser_is_closed_and_services_are_exact(
+    tmp_path: Path,
+) -> None:
+    result = _run_trusted_proxy_powershell_contract(tmp_path)
+
+    assert result["bootstrapEmpty"] is True
+    assert result["emptyProxyLinesWritten"] is True
+    assert result["proxyEmptyRequiresOptIn"] is True
+    assert result["unrelatedEmptyRejected"] is True
+    assert result["unrelatedValuePreserved"] is True
+    assert result["edgeGateway"] == "172.28.0.2"
+    assert result["ipv6Gateway"] == "fd00::2"
+    assert result["rejectedIPv6Any"] is True
+    assert result["rejectedIPv6Loopback"] is True
+    assert result["edgeBackendEmpty"] is True
+    assert result["backendPeers"] == "172.28.0.2,172.29.0.4"
+    assert result["edgeServices"] == ["gateway", "ws-hub"]
+    assert result["backendServices"] == ["backend"]
+    assert result["rejectedCidr"] is True
+    assert result["rejectedPublic"] is True
+    assert result["rejectedExtraKey"] is True
+    assert result["rejectedEmptyBackend"] is True
+    assert result["rejectedMissingPeer"] is True
+
+
 def _run_powershell_readiness_contract(tmp_path: Path) -> dict[str, object]:
     assert POWERSHELL is not None
     runner = tmp_path / "readiness-contract.ps1"
@@ -415,3 +593,14 @@ def test_live_selection_mismatch_fails_before_build_or_up(tmp_path: Path) -> Non
         "Caller live service selection differs from resolved Compose closure."
     )
     assert result["dockerCalls"] == 0
+
+
+def test_trusted_proxy_refresh_wait_is_bounded() -> None:
+    source = LAUNCHER.read_text(encoding="utf-8")
+    refresh_command = (
+        "docker compose @ComposeArgs --env-file $EnvFile "
+        "up --wait --wait-timeout 120 -d --no-deps @refreshServices"
+    )
+
+    assert source.count(refresh_command) == 1
+    assert "up -d --no-deps @refreshServices" not in source

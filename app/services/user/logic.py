@@ -1,4 +1,7 @@
-from typing import Any
+import re
+from pathlib import PurePosixPath
+from typing import Any, Literal
+from uuid import UUID
 
 import app.models as models
 from app.core.constants import ANONYMIZED_USER_CREDENTIAL
@@ -10,6 +13,59 @@ async def delete_static_file(path: str) -> None:
     from app.utils.files import delete_static_file as _delete_static_file
 
     await _delete_static_file(path)
+
+
+ProfileMediaKind = Literal["avatar", "cover"]
+
+
+def _is_owned_profile_media_path(
+    path: str, *, owner_id: UUID, media_kind: ProfileMediaKind
+) -> bool:
+    """Match only the upload key format that proves this profile owns the file."""
+
+    from app.services.storage import S3Storage, StaticFSStorage
+    from app.utils.files import _get_storage_backend, normalize_filename_prefix
+
+    backend = _get_storage_backend()
+    if isinstance(backend, StaticFSStorage):
+        relative_path = backend._extract_relative_path(path)
+        key = relative_path.as_posix() if relative_path is not None else None
+    elif isinstance(backend, S3Storage):
+        key = backend._extract_key(path)
+    else:
+        # Unknown storage implementations cannot prove which object the URL maps to.
+        return False
+
+    if not key:
+        return False
+
+    directory = {"avatar": "avatars", "cover": "covers"}.get(media_kind)
+    if directory is None:
+        return False
+
+    parts = PurePosixPath(key).parts
+    if len(parts) != 2 or parts[0] != directory:
+        return False
+
+    owner_prefix = normalize_filename_prefix(f"user_{owner_id}_{media_kind}")
+    filename_pattern = rf"{re.escape(owner_prefix)}_[0-9a-f]{{32}}\.(?:jpg|png|webp)"
+    return re.fullmatch(filename_pattern, parts[1]) is not None
+
+
+async def delete_owned_profile_media(
+    path: str, *, owner_id: UUID, media_kind: ProfileMediaKind
+) -> bool:
+    """Delete profile media only when its stored key matches the current owner.
+
+    Older or poisoned URLs without the owner-scoped upload key are left in storage;
+    profile references are still cleared by their caller.
+    """
+
+    if not _is_owned_profile_media_path(path, owner_id=owner_id, media_kind=media_kind):
+        return False
+
+    await delete_static_file(path)
+    return True
 
 
 def update_user_attributes(user: models.User, data: dict[str, Any]) -> None:
@@ -95,9 +151,13 @@ async def anonymize_user_data(user: models.User) -> str:
     # Profile fields handling
     if user.profile:
         if user.profile.avatar_url:
-            await delete_static_file(user.profile.avatar_url)
+            await delete_owned_profile_media(
+                user.profile.avatar_url, owner_id=user.id, media_kind="avatar"
+            )
         if user.profile.cover_url:
-            await delete_static_file(user.profile.cover_url)
+            await delete_owned_profile_media(
+                user.profile.cover_url, owner_id=user.id, media_kind="cover"
+            )
 
         # We want to keep the profile to store "deleted" status,
         # but clear all other PII.

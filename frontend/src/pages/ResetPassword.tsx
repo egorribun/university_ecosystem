@@ -294,7 +294,12 @@ export default function ResetPassword() {
                     </p>
                   </div>
 
-                  <form onSubmit={handleTelemetrySubmit} autoComplete="on" className="space-y-6">
+                  <form
+                    method="post"
+                    onSubmit={handleTelemetrySubmit}
+                    autoComplete="on"
+                    className="space-y-6"
+                  >
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <TextField

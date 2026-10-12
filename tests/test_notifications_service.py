@@ -3,13 +3,16 @@ import datetime as dt
 import typing
 import unittest.mock
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from sqlalchemy import delete, event, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.core.events import EventCreated, NewsCreated, NotificationsRequested
 from app.models import (
     Group,
     Notification,
@@ -33,6 +36,7 @@ from app.services.notifications import (
     schedule_reminders as notifications_schedule_reminders,
 )
 from app.services.webpush import WebPushResult
+from app.workers import notifications as notifications_worker
 
 
 def _reset_vapid_cache() -> None:
@@ -606,7 +610,7 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
 
 
 @pytest.mark.asyncio
-async def test_event_creation_enqueues_notifications(
+async def test_event_creation_persists_notification_source_event(
     async_client,
     db_session,
     user_factory,
@@ -619,17 +623,11 @@ async def test_event_creation_enqueues_notifications(
 
     headers = await _login(async_client, admin.email, password)
 
-    delivery_started = asyncio.Event()
-    calls = 0
-
-    async def _fake_enqueue(event_id, *, locale=None):
-        nonlocal calls
-        calls += 1
-        delivery_started.set()
+    enqueue_spy = unittest.mock.AsyncMock()
 
     monkeypatch.setattr(
         "app.services.notification_queue.enqueue_event_notification",
-        _fake_enqueue,
+        enqueue_spy,
     )
 
     starts_at = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
@@ -642,16 +640,37 @@ async def test_event_creation_enqueues_notifications(
         "ends_at": ends_at.isoformat(),
     }
 
-    response = await async_client.post("/events", json=payload, headers=headers)
+    response = await async_client.post("/events?lang=ru", json=payload, headers=headers)
     assert response.status_code == 200
-    # assert not delivery_started.is_set()  # Flaky: task might run immediately
+    response_event = response.json()
+    event_id = response_event["id"]
+    assert response_event["title"] == payload["title"]
+    enqueue_spy.assert_not_called()
+    enqueue_spy.assert_not_awaited()
 
-    await asyncio.wait_for(delivery_started.wait(), timeout=3.0)
-    assert calls == 1
+    stored_events = (
+        (
+            await db_session.execute(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == EventCreated.EVENT_TYPE,
+                    StoredEvent.aggregate_type == "Event",
+                    StoredEvent.aggregate_id == event_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(stored_events) == 1
+    stored_event = stored_events[0]
+    assert stored_event.payload["event_id_entity"] == event_id
+    assert stored_event.payload["locale"] == "ru"
+    assert stored_event.status == "pending"
+    assert stored_event.processed_at is None
 
 
 @pytest.mark.asyncio
-async def test_news_creation_enqueues_notifications(
+async def test_news_creation_persists_notification_source_event(
     async_client,
     db_session,
     user_factory,
@@ -664,29 +683,44 @@ async def test_news_creation_enqueues_notifications(
 
     headers = await _login(async_client, admin.email, password)
 
-    delivery_started = asyncio.Event()
-    calls = 0
-
-    async def _fake_enqueue(news_id, *, locale=None):
-        nonlocal calls
-        calls += 1
-        delivery_started.set()
+    enqueue_spy = unittest.mock.AsyncMock()
 
     monkeypatch.setattr(
         "app.services.notification_queue.enqueue_news_notification",
-        _fake_enqueue,
+        enqueue_spy,
     )
 
     response = await async_client.post(
-        "/news",
+        "/news?lang=ru",
         json={"title": "Async News", "content": "Hello"},
         headers=headers,
     )
     assert response.status_code == 200
-    # assert not delivery_started.is_set()
+    response_news = response.json()
+    news_id = response_news["id"]
+    assert response_news["title"] == "Async News"
+    enqueue_spy.assert_not_called()
+    enqueue_spy.assert_not_awaited()
 
-    await asyncio.wait_for(delivery_started.wait(), timeout=1.0)
-    assert calls == 1
+    stored_events = (
+        (
+            await db_session.execute(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == NewsCreated.EVENT_TYPE,
+                    StoredEvent.aggregate_type == "News",
+                    StoredEvent.aggregate_id == news_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(stored_events) == 1
+    stored_event = stored_events[0]
+    assert stored_event.payload["news_id"] == news_id
+    assert stored_event.payload["locale"] == "ru"
+    assert stored_event.status == "pending"
+    assert stored_event.processed_at is None
 
 
 @pytest.mark.asyncio
@@ -727,3 +761,170 @@ async def test_aggregate_notification_delivery_stats_filtering(
     assert stats[0]["channel"] == "webpush"
     assert stats[0]["status"] == "failed"
     assert stats[0]["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_scheduler_commits_notification_and_outbox_atomically(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = await user_factory()
+    group = Group(name="Reminder persistence")
+    db_session.add(group)
+    await db_session.flush()
+
+    user_id = user.id
+    group_id = group.id
+    user.group_id = group_id
+
+    observed_now = dt.datetime.now(dt.UTC)
+    fixed_now = observed_now.replace(hour=12, minute=0, second=0, microsecond=0)
+    lesson_start = fixed_now + dt.timedelta(minutes=4)
+    schedule = Schedule(
+        group_id=group_id,
+        creator_id=user_id,
+        subject="Persistence check",
+        weekday=fixed_now.strftime("%A").lower(),
+        start_time=lesson_start,
+        end_time=lesson_start + dt.timedelta(hours=1),
+        parity="both",
+    )
+    db_session.add(schedule)
+    await db_session.commit()
+
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    monkeypatch.setattr(notifications_worker, "async_session", sessions)
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+
+    class _FixedDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    clock = SimpleNamespace(**vars(dt))
+    clock.datetime = _FixedDatetime
+    monkeypatch.setattr(notifications_schedule_reminders, "dt", clock)
+    monkeypatch.setattr(notifications_delivery, "dt", clock)
+    if hasattr(settings, "campus_timezone"):
+        monkeypatch.setattr(settings, "campus_timezone", "UTC")
+
+    real_generate = notifications_worker.generate_schedule_reminders
+
+    async def _generate_then_fail_after_flush(db, **kwargs: Any):
+        created = await real_generate(db, **kwargs)
+        assert created == 1
+        await db.flush()
+        raise RuntimeError("rollback after reminder and outbox flush")
+
+    monkeypatch.setattr(
+        notifications_worker,
+        "generate_schedule_reminders",
+        _generate_then_fail_after_flush,
+    )
+    scheduler = notifications_worker.NotificationsScheduler(
+        poll_seconds=1,
+        window_minutes=10,
+        max_backoff_seconds=2,
+    )
+
+    with pytest.raises(RuntimeError, match="rollback after reminder and outbox flush"):
+        await scheduler.run_once()
+
+    async with sessions() as reader:
+        notifications_after_failure = (
+            (
+                await reader.execute(
+                    select(Notification.id).where(
+                        Notification.user_id == user_id,
+                        Notification.type == "schedule.reminder",
+                        Notification.url == "/schedule",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        outbox_after_failure = (
+            (
+                await reader.execute(
+                    select(StoredEvent.id).where(
+                        StoredEvent.event_type == NotificationsRequested.EVENT_TYPE,
+                        StoredEvent.aggregate_type == "NotificationBatch",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert notifications_after_failure == []
+    assert outbox_after_failure == []
+
+    monkeypatch.setattr(
+        notifications_worker, "generate_schedule_reminders", real_generate
+    )
+    assert await scheduler.run_once() == 1
+
+    async with sessions() as reader:
+        persisted_notifications = (
+            (
+                await reader.execute(
+                    select(Notification).where(
+                        Notification.user_id == user_id,
+                        Notification.type == "schedule.reminder",
+                        Notification.url == "/schedule",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        persisted_outbox = (
+            (
+                await reader.execute(
+                    select(StoredEvent).where(
+                        StoredEvent.event_type == NotificationsRequested.EVENT_TYPE,
+                        StoredEvent.aggregate_type == "NotificationBatch",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(persisted_notifications) == 1
+    assert len(persisted_outbox) == 1
+    assert persisted_outbox[0].payload["notification_ids"] == [
+        str(persisted_notifications[0].id)
+    ]
+
+    assert await scheduler.run_once() == 0
+    async with sessions() as reader:
+        notification_ids = (
+            (
+                await reader.execute(
+                    select(Notification.id).where(
+                        Notification.user_id == user_id,
+                        Notification.type == "schedule.reminder",
+                        Notification.url == "/schedule",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        outbox_ids = (
+            (
+                await reader.execute(
+                    select(StoredEvent.id).where(
+                        StoredEvent.event_type == NotificationsRequested.EVENT_TYPE,
+                        StoredEvent.aggregate_type == "NotificationBatch",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(notification_ids) == 1
+    assert len(outbox_ids) == 1

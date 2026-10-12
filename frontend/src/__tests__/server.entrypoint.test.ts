@@ -2,10 +2,17 @@
  * @vitest-environment node
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest"
+import type { RequestOptions } from "@tanstack/react-start/server"
 import type { i18n as I18nInstance } from "i18next"
 
+type TestServerRegister = {
+  server: { requestContext: { requestId: string } }
+}
+type TestRequestOptions = RequestOptions<TestServerRegister>
+type ServerHandlerResult = Response | Promise<Response>
+
 const mocks = vi.hoisted(() => ({
-  handlerFetch: vi.fn<(request: Request) => Promise<Response>>(),
+  handlerFetch: vi.fn<(request: Request, options?: TestRequestOptions) => ServerHandlerResult>(),
   createServerEntry: vi.fn(<T>(entry: T): T => entry),
   extractAuthFromRequest: vi.fn(),
   extractThemeFromRequest: vi.fn(),
@@ -43,6 +50,7 @@ type ServerGlobals = typeof globalThis & {
   __ssrThemeGetter__?: () => string | undefined
   __ssrLangGetter__?: () => string | undefined
   __ssrI18nGetter__?: () => I18nInstance | undefined
+  __ssrNonceGetter__?: () => string | undefined
 }
 
 const globals = globalThis as ServerGlobals
@@ -66,6 +74,7 @@ afterAll(() => {
   delete globals.__ssrThemeGetter__
   delete globals.__ssrLangGetter__
   delete globals.__ssrI18nGetter__
+  delete globals.__ssrNonceGetter__
 })
 
 describe("server entrypoint", () => {
@@ -124,6 +133,132 @@ describe("server entrypoint", () => {
     expect(globals.__ssrI18nGetter__?.()).toBeUndefined()
   })
 
+  it("preserves Start request options and caller context while replacing the nonce", async () => {
+    const onEarlyHints = vi.fn()
+    const requestOptions = {
+      onEarlyHints,
+      responseLinkHeader: false,
+      inlineCss: false,
+      context: {
+        nonce: "caller-option-nonce",
+        requestId: "caller-context",
+      },
+    }
+    mocks.handlerFetch.mockImplementation(async (_request, forwardedOptions) => {
+      expect(forwardedOptions?.context?.nonce).toBe(globals.__ssrNonceGetter__?.())
+      return new Response("public")
+    })
+
+    const request = new Request("https://app.example/news", {
+      headers: { "x-csp-nonce": "caller-header-nonce" },
+    })
+    await serverEntry.fetch(request, requestOptions)
+
+    const forwardedOptions = mocks.handlerFetch.mock.calls[0]?.[1]
+    expect(forwardedOptions?.inlineCss).toBe(false)
+    expect(forwardedOptions?.responseLinkHeader).toBe(false)
+    expect(forwardedOptions?.onEarlyHints).toBe(onEarlyHints)
+    expect(forwardedOptions?.context?.nonce).toBeDefined()
+    expect(forwardedOptions?.context?.nonce).not.toBe("caller-option-nonce")
+    expect(forwardedOptions?.context?.nonce).not.toBe("caller-header-nonce")
+    expect(Reflect.get(forwardedOptions?.context ?? {}, "requestId")).toBe("caller-context")
+    expect(globals.__ssrNonceGetter__?.()).toBeUndefined()
+  })
+
+  it("keeps concurrent HTML CSP nonces paired per response", async () => {
+    const firstPath = "/overlap-first"
+    const secondPath = "/overlap-second"
+    const noncesByPath = new Map<string, string>()
+    let releaseFirst!: (response: Response) => void
+    let releaseSecond!: (response: Response) => void
+    let resolveBothEntered!: () => void
+    let rejectBothEntered!: (reason: unknown) => void
+    const firstBody = new Promise<Response>((resolve) => {
+      releaseFirst = resolve
+    })
+    const secondBody = new Promise<Response>((resolve) => {
+      releaseSecond = resolve
+    })
+    const bothEntered = new Promise<void>((resolve, reject) => {
+      resolveBothEntered = resolve
+      rejectBothEntered = reject
+    })
+
+    mocks.handlerFetch.mockImplementation(async (request) => {
+      const requestPath = new URL(request.url).pathname
+      const nonce = globals.__ssrNonceGetter__?.()
+      if (requestPath !== firstPath && requestPath !== secondPath) {
+        throw new Error("Unexpected path in concurrent nonce test")
+      }
+      if (!nonce) {
+        throw new Error("Request-scoped nonce unavailable")
+      }
+      noncesByPath.set(requestPath, nonce)
+      if (noncesByPath.size === 2) resolveBothEntered()
+      return requestPath === firstPath ? firstBody : secondBody
+    })
+
+    const observeFailure = (result: ServerHandlerResult): Promise<Response> =>
+      Promise.resolve(result).catch((error: unknown) => {
+        rejectBothEntered(error)
+        throw error
+      })
+    const firstRequest = observeFailure(
+      serverEntry.fetch(new Request("https://app.example" + firstPath))
+    )
+    const secondRequest = observeFailure(
+      serverEntry.fetch(new Request("https://app.example" + secondPath))
+    )
+    const pendingResponses = Promise.all([firstRequest, secondRequest])
+
+    try {
+      await Promise.race([
+        bothEntered,
+        pendingResponses.then(() => {
+          throw new Error("Controlled handler returned before release")
+        }),
+      ])
+
+      const firstNonce = noncesByPath.get(firstPath)
+      const secondNonce = noncesByPath.get(secondPath)
+      expect(firstNonce).toBeDefined()
+      expect(secondNonce).toBeDefined()
+      if (firstNonce === undefined || secondNonce === undefined) {
+        throw new Error("Both request-scoped nonces must be captured")
+      }
+      expect(firstNonce).not.toBe(secondNonce)
+
+      const firstMarkup =
+        '<script nonce="' + firstNonce + '">trustedFirst()</script><script>rawFirst()</script>'
+      const secondMarkup =
+        '<script nonce="' + secondNonce + '">trustedSecond()</script><script>rawSecond()</script>'
+      const htmlHeaders = { "content-type": "text/html; charset=utf-8" }
+
+      releaseSecond(new Response(secondMarkup, { headers: htmlHeaders }))
+      releaseFirst(new Response(firstMarkup, { headers: htmlHeaders }))
+      const [firstResponse, secondResponse] = await pendingResponses
+      const firstPolicy = firstResponse.headers.get("content-security-policy")
+      const secondPolicy = secondResponse.headers.get("content-security-policy")
+      const firstHeaderNonce = firstPolicy?.match(/'nonce-([^']+)'/u)?.[1]
+      const secondHeaderNonce = secondPolicy?.match(/'nonce-([^']+)'/u)?.[1]
+
+      expect(firstHeaderNonce).toBe(firstNonce)
+      expect(secondHeaderNonce).toBe(secondNonce)
+      expect(firstHeaderNonce).not.toBe(secondHeaderNonce)
+      expect(firstResponse.headers.get("cache-control")).toBe("no-store, private, max-age=0")
+      expect(secondResponse.headers.get("cache-control")).toBe("no-store, private, max-age=0")
+      await expect(firstResponse.text()).resolves.toBe(firstMarkup)
+      await expect(secondResponse.text()).resolves.toBe(secondMarkup)
+      expect(firstMarkup).toContain(`<script nonce="${firstHeaderNonce}">`)
+      expect(secondMarkup).toContain(`<script nonce="${secondHeaderNonce}">`)
+      expect(firstMarkup).toContain("<script>rawFirst()</script>")
+      expect(secondMarkup).toContain("<script>rawSecond()</script>")
+    } finally {
+      releaseFirst(new Response("drained"))
+      releaseSecond(new Response("drained"))
+    }
+  })
+
   it("falls back to unauthenticated state and an empty cookie on extraction failure", async () => {
     mocks.extractAuthFromRequest.mockRejectedValue(new Error("jwks unavailable"))
     mocks.handlerFetch.mockImplementation(async () => {
@@ -167,22 +302,63 @@ describe("server entrypoint", () => {
     }
   )
 
-  it("leaves unauthenticated public response headers and identity unchanged", async () => {
+  it("secures public HTML while preserving its status, body, and Vary", async () => {
     const upstream = new Response("public page", {
+      status: 203,
+      statusText: "Non-Authoritative Information",
       headers: {
         "cache-control": "public, max-age=60",
         "content-type": "text/html; charset=utf-8",
         vary: "Accept-Encoding",
+        etag: '"public-v1"',
+        "last-modified": "Mon, 01 Jan 2024 00:00:00 GMT",
       },
     })
     mocks.handlerFetch.mockResolvedValue(upstream)
 
     const response = await serverEntry.fetch(new Request("https://app.example/news"))
 
-    expect(response).toBe(upstream)
-    expect(response.headers.get("cache-control")).toBe("public, max-age=60")
+    expect(response).not.toBe(upstream)
+    expect(response.status).toBe(203)
+    expect(response.statusText).toBe("Non-Authoritative Information")
+    expect(response.headers.get("cache-control")).toBe("no-store, private, max-age=0")
     expect(response.headers.get("vary")).toBe("Accept-Encoding")
+    const policy = response.headers.get("content-security-policy")
+    const nonce = policy?.match(/script-src[^;]*'nonce-([^']+)'/u)?.[1]
+    expect(nonce).toBeTruthy()
+    expect(response.headers.get("content-security-policy-report-only")).toContain(
+      `'nonce-${nonce}'`
+    )
+    expect(response.headers.has("etag")).toBe(false)
+    expect(response.headers.has("last-modified")).toBe(false)
     await expect(response.text()).resolves.toBe("public page")
+  })
+
+  it("preserves unauthenticated public non-HTML response identity and headers", async () => {
+    const upstream = new Response('{"status":"ok"}', {
+      status: 202,
+      statusText: "Accepted",
+      headers: {
+        "cache-control": "public, max-age=60",
+        "content-type": "application/json; charset=utf-8",
+        vary: "Accept-Encoding",
+        etag: '"health-v1"',
+      },
+    })
+    mocks.handlerFetch.mockResolvedValue(upstream)
+
+    const response = await serverEntry.fetch(new Request("https://app.example/public-data"))
+
+    expect(response).toBe(upstream)
+    expect(response.status).toBe(202)
+    expect(response.statusText).toBe("Accepted")
+    expect(response.headers.get("cache-control")).toBe("public, max-age=60")
+    expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8")
+    expect(response.headers.get("vary")).toBe("Accept-Encoding")
+    expect(response.headers.get("etag")).toBe('"health-v1"')
+    expect(response.headers.has("content-security-policy")).toBe(false)
+    expect(response.headers.has("content-security-policy-report-only")).toBe(false)
+    await expect(response.text()).resolves.toBe('{"status":"ok"}')
   })
   it("adds private cache headers and Cookie variance to messenger responses", async () => {
     mocks.handlerFetch.mockResolvedValue(

@@ -168,6 +168,15 @@ jobs:
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
               scripts/quality/filter_checkov_sarif.py|\
               scripts/verify_secrets_baseline.py|\
+              scripts/quality/coverage_provenance.py|\
+              scripts/quality/pytest_shard_manifest.py|\
+              scripts/quality/normalize_coverage_reports.py|\
+              scripts/quality/validate_quality_contract.py|\
+              scripts/quality/migration_downgrade_policy.py|\
+              scripts/quality/validate_ci_check_catalog.py|\
+              scripts/run_detect_secrets.py|scripts/secrets_baseline.py|\
+              tests/test_immutable_policy_integrity_workflow.py|\
+              tests/test_security_policy_integrity_snapshot_contract.py|\
               scripts/quality/validate_semgrep_sarif.py)
                 protected_paths+=("$path")
                 ;;

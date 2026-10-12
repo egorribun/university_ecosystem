@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -154,6 +155,218 @@ func TestHubRun_DropsWhenWorkerQueueIsFull(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("hub did not stop after queue test")
 	}
+}
+
+func TestHubRun_DropsSequencedBroadcastAndCleansRoomWithoutBlocking(t *testing.T) {
+	baseline := testutil.ToFloat64(ActiveConnections)
+	t.Cleanup(func() { ActiveConnections.Set(baseline) })
+
+	h := setupTestHub()
+	t.Cleanup(h.Stop)
+	h.Broadcast = make(chan *Message, 1)
+	h.broadcastWorkers = 1
+	room := "sequenced-overflow-room"
+	clientCtx, cancelClient := context.WithCancel(context.Background())
+	t.Cleanup(cancelClient)
+	client := &Client{
+		ID:     "sequenced-overflow-client",
+		UserID: "sequenced-overflow-user",
+		Hub:    h,
+		Rooms:  make(map[string]bool),
+		Send:   make(chan []byte, 1),
+		ctx:    clientCtx,
+		cancel: cancelClient,
+	}
+	h.handleRegister(context.Background(), client)
+	client.JoinRoom(room)
+
+	workerStarted := make(chan struct{})
+	workerRelease := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseWorker := func() { releaseOnce.Do(func() { close(workerRelease) }) }
+
+	oldBroadcast := broadcastMessageFunc
+	t.Cleanup(func() { broadcastMessageFunc = oldBroadcast })
+	broadcastMessageFunc = func(_ *Hub, _ context.Context, msg *Message) {
+		if msg.Seq == 1 {
+			close(workerStarted)
+			<-workerRelease
+		}
+	}
+
+	ctx, cancelRun := context.WithCancel(context.Background())
+	runDone := make(chan struct{})
+	go func() {
+		h.Run(ctx)
+		close(runDone)
+	}()
+	t.Cleanup(func() {
+		releaseWorker()
+		cancelRun()
+		select {
+		case <-runDone:
+		case <-time.After(time.Second):
+			t.Error("hub run loop did not exit during test cleanup")
+		}
+	})
+	require.Eventually(t, func() bool { return hubLifecycleContext(h) != nil }, time.Second, time.Millisecond)
+
+	broadcast := func(sequence uint64) *Message {
+		return &Message{
+			Type: "new_message",
+			Room: room,
+			MessageReplayMetadata: &MessageReplayMetadata{
+				Seq:    sequence,
+				Stream: "CHAT_EVENTS",
+			},
+		}
+	}
+	dropsBefore := testutil.ToFloat64(BroadcastDropsTotal)
+	h.Broadcast <- broadcast(1)
+	select {
+	case <-workerStarted:
+	case <-time.After(time.Second):
+		t.Fatal("sequenced broadcast worker did not start")
+	}
+	h.Broadcast <- broadcast(2)
+	h.Broadcast <- broadcast(3)
+
+	require.Eventually(t, func() bool {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		_, registered := h.Clients[client.ID]
+		return !registered && len(h.Rooms[room]) == 0 &&
+			testutil.ToFloat64(BroadcastDropsTotal) >= dropsBefore+1
+	}, time.Second, time.Millisecond, "overflow must evict affected room clients without blocking Run")
+
+	releaseWorker()
+	cancelRun()
+	select {
+	case <-runDone:
+	case <-time.After(time.Second):
+		t.Fatal("hub run loop did not stop after context cancellation")
+	}
+	_, sendOpen := <-client.Send
+	assert.False(t, sendOpen, "overflow cleanup must close the evicted client's send queue")
+	assert.Equal(t, baseline, testutil.ToFloat64(ActiveConnections))
+}
+
+type blockedRoomJoinAuth struct {
+	started chan struct{}
+	allow   chan struct{}
+}
+
+func (a *blockedRoomJoinAuth) CanJoinRoom(context.Context, string, string) bool {
+	close(a.started)
+	<-a.allow
+	return true
+}
+
+func (*blockedRoomJoinAuth) Invalidate(string, string) {}
+
+func TestFailRoomClientsFencesInFlightAuthorizedJoin(t *testing.T) {
+	activeBefore := testutil.ToFloat64(ActiveConnections)
+	t.Cleanup(func() { ActiveConnections.Set(activeBefore) })
+
+	h := setupTestHub()
+	auth := &blockedRoomJoinAuth{started: make(chan struct{}), allow: make(chan struct{})}
+	h.authClient = auth
+	var releaseOnce sync.Once
+	releaseAuthorization := func() { releaseOnce.Do(func() { close(auth.allow) }) }
+	joinFinished := make(chan struct{})
+	failDone := make(chan struct{})
+	failStarted := false
+	t.Cleanup(func() {
+		releaseAuthorization()
+		select {
+		case <-joinFinished:
+		case <-time.After(time.Second):
+			t.Error("authorized join did not finish during cleanup")
+		}
+		if failStarted {
+			select {
+			case <-failDone:
+			case <-time.After(time.Second):
+				t.Error("room failure cleanup did not finish during cleanup")
+			}
+		}
+	})
+
+	clientCtx, cancelClient := context.WithCancel(context.Background())
+	t.Cleanup(cancelClient)
+	client := &Client{
+		ID:               "overflow-join-race",
+		UserID:           "overflow-join-user",
+		SessionJTI:       "overflow-join-session",
+		SessionExpiresAt: time.Now().Add(time.Hour),
+		Hub:              h,
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, 1),
+		ctx:              clientCtx,
+		cancel:           cancelClient,
+	}
+	h.handleRegister(context.Background(), client)
+	client.JoinRoom("overflow-room")
+
+	joinDone := make(chan error, 1)
+	go func() {
+		joinDone <- client.authorizeAndHandleIncomingMessage(
+			clientCtx,
+			Message{Type: "join", Room: "new-room"},
+			nil,
+		)
+		close(joinFinished)
+	}()
+	select {
+	case <-auth.started:
+	case <-time.After(time.Second):
+		t.Fatal("room authorization did not enter the controlled join")
+	}
+
+	failStarted = true
+	go func() {
+		h.failRoomClients("overflow-room")
+		close(failDone)
+	}()
+	require.Eventually(t, func() bool {
+		if client.sessionGate.TryRLock() {
+			client.sessionGate.RUnlock()
+			return false
+		}
+		return true
+	}, time.Second, time.Millisecond, "room failure must fence the active authorized action")
+
+	releaseAuthorization()
+	select {
+	case err := <-joinDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("authorized join did not finish after its authorization was released")
+	}
+	select {
+	case <-failDone:
+	case <-time.After(time.Second):
+		t.Fatal("room failure cleanup remained blocked after the action finished")
+	}
+
+	require.Error(t, client.ctx.Err(), "room failure must cancel the client's session")
+	require.True(t, client.sessionRevoked.Load(), "room failure must revoke future authorized actions")
+
+	h.mu.RLock()
+	_, registered := h.Clients[client.ID]
+	_, failedRoomPresent := h.Rooms["overflow-room"]
+	_, newRoomPresent := h.Rooms["new-room"]
+	h.mu.RUnlock()
+	assert.False(t, registered, "failed client must leave the client registry")
+	assert.False(t, failedRoomPresent, "failed room membership must be removed")
+	assert.False(t, newRoomPresent, "an in-flight join must not reinsert the failed client")
+
+	client.mu.Lock()
+	assert.Empty(t, client.Rooms)
+	client.mu.Unlock()
+	_, sendOpen := <-client.Send
+	assert.False(t, sendOpen, "failed client's send queue must be closed")
+	assert.Equal(t, activeBefore, testutil.ToFloat64(ActiveConnections))
 }
 
 func TestHubBroadcast_TraceAndMarshalErrorBranches(t *testing.T) {

@@ -166,7 +166,7 @@ fast-preflight:
 
 helm-lint:  ## Lint Helm charts (requires helm)
 	helm dependency build charts/university-ecosystem
-	helm lint charts/university-ecosystem --strict
+	helm lint charts/university-ecosystem --strict --set-string global.environment=development
 	helm lint charts/revocation-store --strict
 	@echo "Helm lint passed."
 

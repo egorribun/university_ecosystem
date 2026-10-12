@@ -57,9 +57,18 @@ type roomMembershipKey struct {
 	roomID string
 }
 
+type roomMembershipEpoch struct{ marker byte }
+
 type roomMembershipLockEntry struct {
-	mu         sync.Mutex
-	references int
+	mu                sync.Mutex
+	references        int
+	revocationEpoch   *roomMembershipEpoch
+	revocations       int
+	mutationPending   bool
+	changed           chan struct{}
+	writesInFlight    int
+	writesDrained     chan struct{}
+	drainFailedClosed atomic.Bool
 }
 
 type roomMembershipLockRegistry struct {
@@ -80,7 +89,7 @@ func (r *roomMembershipLockRegistry) acquire(key roomMembershipKey) *roomMembers
 	}
 	entry := r.entries[key]
 	if entry == nil {
-		entry = &roomMembershipLockEntry{}
+		entry = &roomMembershipLockEntry{changed: make(chan struct{})}
 		r.entries[key] = entry
 	}
 	entry.references++
@@ -98,6 +107,12 @@ func (l *roomMembershipLock) Unlock() {
 	l.release()
 }
 
+// unlockRetained releases the entry mutex while keeping this registry reference
+// alive across an external authorization call or an in-flight socket write.
+func (l *roomMembershipLock) unlockRetained() {
+	l.entry.mu.Unlock()
+}
+
 func (l *roomMembershipLock) release() {
 	l.registry.mu.Lock()
 	defer l.registry.mu.Unlock()
@@ -109,6 +124,62 @@ func (l *roomMembershipLock) release() {
 	if l.entry.references == 0 {
 		delete(l.registry.entries, l.key)
 	}
+}
+
+func (e *roomMembershipLockEntry) changedLocked() <-chan struct{} {
+	if e.changed == nil {
+		e.changed = make(chan struct{})
+	}
+	return e.changed
+}
+
+func (e *roomMembershipLockEntry) signalChangedLocked() {
+	if e.changed != nil {
+		close(e.changed)
+	}
+	e.changed = make(chan struct{})
+}
+
+// tryWritePermit atomically admits a room-scoped frame or returns a channel to
+// wait on while revocation is being confirmed. The permit keeps the registry
+// entry alive until the socket write finishes, but never holds its mutex then.
+func (l *roomMembershipLock) tryWritePermit() (*roomWritePermit, <-chan struct{}) {
+	l.Lock()
+	e := l.entry
+	if e.revocations > 0 || e.mutationPending || e.drainFailedClosed.Load() {
+		wait := e.changedLocked()
+		l.Unlock()
+		return nil, wait
+	}
+	if e.writesInFlight == 0 {
+		e.writesDrained = make(chan struct{})
+	}
+	e.writesInFlight++
+	l.unlockRetained()
+	return &roomWritePermit{lock: l}, nil
+}
+
+type roomWritePermit struct {
+	lock *roomMembershipLock
+}
+
+func (p *roomWritePermit) release() {
+	l := p.lock
+	l.Lock()
+	e := l.entry
+	e.writesInFlight--
+	if e.writesInFlight == 0 {
+		if e.writesDrained != nil {
+			close(e.writesDrained)
+		}
+		e.writesDrained = nil
+		if e.drainFailedClosed.Load() {
+			e.drainFailedClosed.Store(false)
+			e.signalChangedLocked()
+		}
+	}
+	l.unlockRetained()
+	l.release()
 }
 
 func (m *Message) replaySequence() uint64 {
@@ -157,8 +228,9 @@ type Hub struct {
 	maxClients int
 	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
 	broadcastWorkers int
-	// roomMembershipLocks serialize room authorization with revocation. Entries
-	// exist only while a caller is holding or waiting for the matching key.
+	// roomMembershipLocks guard authorization epochs and room-write admission.
+	// Their mutexes are released before backend calls and socket I/O; retained
+	// references keep each per-key barrier alive until those operations finish.
 	roomMembershipLocks roomMembershipLockRegistry
 	// pendingRoomRevocations keep joins denied after an authorization refresh
 	// fails. The signed JetStream event remains unacked until the refresh works.
@@ -763,6 +835,9 @@ func (h *Hub) Run(ctx context.Context) {
 	}
 }
 
+// failRoomClients is called from both Hub.Run and NATS delivery when an
+// ordered message is dropped. Run must clean up directly: it is the only
+// receiver for the unbuffered Unregister channel and would block itself.
 func (h *Hub) failRoomClients(room string) {
 	if room == "" {
 		return
@@ -774,7 +849,14 @@ func (h *Hub) failRoomClients(room string) {
 	}
 	h.mu.RUnlock()
 	for _, client := range clients {
-		client.failReplayConnection()
+		// Fence authorized actions before teardown so an in-flight join cannot
+		// reinsert this client after unregister cleanup has cleared memberships.
+		client.sessionGate.Lock()
+		client.sessionRevoked.Store(true)
+		client.sessionGate.Unlock()
+		client.cancelConnection()
+		client.closeTransport("Failed to close replay session")
+		h.unregisterAfterRegistration(client.ctx, client)
 	}
 }
 
@@ -964,16 +1046,21 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 }
 
 func (h *Hub) deliverBroadcastRecipient(ctx context.Context, msg *Message, data []byte, recipient recipient) {
-	if msg != nil && msg.Room != "" {
-		lock := h.roomMembershipLock(recipient.client.UserID, msg.Room)
-		lock.Lock()
-		defer lock.Unlock()
-		if !h.isRoomMember(msg.Room, recipient.client) {
-			return
+	enqueueResult, deliver := func() (roomEnqueueResult, bool) {
+		if msg != nil && msg.Room != "" {
+			lock := h.roomMembershipLock(recipient.client.UserID, msg.Room)
+			lock.Lock()
+			defer lock.Unlock()
+			if !h.isRoomMember(msg.Room, recipient.client) {
+				return roomEnqueueDelivered, false
+			}
 		}
+		return recipient.client.enqueueRoomBroadcast(msg, data), true
+	}()
+	if !deliver {
+		return
 	}
 
-	enqueueResult := recipient.client.enqueueRoomBroadcast(msg, data)
 	if enqueueResult == roomEnqueueDelivered {
 		MessagesDeliveredTotal.Inc()
 		return
@@ -994,7 +1081,6 @@ func (h *Hub) deliverBroadcastRecipient(ctx context.Context, msg *Message, data 
 	}
 	h.scheduleClientEviction(recipient.client)
 }
-
 func (h *Hub) isRoomMember(room string, client *Client) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -1478,32 +1564,137 @@ func (h *Hub) roomMembershipLock(userID, roomID string) *roomMembershipLock {
 	return h.roomMembershipLocks.acquire(roomMembershipKey{userID: userID, roomID: roomID})
 }
 
+const roomMembershipWriteDrainTimeout = 10 * time.Second
+
 func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) error {
-	lock := h.roomMembershipLock(userID, roomID)
-	lock.Lock()
-	defer lock.Unlock()
+	var lock *roomMembershipLock
+	var epoch *roomMembershipEpoch
+	var drained chan struct{}
+	for {
+		lock = h.roomMembershipLock(userID, roomID)
+		lock.Lock()
+		entry := lock.entry
+		if entry.mutationPending {
+			changed := entry.changedLocked()
+			lock.Unlock()
+			select {
+			case <-changed:
+				continue
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		epoch = &roomMembershipEpoch{marker: 1}
+		entry.revocationEpoch = epoch
+		if entry.revocations == 0 {
+			entry.signalChangedLocked()
+		}
+		entry.revocations++
+		drained = entry.writesDrained
+		lock.unlockRetained()
+		break
+	}
+	defer lock.release()
+
+	// A write admitted before the barrier gets a bounded chance to finish. Its
+	// socket deadline is best-effort, so timeout also removes membership while
+	// retaining a temporary write fence until outstanding permits are released.
+	if drained != nil {
+		drainCtx, cancel := context.WithTimeout(ctx, roomMembershipWriteDrainTimeout)
+		defer cancel()
+		select {
+		case <-drained:
+		case <-drainCtx.Done():
+			lock.Lock()
+			entry := lock.entry
+			current := entry.revocationEpoch == epoch
+			if current {
+				entry.drainFailedClosed.Store(true)
+				entry.mutationPending = true
+				h.markRoomRevocationPending(userID, roomID)
+			}
+			lock.unlockRetained()
+			if current {
+				h.removeRoomMemberWithoutWriteLock(userID, roomID)
+			}
+			lock.Lock()
+			entry = lock.entry
+			if current {
+				entry.mutationPending = false
+				if entry.writesInFlight == 0 {
+					entry.drainFailedClosed.Store(false)
+				}
+			}
+			entry.revocations--
+			if current || entry.revocations == 0 {
+				entry.signalChangedLocked()
+			}
+			lock.unlockRetained()
+			return fmt.Errorf("wait for in-flight room writes: %w", drainCtx.Err())
+		}
+	}
 
 	refresher, ok := h.authClient.(RoomAuthorizationRefresher)
+	var allowed bool
+	var authErr error
 	if !ok {
-		h.markRoomRevocationPending(userID, roomID)
-		h.revokeRoomMember(userID, roomID)
-		return errors.New("room auth client cannot confirm uncached membership state")
-	}
-	allowed, err := refresher.RefreshRoomAuthorization(ctx, userID, roomID)
-	if err != nil {
-		h.markRoomRevocationPending(userID, roomID)
-		h.revokeRoomMember(userID, roomID)
-		return fmt.Errorf("refresh room authorization: %w", err)
-	}
-	h.clearRoomRevocationPending(userID, roomID)
-	if allowed {
-		// JetStream can redeliver an older removal after a later re-add. A fresh
-		// authorization check prevents that replay from evicting a valid member.
-		return nil
+		authErr = errors.New("room auth client cannot confirm uncached membership state")
+	} else if err := ctx.Err(); err != nil {
+		authErr = err
+	} else {
+		allowed, authErr = refresher.RefreshRoomAuthorization(ctx, userID, roomID)
 	}
 
-	h.revokeRoomMember(userID, roomID)
+	lock.Lock()
+	entry := lock.entry
+	current := entry.revocationEpoch == epoch
+	removeMembership := current && (authErr != nil || !allowed)
+	if current {
+		if authErr != nil {
+			h.markRoomRevocationPending(userID, roomID)
+		} else {
+			h.clearRoomRevocationPending(userID, roomID)
+		}
+		if removeMembership {
+			entry.mutationPending = true
+		}
+	}
+	lock.unlockRetained()
+
+	// The write barrier remains closed while client membership is removed, so
+	// no fresh join can commit and then be deleted by this older decision.
+	if removeMembership {
+		h.removeRoomMemberWithoutWriteLock(userID, roomID)
+	}
+
+	lock.Lock()
+	entry = lock.entry
+	if removeMembership {
+		entry.mutationPending = false
+		entry.signalChangedLocked()
+	}
+	entry.revocations--
+	if entry.revocations == 0 {
+		entry.signalChangedLocked()
+	}
+	lock.unlockRetained()
+
+	if authErr != nil {
+		if !ok {
+			return authErr
+		}
+		return fmt.Errorf("refresh room authorization: %w", authErr)
+	}
 	return nil
+}
+
+func roomAccessRevokedNotice(roomID string) []byte {
+	return []byte(
+		`{"code":"` + roomAccessRevokedCode +
+			`","detail":"` + roomAccessRevokedDetail +
+			`","room":"` + roomID +
+			`","type":"error"}`,
+	)
 }
 
 func (h *Hub) revokeRoomMember(userID, roomID string) {
@@ -1517,15 +1708,26 @@ func (h *Hub) revokeRoomMember(userID, roomID string) {
 	h.mu.RUnlock()
 
 	for _, client := range clients {
-		// The invalidation decoder validates roomID as a UUID; the other fields are
-		// constants, so this string-only notice has no JSON marshal failure case.
-		notice := []byte(
-			`{"code":"` + roomAccessRevokedCode +
-				`","detail":"` + roomAccessRevokedDetail +
-				`","room":"` + roomID +
-				`","type":"error"}`,
-		)
-		client.revokeRoom(roomID, notice)
+		client.revokeRoom(roomID, roomAccessRevokedNotice(roomID))
+	}
+}
+
+// removeRoomMemberWithoutWriteLock runs only while the keyed admission barrier
+// is closed. Membership maps have their own locks; avoiding writeMu keeps a
+// non-room socket write from making revocation wait without a bound.
+func (h *Hub) removeRoomMemberWithoutWriteLock(userID, roomID string) {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.Rooms[roomID]))
+	for client := range h.Rooms[roomID] {
+		if client.UserID == userID {
+			clients = append(clients, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		client.leaveRoomLocked(roomID)
+		_ = safeSend(client.Send, roomAccessRevokedNotice(roomID))
 	}
 }
 
@@ -1836,26 +2038,34 @@ func (h *Hub) HasJWKSCache() bool {
 	return h.jwksCache != nil
 }
 
-// authorizeRoomJoinLocked expects the caller to hold the matching keyed
-// membership lock so a pending revoke cannot race an authoritative re-check
-// and rejoin.
-func (h *Hub) authorizeRoomJoinLocked(ctx context.Context, userID, room string) bool {
-	if h.isRoomRevocationPending(userID, room) {
+// authorizeRoomJoin performs external authorization without holding the keyed
+// membership mutex. The caller validates its captured revocation epoch before
+// committing the local membership change.
+func (h *Hub) authorizeRoomJoin(ctx context.Context, userID, room string, pending bool) (allowed, refreshed bool) {
+	if pending {
 		refresher, ok := h.authClient.(RoomAuthorizationRefresher)
 		if !ok {
-			return false
+			return false, false
 		}
 		allowed, err := refresher.RefreshRoomAuthorization(ctx, userID, room)
-		if err != nil {
-			return false
-		}
-		h.clearRoomRevocationPending(userID, room)
-		return allowed
+		return allowed && err == nil, err == nil
 	}
 	if h.authClient == nil {
-		h.Logger.WarnContext(ctx, "AuthorizeRoomJoin: no auth client configured, denying",
-			"user", userID, "room", room)
-		return false
+		if h.Logger != nil {
+			h.Logger.WarnContext(ctx, "AuthorizeRoomJoin: no auth client configured, denying",
+				"user", userID, "room", room)
+		}
+		return false, false
 	}
-	return h.authClient.CanJoinRoom(ctx, userID, room)
+	return h.authClient.CanJoinRoom(ctx, userID, room), false
+}
+
+// authorizeRoomJoinLocked remains for the existing lock-contract test helper;
+// production joins use authorizeRoomJoin and validate their epoch afterward.
+func (h *Hub) authorizeRoomJoinLocked(ctx context.Context, userID, room string) bool {
+	allowed, refreshed := h.authorizeRoomJoin(ctx, userID, room, h.isRoomRevocationPending(userID, room))
+	if refreshed {
+		h.clearRoomRevocationPending(userID, room)
+	}
+	return allowed
 }

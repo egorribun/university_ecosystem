@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
@@ -696,12 +697,12 @@ async def test_update_event_replaces_image_removes_old_file(
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
 
-    old_filename = "old.png"
-    old_path = tmp_path / "event_images" / old_filename
+    old_filename = f"event_{event.id}_{'a' * 32}.png"
+    old_path = tmp_path / "tmp" / "event_images" / old_filename
     old_path.parent.mkdir(parents=True, exist_ok=True)
     old_path.write_bytes(b"old")
 
-    event.image_url = f"/static/event_images/{old_filename}"
+    event.image_url = f"/static/tmp/event_images/{old_filename}"
     await db_session.commit()
     await db_session.refresh(event)
 
@@ -720,6 +721,39 @@ async def test_update_event_replaces_image_removes_old_file(
 
     assert result.image_url == "/static/event_images/new.png"
     assert not old_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_event_retains_foreign_image_and_cleans_linked_attachment(
+    tmp_path, monkeypatch, db_session, user_factory, event_service
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+    foreign_event_id = uuid4()
+    image_name = f"event_{foreign_event_id}_{'b' * 32}.png"
+    foreign_image = tmp_path / "tmp" / "event_images" / image_name
+    foreign_image.parent.mkdir(parents=True, exist_ok=True)
+    foreign_image.write_bytes(b"foreign image")
+    event.image_url = f"/static/tmp/event_images/{image_name}"
+
+    attachment_name = f"event_{event.id}_{'c' * 32}.pdf"
+    attachment = tmp_path / "event_files" / attachment_name
+    attachment.parent.mkdir(parents=True, exist_ok=True)
+    attachment.write_bytes(b"linked attachment")
+    event_file = models.EventFile(
+        event_id=event.id, file_url=f"/static/event_files/{attachment_name}"
+    )
+    db_session.add(event_file)
+    await db_session.commit()
+    await db_session.refresh(event_file)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    assert await event_service.delete_event(event.id) is True
+
+    assert foreign_image.exists()
+    assert not attachment.exists()
+    assert await db_session.get(models.EventFile, event_file.id) is None
+    assert await db_session.get(models.Event, event.id) is None
 
 
 @pytest.mark.asyncio
@@ -803,10 +837,11 @@ async def test_delete_event_removes_all_files(
         property(lambda self: {"txt"}),
     )
 
-    image_path = tmp_path / "event_images" / "banner.png"
+    image_name = f"event_{event.id}_{'a' * 32}.png"
+    image_path = tmp_path / "tmp" / "event_images" / image_name
     image_path.parent.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(b"banner")
-    event.image_url = "/static/event_images/banner.png"
+    event.image_url = f"/static/tmp/event_images/{image_name}"
     await db_session.commit()
     await db_session.refresh(event)
 

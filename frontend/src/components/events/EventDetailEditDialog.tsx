@@ -37,7 +37,7 @@ export function EventDetailEditDialog({
   onSuccess,
   onError,
 }: EventDetailEditDialogProps) {
-  const { t } = useTranslation(EVENT_DIALOG_NAMESPACES)
+  const { t, i18n } = useTranslation(EVENT_DIALOG_NAMESPACES)
   const queryClient = useQueryClient()
 
   const initialDraft: EventEditDraft = useMemo(
@@ -88,7 +88,19 @@ export function EventDetailEditDialog({
         setImageLoading(false)
       }
 
-      await api.patch(`/events/${event.id}`, { ...draft, image_url: imageUrl })
+      const update = { ...draft, image_url: imageUrl }
+      delete update.id
+      if (i18n.language === "en") {
+        // The event response's source fields are localized by Accept-Language.
+        // This dialog edits only the active locale; omit stale English values
+        // from the Russian source fields on English saves.
+        delete update.title
+        delete update.description
+        delete update.event_type
+        delete update.location
+        delete update.about
+      }
+      await api.patch(`/events/${event.id}`, update)
       await queryClient.invalidateQueries({ queryKey: ["events", "detail", event.id] })
       await queryClient.invalidateQueries({ queryKey: ["events", "list"] })
 
@@ -101,7 +113,7 @@ export function EventDetailEditDialog({
       setLoading(false)
       setImageLoading(false)
     }
-  }, [draft, newImage, event.id, queryClient, onSuccess, onError, onClose, t])
+  }, [draft, newImage, event.id, i18n.language, queryClient, onSuccess, onError, onClose, t])
 
   // Reset state when dialog closes
   const handleClose = useCallback(() => {

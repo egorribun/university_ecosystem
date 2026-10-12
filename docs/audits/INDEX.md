@@ -21,13 +21,28 @@ release claims require fresh evidence under the master plan.
   including security, live-stand, migration and full test-run results. It
   supersedes the interim `7818284` checkpoint report kept outside the repository.
 - [Dependency update report, October 2026](dependency-updates-2026-10/README.md)
-  — read-only inventory of patch/minor/major updates and security fixes for
-  `04fdd84c2`; no update has been applied.
+  — read-only snapshot of patch/minor/major updates and security fixes for
+  `04fdd84c2`; current applied changes and verification are tracked in STATUS.
 - [Merge exceptions](merge-exceptions.md) — break-glass log of every Admin
   bypass merge into `main` (AGENTS.md §5).
 - [Codebase consolidation decisions](../adr/ADR-046-codebase-consolidation-audit.md)
   — outcome of the 2026-10 dead-code, duplication and contract-drift audit:
   what was fixed, retired and deliberately kept, with the evidence rules used.
+
+## October audit dispositions
+
+The October report remains a source snapshot. These dispositions identify
+implementation and acceptance boundaries; local checks do not certify the
+published PR or resulting release commit.
+
+| Finding | Current disposition and retained acceptance |
+| --- | --- |
+| AUD-230 | Local regression verified on PostgreSQL: preserve parent-owned tenant data through head and keep Alembic metadata aligned. [Migration](../../alembic/versions/202607280001_reconcile_schema_drift.py), [data test](../../tests/integration/test_migration_data.py), [metadata test](../../tests/test_retained_table_migration.py). Published-source checks remain required. |
+| AUD-324 | Owner-approved unsupported downgrade below the release barrier; recovery requires a consistent backup/restore set. This does not certify historical destructive downgrades. [ADR-036](../adr/ADR-036-sqlalchemy-dual-default-migration-policy.md#mvp-release-rollback-boundary-owner-decision-2026-10-12). |
+| AUD-223 | Missing Stop gate state fails closed while the writer retains first-run initialization. [Shared loader](../../.agents/hooks/common.py), [Stop reader](../../.agents/hooks/stop_quality_gate.py), [contracts](../../tests/contracts/test_stop_quality_gate_contract.py). Published-source checks remain required. |
+| AUD-226 | Coverage producer and provenance now include Alembic revisions; unchanged Tier 0 floors still require measured aggregate evidence. Contract checks alone do not close the finding. [Quality contract](../../quality/quality-contract.json), [CI](../../.github/workflows/ci.yml). |
+| AUD-231 | Native SSR nonce and cache regressions verified locally; retain production-response and final-source browser acceptance. [SSR tests](../../frontend/tests/e2e/ssr-caching.spec.ts). |
+| AUD-462 | Membership fencing and bounded drain verified locally by Go package tests; Linux race and published-source CI remain required. [Hub](../../services/ws-hub/pkg/hub/hub.go), [regressions](../../services/ws-hub/pkg/hub/room_membership_generation_test.go). |
 
 ## Findings ledger
 

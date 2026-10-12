@@ -130,6 +130,9 @@ def test_policy_integrity_uses_supported_gh_api_options() -> None:
 
 def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
     source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    protected_case = source.split('case "$path" in', 1)[1].split(
+        'protected_paths+=("$path")', 1
+    )[0]
     for protected_path in (
         ".github/workflows/*",
         "quality/*",
@@ -137,11 +140,24 @@ def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
         "scripts/osv_batch_audit.py",
         "scripts/check_dependency_audit_report.py",
         "scripts/quality/validate_semgrep_sarif.py",
+        "scripts/quality/coverage_provenance.py",
+        "scripts/quality/pytest_shard_manifest.py",
+        "scripts/quality/normalize_coverage_reports.py",
+        "scripts/quality/validate_quality_contract.py",
+        "scripts/quality/migration_downgrade_policy.py",
+        "scripts/quality/validate_ci_check_catalog.py",
+        "scripts/run_detect_secrets.py",
+        "scripts/secrets_baseline.py",
+        "tests/test_immutable_policy_integrity_workflow.py",
+        "tests/test_security_policy_integrity_snapshot_contract.py",
         "frontend/package-lock.json",
         "uv.lock",
         "native/rust_ext/deny.toml",
     ):
-        assert protected_path in source
+        assert protected_path in protected_case
+    assert "app/main.py" not in protected_case
+    assert "scripts/*" not in protected_case
+    assert "tests/*" not in protected_case
     assert '"$PR_AUTHOR" != "egorribun"' in source
     assert "owner-authored" in source
 

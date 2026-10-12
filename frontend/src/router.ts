@@ -22,6 +22,10 @@ import {
 import { configureRouterViewTransitions } from "./app/routerViewTransitions"
 import { routeTree } from "./routeTree.gen"
 
+declare global {
+  var __ssrNonceGetter__: (() => string | undefined) | undefined
+}
+
 export interface RouterContext {
   auth: {
     isAuth: boolean
@@ -189,17 +193,29 @@ const filterDashboardDehydratedState = (state: DehydratedState): DashboardDehydr
   }),
 })
 
-const createAppRouter = () => {
+const createAppRouter = (requestScoped = false) => {
   // Read SSR-injected auth state if running under server.ts; falls through to
   // DEFAULT_AUTH on the client where the value is unused (client-side route
   // guards read Zustand directly per Wave 174 SW1).
   const ssrAuth = globalThis.__ssrAuthGetter__?.()
+  let ssrNonce: string | undefined
+  if (import.meta.env.SSR) {
+    // Only getRouter creates a request router on the server; the module-level
+    // router must never retain one request's nonce.
+    if (requestScoped) ssrNonce = globalThis.__ssrNonceGetter__?.()
+  } else if (typeof document !== "undefined") {
+    // TanStack emits this meta tag with its native SSR nonce option. Reuse it
+    // for client-managed assets inserted after hydration.
+    ssrNonce =
+      document.querySelector<HTMLMetaElement>('meta[property="csp-nonce"]')?.content || undefined
+  }
   // SSR gets an isolated cache per request; browser loaders and the persisted
   // root provider share the same owner-aware application client.
   const routerQueryClient = import.meta.env.SSR ? createQueryClient() : browserQueryClient
 
   const router = createRouter({
     routeTree,
+    ...(ssrNonce ? { ssr: { nonce: ssrNonce } } : {}),
     context: {
       auth: ssrAuth ?? DEFAULT_AUTH,
       queryClient: routerQueryClient,
@@ -314,7 +330,7 @@ const createAppRouter = () => {
 // `export const router` is preserved for App.tsx (the existing client-runtime
 // consumer); both expressions resolve to the same `createRouter()` call shape.
 export function getRouter() {
-  return createAppRouter()
+  return createAppRouter(true)
 }
 
 export const router = createAppRouter()

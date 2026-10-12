@@ -242,7 +242,13 @@ class UserComplianceService:
         hashed_password = await get_password_hash(user_in.password)
 
         user_data = user_in.model_dump(
-            exclude={"invite_code", "password", "spotify_connected"}
+            exclude={
+                "invite_code",
+                "password",
+                "spotify_connected",
+                "avatar_url",
+                "cover_url",
+            }
         )
         user_data.update(
             {

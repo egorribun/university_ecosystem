@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 type InteractionState = {
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   isBookmarked: vi.fn(() => false),
   toggleBookmark: vi.fn(),
   deleteNews: vi.fn(),
+  fetchNewsItem: vi.fn(),
   onChange: vi.fn(),
   sanitizeNewsText: vi.fn(async (value: string) => `sanitized:${value}`),
   viewRender: vi.fn(),
@@ -77,6 +79,8 @@ vi.mock("@/utils/readingTime", () => ({
 vi.mock("@/api/client", () => ({
   default: { delete: mocks.deleteNews },
 }))
+
+vi.mock("@/api/news", () => ({ fetchNewsItem: mocks.fetchNewsItem }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: (namespaces?: unknown) => {
@@ -204,6 +208,17 @@ beforeEach(() => {
   mocks.deleteNews.mockResolvedValue(undefined)
   vi.clearAllMocks()
   mocks.deleteNews.mockResolvedValue(undefined)
+  mocks.fetchNewsItem.mockResolvedValue({
+    status: 200,
+    data: {
+      id: "news-1",
+      title: "Русский оригинал",
+      content: "Текст на русском языке.",
+      title_en: "English source title",
+      content_en: "English source body.",
+      image_url: "/news-source.png",
+    },
+  })
   mocks.isBookmarked.mockReturnValue(false)
   mocks.sanitizeNewsText.mockImplementation(async (value: string) => `sanitized:${value}`)
 })
@@ -361,6 +376,7 @@ describe("NewsCard — state orchestration", () => {
     render(<NewsCard {...baseProps} onChange={mocks.onChange} />)
 
     fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: "edit success" }))
     fireEvent.click(screen.getByRole("button", { name: "close edit" }))
     expect(mocks.onChange).toHaveBeenCalledOnce()
@@ -372,6 +388,130 @@ describe("NewsCard — state orchestration", () => {
     fireEvent.click(screen.getByRole("button", { name: "confirm delete" }))
     await waitFor(() => expect(mocks.deleteNews).toHaveBeenCalledWith("/news/news-1"))
     expect(mocks.onChange).toHaveBeenCalledTimes(2)
+  })
+
+  it("loads Russian source fields before opening the English editor", async () => {
+    mocks.user = { role: "admin" }
+    render(
+      <NewsCard {...baseProps} title="Localized English title" content="Localized English body." />
+    )
+
+    await waitFor(() => expect(mocks.viewRender).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+
+    expect(mocks.fetchNewsItem).toHaveBeenCalledWith(
+      "news-1",
+      expect.objectContaining({ language: "ru", signal: expect.any(AbortSignal) })
+    )
+    const props = mocks.viewRender.mock.calls.at(-1)?.[0] as {
+      editData: Record<string, string>
+    }
+    expect(props.editData).toEqual({
+      title: "Русский оригинал",
+      content: "Текст на русском языке.",
+      title_en: "English source title",
+      content_en: "English source body.",
+      image_url: "/news-source.png",
+    })
+  })
+
+  it("coalesces English source requests and ignores a late locale response", async () => {
+    mocks.user = { role: "admin" }
+    let resolveSource!: (value: { status: number; data: Record<string, string> }) => void
+    mocks.fetchNewsItem.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSource = resolve
+      })
+    )
+    const { rerender } = render(<NewsCard {...baseProps} />)
+
+    const openButton = screen.getByRole("button", { name: "open edit" })
+    fireEvent.click(openButton)
+    fireEvent.click(openButton)
+    expect(mocks.fetchNewsItem).toHaveBeenCalledOnce()
+    const options = mocks.fetchNewsItem.mock.calls[0]?.[1] as {
+      language: string
+      signal: AbortSignal
+    }
+    expect(options.language).toBe("ru")
+    expect(options.signal).toBeInstanceOf(AbortSignal)
+
+    mocks.language = "ru"
+    rerender(<NewsCard {...baseProps} onChange={() => undefined} />)
+    expect(options.signal.aborted).toBe(true)
+
+    await act(async () => {
+      resolveSource({
+        status: 200,
+        data: {
+          id: "news-1",
+          title: "Stale Russian title",
+          content: "Stale Russian body",
+          title_en: "Stale English title",
+          content_en: "Stale English body",
+          image_url: "/stale.png",
+        },
+      })
+    })
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(mocks.viewRender.mock.calls.at(-1)?.[0].editOpen).toBe(false)
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(mocks.fetchNewsItem).toHaveBeenCalledOnce()
+    expect(mocks.viewRender.mock.calls.at(-1)?.[0].editData.title).toBe(baseProps.title)
+  })
+
+  it("does not open the English editor when the Russian source request fails", async () => {
+    mocks.user = { role: "admin" }
+    mocks.fetchNewsItem.mockRejectedValueOnce(new Error("source unavailable"))
+    render(<NewsCard {...baseProps} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    expect(await screen.findByRole("status")).toHaveTextContent("common:errors.generic")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("does not open the English editor for a not-modified Russian source response", async () => {
+    mocks.user = { role: "admin" }
+    mocks.fetchNewsItem.mockResolvedValueOnce({ status: 304, data: undefined })
+    render(<NewsCard {...baseProps} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    expect(await screen.findByRole("status")).toHaveTextContent("common:errors.generic")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("aborts the source request on unmount without publishing a late result", async () => {
+    mocks.user = { role: "admin" }
+    let resolveSource!: (value: { status: number; data: Record<string, string> }) => void
+    mocks.fetchNewsItem.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSource = resolve
+      })
+    )
+    const { unmount } = render(<NewsCard {...baseProps} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    const options = mocks.fetchNewsItem.mock.calls[0]?.[1] as { signal: AbortSignal }
+    unmount()
+    expect(options.signal.aborted).toBe(true)
+
+    await act(async () => {
+      resolveSource({
+        status: 200,
+        data: {
+          id: "news-1",
+          title: "Late Russian title",
+          content: "Late Russian body",
+          title_en: "Late English title",
+          content_en: "Late English body",
+          image_url: "/late.png",
+        },
+      })
+    })
+    expect(screen.queryByTestId("news-card-view")).not.toBeInTheDocument()
   })
 
   it("surfaces delete errors and lets the caller close them", async () => {
@@ -441,10 +581,11 @@ describe("NewsCard — derived state follows props", () => {
   })
 
   it("recomputes title, preview, category, reading time and edit data on prop changes", async () => {
+    mocks.language = "ru"
     const { rerender } = render(<NewsCard {...baseProps} />)
     await waitFor(() =>
       expect(screen.getByTestId("card-preview")).toHaveTextContent(
-        "sanitized:en:The campus library is open."
+        "sanitized:ru:The campus library is open."
       )
     )
 
@@ -461,14 +602,19 @@ describe("NewsCard — derived state follows props", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("card-preview")).toHaveTextContent(
-        "sanitized:en:Library hours extended."
+        "sanitized:ru:Library hours extended."
       )
     )
     const props = lastViewProps()
-    expect(props.title).toBe("en:Exam week")
+    expect(props.title).toBe("ru:Exam week")
     expect(props.category).toBe("category:Exam week EN|Library hours extended EN.")
-    expect(props.readingTime).toBe("en:Library hours extended.".length)
-    expect(props.editData).toEqual({
+    expect(props.readingTime).toBe("ru:Library hours extended.".length)
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "open edit" }))
+    await screen.findByRole("dialog")
+    const editProps = lastViewProps()
+    expect(editProps.editData).toEqual({
       title: "Exam week",
       content: "Library hours extended.",
       title_en: "Exam week EN",
@@ -506,21 +652,27 @@ describe("NewsCard — derived state follows props", () => {
   })
 
   it("closes the edit dialog when the view asks to", async () => {
+    const user = userEvent.setup()
     render(<NewsCard {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))
-    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
-    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "open edit" }))
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "close edit" }))
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "close edit" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   })
 
   it("deletes successfully without an onChange listener and shows no error", async () => {
     mocks.user = { role: "admin" }
+    const user = userEvent.setup()
     render(<NewsCard {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))
 
-    fireEvent.click(screen.getByRole("button", { name: "open delete" }))
-    fireEvent.click(screen.getByRole("button", { name: "confirm delete" }))
+    await user.click(screen.getByRole("button", { name: "open delete" }))
+    await user.click(screen.getByRole("button", { name: "confirm delete" }))
+    await act(async () => {
+      await mocks.deleteNews.mock.results[0]?.value
+    })
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
     expect(mocks.deleteNews).toHaveBeenCalledWith("/news/news-1")
@@ -529,15 +681,21 @@ describe("NewsCard — derived state follows props", () => {
 
   it("deletes and notifies using the latest id and onChange", async () => {
     mocks.user = { role: "admin" }
+    const user = userEvent.setup()
     const staleOnChange = vi.fn()
     const onChange = vi.fn()
     const { rerender } = render(<NewsCard {...baseProps} onChange={staleOnChange} />)
     rerender(<NewsCard {...baseProps} id="news-9" onChange={onChange} />)
+    await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))
 
-    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
-    fireEvent.click(screen.getByRole("button", { name: "edit success" }))
-    fireEvent.click(screen.getByRole("button", { name: "open delete" }))
-    fireEvent.click(screen.getByRole("button", { name: "confirm delete" }))
+    await user.click(screen.getByRole("button", { name: "open edit" }))
+    await screen.findByRole("dialog")
+    await user.click(screen.getByRole("button", { name: "edit success" }))
+    await user.click(screen.getByRole("button", { name: "open delete" }))
+    await user.click(screen.getByRole("button", { name: "confirm delete" }))
+    await act(async () => {
+      await mocks.deleteNews.mock.results[0]?.value
+    })
 
     await waitFor(() => expect(onChange).toHaveBeenCalledTimes(2))
     expect(mocks.deleteNews).toHaveBeenCalledWith("/news/news-9")

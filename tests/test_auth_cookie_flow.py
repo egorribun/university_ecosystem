@@ -4,6 +4,7 @@ import hmac
 import json
 import secrets
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from fastapi import status
@@ -242,6 +243,72 @@ async def test_token_reuse_after_logout_rejected(
 
     rejected = await async_client.get("/users/me", headers=headers)
     assert rejected.status_code == 401
+
+
+@pytest.mark.parametrize("cache_state", ["missing", "expired"])
+async def test_users_me_cache_miss_uses_authenticated_cookie_profile(
+    async_client, user_factory, db_session, monkeypatch, cache_state: str
+):
+    password = f"Aa1!{secrets.token_urlsafe(24)}"
+    user = await _create_active_user(user_factory, password, db_session)
+
+    login_response = await _login(async_client, user.email, password)
+    assert login_response.status_code == 200
+    token = async_client.cookies.get("access_token_v2")
+    assert token is not None
+
+    headers = {"X-Query-Budget": "15"}
+    if cache_state == "expired":
+        claims = decode_token(token)
+        assert claims is not None
+        jti = claims.get("jti")
+        assert jti
+        session = (
+            (
+                await db_session.execute(
+                    select(ActiveSession).where(ActiveSession.jti == jti)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        assert session is not None
+        assert session.signing_key
+        payload = {
+            "version": 2,
+            "expiresAt": 0,
+            "data": {
+                "id": "not-the-authenticated-user",
+                "email": "cache@example.invalid",
+                "full_name": "Untrusted Cache Profile",
+            },
+        }
+        payload_json = json.dumps(payload, separators=(",", ":"))
+        signature = base64.b64encode(
+            hmac.new(
+                session.signing_key.encode("utf-8"),
+                payload_json.encode("utf-8"),
+                hashlib.sha256,
+            ).digest()
+        ).decode("ascii")
+        headers["X-Profile-Cache-Envelope"] = json.dumps(
+            {**payload, "signature": signature}
+        )
+
+    # Exercise the production cache-envelope policy without changing the
+    # environment used by the login/session dependency graph in this test.
+    monkeypatch.setattr(
+        "app.api.users.settings", SimpleNamespace(environment="production")
+    )
+    response = await async_client.get("/users/me", headers=headers)
+
+    assert response.status_code == 200
+    profile = response.json()
+    assert profile["id"] == str(user.id)
+    assert profile["email"] == user.email
+    assert profile["full_name"] == user.profile.full_name
+    if cache_state == "expired":
+        assert profile["full_name"] != "Untrusted Cache Profile"
 
 
 async def test_profile_cache_envelope_validation(

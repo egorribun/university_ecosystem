@@ -2,7 +2,6 @@
 fullnameOverride: ""
 
 global:
-  environment: "development"
   # Canonical JWT issuer shared by backend minting and zero-trust consumers.
   # Release overlays replace this with the HTTPS API origin for the deployment.
   jwtIssuer: "university-ecosystem"

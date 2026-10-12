@@ -47,6 +47,10 @@ param(
     [ValidateSet("full", "core")]
     [string]$LiveAcceptanceStack = "",
     [string]$LiveAcceptanceServicesJson = "",
+    [switch]$InitializeTrustedProxyBootstrap,
+    [switch]$RefreshTrustedProxyPeers,
+    [string]$TrustedProxyRefreshStage = "",
+    [string]$TrustedProxyPeersJson = "",
     [Alias("Lean")]
     [switch]$Core,
     [string[]]$ExtraCompose = @(),
@@ -532,12 +536,33 @@ $liveSelectionArgumentsPresent = (
     -not [string]::IsNullOrEmpty($LiveAcceptanceStack) -or
     -not [string]::IsNullOrEmpty($LiveAcceptanceServicesJson)
 )
+if ($InitializeTrustedProxyBootstrap -and
+    (-not $PrepareOnly -or $RefreshTrustedProxyPeers -or
+        -not [string]::IsNullOrEmpty($TrustedProxyRefreshStage) -or
+        -not [string]::IsNullOrEmpty($TrustedProxyPeersJson))) {
+    throw "Trusted proxy bootstrap is restricted to the live preparation phase."
+}
+if (-not $RefreshTrustedProxyPeers -and
+    (-not [string]::IsNullOrEmpty($TrustedProxyRefreshStage) -or
+        -not [string]::IsNullOrEmpty($TrustedProxyPeersJson))) {
+    throw "Trusted proxy refresh inputs require the dedicated refresh mode."
+}
 if ($liveSelectionArgumentsPresent) {
-    if (-not ($Build -or $Rebuild) -or $Down -or $Logs -or $PrepareOnly -or $Core -or
+    if (-not ($Build -or $Rebuild -or $RefreshTrustedProxyPeers) -or
+        ($RefreshTrustedProxyPeers -and ($Build -or $Rebuild -or $Down -or $Logs -or $PrepareOnly -or $Core -or $AllowExistingOwnedVolumes)) -or
+        $Down -or $Logs -or $PrepareOnly -or $Core -or
         @($ExtraCompose).Count -ne 1 -or
         $ExtraCompose[0] -cne "docker-compose.live.yml") {
-        throw "Live acceptance selection requires a build of the owned live overlay."
+        throw "Live acceptance selection requires the owned live overlay and an explicit supported mode."
     }
+}
+if ($RefreshTrustedProxyPeers -and
+    (-not $liveSelectionArgumentsPresent -or
+        $TrustedProxyRefreshStage -cnotin @("edge", "backend") -or
+        [string]::IsNullOrEmpty($TrustedProxyPeersJson) -or
+        @($ExtraCompose).Count -ne 1 -or
+        $ExtraCompose[0] -cne "docker-compose.live.yml")) {
+    throw "Trusted proxy refresh requires signed live selection, stage, settings, and overlay."
 }
 # Keep the full compose model as the single source of truth.  Core mode scopes
 # `up`/`build` to this audited allowlist rather than maintaining a second compose
@@ -642,6 +667,7 @@ function Assert-PrepareOnlyLiveInputs {
     # Restrict it to the exact overlay and signed project/port/key environment
     # supplied by live_stand.py; never turn it into a generic config writer.
     if ($Build -or $Rebuild -or $Down -or $Logs -or $Core -or $AllowExistingOwnedVolumes -or
+        $RefreshTrustedProxyPeers -or
         -not [string]::IsNullOrEmpty($LiveAcceptanceStack) -or
         -not [string]::IsNullOrEmpty($LiveAcceptanceServicesJson) -or
         -not [string]::IsNullOrWhiteSpace($LogService)) {
@@ -828,8 +854,15 @@ function Set-EnvEntry {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
         [Parameter(Mandatory=$true)][string]$Key,
-        [Parameter(Mandatory=$true)][string]$Value
+        [Parameter(Mandatory=$true)][AllowEmptyString()][string]$Value,
+        [switch]$AllowEmptyTrustedProxyValue
     )
+
+    if ($Value.Length -eq 0 -and
+        (-not $AllowEmptyTrustedProxyValue -or
+            $Key -cnotin @("TRUSTED_PROXIES", "GATEWAY_TRUSTED_PROXIES", "WS_HUB_TRUSTED_PROXIES"))) {
+        throw "Empty environment values are restricted to trusted proxy settings."
+    }
 
     $absolutePath = Resolve-StatePath -Path $Path
     $prefix = "$Key="
@@ -847,6 +880,150 @@ function Set-EnvEntry {
     )
     if (-not $found) { $updated += "$Key=$Value" }
     Write-Utf8NoBom -Path $Path -Content "$(($updated -join "`n").TrimEnd())`n"
+}
+
+function ConvertFrom-TrustedProxyPeers {
+    param(
+        [Parameter(Mandatory=$true)][string]$Json,
+        [Parameter(Mandatory=$true)][ValidateSet("bootstrap", "edge", "backend")][string]$Stage
+    )
+
+    try {
+        $parsed = ConvertFrom-Json -InputObject $Json -AsHashtable -ErrorAction Stop
+    } catch {
+        throw "Trusted proxy settings are invalid."
+    }
+    $required = [string[]]@(
+        "GATEWAY_TRUSTED_PROXIES",
+        "TRUSTED_PROXIES",
+        "WS_HUB_TRUSTED_PROXIES"
+    )
+    if ($parsed -isnot [System.Collections.IDictionary] -or $parsed.Count -ne $required.Count) {
+        throw "Trusted proxy settings have an invalid schema."
+    }
+    $actualKeys = @($parsed.Keys | ForEach-Object { [string]$_ })
+    foreach ($key in $required) {
+        if ($actualKeys -cnotcontains $key) {
+            throw "Trusted proxy settings have an invalid schema."
+        }
+    }
+
+    $settings = [ordered]@{}
+    foreach ($key in $required) {
+        $raw = $parsed[$key]
+        if ($raw -isnot [System.Collections.IList] -or $raw -is [string] -or $raw.Count -gt 16) {
+            throw "Trusted proxy address list is invalid."
+        }
+        $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        $values = [System.Collections.Generic.List[string]]::new()
+        foreach ($item in $raw) {
+            if ($item -isnot [string] -or [string]::IsNullOrWhiteSpace($item) -or
+                $item -ne $item.Trim() -or $item.Contains("/") -or $item.Contains("%")) {
+                throw "Trusted proxy address list is invalid."
+            }
+            $address = $null
+            if (-not [System.Net.IPAddress]::TryParse($item, [ref]$address) -or
+                $address.ToString() -cne $item) {
+                throw "Trusted proxy address list is invalid."
+            }
+            $bytes = $address.GetAddressBytes()
+            if ($address.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) {
+                $privateBridge = $bytes[0] -eq 10 -or
+                    ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
+                    ($bytes[0] -eq 192 -and $bytes[1] -eq 168)
+                if (-not $privateBridge -or $bytes[0] -in @(0, 127) -or
+                    ($bytes[0] -eq 169 -and $bytes[1] -eq 254) -or
+                    $bytes[0] -ge 224 -or
+                    [System.Net.IPAddress]::IsLoopback($address) -or
+                    $address.Equals([System.Net.IPAddress]::Any) -or
+                    $address.Equals([System.Net.IPAddress]::Broadcast)) {
+                    throw "Trusted proxy address list is invalid."
+                }
+            } elseif ($address.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetworkV6) {
+                $privateBridge = ($bytes[0] -band 0xFE) -eq 0xFC
+                if (-not $privateBridge -or
+                    $address.Equals([System.Net.IPAddress]::IPv6Any) -or
+                    [System.Net.IPAddress]::IsLoopback($address) -or
+                    $address.IsIPv6LinkLocal -or $address.IsIPv6Multicast -or
+                    $address.IsIPv6SiteLocal -or $address.IsIPv6Teredo -or
+                    $address.IsIPv4MappedToIPv6) {
+                    throw "Trusted proxy address list is invalid."
+                }
+            } else {
+                throw "Trusted proxy address list is invalid."
+            }
+            if (-not $seen.Add($item)) {
+                throw "Trusted proxy address list contains duplicates."
+            }
+            $values.Add($item)
+        }
+        $sorted = @($values.ToArray() | Sort-Object -CaseSensitive)
+        if ($sorted.Count -ne $values.Count) {
+            throw "Trusted proxy address list is invalid."
+        }
+        for ($index = 0; $index -lt $sorted.Count; $index++) {
+            if ([string]$sorted[$index] -cne [string]$values[$index]) {
+                throw "Trusted proxy address list must be sorted."
+            }
+        }
+        $settings[$key] = [string]::Join(",", $values.ToArray())
+    }
+
+    if ($settings["GATEWAY_TRUSTED_PROXIES"] -cne $settings["WS_HUB_TRUSTED_PROXIES"]) {
+        throw "Gateway and WebSocket proxy peers must match the inspected Caddy peers."
+    }
+    if ($Stage -ceq "bootstrap") {
+        if (@($settings.Values | Where-Object { $_.Length -gt 0 }).Count -gt 0) {
+            throw "Trusted proxy bootstrap must be empty."
+        }
+    } elseif ($Stage -ceq "edge") {
+        if ($settings["TRUSTED_PROXIES"].Length -ne 0 -or
+            $settings["GATEWAY_TRUSTED_PROXIES"].Length -eq 0) {
+            throw "Edge refresh settings are incomplete."
+        }
+    } elseif (@($settings.Values | Where-Object { $_.Length -eq 0 }).Count -gt 0) {
+        throw "Backend refresh settings are incomplete."
+    }
+    return $settings
+}
+
+function Set-LiveTrustedProxyEnvironment {
+    param([Parameter(Mandatory=$true)][System.Collections.IDictionary]$Settings)
+
+    $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $StateRoot ".env.docker"))
+    $actualPath = [System.IO.Path]::GetFullPath((Resolve-StatePath -Path $EnvFile))
+    if ($actualPath -cne $expectedPath -or
+        -not (Test-Path -LiteralPath $actualPath -PathType Leaf)) {
+        throw "Trusted proxy configuration is restricted to the owned StateRoot .env.docker file."
+    }
+    $item = Get-Item -LiteralPath $actualPath -Force
+    if ($item.PSIsContainer -or ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "Trusted proxy configuration refuses an unsafe StateRoot environment file."
+    }
+    $lines = @(Get-Content -LiteralPath $actualPath -ErrorAction Stop)
+    foreach ($key in @("TRUSTED_PROXIES", "GATEWAY_TRUSTED_PROXIES", "WS_HUB_TRUSTED_PROXIES")) {
+        $matches = @($lines | Where-Object { $_.StartsWith("$key=", [StringComparison]::Ordinal) })
+        if ($matches.Count -gt 1) {
+            throw "Trusted proxy configuration has duplicate StateRoot entries."
+        }
+    }
+    foreach ($key in @("TRUSTED_PROXIES", "GATEWAY_TRUSTED_PROXIES", "WS_HUB_TRUSTED_PROXIES")) {
+        Set-EnvEntry -Path $EnvFile -Key $key -Value ([string]$Settings[$key]) -AllowEmptyTrustedProxyValue
+    }
+}
+
+function Resolve-TrustedProxyRefreshServices {
+    param(
+        [Parameter(Mandatory=$true)][ValidateSet("edge", "backend")][string]$Stage,
+        [Parameter(Mandatory=$true)][string[]]$SelectedServices
+    )
+    foreach ($service in @("backend", "caddy", "gateway", "ws-hub")) {
+        if ($SelectedServices -cnotcontains $service) {
+            throw "Trusted proxy refresh is outside the signed live service closure."
+        }
+    }
+    if ($Stage -ceq "edge") { return ,([string[]]@("gateway", "ws-hub")) }
+    return ,([string[]]@("backend"))
 }
 
 function Ensure-ImgproxyEnvironment {
@@ -2272,6 +2449,42 @@ if (-not $PrepareOnly) {
 
 if (-not $PrepareOnly) { Assert-LiveComposeVersion }
 
+if ($RefreshTrustedProxyPeers) {
+    $resolvedComposeModel = Assert-ComposeConfiguration
+    $hasLiveAcceptanceSelection = Assert-LiveAcceptanceSelection -ComposeModel $resolvedComposeModel
+    if (-not $hasLiveAcceptanceSelection) {
+        throw "Trusted proxy refresh requires verified signed live ownership."
+    }
+    $settings = ConvertFrom-TrustedProxyPeers `
+        -Json $TrustedProxyPeersJson `
+        -Stage $TrustedProxyRefreshStage
+    foreach ($pair in @(
+        @{ ProcessName = "TRUSTED_PROXIES"; Value = $settings["TRUSTED_PROXIES"] },
+        @{ ProcessName = "GATEWAY_TRUSTED_PROXIES"; Value = $settings["GATEWAY_TRUSTED_PROXIES"] },
+        @{ ProcessName = "WS_HUB_TRUSTED_PROXIES"; Value = $settings["WS_HUB_TRUSTED_PROXIES"] }
+    )) {
+        if ([Environment]::GetEnvironmentVariable($pair.ProcessName) -cne [string]$pair.Value) {
+            throw "Trusted proxy process environment differs from the closed settings."
+        }
+    }
+    Set-LiveTrustedProxyEnvironment -Settings $settings
+    $resolvedComposeModel = Assert-ComposeConfiguration
+    $hasLiveAcceptanceSelection = Assert-LiveAcceptanceSelection -ComposeModel $resolvedComposeModel
+    if (-not $hasLiveAcceptanceSelection) {
+        throw "Trusted proxy refresh lost verified signed live ownership."
+    }
+    $refreshServices = Resolve-TrustedProxyRefreshServices `
+        -Stage $TrustedProxyRefreshStage `
+        -SelectedServices $script:LiveAcceptanceServices
+    & { $ErrorActionPreference = "SilentlyContinue"; docker compose @ComposeArgs --env-file $EnvFile up --wait --wait-timeout 120 -d --no-deps @refreshServices 2>$null | Out-Null }
+    $refreshExitCode = $LASTEXITCODE
+    if ($refreshExitCode -ne 0) {
+        throw "Trusted proxy service refresh failed."
+    }
+    Write-Ok "Verified live trusted proxy services refreshed for the signed selection."
+    exit 0
+}
+
 # -- Handle -Down -------------------------------------------------------------
 
 if ($Down) {
@@ -2645,6 +2858,12 @@ if ((Test-Path $EnvFile) -and (Test-Path $EnvCompose)) {
 }
 
 if ($PrepareOnly) {
+    if ($InitializeTrustedProxyBootstrap) {
+        $bootstrap = ConvertFrom-TrustedProxyPeers `
+            -Json '{"GATEWAY_TRUSTED_PROXIES":[],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":[]}' `
+            -Stage "bootstrap"
+        Set-LiveTrustedProxyEnvironment -Settings $bootstrap
+    }
     Assert-PreparedLiveStandConfiguration
     Write-Ok "Live stand environment prepared for owner fingerprint registration; no services were started."
     exit 0

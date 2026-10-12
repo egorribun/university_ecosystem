@@ -219,9 +219,13 @@ release.
 
 ## Safe render and release sequence
 
-Start from a clean, verified exact-SHA checkout and a database snapshot. Build
-dependencies from `Chart.lock`, then supply the required values from an
-ephemeral values file or CI environment; do not put secrets on the command line.
+Start from a clean, verified exact-SHA checkout and a database snapshot. The
+chart requires `global.environment` (`development`, `staging`, or `production`)
+and deliberately has no default; set it explicitly in every values file or
+render command. Static contract renders should name `development`; release
+values must name their actual environment. Build dependencies from `Chart.lock`,
+then supply the remaining required values from an ephemeral values file or CI
+environment; do not put secrets on the command line.
 
 ```powershell
 helm dependency build charts/university-ecosystem

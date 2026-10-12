@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from app.core.config.mixins.csp_settings import CspSettingsMixin
@@ -188,3 +191,24 @@ def test_csp_effective_flags_and_strict_policy_cover_remaining_paths():
         security_connect_src_extra="",
     )
     assert forced_strict.security_csp_report_only_effective is False
+
+
+def test_production_csp_defaults_match_shared_frontend_contract():
+    from app.core.security_headers import SecurityHeadersMiddleware
+
+    contract_path = (
+        Path(__file__).resolve().parents[1] / "quality" / "frontend-csp-defaults.json"
+    )
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    settings = CspSettingsMixin()
+    assert settings.strict_security_headers_enabled is True
+    assert settings.security_csp_report_only_effective is False
+
+    middleware = object.__new__(SecurityHeadersMiddleware)
+    middleware._settings = settings
+    actual_headers = {
+        name.lower(): value
+        for name, value in middleware._build_csp_header(nonce=contract["nonce"])
+    }
+
+    assert actual_headers == contract["headers"]

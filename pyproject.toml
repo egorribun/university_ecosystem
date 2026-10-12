@@ -341,7 +341,7 @@ addopts = [
 
 [tool.coverage.run]
 relative_files = true
-source = ["app"]
+source = ["app", "alembic/versions"]
 branch = true
 
 [tool.coverage.report]

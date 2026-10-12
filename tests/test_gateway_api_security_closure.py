@@ -47,6 +47,8 @@ def _render_gateway_api_template(*overrides: str) -> subprocess.CompletedProcess
             "--namespace",
             "university-ecosystem",
             "--set-string",
+            "global.environment=development",
+            "--set-string",
             "applicationSecrets.existingSecret=render-contract-existing-secret",
             "--set",
             "gatewayApi.enabled=true",

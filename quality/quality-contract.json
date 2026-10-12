@@ -101,7 +101,7 @@
     "scripts": ["scripts"]
   },
   "coverage_scope": {
-    "python": ["app"],
+    "python": ["app", "alembic/versions"],
     "frontend": ["frontend/src"],
     "go-gateway": ["services/gateway"],
     "go-ws-hub": ["services/ws-hub"],

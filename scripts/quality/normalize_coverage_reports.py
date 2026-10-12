@@ -663,19 +663,31 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
             and not _source_path_is_within_component_root(component, source_parts)
             and not _source_path_is_component_root(component, source_parts)
         ):
-            if source_parts[0].casefold() not in OTHER_ROOTS:
+            aliases: set[tuple[str, ...]] = set()
+            for configured_root in SOURCE_ROOTS[component]:
+                root_parts = tuple(part for part in configured_root.split("/") if part)
+                for stripped_count in range(len(root_parts) + 1):
+                    if (
+                        stripped_count
+                        and source_parts[:stripped_count]
+                        != root_parts[-stripped_count:]
+                    ):
+                        continue
+                    tail = source_parts[stripped_count:]
+                    if not tail:
+                        continue
+                    candidate_parts = (*root_parts, *tail)
+                    candidate = REPOSITORY_ROOT.joinpath(*candidate_parts)
+                    if candidate.is_file() and not _is_link_or_junction(candidate):
+                        aliases.add(candidate_parts)
+            if len(aliases) > 1:
+                raise _InputError(
+                    "Python report path is ambiguous across configured source roots"
+                )
+            if aliases:
+                source_parts = next(iter(aliases))
+            elif source_parts[0].casefold() not in OTHER_ROOTS:
                 source_parts = ("app", *source_parts)
-            else:
-                # Cobertura emitted by coverage.py with ``source = ["app"]``
-                # strips the leading ``app/`` segment.  A module such as
-                # ``app/services/foo.py`` therefore appears as
-                # ``services/foo.py`` and is otherwise indistinguishable from
-                # a repository-root path.  Resolve this ambiguity only when
-                # the corresponding authored module exists below ``app``;
-                # unknown root-level paths remain rejected below.
-                app_alias = REPOSITORY_ROOT.joinpath("app", *source_parts)
-                if app_alias.is_file() and not _is_link_or_junction(app_alias):
-                    source_parts = ("app", *source_parts)
     elif component in GO_COMPONENTS:
         source_parts = _normalize_go_module_source(component, source_parts)
 
@@ -2963,13 +2975,9 @@ def _tracked_source_is_coverable(component: str, relative_path: str) -> bool:
 def _tier0_source_requires_coverage(component: str, relative_path: str) -> bool:
     """Return whether the active coverage toolchain can measure a Tier-0 file.
 
-    The Python CI producer invokes pytest-cov with ``--cov=app``.  Alembic
-    revisions remain part of the canonical Python source roots (so a supplied
-    migration report is still normalized and validated), but they are
-    exercised by the dedicated PostgreSQL migration gate rather than that
-    coverage producer.  Treating their absence from the aggregate as a
-    missing coverage artifact would create a false Tier-0 failure; it would
-    not improve the actual migration safety evidence.
+    Applicability follows the contract's Python coverage scope. The producer
+    combines backend pytest data with the PostgreSQL migration-gate coverage
+    artifact, so all declared Tier-0 revision paths participate in the aggregate.
     """
     normalized = relative_path.replace("\\", "/")
     roots = COVERAGE_SCOPE_ROOTS.get(component, ())
@@ -4302,11 +4310,9 @@ def _build_manifest(
             continue
         reported_sources = set(component_reports[0].file_metrics)
         # ``source_roots`` defines the canonical identity boundary for report
-        # entries, while ``coverage_scope`` contains only the files the
-        # producer is expected to measure.  Those sets intentionally differ
-        # for Python: Alembic revisions are reportable source identities but
-        # pytest-cov is scoped to ``app``.  Require complete evidence for the
-        # producer scope and reject paths outside the canonical roots.
+        # entries, while ``coverage_scope`` contains the files the producer
+        # must measure. Require complete evidence for that scope and reject
+        # paths outside the canonical roots.
         required_sources = set(invocation.coverage_inventory[component])
         reportable_sources = set(invocation.source_inventory[component])
         inventory_errors = [

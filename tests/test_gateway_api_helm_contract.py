@@ -48,6 +48,8 @@ def _render(
         "redis.enabled=false",
         "--set",
         "nats.enabled=false",
+        "--set-string",
+        "global.environment=development",
     ]
     if with_apis:
         for api_version in API_VERSIONS:
@@ -108,6 +110,8 @@ def _render_gateway_template_isolated(
             "university-ecosystem",
             "--set-string",
             "applicationSecrets.existingSecret=render-contract-existing-secret",
+            "--set-string",
+            "global.environment=development",
             "--set",
             "gatewayApi.enabled=true",
             "--set",
@@ -158,6 +162,8 @@ def _render_network_policy_template_isolated(
             str(test_chart),
             "--namespace",
             "university-ecosystem",
+            "--set-string",
+            "global.environment=development",
         ]
         command.extend(overrides)
         return subprocess.run(  # noqa: S603 - fixed local Helm contract command

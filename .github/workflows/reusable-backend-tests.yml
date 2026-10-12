@@ -216,6 +216,7 @@ jobs:
                   $pytestArgs += @(
                     "--ignore=tests/test_schemathesis_api.py",
                     "--cov=app",
+                    "--cov=alembic/versions",
                     "--cov-report=xml:$coverageXmlName",
                     "--cov-report=json:artifacts/coverage/python/$coverageJsonName",
                     "--cov-report=term-missing",
@@ -236,9 +237,10 @@ jobs:
               # A sharded runner only owns a subset of the test universe.  Running
               # diff-cover here would either reference the old, non-existent
               # coverage-full.xml name or incorrectly fail a shard because another
-              # shard owns the changed file.  The aggregate coverage-policy-gate
-              # combines all four raw data files before enforcing repository-wide
-              # coverage; retain this fast check for non-sharded callers.
+              # shard owns the changed file. The aggregate coverage-policy-gate
+              # combines the four shard files with DB Migration Gate coverage
+              # before enforcing repository-wide coverage; keep this fast check
+              # for non-sharded callers.
               if: ${{ github.event_name == 'pull_request' && inputs.coverage-threshold > 0 && inputs.num-shards <= 1 }}
               shell: pwsh
               env:

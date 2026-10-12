@@ -16,10 +16,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
 
-from app.core.config import settings
-from app.models import PushSubscription
-from app.services import webpush as webpush_module
+from app.models import Notification, PushSubscription
+from app.models.domain_events import StoredEvent
 from app.services.notifications import core as notifications_core
 from app.services.notifications import delivery as notifications_delivery
 from app.services.notifications import news_events
@@ -36,7 +36,7 @@ def _make_news(**overrides):
 
 
 def _make_comment(content: str = "Great article!"):
-    return SimpleNamespace(content=content)
+    return SimpleNamespace(id=uuid.uuid4(), content=content)
 
 
 def _make_event(**overrides):
@@ -69,6 +69,11 @@ def _make_author(**overrides):
 def fake_create(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock = AsyncMock(return_value=3)
     monkeypatch.setattr(news_events, "create_notifications_for_users", mock)
+
+    async def _allow_unnotified(_db, _key, user_ids):
+        return list(user_ids)
+
+    monkeypatch.setattr(news_events, "_unnotified_user_ids", _allow_unnotified)
     return mock
 
 
@@ -201,6 +206,8 @@ async def test_notify_about_comment_payload_defaults_missing_data(
     )
     kwargs = fake_create.await_args.kwargs
     assert kwargs["payload_data"] == {}
+    assert kwargs["dedupe_key"].startswith("news.comment:")
+    assert kwargs["push_via_outbox_only"] is True
 
 
 @pytest.mark.asyncio
@@ -225,6 +232,8 @@ async def test_notify_about_news_uses_localized_fallback_and_active_users(
     assert kwargs["url"] == f"/news/{news.id}"
     assert kwargs["body"] == "Краткое содержание"
     assert kwargs["payload_data"]["category"] == "news"
+    assert kwargs["dedupe_key"] == f"news.created:{news.id}"
+    assert kwargs["push_via_outbox_only"] is True
 
 
 @pytest.mark.asyncio
@@ -293,6 +302,8 @@ async def test_notify_about_event_uses_default_payload_and_active_users(
     assert kwargs["payload_data"]["location"] == "Корпус А"
     assert kwargs["payload_data"]["speaker"] == "Иван Петров"
     assert kwargs["payload_data"]["eventType"] == "Лекция"
+    assert kwargs["dedupe_key"] == f"events.created:{event.id}"
+    assert kwargs["push_via_outbox_only"] is True
 
 
 @pytest.mark.asyncio
@@ -412,7 +423,7 @@ async def test_news_and_event_push_metadata_is_json_serializable(
     entity_id_key: str,
     template_fallback: bool,
 ) -> None:
-    """Producer metadata must survive the real Web Push JSON boundary."""
+    """Producer metadata must survive the durable push-outbox JSON boundary."""
     user = await user_factory()
     entity = _make_news() if entity_kind == "news" else _make_event()
     subscription = PushSubscription(
@@ -426,36 +437,12 @@ async def test_news_and_event_push_metadata_is_json_serializable(
     db_session.add(subscription)
     await db_session.flush()
 
-    provider_payloads: list[dict[str, object]] = []
-    serialization_errors: list[str] = []
-    real_json_dumps = webpush_module.json_dumps
-
-    def _observe_json_dumps(value: object) -> str:
-        try:
-            return real_json_dumps(value)
-        except TypeError as exc:
-            serialization_errors.append(str(exc))
-            raise
-
-    def _capture_provider_send(**kwargs: object) -> None:
-        # This is the sole network boundary stub. `send_web_push`, its payload
-        # normalizer and JSON serializer remain production code.
-        provider_payloads.append(json.loads(str(kwargs["data"])))
-
-    monkeypatch.setattr(settings, "vapid_private_key", "test-private-key")
-    monkeypatch.setattr(settings, "vapid_subject", "mailto:test@example.com")
     monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: True)
-    monkeypatch.setattr(webpush_module, "webpush", _capture_provider_send)
-    monkeypatch.setattr(webpush_module, "json_dumps", _observe_json_dumps)
     if template_fallback:
-        # Exercise the producer's existing no-template fallback, which builds
-        # owned entity IDs directly instead of using the template's string IDs.
+        # Exercise the producer's no-template path as well as the registered template.
         monkeypatch.setattr(
             news_events, "render_notification_template", lambda *a, **k: None
         )
-    # The send result's follow-up database session is outside this test's
-    # transaction; delivery construction and sending stay real.
-    monkeypatch.setattr(webpush_module, "process_push_results", AsyncMock())
 
     if entity_kind == "news":
         created = await news_events.notify_about_news(db_session, entity)
@@ -463,6 +450,24 @@ async def test_news_and_event_push_metadata_is_json_serializable(
         created = await news_events.notify_about_event(db_session, entity)
 
     assert created == 1
-    assert serialization_errors == []
-    assert len(provider_payloads) == 1
-    assert provider_payloads[0]["data"][entity_id_key] == str(entity.id)
+    await db_session.flush()
+    notification = await db_session.scalar(
+        select(Notification).where(Notification.user_id == user.id)
+    )
+    assert notification is not None
+    delivery_events = list(
+        (
+            await db_session.scalars(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == "notification.delivery_requested"
+                )
+            )
+        ).all()
+    )
+    delivery_event = next(
+        event
+        for event in delivery_events
+        if str(notification.id) in event.payload["notification_ids"]
+    )
+    serialized_payload = json.loads(json.dumps(delivery_event.payload["payload_data"]))
+    assert serialized_payload[entity_id_key] == str(entity.id)

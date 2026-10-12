@@ -109,6 +109,16 @@ describe("Register page", () => {
     }
   })
 
+  it("uses POST for native registration and names each credential control", async () => {
+    await renderRegister()
+
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirmation = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+    expect(password.closest("form")).toHaveAttribute("method", "post")
+    expect(password).toHaveAttribute("name", "password")
+    expect(confirmation).toHaveAttribute("name", "confirmPassword")
+  })
+
   it("provides a stable fallback key for missing email validation messages", () => {
     expect(resolveRegistrationEmailErrorKey(undefined)).toBe("auth:messages.invalidFormat")
     expect(resolveRegistrationEmailErrorKey("")).toBe("auth:messages.invalidFormat")

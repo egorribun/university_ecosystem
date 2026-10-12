@@ -15,6 +15,7 @@ from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
 from app.services import attendance_tokens, stats_cache
+from app.services.content_media import delete_owned_event_image
 from app.services.vector_service import (
     SemanticSearchUnavailableError,
     VectorService,
@@ -226,14 +227,21 @@ class EventService:
         )
 
     async def create_event(
-        self, data: schemas.EventCreate, user_id: uuid.UUID
+        self,
+        data: schemas.EventCreate,
+        user_id: uuid.UUID,
+        *,
+        locale: str | None = None,
     ) -> EventDTO:
         if data.starts_at >= data.ends_at:
             raise ValueError(translate("validation.events.end_after_start"))
 
         obj_data = data.model_dump()
         obj_data["created_by"] = user_id
-        event = await self.repo.create(obj_data)
+        if locale is None:
+            event = await self.repo.create(obj_data)
+        else:
+            event = await self.repo.create(obj_data, locale=locale)
         async with self.uow:
             await self.uow.commit()
         return event
@@ -284,7 +292,7 @@ class EventService:
 
         if image_url:
             try:
-                await delete_static_file(str(image_url))
+                await delete_owned_event_image(str(image_url), event_id=event_id)
             except (FileNotFoundError, OSError):
                 # RZ-20-04: Narrowed — file deletion is best-effort.
                 logger.warning("Failed to delete event image: %s", image_url)

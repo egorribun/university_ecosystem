@@ -13,6 +13,22 @@ from sqlalchemy.dialects import postgresql
 
 RETAINED_TABLES = frozenset({"user_stats", "vector_chunks"})
 
+# The parent multi-tenant migration still owns these columns after the runtime
+# models stopped mapping them. Keep their FK and index in Alembic metadata so
+# later autogenerate checks do not propose destructive removals.
+MIGRATION_OWNED_TENANT_TABLES = (
+    "users",
+    "groups",
+    "schedule",
+    "events",
+    "chats",
+    "messages",
+    "news",
+    "stories",
+    "notifications",
+)
+_MIGRATION_OWNED_TENANT_REVISION = "202607230001"
+
 
 def build_migration_metadata(runtime_metadata: sa.MetaData) -> sa.MetaData:
     """Copy active schemas and add the explicitly retained historical schemas."""
@@ -25,9 +41,41 @@ def build_migration_metadata(runtime_metadata: sa.MetaData) -> sa.MetaData:
     for table in runtime_metadata.tables.values():
         table.to_metadata(metadata)
     _register_retained_tables(metadata)
+    _register_migration_owned_tenant_columns(metadata)
     for name in RETAINED_TABLES:
         metadata.tables[name].info["retained_by_revision"] = "202610010001"
     return metadata
+
+
+def _register_migration_owned_tenant_columns(metadata: sa.MetaData) -> None:
+    """Retain the tenant schema owned by revision 202607230001."""
+    if "tenants" not in metadata.tables:
+        # Small isolated metadata fixtures may not model the tenant registry.
+        return
+    for table_name in MIGRATION_OWNED_TENANT_TABLES:
+        table = metadata.tables.get(table_name)
+        if table is None:
+            continue
+        if "tenant_id" in table.c:
+            raise ValueError(
+                "Migration-owned tenant_id has competing runtime ownership: "
+                f"{table_name}"
+            )
+        index_name = f"ix_{table_name}_tenant_id"
+        if any(index.name == index_name for index in table.indexes):
+            raise ValueError(
+                "Migration-owned tenant index has competing runtime ownership: "
+                f"{index_name}"
+            )
+        tenant_id = sa.Column(
+            "tenant_id",
+            sa.UUID(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=True,
+            info={"migration_owned_by_revision": _MIGRATION_OWNED_TENANT_REVISION},
+        )
+        table.append_column(tenant_id)
+        sa.Index(index_name, tenant_id)
 
 
 def _register_retained_tables(metadata: sa.MetaData) -> None:

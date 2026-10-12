@@ -141,6 +141,16 @@ describe("ResetPassword page", () => {
     }
   })
 
+  it("uses POST for native reset and names each credential control", async () => {
+    await renderWithToken()
+
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirmation = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+    expect(password.closest("form")).toHaveAttribute("method", "post")
+    expect(password).toHaveAttribute("name", "password")
+    expect(confirmation).toHaveAttribute("name", "confirmPassword")
+  })
+
   it("does not hide or translate the form entrance when reduced motion is requested", async () => {
     const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
       (query) =>

@@ -113,7 +113,7 @@ class NewsLike(Base, UUID7PrimaryKeyMixin, UserFK):
         )
 
 
-class NewsComment(Base, UUID7PrimaryKeyMixin, UserFK):
+class NewsComment(Base, EventEmitterMixin, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "news_comments"
     __table_args__ = (Index("ix_news_comments_news_created", "news_id", "created_at"),)
 

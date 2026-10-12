@@ -189,6 +189,212 @@ def test_core_selection_is_stable_across_compose_mapping_order(
     assert first == second == (EXPECTED_CORE_ROOTS, EXPECTED_CORE_SERVICES)
 
 
+def _trusted_proxy_topology() -> tuple[
+    live_stand.StandOwner,
+    live_stand.ComposeResourceEvidence,
+    dict[str, dict[str, object]],
+    dict[str, dict[str, object]],
+]:
+    project = "ue-live-0123456789abcdef"
+    services = ("backend", "caddy", "gateway", "ws-hub")
+    owner = live_stand.StandOwner(
+        repository="C:/source",
+        worktree="C:/private/run",
+        project_name=project,
+        published_ports=tuple(sorted(live_stand.DEFAULT_PUBLISHED_PORTS.items())),
+        schema_version=11,
+        daemon_fingerprint="d" * 64,
+        compose_resource_fingerprint="e" * 64,
+        source_sha="a" * 40,
+        stack=live_stand.LIVE_STACK_FULL,
+        service_roots=services,
+        selected_services=services,
+    )
+    network_bindings = (
+        ("public", "shared-public", True),
+        ("internal", f"{project}_internal", False),
+        ("revocation_net", f"{project}_revocation_net", False),
+    )
+    service_networks = (
+        ("backend", ("internal", "public", "revocation_net")),
+        ("caddy", ("public",)),
+        ("gateway", ("internal", "public", "revocation_net")),
+        ("ws-hub", ("internal", "public", "revocation_net")),
+    )
+    evidence = live_stand.ComposeResourceEvidence(
+        fingerprint="e" * 64,
+        managed_volumes=(),
+        declared_volume_names=(),
+        managed_networks=(
+            ("internal", f"{project}_internal"),
+            ("revocation_net", f"{project}_revocation_net"),
+        ),
+        managed_services=services,
+        stack=live_stand.LIVE_STACK_FULL,
+        service_roots=services,
+        selected_services=services,
+        network_bindings=network_bindings,
+        service_networks=service_networks,
+    )
+    network_ids = {
+        name: f"{index:064x}" for index, (_, name, _) in enumerate(network_bindings, 1)
+    }
+    subnets = {
+        "public": "172.28.0.0/24",
+        "internal": "172.29.0.0/24",
+        "revocation_net": "172.30.0.0/24",
+    }
+    networks: dict[str, dict[str, object]] = {}
+    for key, name, external in network_bindings:
+        labels = (
+            None
+            if external
+            else {
+                "com.docker.compose.project": project,
+                "com.docker.compose.network": key,
+            }
+        )
+        networks[name] = {
+            "Name": name,
+            "Id": network_ids[name],
+            "Labels": labels,
+            "IPAM": {"Config": [{"Subnet": subnets[key]}]},
+        }
+    host_octets = {"caddy": 2, "backend": 3, "gateway": 4, "ws-hub": 5}
+    by_service_networks = dict(service_networks)
+    containers: dict[str, dict[str, object]] = {}
+    for index, service in enumerate(services, 1):
+        config: dict[str, object] = {
+            "Labels": {
+                "com.docker.compose.project": project,
+                "com.docker.compose.service": service,
+            },
+            "Image": f"test/{service}:1",
+        }
+        state: dict[str, object] = {"Running": True, "Status": "running"}
+        if service == "backend":
+            state["Health"] = {"Status": "healthy"}
+        attachments: dict[str, object] = {}
+        for key in by_service_networks[service]:
+            _, network_name, _ = network_bindings[
+                next(i for i, row in enumerate(network_bindings) if row[0] == key)
+            ]
+            attachments[network_name] = {
+                "NetworkID": network_ids[network_name],
+                "IPAddress": f"172.{28 + (0 if key == 'public' else 1 if key == 'internal' else 2)}.0.{host_octets[service]}",
+                "GlobalIPv6Address": "",
+            }
+        containers[service] = {
+            "Id": f"{index:064x}",
+            "Name": f"/{service}",
+            "Image": f"sha256:{index:064x}",
+            "Config": config,
+            "Mounts": [],
+            "State": state,
+            "NetworkSettings": {"Networks": attachments},
+        }
+    return owner, evidence, containers, networks
+
+
+def test_trusted_proxy_settings_use_exact_inspected_signed_network_peers() -> None:
+    owner, evidence, containers, networks = _trusted_proxy_topology()
+
+    settings, addresses = live_stand._trusted_proxy_settings_from_inspects(
+        owner, evidence, containers, networks
+    )
+
+    assert settings == {
+        "TRUSTED_PROXIES": ("172.28.0.2", "172.28.0.4", "172.29.0.4", "172.30.0.4"),
+        "GATEWAY_TRUSTED_PROXIES": ("172.28.0.2",),
+        "WS_HUB_TRUSTED_PROXIES": ("172.28.0.2",),
+    }
+    assert addresses["caddy"] == {"public": ("172.28.0.2",)}
+    assert set(settings) == set(live_stand.LIVE_TRUSTED_PROXY_SETTINGS)
+    assert all("/" not in address for peers in settings.values() for address in peers)
+
+
+def test_trusted_proxy_settings_reject_mismatched_network_id_and_extra_attachment() -> (
+    None
+):
+    owner, evidence, containers, networks = _trusted_proxy_topology()
+    changed = deepcopy(containers)
+    changed["gateway"]["NetworkSettings"]["Networks"]["shared-public"]["NetworkID"] = (
+        "f" * 64
+    )
+
+    with pytest.raises(live_stand.StandError, match="NetworkID differs"):
+        live_stand._trusted_proxy_settings_from_inspects(
+            owner, evidence, changed, networks
+        )
+
+    changed = deepcopy(containers)
+    changed["ws-hub"]["NetworkSettings"]["Networks"]["unexpected"] = {}
+    with pytest.raises(live_stand.StandError, match="attachments differ"):
+        live_stand._trusted_proxy_settings_from_inspects(
+            owner, evidence, changed, networks
+        )
+
+
+def test_trusted_proxy_settings_reject_foreign_network_and_non_ip_peer() -> None:
+    owner, evidence, containers, networks = _trusted_proxy_topology()
+    changed_networks = deepcopy(networks)
+    changed_networks[f"{owner.project_name}_internal"]["Labels"][
+        "com.docker.compose.project"
+    ] = "foreign-project"
+    with pytest.raises(live_stand.StandError, match="network labels differ"):
+        live_stand._trusted_proxy_settings_from_inspects(
+            owner, evidence, containers, changed_networks
+        )
+
+    changed = deepcopy(containers)
+    changed["caddy"]["NetworkSettings"]["Networks"]["shared-public"]["IPAddress"] = (
+        "8.8.8.8/32"
+    )
+    with pytest.raises(live_stand.StandError, match="network address is invalid"):
+        live_stand._trusted_proxy_settings_from_inspects(
+            owner, evidence, changed, networks
+        )
+
+    changed = deepcopy(containers)
+    changed["caddy"]["NetworkSettings"]["Networks"]["shared-public"]["IPAddress"] = (
+        "10.10.0.2"
+    )
+    with pytest.raises(live_stand.StandError, match="outside inspected network IPAM"):
+        live_stand._trusted_proxy_settings_from_inspects(
+            owner, evidence, changed, networks
+        )
+
+
+def test_trusted_proxy_refresh_rejects_network_identity_changes() -> None:
+    before = {"public": "a" * 64, "internal": "b" * 64}
+
+    live_stand._assert_live_trusted_proxy_network_ids_unchanged(before, before)
+
+    changed = {**before, "public": "c" * 64}
+    with pytest.raises(
+        live_stand.StandError, match="network identity changed during refresh"
+    ):
+        live_stand._assert_live_trusted_proxy_network_ids_unchanged(before, changed)
+
+
+def test_live_compose_environments_clear_desktop_proxy_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    names = live_stand.LIVE_TRUSTED_PROXY_SETTINGS
+    original = {name: f"198.51.100.{index}" for index, name in enumerate(names, 1)}
+    for name, value in original.items():
+        monkeypatch.setenv(name, value)
+
+    environment = live_stand.stand_environment(
+        {"public": "test-public", "private": "test-private"},
+        "ue-live-0123456789abcdef",
+    )
+    control = live_stand.compose_control_environment("ue-live-0123456789abcdef")
+
+    assert all(environment[name] == "" and control[name] == "" for name in names)
+    assert all(os.environ[name] == value for name, value in original.items())
+
+
 @pytest.fixture
 def signed_core_owner(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

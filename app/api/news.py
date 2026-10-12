@@ -7,7 +7,6 @@ from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Body,
     Depends,
     File,
@@ -51,7 +50,6 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
-from app.services.notification_service import NotificationService
 from app.services.vector_service import (
     SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
     SemanticSearchUnavailableError,
@@ -99,16 +97,13 @@ def _news_item_cache_key(id: uuid.UUID | int, locale: str) -> str:
 async def create_news(
     data: schemas.NewsCreate,
     request: Request,
-    background: BackgroundTasks,
     service: FromDishka[NewsService],
-    notifications: FromDishka[NotificationService],
     user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
-    record = await service.create_news(data)
+    record = await service.create_news(data, locale=locale)
     await _increment_news_list_version(getattr(request.app.state, "cache", None))
     serialized = service.serialize_news(record, locale)
-    await notifications.dispatch_news_created(record.id, locale, background)
     return serialized
 
 
@@ -322,9 +317,7 @@ async def like_news(
 async def comment_on_news(
     id: uuid.UUID,
     request: Request,
-    background: BackgroundTasks,
     service: FromDishka[NewsService],
-    notifications: FromDishka[NotificationService],
     content: str = Body(..., embed=True),
     user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.NewsCommentOut | dict[str, Any]:
@@ -335,12 +328,7 @@ async def comment_on_news(
     if not content.strip():
         raise_validation_error("errors.validation.required", locale)
 
-    comment = await service.create_comment(id, user.id, content)
-
-    # Notify admins about new comment
-    await notifications.dispatch_comment_created(
-        id, comment.id, user.id, locale, background
-    )
+    comment = await service.create_comment(id, user.id, content, locale=locale)
 
     return {
         "id": comment.id,

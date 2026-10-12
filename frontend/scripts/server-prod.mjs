@@ -38,6 +38,7 @@
 // observability (Sentry server-side, OTEL traces) can be layered on
 // in a future polish wave; out of W131 Phase 4 scope.
 
+import { randomBytes } from "node:crypto"
 import { createReadStream, readFileSync, statSync } from "node:fs"
 import { createServer } from "node:http"
 import { Readable } from "node:stream"
@@ -62,6 +63,12 @@ import {
   shouldCompressContentType,
 } from "./lhci-ssr-response.mjs"
 import { resolveLhciPreviewMode } from "./lhci-preview-mode.mjs"
+import {
+  applyNodeCspToHtmlResponse,
+  buildNodeCspHeaders,
+  createCspNoncePlaceholderTransform,
+  replaceCspNoncePlaceholder,
+} from "./server-csp.mjs"
 
 // The bounded Lighthouse SSR preview owns its port explicitly.  Prefer that
 // value over a runner-wide `PORT` so an unrelated environment variable cannot
@@ -142,28 +149,41 @@ function serveStatic(req, res, urlPath) {
   if (!stat.isFile()) return false
   const ext = path.extname(filePath).toLowerCase()
   const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream"
+  const isHtml = contentType.toLowerCase().includes("text/html")
+  const nonce = isHtml ? randomBytes(16).toString("base64") : undefined
   const compress =
     acceptsGzip(req.headers["accept-encoding"]) && shouldCompressContentType(contentType)
   res.statusCode = 200
   res.setHeader("content-type", contentType)
+  if (isHtml) {
+    for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce))) {
+      res.setHeader(name, value)
+    }
+    res.setHeader("cache-control", "no-store, private, max-age=0")
+    res.removeHeader("etag")
+    res.removeHeader("last-modified")
+    res.removeHeader("content-length")
+  }
   if (compress) {
     res.removeHeader("content-length")
     res.setHeader("content-encoding", "gzip")
     res.setHeader("vary", "Accept-Encoding")
-  } else {
+  } else if (!isHtml) {
     res.setHeader("content-length", stat.size)
   }
   // Long-cache hashed assets (everything in /assets/<name>-<hash>.ext is
   // immutable per Vite's hashing convention). Other static files in the
   // root (sw.js, manifest, fallbacks, etc.) get short cache + revalidation.
-  if (urlPath.startsWith("/assets/") || urlPath.startsWith("/fonts/")) {
-    res.setHeader("cache-control", "public, max-age=31536000, immutable")
-  } else if (urlPath === "/sw.js" || urlPath === "/registerSW.js") {
-    // Service worker MUST NOT be cached — browsers re-check on every nav.
-    res.setHeader("cache-control", "no-store, no-cache, must-revalidate, max-age=0")
-    res.setHeader("service-worker-allowed", "/")
-  } else {
-    res.setHeader("cache-control", "no-cache")
+  if (!isHtml) {
+    if (urlPath.startsWith("/assets/") || urlPath.startsWith("/fonts/")) {
+      res.setHeader("cache-control", "public, max-age=31536000, immutable")
+    } else if (urlPath === "/sw.js" || urlPath === "/registerSW.js") {
+      // Service worker MUST NOT be cached — browsers re-check on every nav.
+      res.setHeader("cache-control", "no-store, no-cache, must-revalidate, max-age=0")
+      res.setHeader("service-worker-allowed", "/")
+    } else {
+      res.setHeader("cache-control", "no-cache")
+    }
   }
   // HEAD requests get headers only — drain stream after body is built.
   if (req.method === "HEAD") {
@@ -171,12 +191,15 @@ function serveStatic(req, res, urlPath) {
     return true
   }
   const stream = createReadStream(filePath)
-  stream.on("error", (err) => {
+  const reportStaticReadError = (err) => {
     console.error("server-prod: read error for static file", filePath, err)
     if (!res.writableEnded) res.end()
-  })
-  if (compress) stream.pipe(createGzip()).pipe(res)
-  else stream.pipe(res)
+  }
+  stream.on("error", reportStaticReadError)
+  const bodyStream = isHtml ? stream.pipe(createCspNoncePlaceholderTransform(nonce)) : stream
+  if (bodyStream !== stream) bodyStream.on("error", reportStaticReadError)
+  if (compress) bodyStream.pipe(createGzip()).pipe(res)
+  else bodyStream.pipe(res)
   return true
 }
 
@@ -300,7 +323,12 @@ const server = createServer(async (req, res) => {
         accept: req.headers.accept,
       })
     ) {
-      response = createNotFoundResponse(notFoundDocument, { method: req.method })
+      const nonce = randomBytes(16).toString("base64")
+      const notFoundHtml = replaceCspNoncePlaceholder(notFoundDocument, nonce)
+      response = applyNodeCspToHtmlResponse(
+        createNotFoundResponse(notFoundHtml, { method: req.method }),
+        nonce
+      )
     }
     // The Lighthouse preview is the only runtime allowed to rewrite SSR
     // markup. It measures the route-specific server-rendered shell without

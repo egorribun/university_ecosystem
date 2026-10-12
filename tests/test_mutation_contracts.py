@@ -129,6 +129,11 @@ async def test_event_notification_keeps_db_topic_title_and_translations(
     monkeypatch.setattr(
         news_events, "_fetch_active_user_ids", AsyncMock(return_value=users)
     )
+    monkeypatch.setattr(
+        news_events,
+        "_unnotified_user_ids",
+        AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
+    )
     monkeypatch.setattr(news_events, "create_notifications_for_users", create)
     monkeypatch.setattr(
         news_events, "render_notification_template", lambda *a, **k: None
@@ -157,6 +162,11 @@ async def test_news_notification_forwards_rendered_body_to_delivery(
     user_ids = [uuid.uuid4()]
     monkeypatch.setattr(
         news_events, "_fetch_active_user_ids", AsyncMock(return_value=user_ids)
+    )
+    monkeypatch.setattr(
+        news_events,
+        "_unnotified_user_ids",
+        AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
     )
     monkeypatch.setattr(news_events, "create_notifications_for_users", create)
     monkeypatch.setattr(

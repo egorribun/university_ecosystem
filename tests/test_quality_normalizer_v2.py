@@ -346,6 +346,7 @@ def test_normalizer_v2_preserves_alembic_source_identity_and_inventory(
     evidence_repo: Path,
 ) -> None:
     alembic_path = "alembic/versions/20260825_example.py"
+    alembic_report_path = "20260825_example.py"
     source = evidence_repo / alembic_path
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("revision = '20260825'\n", encoding="utf-8")
@@ -357,7 +358,7 @@ def test_normalizer_v2_preserves_alembic_source_identity_and_inventory(
 <coverage branches-covered="2" branches-valid="2" lines-covered="2" lines-valid="2" version="7.10">
   <packages><package name="python"><classes>
     <class filename="app/example.py" name="example"><methods /><lines><line branch="true" condition-coverage="100% (1/1)" hits="1" number="1" /></lines></class>
-    <class filename="{alembic_path}" name="migration"><methods /><lines><line branch="true" condition-coverage="100% (1/1)" hits="1" number="1" /></lines></class>
+    <class filename="{alembic_report_path}" name="migration"><methods /><lines><line branch="true" condition-coverage="100% (1/1)" hits="1" number="1" /></lines></class>
   </classes></package></packages>
 </coverage>
 """,
@@ -365,7 +366,7 @@ def test_normalizer_v2_preserves_alembic_source_identity_and_inventory(
     )
     json_path = evidence_repo / "artifacts/coverage/python/coverage.json"
     report = json.loads(json_path.read_text(encoding="utf-8"))
-    report["files"][alembic_path] = json.loads(
+    report["files"][alembic_report_path] = json.loads(
         json.dumps(report["files"]["app/example.py"])
     )
     report["totals"] = {
@@ -384,36 +385,39 @@ def test_normalizer_v2_preserves_alembic_source_identity_and_inventory(
             encoding="utf-8"
         )
     )
-    # Alembic revisions remain canonical report identities but are outside the
-    # pytest-cov producer scope (``--cov=app``).  They are validated by the
-    # dedicated PostgreSQL migration gate rather than fabricated as Tier0
-    # Python coverage evidence.
-    assert manifest["coverage_scope"]["python"] == ["app"]
-    assert not any(item["path"] == alembic_path for item in manifest["tier0"]["files"])
+    assert manifest["coverage_scope"]["python"] == ["app", "alembic/versions"]
+    migration_record = next(
+        item for item in manifest["tier0"]["files"] if item["path"] == alembic_path
+    )
+    assert all(
+        metric["percent"] == 100.0 for metric in migration_record["metrics"].values()
+    )
 
 
-def test_normalizer_v2_does_not_require_alembic_outside_python_coverage_scope(
+def test_normalizer_v2_requires_coverage_for_tier0_alembic_source(
     evidence_repo: Path,
 ) -> None:
-    """Python coverage completeness follows coverage_scope, not source_roots."""
+    """An unreported Tier-0 migration cannot silently leave the coverage scope."""
     alembic_path = "alembic/versions/20260825_unmeasured.py"
     source = evidence_repo / alembic_path
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("revision = '20260825_unmeasured'\n", encoding="utf-8")
     _commit_all(evidence_repo, "add migration outside pytest coverage scope")
 
-    # The canonical pytest-cov producer runs with ``--cov=app`` and therefore
-    # intentionally omits Alembic revisions.  A new migration must not create
-    # a false missing-source failure in the aggregate coverage manifest.
+    contract = json.loads(
+        (evidence_repo / "quality/quality-contract.json").read_text(encoding="utf-8")
+    )
+    assert contract["coverage_scope"]["python"] == ["app", "alembic/versions"]
     result = _run(evidence_repo, _full_arguments(evidence_repo))
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0
     manifest = json.loads(
         (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
             encoding="utf-8"
         )
     )
-    assert manifest["validation"] == {"valid": True, "errors": []}
+    assert manifest["validation"]["valid"] is False
+    assert any(alembic_path in error for error in manifest["tier0"]["errors"])
 
 
 @pytest.mark.parametrize("mutation", ["modified", "deleted", "untracked"])
@@ -745,5 +749,5 @@ def test_normalizer_v2_zero_unit_tier0_derivation_validates_end_to_end(
     )
     tier0_paths = {item["path"] for item in manifest["tier0"]["files"]}
     assert "services/pkg/spicedb/client.go" in tier0_paths
-    assert migration_path not in tier0_paths
+    assert migration_path in tier0_paths
     assert manifest["validation"] == {"valid": True, "errors": []}

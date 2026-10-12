@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +53,210 @@ def _verify(
         trusted_path = _write(tmp_path / trusted_base_name, trusted_base)
         argv.extend(["--trusted-base-baseline", str(trusted_path)])
     return verifier.main(argv)
+
+
+def _inline_pragma_marker() -> str:
+    return "pragma:" + " allowlist" + " secret"
+
+
+def _git_executable() -> str:
+    executable = shutil.which("git")
+    if executable is None:
+        pytest.fail("Git executable is required for source-delta tests")
+    return str(Path(executable).resolve(strict=True))
+
+
+def _git_fixture(repository: Path, *arguments: str) -> str:
+    git_executable = _git_executable()
+    # The temporary repository and fixture command are test-controlled; no shell.
+    result = subprocess.run(  # noqa: S603
+        [git_executable, "-C", str(repository), *arguments],
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+        text=True,
+        shell=False,
+    )
+    assert result.returncode == 0, "temporary Git fixture command failed"
+    return result.stdout.strip()
+
+
+def _commit_git_fixture(repository: Path, message: str) -> str:
+    _git_fixture(repository, "add", "--all")
+    git_executable = _git_executable()
+    # The temporary repository and fixture command are test-controlled; no shell.
+    result = subprocess.run(  # noqa: S603
+        [
+            git_executable,
+            "-C",
+            str(repository),
+            "-c",
+            "user.name=Policy Fixture",
+            "-c",
+            "user.email=policy-fixture@example.invalid",
+            "-c",
+            f"core.hooksPath={repository / '.disabled-hooks'}",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            message,
+        ],
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+        text=True,
+        shell=False,
+    )
+    assert result.returncode == 0, "temporary Git fixture commit failed"
+    return _git_fixture(repository, "rev-parse", "HEAD")
+
+
+def _new_git_fixture(tmp_path: Path) -> tuple[Path, str]:
+    repository = tmp_path / "source repository"
+    repository.mkdir()
+    (repository / ".disabled-hooks").mkdir()
+    empty_template = repository / ".empty-template"
+    empty_template.mkdir()
+    _git_fixture(
+        repository,
+        "init",
+        "--quiet",
+        f"--template={empty_template}",
+    )
+    _git_fixture(repository, "config", "core.quotePath", "true")
+    (repository / "baseline.txt").write_text("baseline\n", encoding="utf-8")
+    return repository, _commit_git_fixture(repository, "trusted base")
+
+
+def test_source_delta_rejects_added_marker_in_quoted_path(tmp_path: Path) -> None:
+    repository, base_sha = _new_git_fixture(tmp_path)
+    relative_path = Path("folder with spaces") / "marker-é-quoted.py"
+    added_path = repository / relative_path
+    added_path.parent.mkdir()
+    added_path.write_text(
+        f"value = 'synthetic'  # {_inline_pragma_marker()}\n", encoding="utf-8"
+    )
+    _commit_git_fixture(repository, "add marker")
+
+    findings = verifier.find_new_inline_secret_pragmas(
+        base_sha, repository_root=repository
+    )
+
+    assert findings == [(relative_path.as_posix(), 1)]
+
+
+def test_source_delta_rejects_a_moved_legacy_marker(tmp_path: Path) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    old_path = repository / "legacy.py"
+    old_path.write_text(
+        f"value = 'synthetic'  # {_inline_pragma_marker()}\n", encoding="utf-8"
+    )
+    base_sha = _commit_git_fixture(repository, "add legacy marker")
+    moved_path = repository / "renamed folder" / "moved-é-marker.py"
+    moved_path.parent.mkdir()
+    old_path.rename(moved_path)
+    _commit_git_fixture(repository, "move legacy marker")
+
+    findings = verifier.find_new_inline_secret_pragmas(
+        base_sha, repository_root=repository
+    )
+
+    assert findings == [("renamed folder/moved-é-marker.py", 1)]
+
+
+def test_source_delta_allows_unchanged_and_removed_legacy_markers(
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    legacy_path = repository / "legacy.py"
+    legacy_path.write_text(
+        f"value = 'synthetic'  # {_inline_pragma_marker()}\n", encoding="utf-8"
+    )
+    base_sha = _commit_git_fixture(repository, "add existing marker")
+
+    (repository / "unrelated.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_git_fixture(repository, "change unrelated source")
+    assert (
+        verifier.find_new_inline_secret_pragmas(base_sha, repository_root=repository)
+        == []
+    )
+
+    legacy_path.write_text("value = 'synthetic'\n", encoding="utf-8")
+    _commit_git_fixture(repository, "remove existing marker")
+    assert (
+        verifier.find_new_inline_secret_pragmas(base_sha, repository_root=repository)
+        == []
+    )
+
+
+def test_source_delta_fails_closed_when_git_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    monkeypatch.setattr(verifier.shutil, "which", lambda _name: None)
+
+    with pytest.raises(
+        verifier.SourceDeltaError, match="Git source comparison could not run"
+    ):
+        verifier.find_new_inline_secret_pragmas("1" * 40, repository_root=repository)
+
+
+def test_source_delta_fails_closed_on_malformed_git_diff() -> None:
+    malformed_diff = (
+        "@@ malformed header\n+value = 'synthetic' # " + _inline_pragma_marker()
+    )
+
+    with pytest.raises(verifier.SourceDeltaError):
+        verifier._find_added_inline_secret_pragmas(malformed_diff)
+
+
+def test_source_delta_rejects_invalid_or_unavailable_base(
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    for base_sha in ("0" * 40, "not-a-commit", "f" * 40):
+        with pytest.raises(verifier.SourceDeltaError):
+            verifier.find_new_inline_secret_pragmas(
+                base_sha, repository_root=repository
+            )
+
+
+def test_source_delta_does_not_surface_git_error_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def failed_git(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=128,
+            stdout="",
+            stderr="synthetic private diagnostic",
+        )
+
+    monkeypatch.setattr(verifier.subprocess, "run", failed_git)
+    with pytest.raises(verifier.SourceDeltaError) as error:
+        verifier.find_new_inline_secret_pragmas("1" * 40, repository_root=repository)
+
+    assert "synthetic private diagnostic" not in str(error.value)
+
+
+def test_security_workflow_passes_source_base_for_supported_events() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    workflow = (
+        repository_root / ".github" / "workflows" / "reusable-security-audit.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}" in workflow
+    assert "PUSH_BEFORE_SHA: ${{ github.event.before }}" in workflow
+    assert workflow.count('--trusted-base-source-sha "$SOURCE_BASE_SHA"') == 2
+    assert 'pull_request) SOURCE_BASE_SHA="$PR_BASE_SHA" ;;' in workflow
+    assert 'push) SOURCE_BASE_SHA="$PUSH_BEFORE_SHA" ;;' in workflow
+    assert "unsupported event for trusted source comparison" in workflow
 
 
 def test_matching_findings_allow_stale_removals(

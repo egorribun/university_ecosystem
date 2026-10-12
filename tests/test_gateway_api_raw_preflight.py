@@ -139,6 +139,8 @@ def _render_gateway_api_template(tmp_path: Path, class_name: str) -> str:
         "--namespace",
         "university-ecosystem",
         "--set-string",
+        "global.environment=development",
+        "--set-string",
         "applicationSecrets.existingSecret=raw-connectivity-existing-secret",
         "--set",
         "gatewayApi.enabled=true",

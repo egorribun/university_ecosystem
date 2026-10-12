@@ -434,6 +434,7 @@ class EventCreated(DomainEvent):
     event_id_entity: UUID | None = None
     organizer_id: UUID | None = None
     title: str = ""
+    locale: str | None = None
 
     EVENT_TYPE: ClassVar[str] = "event.created"
 
@@ -509,6 +510,7 @@ class NewsCreated(DomainEvent):
 
     news_id: UUID | None = None
     title: str = ""
+    locale: str | None = None
 
     EVENT_TYPE: ClassVar[str] = "news.created"
 
@@ -523,6 +525,38 @@ class NewsCreated(DomainEvent):
             if f.name not in ("event_id", "occurred_at", "metadata")
         }
         return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class NewsCommentCreated(DomainEvent):
+    """Fired in the comment transaction for retryable notification delivery."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+    comment_id: UUID | None = None
+    locale: str | None = None
+    EVENT_TYPE: ClassVar[str] = "news.comment_created"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NewsCommentCreated:
+        data.pop("_schema_version", 1)
+        raw_comment_id: object = data.get("comment_id")
+        if isinstance(raw_comment_id, str):
+            comment_id: UUID | None = UUID(raw_comment_id)
+        elif raw_comment_id is None or isinstance(raw_comment_id, UUID):
+            comment_id = raw_comment_id
+        else:
+            raise TypeError("comment_id must be a UUID, UUID string, or None")
+
+        known = {
+            field.name
+            for field in dataclasses.fields(cls)
+            if field.name not in ("event_id", "occurred_at", "metadata")
+        }
+        payload = {key: value for key, value in data.items() if key in known}
+        if "comment_id" in payload:
+            payload["comment_id"] = comment_id
+        return cls(**payload)
 
 
 @register_domain_event
@@ -1213,6 +1247,7 @@ __all__ = [
     "MessageSent",
     "MfaEmailDeliveryRequested",
     "MfaEnabled",
+    "NewsCommentCreated",
     "NewsCreated",
     "NewsUpdated",
     "NotificationDeadLetterPurged",

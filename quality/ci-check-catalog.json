@@ -1295,7 +1295,14 @@
           "needs": [
             "pre-commit-check"
           ],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "python-migration-coverage-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/coverage/python/producer/.coverage.migration\nartifacts/coverage/python/producer/coverage-provenance-migration.json\n",
+              "required": true,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,
@@ -1443,6 +1450,7 @@
           "guard": "workflow trigger",
           "needs": [
             "backend-tests",
+            "db-migration-gate",
             "frontend-tests",
             "go-tests",
             "rust-tests"

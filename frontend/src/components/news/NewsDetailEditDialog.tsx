@@ -5,7 +5,7 @@ import SmartImage from "@/components/media/SmartImage"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Textarea } from "@/components/ui/Textarea"
-import { updateNews, uploadNewsImage } from "@/api/news"
+import { fetchNewsItem, updateNews, uploadNewsImage } from "@/api/news"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
@@ -68,15 +68,53 @@ export function NewsDetailEditDialog({
   const queryClient = useQueryClient()
 
   const [editData, setEditData] = useState(initialData)
+  const [englishSourceLoadedFor, setEnglishSourceLoadedFor] = useState<string | null>(null)
+  const [sourceLoading, setSourceLoading] = useState(false)
+  const [sourceLoadFailed, setSourceLoadFailed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
-  // Sync initial data when dialog opens
+  const sourceReady = language !== "en" || englishSourceLoadedFor === `${newsId}:en`
+
+  // English responses contain localized title/content in the base fields. Load
+  // the Russian source explicitly before allowing the two-language editor to save.
   useEffect(() => {
-    if (open) setEditData(initialData)
-  }, [open, initialData])
+    if (!open) return
+    if (language !== "en") {
+      setEditData(initialData)
+      setSourceLoading(false)
+      setSourceLoadFailed(false)
+      return
+    }
+
+    const controller = new AbortController()
+    setEnglishSourceLoadedFor(null)
+    setSourceLoading(true)
+    setSourceLoadFailed(false)
+    void fetchNewsItem(newsId, { language: "ru", signal: controller.signal })
+      .then((response) => {
+        if (controller.signal.aborted) return
+        if (response.status === 304) throw new Error("Russian source was not returned")
+        setEditData({
+          title: response.data.title,
+          content: response.data.content,
+          title_en: response.data.title_en ?? "",
+          content_en: response.data.content_en ?? "",
+          image_url: response.data.image_url ?? "",
+        })
+        setEnglishSourceLoadedFor(`${newsId}:en`)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSourceLoadFailed(true)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSourceLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [open, initialData, language, newsId])
 
   // Cleanup preview URL on unmount
   useEffect(
@@ -111,6 +149,7 @@ export function NewsDetailEditDialog({
   const imageUrl = previewUrl || editData.image_url
 
   const handleSave = async () => {
+    if (!sourceReady || sourceLoading || sourceLoadFailed) return
     const telemetryContext = captureActiveTelemetryContext()
     setSaving(true)
     try {
@@ -145,95 +184,101 @@ export function NewsDetailEditDialog({
     <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
       <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
       <DialogContent className="space-y-6 pt-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <Field label={t("news:form.title") ?? ""} htmlFor="edit-title" required>
-              <Input
-                id="edit-title"
-                type="text"
-                value={editData.title}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setEditData({ ...editData, title: e.target.value })
-                }
-                maxLength={100}
-              />
-            </Field>
-            <Field label={t("news:form.content") ?? ""} htmlFor="edit-content" required>
-              <Textarea
-                id="edit-content"
-                value={editData.content}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setEditData({ ...editData, content: e.target.value })
-                }
-                maxLength={3000}
-                rows={6}
-              />
-            </Field>
+        {!sourceReady || sourceLoading || sourceLoadFailed ? (
+          <div role={sourceLoadFailed ? "alert" : "status"}>
+            {sourceLoadFailed ? t("common:errors.generic") : t("common:buttons.loading")}
           </div>
-          <div className="space-y-4">
-            <Field label={t("news:form.title_en") ?? ""} htmlFor="edit-title-en">
-              <Input
-                id="edit-title-en"
-                type="text"
-                value={editData.title_en}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setEditData({ ...editData, title_en: e.target.value })
-                }
-                maxLength={100}
-              />
-            </Field>
-            <Field label={t("news:form.content_en") ?? ""} htmlFor="edit-content-en">
-              <Textarea
-                id="edit-content-en"
-                value={editData.content_en}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setEditData({ ...editData, content_en: e.target.value })
-                }
-                maxLength={3000}
-                rows={6}
-              />
-            </Field>
-            <div className="space-y-3">
-              <label className="block text-sm font-semibold text-(--text-secondary)">
-                {t("news:form.image")}
-              </label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Button as="label" variant="glass" className="w-full sm:w-auto" disabled={saving}>
-                  <div className="flex items-center gap-2">
-                    <PhotoCamera className="h-4 w-4" />
-                    {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    ref={imageInputRef}
-                    onChange={handleImageChange}
-                  />
-                </Button>
-                {imageUrl && (
-                  <div className="overflow-hidden rounded-lg border border-glass-border/(--opacity-soft) shadow-sm">
-                    <SmartImage
-                      srcRaw={imageUrl}
-                      alt={t("news:alt.editPreview")}
-                      className="h-14 w-28 object-cover"
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <Field label={t("news:form.title") ?? ""} htmlFor="edit-title" required>
+                <Input
+                  id="edit-title"
+                  type="text"
+                  value={editData.title}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setEditData({ ...editData, title: e.target.value })
+                  }
+                  maxLength={100}
+                />
+              </Field>
+              <Field label={t("news:form.content") ?? ""} htmlFor="edit-content" required>
+                <Textarea
+                  id="edit-content"
+                  value={editData.content}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setEditData({ ...editData, content: e.target.value })
+                  }
+                  maxLength={3000}
+                  rows={6}
+                />
+              </Field>
+            </div>
+            <div className="space-y-4">
+              <Field label={t("news:form.title_en") ?? ""} htmlFor="edit-title-en">
+                <Input
+                  id="edit-title-en"
+                  type="text"
+                  value={editData.title_en}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setEditData({ ...editData, title_en: e.target.value })
+                  }
+                  maxLength={100}
+                />
+              </Field>
+              <Field label={t("news:form.content_en") ?? ""} htmlFor="edit-content-en">
+                <Textarea
+                  id="edit-content-en"
+                  value={editData.content_en}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setEditData({ ...editData, content_en: e.target.value })
+                  }
+                  maxLength={3000}
+                  rows={6}
+                />
+              </Field>
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-(--text-secondary)">
+                  {t("news:form.image")}
+                </label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button as="label" variant="glass" className="w-full sm:w-auto" disabled={saving}>
+                    <div className="flex items-center gap-2">
+                      <PhotoCamera className="h-4 w-4" />
+                      {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      ref={imageInputRef}
+                      onChange={handleImageChange}
                     />
-                  </div>
+                  </Button>
+                  {imageUrl && (
+                    <div className="overflow-hidden rounded-lg border border-glass-border/(--opacity-soft) shadow-sm">
+                      <SmartImage
+                        srcRaw={imageUrl}
+                        alt={t("news:alt.editPreview")}
+                        className="h-14 w-28 object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+                {previewUrl && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetPreview}
+                    className="text-(--error-text)"
+                  >
+                    {t("common:buttons.reset")}
+                  </Button>
                 )}
               </div>
-              {previewUrl && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={resetPreview}
-                  className="text-(--error-text)"
-                >
-                  {t("common:buttons.reset")}
-                </Button>
-              )}
             </div>
           </div>
-        </div>
+        )}
       </DialogContent>
       <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
         <Button variant="ghost" onClick={handleClose} className="w-full sm:w-auto">
@@ -242,7 +287,14 @@ export function NewsDetailEditDialog({
         <Button
           variant="solid"
           onClick={handleSave}
-          disabled={!editData.title.trim() || !editData.content.trim() || saving}
+          disabled={
+            !sourceReady ||
+            sourceLoading ||
+            sourceLoadFailed ||
+            !editData.title.trim() ||
+            !editData.content.trim() ||
+            saving
+          }
           className="w-full sm:w-auto min-w-32"
         >
           {saving ? t("common:buttons.saving") : t("common:buttons.save")}

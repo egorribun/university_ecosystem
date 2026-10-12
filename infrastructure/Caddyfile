@@ -9,13 +9,14 @@
 	auto_https off
 
 	# Error entries can include the original request URI. Retain useful request
-	# details while redacting reset and WebSocket bearer values.
+	# details while redacting login passwords and bearer values.
 	log default {
 		format filter {
 			request>uri multi_regexp {
 				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
 				regexp ([?&]token=)[^&]* ${1}REDACTED
 				regexp ([?&]ticket=)[^&]* ${1}REDACTED
+				regexp ([?&]password=)[^&]* ${1}REDACTED
 			}
 		}
 		exclude http.log.access
@@ -169,14 +170,15 @@
 		}
 	}
 
-	# Preserve request details in access logs while redacting bearer values from
-	# legacy reset paths, reset query strings, and WebSocket ticket query strings.
+	# Preserve useful request details while redacting passwords, reset tokens,
+	# and WebSocket tickets from access-log URI values.
 	log {
 		format filter {
 			request>uri multi_regexp {
 				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
 				regexp ([?&]token=)[^&]* ${1}REDACTED
 				regexp ([?&]ticket=)[^&]* ${1}REDACTED
+				regexp ([?&]password=)[^&]* ${1}REDACTED
 			}
 		}
 	}

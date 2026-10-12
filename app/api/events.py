@@ -6,7 +6,6 @@ from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -47,9 +46,9 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO
+from app.services.content_media import delete_owned_event_image
 from app.services.event_service import EventService
 from app.services.file_scanner import scan_for_malware
-from app.services.notification_service import NotificationService
 from app.services.private_attachments import (
     _path_segments,
     private_attachment_filename,
@@ -129,15 +128,13 @@ async def _increment_events_list_version(cache: Any | None) -> None:
 async def create_event(
     data: schemas.EventCreate,
     request: Request,
-    background: BackgroundTasks,
-    notifications: FromDishka[NotificationService],
     events: FromDishka[EventService],
     user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
     try:
-        record = await events.create_event(data, user_id=user.id)
+        record = await events.create_event(data, user_id=user.id, locale=locale)
     except ValueError as exc:
         # TD-W19-01 (audit 2026-03-24 Wave 19): use localized error key instead of
         # raw exception message. Previously str(exc) leaked internal error details.
@@ -150,7 +147,6 @@ async def create_event(
     # a cache exists is the real condition, and _increment_events_list_version
     # owns it.
     await _increment_events_list_version(getattr(request.app.state, "cache", None))
-    await notifications.dispatch_event_created(record.id, locale, background)
     return events.serialize_event(record, locale)
 
 
@@ -517,7 +513,7 @@ async def update_event(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if old_image_url and event_dto.image_url != old_image_url:
-        await delete_static_file(str(old_image_url))
+        await delete_owned_event_image(str(old_image_url), event_id=event_id)
 
     files_result = await db.execute(
         select(models.EventFile).where(models.EventFile.event_id == event_dto.id)

@@ -403,6 +403,12 @@ def downloaded_coverage_shape(tmp_path: Path) -> str:
         f"artifacts/coverage/python/shards/.coverage.shard-{shard}"
         for shard in range(4)
     ]
+    paths.extend(
+        (
+            "artifacts/coverage/python/shards/.coverage.migration",
+            "artifacts/coverage/python/shards/coverage-provenance-migration.json",
+        )
+    )
     for upload in (frontend_upload, rust_upload, codecov_upload):
         paths.extend(upload["with"]["path"].splitlines())
     for producer in workflow["jobs"]["go-tests"]["strategy"]["matrix"]["include"]:
@@ -5456,7 +5462,7 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
         in str(backend_verify["run"])
     )
     assert (
-        'test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 12'
+        'test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 14'
         in str(backend_verify["run"])
     )
     assert (
@@ -6188,6 +6194,43 @@ def test_backend_shards_publish_and_aggregate_current_attempt_lineage() -> None:
     assert "coverage-provenance-shard-${shard}.json" in verify_run
     assert (
         "find artifacts/coverage/python/shards -name '.coverage.shard-*'" in verify_run
+    )
+
+    migration_job = ci["jobs"]["db-migration-gate"]
+    migration_execution = _provenance_step(
+        migration_job, "Run supported migration round-trip and verify boundary"
+    )
+    migration_run = str(migration_execution["run"])
+    assert "coverage run --data-file=.coverage.migration" in migration_run
+    assert "--source=alembic/versions" in migration_run
+    migration_coverage = _provenance_step(
+        migration_job, "Write migration coverage provenance"
+    )
+    assert "coverage_provenance.py write" in str(migration_coverage["run"])
+    migration_upload = _provenance_step(
+        migration_job, "Upload migration coverage data for aggregation"
+    )
+    assert migration_upload["with"]["name"].startswith(
+        "python-migration-coverage-attempt-"
+    )
+    assert migration_upload["with"]["include-hidden-files"] is True
+    aggregate = ci["jobs"]["coverage-policy-gate"]
+    assert "db-migration-gate" in aggregate["needs"]
+    migration_download = _provenance_step(
+        aggregate, "Download Python migration coverage data"
+    )
+    _assert_scoped_artifact_download(migration_download)
+    assert "python_migration.artifact_id" in migration_download["with"]["artifact-ids"]
+    producer_verification = _provenance_step(
+        aggregate, "Verify downloaded coverage artifacts"
+    )
+    producer_run = " ".join(
+        str(producer_verification["run"]).replace("\\\n", " ").split()
+    )
+    assert (
+        "verify_producer artifacts/coverage/python/shards/"
+        "coverage-provenance-migration.json db-migration-gate python_migration"
+        in producer_run
     )
 
 

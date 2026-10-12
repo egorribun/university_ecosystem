@@ -32,6 +32,7 @@ from app.core.events import (
     MessageSent,
     MfaEmailDeliveryRequested,
     MfaEnabled,
+    NewsCommentCreated,
     NewsCreated,
     NewsUpdated,
     NotificationSent,
@@ -45,6 +46,11 @@ from app.core.events import (
 from app.core.logging import get_logger
 from app.models.chat import chat_participants
 from app.services import search_indexer
+from app.services.notifications.news_events import (
+    notify_about_comment,
+    notify_about_event,
+    notify_about_news,
+)
 from app.services.vector_service import (
     SemanticSearchUnavailableError,
     VectorService,
@@ -142,6 +148,54 @@ async def handle_event_created(event: EventCreated) -> None:
     # Could trigger:
     # - Notification to followers
     # - Analytics tracking
+
+
+def _required_event_uuid(value: UUID | str | None) -> UUID:
+    if value is None:
+        raise ValueError("Missing durable content identifier")
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except (AttributeError, TypeError, ValueError):
+        raise ValueError("Invalid durable content identifier") from None
+
+
+async def handle_event_created_notification(event: EventCreated) -> None:
+    """Create event notifications from the committed source event."""
+    event_id = _required_event_uuid(event.event_id_entity)
+    async with async_session() as db:
+        record = await db.get(models.Event, event_id)
+        if record is None:
+            return
+        await notify_about_event(db, record, locale=event.locale)
+        await db.commit()
+
+
+async def handle_news_created_notification(event: NewsCreated) -> None:
+    """Create news notifications from the committed source event."""
+    news_id = _required_event_uuid(event.news_id)
+    async with async_session() as db:
+        record = await db.get(models.News, news_id)
+        if record is None:
+            return
+        await notify_about_news(db, record, locale=event.locale)
+        await db.commit()
+
+
+async def handle_news_comment_created_notification(event: NewsCommentCreated) -> None:
+    """Create admin notifications from a comment's committed source event."""
+    comment_id = _required_event_uuid(event.comment_id)
+    async with async_session() as db:
+        comment = await db.get(models.NewsComment, comment_id)
+        if comment is None:
+            return
+        news = await db.get(models.News, comment.news_id)
+        author = await db.get(models.User, comment.user_id)
+        if news is None or author is None:
+            return
+        await notify_about_comment(db, news, comment, author, locale=event.locale)
+        await db.commit()
 
 
 async def handle_event_registration(event: EventRegistration) -> None:
@@ -602,14 +656,20 @@ def configure_event_handlers() -> None:
         handle_mfa_email_delivery_requested,  # type: ignore[arg-type]
     )
     event_bus.subscribe("event.created", handle_event_created)  # type: ignore[arg-type]
+    event_bus.subscribe("event.created", handle_event_created_notification)  # type: ignore[arg-type]
     event_bus.subscribe("event.created", generate_event_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("event.updated", generate_event_embedding)  # type: ignore[arg-type]
+    event_bus.subscribe("news.created", handle_news_created_notification)  # type: ignore[arg-type]
     event_bus.subscribe("news.created", generate_news_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("news.updated", generate_news_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("event.created", index_event_for_search)  # type: ignore[arg-type]
     event_bus.subscribe("event.updated", index_event_for_search)  # type: ignore[arg-type]
     event_bus.subscribe("news.created", index_news_for_search)  # type: ignore[arg-type]
     event_bus.subscribe("news.updated", index_news_for_search)  # type: ignore[arg-type]
+    event_bus.subscribe(
+        "news.comment_created",
+        handle_news_comment_created_notification,  # type: ignore[arg-type]
+    )
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
@@ -649,12 +709,15 @@ def configure_event_handlers() -> None:
 __all__ = [
     "configure_event_handlers",
     "handle_event_created",
+    "handle_event_created_notification",
     "handle_event_registration",
     "handle_message_deleted",
     "handle_message_edited",
     "handle_message_sent",
     "handle_mfa_email_delivery_requested",
     "handle_mfa_enabled",
+    "handle_news_comment_created_notification",
+    "handle_news_created_notification",
     "handle_notification_sent",
     "handle_notifications_requested",
     "handle_user_created",

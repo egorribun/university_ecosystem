@@ -94,8 +94,13 @@ class NewsService:
             next_cursor=next_cursor,
         )
 
-    async def create_news(self, data: schemas.NewsCreate) -> NewsDTO:
-        news = await self.repo.create(data.model_dump())
+    async def create_news(
+        self, data: schemas.NewsCreate, *, locale: str | None = None
+    ) -> NewsDTO:
+        if locale is None:
+            news = await self.repo.create(data.model_dump())
+        else:
+            news = await self.repo.create(data.model_dump(), locale=locale)
         async with self.uow:
             await self.uow.commit()
         return news
@@ -140,19 +145,14 @@ class NewsService:
         updates = data.model_dump(exclude_unset=True)
         # RZ-33-12: removed no-op self-assignments (updates[k] = updates.get(k))
 
-        old_image_url = news.image_url
-
         updated_news = await self.repo.update(news_id, updates)
         assert updated_news is not None  # noqa: S101
 
         async with self.uow:
             await self.uow.commit()
 
-        if old_image_url and updated_news.image_url != old_image_url:
-            from app.utils.files import delete_static_file
-
-            with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
-                await delete_static_file(str(old_image_url))
+        # News image keys are shared and contain no verifiable news owner.
+        # Retain replaced/legacy objects instead of unlinking an arbitrary URL.
 
         return updated_news
 
@@ -161,7 +161,6 @@ class NewsService:
         if not news:
             return False
 
-        image_url = news.image_url
         await self.repo.delete(news_id)
         async with self.uow:
             await self.uow.commit()
@@ -173,18 +172,25 @@ class NewsService:
         # BaseRepository delete: execute delete stmt. Does NOT commit.
         # So we need to commit.
 
-        if image_url:
-            from app.utils.files import delete_static_file
-
-            with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
-                await delete_static_file(str(image_url))
+        # The legacy news_images key has no news-specific ownership proof.
+        # Retain the object until uploads carry a verifiable owner key.
         return True
 
     async def create_comment(
-        self, news_id: uuid.UUID, user_id: uuid.UUID, content: str
+        self,
+        news_id: uuid.UUID,
+        user_id: uuid.UUID,
+        content: str,
+        *,
+        locale: str | None = None,
     ) -> NewsCommentDTO:
-        comment = await self.repo.create_comment(news_id, user_id, content)
-        return NewsCommentDTO.model_validate(comment)
+        comment = await self.repo.create_comment(
+            news_id, user_id, content, locale=locale
+        )
+        result = NewsCommentDTO.model_validate(comment)
+        async with self.uow:
+            await self.uow.commit()
+        return result
 
     async def update_comment(
         self, comment_id: uuid.UUID, user_id: uuid.UUID, content: str
@@ -195,7 +201,10 @@ class NewsService:
         if comment_obj.user_id != user_id:
             raise PermissionError("forbidden")
         updated = await self.repo.update_comment(comment_obj, content)
-        return NewsCommentDTO.model_validate(updated)
+        result = NewsCommentDTO.model_validate(updated)
+        async with self.uow:
+            await self.uow.commit()
+        return result
 
     async def delete_comment(
         self, comment_id: uuid.UUID, user_id: uuid.UUID, is_admin: bool = False

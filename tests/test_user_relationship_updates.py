@@ -1,6 +1,6 @@
 """Relationship-creation tests for app/services/user/logic.py
 update_user_attributes create-when-None branches (36/49/70/72 + profile-dict)
-and anonymize_user_data's cover_url cleanup (line 87) — the noload-create arms
+and anonymize_user_data's cover_url cleanup branch — the noload-create arms
 the existing test_services_mock.py tests skip (they pass users with
 pre-populated relations).
 
@@ -148,9 +148,12 @@ async def test_anonymize_user_data_clears_avatar_and_cover(
         logic_module, "delete_static_file", AsyncMock(side_effect=_fake_delete)
     )
 
+    user_id = uuid.uuid4()
     profile = SimpleNamespace(
-        avatar_url="static/avatar.png",
-        cover_url="static/cover.png",  # exercises the cover_url branch (line 87)
+        avatar_url=(f"/static/avatars/user_{user_id}_avatar_{'a' * 32}.png"),
+        cover_url=(
+            f"/static/covers/user_{user_id}_cover_{'b' * 32}.png"
+        ),  # exercises the cover_url cleanup branch
         full_name="Real Name",
         about="bio",
         telegram="@x",
@@ -160,7 +163,7 @@ async def test_anonymize_user_data_clears_avatar_and_cover(
         status="active",
     )
     user = SimpleNamespace(
-        id=uuid.uuid4(),
+        id=user_id,
         profile=profile,
         education_path=None,
         preferences=None,
@@ -176,8 +179,61 @@ async def test_anonymize_user_data_clears_avatar_and_cover(
     email = await anonymize_user_data(user)  # type: ignore[arg-type]
 
     assert email == f"deleted+{user.id}@deleted.example.com"
-    assert "static/avatar.png" in deleted
-    assert "static/cover.png" in deleted
+    assert profile.avatar_url is None
+    assert profile.cover_url is None
+    assert len(deleted) == 2
     assert user.profile.full_name == "Deleted User"
     assert user.profile.status == "deleted"
     assert user.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_anonymize_deletes_owned_avatar_but_preserves_legacy_foreign_cover(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.utils.files as file_utils
+    from app.services.storage import StaticFSStorage
+
+    owner_id = uuid.uuid4()
+    avatar_rel = f"avatars/user_{owner_id}_avatar_{'a' * 32}.png"
+    legacy_cover_rel = "covers/another-users-file.png"
+    avatar_path = tmp_path / avatar_rel
+    legacy_cover_path = tmp_path / legacy_cover_rel
+    avatar_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_cover_path.parent.mkdir(parents=True, exist_ok=True)
+    avatar_path.write_bytes(b"owner avatar")
+    legacy_cover_path.write_bytes(b"foreign cover")
+    monkeypatch.setattr(
+        file_utils, "_get_storage_backend", lambda: StaticFSStorage(tmp_path, "/static")
+    )
+
+    user = SimpleNamespace(
+        id=owner_id,
+        profile=SimpleNamespace(
+            avatar_url=f"/static/{avatar_rel}",
+            cover_url=f"/static/{legacy_cover_rel}",
+            full_name="Real Name",
+            about="bio",
+            telegram="@x",
+            achievements="stuff",
+            position="dev",
+            department="eng",
+            status="active",
+        ),
+        education_path=None,
+        preferences=None,
+        spotify=None,
+        email="real@example.com",
+        hashed_password="hash",  # pragma: allowlist secret
+        is_active=True,
+        mfa_required=False,
+        mfa_default_method=None,
+        mfa_last_verified_at=None,
+    )
+
+    await anonymize_user_data(user)  # type: ignore[arg-type]
+
+    assert not avatar_path.exists()
+    assert legacy_cover_path.read_bytes() == b"foreign cover"
+    assert user.profile.avatar_url is None
+    assert user.profile.cover_url is None

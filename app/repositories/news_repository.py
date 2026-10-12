@@ -16,7 +16,7 @@ from sqlalchemy.orm.attributes import flag_dirty
 import app.models as models
 from app.core.cache import cached, news_cache
 from app.core.config import settings
-from app.core.events import NewsCreated, NewsUpdated
+from app.core.events import NewsCommentCreated, NewsCreated, NewsUpdated
 from app.core.protocols import AsyncDatabaseSession
 from app.core.tenant import get_current_tenant
 from app.models.news import News
@@ -46,11 +46,15 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     def __init__(self, db: AsyncDatabaseSession):
         super().__init__(db)
 
-    async def create(self, obj_in: dict[str, Any]) -> NewsDTO:
+    async def create(
+        self, obj_in: dict[str, Any], *, locale: str | None = None
+    ) -> NewsDTO:
         result = await super().create(obj_in)
         record = await self._get_orm(result.id)
         assert record is not None  # noqa: S101
-        record.record_event(NewsCreated(news_id=record.id, title=record.title))
+        record.record_event(
+            NewsCreated(news_id=record.id, title=record.title, locale=locale)
+        )
         # Capture in this transaction so rollback cannot retain an emitter.
         flag_dirty(record)
         await self.db.flush()
@@ -314,13 +318,21 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         return await self.db.get(models.NewsComment, comment_id)
 
     async def create_comment(
-        self, news_id: uuid.UUID, user_id: uuid.UUID, content: str
+        self,
+        news_id: uuid.UUID,
+        user_id: uuid.UUID,
+        content: str,
+        *,
+        locale: str | None = None,
     ) -> models.NewsComment:
-        """Create a new comment."""
+        """Create a comment and record its durable notification source event."""
         comment = models.NewsComment(news_id=news_id, user_id=user_id, content=content)
         self.db.add(comment)
         await self.db.flush()
         await self.db.refresh(comment, ["user"])
+        comment.record_event(NewsCommentCreated(comment_id=comment.id, locale=locale))
+        flag_dirty(comment)
+        await self.db.flush()
         return comment
 
     async def update_comment(

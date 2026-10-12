@@ -20,7 +20,7 @@
 	# In dev environments without a real domain, Caddy falls back to self-signed.
 	email {$ACME_EMAIL}
 
-	# Runtime errors can include the original request URI. Redact bearer values
+	# Runtime errors can include the original URI. Redact password and bearer values
 	# while retaining useful request details; access logs have their own filter.
 	log default {
 		format filter {
@@ -28,6 +28,7 @@
 				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
 				regexp ([?&]token=)[^&]* ${1}REDACTED
 				regexp ([?&]ticket=)[^&]* ${1}REDACTED
+				regexp ([?&]password=)[^&]* ${1}REDACTED
 			}
 		}
 		exclude http.log.access
@@ -189,14 +190,14 @@
 	# --- Logging -----------------------------------------------------------
 	log {
 		output stderr
-		# The WebSocket one-time ticket is intentionally carried in the browser
-		# query string for the upgrade, but it is a bearer credential. Keep the
-		# request shape for diagnostics while never persisting the token value.
+		# WebSocket upgrades carry a one-time ticket in the query string. Redact it,
+		# reset tokens, and password query values before persisting URI diagnostics.
 		format filter {
 			request>uri multi_regexp {
 				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
 				regexp ([?&]token=)[^&]* ${1}REDACTED
 				regexp ([?&]ticket=)[^&]* ${1}REDACTED
+				regexp ([?&]password=)[^&]* ${1}REDACTED
 			}
 		}
 		level INFO

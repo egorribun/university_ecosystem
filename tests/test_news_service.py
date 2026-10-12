@@ -112,6 +112,21 @@ async def test_create_news(news_service, mock_uow, mock_repo):
 
 
 @pytest.mark.asyncio
+async def test_create_news_forwards_locale_to_repository(
+    news_service, mock_uow, mock_repo
+):
+    data = schemas.NewsCreate(title="Localized news", content="Content")
+    record = MagicMock(spec=models.News)
+    mock_repo.create.return_value = record
+
+    result = await news_service.create_news(data, locale="en")
+
+    assert result is record
+    mock_repo.create.assert_awaited_once_with(data.model_dump(), locale="en")
+    mock_uow.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_toggle_like(news_service, mock_uow, mock_repo):
     news_id = 1
     user_id = 2
@@ -163,13 +178,13 @@ async def test_update_news_missing_raises(news_service, mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_update_news_deletes_old_image_on_change(
+async def test_update_news_retains_legacy_image_on_change(
     news_service, mock_uow, mock_repo
 ):
     existing = MagicMock()
-    existing.image_url = "old.png"
+    existing.image_url = "/static/news_images/shared-banner.png"
     updated = MagicMock()
-    updated.image_url = "new.png"
+    updated.image_url = "/static/news_images/replacement-banner.png"
     mock_repo.get.return_value = existing
     mock_repo.update.return_value = updated
 
@@ -180,7 +195,7 @@ async def test_update_news_deletes_old_image_on_change(
 
     assert result is updated
     mock_uow.commit.assert_awaited_once()
-    del_file.assert_awaited_once_with("old.png")
+    del_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -190,16 +205,16 @@ async def test_delete_news_missing_returns_false(news_service, mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_delete_news_removes_image(news_service, mock_uow, mock_repo):
+async def test_delete_news_retains_legacy_image(news_service, mock_uow, mock_repo):
     existing = MagicMock()
-    existing.image_url = "img.png"
+    existing.image_url = "/static/news_images/shared-banner.png"
     mock_repo.get.return_value = existing
 
     with patch("app.utils.files.delete_static_file", new=AsyncMock()) as del_file:
         assert await news_service.delete_news(uuid4()) is True
 
     mock_uow.commit.assert_awaited_once()
-    del_file.assert_awaited_once_with("img.png")
+    del_file.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------- #
@@ -220,15 +235,22 @@ def _comment_dto(user_id):
 
 
 @pytest.mark.asyncio
-async def test_create_comment_returns_dto(news_service, mock_repo):
+async def test_create_comment_returns_dto_and_commits(
+    news_service, mock_uow, mock_repo
+):
     uid = uuid4()
     mock_repo.create_comment.return_value = _comment_dto(uid)
-    out = await news_service.create_comment(uuid4(), uid, "hi")
+    news_id = uuid4()
+    out = await news_service.create_comment(news_id, uid, "hi", locale="en")
     assert out.user_id == uid
+    mock_repo.create_comment.assert_awaited_once_with(news_id, uid, "hi", locale="en")
+    mock_uow.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_update_comment_not_found_and_forbidden(news_service, mock_repo):
+async def test_update_comment_not_found_and_forbidden(
+    news_service, mock_uow, mock_repo
+):
     mock_repo.get_comment.return_value = None
     with pytest.raises(LookupError, match="comment_not_found"):
         await news_service.update_comment(uuid4(), uuid4(), "x")
@@ -236,15 +258,19 @@ async def test_update_comment_not_found_and_forbidden(news_service, mock_repo):
     mock_repo.get_comment.return_value = MagicMock(user_id=uuid4())
     with pytest.raises(PermissionError, match="forbidden"):
         await news_service.update_comment(uuid4(), uuid4(), "x")
+    mock_uow.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_update_comment_owner_succeeds(news_service, mock_repo):
+async def test_update_comment_owner_succeeds_and_commits(
+    news_service, mock_uow, mock_repo
+):
     owner = uuid4()
     mock_repo.get_comment.return_value = MagicMock(user_id=owner)
     mock_repo.update_comment.return_value = _comment_dto(owner)
     out = await news_service.update_comment(uuid4(), owner, "edited")
     assert out.user_id == owner
+    mock_uow.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

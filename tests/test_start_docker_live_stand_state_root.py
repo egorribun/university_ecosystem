@@ -215,24 +215,29 @@ def _run_prepare(
     project: Path,
     state_root: Path,
     env: dict[str, str],
+    *,
+    initialize_proxy_bootstrap: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     assert POWERSHELL is not None
     # Some callers supply stand_environment() instead of _live_environment().
     environment = env.copy()
     environment["XDG_CACHE_HOME"] = str(project / ".powershell-cache")
+    command = [
+        POWERSHELL,
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        str(project / "start-docker.ps1"),
+        "-PrepareOnly",
+        "-ExtraCompose",
+        "docker-compose.live.yml",
+        "-LiveStandStateRoot",
+        str(state_root),
+    ]
+    if initialize_proxy_bootstrap:
+        command.append("-InitializeTrustedProxyBootstrap")
     return subprocess.run(  # noqa: S603 - fixed PowerShell file and constrained test arguments
-        [
-            POWERSHELL,
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(project / "start-docker.ps1"),
-            "-PrepareOnly",
-            "-ExtraCompose",
-            "docker-compose.live.yml",
-            "-LiveStandStateRoot",
-            str(state_root),
-        ],
+        command,
         cwd=project,
         env=environment,
         capture_output=True,
@@ -815,7 +820,12 @@ def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
     if os.name != "nt":
         environment["TMPDIR"] = str(state_root.parents[1])
 
-    result = _run_prepare(project, state_root, environment)
+    result = _run_prepare(
+        project,
+        state_root,
+        environment,
+        initialize_proxy_bootstrap=True,
+    )
 
     assert result.returncode == 0, f"PrepareOnly exited with status {result.returncode}"
     assert profile.read_bytes() == sentinel
@@ -823,6 +833,22 @@ def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
     assert (state_root / ".env").is_file()
     assert (state_root / ".env.docker").is_file()
     assert (state_root / ".env.docker.workers").is_file()
+    proxy_keys = (
+        "TRUSTED_PROXIES",
+        "GATEWAY_TRUSTED_PROXIES",
+        "WS_HUB_TRUSTED_PROXIES",
+    )
+    docker_env_lines = (
+        (state_root / ".env.docker").read_text(encoding="utf-8").splitlines()
+    )
+    for key in proxy_keys:
+        assert docker_env_lines.count(f"{key}=") == 1
+    assert not any(
+        line.startswith(tuple(f"{key}=" for key in proxy_keys))
+        for line in (state_root / ".env").read_text(encoding="utf-8").splitlines()
+    )
+    assert not (project / ".env").exists()
+    assert not (project / ".env.docker").exists()
     if os.name == "nt":
         for path in (
             state_root,

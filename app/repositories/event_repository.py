@@ -35,7 +35,9 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
     def __init__(self, db: AsyncDatabaseSession):
         super().__init__(db)
 
-    async def create(self, obj_in: dict[str, Any]) -> EventDTO:
+    async def create(
+        self, obj_in: dict[str, Any], *, locale: str | None = None
+    ) -> EventDTO:
         result = await super().create(obj_in)
         record = await self._get_orm(result.id)
         assert record is not None  # noqa: S101
@@ -44,6 +46,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
                 event_id_entity=record.id,
                 title=record.title,
                 organizer_id=record.created_by,
+                locale=locale,
             )
         )
         # Capture in this transaction so rollback cannot retain an emitter.

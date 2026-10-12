@@ -129,20 +129,32 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def load_gate_state(state_path: Path, *, acquire_lock: bool = True) -> dict[str, Any]:
+def load_gate_state(
+    state_path: Path,
+    *,
+    acquire_lock: bool = True,
+    require_existing: bool = False,
+) -> dict[str, Any]:
     """Load shared hook state, validating and migrating its legacy shape.
 
     The one historical empty-success sentinel is treated as an empty state.
     All other malformed or inconsistent data raises so callers fail closed.
+    Set ``require_existing`` when absence must be distinguished from bootstrap.
     """
     if acquire_lock:
         with gate_state_lock(state_path):
-            return load_gate_state(state_path, acquire_lock=False)
+            return load_gate_state(
+                state_path,
+                acquire_lock=False,
+                require_existing=require_existing,
+            )
 
     try:
         with state_path.open(encoding="utf-8") as state_file:
             loaded = json.load(state_file, object_pairs_hook=_unique_json_object)
     except FileNotFoundError:
+        if require_existing:
+            raise
         return {"history": [], "latest_by_file": {}}
     except (OSError, ValueError) as exc:
         raise RuntimeError("Could not read valid hook gate state.") from exc

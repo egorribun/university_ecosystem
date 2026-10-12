@@ -722,13 +722,14 @@ func TestRoomRevocationSerializesInFlightPrivateWriteWithAuthorizationRefresh(t 
 	case <-time.After(time.Second):
 		t.Fatal("write pump did not enter the blocked private write")
 	}
-	// The session is blocked inside WriteMessage. A failed TryLock proves that
-	// WritePump still owns the exact user/room lock needed by revocation.
+	// The session is blocked inside WriteMessage. The keyed mutex remains
+	// available during network I/O; the in-flight permit, rather than a held
+	// mutex, preserves write-before-confirmed-denial ordering.
 	membershipLock := h.roomMembershipLock(user, room)
-	if tryLockForTest(membershipLock) {
-		membershipLock.Unlock()
-		t.Fatal("write pump released the membership lock during a private socket write")
+	if !tryLockForTest(membershipLock) {
+		t.Fatal("write pump held the membership mutex during a private socket write")
 	}
+	membershipLock.Unlock()
 
 	evictionStarted := make(chan struct{})
 	evictionDone := make(chan error, 1)

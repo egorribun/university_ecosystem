@@ -74,9 +74,7 @@ def test_profile_cache_integrity_environment_and_validation_paths() -> None:
 
     with patch.object(api, "settings") as settings:
         settings.environment = "production"
-        with pytest.raises(HTTPException) as exc:
-            api._enforce_profile_cache_integrity(_request())
-    assert exc.value.status_code == 400
+        api._enforce_profile_cache_integrity(_request())
 
     with patch.object(api, "settings") as settings:
         settings.environment = "production"
@@ -143,14 +141,30 @@ def test_profile_cache_integrity_signed_expiry_variants() -> None:
             settings.environment = "production"
             api._enforce_profile_cache_integrity(request)
 
-    for expires_at in (0, "not-a-date"):
-        raw = _signed_envelope(expires_at=expires_at, data={})
-        request = _request({api.PROFILE_CACHE_HEADER: raw})
-        with patch.object(api, "settings") as settings:
-            settings.environment = "production"
-            with pytest.raises(HTTPException) as exc:
-                api._enforce_profile_cache_integrity(request)
-        assert exc.value.status_code == 400
+    expired = _request(
+        {api.PROFILE_CACHE_HEADER: _signed_envelope(expires_at=0, data={})}
+    )
+    with patch.object(api, "settings") as settings:
+        settings.environment = "production"
+        api._enforce_profile_cache_integrity(expired)
+
+    invalid_expiry = _request(
+        {api.PROFILE_CACHE_HEADER: _signed_envelope(expires_at="not-a-date", data={})}
+    )
+    with patch.object(api, "settings") as settings:
+        settings.environment = "production"
+        with pytest.raises(HTTPException) as exc:
+            api._enforce_profile_cache_integrity(invalid_expiry)
+    assert exc.value.status_code == 400
+
+    forged_expired = json.loads(_signed_envelope(expires_at=0, data={}))
+    forged_expired["signature"] = "invalid"
+    forged = _request({api.PROFILE_CACHE_HEADER: json.dumps(forged_expired)})
+    with patch.object(api, "settings") as settings:
+        settings.environment = "production"
+        with pytest.raises(HTTPException) as exc:
+            api._enforce_profile_cache_integrity(forged)
+    assert exc.value.status_code == 400
 
 
 @pytest.mark.asyncio

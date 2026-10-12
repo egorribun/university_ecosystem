@@ -6,7 +6,8 @@ import { sanitizeNewsText } from "@/utils/sanitize"
 import { localizeField } from "@/utils/localize"
 import { inferNewsCategory } from "@/features/news/categories"
 import { estimateReadingTime } from "@/utils/readingTime"
-import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
+import { fetchNewsItem } from "@/api/news"
+import { FC, memo, useCallback, useEffect, useMemo, useRef, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
@@ -51,6 +52,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [openEditContext, setOpenEditContext] = useState<string | null>(null)
+  const editSourceRequestRef = useRef<AbortController | null>(null)
+  const isMountedRef = useRef(false)
+  const currentEditContext = JSON.stringify([id, language])
 
   const editData = useMemo(
     () => ({
@@ -61,6 +66,22 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       image_url: image_url || "",
     }),
     [title, content, title_en, content_en, image_url]
+  )
+  const [editDialogData, setEditDialogData] = useState(editData)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      editSourceRequestRef.current?.abort()
+    }
+  }, [])
+
+  useEffect(
+    () => () => {
+      editSourceRequestRef.current?.abort()
+    },
+    [id, language]
   )
 
   const { interactions, toggleLike } = useNewsInteraction(id, {
@@ -119,8 +140,53 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }
   }, [id, onChange, t])
 
-  const openEdit = useCallback(() => setEditOpen(true), [])
-  const closeEdit = useCallback(() => setEditOpen(false), [])
+  const openEdit = useCallback(async () => {
+    setError("")
+    if (language !== "en") {
+      setEditDialogData(editData)
+      setOpenEditContext(currentEditContext)
+      setEditOpen(true)
+      return
+    }
+
+    if (editSourceRequestRef.current && !editSourceRequestRef.current.signal.aborted) return
+    const controller = new AbortController()
+    editSourceRequestRef.current = controller
+    setLoading(true)
+    try {
+      const response = await fetchNewsItem(id, { language: "ru", signal: controller.signal })
+      if (
+        controller.signal.aborted ||
+        editSourceRequestRef.current !== controller ||
+        !isMountedRef.current
+      ) {
+        return
+      }
+      if (response.status === 304) throw new Error("Russian source was not returned")
+      setEditDialogData({
+        title: response.data.title,
+        content: response.data.content,
+        title_en: response.data.title_en ?? "",
+        content_en: response.data.content_en ?? "",
+        image_url: response.data.image_url ?? "",
+      })
+      setOpenEditContext(currentEditContext)
+      setEditOpen(true)
+    } catch {
+      if (!controller.signal.aborted && editSourceRequestRef.current === controller) {
+        setError(t("common:errors.generic"))
+      }
+    } finally {
+      if (editSourceRequestRef.current === controller) {
+        editSourceRequestRef.current = null
+        if (isMountedRef.current) setLoading(false)
+      }
+    }
+  }, [currentEditContext, editData, id, language, t])
+  const closeEdit = useCallback(() => {
+    setEditOpen(false)
+    setOpenEditContext(null)
+  }, [])
 
   const openDeletePrompt = useCallback(() => setConfirmDeleteOpen(true), [])
   const closeDeletePrompt = useCallback(() => setConfirmDeleteOpen(false), [])
@@ -144,12 +210,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       isAdmin={user?.role === "admin"}
       loading={loading}
       error={error}
-      hoveringDisabled={editOpen}
+      hoveringDisabled={editOpen && openEditContext === currentEditContext}
       readingTime={readingTime}
       category={category}
-      editOpen={editOpen}
+      editOpen={editOpen && openEditContext === currentEditContext}
       confirmDeleteOpen={confirmDeleteOpen}
-      editData={editData}
+      editData={editDialogData}
       spotlight={spotlight}
       onToggleLike={toggleLike}
       onToggleBookmark={handleToggleBookmark}

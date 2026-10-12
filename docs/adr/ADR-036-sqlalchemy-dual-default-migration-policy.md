@@ -55,6 +55,42 @@ phases. No blanket rewrite or guessed SQL expression is permitted. Every
 phase starts with a PostgreSQL catalog preflight and ends with upgrade,
 downgrade, ORM and direct-write evidence.
 
+## MVP Release Rollback Boundary (Owner Decision, 2026-10-12)
+
+For MVP release databases, Alembic downgrades must not cross the irreversible
+boundary at revisions 202608250001 and 202608250002. The current
+migration_downgrade_policy.py plan selects 202608250002 as the safe target;
+the CI migration gate downgrades only to that target, verifies that a request
+to cross to its parent fails with the declared reason, and then upgrades to
+head. Both boundary revisions declare an irreversible downgrade and raise
+before changing schema. This is the approved release path.
+
+If recovery requires a schema below this boundary, restore a consistent
+backup/restore set rather than invoking older Alembic downgrade functions.
+This is the required recovery path across the irreversible boundary; release
+acceptance still requires a verified, paired database and S3 restore. The
+decision is recorded in the 2026-10
+audit's owner decision table; AUD-324 is intentionally not repaired for MVP:
+the 202607280001 downgrade's drops of populated grades and vector_chunks are
+on an unsupported historical path. This disposition does not claim that every
+older downgrade is data-preserving, nor does it make a database that is still
+at 202607280001 safe to downgrade.
+
+The AUD-230 PostgreSQL regression may exercise 202607280001 to 202607240001
+on an isolated database created before the boundary, solely to check
+compatibility with the parent-owned tenant schema. It is not evidence for
+production rollback support and does not certify retention of grades or
+vector_chunks. Any change to the supported rollback range requires a new
+owner decision and corresponding backup/restore and PostgreSQL evidence.
+
+References: [owner decision and AUD-324](../audits/AUDIT-2026-10.md),
+[MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md),
+[202608250001](../../alembic/versions/202608250001_expand_email_otp_mfa.py),
+[202608250002](../../alembic/versions/202608250002_contract_retire_webauthn.py),
+[downgrade policy](../../scripts/quality/migration_downgrade_policy.py),
+[CI migration gate](../../.github/workflows/ci.yml),
+[PostgreSQL round-trip test](../../tests/integration/test_migration_roundtrip.py).
+
 ## Migration Policy
 
 1. **Inventory first.** Compare SQLAlchemy metadata with `pg_get_expr` /

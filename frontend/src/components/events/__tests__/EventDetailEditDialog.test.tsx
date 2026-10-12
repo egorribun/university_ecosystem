@@ -7,12 +7,21 @@ import { waitFor } from "@testing-library/react"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-const { useTranslationMock } = vi.hoisted(() => ({
-  useTranslationMock: vi.fn(() => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  })),
-}))
+const { language, useTranslationMock } = vi.hoisted(() => {
+  const currentLanguage = { current: "en" }
+  return {
+    language: currentLanguage,
+    useTranslationMock: vi.fn(() => ({
+      t: (key: string) => key,
+      i18n: {
+        get language() {
+          return currentLanguage.current
+        },
+        changeLanguage: () => Promise.resolve(),
+      },
+    })),
+  }
+})
 vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
 }))
@@ -72,6 +81,7 @@ function renderDialog(props = baseProps) {
 describe("EventDetailEditDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    language.current = "en"
     mocks.patch.mockResolvedValue({ data: {} })
     mocks.uploadEventImage.mockResolvedValue("")
   })
@@ -141,6 +151,7 @@ describe("EventDetailEditDialog", () => {
   })
 
   it("preserves every localized value from a complete event payload", async () => {
+    language.current = "ru"
     const localizedEvent = {
       ...baseEvent,
       title_en: "English title",
@@ -155,10 +166,10 @@ describe("EventDetailEditDialog", () => {
     }
 
     renderDialog({ ...baseProps, event: localizedEvent })
-    expect(screen.getByLabelText("events:form.title_en")).toHaveValue("English title")
-    expect(screen.getByLabelText("events:form.description_en")).toHaveValue("English description")
-    expect(screen.getByLabelText("events:form.type_en")).toHaveValue("English type")
-    expect(screen.getByLabelText("events:form.location_en")).toHaveValue("English room")
+    expect(screen.getByLabelText("events:form.title")).toHaveValue(baseEvent.title)
+    expect(screen.getByLabelText("events:form.description")).toHaveValue(baseEvent.description)
+    expect(screen.getByLabelText("events:form.type")).toHaveValue(baseEvent.event_type)
+    expect(screen.getByLabelText("events:form.location")).toHaveValue(baseEvent.location)
     expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-07-01T09:00")
     expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-07-01T10:00")
     expect(screen.getByLabelText("events:form.speaker")).toHaveValue("English speaker")
@@ -168,11 +179,56 @@ describe("EventDetailEditDialog", () => {
     await waitFor(() => expect(mocks.patch).toHaveBeenCalled())
     expect(mocks.patch).toHaveBeenCalledWith(
       "/events/evt-1",
-      expect.objectContaining({ about: "Russian about", about_en: "English about" })
+      expect.objectContaining({
+        title: baseEvent.title,
+        title_en: "English title",
+        description: baseEvent.description,
+        description_en: "English description",
+        event_type: baseEvent.event_type,
+        event_type_en: "English type",
+        location: baseEvent.location,
+        location_en: "English room",
+        about: "Russian about",
+        about_en: "English about",
+      })
     )
   })
 
+  it("omits localized source fields from English saves and excludes response id", async () => {
+    const localizedEvent = {
+      ...baseEvent,
+      title: "Localized English title",
+      title_en: "English source title",
+      description: "Localized English description",
+      description_en: "English source description",
+      event_type: "English display type",
+      event_type_en: "English source type",
+      location: "English display location",
+      location_en: "English source location",
+      about: "Localized English about",
+      about_en: "English source about",
+    }
+    renderDialog({ ...baseProps, event: localizedEvent })
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce())
+    const payload = mocks.patch.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(payload).toMatchObject({
+      title_en: "English source title",
+      description_en: "English source description",
+      event_type_en: "English source type",
+      location_en: "English source location",
+      about_en: "English source about",
+      starts_at: baseEvent.starts_at,
+      ends_at: baseEvent.ends_at,
+    })
+    for (const field of ["id", "title", "description", "event_type", "location", "about"]) {
+      expect(payload).not.toHaveProperty(field)
+    }
+  })
+
   it("preserves non-null optional description and type values while normalizing nulls", async () => {
+    language.current = "ru"
     const localizedEvent = {
       ...baseEvent,
       description: "Russian description",
@@ -182,8 +238,8 @@ describe("EventDetailEditDialog", () => {
     }
     renderDialog({ ...baseProps, event: localizedEvent })
 
-    expect(screen.getByLabelText("events:form.description_en")).toHaveValue("English description")
-    expect(screen.getByLabelText("events:form.type_en")).toHaveValue("Lecture")
+    expect(screen.getByLabelText("events:form.description")).toHaveValue("Russian description")
+    expect(screen.getByLabelText("events:form.type")).toHaveValue("lecture")
 
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
@@ -220,8 +276,10 @@ describe("EventDetailEditDialog", () => {
       )
       expect(mocks.patch).toHaveBeenCalledWith(
         "/events/evt-1",
-        expect.objectContaining({ id: "evt-1", image_url: baseEvent.image_url })
+        expect.objectContaining({ image_url: baseEvent.image_url })
       )
+      const payload = mocks.patch.mock.calls[0]?.[1] as Record<string, unknown>
+      expect(payload).not.toHaveProperty("id")
       expect(onClose).toHaveBeenCalledOnce()
       expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
         queryKey: ["events", "detail", baseEvent.id],
@@ -321,7 +379,7 @@ describe("EventDetailEditDialog", () => {
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
   })
 
-  it("updates localized fields and submits the complete edited draft", async () => {
+  it("updates English fields without sending the path-only id or localized source fields", async () => {
     const user = userEvent.setup()
     renderDialog()
 
@@ -341,6 +399,12 @@ describe("EventDetailEditDialog", () => {
         location_en: "Updated room",
       })
     )
+    const update = mocks.patch.mock.calls.at(-1)?.[1] as Record<string, unknown>
+    expect(update).not.toHaveProperty("id")
+    expect(update).not.toHaveProperty("title")
+    expect(update).not.toHaveProperty("description")
+    expect(update).not.toHaveProperty("location")
+    expect(update).not.toHaveProperty("event_type")
   })
 
   it("resets edited values when cancelled without a parent remount", async () => {

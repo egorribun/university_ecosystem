@@ -106,6 +106,28 @@ def _render_staging(
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
 
 
+def test_chart_requires_explicit_environment() -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        [
+            _helm(),
+            "template",
+            "environment-required-contract",
+            str(CHART),
+            "--dependency-update=false",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode != 0
+    error = result.stderr.lower()
+    assert "global" in error
+    assert "environment" in error
+    assert "required" in error or "missing property" in error
+
+
 def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> None:
     """Release gateways must never fetch signing keys over plaintext HTTP."""
 
@@ -597,6 +619,8 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
             "schema-contract",
             str(CHART),
             "--dependency-update=false",
+            "--set-string",
+            "global.environment=development",
             "--set",
             invalid_override,
         ],
@@ -1997,3 +2021,242 @@ def test_documented_go_overlay_pairs_local_grpc_transports() -> None:
     assert not processor.get("FP_GRPC_TLS_CERT_FILE")
     assert not processor.get("SPIFFE_SOCKET_PATH")
     assert processor["FP_ENVIRONMENT"] == "${ENVIRONMENT:-development}"
+
+
+def test_staging_ws_hub_trust_does_not_use_a_broad_private_range() -> None:
+    """Staging uses the chart's loopback-only trust until peers are configured."""
+    staging = _values(STAGING_VALUES)
+    trusted_proxies = (
+        staging.get("wsHub", {}).get("config", {}).get("trustedProxies", [])
+    )
+    assert "10.0.0.0/8" not in trusted_proxies
+
+    resources = _render_staging(release_name="staging-ws-hub-proxy-trust")
+    deployment = _component_resource(resources, "Deployment", "ws-hub")
+    env = {
+        item["name"]: item.get("value")
+        for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["TRUSTED_PROXIES"] == "127.0.0.1,::1"
+
+
+def test_file_processor_default_jwks_uses_release_backend_port_and_preserves_dependencies() -> (
+    None
+):
+    release_name = "jwks-egress-contract"
+    backend_port = 8181
+    resources = _render_staging(
+        "--set",
+        f"backend.service.port={backend_port}",
+        release_name=release_name,
+    )
+    backend = _component_resource(resources, "Deployment", "backend")
+    processor = _component_resource(resources, "Deployment", "file-processor")
+    backend_service_name = backend["metadata"]["name"]
+    backend_service = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+        and resource["metadata"]["name"] == backend_service_name
+    )
+    backend_container = backend["spec"]["template"]["spec"]["containers"][0]
+    backend_http_port = next(
+        port["containerPort"]
+        for port in backend_container["ports"]
+        if port["name"] == "http"
+    )
+    assert backend_http_port == backend_port
+    assert backend_service["spec"]["ports"][0]["port"] == backend_port
+    assert backend_service["spec"]["ports"][0]["targetPort"] == "http"
+
+    backend_labels = backend["spec"]["template"]["metadata"]["labels"]
+    processor_labels = processor["spec"]["template"]["metadata"]["labels"]
+    release_selector = {
+        key: backend_labels[key]
+        for key in ("app.kubernetes.io/name", "app.kubernetes.io/instance")
+    }
+    assert all(
+        processor_labels[key] == value for key, value in release_selector.items()
+    )
+    backend_peer = {**release_selector, "app.kubernetes.io/component": "backend"}
+    processor_peer = {
+        **release_selector,
+        "app.kubernetes.io/component": "file-processor",
+    }
+    backend_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-backend-policy"
+    )
+    processor_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-file-processor-policy"
+    )
+    assert backend_policy["spec"]["podSelector"]["matchLabels"] == {
+        **release_selector,
+        "app.kubernetes.io/component": "backend",
+    }
+    assert processor_policy["spec"]["podSelector"]["matchLabels"] == {
+        **release_selector,
+        "app.kubernetes.io/component": "file-processor",
+    }
+
+    backend_egress = [
+        rule
+        for rule in processor_policy["spec"]["egress"]
+        if rule.get("to") == [{"podSelector": {"matchLabels": backend_peer}}]
+    ]
+    backend_ingress = [
+        rule
+        for rule in backend_policy["spec"]["ingress"]
+        if rule.get("from") == [{"podSelector": {"matchLabels": processor_peer}}]
+    ]
+    expected_port = [{"protocol": "TCP", "port": backend_port}]
+    assert len(backend_egress) == 1 and backend_egress[0]["ports"] == expected_port
+    assert len(backend_ingress) == 1 and backend_ingress[0]["ports"] == expected_port
+
+    processor_env = {
+        entry["name"]: entry.get("value")
+        for entry in processor["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert processor_env["FP_JWKS_URL"] == (
+        f"http://{backend_service_name}:{backend_port}/.well-known/jwks.json"
+    )
+
+    expected_dependencies = {
+        "nats": 4222,
+        "temporal": 7233,
+        "minio": 9000,
+        "otel-collector": 4317,
+    }
+    for dependency, port in expected_dependencies.items():
+        assert any(
+            rule.get("to")
+            == [
+                {"podSelector": {"matchLabels": {"app.kubernetes.io/name": dependency}}}
+            ]
+            and rule.get("ports") == [{"protocol": "TCP", "port": port}]
+            for rule in processor_policy["spec"]["egress"]
+        )
+    revocation_selector = {
+        "app.kubernetes.io/name": "revocation-redis",
+        "app.kubernetes.io/component": "master",
+        "university-ecosystem.io/revocation-store-for": release_name,
+    }
+    assert any(
+        rule.get("to") == [{"podSelector": {"matchLabels": revocation_selector}}]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 6379}]
+        for rule in processor_policy["spec"]["egress"]
+    )
+    assert any(
+        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+        for rule in processor_policy["spec"]["egress"]
+    )
+    assert any(
+        {("UDP", 53), ("TCP", 53)}
+        == {(port["protocol"], port["port"]) for port in rule.get("ports", [])}
+        for rule in processor_policy["spec"]["egress"]
+    )
+
+
+def test_file_processor_jwks_policies_are_scoped_to_each_release() -> None:
+    policy_selectors: list[tuple[dict[str, str], dict[str, str]]] = []
+    for release_name in ("jwks-egress-first", "jwks-egress-second"):
+        resources = _render_staging(release_name=release_name)
+        backend = _component_resource(resources, "Deployment", "backend")
+        processor = _component_resource(resources, "Deployment", "file-processor")
+        release_selector = {
+            key: backend["spec"]["template"]["metadata"]["labels"][key]
+            for key in ("app.kubernetes.io/name", "app.kubernetes.io/instance")
+        }
+        assert {
+            key: processor["spec"]["template"]["metadata"]["labels"][key]
+            for key in release_selector
+        } == release_selector
+        backend_peer = {**release_selector, "app.kubernetes.io/component": "backend"}
+        processor_peer = {
+            **release_selector,
+            "app.kubernetes.io/component": "file-processor",
+        }
+        backend_policy = next(
+            resource
+            for resource in resources
+            if resource.get("kind") == "NetworkPolicy"
+            and resource["metadata"]["name"] == f"{release_name}-backend-policy"
+        )
+        processor_policy = next(
+            resource
+            for resource in resources
+            if resource.get("kind") == "NetworkPolicy"
+            and resource["metadata"]["name"] == f"{release_name}-file-processor-policy"
+        )
+        assert backend_policy["spec"]["podSelector"]["matchLabels"] == backend_peer
+        assert processor_policy["spec"]["podSelector"]["matchLabels"] == processor_peer
+        assert any(
+            rule.get("to") == [{"podSelector": {"matchLabels": backend_peer}}]
+            and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+            for rule in processor_policy["spec"]["egress"]
+        )
+        assert any(
+            rule.get("from") == [{"podSelector": {"matchLabels": processor_peer}}]
+            and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+            for rule in backend_policy["spec"]["ingress"]
+        )
+        policy_selectors.append((backend_peer, processor_peer))
+    assert policy_selectors[0][0] != policy_selectors[1][0]
+    assert policy_selectors[0][1] != policy_selectors[1][1]
+
+
+def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
+    release_name = "jwks-external-contract"
+    jwks_url = "https://issuer.example.invalid/.well-known/jwks.json"
+    resources = _render_staging(
+        "--set-string",
+        f"fileProcessor.config.jwksURL={jwks_url}",
+        release_name=release_name,
+    )
+    processor = _component_resource(resources, "Deployment", "file-processor")
+    processor_env = {
+        entry["name"]: entry.get("value")
+        for entry in processor["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert processor_env["FP_JWKS_URL"] == jwks_url
+    processor_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-file-processor-policy"
+    )
+    backend_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-backend-policy"
+    )
+    assert not any(
+        any(
+            target.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/component")
+            == "backend"
+            for target in rule.get("to", [])
+        )
+        for rule in processor_policy["spec"]["egress"]
+    )
+    assert not any(
+        any(
+            source.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/component")
+            == "file-processor"
+            for source in rule.get("from", [])
+        )
+        for rule in backend_policy["spec"]["ingress"]
+    )
+    assert any(
+        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+        for rule in processor_policy["spec"]["egress"]
+    )

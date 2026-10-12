@@ -18,6 +18,7 @@ if str(HOOKS_DIR) not in sys.path:
 
 stop_quality_gate = importlib.import_module("stop_quality_gate")
 common = importlib.import_module("common")
+post_tool_linter = importlib.import_module("post_tool_linter")
 
 
 GO_MODULES = (
@@ -362,12 +363,19 @@ def test_gate_reader_fails_closed_on_malformed_or_inconsistent_state(
     assert state_path.read_bytes() == before
 
 
-def test_gate_reader_fails_closed_on_invalid_json_and_allows_missing_state(
+def test_gate_reader_fails_closed_on_invalid_json_and_missing_state(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     state_path = tmp_path / ".gate_state.json"
     monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
-    assert stop_quality_gate.check_gate_state_errors() == (True, "")
+    assert common.load_gate_state(state_path) == {"history": [], "latest_by_file": {}}
+
+    passed, diagnostics = stop_quality_gate.check_gate_state_errors()
+    assert not passed
+    assert "state is missing" in diagnostics
+    assert "supported PostToolUse quality check" in diagnostics
+    assert "do not create an empty state file manually" in diagnostics
+    assert not state_path.exists()
 
     state_path.write_text("{invalid", encoding="utf-8")
     before = state_path.read_bytes()
@@ -375,6 +383,59 @@ def test_gate_reader_fails_closed_on_invalid_json_and_allows_missing_state(
     assert not passed
     assert "unreadable or malformed" in diagnostics
     assert state_path.read_bytes() == before
+
+
+def test_gate_reader_denies_stop_after_failed_state_is_deleted(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    failure = _gate_entry(tmp_path / "broken.py", passed=False, output="ruff failure")
+    state_path = _point_stop_gate_at_state(
+        tmp_path,
+        monkeypatch,
+        {
+            "history": [failure],
+            "latest_by_file": {failure["file"]: failure},
+            "last_status": failure,
+        },
+    )
+    passed, diagnostics = stop_quality_gate.check_gate_state_errors()
+    assert not passed
+    assert "ruff failure" in diagnostics
+
+    state_path.unlink()
+    monkeypatch.setattr(stop_quality_gate, "find_repo_root", lambda: tmp_path)
+    for check_name in (
+        "check_python_subsystem",
+        "check_frontend_subsystem",
+        "check_services_subsystem",
+    ):
+        monkeypatch.setattr(
+            stop_quality_gate,
+            check_name,
+            lambda _: pytest.fail("subsystem checks must not run without gate state"),
+        )
+
+    result = stop_quality_gate.evaluate_stop({})
+
+    assert result["decision"] == "continue"
+    assert "Automated quality gate state is missing" in result["reason"]
+    assert "supported PostToolUse quality check" in result["reason"]
+
+
+def test_first_post_tool_success_initializes_state_for_stop_reader(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
+    assert not state_path.exists()
+
+    checked_file = str((tmp_path / "clean.py").resolve())
+    post_tool_linter.update_gate_state(checked_file, "ruff/py_compile", True, "")
+
+    state = common.load_gate_state(state_path, require_existing=True)
+    assert state["latest_by_file"][checked_file]["passed"]
+    assert stop_quality_gate.check_gate_state_errors() == (True, "")
 
 
 def test_gate_reader_fails_closed_when_shared_state_lock_is_unavailable(

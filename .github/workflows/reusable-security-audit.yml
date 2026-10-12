@@ -396,6 +396,7 @@ jobs:
           helm template trivy-university charts/university-ecosystem \
             --dependency-update=false \
             --set "$trivy_application_secret_override" \
+            --set-string global.environment=development \
             >/tmp/trivy-university-render.yaml
 
           scan_chart() {
@@ -597,20 +598,34 @@ jobs:
         # repository files remain scan-covered.
         run: detect-secrets scan --exclude-files '^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$' > /tmp/current_scan.json
 
-      - name: Fetch trusted base baseline (pull requests)
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Fetch immutable trusted source base
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "ERROR: pull-request base SHA is not an immutable 40-hex commit" >&2
+          case "$EVENT_NAME" in
+            pull_request) SOURCE_BASE_SHA="$PR_BASE_SHA" ;;
+            push) SOURCE_BASE_SHA="$PUSH_BEFORE_SHA" ;;
+            *)
+              echo "ERROR: unsupported event for trusted source comparison" >&2
+              exit 1
+              ;;
+          esac
+          if [[ ! "$SOURCE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || [[ "$SOURCE_BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
+            echo "ERROR: trusted source base is missing, zero, or malformed" >&2
             exit 1
           fi
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git show "$BASE_SHA:.secrets.baseline" > "$RUNNER_TEMP/trusted-base-baseline.json"
-          test -s "$RUNNER_TEMP/trusted-base-baseline.json"
+          git fetch --no-tags --depth=1 origin "$SOURCE_BASE_SHA"
+          git cat-file -e "${SOURCE_BASE_SHA}^{commit}"
+          echo "SOURCE_BASE_SHA=$SOURCE_BASE_SHA" >> "$GITHUB_ENV"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git show "$SOURCE_BASE_SHA:.secrets.baseline" > "$RUNNER_TEMP/trusted-base-baseline.json"
+            test -s "$RUNNER_TEMP/trusted-base-baseline.json"
+          fi
 
       - name: Verify baseline has not regressed
         shell: bash
@@ -622,8 +637,13 @@ jobs:
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             python scripts/verify_secrets_baseline.py \
               .secrets.baseline /tmp/current_scan.json \
-              --trusted-base-baseline "$TRUSTED_BASELINE_PATH"
-          else
+              --trusted-base-baseline "$TRUSTED_BASELINE_PATH" \
+              --trusted-base-source-sha "$SOURCE_BASE_SHA"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
             python scripts/verify_secrets_baseline.py \
-              .secrets.baseline /tmp/current_scan.json
+              .secrets.baseline /tmp/current_scan.json \
+              --trusted-base-source-sha "$SOURCE_BASE_SHA"
+          else
+            echo "ERROR: unsupported event for secret policy verification" >&2
+            exit 1
           fi

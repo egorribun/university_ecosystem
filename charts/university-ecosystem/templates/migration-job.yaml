@@ -57,10 +57,47 @@ spec:
                 secretKeyRef:
                   name: {{ required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret | quote }}
                   key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
-            # Development mode prevents unrelated runtime-service secret
-            # validators from blocking the isolated migration Job.
+            - name: CACHE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey | quote }}
+            # Alembic constructs the shared Settings object. Keep the migration
+            # process in the authentication-capable role and supply its actual
+            # environment so production/staging validation cannot be bypassed.
+            - name: APP_PROCESS_ROLE
+              value: "api"
+            - name: REVOCATION_REDIS_ACCESS_ENABLED
+              value: "true"
             - name: ENVIRONMENT
-              value: development
+              value: {{ .Values.global.environment | quote }}
+            - name: EVENT_FILE_SCANNER_ENABLED
+              value: {{ .Values.backend.config.eventFileScannerEnabled | quote }}
+            - name: MINIO_SECURE
+              value: {{ .Values.backend.config.minioSecure | quote }}
+            - name: ELASTICSEARCH_URL
+              value: {{ .Values.backend.config.elasticsearchURL | quote }}
+            # SECRET_KEY must be stable across migration and backend processes;
+            # do not let Settings(_allow_missing=True) generate a local fallback.
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: jwt-secret
+            # The shared settings validators require these secret values in
+            # staging/production before Alembic can initialize.
+            {{- range $variable, $key := dict "AUDIT_LOG_SECRET" "audit-log-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" }}
+            - name: {{ $variable }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" $ | quote }}
+                  key: {{ $key | quote }}
+            {{- end }}
+            - name: NATS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey | quote }}
             - name: AUTO_CREATE_SCHEMA
               value: "false"
           securityContext:

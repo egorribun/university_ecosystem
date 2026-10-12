@@ -76,6 +76,20 @@ func TestRejectRateLimitedMessage_NotifiesClientAndCounts(t *testing.T) {
 	}
 }
 
+func TestRejectRateLimitedMessage_DropsNoticeWhenSendClosed(t *testing.T) {
+	h := setupTestHub()
+	h.clientMsgRateLimit = 0.000000001
+	h.clientMsgRateBurst = 1
+	serverConn, _ := newConnPair(t)
+	client := newClientOn(h, serverConn, "closed-send-rate-limit", "closed-send-user")
+	assert.False(t, client.rejectRateLimitedMessage(), "first frame is within budget")
+	safeClose(client.Send)
+
+	assert.NotPanics(t, func() {
+		assert.True(t, client.rejectRateLimitedMessage())
+	})
+}
+
 func TestRejectRateLimitedMessage_DropsNoticeWhenSendFull(t *testing.T) {
 	h := setupTestHub()
 	h.clientMsgRateLimit = 0.001

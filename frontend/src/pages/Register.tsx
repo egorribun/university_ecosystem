@@ -163,6 +163,7 @@ const Register = () => {
             </p>
           </div>
           <form
+            method="post"
             onSubmit={handleTelemetrySubmit}
             autoComplete="on"
             className="flex flex-col gap-6"

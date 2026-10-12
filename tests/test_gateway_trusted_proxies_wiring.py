@@ -61,6 +61,8 @@ def _gateway_deployment_render(*overrides: str) -> subprocess.CompletedProcess[s
         "redis.enabled=false",
         "--set",
         "nats.enabled=false",
+        "--set-string",
+        "global.environment=development",
         *overrides,
     ]
     return subprocess.run(  # noqa: S603 - fixed local Helm contract command

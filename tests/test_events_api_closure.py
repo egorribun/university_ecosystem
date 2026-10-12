@@ -113,24 +113,22 @@ async def test_create_event_success_and_role_guard() -> None:
     service = MagicMock()
     service.create_event = AsyncMock(return_value=record)
     service.serialize_event.return_value = {"id": str(record.id)}
-    notifications = MagicMock()
-    notifications.dispatch_event_created = AsyncMock()
     request = _request()
+    data = _event_create()
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
     ):
         result = await call_injected(
             api.create_event,
-            data=_event_create(),
+            data=data,
             request=request,
-            background=MagicMock(),
             user=user,
-            provides={"NotificationService": notifications, "EventService": service},
+            provides={"EventService": service},
         )
     assert result == {"id": str(record.id)}
+    service.create_event.assert_awaited_once_with(data, user_id=user.id, locale="en")
     bump.assert_awaited_once()
-    notifications.dispatch_event_created.assert_awaited_once()
 
     # An app that carries no cache still creates the event; the version bump is
     # simply a no-op.  This is the branch ``if request:`` used to stand in for.
@@ -145,13 +143,13 @@ async def test_create_event_success_and_role_guard() -> None:
     ):
         result = await call_injected(
             api.create_event,
-            data=_event_create(),
+            data=data,
             request=cacheless,
-            background=MagicMock(),
             user=user,
-            provides={"NotificationService": notifications, "EventService": service},
+            provides={"EventService": service},
         )
     assert result == {"id": str(record.id)}
+    assert service.create_event.await_args.kwargs["locale"] == "en"
     cacheless_bump.assert_awaited_once_with(None)
 
     # ...and the helper itself is the no-op in that case.
@@ -163,12 +161,8 @@ async def test_create_event_success_and_role_guard() -> None:
                 api.create_event,
                 data=_event_create(),
                 request=None,
-                background=MagicMock(),
                 user=_user(),
-                provides={
-                    "NotificationService": notifications,
-                    "EventService": service,
-                },
+                provides={"EventService": service},
             )
     assert exc.value.status_code == 403
 
@@ -490,7 +484,8 @@ async def test_update_event_success_permissions_and_errors() -> None:
     db.execute.side_effect = [_result(rows=[]), _result(scalar=3)]
     with (
         patch.object(api, "resolve_locale", return_value="en"),
-        patch.object(api, "delete_static_file", AsyncMock()) as delete,
+        patch.object(api, "delete_owned_event_image", AsyncMock()) as delete_owned,
+        patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(
             api.update_event,
@@ -502,7 +497,8 @@ async def test_update_event_success_permissions_and_errors() -> None:
             provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
-    delete.assert_awaited_once_with("/old.png")
+    delete_owned.assert_awaited_once_with("/old.png", event_id=event_id)
+    delete_generic.assert_not_awaited()
     assert service.serialize_event.call_args.kwargs["participant_count"] == 3
 
     existing.image_url = "/same.png"
@@ -514,6 +510,8 @@ async def test_update_event_success_permissions_and_errors() -> None:
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
+        patch.object(api, "delete_owned_event_image", AsyncMock()) as delete_owned,
+        patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(
             api.update_event,
@@ -526,6 +524,8 @@ async def test_update_event_success_permissions_and_errors() -> None:
         )
     assert result == {"id": str(event_id)}
     bump.assert_awaited_once()
+    delete_owned.assert_not_awaited()
+    delete_generic.assert_not_awaited()
 
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):

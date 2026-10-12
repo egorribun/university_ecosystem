@@ -50,6 +50,64 @@ def _session(db: AsyncMock) -> MagicMock:
     return context
 
 
+@pytest.mark.parametrize(
+    ("event_type", "id_field"),
+    [(EventCreated, "event_id_entity"), (NewsCreated, "news_id")],
+)
+def test_legacy_created_event_payload_defaults_locale(event_type, id_field) -> None:
+    payload = {id_field: str(uuid4()), "title": "Existing source event"}
+
+    event = event_type.from_dict(payload)
+
+    assert event.locale is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "id_field", "handler_name", "model_name", "notify_name"),
+    [
+        (
+            EventCreated,
+            "event_id_entity",
+            "handle_event_created_notification",
+            "Event",
+            "notify_about_event",
+        ),
+        (
+            NewsCreated,
+            "news_id",
+            "handle_news_created_notification",
+            "News",
+            "notify_about_news",
+        ),
+    ],
+)
+async def test_created_notification_handler_uses_durable_locale(
+    monkeypatch: pytest.MonkeyPatch,
+    event_type,
+    id_field,
+    handler_name,
+    model_name,
+    notify_name,
+) -> None:
+    entity_id = uuid4()
+    event = event_type(**{id_field: entity_id, "locale": "en"})
+    record = SimpleNamespace(id=entity_id)
+    db = AsyncMock()
+    db.get.return_value = record
+    notify = AsyncMock()
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, notify_name, notify)
+
+    await getattr(event_handlers, handler_name)(event)
+
+    db.get.assert_awaited_once_with(
+        getattr(event_handlers.models, model_name), entity_id
+    )
+    notify.assert_awaited_once_with(db, record, locale="en")
+    db.commit.assert_awaited_once()
+
+
 def _configure_message_rls_mock(db: AsyncMock, member_id) -> None:
     async def execute(statement, parameters=None):
         if "chat_participants" in str(statement):
@@ -677,7 +735,16 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 29
+    assert subscribe.call_count == 32
+    subscribe.assert_any_call(
+        "event.created", event_handlers.handle_event_created_notification
+    )
+    subscribe.assert_any_call(
+        "news.created", event_handlers.handle_news_created_notification
+    )
+    subscribe.assert_any_call(
+        "news.comment_created", event_handlers.handle_news_comment_created_notification
+    )
     subscribe.assert_any_call(
         "chat.participant_removed",
         event_handlers.handle_chat_participant_removed,

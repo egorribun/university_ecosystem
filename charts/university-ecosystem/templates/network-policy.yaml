@@ -351,9 +351,8 @@ spec:
 {{- end }}
 
 ---
-# Backend: accepts traffic from the gateway and the ingress controller for the
-# public JWKS discovery path; calls postgres, redis, NATS, and external HTTPS
-# endpoints (HIBP, Spotify OAuth, etc.).
+# Backend: accepts gateway traffic, public JWKS discovery from ingress, and
+# the default JWKS refresh from this release's file-processor.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -365,6 +364,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: backend
   policyTypes:
     - Ingress
@@ -377,6 +377,17 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    {{- if and .Values.fileProcessor.enabled (not .Values.fileProcessor.config.jwksURL) }}
+    # The default file-processor JWKS URL targets this release's backend service.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: file-processor
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+    {{- end }}
     {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     # The ingress controller terminates TLS for the public API origin and
     # forwards only the explicitly routed /.well-known discovery path here.
@@ -503,6 +514,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: file-processor
   policyTypes:
     - Ingress
@@ -523,6 +535,17 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
+    {{- if and .Values.fileProcessor.enabled (not .Values.fileProcessor.config.jwksURL) }}
+    # The default JWKS endpoint is the same release backend over its service port.
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+    {{- end }}
     - to:
         - podSelector:
             matchLabels:
@@ -537,6 +560,17 @@ spec:
       ports:
         - protocol: TCP
           port: 7233
+    # File-processor JWT validation uses the dedicated persistent revocation
+    # store; keep this release-bound and narrower than cache Redis access.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: revocation-redis
+              app.kubernetes.io/component: master
+              university-ecosystem.io/revocation-store-for: {{ .Release.Name | quote }}
+      ports:
+        - protocol: TCP
+          port: 6379
     - to:
         - podSelector:
             matchLabels:

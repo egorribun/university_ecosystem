@@ -96,6 +96,17 @@ describe("LoginCredentialForm — default render", () => {
     expect(submit.querySelector("svg")).toBeInTheDocument()
   })
 
+  it("declares POST for native submission before client-side handling", async () => {
+    await mountWithStub(() => ({}))
+
+    const form = screen.getByRole("button", { name: /^sign in$/i }).closest("form")
+    const password = screen.getByLabelText(/password/i, { selector: "input" })
+
+    expect(form?.getAttribute("method")).toBe("post")
+    expect(form?.method).toBe("post")
+    expect(password).toHaveAttribute("name", "password")
+  })
+
   it("keeps password and consent controls fully labelled for assistive technology", async () => {
     await mountWithStub(() => ({}))
 

@@ -324,6 +324,8 @@ def test_v2_manifest_rejects_tier0_source_outside_coverage_scope(
 ) -> None:
     validator = _load_validator()
     contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    contract["coverage_scope"]["python"] = ["app"]
+    manifest["coverage_scope"] = copy.deepcopy(contract["coverage_scope"])
     migration_path = git_evidence_root / "alembic/versions/20260825_example.py"
     migration_path.parent.mkdir(parents=True, exist_ok=True)
     migration_path.write_text("revision = '20260825'\n", encoding="utf-8")

@@ -44,7 +44,7 @@ export function useEventCardLogic({
 }: UseEventCardLogicProps) {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { t } = useTranslation(["events", "common"])
+  const { t, i18n } = useTranslation(["events", "common"])
   const spotlight = useSpotlight()
 
   // -- UI State --
@@ -142,6 +142,15 @@ export function useEventCardLogic({
         starts_at: parseDate(editData.starts_at).toISOString(),
         ends_at: parseDate(editData.ends_at).toISOString(),
         image_url: imgUrl,
+      }
+      if (i18n.language === "en") {
+        // Event API responses localize the source fields for the active
+        // language. The card editor only exposes the active locale, so an
+        // English save must leave the persisted Russian fields untouched.
+        delete payload.title
+        delete payload.description
+        delete payload.event_type
+        delete payload.location
       }
       await telemetryContext.run(() => api.patch(`/events/${id}`, payload))
       setEditOpen(false)

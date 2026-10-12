@@ -434,12 +434,14 @@ async def test_profile_about_over_database_limit_is_rejected_without_persisting(
 async def test_delete_avatar_removes_file(async_client, user_factory, db_session):
     password = "DeleteAvatar123!"
     hashed = await get_password_hash(password)
-    avatar_rel = f"avatars/test-avatar-{uuid.uuid4().hex}.png"
+    owner_id = uuid.uuid4()
+    avatar_rel = f"avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
     avatar_path = settings.static_dir_path / avatar_rel
     avatar_path.parent.mkdir(parents=True, exist_ok=True)
     avatar_path.write_bytes(b"avatar")
 
     user = await user_factory(
+        id=owner_id,
         hashed_password=hashed,
         is_active=True,
         avatar_url=f"/static/{avatar_rel}",
@@ -458,6 +460,36 @@ async def test_delete_avatar_removes_file(async_client, user_factory, db_session
     db_session.expire_all()
     user = await UserRepository(db_session).get(user_id)
     assert user.profile.avatar_url is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("media_kind", "directory"), [("avatar", "avatars"), ("cover", "covers")]
+)
+async def test_delete_profile_media_preserves_foreign_owner_file(
+    tmp_path, monkeypatch, async_client, user_factory, media_kind, directory
+):
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    owner_id = uuid.uuid4()
+    foreign_id = uuid.uuid4()
+    relative_path = f"{directory}/user_{foreign_id}_{media_kind}_{uuid.uuid4().hex}.png"
+    file_path = tmp_path / relative_path
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(b"foreign profile media")
+    field_name = f"{media_kind}_url"
+    user = await user_factory(
+        id=owner_id,
+        hashed_password=await get_password_hash("DeleteForeignMedia123!"),
+        is_active=True,
+        **{field_name: f"/static/{relative_path}"},
+    )
+    headers = await _login(async_client, user.email, "DeleteForeignMedia123!")
+
+    response = await async_client.delete(f"/users/me/{media_kind}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()[field_name] is None
+    assert file_path.read_bytes() == b"foreign profile media"
 
 
 @pytest.mark.asyncio
@@ -511,11 +543,13 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
-    delete_calls: list[str] = []
+    delete_calls: list[tuple[str, uuid.UUID, str]] = []
     original_delete = delete_static_file
 
-    async def tracking_delete(url: str) -> None:
-        delete_calls.append(url)
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append((url, owner_id, media_kind))
         await original_delete(url)
 
     monkeypatch.setattr(
@@ -543,6 +577,7 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     avatar_dir = tmp_path / "avatars"
     assert delete_calls, "delete_static_file should be invoked"
+    assert all(call[1:] == (user.id, "avatar") for call in delete_calls)
     if avatar_dir.exists():
         assert not any(avatar_dir.iterdir())
 
@@ -562,11 +597,13 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
-    delete_calls: list[str] = []
+    delete_calls: list[tuple[str, uuid.UUID, str]] = []
     original_delete = delete_static_file
 
-    async def tracking_delete(url: str) -> None:
-        delete_calls.append(url)
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append((url, owner_id, media_kind))
         await original_delete(url)
 
     monkeypatch.setattr(
@@ -594,6 +631,7 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     cover_dir = tmp_path / "covers"
     assert delete_calls, "delete_static_file should be invoked"
+    assert all(call[1:] == (user.id, "cover") for call in delete_calls)
     if cover_dir.exists():
         assert not any(cover_dir.iterdir())
 
@@ -602,12 +640,14 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 async def test_delete_cover_removes_file(async_client, user_factory, db_session):
     password = "DeleteCover123!"
     hashed = await get_password_hash(password)
-    cover_rel = f"covers/test-cover-{uuid.uuid4().hex}.png"
+    owner_id = uuid.uuid4()
+    cover_rel = f"covers/user_{owner_id}_cover_{uuid.uuid4().hex}.png"
     cover_path = settings.static_dir_path / cover_rel
     cover_path.parent.mkdir(parents=True, exist_ok=True)
     cover_path.write_bytes(b"cover")
 
     user = await user_factory(
+        id=owner_id,
         hashed_password=hashed,
         is_active=True,
         cover_url=f"/static/{cover_rel}",

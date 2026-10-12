@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import UploadFile
 
 from app.core.exceptions.domain import EntityNotFound
@@ -5,7 +7,11 @@ from app.core.logging import get_logger
 from app.core.protocols import UserLike, extract_user_id
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import UserDTO
-from app.services.user.logic import update_user_attributes
+from app.services.user.logic import (
+    ProfileMediaKind,
+    delete_owned_profile_media,
+    update_user_attributes,
+)
 
 logger = get_logger(__name__)
 
@@ -24,12 +30,12 @@ async def save_upload(
     return await _save_upload(file, subdir, prefix, locale=locale)
 
 
-async def delete_static_file(path: str) -> None:
-    """Load the optional image backend only when a file is removed."""
+async def delete_static_file(
+    path: str, *, owner_id: UUID, media_kind: ProfileMediaKind
+) -> None:
+    """Delete profile media after validating its owner-scoped storage key."""
 
-    from app.utils.files import delete_static_file as _delete_static_file
-
-    await _delete_static_file(path)
+    await delete_owned_profile_media(path, owner_id=owner_id, media_kind=media_kind)
 
 
 class UserMediaService:
@@ -52,7 +58,9 @@ class UserMediaService:
         file_url = await save_upload(file, "avatars", f"user_{user_identity}_avatar")
 
         if db_user.profile and db_user.profile.avatar_url:
-            await delete_static_file(db_user.profile.avatar_url)
+            await delete_static_file(
+                db_user.profile.avatar_url, owner_id=user_identity, media_kind="avatar"
+            )
 
         try:
             # Apply nested update via domain logic
@@ -63,7 +71,9 @@ class UserMediaService:
             return self.repo._to_dto(db_user)
         except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback and cleanup file then re-raise (reviewed TD-27-04)
             await self.uow.rollback()
-            await delete_static_file(file_url)
+            await delete_static_file(
+                file_url, owner_id=user_identity, media_kind="avatar"
+            )
             raise
 
     async def upload_cover(self, user: UserLike, file: UploadFile) -> UserDTO:
@@ -75,7 +85,9 @@ class UserMediaService:
         file_url = await save_upload(file, "covers", f"user_{user_identity}_cover")
 
         if db_user.profile and db_user.profile.cover_url:
-            await delete_static_file(db_user.profile.cover_url)
+            await delete_static_file(
+                db_user.profile.cover_url, owner_id=user_identity, media_kind="cover"
+            )
 
         try:
             # Apply nested update via domain logic
@@ -86,7 +98,9 @@ class UserMediaService:
             return self.repo._to_dto(db_user)
         except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback and cleanup file then re-raise (reviewed TD-27-04)
             await self.uow.rollback()
-            await delete_static_file(file_url)
+            await delete_static_file(
+                file_url, owner_id=user_identity, media_kind="cover"
+            )
             raise
 
     async def delete_avatar(self, user: UserLike) -> UserDTO:
@@ -95,7 +109,9 @@ class UserMediaService:
         if not db_user:
             raise EntityNotFound("User", user_identity)
         if db_user.profile and db_user.profile.avatar_url:
-            await delete_static_file(db_user.profile.avatar_url)
+            await delete_static_file(
+                db_user.profile.avatar_url, owner_id=user_identity, media_kind="avatar"
+            )
 
         # Apply nested update via domain logic
         update_user_attributes(db_user, {"avatar_url": None})
@@ -110,7 +126,9 @@ class UserMediaService:
         if not db_user:
             raise EntityNotFound("User", user_identity)
         if db_user.profile and db_user.profile.cover_url:
-            await delete_static_file(db_user.profile.cover_url)
+            await delete_static_file(
+                db_user.profile.cover_url, owner_id=user_identity, media_kind="cover"
+            )
 
         # Apply nested update via domain logic
         update_user_attributes(db_user, {"cover_url": None})

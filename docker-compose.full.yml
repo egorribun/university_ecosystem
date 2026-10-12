@@ -811,6 +811,8 @@ services:
       # `http://localhost:3000` (Vite dev) + `http://localhost:5173` (Vite
       # preview default) for parity with non-Docker dev workflows.
       ALLOWED_ORIGINS: "http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173"
+      # Trust only operator-supplied proxy peers; the default remains loopback-only.
+      TRUSTED_PROXIES: "${WS_HUB_TRUSTED_PROXIES:-127.0.0.1,::1}"
       # MOD-01 (audit 2026-03-15 Wave 7): Standard OTel env vars — SDK reads
       # these automatically so no hardcoded endpoint in telemetry.go code.
       # OTEL_EXPORTER_OTLP_INSECURE=true is correct for local dev (tempo has

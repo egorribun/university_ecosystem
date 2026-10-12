@@ -69,10 +69,9 @@ PROFILE_CACHE_HEADER = "x-profile-cache-envelope"
 def _enforce_profile_cache_integrity(request: Request) -> None:
     raw_envelope = request.headers.get(PROFILE_CACHE_HEADER)
     if not raw_envelope:
-        if settings.environment in ("testing", "development"):
-            return
-        locale = resolve_locale(request=request)
-        raise_validation_error("errors.profile_cache.missing_envelope", locale)
+        # Authentication has already resolved the active server session; a
+        # missing client cache envelope is therefore a normal cache miss.
+        return
 
     locale = resolve_locale(request=request)
     session = getattr(request.state, "active_session", None)
@@ -131,10 +130,9 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     if not hmac.compare_digest(signature, expected_signature):
         raise_validation_error("errors.profile_cache.invalid_signature", locale)
 
-    # SEC-BE-02 (audit Wave 10): validate temporal bounds AFTER HMAC so we do
-    # not leak timing information before signature verification.
-    # Without this check, any previously-valid HMAC envelope can be replayed
-    # indefinitely — HMAC proves authenticity, not freshness.
+    # Validate temporal bounds after HMAC so forged cache hints still fail
+    # integrity checks. Expired hints are ignored; the server session and DB
+    # remain authoritative for the returned profile.
     try:
         val = payload["expiresAt"]
         if isinstance(val, (int, float)):
@@ -145,7 +143,8 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
                 expires_at = expires_at.replace(tzinfo=UTC)
 
         if datetime.now(UTC) > expires_at:
-            raise_validation_error("errors.profile_cache.envelope_expired", locale)
+            # An expired signed envelope is a cache miss; its data is never read.
+            return
     except (ValueError, TypeError, OSError):
         raise_validation_error("errors.profile_cache.invalid_expires_at", locale)
 

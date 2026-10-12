@@ -5,8 +5,10 @@ This module handles notifications for new news articles and events.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import select
 
 from app.core.localization import (
     SUPPORTED_LOCALES,
@@ -15,12 +17,14 @@ from app.core.localization import (
     resolve_locale,
     translate,
 )
+from app.models import Notification
 from app.services.notification_templates import render_notification_template
 from app.services.notifications.core import (
     _ensure_aware,
     _fetch_active_user_ids,
     _plain_text,
 )
+from app.services.notifications.dedupe import lock_notification_dedupe
 from app.services.notifications.delivery import create_notifications_for_users
 
 if TYPE_CHECKING:
@@ -28,10 +32,24 @@ if TYPE_CHECKING:
     from app.models import Event, News, NewsComment, User
 
 
+async def _unnotified_user_ids(
+    db: AsyncSession, dedupe_key: str | None, user_ids: Sequence[Any]
+) -> list[Any]:
+    candidates = list(user_ids)
+    if dedupe_key is None or not candidates:
+        return candidates
+    await lock_notification_dedupe(db, dedupe_key)
+    rows = await db.execute(
+        select(Notification.user_id).where(Notification.dedupe_key == dedupe_key)
+    )
+    already_notified = set(rows.scalars().all())
+    return [user_id for user_id in candidates if user_id not in already_notified]
+
+
 async def notify_about_news(
     db: AsyncSession, news: News, *, locale: str | None = None
 ) -> int:
-    """Create and send notifications about a new news article."""
+    """Create notifications and enqueue push delivery for a new news article."""
     resolved_locale = resolve_locale(locale=locale)
 
     def _clean_text(value: Any) -> str | None:
@@ -161,6 +179,10 @@ async def notify_about_news(
     user_ids = await _fetch_active_user_ids(db)
     if not user_ids:
         return 0
+    dedupe_key = f"news.created:{news.id}" if getattr(news, "id", None) else None
+    user_ids = await _unnotified_user_ids(db, dedupe_key, user_ids)
+    if not user_ids:
+        return 0
     return await create_notifications_for_users(
         db,
         title=title,
@@ -173,13 +195,15 @@ async def notify_about_news(
         payload_data=payload_data,
         user_ids=user_ids,
         topic="news.published",
+        dedupe_key=dedupe_key,
+        push_via_outbox_only=True,
     )
 
 
 async def notify_about_event(
     db: AsyncSession, event: Event, *, locale: str | None = None
 ) -> int:
-    """Create and send notifications about a new event."""
+    """Create notifications and enqueue push delivery for a new event."""
 
     def _variant(
         locale_option: str | None,
@@ -359,6 +383,10 @@ async def notify_about_event(
     user_ids = await _fetch_active_user_ids(db)
     if not user_ids:
         return 0
+    dedupe_key = f"events.created:{event.id}" if getattr(event, "id", None) else None
+    user_ids = await _unnotified_user_ids(db, dedupe_key, user_ids)
+    if not user_ids:
+        return 0
     return await create_notifications_for_users(
         db,
         title=title,
@@ -371,6 +399,8 @@ async def notify_about_event(
         payload_data=payload_data,
         user_ids=user_ids,
         topic="events.published",
+        dedupe_key=dedupe_key,
+        push_via_outbox_only=True,
     )
 
 
@@ -382,7 +412,7 @@ async def notify_about_comment(
     *,
     locale: str | None = None,
 ) -> int:
-    """Create and send notifications to admins about a new comment."""
+    """Create admin notifications and enqueue their push delivery."""
     from app.services.notifications.core import _fetch_admin_ids
 
     resolved_locale = resolve_locale(locale=locale)
@@ -412,6 +442,10 @@ async def notify_about_comment(
     admin_ids = await _fetch_admin_ids(db)
     if not admin_ids:
         return 0
+    dedupe_key = f"news.comment:{comment.id}" if getattr(comment, "id", None) else None
+    admin_ids = await _unnotified_user_ids(db, dedupe_key, admin_ids)
+    if not admin_ids:
+        return 0
 
     return await create_notifications_for_users(
         db,
@@ -423,4 +457,6 @@ async def notify_about_comment(
         payload_data=template.get("data", {}),
         user_ids=admin_ids,
         topic="news.published",
+        dedupe_key=dedupe_key,
+        push_via_outbox_only=True,
     )

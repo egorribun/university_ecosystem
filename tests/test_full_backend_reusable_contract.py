@@ -97,6 +97,28 @@ def _assert_frontend_typecheck_is_only_job_delta(
     assert _digest(preserved_job) == expected_digest
 
 
+def _assert_nightly_miri_is_only_toolchain_pin_update(
+    job: dict[str, object], expected_digest: str
+) -> None:
+    normalized_job = dict(job)
+    normalized_steps = [dict(step) for step in _steps(job)]
+    toolchain_steps = [
+        step
+        for step in normalized_steps
+        if step.get("name") == "Install nightly Rust + Miri"
+    ]
+    assert len(toolchain_steps) == 1
+    toolchain_step = toolchain_steps[0]
+    assert toolchain_step.get("uses") == (
+        "dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067"
+    )
+    toolchain_step["uses"] = (
+        "dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de"
+    )
+    normalized_job["steps"] = normalized_steps
+    assert _digest(normalized_job) == expected_digest
+
+
 def _assert_nightly_browser_matrix_is_preserved(job: dict[str, object]) -> None:
     assert job["if"] == "${{ github.ref == 'refs/heads/main' }}"
     assert job["needs"] == "e2e-wasm-build"
@@ -788,6 +810,10 @@ def test_nightly_calls_full_backend_only_from_main_nightly_events() -> None:
             _assert_frontend_typecheck_is_only_job_delta(jobs[job_id], expected_digest)
         elif job_id == "browser-matrix":
             _assert_nightly_browser_matrix_is_preserved(jobs[job_id])
+        elif job_id == "miri":
+            _assert_nightly_miri_is_only_toolchain_pin_update(
+                jobs[job_id], expected_digest
+            )
         else:
             assert _digest(jobs[job_id]) == expected_digest
 
@@ -908,6 +934,10 @@ def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_front
             )
         elif job_id == "browser-matrix":
             _assert_nightly_browser_matrix_is_preserved(nightly[job_id])
+        elif job_id == "miri":
+            _assert_nightly_miri_is_only_toolchain_pin_update(
+                nightly[job_id], expected_digest
+            )
         else:
             assert _digest(nightly[job_id]) == expected_digest
 

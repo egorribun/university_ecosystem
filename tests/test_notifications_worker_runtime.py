@@ -55,20 +55,55 @@ def test_scheduler_clamps_min_values():
 
 
 @pytest.mark.asyncio
-async def test_run_once_returns_created_count(scheduler: NotificationsScheduler):
+async def test_run_once_commits_generated_reminders_after_outbox_rows(
+    scheduler: NotificationsScheduler,
+):
+    operations: list[str] = []
+    mock_db = AsyncMock()
+    mock_db.commit.side_effect = lambda: operations.append("commit")
+
+    async def _generate(db, *, window_minutes):
+        assert db is mock_db
+        assert window_minutes == scheduler.window_minutes
+        operations.append("generate")
+        return 3
+
     with (
         patch("app.workers.notifications.async_session") as mock_cm,
         patch(
-            "app.workers.notifications.generate_schedule_reminders", return_value=3
-        ) as _,
+            "app.workers.notifications.generate_schedule_reminders",
+            new=AsyncMock(side_effect=_generate),
+        ),
     ):
-        mock_db = AsyncMock()
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await scheduler.run_once()
 
     assert result == 3
+    assert operations == ["generate", "commit"]
+    mock_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_once_does_not_commit_when_generation_fails(
+    scheduler: NotificationsScheduler,
+):
+    mock_db = AsyncMock()
+    with (
+        patch("app.workers.notifications.async_session") as mock_cm,
+        patch(
+            "app.workers.notifications.generate_schedule_reminders",
+            new=AsyncMock(side_effect=RuntimeError("generation failed")),
+        ),
+    ):
+        mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="generation failed"):
+            await scheduler.run_once()
+
+    mock_db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

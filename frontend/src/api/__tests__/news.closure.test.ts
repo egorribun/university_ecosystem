@@ -109,6 +109,12 @@ describe("api/news closure", () => {
     expect(itemRequest.validateStatus(200)).toBe(true)
     expect(itemRequest.validateStatus(500)).toBe(false)
 
+    getNews.mockResolvedValueOnce({ status: 200, data: { ...news } })
+    await fetchNewsItem("00000000-0000-0000-0000-000000000001", { language: "ru" })
+    expect(getNews).toHaveBeenLastCalledWith(
+      expect.objectContaining({ headers: { "accept-language": "ru" } })
+    )
+
     getNews.mockResolvedValueOnce({ status: 304, data: "cached" })
     await expect(fetchNewsItem("news-304")).resolves.toEqual({ status: 304, data: "cached" })
   })

@@ -77,6 +77,13 @@ _RETRY_BASE_DELAY_S = float(os.environ.get("NATS_TASK_RETRY_BASE_DELAY_SECONDS",
 _RETRY_MAX_DELAY_S = 300.0
 
 
+def _serialize_task_uuid(value: Any) -> str:
+    """Serialize UUIDs for task JSON without accepting arbitrary objects."""
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 class _NatsTaskPayload(BaseModel):  # type: ignore[no-redef]
     """P1-W5-09: Validated NATS task message schema.
 
@@ -443,7 +450,7 @@ class NatsTaskBroker:
             if self._js:
                 await self._js.publish(
                     subject,
-                    json.dumps(payload).encode(),
+                    orjson.dumps(payload, default=_serialize_task_uuid),
                     headers=headers,
                 )
             return task_id

@@ -345,6 +345,34 @@ server {
 
 > Для браузера предпочтителен same-origin edge. `BACKEND_ORIGIN` предназначен для runtime SSR, а `VITE_BACKEND_ORIGIN` — только build-time fallback; внутренние service DNS нельзя публиковать в клиентский bundle.
 
+## Часовой пояс кампуса
+
+`CAMPUS_TIMEZONE` задаёт часовой пояс IANA для повторяющихся занятий,
+напоминаний и экспорта календаря; значение по умолчанию — `UTC`.
+В Compose задайте его в `.env.docker`, в Helm — в
+`backend.env.CAMPUS_TIMEZONE`. Сервер рассчитывает даты занятий по часовому
+поясу кампуса, браузер форматирует полученные моменты времени для отображения.
+
+## Настройка доверия к proxy IP для rate limit
+
+Код rate limit использует forwarded-заголовки только при явной настройке
+непосредственного peer и цепочки proxy. В Compose GATEWAY_TRUSTED_PROXIES
+задаёт точные адреса proxy, видимые Gateway, WS_HUB_TRUSTED_PROXIES — адреса,
+видимые ws-hub, а backend получает TRUSTED_PROXIES из .env.docker. Полный
+Compose-стек использует динамические адреса общих сетей, а
+scripts/live_stand.py не обнаруживает адреса proxy. Не доверяйте всей сети
+public или широкой private-сети. Задавайте адреса по фактической топологии и
+обновляйте настройки при их изменении. Если перед Caddy стоит внешний
+балансировщик, настройте доверие Caddy только к его реальным адресам и
+проверьте очищенную forwarded-цепочку.
+
+В Helm задайте gateway.config.trustedProxies и wsHub.config.trustedProxies по
+реальным адресам/CIDR ingress. В backend.env.TRUSTED_PROXIES задайте Gateway и
+только те upstream hops, которые остаются в очищенной цепочке. NetworkPolicy
+ограничивает доступ, но не настраивает доверие приложения к заголовкам.
+Не используйте предполагаемые адреса или CIDR всего кластера/private-сети.
+Staging наследует loopback-only ws-hub до явной настройки фактических peers.
+
 ## Системные зависимости backend
 
 - Для серверной проверки контента файлов используется `python-magic`, поэтому на хостах с backend нужно установить пакеты `libmagic` (например, `apt install libmagic1 libmagic-dev` для Debian/Ubuntu или `apk add file` в Alpine).

@@ -41,7 +41,13 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
 
   return (
     <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
-      <form noValidate autoComplete="on" onSubmit={onSubmit} className="flex flex-col gap-6">
+      <form
+        method="post"
+        noValidate
+        autoComplete="on"
+        onSubmit={onSubmit}
+        className="flex flex-col gap-6"
+      >
         <div className="space-y-2 text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-brand">
             {t("auth:login.heroBadge")}
