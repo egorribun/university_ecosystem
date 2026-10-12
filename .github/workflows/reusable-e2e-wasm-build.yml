@@ -47,7 +47,7 @@ jobs:
       - name: Setup Rust toolchain
         # Keep E2E's same-run producer byte-identical to the checked-in
         # packages and the frontend producer despite hosted-image updates.
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # pinned action
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # pinned action
         with:
           toolchain: 1.97.1
           targets: wasm32-unknown-unknown
