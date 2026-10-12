@@ -24,22 +24,24 @@ downgrade_reason: str = (
 
 
 def upgrade() -> None:
-    """Keep each stored clock reading and discard its unusable fixed offset."""
-    op.alter_column(
-        "user_preferences",
-        "dnd_start",
-        existing_type=sa.Time(timezone=True),
-        type_=sa.Time(timezone=False),
-        existing_nullable=True,
-        postgresql_using="dnd_start::text::time",
+    """Preserve wall-clock values with a narrowly acknowledged column conversion."""
+    op.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+    op.execute(sa.text("SET LOCAL statement_timeout = '60s'"))
+    op.execute(
+        sa.text(
+            "-- squawk-ignore changing-column-type\n"
+            "ALTER TABLE user_preferences "
+            "ALTER COLUMN dnd_start TYPE TIME WITHOUT TIME ZONE "
+            "USING dnd_start::text::time"
+        )
     )
-    op.alter_column(
-        "user_preferences",
-        "dnd_end",
-        existing_type=sa.Time(timezone=True),
-        type_=sa.Time(timezone=False),
-        existing_nullable=True,
-        postgresql_using="dnd_end::text::time",
+    op.execute(
+        sa.text(
+            "-- squawk-ignore changing-column-type\n"
+            "ALTER TABLE user_preferences "
+            "ALTER COLUMN dnd_end TYPE TIME WITHOUT TIME ZONE "
+            "USING dnd_end::text::time"
+        )
     )
 
 

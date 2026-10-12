@@ -25,6 +25,15 @@ vi.mock("../scripts/live-e2e-credentials.mjs", () => ({
   requireLiveAdminPassword: () => "synthetic-only-unused",
 }))
 
+vi.mock("../scripts/live-registration-admission.mjs", () => ({
+  REGISTRATION_MAX_TEST_TIMEOUT_MS: 360_000,
+  readPlaywrightTestSlotDeadlineAtMs() {
+    throw new Error("Unexpected registration admission access in cleanup-only tests")
+  },
+  runLiveRegistrationAdmission() {
+    throw new Error("Unexpected registration admission access in cleanup-only tests")
+  },
+}))
 vi.mock("./e2e-live/http-status-diagnostic", async (importOriginal) => {
   const actual = await importOriginal()
   return {

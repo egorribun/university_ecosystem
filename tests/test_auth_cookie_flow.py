@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import secrets
 from datetime import UTC, datetime
 
 import pytest
@@ -12,7 +13,7 @@ from app.auth.security import decode_token, get_password_hash
 from app.core.config import settings
 from app.core.csrf import _ANON_NONCE_COOKIE_NAME
 from app.core.localization import translate
-from app.models import ActiveSession
+from app.models import ActiveSession, DataAccessLog
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -363,3 +364,101 @@ async def test_register_rate_limit(async_client, monkeypatch):
 
     assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert blocked.json()["detail"] == translate("errors.rate_limit.generic")
+
+
+async def test_profile_audit_writes_use_default_session_when_read_component_is_read_only(
+    app, async_client, user_factory, db_session, monkeypatch
+):
+    password = secrets.token_urlsafe(24)
+    user = await user_factory(
+        hashed_password=await get_password_hash(password),
+        is_active=True,
+        role="admin",
+    )
+    login = await _login(async_client, user.email, password)
+    assert login.status_code == 200
+
+    from app.core.database import get_read_db
+
+    class ReadOnlyReplicaSession:
+        def __init__(self, writable_session):
+            self._writable_session = writable_session
+            self.write_attempts = []
+
+        def __getattr__(self, name):
+            return getattr(self._writable_session, name)
+
+        def _reject_write(self, operation):
+            self.write_attempts.append(operation)
+            raise AssertionError("read replica rejected an audit write")
+
+        def add(self, _instance):
+            self._reject_write("add")
+
+        def add_all(self, _instances):
+            self._reject_write("add_all")
+
+        def delete(self, _instance):
+            self._reject_write("delete")
+
+        async def flush(self, *_args, **_kwargs):
+            self._reject_write("flush")
+
+        async def commit(self):
+            self._reject_write("commit")
+
+        async def execute(self, statement, *args, **kwargs):
+            if any(
+                getattr(statement, flag, False)
+                for flag in ("is_insert", "is_update", "is_delete")
+            ):
+                self._reject_write("execute")
+            return await self._writable_session.execute(statement, *args, **kwargs)
+
+    read_only_replica = ReadOnlyReplicaSession(db_session)
+
+    async def get_read_only_db():
+        yield read_only_replica
+
+    monkeypatch.setitem(app.dependency_overrides, get_read_db, get_read_only_db)
+
+    profile_response = await async_client.get("/users/me")
+    assert profile_response.status_code == 200
+    assert profile_response.json()["id"] == str(user.id)
+    assert read_only_replica.write_attempts == []
+
+    profile_logs = (
+        (
+            await db_session.execute(
+                select(DataAccessLog).where(
+                    DataAccessLog.actor_user_id == user.id,
+                    DataAccessLog.subject_user_id == user.id,
+                    DataAccessLog.resource_type == "profile",
+                    DataAccessLog.action == "read",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(profile_logs) == 1
+
+    listing_response = await async_client.get("/users")
+    assert listing_response.status_code == 200
+    assert read_only_replica.write_attempts == []
+
+    listed_profile_logs = (
+        (
+            await db_session.execute(
+                select(DataAccessLog).where(
+                    DataAccessLog.actor_user_id == user.id,
+                    DataAccessLog.subject_user_id == user.id,
+                    DataAccessLog.resource_type == "profile",
+                    DataAccessLog.action == "read",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(listed_profile_logs) == 2

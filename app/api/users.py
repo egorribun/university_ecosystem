@@ -183,7 +183,7 @@ async def reset_password(
 @inject
 async def me(
     request: Request,
-    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    db: FromDishka[AsyncDatabaseSession],
     auth_service: FromDishka[AuthService],
     user: models.User = Depends(get_current_user_full),
 ) -> schemas.UserOut:
@@ -408,7 +408,7 @@ async def get_users(
     request: Request,
     bg: BackgroundTasks,
     service: FromDishka[UserProfileService],
-    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    db: FromDishka[AsyncDatabaseSession],
     checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
     filters: schemas.UserSearchFilter = Depends(),
     current_user: UserDTO = Depends(deps.get_current_user_dto),

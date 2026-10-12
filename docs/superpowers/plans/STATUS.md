@@ -1,74 +1,95 @@
 # MVP — оперативный статус
 
-Контрольная точка: 2026-10-12 02:04 UTC (2026-10-12 по местному времени). Основания приёмки — [мастер-план](MVP_MASTER_PLAN.md),
+Контрольная точка: 2026-10-12 03:57 UTC. Основания приёмки — [мастер-план](MVP_MASTER_PLAN.md),
 [ТЗ](University_Ecosystem_MVP.md), [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md)
-и [audit ledger](../../audits/INDEX.md). Выпуск `v1.0.0` пока не подтверждён.
-Сводка зафиксирована перед публикацией следующего пакета исправлений.
+и [audit ledger](../../audits/INDEX.md).
+Сводка отражает опубликованный source 05b и проверенные локальные результаты кандидата; выпуск v1.0.0 не подтверждён.
 
-## Source и проверки
+## Опубликованный source и проверки
 
-- Работа остаётся на `egorribun`, в одном checkout и [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306); Root управляет Git.
-- Последний source, к которому относятся hosted-результаты: `f3f99a991e800edcc2881bdfe8b76f5512e38656`,
-  tree `a3d71663452845d6d653bfa60121f92574ab2768`. Точный join 76 пар
-  context/integration_id по active ruleset `8335285`: 71 SUCCESS, 2 FAILURE,
-  3 SKIPPED, 0 pending/absent. В [backend shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/38184697747/job/114609206805)
-  3224 PASS / 1 FAIL / 42 SKIP: WebSocket test double не имел `app`.
-  Второй failure — зависимый `CI Success`; это одна установленная причина,
-  исправление которой ещё требует свежего CI. Старые 76/76 SUCCESS не заменяют новый source.
-- На f3 обычные commit/push hooks прошли. Интегрированы проверка актуального `is_active`
-  под User row lock до INSERT/commit/JWT/Redis и отдельный Dishka REQUEST scope
-  с per-frame SpiceDB-проверкой privileged `get_online`; отказ/недоступность закрывает доступ.
-  Focused auth/session selection: 127 PASS. SQLite committed-state regression
-  не доказывает PostgreSQL lock scheduling; это не полный backend suite.
-- Следующий пакет от f3 содержит 41 code/test/config файл и этот STATUS.
-  Исправлены WebSocket test double, DND wall-clock contract и forward migration,
-  ожидание существующего PWA controller activation и Story overlay readiness.
-  Registration admission сериализует реальные UI submits в пределах действующего
-  production rate limit и прежних test deadlines; лимиты, retries и assertions не снижены.
-  Contract child project воспроизводит ESM package boundary реального frontend.
-- Локально для соответствующих неизменных файлов пакета PASS: полный TypeScript;
-  202 Node contracts (0 FAIL/SKIP/cancelled/todo); 18 overlay Vitest tests;
-  полный frontend lint (0 errors/warnings); Prettier; Ruff check/format и `git diff --check`.
-  Backend focused selection: 33 PASS. Более широкий policy/live-stand selection дал
-  1691 PASS / 2 FAIL; обе ошибки новых Story parser fixtures исправлены, затем
-  соответствующий focused selection дал 9 PASS. Это не повторный полный 1693-test run.
-  Scoped mypy двух DND source files: 0 errors, с предупреждениями о неиспользованных
-  config sections; полный zero-warning mypy этим не подтверждён.
-  После финального форматирования helper AST/comments и JSON content совпали.
-  Для пакета нужны ordinary commit/push hooks, новые required checks и live acceptance.
-- На f3 quiet-hours `PUT /users/me` вернул HTTP 500 в обоих проектах.
-  Trace подтвердил `NoneType.utcoffset` в asyncpg TIMETZ codec.
-  Исправление хранит naive local wall-clock отдельно от IANA timezone и сохраняет
-  local clock, microseconds и NULL при forward migration; offset-aware DTO отвергается.
-  Реальная изолированная PostgreSQL/asyncpg regression: 9 PASS, 0 FAIL/SKIP, pytest exit 0.
-  Общий первый test guard не подтвердил cleanup из-за ошибки оператора;
-  отдельная reconciliation PASS удалила только его остановленный test container
-  и связанный env-file. Эти два evidence не подменяют свежий HTTP 200 через profile API.
-- CodeQL на f3 SUCCESS: пять analyses относятся к PR synthetic merge `e5047bc8`,
-  не к main. Новых alerts не обнаружено; в проверенном PR ref open alerts: 0.
-  У 3384 latest instance fixed на `07742145`, но top-level state API не возвращает;
-  3382/3383 — прежние отдельно разрешённые false-positive dismissals.
-- Q1/Q4 и только ранее разрешённые 14+1 context removals сохранены; прочие правила
-  и required contexts остаются. CodeQL blocking, Semgrep — в pre-commit; quality floors
-  и Tier 0 100% не снижались.
+- Последний опубликованный source на egorribun, PR #1306: 05b57d5cf048365124ac376ae5592ac21bfbad6c,
+  tree cf3272085518f95f7877666da8e9811bb75033c0. Обычные commit/push hooks прошли.
+  Source receipt фиксирует 69 уникальных входных hashes и 42 changed files.
+  Рабочая ветка — egorribun; используется один checkout, Git остаётся под управлением root.
+- Точный снимок 76 required checks для 05b на 03:07 UTC: 69 SUCCESS, 0 PENDING,
+  4 FAILURE, 3 SKIPPED, 0 ABSENT, 0 INVALID. Две прямые первичные required failures —
+  Alembic и Frontend unit shard 2/4; два failed summaries — Frontend aggregate и CI
+  Success. Все три первичные причины workflow уже имели failures до этого snapshot:
+  Alembic/Squawk сообщил о двух ALTER случаях, frontend shard не загрузил
+  owned-session-cleanup.test.mjs из-за TypeError: The URL must be of scheme file,
+  а отдельный backend integration shard 0 сообщил RuntimeError: quiet-hour wall-clock
+  conversion теряет per-value TIMETZ offsets. Backend shard 0 сам не является отдельной
+  строкой 76 required checks; его связанный aggregate/skip effect отражён в снимке.
+  Это точный snapshot на 03:07 UTC до локальных исправлений, не результат следующего
+  source SHA.
 
-## Core и визуальная диагностика
+- В локальном migration candidate SQL render/Squawk 2.44 подтвердил: baseline=2,
+  candidate=0, намеренно внедрённое несвязанное негативное правило=1 caught.
+  Это показывает, что правило сохраняет обнаружение постороннего случая; это не hosted CI.
+- Migration policy/integrity suite прошёл 27/27. Scoped PostgreSQL/asyncpg rerun
+  прошёл 9/9 и подтвердил удаление ровно owned test container и временного env-file.
+- owned-session-cleanup.test.mjs прошёл 24/24 Vitest tests; Prettier подтвердил
+  неизменённые candidate bytes. Реальный Node contract для admission helper прошёл 11/11.
+  Полный TypeScript и полный frontend ESLint (0 errors/warnings) прошли; Prettier изменённых файлов и backend Ruff
+  также прошёл. Эти scoped checks не заменяют полную unit suite или свежие required checks.
+- Локальный RED через HTTP и read-replica proxy подтвердил отказ audit write.
+  Затем GET /users/me и GET /users переведены на writable default FromDishka dependency;
+  regression прошёл 1/1, auth-cookie selection — 9/9. В этом run stderr=0, source stability
+  подтверждена, children=0. Это локальная проверка, не fresh hosted check.
+- Для migration остаётся обязательной проверка на новом source/Core, включая настоящий
+  DND/profile HTTP 200. Scoped PostgreSQL результат проверяет codec и migration,
+  но не live HTTP путь.
+- Все required CodeQL rows в 05b snapshot имеют SUCCESS. Отдельный исторический f3 alert
+  query относился к PR synthetic merge e5047bc8, не к main; в проверенном PR ref open
+  alerts было 0. Для 05b свежий alert query не выполнялся. В историческом query у 3384
+  latest instance был fixed на 07742145, но top-level state API это не возвращал;
+  3382/3383 — прежние отдельно разрешённые false-positive dismissals. Нужны свежие
+  обязательные checks на следующем source SHA.
+- Q1/Q4 уже интегрированы. Ранее разрешены ровно 14 removals и отдельно
+  Security Audit / Semgrep SAST; все остальные правила и contexts сохранены.
+  CodeQL остаётся blocking, Semgrep — в pre-commit. Q2/Q3 и mutation/nightly policy
+  gates не продвигаются из v1.1. Quality floors и Tier 0 100% не снижались.
+## Core и продуктовые проверки
 
-- Core f3: state `C:\Temp\ue-live-acceptance\run-8cc6cab1-9ae6-4c15-ab96-5592853be822`,
-  project `ue-live-813b128d3326b281`, signed schema 11 / 23 services.
-  Up, seed и readiness/cookie probes прошли. В 00:58Z штатно остановлены все 23
-  containers, 0 running; шесть data volumes сохранены, owned builder остановлен.
-- Targeted cohort 32 на f3: G1 8 PASS / 4 FAIL, G2 0 PASS / 14 FAIL,
-  G3 0 PASS / 6 FAIL; без skips, flakes, interruption или source drift.
-  Это диагностика, не продуктовая приёмка. Отдельные native permission cases:
-  4 PASS; subscription и delivery этим не подтверждены.
-- С принадлежащим работе browser cache два Story tests дошли до strict cycle-0
-  DOM comparison и упали. Lazy global overlay effects — проверяемая гипотеза,
-  ещё не доказанная live-прогоном текущего readiness fix. Все 20 cycles, точное
-  DOM equality, heap floor и hidden-tab assertions сохранены.
-- News V7 на прежнем source: 12 гидратированных вариантов, DOM=10, paint=0,
-  PNG=0, layout/opacity=0; четыре aborted avatar requests на 1440px.
-  Новый Layout fix ещё требует fresh-source screenshots. Пакет News не утверждён.
+- Core на 05b прошёл up: state C:\Temp\ue-live-acceptance\run-87a0640e-ac37-41a7-91e5-4b1fac6ae46b,
+  project ue-live-ae71e7cc6d3304fa. В этой сессии не выполнялись новые seed/readiness/cookie
+  probes. В 02:37 UTC штатный stop подтвердил 23 остановленных контейнера и сохранение
+  шести volumes; receipt core-stop-before-ci-fixes-05b-root-v3-dfb9a69325a1495cb3e1cb23724a53d5.guard.json.
+- На 05b нет нового полного targeted cohort. Последний cohort 32 относится к f3:
+  G1 8 PASS / 4 FAIL, G2 0 PASS / 14 FAIL, G3 0 PASS / 6 FAIL; без skips, flakes,
+  interruption или source drift. Это диагностика, не продуктовая приёмка.
+- Фокусированный Story run на f3 дошёл до строгого cycle-0 DOM сравнения и упал в обоих
+  проектах. Listener totals warm→cycle 0: desktop 445→452, mobile 456→457. Buckets показали
+  document visibilitychange +1, keydown +1 и window other +4; documentTree без изменения.
+  Это наблюдение, не attribution конкретным callback. Readiness change остаётся
+  непроверенным live на 05b; exact DOM/heap/20-cycle/hidden-tab assertions не менялись.
+- Исторический News V7 capture завершился capture_validation exit 9, cleanup не подтверждён.
+  12 diagnostic sidecars содержали layout geometry; opacity=0, PNG=0. Четыре aborted avatar
+  requests были на 1440px. News не принят и baseline не обновлён; для нового source требуется
+  новый capture и отдельное owner approval.
+- Четыре native permission cases на прежнем source прошли; это не подтверждает subscription
+  или delivery.
+- Traceability inventory: Home12 ddbbc84d уже утверждён владельцем для layout; это
+  одобрение сохраняется, а оставшиеся News/Events/Schedule visuals требуют новых
+  current-source captures и отдельного owner approval. Existing Events keyboard/ARIA
+  coverage проверяет поведение; ожидаемый Events12 visual должен также дать reviewable
+  evidence вертикального центрирования активного tab.
+  Profile в ТЗ §7 требует адаптивную сетку. Отдельный mocked browser scenario
+  frontend/tests/e2e/profile-responsive.spec.ts (SHA-256
+  47ba87360324808b302c08810bf5b4a10f2e64c052e7f1665bab5fd5b269b2d3) прошёл Chromium
+  1/1 на 390/768/1440px; guard profile-responsive-split-mocked-working6-05b-root-v3-85c3a850bd7c4b4684aa61a07266dc27.guard.json
+  SHA-256 82b057e3a7b1f6e17e064df8d3b038b3c5f31058aaa4b8a07f8a20e9a4f3194e подтвердил
+  source stability, 0 children, stderr=0, peak RAM 57.88% и 13.40GiB free. Firefox/WebKit
+  projects остаются pending final matrix.
+  Отдельный существующий Profile screenshot run на Windows завершился 14% diff до новых
+  geometry assertions; причина не установлена. Screenshot spec восстановлен к parent
+  версии, baseline не обновлялся, Profile visual acceptance не заявлена.
+  Source inventory охватывает все 63 audit IDs; per-ID RC dispositions остаются pending,
+  owner acceptance не заявлена. В ограниченном frontend inventory не найден WebAuthn/passkey flow; это
+  соответствует явному требованию ТЗ §1 убрать аппаратные security keys.
+
+- Открытые traceability/visual confirmations остаются частью закрытия ТЗ 2–13; не считать их
+  выполненными только по наличию компонента или отдельного unit test.
 
 ## Следующие критерии MVP
 
