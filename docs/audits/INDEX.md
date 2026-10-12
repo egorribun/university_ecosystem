@@ -20,6 +20,9 @@ release claims require fresh evidence under the master plan.
   register for `e9a6bd18c` (AUD-001…AUD-163 revalidated, AUD-164+ new),
   including security, live-stand, migration and full test-run results. It
   supersedes the interim `7818284` checkpoint report kept outside the repository.
+- [Dependency update report, October 2026](dependency-updates-2026-10/README.md)
+  — read-only inventory of patch/minor/major updates and security fixes for
+  `04fdd84c2`; no update has been applied.
 - [Codebase consolidation decisions](../adr/ADR-046-codebase-consolidation-audit.md)
   — outcome of the 2026-10 dead-code, duplication and contract-drift audit:
   what was fixed, retired and deliberately kept, with the evidence rules used.

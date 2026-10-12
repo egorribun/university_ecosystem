@@ -51,6 +51,7 @@ handoffs are intentionally not part of the canonical index.
 - [Canonical audit index and retention policy](audits/INDEX.md)
 - [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
   open-finding register
+- [Dependency update report, October 2026](audits/dependency-updates-2026-10/README.md)
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
