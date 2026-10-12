@@ -59,7 +59,7 @@ export const deletePendingTotpEnrollment = async (enrollmentId: string) => {
 }
 
 export const verifyMfaChallenge = async (payload: MfaVerifyPayload) => {
-  const requestOptions = { skipRateLimitQueue: true } satisfies ApiRequestConfig
+  const requestOptions: ApiRequestConfig = { skipRateLimitQueue: true }
   const { data } = await api.post<{ access_token: string; token_type: string }>(
     "/auth/mfa/verify",
     payload,
