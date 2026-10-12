@@ -61,12 +61,13 @@ For MVP release databases, Alembic downgrades must not cross the irreversible
 boundary at revisions 202608250001 and 202608250002. Both revisions declare
 an irreversible downgrade and raise before changing schema.
 
-The current migration graph also contains irreversible revisions 202610010001
-and 202610120001. The existing migration_downgrade_policy.py planner therefore
-selects 202610120001 as the safe target. The CI migration gate downgrades only
-to that computed target, verifies that crossing to its parent fails with the
-declared reason, and then upgrades to head. The original owner decision does
-not make these later data-loss barriers reversible.
+The current migration graph also contains irreversible revision 202610120001.
+Its parent, 202610010001, retains the unused tables and their data on both upgrade
+and downgrade. The existing migration_downgrade_policy.py planner selects
+202610120001 as the safe target. The CI migration gate downgrades only to that
+computed target, verifies that crossing to its parent fails with the declared
+reason, and then upgrades to head. The original owner decision does not make
+this later data-loss barrier reversible.
 
 If recovery requires a schema below this boundary, restore a consistent
 backup/restore set rather than invoking older Alembic downgrade functions.
