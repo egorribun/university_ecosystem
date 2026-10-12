@@ -5284,6 +5284,7 @@ _PWA_UPDATE_LIFECYCLE_DIAG_KEYS = (
 )
 _PWA_UPDATE_LIFECYCLE_STATES = (
     "none",
+    "parsed",
     "installing",
     "installed",
     "activating",

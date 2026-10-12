@@ -5,7 +5,8 @@ import { replacePrecacheRevision } from "./pwa-precache-revision"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
 const PWA_UPDATE_LIFECYCLE_DIAG_PREFIX = "PWA_UPDATE_LIFECYCLE_DIAG "
-type PwaWorkerState = "none" | "installing" | "installed" | "activating" | "activated" | "redundant"
+type PwaWorkerState =
+  "none" | "parsed" | "installing" | "installed" | "activating" | "activated" | "redundant"
 
 type PwaUpdateLifecycleState = {
   diagnosticStatus: "available" | "unavailable"

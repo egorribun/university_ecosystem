@@ -8084,6 +8084,23 @@ def test_live_playwright_pwa_update_lifecycle_parser_accepts_available_and_unava
     ) == [available, unavailable]
 
 
+def test_live_playwright_pwa_update_lifecycle_accepts_parsed_but_rejects_unknown_state() -> (
+    None
+):
+    parsed = _pwa_update_lifecycle_diag_record(installingState="parsed")
+    unknown = {**parsed, "waitingState": "received"}
+
+    assert live_stand._live_playwright_pwa_update_lifecycle_diagnostics(
+        _pwa_update_lifecycle_diag_row(parsed)
+    ) == [parsed]
+    assert (
+        live_stand._live_playwright_pwa_update_lifecycle_diagnostics(
+            _pwa_update_lifecycle_diag_row(unknown)
+        )
+        == []
+    )
+
+
 def test_live_playwright_pwa_update_lifecycle_rejects_private_or_inconsistent_rows() -> (
     None
 ):

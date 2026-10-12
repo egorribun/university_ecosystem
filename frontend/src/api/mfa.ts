@@ -1,4 +1,4 @@
-import api from "@/api/client"
+import api, { type ApiRequestConfig } from "@/api/client"
 import {
   confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost,
   deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete,
@@ -59,10 +59,11 @@ export const deletePendingTotpEnrollment = async (enrollmentId: string) => {
 }
 
 export const verifyMfaChallenge = async (payload: MfaVerifyPayload) => {
+  const requestOptions = { skipRateLimitQueue: true } satisfies ApiRequestConfig
   const { data } = await api.post<{ access_token: string; token_type: string }>(
     "/auth/mfa/verify",
     payload,
-    { skipRateLimitQueue: true }
+    requestOptions
   )
   return data
 }
