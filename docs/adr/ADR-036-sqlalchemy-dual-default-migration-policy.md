@@ -58,12 +58,15 @@ downgrade, ORM and direct-write evidence.
 ## MVP Release Rollback Boundary (Owner Decision, 2026-10-12)
 
 For MVP release databases, Alembic downgrades must not cross the irreversible
-boundary at revisions 202608250001 and 202608250002. The current
-migration_downgrade_policy.py plan selects 202608250002 as the safe target;
-the CI migration gate downgrades only to that target, verifies that a request
-to cross to its parent fails with the declared reason, and then upgrades to
-head. Both boundary revisions declare an irreversible downgrade and raise
-before changing schema. This is the approved release path.
+boundary at revisions 202608250001 and 202608250002. Both revisions declare
+an irreversible downgrade and raise before changing schema.
+
+The current migration graph also contains irreversible revisions 202610010001
+and 202610120001. The existing migration_downgrade_policy.py planner therefore
+selects 202610120001 as the safe target. The CI migration gate downgrades only
+to that computed target, verifies that crossing to its parent fails with the
+declared reason, and then upgrades to head. The original owner decision does
+not make these later data-loss barriers reversible.
 
 If recovery requires a schema below this boundary, restore a consistent
 backup/restore set rather than invoking older Alembic downgrade functions.
@@ -87,6 +90,8 @@ References: [owner decision and AUD-324](../audits/AUDIT-2026-10.md),
 [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md),
 [202608250001](../../alembic/versions/202608250001_expand_email_otp_mfa.py),
 [202608250002](../../alembic/versions/202608250002_contract_retire_webauthn.py),
+[202610010001](../../alembic/versions/202610010001_drop_unused_user_stats_and_vector_chunks.py),
+[202610120001](../../alembic/versions/202610120001_dnd_wall_clock_time.py),
 [downgrade policy](../../scripts/quality/migration_downgrade_policy.py),
 [CI migration gate](../../.github/workflows/ci.yml),
 [PostgreSQL round-trip test](../../tests/integration/test_migration_roundtrip.py).

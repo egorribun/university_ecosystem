@@ -20,7 +20,7 @@ function expectNativeNoncePair(headers: Record<string, string>, html: string): s
   const inlineScripts = Array.from(html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/giu))
   expect(
     inlineScripts.some(
-      ([, attributes, body]) =>
+      ([, attributes = "", body = ""]) =>
         !/(?:^|\s)src\s*=/iu.test(attributes) &&
         attributes.match(/(?:^|\s)nonce\s*=\s*"([^"]+)"/iu)?.[1] === nonce &&
         body.trim().length > 0
