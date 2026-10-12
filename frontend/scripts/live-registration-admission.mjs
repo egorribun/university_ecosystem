@@ -19,6 +19,52 @@ const MODULE_REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url))
 const PLAYWRIGHT_CORE_REQUIRE = createRequire(import.meta.url)
 const LEDGER_DIRECTORY = ".live-registration-admission"
 const LEDGER_FILE = "ledger.json"
+const DIAGNOSTIC_PREFIX = "REGISTRATION_ADMISSION_DIAG "
+const DIAGNOSTIC_STAGES = new Set([
+  "deadline",
+  "origin",
+  "state-root",
+  "owner-read",
+  "ledger-read",
+  "quiet-wait",
+  "rolling-wait",
+  "reserve",
+  "submit",
+  "request-drain",
+  "confirm",
+])
+const DIAGNOSTIC_ERROR_CLASSES = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "AggregateError",
+  "AbortError",
+  "TimeoutError",
+  "PlaywrightError",
+  "AssertionError",
+])
+const DIAGNOSTIC_NODE_CODES = new Set([
+  "EACCES",
+  "EADDRINUSE",
+  "EBUSY",
+  "ECONNRESET",
+  "EEXIST",
+  "EINVAL",
+  "EISDIR",
+  "EMFILE",
+  "ENOENT",
+  "ENOSPC",
+  "EPERM",
+  "ETIMEDOUT",
+  "ERR_INVALID_ARG_TYPE",
+  "ERR_MODULE_NOT_FOUND",
+])
+const DIAGNOSTIC_MAX_MS = 360_000
+const DIAGNOSTIC_MAX_REQUESTS = 256
 
 const LEDGER_KEYS = ["events", "ownerBinding", "pending", "updatedAtMs", "version"]
 const EVENT_KEYS = ["completedAtMs", "cost"]
@@ -30,6 +76,122 @@ function isRecord(value) {
 
 function hasExactKeys(value, expected) {
   return isRecord(value) && Object.keys(value).sort().join("\0") === [...expected].sort().join("\0")
+}
+
+function boundedDiagnosticInteger(value, maximum) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) return null
+  return value
+}
+
+function boundedDiagnosticRemaining(value) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 1 ||
+    value > DIAGNOSTIC_MAX_MS
+  ) {
+    return null
+  }
+  return Math.floor(value)
+}
+
+function boundedDiagnosticCounter(value) {
+  if (!Number.isSafeInteger(value) || value < 0) return 0
+  return Math.min(value, DIAGNOSTIC_MAX_REQUESTS)
+}
+
+function safeDiagnosticErrorClass(error) {
+  try {
+    const name = Reflect.get(Reflect.get(error, "constructor"), "name")
+    return typeof name === "string" && DIAGNOSTIC_ERROR_CLASSES.has(name) ? name : "other"
+  } catch {
+    return "other"
+  }
+}
+
+function safeDiagnosticNodeCode(error) {
+  try {
+    const code = Reflect.get(error, "code")
+    if (code === undefined || code === null) return null
+    return typeof code === "string" && DIAGNOSTIC_NODE_CODES.has(code) ? code : "other"
+  } catch {
+    return "other"
+  }
+}
+
+function registrationDiagnostic(project, cost) {
+  return {
+    project: project === "mobile" ? "mobile" : "desktop",
+    stage: "reserve",
+    cost: Number.isInteger(cost) && cost >= 1 && cost <= REGISTRATION_MAX_COST ? cost : null,
+    timeoutMs: null,
+    deadlineAtMs: null,
+    ownerPresent: false,
+    ledgerPresent: false,
+    requestCount: 0,
+    activeRequestCount: 0,
+    responseObserved: false,
+    status: null,
+    actionFailed: false,
+    failureStage: null,
+  }
+}
+
+/** Emit only a fixed-schema failure record. Original errors are always handled by the caller. */
+export function reportLiveRegistrationAdmissionFailure(project, stage, error, details = {}) {
+  const trace = registrationDiagnostic(project, details.cost)
+  trace.stage = DIAGNOSTIC_STAGES.has(stage) ? stage : "deadline"
+  trace.timeoutMs =
+    boundedDiagnosticInteger(details.timeoutMs, DIAGNOSTIC_MAX_MS) > 0 ? details.timeoutMs : null
+  trace.deadlineAtMs =
+    typeof details.deadlineAtMs === "number" && Number.isFinite(details.deadlineAtMs)
+      ? details.deadlineAtMs
+      : null
+  trace.ownerPresent = details.ownerPresent === true
+  trace.ledgerPresent = details.ledgerPresent === true
+  trace.requestCount = boundedDiagnosticCounter(details.requestCount)
+  trace.activeRequestCount = boundedDiagnosticCounter(details.activeRequestCount)
+  trace.responseObserved = details.responseObserved === true
+  trace.status =
+    Number.isInteger(details.status) && details.status >= 100 && details.status <= 599
+      ? details.status
+      : null
+  trace.actionFailed = details.actionFailed === true
+  try {
+    emitRegistrationAdmissionFailure(trace, error, stage)
+  } catch {
+    // Diagnostics must never replace the operation's original result or exception.
+  }
+}
+
+function emitRegistrationAdmissionFailure(trace, error, fallbackStage) {
+  const now = performance.now()
+  const remaining =
+    trace.deadlineAtMs === null || !Number.isFinite(now)
+      ? null
+      : boundedDiagnosticRemaining(trace.deadlineAtMs - now)
+  const record = {
+    schema: 1,
+    project: trace.project,
+    stage: DIAGNOSTIC_STAGES.has(trace.failureStage ?? trace.stage)
+      ? (trace.failureStage ?? trace.stage)
+      : fallbackStage,
+    errorClass: safeDiagnosticErrorClass(error),
+    nodeCode: safeDiagnosticNodeCode(error),
+    cost: trace.cost,
+    timeoutMs: trace.timeoutMs,
+    remainingMs: remaining,
+    requestCount: boundedDiagnosticCounter(trace.requestCount),
+    activeRequestCount: boundedDiagnosticCounter(trace.activeRequestCount),
+    deadlineAvailable: trace.deadlineAtMs !== null,
+    ownerPresent: trace.ownerPresent,
+    ledgerPresent: trace.ledgerPresent,
+    requestObserved: trace.requestCount > 0,
+    responseObserved: trace.responseObserved,
+    actionFailed: trace.actionFailed,
+    status: trace.status,
+  }
+  console.log(DIAGNOSTIC_PREFIX + JSON.stringify(record))
 }
 
 function comparablePath(value, platform = process.platform) {
@@ -424,8 +586,9 @@ async function readOwnerBinding(stateRoot) {
   return { realRoot, ownerBinding }
 }
 
-async function admissionPaths(stateRoot, { createDirectory = false } = {}) {
+async function admissionPaths(stateRoot, { createDirectory = false, diagnosticTrace = null } = {}) {
   const { realRoot, ownerBinding } = await readOwnerBinding(stateRoot)
+  if (diagnosticTrace !== null) diagnosticTrace.ownerPresent = true
   const directory = join(realRoot, ".secrets", LEDGER_DIRECTORY)
   if (createDirectory) {
     try {
@@ -604,33 +767,70 @@ function waitForTrackedRequests(activeRequests, changed, deadlineAtMs) {
   })
 }
 
-export async function runLiveRegistrationAdmission(page, deadlineAtMs, cost, action) {
-  if (activeReservation) {
-    throw new Error("live registration admission cannot overlap registration callbacks")
-  }
-  if ((cost !== 1 && cost !== 2) || typeof action !== "function") {
-    throw new Error("live registration admission received an invalid reservation")
-  }
-  activeReservation = true
+export async function runLiveRegistrationAdmission(
+  page,
+  deadlineAtMs,
+  cost,
+  action,
+  project = "desktop",
+  timeoutMs = null
+) {
+  const trace = registrationDiagnostic(project, cost)
+  trace.timeoutMs = boundedDiagnosticInteger(timeoutMs, DIAGNOSTIC_MAX_MS) > 0 ? timeoutMs : null
+  trace.deadlineAtMs =
+    typeof deadlineAtMs === "number" && Number.isFinite(deadlineAtMs) && deadlineAtMs > 0
+      ? deadlineAtMs
+      : null
   try {
-    return await runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, action)
-  } finally {
-    activeReservation = false
+    if (activeReservation) {
+      throw new Error("live registration admission cannot overlap registration callbacks")
+    }
+    if ((cost !== 1 && cost !== 2) || typeof action !== "function") {
+      throw new Error("live registration admission received an invalid reservation")
+    }
+    activeReservation = true
+    try {
+      return await runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, action, trace)
+    } finally {
+      activeReservation = false
+    }
+  } catch (error) {
+    try {
+      emitRegistrationAdmissionFailure(trace, error, "reserve")
+    } catch {
+      // Preserve the original error if the diagnostic sink is unavailable.
+    }
+    throw error
   }
 }
 
-async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, action) {
+async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, action, trace) {
+  trace.stage = "origin"
   const origin = requirePageOrigin(page)
+  trace.stage = "state-root"
   const stateRoot = resolveLiveRegistrationStateRoot()
-  const paths = await admissionPaths(stateRoot)
+  trace.stage = "owner-read"
+  trace.ownerPresent = false
+  const paths = await admissionPaths(stateRoot, { diagnosticTrace: trace })
+  trace.ownerPresent = true
+  trace.stage = "ledger-read"
+  trace.ledgerPresent = false
   let ledger = await readLedger(paths)
+  trace.ledgerPresent = true
   let nowMs = Date.now()
 
   if (ledger.pending !== null) {
+    trace.stage = "quiet-wait"
     assertRegistrationWaitFits(REGISTRATION_UNKNOWN_DRAIN_MS, deadlineAtMs, performance.now())
     await delay(REGISTRATION_UNKNOWN_DRAIN_MS)
-    const currentPaths = await admissionPaths(stateRoot)
+    trace.stage = "owner-read"
+    trace.ownerPresent = false
+    const currentPaths = await admissionPaths(stateRoot, { diagnosticTrace: trace })
+    trace.ownerPresent = true
+    trace.stage = "ledger-read"
+    trace.ledgerPresent = false
     const current = await readLedger(currentPaths)
+    trace.ledgerPresent = true
     if (
       currentPaths.ownerBinding !== paths.ownerBinding ||
       current.pending === null ||
@@ -640,29 +840,42 @@ async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, a
       throw new Error("live registration admission pending state changed during its quiet interval")
     }
     nowMs = Date.now()
+    trace.stage = "confirm"
     await writeLedger(
       currentPaths,
       ownerBoundLedger(currentPaths.ownerBinding, nowMs, pruneEvents(current.events, nowMs), null)
     )
+    trace.stage = "ledger-read"
+    trace.ledgerPresent = false
     ledger = await readLedger(currentPaths)
+    trace.ledgerPresent = true
   }
 
+  trace.stage = "rolling-wait"
   const waitMs = computeRegistrationWaitMs(pruneEvents(ledger.events, nowMs), cost, nowMs)
   assertRegistrationWaitFits(waitMs, deadlineAtMs, performance.now())
   if (waitMs > 0) await delay(waitMs)
 
-  let reservationPaths = await admissionPaths(stateRoot)
+  trace.stage = "owner-read"
+  trace.ownerPresent = false
+  let reservationPaths = await admissionPaths(stateRoot, { diagnosticTrace: trace })
+  trace.ownerPresent = true
   if (reservationPaths.ownerBinding !== paths.ownerBinding) {
     throw new Error("live registration admission owner changed before submit")
   }
+  trace.stage = "ledger-read"
+  trace.ledgerPresent = false
   ledger = await readLedger(reservationPaths)
+  trace.ledgerPresent = true
 
   let reservedAtMs
   while (true) {
+    trace.stage = "reserve"
     if (ledger.pending !== null) {
       throw new Error("live registration admission has an unresolved prior request")
     }
     nowMs = Date.now()
+    trace.stage = "rolling-wait"
     const remainingWaitMs = computeRegistrationWaitMs(
       pruneEvents(ledger.events, nowMs),
       cost,
@@ -674,13 +887,20 @@ async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, a
     }
     assertRegistrationWaitFits(remainingWaitMs, deadlineAtMs, performance.now())
     await delay(remainingWaitMs)
-    reservationPaths = await admissionPaths(stateRoot)
+    trace.stage = "owner-read"
+    trace.ownerPresent = false
+    reservationPaths = await admissionPaths(stateRoot, { diagnosticTrace: trace })
+    trace.ownerPresent = true
     if (reservationPaths.ownerBinding !== paths.ownerBinding) {
       throw new Error("live registration admission owner changed before submit")
     }
+    trace.stage = "ledger-read"
+    trace.ledgerPresent = false
     ledger = await readLedger(reservationPaths)
+    trace.ledgerPresent = true
   }
 
+  trace.stage = "reserve"
   assertRegistrationWaitFits(0, deadlineAtMs, performance.now())
   const pruned = pruneEvents(ledger.events, reservedAtMs)
   await writeLedger(
@@ -690,6 +910,7 @@ async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, a
       cost,
     })
   )
+  trace.ledgerPresent = true
 
   const activeRequests = new Map()
   const changeListeners = []
@@ -698,29 +919,47 @@ async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, a
   const onRequest = (request) => {
     if (!isOwnedRegistrationRequest(request, origin)) return
     requestCount += 1
+    trace.requestCount = requestCount
     activeRequests.set(request, true)
+    trace.activeRequestCount = activeRequests.size
   }
   const onRequestComplete = (request) => {
     if (!activeRequests.delete(request)) return
+    trace.activeRequestCount = activeRequests.size
     latestCompletionAtMs = Math.max(latestCompletionAtMs, Date.now())
     for (const notify of changeListeners.splice(0)) notify()
+  }
+  const onResponse = (response) => {
+    try {
+      const request = response.request()
+      if (!activeRequests.has(request)) return
+      trace.responseObserved = true
+      const status = response.status()
+      trace.status = Number.isInteger(status) && status >= 100 && status <= 599 ? status : null
+    } catch {
+      // Response accessors are observational; their failures must not affect admission.
+    }
   }
 
   page.on("request", onRequest)
   page.on("requestfinished", onRequestComplete)
   page.on("requestfailed", onRequestComplete)
+  page.on("response", onResponse)
 
   let value
   let actionError
   let actionFailed = false
   try {
     try {
+      trace.stage = "submit"
       value = await action()
     } catch (error) {
       actionFailed = true
+      trace.actionFailed = true
       actionError = error
     }
 
+    trace.stage = "request-drain"
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 0))
     while (activeRequests.size > 0) {
       const settled = await waitForTrackedRequests(activeRequests, changeListeners, deadlineAtMs)
@@ -729,12 +968,19 @@ async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, a
 
     const completedKnownRequest = requestCount > 0 && activeRequests.size === 0
     if (completedKnownRequest && requestCount <= cost) {
+      trace.stage = "confirm"
       const completedAtMs = Math.max(latestCompletionAtMs, Date.now())
-      const completionPaths = await admissionPaths(stateRoot)
+      trace.stage = "owner-read"
+      trace.ownerPresent = false
+      const completionPaths = await admissionPaths(stateRoot, { diagnosticTrace: trace })
+      trace.ownerPresent = true
       if (completionPaths.ownerBinding !== reservationPaths.ownerBinding) {
         throw new Error("live registration admission owner changed after submit")
       }
+      trace.stage = "ledger-read"
+      trace.ledgerPresent = false
       const latest = await readLedger(completionPaths)
+      trace.ledgerPresent = true
       if (
         latest.pending === null ||
         latest.pending.startedAtMs !== reservedAtMs ||
@@ -749,7 +995,14 @@ async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, a
         ownerBoundLedger(completionPaths.ownerBinding, completedAtMs, events, null)
       )
     } else {
-      const current = await readLedger(await admissionPaths(stateRoot))
+      trace.stage = "owner-read"
+      trace.ownerPresent = false
+      const currentPaths = await admissionPaths(stateRoot, { diagnosticTrace: trace })
+      trace.ownerPresent = true
+      trace.stage = "ledger-read"
+      trace.ledgerPresent = false
+      const current = await readLedger(currentPaths)
+      trace.ledgerPresent = true
       if (current.pending === null) {
         throw new Error("live registration admission lost its fail-closed reservation")
       }
@@ -758,11 +1011,15 @@ async function runLiveRegistrationAdmissionExclusive(page, deadlineAtMs, cost, a
       }
     }
 
-    if (actionFailed) throw actionError
+    if (actionFailed) {
+      trace.failureStage = "submit"
+      throw actionError
+    }
     return value
   } finally {
     page.off("request", onRequest)
     page.off("requestfinished", onRequestComplete)
     page.off("requestfailed", onRequestComplete)
+    page.off("response", onResponse)
   }
 }

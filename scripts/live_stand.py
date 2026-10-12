@@ -4353,6 +4353,110 @@ _PLAYWRIGHT_STORY_MEMORY_RECORD_KEYS = (
 )
 _PlaywrightStoryMemoryRecord = dict[str, object]
 
+_STORY_MEMORY_CYCLE_TRACE_PREFIX = "STORY_MEMORY_CYCLE_TRACE_DIAG "
+_STORY_MEMORY_CYCLE_TRACE_KEYS = (
+    "schema",
+    "project",
+    "diagnosticStatus",
+    "samples",
+)
+_STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS = (
+    "baseline",
+    "dialogOpen",
+    "hiddenResumed",
+    "afterCloseSettled",
+)
+_STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS = ("documents", "nodes", "jsEventListeners")
+_STORY_MEMORY_CYCLE_TRACE_LINE_BYTES_LIMIT = 2048
+_STORY_MEMORY_CYCLE_TRACE_RECORD_LIMIT = 4
+
+
+def _validated_story_memory_cycle_trace(value: object) -> dict[str, object] | None:
+    record = _story_memory_object(value, _STORY_MEMORY_CYCLE_TRACE_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    project = record["project"]
+    status = record["diagnosticStatus"]
+    if project not in ("desktop", "mobile") or status not in (
+        "available",
+        "partial",
+        "unavailable",
+    ):
+        return None
+    samples = _story_memory_object(
+        record["samples"], _STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS
+    )
+    if samples is None:
+        return None
+    normalized_samples: dict[str, dict[str, int] | None] = {}
+    present = 0
+    for sample_name in _STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS:
+        sample = samples[sample_name]
+        if sample is None:
+            normalized_samples[sample_name] = None
+            continue
+        counts = _story_memory_object(sample, _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS)
+        if counts is None:
+            return None
+        normalized: dict[str, int] = {}
+        for key in _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS:
+            count = counts[key]
+            if (
+                type(count) is not int
+                or count < 0
+                or count > _PLAYWRIGHT_STORY_MEMORY_MAX_COUNT
+            ):
+                return None
+            normalized[key] = count
+        present += 1
+        normalized_samples[sample_name] = normalized
+    if (
+        (status == "available" and present != 4)
+        or (status == "partial" and not 1 <= present <= 3)
+        or (status == "unavailable" and present != 0)
+    ):
+        return None
+    return {
+        "schema": 1,
+        "project": project,
+        "diagnosticStatus": status,
+        "samples": normalized_samples,
+    }
+
+
+def _live_playwright_story_memory_cycle_trace_diagnostics(
+    output: str,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _STORY_MEMORY_CYCLE_TRACE_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_STORY_MEMORY_CYCLE_TRACE_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_STORY_MEMORY_CYCLE_TRACE_PREFIX) :],
+                object_pairs_hook=_story_memory_json_object,
+                parse_constant=_reject_story_memory_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_story_memory_cycle_trace(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _STORY_MEMORY_CYCLE_TRACE_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
 
 def _story_memory_object(
     value: object, expected_keys: tuple[str, ...]
@@ -4909,6 +5013,174 @@ def _live_playwright_auth_registration_diagnostics(
     return records
 
 
+_REGISTRATION_ADMISSION_DIAG_PREFIX = "REGISTRATION_ADMISSION_DIAG "
+_REGISTRATION_ADMISSION_DIAG_KEYS = (
+    "schema",
+    "project",
+    "stage",
+    "errorClass",
+    "nodeCode",
+    "cost",
+    "timeoutMs",
+    "remainingMs",
+    "requestCount",
+    "activeRequestCount",
+    "deadlineAvailable",
+    "ownerPresent",
+    "ledgerPresent",
+    "requestObserved",
+    "responseObserved",
+    "actionFailed",
+    "status",
+)
+_REGISTRATION_ADMISSION_DIAG_STAGES = (
+    "deadline",
+    "origin",
+    "state-root",
+    "owner-read",
+    "ledger-read",
+    "quiet-wait",
+    "rolling-wait",
+    "reserve",
+    "submit",
+    "request-drain",
+    "confirm",
+)
+_REGISTRATION_ADMISSION_DIAG_ERROR_CLASSES = (
+    "Error",
+    "TypeError",
+    "RangeError",
+    "ReferenceError",
+    "SyntaxError",
+    "URIError",
+    "EvalError",
+    "AggregateError",
+    "AbortError",
+    "TimeoutError",
+    "PlaywrightError",
+    "AssertionError",
+    "other",
+)
+_REGISTRATION_ADMISSION_DIAG_NODE_CODES = (
+    "EACCES",
+    "EADDRINUSE",
+    "EBUSY",
+    "ECONNRESET",
+    "EEXIST",
+    "EINVAL",
+    "EISDIR",
+    "EMFILE",
+    "ENOENT",
+    "ENOSPC",
+    "EPERM",
+    "ETIMEDOUT",
+    "ERR_INVALID_ARG_TYPE",
+    "ERR_MODULE_NOT_FOUND",
+)
+_REGISTRATION_ADMISSION_DIAG_LINE_BYTES_LIMIT = 1024
+_REGISTRATION_ADMISSION_DIAG_RECORD_LIMIT = 4
+_REGISTRATION_ADMISSION_DIAG_MAX_MS = 360_000
+_REGISTRATION_ADMISSION_DIAG_MAX_REQUESTS = 256
+_REGISTRATION_ADMISSION_DIAG_MAX_COST = 5
+
+
+def _validated_registration_admission_diag(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _REGISTRATION_ADMISSION_DIAG_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    if (
+        not isinstance(record["project"], str)
+        or record["project"] not in _PLAYWRIGHT_FAILURE_PROJECTS
+    ):
+        return None
+    if record["stage"] not in _REGISTRATION_ADMISSION_DIAG_STAGES:
+        return None
+    if record["errorClass"] not in _REGISTRATION_ADMISSION_DIAG_ERROR_CLASSES:
+        return None
+    if record["nodeCode"] is not None and record["nodeCode"] not in (
+        *_REGISTRATION_ADMISSION_DIAG_NODE_CODES,
+        "other",
+    ):
+        return None
+    cost = record["cost"]
+    if cost is not None and (
+        type(cost) is not int or not 1 <= cost <= _REGISTRATION_ADMISSION_DIAG_MAX_COST
+    ):
+        return None
+    for key in ("timeoutMs", "remainingMs"):
+        number = record[key]
+        if number is not None and (
+            type(number) is not int
+            or not 1 <= number <= _REGISTRATION_ADMISSION_DIAG_MAX_MS
+        ):
+            return None
+    for key in ("requestCount", "activeRequestCount"):
+        number = record[key]
+        if (
+            type(number) is not int
+            or not 0 <= number <= _REGISTRATION_ADMISSION_DIAG_MAX_REQUESTS
+        ):
+            return None
+    if record["activeRequestCount"] > record["requestCount"]:
+        return None
+    for key in (
+        "deadlineAvailable",
+        "ownerPresent",
+        "ledgerPresent",
+        "requestObserved",
+        "responseObserved",
+        "actionFailed",
+    ):
+        if type(record[key]) is not bool:
+            return None
+    if record["requestObserved"] != (record["requestCount"] > 0):
+        return None
+    if not record["deadlineAvailable"] and record["remainingMs"] is not None:
+        return None
+    if record["responseObserved"] and not record["requestObserved"]:
+        return None
+    status = record["status"]
+    if status is not None and (type(status) is not int or not 100 <= status <= 599):
+        return None
+    if not record["responseObserved"] and status is not None:
+        return None
+    return dict(record)
+
+
+def _live_playwright_registration_admission_diagnostics(
+    output: str,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _REGISTRATION_ADMISSION_DIAG_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_REGISTRATION_ADMISSION_DIAG_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_REGISTRATION_ADMISSION_DIAG_PREFIX) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_registration_admission_diag(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _REGISTRATION_ADMISSION_DIAG_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
 _PWA_BUNDLE_ROUTE_DIAG_PREFIX = "PWA_BUNDLE_ROUTE_DIAG "
 _PWA_BUNDLE_ROUTE_DIAG_KEYS = (
     "schema",
@@ -4985,6 +5257,145 @@ def _live_playwright_pwa_bundle_route_diagnostics(
         if identity in seen:
             continue
         if len(records) >= _PWA_BUNDLE_ROUTE_DIAG_RECORD_LIMIT:
+            break
+        seen.add(identity)
+        records.append(record)
+    return records
+
+
+_PWA_UPDATE_LIFECYCLE_DIAG_PREFIX = "PWA_UPDATE_LIFECYCLE_DIAG "
+_PWA_UPDATE_LIFECYCLE_DIAG_KEYS = (
+    "schema",
+    "project",
+    "diagnosticStatus",
+    "controllerChangeCount",
+    "controllerPresent",
+    "controllerState",
+    "installingState",
+    "waitingState",
+    "activeState",
+    "controllerIsActive",
+    "workerTransformApplied",
+    "bundleUpdateResponseSeen",
+    "routeEntries",
+    "originMatches",
+    "bundlePathMatches",
+    "serviceWorkerRequestSeen",
+)
+_PWA_UPDATE_LIFECYCLE_STATES = (
+    "none",
+    "installing",
+    "installed",
+    "activating",
+    "activated",
+    "redundant",
+)
+_PWA_UPDATE_LIFECYCLE_DIAG_LINE_BYTES_LIMIT = 1024
+_PWA_UPDATE_LIFECYCLE_DIAG_RECORD_LIMIT = 4
+_PWA_UPDATE_LIFECYCLE_DIAG_MAX_COUNT = 64
+
+
+def _validated_pwa_update_lifecycle_diag(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _PWA_UPDATE_LIFECYCLE_DIAG_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    if (
+        not isinstance(record["project"], str)
+        or record["project"] not in _PLAYWRIGHT_FAILURE_PROJECTS
+    ):
+        return None
+    if record["diagnosticStatus"] not in ("available", "unavailable"):
+        return None
+    for key in (
+        "controllerState",
+        "installingState",
+        "waitingState",
+        "activeState",
+    ):
+        if record[key] not in _PWA_UPDATE_LIFECYCLE_STATES:
+            return None
+    for key in (
+        "controllerChangeCount",
+        "routeEntries",
+        "originMatches",
+        "bundlePathMatches",
+    ):
+        count = record[key]
+        if count is not None and (
+            type(count) is not int
+            or not 0 <= count <= _PWA_UPDATE_LIFECYCLE_DIAG_MAX_COUNT
+        ):
+            return None
+    for key in ("controllerPresent", "controllerIsActive"):
+        if record[key] is not None and type(record[key]) is not bool:
+            return None
+    for key in (
+        "workerTransformApplied",
+        "bundleUpdateResponseSeen",
+        "serviceWorkerRequestSeen",
+    ):
+        if type(record[key]) is not bool:
+            return None
+    route_entries = record["routeEntries"]
+    origin_matches = record["originMatches"]
+    bundle_path_matches = record["bundlePathMatches"]
+    if (
+        route_entries is not None
+        and origin_matches is not None
+        and bundle_path_matches is not None
+        and not bundle_path_matches <= origin_matches <= route_entries
+    ):
+        return None
+    if record["serviceWorkerRequestSeen"] and (
+        route_entries is None or route_entries < 1
+    ):
+        return None
+    if record["diagnosticStatus"] == "unavailable" and (
+        record["controllerChangeCount"] is not None
+        or record["controllerPresent"] is not None
+        or record["controllerIsActive"] is not None
+        or any(
+            record[key] != "none"
+            for key in (
+                "controllerState",
+                "installingState",
+                "waitingState",
+                "activeState",
+            )
+        )
+    ):
+        return None
+    return dict(record)
+
+
+def _live_playwright_pwa_update_lifecycle_diagnostics(
+    output: str,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > _PWA_UPDATE_LIFECYCLE_DIAG_LINE_BYTES_LIMIT
+            or not line.isprintable()
+            or not line.startswith(_PWA_UPDATE_LIFECYCLE_DIAG_PREFIX)
+        ):
+            continue
+        try:
+            raw = json.loads(
+                line[len(_PWA_UPDATE_LIFECYCLE_DIAG_PREFIX) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_pwa_update_lifecycle_diag(raw)
+        if record is None:
+            continue
+        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
+        if identity in seen:
+            continue
+        if len(records) >= _PWA_UPDATE_LIFECYCLE_DIAG_RECORD_LIMIT:
             break
         seen.add(identity)
         records.append(record)
@@ -5948,6 +6359,11 @@ def _run_live_playwright(
     http_statuses = _live_playwright_http_statuses(stdout)
     push_observations = _live_playwright_push_observations(stdout)
     story_memory_records = _live_playwright_story_memory_records(stdout)
+    story_memory_cycle_trace_diagnostics = (
+        _live_playwright_story_memory_cycle_trace_diagnostics(stdout)
+        if return_code != 0
+        else []
+    )
     story_setup_diagnostics = (
         _live_playwright_story_setup_diagnostics(stdout) if return_code != 0 else []
     )
@@ -5962,8 +6378,18 @@ def _run_live_playwright(
         if return_code != 0
         else []
     )
+    registration_admission_diagnostics = (
+        _live_playwright_registration_admission_diagnostics(stdout)
+        if return_code != 0
+        else []
+    )
     pwa_bundle_route_diagnostics = (
         _live_playwright_pwa_bundle_route_diagnostics(stdout)
+        if return_code != 0
+        else []
+    )
+    pwa_update_lifecycle_diagnostics = (
+        _live_playwright_pwa_update_lifecycle_diagnostics(stdout)
         if return_code != 0
         else []
     )
@@ -6068,6 +6494,12 @@ def _run_live_playwright(
             "live E2E story memory " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
+    for record in story_memory_cycle_trace_diagnostics:
+        print(
+            "live E2E story memory cycle trace "
+            + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
     for record in auth_ui_diagnostics:
         print(
             "live E2E auth UI " + json.dumps(record, separators=(",", ":")),
@@ -6078,9 +6510,21 @@ def _run_live_playwright(
             "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
+    for record in registration_admission_diagnostics:
+        print(
+            "live E2E registration admission "
+            + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
     for record in pwa_bundle_route_diagnostics:
         print(
             "live E2E PWA bundle route " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for record in pwa_update_lifecycle_diagnostics:
+        print(
+            "live E2E PWA update lifecycle "
+            + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
     for record in auth_http_diagnostics:

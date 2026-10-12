@@ -4,6 +4,19 @@ import { startPwaUpdateProxy } from "./pwa-update-proxy"
 import { replacePrecacheRevision } from "./pwa-precache-revision"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
+const PWA_UPDATE_LIFECYCLE_DIAG_PREFIX = "PWA_UPDATE_LIFECYCLE_DIAG "
+type PwaWorkerState = "none" | "installing" | "installed" | "activating" | "activated" | "redundant"
+
+type PwaUpdateLifecycleState = {
+  diagnosticStatus: "available" | "unavailable"
+  controllerChangeCount: number | null
+  controllerPresent: boolean | null
+  controllerState: PwaWorkerState
+  installingState: PwaWorkerState
+  waitingState: PwaWorkerState
+  activeState: PwaWorkerState
+  controllerIsActive: boolean | null
+}
 
 async function assertStaticSpaDocumentResponse(
   response: { status(): number; text(): Promise<string> } | null | undefined
@@ -48,6 +61,96 @@ async function readBundleCacheEvidence(page: Page, appBundlePath: string, marker
     },
     { path: appBundlePath, expectedMarker: marker }
   )
+}
+
+async function readPwaUpdateLifecycleState(
+  page: Page,
+  storageKey: string
+): Promise<PwaUpdateLifecycleState> {
+  const unavailable: PwaUpdateLifecycleState = {
+    diagnosticStatus: "unavailable",
+    controllerChangeCount: null,
+    controllerPresent: null,
+    controllerState: "none",
+    installingState: "none",
+    waitingState: "none",
+    activeState: "none",
+    controllerIsActive: null,
+  }
+  try {
+    const state = await page.evaluate(async (key): Promise<PwaUpdateLifecycleState> => {
+      const stateOf = (worker: ServiceWorker | null): PwaWorkerState => worker?.state ?? "none"
+      try {
+        const serviceWorker = navigator.serviceWorker
+        const registration = await serviceWorker.getRegistration()
+        const controller = serviceWorker.controller
+        const active = registration?.active ?? null
+        const storedCount = Number(sessionStorage.getItem(key) ?? "0")
+        const controllerChangeCount =
+          Number.isSafeInteger(storedCount) && storedCount >= 0 && storedCount <= 64
+            ? storedCount
+            : null
+        return {
+          diagnosticStatus: "available",
+          controllerChangeCount,
+          controllerPresent: controller !== null,
+          controllerState: stateOf(controller),
+          installingState: stateOf(registration?.installing ?? null),
+          waitingState: stateOf(registration?.waiting ?? null),
+          activeState: stateOf(active),
+          controllerIsActive: controller && active ? controller === active : null,
+        }
+      } catch {
+        return {
+          diagnosticStatus: "unavailable",
+          controllerChangeCount: null,
+          controllerPresent: null,
+          controllerState: "none",
+          installingState: "none",
+          waitingState: "none",
+          activeState: "none",
+          controllerIsActive: null,
+        }
+      }
+    }, storageKey)
+    return state
+  } catch {
+    return unavailable
+  }
+}
+
+async function emitPwaUpdateLifecycleDiagnostic(
+  page: Page,
+  projectName: string,
+  storageKey: string,
+  workerTransformApplied: boolean,
+  bundleUpdateResponseSeen: boolean,
+  routeEntries: number,
+  originMatches: number,
+  bundlePathMatches: number,
+  serviceWorkerRequestSeen: boolean
+): Promise<void> {
+  const project = projectName === "desktop" || projectName === "mobile" ? projectName : undefined
+  if (!project) return
+  const state = await readPwaUpdateLifecycleState(page, storageKey)
+  const safeCount = (value: number): number | null =>
+    Number.isSafeInteger(value) && value >= 0 && value <= 64 ? value : null
+  const record = {
+    schema: 1,
+    project,
+    ...state,
+    workerTransformApplied,
+    bundleUpdateResponseSeen,
+    routeEntries: safeCount(routeEntries),
+    originMatches: safeCount(originMatches),
+    bundlePathMatches: safeCount(bundlePathMatches),
+    serviceWorkerRequestSeen,
+  }
+  try {
+    process.stdout.write(`${PWA_UPDATE_LIFECYCLE_DIAG_PREFIX}${JSON.stringify(record)}\n`)
+  } catch {
+    // Failure diagnostics must not change the original acceptance result.
+  }
 }
 
 async function ensureServiceWorkerControlsPage(page: Page) {
@@ -309,6 +412,17 @@ test.describe("PWA offline app shell on the live stack", () => {
               })}\n`
             )
           }
+          await emitPwaUpdateLifecycleDiagnostic(
+            page,
+            project,
+            CONTROLLER_CHANGE_COUNT,
+            workerUpdateResponses > 0,
+            bundleUpdateResponses > 0,
+            routeEntries,
+            originMatches,
+            bundlePathMatches,
+            serviceWorkerRequestSeen
+          )
         } catch {
           // Failure diagnostics must not alter the original acceptance result.
         }

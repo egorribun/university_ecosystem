@@ -7916,3 +7916,385 @@ def test_live_playwright_suppresses_pwa_bundle_route_diagnostics_on_success(
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         "live E2E outcome=passed exit_code=0",
     ]
+
+
+def _story_memory_cycle_trace_record(**overrides: object) -> dict[str, object]:
+    sample = {"documents": 2, "nodes": 788, "jsEventListeners": 458}
+    record: dict[str, object] = {
+        "schema": 1,
+        "project": "desktop",
+        "diagnosticStatus": "available",
+        "samples": {
+            "baseline": sample,
+            "dialogOpen": {**sample, "nodes": 811},
+            "hiddenResumed": {**sample, "nodes": 811},
+            "afterCloseSettled": {**sample, "nodes": 729},
+        },
+    }
+    record.update(overrides)
+    return record
+
+
+def _story_memory_cycle_trace_row(
+    record: dict[str, object], newline: str = "\n"
+) -> str:
+    return (
+        "STORY_MEMORY_CYCLE_TRACE_DIAG "
+        + json.dumps(record, separators=(",", ":"))
+        + newline
+    )
+
+
+def test_live_playwright_story_memory_cycle_trace_parser_accepts_closed_statuses() -> (
+    None
+):
+    available = _story_memory_cycle_trace_record()
+    partial = _story_memory_cycle_trace_record(
+        project="mobile",
+        diagnosticStatus="partial",
+        samples={
+            "baseline": {"documents": 1, "nodes": 2, "jsEventListeners": 3},
+            "dialogOpen": None,
+            "hiddenResumed": None,
+            "afterCloseSettled": {"documents": 1, "nodes": 2, "jsEventListeners": 3},
+        },
+    )
+    unavailable = _story_memory_cycle_trace_record(
+        diagnosticStatus="unavailable",
+        samples={
+            key: None
+            for key in ("baseline", "dialogOpen", "hiddenResumed", "afterCloseSettled")
+        },
+    )
+    rows = "".join(
+        _story_memory_cycle_trace_row(record)
+        for record in (available, partial, unavailable)
+    )
+    assert live_stand._live_playwright_story_memory_cycle_trace_diagnostics(rows) == [
+        available,
+        partial,
+        unavailable,
+    ]
+
+
+def test_live_playwright_story_memory_cycle_trace_rejects_private_or_inconsistent_rows() -> (
+    None
+):
+    valid = _story_memory_cycle_trace_record()
+    samples = valid["samples"]
+    assert isinstance(samples, dict)
+    invalid = (
+        {**valid, "schema": True},
+        {**valid, "project": "https://private.invalid/user"},
+        {**valid, "diagnosticStatus": "available token=hidden"},
+        {**valid, "extra": "private response body"},
+        {**valid, "samples": {**samples, "requestUrl": "https://private.invalid"}},
+        {
+            **valid,
+            "samples": {
+                **samples,
+                "baseline": {"documents": True, "nodes": 2, "jsEventListeners": 3},
+            },
+        },
+        {
+            **valid,
+            "samples": {
+                **samples,
+                "baseline": {
+                    "documents": 2**53,
+                    "nodes": 2,
+                    "jsEventListeners": 3,
+                },
+            },
+        },
+        {
+            **valid,
+            "diagnosticStatus": "partial",
+            "samples": {key: None for key in samples},
+        },
+        {
+            **valid,
+            "diagnosticStatus": "unavailable",
+            "samples": {**samples, "afterCloseSettled": None},
+        },
+    )
+    rows = "".join(_story_memory_cycle_trace_row(record) for record in invalid)
+    rows += 'STORY_MEMORY_CYCLE_TRACE_DIAG {"schema":1,"schema":1}\n'
+    rows += 'STORY_MEMORY_CYCLE_TRACE_DIAG {"schema":NaN}\n'
+    rows += _story_memory_cycle_trace_row(valid, newline="")
+    rows += "STORY_MEMORY_CYCLE_TRACE_DIAG " + "x" * 2049 + "\n"
+    assert live_stand._live_playwright_story_memory_cycle_trace_diagnostics(rows) == []
+
+
+def _pwa_update_lifecycle_diag_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "schema": 1,
+        "project": "mobile",
+        "diagnosticStatus": "available",
+        "controllerChangeCount": 0,
+        "controllerPresent": True,
+        "controllerState": "activated",
+        "installingState": "none",
+        "waitingState": "none",
+        "activeState": "activated",
+        "controllerIsActive": True,
+        "workerTransformApplied": True,
+        "bundleUpdateResponseSeen": True,
+        "routeEntries": 1,
+        "originMatches": 1,
+        "bundlePathMatches": 1,
+        "serviceWorkerRequestSeen": True,
+    }
+    record.update(overrides)
+    return record
+
+
+def _pwa_update_lifecycle_diag_row(
+    record: dict[str, object], newline: str = "\n"
+) -> str:
+    return (
+        "PWA_UPDATE_LIFECYCLE_DIAG "
+        + json.dumps(record, separators=(",", ":"))
+        + newline
+    )
+
+
+def test_live_playwright_pwa_update_lifecycle_parser_accepts_available_and_unavailable() -> (
+    None
+):
+    available = _pwa_update_lifecycle_diag_record()
+    unavailable = _pwa_update_lifecycle_diag_record(
+        project="desktop",
+        diagnosticStatus="unavailable",
+        controllerChangeCount=None,
+        controllerPresent=None,
+        controllerState="none",
+        installingState="none",
+        waitingState="none",
+        activeState="none",
+        controllerIsActive=None,
+        routeEntries=None,
+        originMatches=None,
+        bundlePathMatches=None,
+        serviceWorkerRequestSeen=False,
+    )
+    assert live_stand._live_playwright_pwa_update_lifecycle_diagnostics(
+        _pwa_update_lifecycle_diag_row(available)
+        + _pwa_update_lifecycle_diag_row(unavailable)
+    ) == [available, unavailable]
+
+
+def test_live_playwright_pwa_update_lifecycle_rejects_private_or_inconsistent_rows() -> (
+    None
+):
+    valid = _pwa_update_lifecycle_diag_record()
+    invalid = (
+        {**valid, "schema": True},
+        {**valid, "project": "mobile https://private.invalid"},
+        {**valid, "project": []},
+        {**valid, "project": {}},
+        {**valid, "diagnosticStatus": "partial"},
+        {**valid, "extra": "token=hidden"},
+        {**valid, "controllerChangeCount": True},
+        {**valid, "routeEntries": 65},
+        {**valid, "controllerState": "private response body"},
+        {**valid, "originMatches": 2},
+        {**valid, "bundlePathMatches": 2},
+        {**valid, "serviceWorkerRequestSeen": True, "routeEntries": 0},
+        {**valid, "serviceWorkerRequestSeen": True, "routeEntries": None},
+        {
+            **valid,
+            "diagnosticStatus": "unavailable",
+            "activeState": "activated",
+        },
+        {**valid, "controllerPresent": 1},
+        {**valid, "workerTransformApplied": "yes"},
+    )
+    rows = "".join(_pwa_update_lifecycle_diag_row(record) for record in invalid)
+    rows += 'PWA_UPDATE_LIFECYCLE_DIAG {"schema":1,"schema":1}\n'
+    rows += 'PWA_UPDATE_LIFECYCLE_DIAG {"schema":NaN}\n'
+    rows += _pwa_update_lifecycle_diag_row(valid, newline="")
+    rows += "PWA_UPDATE_LIFECYCLE_DIAG " + "x" * 1025 + "\n"
+    assert live_stand._live_playwright_pwa_update_lifecycle_diagnostics(rows) == []
+
+
+def _registration_admission_diag_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "schema": 1,
+        "project": "desktop",
+        "stage": "ledger-read",
+        "errorClass": "Error",
+        "nodeCode": None,
+        "cost": 1,
+        "timeoutMs": 30000,
+        "remainingMs": 29000,
+        "requestCount": 0,
+        "activeRequestCount": 0,
+        "deadlineAvailable": True,
+        "ownerPresent": True,
+        "ledgerPresent": False,
+        "requestObserved": False,
+        "responseObserved": False,
+        "actionFailed": False,
+        "status": None,
+    }
+    record.update(overrides)
+    return record
+
+
+def _registration_admission_diag_row(
+    record: dict[str, object], newline: str = "\n"
+) -> str:
+    return (
+        "REGISTRATION_ADMISSION_DIAG "
+        + json.dumps(record, separators=(",", ":"))
+        + newline
+    )
+
+
+def test_live_playwright_registration_admission_parser_accepts_bounded_records() -> (
+    None
+):
+    deadline_failure = _registration_admission_diag_record(
+        project="mobile",
+        stage="deadline",
+        errorClass="TypeError",
+        cost=None,
+        timeoutMs=None,
+        remainingMs=None,
+        deadlineAvailable=False,
+    )
+    response_failure = _registration_admission_diag_record(
+        stage="request-drain",
+        nodeCode="ETIMEDOUT",
+        requestCount=1,
+        activeRequestCount=1,
+        requestObserved=True,
+        responseObserved=True,
+        status=429,
+        actionFailed=True,
+    )
+    assert live_stand._live_playwright_registration_admission_diagnostics(
+        _registration_admission_diag_row(deadline_failure)
+        + _registration_admission_diag_row(response_failure)
+    ) == [deadline_failure, response_failure]
+
+
+def test_live_playwright_registration_admission_parser_rejects_private_or_inconsistent_rows() -> (
+    None
+):
+    valid = _registration_admission_diag_record()
+    invalid = (
+        {**valid, "schema": True},
+        {**valid, "project": "https://private.invalid/user"},
+        {**valid, "project": []},
+        {**valid, "project": {}},
+        {**valid, "stage": "submit https://private.invalid"},
+        {**valid, "errorClass": "TypeError token=hidden"},
+        {**valid, "nodeCode": "C:\\private\\path"},
+        {**valid, "extra": "private response body"},
+        {**valid, "cost": True},
+        {**valid, "cost": 0},
+        {**valid, "cost": 6},
+        {**valid, "timeoutMs": 360001},
+        {**valid, "timeoutMs": 0},
+        {**valid, "remainingMs": -1},
+        {**valid, "remainingMs": 0},
+        {**valid, "deadlineAvailable": False, "remainingMs": 100},
+        {**valid, "requestCount": True},
+        {**valid, "requestCount": 257},
+        {**valid, "activeRequestCount": 1},
+        {**valid, "requestObserved": True},
+        {**valid, "responseObserved": True},
+        {**valid, "deadlineAvailable": 1},
+        {**valid, "status": True},
+        {**valid, "status": 600},
+        {**valid, "status": 200, "responseObserved": False},
+    )
+    rows = "".join(_registration_admission_diag_row(record) for record in invalid)
+    rows += 'REGISTRATION_ADMISSION_DIAG {"schema":1,"schema":1}\n'
+    rows += 'REGISTRATION_ADMISSION_DIAG {"schema":NaN}\n'
+    rows += _registration_admission_diag_row(valid, newline="")
+    rows += "REGISTRATION_ADMISSION_DIAG " + "x" * 1025 + "\n"
+    assert live_stand._live_playwright_registration_admission_diagnostics(rows) == []
+
+
+@pytest.mark.parametrize(
+    ("prefix", "record", "summary"),
+    [
+        (
+            "STORY_MEMORY_CYCLE_TRACE_DIAG ",
+            _story_memory_cycle_trace_record(),
+            "live E2E story memory cycle trace ",
+        ),
+        (
+            "PWA_UPDATE_LIFECYCLE_DIAG ",
+            _pwa_update_lifecycle_diag_record(),
+            "live E2E PWA update lifecycle ",
+        ),
+        (
+            "REGISTRATION_ADMISSION_DIAG ",
+            _registration_admission_diag_record(),
+            "live E2E registration admission ",
+        ),
+    ],
+)
+def test_live_playwright_emits_only_validated_new_diagnostics_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    prefix: str,
+    record: dict[str, object],
+    summary: str,
+) -> None:
+    row = prefix + json.dumps(record, separators=(",", ":")) + "\n"
+    private = "https://private.invalid/path?token=hidden response body"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(row + private + "\n").encode(),
+        stderr=row.encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        summary + json.dumps(record, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+
+
+@pytest.mark.parametrize(
+    "prefix,record",
+    [
+        ("STORY_MEMORY_CYCLE_TRACE_DIAG ", _story_memory_cycle_trace_record()),
+        ("PWA_UPDATE_LIFECYCLE_DIAG ", _pwa_update_lifecycle_diag_record()),
+        ("REGISTRATION_ADMISSION_DIAG ", _registration_admission_diag_record()),
+    ],
+)
+def test_live_playwright_suppresses_new_diagnostics_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    prefix: str,
+    record: dict[str, object],
+) -> None:
+    row = prefix + json.dumps(record, separators=(",", ":")) + "\n"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E outcome=passed exit_code=0",
+    ]

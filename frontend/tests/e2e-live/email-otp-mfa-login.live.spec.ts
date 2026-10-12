@@ -24,14 +24,6 @@ function isApiResponse(suffix: string) {
     response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(suffix)
 }
 
-function isProfileResponse(response: Response) {
-  return (
-    response.request().method() === "GET" &&
-    new URL(response.url()).pathname.endsWith("/users/me") &&
-    response.ok()
-  )
-}
-
 type ActiveSessionSummary = { id: string; is_current: boolean }
 
 type SiblingRevocationSocketProbe = {
@@ -471,12 +463,8 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
 
     const enablementCode = await awaitNewCode(email, priorEnablementMessages)
     const enablementVerifyPromise = page.waitForResponse(isApiResponse("/auth/mfa/verify"))
-    const enabledProfilePromise = page.waitForResponse(isProfileResponse)
     await enterCode(page, enablementCode)
-    const [enablementVerification, enabledProfileResponse] = await Promise.all([
-      enablementVerifyPromise,
-      enabledProfilePromise,
-    ])
+    const enablementVerification = await enablementVerifyPromise
     reportLiveHttpStatus(
       testInfo.project.name,
       "email-mfa-enable-accept",
@@ -484,6 +472,8 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     )
     expect(enablementVerification.status()).toBe(200)
     await expectSiblingRevocationSocketClosed(siblingPage)
+    const enabledProfileResponse = await page.request.get("/api/v1/users/me")
+    expect(enabledProfileResponse.status()).toBe(200)
     const enabledProfile = (await enabledProfileResponse.json()) as {
       email_mfa_enabled_at?: string | null
     }

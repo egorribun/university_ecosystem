@@ -4,6 +4,25 @@ import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+const reactSubscriptions = vi.hoisted(() => ({
+  callbacks: [] as Array<(onStoreChange: () => void) => () => void>,
+}))
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>()
+  return {
+    ...actual,
+    useSyncExternalStore: <Snapshot,>(
+      subscribe: (onStoreChange: () => void) => () => void,
+      getSnapshot: () => Snapshot,
+      getServerSnapshot?: () => Snapshot
+    ): Snapshot => {
+      reactSubscriptions.callbacks.push(subscribe)
+      return actual.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+    },
+  }
+})
+
 const state = vi.hoisted(() => ({ online: true }))
 const translation = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
@@ -54,6 +73,7 @@ import Layout from "@/components/Layout"
 describe("Layout", () => {
   beforeEach(() => {
     state.online = true
+    reactSubscriptions.callbacks.length = 0
     delete window.__APP_HYDRATED
     translation.useTranslation.mockClear()
   })
@@ -74,6 +94,36 @@ describe("Layout", () => {
     expect(screen.queryByText("offlineIndicator.offline")).not.toBeInTheDocument()
     expect(container.firstElementChild).toHaveClass("custom-layout")
     expect(translation.useTranslation).toHaveBeenCalledWith("system")
+  })
+
+  it("returns a no-op hydration unsubscriber when window is unavailable", () => {
+    const { unmount } = render(<Layout>SSR-safe page</Layout>)
+    const subscribe = reactSubscriptions.callbacks.at(-1)
+    if (!subscribe) throw new Error("Layout did not register its hydration subscription")
+
+    const onStoreChange = vi.fn()
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    addEventListener.mockClear()
+    removeEventListener.mockClear()
+
+    try {
+      // Invoke the captured store subscription without window while ReactDOM
+      // remains mounted in jsdom, so only the SSR-safe subscription path runs.
+      vi.stubGlobal("window", undefined)
+      const unsubscribe = subscribe(onStoreChange)
+
+      expect(unsubscribe).toBeTypeOf("function")
+      unsubscribe()
+      expect(onStoreChange).not.toHaveBeenCalled()
+      expect(addEventListener).not.toHaveBeenCalled()
+      expect(removeEventListener).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      addEventListener.mockRestore()
+      removeEventListener.mockRestore()
+      unmount()
+    }
   })
 
   it("announces an offline connection", () => {

@@ -1,6 +1,18 @@
 import type { Page } from "@playwright/test"
 
 export type LiveRegistrationCost = 1 | 2
+export type LiveRegistrationDiagnosticStage =
+  | "deadline"
+  | "origin"
+  | "state-root"
+  | "owner-read"
+  | "ledger-read"
+  | "quiet-wait"
+  | "rolling-wait"
+  | "reserve"
+  | "submit"
+  | "request-drain"
+  | "confirm"
 
 export declare const REGISTRATION_WINDOW_MS: number
 export declare const REGISTRATION_CADENCE_MS: number
@@ -57,5 +69,25 @@ export declare function runLiveRegistrationAdmission<T>(
   page: Page,
   deadlineAtMs: number,
   cost: LiveRegistrationCost,
-  action: () => Promise<T>
+  action: () => Promise<T>,
+  project?: "desktop" | "mobile",
+  timeoutMs?: number | null
 ): Promise<T>
+
+export declare function reportLiveRegistrationAdmissionFailure(
+  project: "desktop" | "mobile",
+  stage: LiveRegistrationDiagnosticStage,
+  error: unknown,
+  details?: {
+    cost?: LiveRegistrationCost
+    timeoutMs?: number | null
+    deadlineAtMs?: number | null
+    ownerPresent?: boolean
+    ledgerPresent?: boolean
+    requestCount?: number
+    activeRequestCount?: number
+    responseObserved?: boolean
+    status?: number | null
+    actionFailed?: boolean
+  }
+): void

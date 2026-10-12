@@ -18,6 +18,7 @@ import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs
 import {
   readPlaywrightTestSlotDeadlineAtMs,
   REGISTRATION_MAX_TEST_TIMEOUT_MS,
+  reportLiveRegistrationAdmissionFailure,
   runLiveRegistrationAdmission,
 } from "../../scripts/live-registration-admission.mjs"
 import {
@@ -1002,14 +1003,31 @@ export async function withLiveRegistrationAdmission<T>(
   cost: 1 | 2,
   action: () => Promise<T>
 ): Promise<T> {
-  const deadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(
-    test.info(),
-    REGISTRATION_MAX_TEST_TIMEOUT_MS
-  )
-  if (deadlineAtMs === null) {
-    throw new Error("live registration admission cannot read the current test deadline")
+  const info = test.info()
+  const project: "desktop" | "mobile" = info.project.name === "mobile" ? "mobile" : "desktop"
+  let timeoutMs: number | null
+  let deadlineAtMs: number | null = null
+  try {
+    const configuredTimeout = Reflect.get(info, "timeout")
+    timeoutMs =
+      Number.isSafeInteger(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : null
+  } catch {
+    timeoutMs = null
   }
-  return runLiveRegistrationAdmission(page, deadlineAtMs, cost, action)
+  try {
+    deadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(info, REGISTRATION_MAX_TEST_TIMEOUT_MS)
+    if (deadlineAtMs === null) {
+      throw new Error("live registration admission cannot read the current test deadline")
+    }
+  } catch (error) {
+    reportLiveRegistrationAdmissionFailure(project, "deadline", error, {
+      cost,
+      timeoutMs,
+      deadlineAtMs,
+    })
+    throw error
+  }
+  return runLiveRegistrationAdmission(page, deadlineAtMs, cost, action, project, timeoutMs)
 }
 
 export { expect }

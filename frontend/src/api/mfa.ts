@@ -1,3 +1,4 @@
+import api from "@/api/client"
 import {
   confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost,
   deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete,
@@ -10,7 +11,6 @@ import {
   startEmailMfaEnablementApiV1AuthMfaEmailEnablePost,
   startEmailVerificationApiV1AuthMfaEmailVerificationStartPost,
   startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost,
-  verifyMfaChallengeApiV1AuthMfaVerifyPost,
 } from "@/api/generated"
 import type {
   MfaFactorStatus,
@@ -59,11 +59,12 @@ export const deletePendingTotpEnrollment = async (enrollmentId: string) => {
 }
 
 export const verifyMfaChallenge = async (payload: MfaVerifyPayload) => {
-  const { data } = await verifyMfaChallengeApiV1AuthMfaVerifyPost({
-    body: payload,
-    throwOnError: true,
-  })
-  return data as { access_token: string; token_type: string }
+  const { data } = await api.post<{ access_token: string; token_type: string }>(
+    "/auth/mfa/verify",
+    payload,
+    { skipRateLimitQueue: true }
+  )
+  return data
 }
 
 export const requestStepUpChallenge = async () => {

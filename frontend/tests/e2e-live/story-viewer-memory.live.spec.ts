@@ -39,6 +39,7 @@ type StoryDeferredOverlaysProbeWindow = Window & {
 const STORY_MEMORY_DIAGNOSTIC_SCHEMA = 2
 const STORY_DEFERRED_OVERLAYS_READY_EVENT = "ue:deferred-global-overlays-ready"
 const STORY_MEMORY_DIAGNOSTIC_PREFIX = "STORY_MEMORY_DIAG "
+const STORY_MEMORY_CYCLE_TRACE_PREFIX = "STORY_MEMORY_CYCLE_TRACE_DIAG "
 const STORY_MEMORY_LISTENER_EVENTS = [
   "appinstalled",
   "beforeinstallprompt",
@@ -94,6 +95,12 @@ type StoryMemoryDiagnosticRecord = {
   cycle0DOM: StoryMemoryDiagnosticDOM
   warmListeners: StoryMemoryDiagnosticListeners
   cycle0Listeners: StoryMemoryDiagnosticListeners
+}
+type StoryMemoryCycle0Trace = {
+  baseline: DOMCounters
+  dialogOpen: DOMCounters | null
+  hiddenResumed: DOMCounters | null
+  afterCloseSettled: DOMCounters | null
 }
 type StoryMemoryRemoteObject = { objectId?: string }
 type StoryMemoryEventListener = {
@@ -232,6 +239,49 @@ function safeStoryMemoryDOM(counters: DOMCounters): StoryMemoryDiagnosticDOM | n
     documents: counters.documents,
     nodes: counters.nodes,
     jsEventListeners: counters.jsEventListeners,
+  }
+}
+
+async function readStoryDOMCounters(cdp: CDPSession): Promise<DOMCounters | null> {
+  try {
+    const counters = (await cdp.send("Memory.getDOMCounters")) as DOMCounters
+    const values = [counters.documents, counters.nodes, counters.jsEventListeners]
+    if (!values.every((value) => Number.isSafeInteger(value) && value >= 0)) return null
+    return {
+      documents: counters.documents,
+      nodes: counters.nodes,
+      jsEventListeners: counters.jsEventListeners,
+    }
+  } catch {
+    return null
+  }
+}
+
+function emitStoryMemoryCycleTraceDiagnostic(
+  projectName: string,
+  trace: StoryMemoryCycle0Trace
+): void {
+  const project = projectName === "desktop" || projectName === "mobile" ? projectName : undefined
+  if (!project) return
+  const samples = {
+    baseline: safeStoryMemoryDOM(trace.baseline),
+    dialogOpen: trace.dialogOpen === null ? null : safeStoryMemoryDOM(trace.dialogOpen),
+    hiddenResumed: trace.hiddenResumed === null ? null : safeStoryMemoryDOM(trace.hiddenResumed),
+    afterCloseSettled:
+      trace.afterCloseSettled === null ? null : safeStoryMemoryDOM(trace.afterCloseSettled),
+  }
+  const availableCount = Object.values(samples).filter((sample) => sample !== null).length
+  const record = {
+    schema: 1,
+    project,
+    diagnosticStatus:
+      availableCount === 0 ? "unavailable" : availableCount === 4 ? "available" : "partial",
+    samples,
+  }
+  try {
+    process.stdout.write(`${STORY_MEMORY_CYCLE_TRACE_PREFIX}${JSON.stringify(record)}\n`)
+  } catch {
+    // Failure diagnostics must not change the original acceptance result.
   }
 }
 
@@ -375,11 +425,17 @@ storyVisibilityTest(
       const initialBodyOverflow = await page.locator("body").evaluate((body) => body.style.overflow)
       const cdp = await page.context().newCDPSession(page)
 
-      const openAndClose = async (verifyHiddenPause = false): Promise<MemorySnapshot> => {
+      const openAndClose = async (
+        verifyHiddenPause = false,
+        cycle0Trace?: StoryMemoryCycle0Trace
+      ): Promise<MemorySnapshot> => {
         await trigger.click()
         await expect(dialog).toBeVisible()
         await expect(dialog).toHaveCount(1)
         await expect(dialog).toHaveAccessibleName(SEEDED_STORY_TITLE)
+        if (verifyHiddenPause && cycle0Trace) {
+          cycle0Trace.dialogOpen = await readStoryDOMCounters(cdp)
+        }
 
         const activeProgress = dialog.locator('[role="progressbar"][aria-live="polite"]')
         const readProgress = async () => Number(await activeProgress.getAttribute("aria-valuenow"))
@@ -398,6 +454,9 @@ storyVisibilityTest(
             await page.bringToFront()
             await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("visible")
             await expect.poll(readProgress).toBeGreaterThan(hiddenProgress)
+            if (cycle0Trace) {
+              cycle0Trace.hiddenResumed = await readStoryDOMCounters(cdp)
+            }
           } finally {
             await backgroundPage.close()
             await page.bringToFront()
@@ -411,9 +470,14 @@ storyVisibilityTest(
           .poll(() => page.locator("body").evaluate((body) => body.style.overflow))
           .toBe(initialBodyOverflow)
 
-        return settleViewerCleanup(page, cdp)
+        const snapshot = await settleViewerCleanup(page, cdp)
+        if (verifyHiddenPause && cycle0Trace) {
+          cycle0Trace.afterCloseSettled = snapshot.domCounters
+        }
+        return snapshot
       }
 
+      let cycle0Trace: StoryMemoryCycle0Trace | undefined
       let bodyFailed = false
       let bodyError: unknown
       try {
@@ -429,10 +493,16 @@ storyVisibilityTest(
         )
         const warmSnapshot = await settleViewerCleanup(page, cdp)
         const warmListenerCounts = await captureStoryMemoryListeners(cdp)
+        cycle0Trace = {
+          baseline: warmSnapshot.domCounters,
+          dialogOpen: null,
+          hiddenResumed: null,
+          afterCloseSettled: null,
+        }
         const measuredHeapSamples: number[] = []
         for (let cycle = 0; cycle < MEASURED_CYCLES; cycle += 1) {
           markStorySetupStage(page, cycle === 0 ? "cycle0" : "measured-cycle")
-          const snapshot = await openAndClose(cycle === 0)
+          const snapshot = await openAndClose(cycle === 0, cycle === 0 ? cycle0Trace : undefined)
           if (cycle === 0) {
             const cycleListenerCounts =
               warmListenerCounts === null ? null : await captureStoryMemoryListeners(cdp)
@@ -458,6 +528,9 @@ storyVisibilityTest(
         expect(lateHeapMean).toBeLessThanOrEqual(earlyHeapMean + HEAP_PLATEAU_TOLERANCE_BYTES)
       } catch (error) {
         recordStorySetupFailure(page, error)
+        if (cycle0Trace !== undefined) {
+          emitStoryMemoryCycleTraceDiagnostic(testInfo.project.name, cycle0Trace)
+        }
         bodyFailed = true
         bodyError = error
       }

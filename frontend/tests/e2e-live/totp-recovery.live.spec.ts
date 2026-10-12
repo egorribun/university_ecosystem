@@ -437,8 +437,10 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
       project: diagnosticProject(testInfo.project.name),
       operation: "totp_recovery_replay",
     })
+    const replayErrorAlert = replayLogin.page.getByRole("alert").filter({ hasText: /\S/u })
     try {
-      await expect(replayLogin.page.getByRole("alert")).toBeVisible()
+      await expect(replayErrorAlert).toHaveCount(1)
+      await expect(replayErrorAlert).toBeVisible()
       checkReplayLoginPageErrors()
     } catch (error) {
       try {

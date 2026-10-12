@@ -30,6 +30,7 @@ vi.mock("../scripts/live-registration-admission.mjs", () => ({
   readPlaywrightTestSlotDeadlineAtMs() {
     throw new Error("Unexpected registration admission access in cleanup-only tests")
   },
+  reportLiveRegistrationAdmissionFailure() {},
   runLiveRegistrationAdmission() {
     throw new Error("Unexpected registration admission access in cleanup-only tests")
   },
