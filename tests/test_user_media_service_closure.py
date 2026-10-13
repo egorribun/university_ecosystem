@@ -15,9 +15,16 @@ from app.services.storage import StaticFSStorage
 from app.services.user.media_service import UserMediaService
 
 
-def _uow(user):
+def _primary_db(*, referenced_user_id=None):
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = referenced_user_id
+    return SimpleNamespace(execute=AsyncMock(return_value=result))
+
+
+def _uow(user, *, referenced_user_id=None):
     uow = MagicMock()
     uow.users = MagicMock()
+    uow.users.db = _primary_db(referenced_user_id=referenced_user_id)
     uow.users.get_orm_for_update_with_relations = AsyncMock(return_value=user)
     uow.users._to_dto.return_value = SimpleNamespace(id=user.id) if user else None
     uow.commit = AsyncMock()
@@ -93,7 +100,7 @@ async def test_upload_avatar_rolls_back_and_deletes_new_file_on_failure():
 
 
 @pytest.mark.asyncio
-async def test_upload_cover_removes_old_cover_and_cleans_up_on_failure():
+async def test_upload_cover_retains_old_cover_and_cleans_new_after_rollback():
     user = SimpleNamespace(id=uuid4(), profile=SimpleNamespace(cover_url="old-cover"))
     uow = _uow(user)
     delete = AsyncMock()
@@ -112,26 +119,25 @@ async def test_upload_cover_removes_old_cover_and_cleans_up_on_failure():
         with pytest.raises(RuntimeError):
             await UserMediaService(uow).upload_cover(user.id, _upload())
 
-    assert delete.await_args_list[0].args == ("old-cover",)
-    assert delete.await_args_list[0].kwargs == {
-        "owner_id": user.id,
-        "media_kind": "cover",
-    }
-    assert delete.await_args_list[1].args == ("new-cover",)
-    assert delete.await_args_list[1].kwargs == {
-        "owner_id": user.id,
-        "media_kind": "cover",
-    }
     uow.rollback.assert_awaited_once()
+    delete.assert_awaited_once_with("new-cover", owner_id=user.id, media_kind="cover")
+    assert all(call.args[0] != "old-cover" for call in delete.await_args_list)
 
 
 @pytest.mark.asyncio
-async def test_delete_cover_success_and_avatar_not_found():
+async def test_delete_cover_commits_before_deleting_and_avatar_not_found():
+    events = []
     user = SimpleNamespace(id=uuid4(), profile=SimpleNamespace(cover_url="old-cover"))
     uow = _uow(user)
+    uow.commit.side_effect = lambda: events.append("commit")
+
+    async def record_delete(*args, **kwargs):
+        events.append("delete")
+
     with (
         patch(
-            "app.services.user.media_service.delete_static_file", new=AsyncMock()
+            "app.services.user.media_service.delete_static_file",
+            new=AsyncMock(side_effect=record_delete),
         ) as delete,
         patch("app.services.user.media_service.update_user_attributes") as update,
     ):
@@ -139,6 +145,8 @@ async def test_delete_cover_success_and_avatar_not_found():
 
     assert result.id == user.id
     delete.assert_awaited_once_with("old-cover", owner_id=user.id, media_kind="cover")
+    assert events == ["commit", "delete"]
+    uow.users.db.execute.assert_awaited_once()
     update.assert_called_once_with(user, {"cover_url": None})
 
     missing_uow = _uow(None)
@@ -195,8 +203,9 @@ async def test_avatar_paths_handle_missing_and_existing_avatar_files():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("media_kind", ["avatar", "cover"])
 @pytest.mark.parametrize("asset_owner", ["current", "foreign", "legacy"])
-async def test_media_replacement_deletes_only_the_current_users_asset(
-    tmp_path, monkeypatch, media_kind, asset_owner
+@pytest.mark.parametrize("referenced", [False, True])
+async def test_media_replacement_deletes_only_unreferenced_current_users_asset(
+    tmp_path, monkeypatch, media_kind, asset_owner, referenced
 ):
     owner_id = uuid4()
     stored_owner_id = owner_id if asset_owner == "current" else uuid4()
@@ -218,7 +227,7 @@ async def test_media_replacement_deletes_only_the_current_users_asset(
     user = SimpleNamespace(
         id=owner_id, profile=SimpleNamespace(**{profile_field: file_url})
     )
-    uow = _uow(user)
+    uow = _uow(user, referenced_user_id=uuid4() if referenced else None)
     new_file_url = f"/static/{directory}/user_{owner_id}_{media_kind}_{'b' * 32}.png"
 
     with (
@@ -231,4 +240,32 @@ async def test_media_replacement_deletes_only_the_current_users_asset(
         upload_method = getattr(UserMediaService(uow), f"upload_{media_kind}")
         await upload_method(user.id, _upload())
 
-    assert asset_path.exists() == (asset_owner != "current")
+    assert asset_path.exists() == (asset_owner != "current" or referenced)
+    uow.users.db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_upload_avatar_preserves_committed_file_when_uow_exit_fails():
+    user = SimpleNamespace(id=uuid4(), profile=SimpleNamespace(avatar_url=None))
+    uow = _uow(user)
+    exit_error = RuntimeError("uow exit failed")
+    uow.__aexit__.side_effect = exit_error
+    delete = AsyncMock()
+
+    with (
+        patch(
+            "app.services.user.media_service.save_upload",
+            new=AsyncMock(return_value="new-avatar"),
+        ),
+        patch("app.services.user.media_service.delete_static_file", new=delete),
+        patch("app.services.user.media_service.update_user_attributes") as update,
+    ):
+        with pytest.raises(RuntimeError) as raised:
+            await UserMediaService(uow).upload_avatar(user.id, _upload())
+
+    assert raised.value is exit_error
+    uow.__aexit__.assert_awaited_once()
+    uow.commit.assert_awaited_once()
+    uow.rollback.assert_not_awaited()
+    update.assert_called_once_with(user, {"avatar_url": "new-avatar"})
+    delete.assert_not_awaited()

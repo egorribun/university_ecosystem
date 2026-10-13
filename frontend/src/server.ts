@@ -47,7 +47,7 @@ import {
 // node:async_hooks is server-only — Vite's environments build keeps this
 // import in the server chunk only; client bundle never loads it.
 //
-// Seven storages (W126 + W127 + W133 + W231):
+// Eight storages (W126 + W127 + W133 + W231 + CSP pre-paint URL):
 //   - requestAuthStorage: SSR auth state from access_token_v2 cookie (W126 SW3)
 //   - requestCookieStorage: raw Cookie header for SSR-side authenticated
 //     backend calls via axios interceptor (W133 SW1 — see api/client.ts)
@@ -56,6 +56,7 @@ import {
 //   - requestThemeStorage: resolved theme from ue-mode cookie (W127 SW4)
 //   - requestLangStorage: resolved lang from ue:language cookie (W127 SW4)
 //   - requestNonceStorage: per-response CSP nonce passed to TanStack SSR (W231)
+//   - requestOriginStorage: current request origin for same-origin shell assets
 //
 // Layered as nested .run() calls so all request stores are visible to the handler.
 const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
@@ -66,6 +67,7 @@ const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
 const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
 const requestI18nStorage = new AsyncLocalStorage<I18nInstance>()
 const requestNonceStorage = new AsyncLocalStorage<string>()
+const requestOriginStorage = new AsyncLocalStorage<string>()
 
 // Globally-accessible getters so `src/router.ts` (W126 SW4 / W231) and
 // `src/routes/__root.tsx` RootShell (W127 SW5) can read per-request state
@@ -83,6 +85,7 @@ declare global {
   var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
   var __ssrI18nGetter__: (() => I18nInstance | undefined) | undefined
   var __ssrNonceGetter__: (() => string | undefined) | undefined
+  var __ssrOriginGetter__: (() => string | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
 globalThis.__ssrCookieGetter__ = () => requestCookieStorage.getStore()
@@ -91,6 +94,8 @@ globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 globalThis.__ssrI18nGetter__ = () => requestI18nStorage.getStore()
 globalThis.__ssrNonceGetter__ = () => requestNonceStorage.getStore()
+globalThis.__ssrOriginGetter__ = () =>
+  process.env.TSS_PRERENDERING === "true" ? undefined : requestOriginStorage.getStore()
 
 // Wave 131 SW2 — Phase 4 deploy infrastructure /healthz endpoint.
 // Caddy `health_uri /healthz` (Caddyfile, W131 SW4) + k8s livenessProbe /
@@ -195,28 +200,30 @@ export default createServerEntry({
     // Authenticated SSR may serialize request-specific loader data. Protect it
     // alongside messenger responses, which remain private even when unauthenticated.
     const isMessengerPath = url.pathname.startsWith(MESSENGER_PATH_PREFIX)
-    return requestAuthStorage.run(auth, () =>
-      requestCookieStorage.run(cookie, () =>
-        requestFingerprintHeadersStorage.run(fingerprintHeaders, () =>
-          requestThemeStorage.run(theme, () =>
-            requestLangStorage.run(lang, () =>
-              requestI18nStorage.run(requestI18n, async () => {
-                return requestNonceStorage.run(nonce, async () => {
-                  const requestOptions = {
-                    ...(options ?? {}),
-                    context: {
-                      ...options?.context,
-                      nonce,
-                    },
-                  }
-                  let response = await handler.fetch(request, requestOptions)
-                  response =
-                    auth.isAuth || isMessengerPath
-                      ? augmentResponseForPrivateSsr(response)
-                      : response
-                  return applyNodeCspToHtmlResponse(response, nonce)
+    return requestOriginStorage.run(url.origin, () =>
+      requestAuthStorage.run(auth, () =>
+        requestCookieStorage.run(cookie, () =>
+          requestFingerprintHeadersStorage.run(fingerprintHeaders, () =>
+            requestThemeStorage.run(theme, () =>
+              requestLangStorage.run(lang, () =>
+                requestI18nStorage.run(requestI18n, async () => {
+                  return requestNonceStorage.run(nonce, async () => {
+                    const requestOptions = {
+                      ...(options ?? {}),
+                      context: {
+                        ...options?.context,
+                        nonce,
+                      },
+                    }
+                    let response = await handler.fetch(request, requestOptions)
+                    response =
+                      auth.isAuth || isMessengerPath
+                        ? augmentResponseForPrivateSsr(response)
+                        : response
+                    return applyNodeCspToHtmlResponse(response, nonce)
+                  })
                 })
-              })
+              )
             )
           )
         )

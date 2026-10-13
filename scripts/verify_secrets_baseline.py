@@ -128,6 +128,11 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
             ),
         }
     ),
+    "synthetic_fakeredis_lease_token": frozenset(
+        {
+            ("tests/test_chat_command_failure_paths.py", "Secret Keyword"),
+        }
+    ),
     "domain_resource_contract_fixture": frozenset(
         {
             ("tests/test_live_stand_resource_guard.py", "Secret Keyword"),

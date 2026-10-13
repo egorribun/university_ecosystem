@@ -212,3 +212,152 @@ def test_production_csp_defaults_match_shared_frontend_contract():
     }
 
     assert actual_headers == contract["headers"]
+
+
+def test_production_report_only_shadow_omits_unsupported_directives_only():
+    from app.core.security_headers import SecurityHeadersMiddleware
+
+    settings = CspSettingsMixin()
+    middleware = object.__new__(SecurityHeadersMiddleware)
+    middleware._settings = settings
+    headers = {
+        name.lower(): value
+        for name, value in middleware._build_csp_header(nonce="nonce-value")
+    }
+    enforcing_directives = [
+        directive.strip() for directive in headers["content-security-policy"].split(";")
+    ]
+    shadow_directives = [
+        directive.strip()
+        for directive in headers["content-security-policy-report-only"].split(";")
+    ]
+
+    assert "upgrade-insecure-requests" in enforcing_directives
+    assert "require-trusted-types-for 'script'" in enforcing_directives
+    assert "require-trusted-types-for 'script'" in shadow_directives
+    assert shadow_directives == [
+        directive
+        for directive in enforcing_directives
+        if directive != "upgrade-insecure-requests"
+    ] + ["report-uri /api/v1/csp-report"]
+
+
+def _report_uri_directives(policy: str) -> list[str]:
+    directives = [part.strip() for part in policy.split(";") if part.strip()]
+    return [
+        directive
+        for directive in directives
+        if directive.split(maxsplit=1)[0].casefold() == "report-uri"
+    ]
+
+
+def _production_csp_headers(settings: CspSettingsMixin) -> dict[str, str]:
+    from app.core.security_headers import SecurityHeadersMiddleware
+
+    settings.enable_strict_security_headers = True
+    settings.security_csp_report_only = False
+    middleware = object.__new__(SecurityHeadersMiddleware)
+    middleware._settings = settings
+    return {
+        name.lower(): value
+        for name, value in middleware._build_csp_header(nonce="test-nonce")
+    }
+
+
+def test_production_shadow_uses_configured_report_uri_without_default():
+    settings = CspSettingsMixin()
+    settings.security_csp_report_uri = "/configured/csp-report"
+
+    headers = _production_csp_headers(settings)
+
+    expected = ["report-uri /configured/csp-report"]
+    assert _report_uri_directives(headers["content-security-policy"]) == expected
+    assert (
+        _report_uri_directives(headers["content-security-policy-report-only"])
+        == expected
+    )
+
+
+def test_production_shadow_preserves_report_uri_from_custom_policy():
+    settings = CspSettingsMixin()
+    settings.security_csp_report_uri = ""
+    settings.security_csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self'; object-src 'none'; base-uri 'self'; "
+        "frame-ancestors 'self'; "
+        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
+        "require-trusted-types-for 'script'; "
+        "report-uri /policy/csp-report; upgrade-insecure-requests"
+    )
+
+    headers = _production_csp_headers(settings)
+
+    expected = ["report-uri /policy/csp-report"]
+    assert _report_uri_directives(headers["content-security-policy"]) == expected
+    assert (
+        _report_uri_directives(headers["content-security-policy-report-only"])
+        == expected
+    )
+    assert "upgrade-insecure-requests" in headers["content-security-policy"]
+    assert (
+        "upgrade-insecure-requests"
+        not in headers["content-security-policy-report-only"]
+    )
+    assert (
+        "require-trusted-types-for 'script'"
+        in headers["content-security-policy-report-only"]
+    )
+
+
+def test_production_shadow_adds_default_report_uri_only_when_policy_has_none():
+    headers = _production_csp_headers(CspSettingsMixin())
+
+    assert _report_uri_directives(headers["content-security-policy"]) == []
+    assert _report_uri_directives(headers["content-security-policy-report-only"]) == [
+        "report-uri /api/v1/csp-report"
+    ]
+
+
+def test_production_shadow_prefers_custom_uri_when_both_are_set():
+    settings = CspSettingsMixin()
+    settings.security_csp_report_uri = "/configured/csp-report"
+    settings.security_csp = (
+        "default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self'; object-src 'none'; base-uri 'self'; "
+        "frame-ancestors 'self'; "
+        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
+        "require-trusted-types-for 'script'; "
+        "report-uri /custom/csp-report; upgrade-insecure-requests"
+    )
+
+    headers = _production_csp_headers(settings)
+
+    expected = ["report-uri /custom/csp-report"]
+    assert _report_uri_directives(headers["content-security-policy"]) == expected
+    assert (
+        _report_uri_directives(headers["content-security-policy-report-only"])
+        == expected
+    )
+
+
+def test_production_shadow_detects_mixed_case_custom_report_uri():
+    settings = CspSettingsMixin()
+    settings.security_csp_report_uri = "/configured/csp-report"
+    settings.security_csp = (
+        "default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self'; object-src 'none'; base-uri 'self'; "
+        "frame-ancestors 'self'; "
+        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
+        "require-trusted-types-for 'script'; "
+        "RePoRt-UrI /mixed-case/csp-report; upgrade-insecure-requests"
+    )
+
+    headers = _production_csp_headers(settings)
+
+    expected = ["RePoRt-UrI /mixed-case/csp-report"]
+    assert _report_uri_directives(headers["content-security-policy"]) == expected
+    assert (
+        _report_uri_directives(headers["content-security-policy-report-only"])
+        == expected
+    )

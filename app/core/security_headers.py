@@ -236,8 +236,9 @@ class SecurityHeadersMiddleware:
 
         MOD-W8-04: In production (report_only=False) returns two headers:
         - Content-Security-Policy (enforcing)
-        - Content-Security-Policy-Report-Only (shadow, same policy + report-uri)
-        This lets us collect real violation reports without a separate relaxed policy.
+        - Content-Security-Policy-Report-Only (shadow policy + report-uri)
+        The shadow omits only upgrade-insecure-requests, which has no
+        report-only effect; the remaining directives mirror enforcement.
         In dev/staging (report_only=True) returns only the CSP-RO header.
         """
         report_only = self._settings.security_csp_report_only_effective
@@ -245,8 +246,25 @@ class SecurityHeadersMiddleware:
         if report_only:
             return [("Content-Security-Policy-Report-Only", policy)]
 
-        # Production: enforcing CSP + shadow report-only with report-uri appended
-        shadow_policy = f"{policy}; report-uri /api/v1/csp-report"
+        # Production: keep enforcement unchanged and preserve all of its
+        # directives in the shadow except upgrade-insecure-requests, which has
+        # no report-only effect.
+        shadow_directives = [
+            directive.strip()
+            for directive in policy.split(";")
+            if directive.strip()
+            and directive.strip().lower() != "upgrade-insecure-requests"
+        ]
+        # Keep configured report endpoints; use the application endpoint only
+        # as a fallback.
+        has_report_uri = any(
+            directive.split(maxsplit=1)[0].casefold() == "report-uri"
+            for directive in shadow_directives
+        )
+        if not has_report_uri:
+            shadow_directives.append("report-uri /api/v1/csp-report")
+
+        shadow_policy = "; ".join(shadow_directives)
         return [
             ("Content-Security-Policy", policy),
             ("Content-Security-Policy-Report-Only", shadow_policy),

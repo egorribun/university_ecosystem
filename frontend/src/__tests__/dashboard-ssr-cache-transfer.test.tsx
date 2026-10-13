@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { hydrateRoot, type Root } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 
 const state = vi.hoisted(() => ({
   user: null as null | { role: string; group_id: string },
@@ -129,6 +130,8 @@ import { getRouter, type RouterContext } from "../router"
 
 type SsrAuthGetter = (() => RouterContext["auth"] | undefined) | undefined
 
+const TEST_CAMPUS_TIME_ZONE = "Europe/Moscow"
+
 declare global {
   var __ssrAuthGetter__: SsrAuthGetter
 }
@@ -200,7 +203,9 @@ async function hydrateDashboard(client: QueryClient, html: string) {
     root = hydrateRoot(
       container,
       <QueryClientProvider client={client}>
-        <Dashboard />
+        <CampusTimezoneProvider timeZone={TEST_CAMPUS_TIME_ZONE}>
+          <Dashboard />
+        </CampusTimezoneProvider>
       </QueryClientProvider>,
       {
         onRecoverableError: () => {
@@ -256,7 +261,9 @@ describe("Dashboard SSR query transfer", () => {
 
     const serverHtml = renderToString(
       <QueryClientProvider client={serverClient}>
-        <Dashboard />
+        <CampusTimezoneProvider timeZone={TEST_CAMPUS_TIME_ZONE}>
+          <Dashboard />
+        </CampusTimezoneProvider>
       </QueryClientProvider>
     )
     const serverVisibleState = visibleState(serverHtml)

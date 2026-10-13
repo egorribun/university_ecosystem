@@ -222,8 +222,9 @@ per-identity owner and evidence metadata, with reviewed_on 2026-10-13 and
 expires_on 2027-01-10. No wildcard, category-wide permission, or future
 finding is covered; changed or unmatched identities remain fail-closed.
 
-Together with the 86 identities approved on 2026-10-12, the active policy
-contains exactly 113 approved records. The two linked account fixtures from the
+Together with the 86 identities approved on 2026-10-12, these additions
+brought the approved scope to exactly 113 records before the separate Caddy
+and four-identity decisions recorded below. The two linked account fixtures from the
 earlier approval remain limited to the internal synthetic demo; their external
 status remains unverified. The baseline remains at 319 identities and the 78
 required contexts remain unchanged. This decision authorizes no new
@@ -231,6 +232,33 @@ required contexts remain unchanged. This decision authorizes no new
 context changes. It records the owner's policy decision only. Integration,
 final-source recheck, tests and hosted checks are pending and must be reported
 separately; no release readiness is implied.
+
+## Separate Caddy approval and four additional owner-approved identities
+
+The owner approved exactly one Caddy image-digest disposition in a separate
+decision, extending the approved scope from 113 to 114. Implementation is
+tracked in [MVP STATUS](../superpowers/plans/STATUS.md). This decision is
+separate from the 27 identities approved above.
+
+On 2026-10-13 UTC, the owner approved exactly four additional exact-match
+disposition identities: two synthetic fake Redis `Secret Keyword` findings in
+`tests/test_chat_command_failure_paths.py`, one public NATS image digest, and
+one public imgproxy image digest in `tests/test_docker_startup_contracts.py`.
+Each record is restricted to its exact repository path, detector type and
+finding digest, with `reviewed_on` 2026-10-13 and `expires_on` 2027-01-10.
+Changed or unmatched identities remain fail-closed. The Go builder digest
+observed in the same test file already matches an existing disposition and is
+not a fifth addition.
+
+The approved scope is 118 exact identities: the prior 113, the separately
+approved Caddy identity, and these four new approvals. The linked account
+fixtures from the earlier approval remain limited to the internal synthetic
+demo; their external status remains unverified. The baseline remains at 319
+identities and the 78 required contexts remain unchanged. This approval
+authorizes no new `.secrets.baseline` entries, inline pragmas, scanner
+exclusions, bypass, or context changes. It records the owner's policy decision
+only. Policy integration, final-source recheck, tests and hosted checks remain
+separate and must be reported separately; no release readiness is implied.
 
 ## Consequences
 

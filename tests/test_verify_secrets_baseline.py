@@ -742,6 +742,11 @@ def test_independent_contract_fingerprint_category_remains_exact() -> None:
             "Secret Keyword",
         ),
         (
+            "synthetic_fakeredis_lease_token",
+            "tests/test_chat_command_failure_paths.py",
+            "Secret Keyword",
+        ),
+        (
             "domain_resource_contract_fixture",
             "tests/test_live_stand_resource_guard.py",
             "Secret Keyword",
@@ -809,6 +814,16 @@ def test_non_hex_dispositions_are_scoped_to_reviewed_path_and_type(
             "synthetic_hmac_test_material",
             "app/auth/security.py",
             "Secret Keyword",
+        ),
+        (
+            "synthetic_fakeredis_lease_token",
+            "tests/test_auth_review_regressions.py",
+            "Secret Keyword",
+        ),
+        (
+            "synthetic_fakeredis_lease_token",
+            "tests/test_chat_command_failure_paths.py",
+            "Base64 High Entropy String",
         ),
         (
             "domain_resource_contract_fixture",

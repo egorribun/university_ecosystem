@@ -9,6 +9,7 @@ import uuid
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import asyncpg
@@ -86,7 +87,7 @@ def postgres_server():
     assert _RUN_INTEGRATION_TESTS, "Owned PostgreSQL integration was not enabled"
 
     run_id = uuid.uuid4().hex
-    with PostgresContainer(
+    postgres = PostgresContainer(
         _POSTGRES_IMAGE,
         name=f"ue-aud197198-pg17-{run_id}",
         labels={
@@ -96,7 +97,10 @@ def postgres_server():
         mem_limit=1024**3,
         memswap_limit=1024**3,
         nano_cpus=2_000_000_000,
-    ) as postgres:
+    )
+    # Docker SDK accepts a host-IP/host-port tuple; None requests a random host port.
+    cast(Any, postgres.ports)[str(postgres.port)] = ("127.0.0.1", None)
+    with postgres:
         yield postgres
 
 

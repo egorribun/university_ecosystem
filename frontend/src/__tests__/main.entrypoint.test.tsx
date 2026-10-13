@@ -152,17 +152,146 @@ describe("browser entrypoint", () => {
     expect(readBootstrapStatus()).toBe("disabled")
   })
 
-  it("mounts the static SPA fallback instead of hydrating route-specific shell content", async () => {
+  it("removes the executed parser theme script before mounting the static SPA fallback", async () => {
     vi.stubEnv("PROD", false)
-    document.documentElement.dataset.renderMode = "static-spa"
+    const originalClass = document.documentElement.className
+    const originalLang = document.documentElement.getAttribute("lang")
+    const originalSelectedLanguage = window.__UE_SELECTED_LANG__
+    const originalThemeMarker = Object.getOwnPropertyDescriptor(
+      window,
+      "__UE_THEME_INIT_SCRIPT_RAN__"
+    )
+    const nonceMeta = document.createElement("meta")
+    nonceMeta.setAttribute("property", "csp-nonce")
+    nonceMeta.content = "static-spa-nonce"
+    const parserThemeScript = document.createElement("script")
+    parserThemeScript.id = "theme-init-script"
+    parserThemeScript.src = window.location.origin + "/theme-init.js"
+    parserThemeScript.setAttribute("nonce", "static-spa-nonce")
 
-    await importMain()
+    try {
+      document.head.append(nonceMeta, parserThemeScript)
+      document.documentElement.dataset.renderMode = "static-spa"
+      document.documentElement.classList.add("dark")
+      document.documentElement.lang = "en"
+      window.__UE_SELECTED_LANG__ = "en"
+      Reflect.set(window, "__UE_THEME_INIT_SCRIPT_RAN__", true)
+      expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(1)
 
-    expect(mocks.createRoot).toHaveBeenCalledWith(document)
-    expect(mocks.render).toHaveBeenCalledWith(expect.anything())
-    expect(mocks.hydrateRoot).not.toHaveBeenCalled()
-    expect(document.documentElement).not.toHaveAttribute("data-render-mode")
+      mocks.createRoot.mockImplementation((container: Document) => {
+        expect(container).toBe(document)
+        expect(parserThemeScript.isConnected).toBe(false)
+        expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(0)
+        return { render: mocks.render }
+      })
+
+      await importMain()
+
+      expect(mocks.createRoot).toHaveBeenCalledWith(document)
+      expect(mocks.render).toHaveBeenCalledWith(expect.anything())
+      expect(mocks.hydrateRoot).not.toHaveBeenCalled()
+      expect(document.documentElement).not.toHaveAttribute("data-render-mode")
+      expect(document.documentElement).toHaveClass("dark")
+      expect(document.documentElement).toHaveAttribute("lang", "en")
+      expect(window.__UE_SELECTED_LANG__).toBe("en")
+      expect(parserThemeScript.isConnected).toBe(false)
+      expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(0)
+    } finally {
+      nonceMeta.remove()
+      parserThemeScript.remove()
+      document.documentElement.className = originalClass
+      if (originalLang === null) document.documentElement.removeAttribute("lang")
+      else document.documentElement.setAttribute("lang", originalLang)
+      if (originalSelectedLanguage === undefined)
+        Reflect.deleteProperty(window, "__UE_SELECTED_LANG__")
+      else window.__UE_SELECTED_LANG__ = originalSelectedLanguage
+      if (originalThemeMarker) {
+        Object.defineProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__", originalThemeMarker)
+      } else {
+        Reflect.deleteProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__")
+      }
+    }
   })
+
+  it.each([
+    {
+      label: "an unexecuted static asset",
+      renderMode: "static-spa",
+      source: `${window.location.origin}/theme-init.js`,
+      executed: false,
+      elementTag: "script",
+      parentTag: "head",
+    },
+    {
+      label: "a static asset from another origin",
+      renderMode: "static-spa",
+      source: "https://example.invalid/theme-init.js",
+      executed: true,
+      elementTag: "script",
+      parentTag: "head",
+    },
+    {
+      label: "an SSR document",
+      renderMode: undefined,
+      source: `${window.location.origin}/theme-init.js`,
+      executed: true,
+      elementTag: "script",
+      parentTag: "head",
+    },
+    {
+      label: "a non-script HTMLElement with the owned id",
+      renderMode: "static-spa",
+      source: `${window.location.origin}/theme-init.js`,
+      executed: true,
+      elementTag: "meta",
+      parentTag: "head",
+    },
+    {
+      label: "an executed same-origin script outside document.head",
+      renderMode: "static-spa",
+      source: `${window.location.origin}/theme-init.js`,
+      executed: true,
+      elementTag: "script",
+      parentTag: "body",
+    },
+  ])(
+    "preserves the parser theme element for $label",
+    async ({ renderMode, source, executed, elementTag, parentTag }) => {
+      vi.stubEnv("PROD", false)
+      const previousThemeMarker = Object.getOwnPropertyDescriptor(
+        window,
+        "__UE_THEME_INIT_SCRIPT_RAN__"
+      )
+      const parserThemeNode = document.createElement(elementTag)
+      parserThemeNode.id = "theme-init-script"
+      if (parserThemeNode instanceof HTMLScriptElement) parserThemeNode.src = source
+
+      try {
+        const insertionParent = parentTag === "body" ? document.body : document.head
+        insertionParent.append(parserThemeNode)
+        if (renderMode) document.documentElement.dataset.renderMode = renderMode
+        Reflect.set(window, "__UE_THEME_INIT_SCRIPT_RAN__", executed)
+
+        await importMain()
+
+        expect(parserThemeNode.isConnected).toBe(true)
+        if (renderMode) {
+          expect(mocks.createRoot).toHaveBeenCalledWith(document)
+          expect(mocks.hydrateRoot).not.toHaveBeenCalled()
+        } else {
+          expect(mocks.hydrateRoot).toHaveBeenCalledWith(document, expect.anything())
+          expect(mocks.createRoot).not.toHaveBeenCalled()
+        }
+      } finally {
+        parserThemeNode.remove()
+        if (previousThemeMarker) {
+          Object.defineProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__", previousThemeMarker)
+        } else {
+          Reflect.deleteProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__")
+        }
+      }
+    }
+  )
 
   it("mounts the LHCI static shell without hydrating route-agnostic markup", async () => {
     vi.stubEnv("PROD", false)

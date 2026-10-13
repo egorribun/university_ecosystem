@@ -1,6 +1,5 @@
-# TD-09 (audit 2026-03-06): NATS credentials via config file, not CLI args.
-# Credentials in --user/--pass are visible in `docker ps` and /proc/<pid>/cmdline.
-# envsubst substitutes $NATS_USER / $NATS_PASSWORD from container env at startup.
+# TD-09 (audit 2026-03-06): credentials are loaded from container environment and rendered as quoted NATS strings.
+# Compose startup replaces each marker once; credentials never enter process arguments.
 port: 4222
 http_port: 8222
 
@@ -11,6 +10,6 @@ jetstream {
 }
 
 authorization {
-  user: $NATS_USER
-  password: $NATS_PASSWORD
+  user: @NATS_USER@
+  password: @NATS_PASSWORD@
 }

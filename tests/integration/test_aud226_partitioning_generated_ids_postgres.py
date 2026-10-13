@@ -9,6 +9,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -59,7 +60,7 @@ def _pinned_postgres_image() -> str:
 def postgres_engine():
     """Use the existing digest-pinned PG17 image and bounded resource profile."""
     run_id = uuid4().hex
-    with PostgresContainer(
+    postgres = PostgresContainer(
         _pinned_postgres_image(),
         name=f"ue-aud226-partition-sequences-pg17-{run_id}",
         labels={
@@ -69,7 +70,10 @@ def postgres_engine():
         mem_limit=1024**3,
         memswap_limit=1024**3,
         nano_cpus=2_000_000_000,
-    ) as postgres:
+    )
+    # Docker SDK accepts a host-IP/host-port tuple; None requests a random host port.
+    cast(Any, postgres.ports)[str(postgres.port)] = ("127.0.0.1", None)
+    with postgres:
         engine = sa.create_engine(postgres.get_connection_url(driver="psycopg"))
         try:
             yield engine

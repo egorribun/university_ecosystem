@@ -85,6 +85,12 @@ def _fake_message(forwarded_from_name: str | None = None) -> SimpleNamespace:
     )
 
 
+def _attachment_reference_result(urls: list[str]) -> MagicMock:
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = urls
+    return result
+
+
 def _mock_uow() -> MagicMock:
     uow = MagicMock()
     uow.chats = MagicMock()
@@ -511,6 +517,7 @@ class TestForwardMessages:
         uow.chats.get_last_messages = AsyncMock(return_value={src.id: src})
         uow.chats.get_user_display_names = AsyncMock(return_value={})
         uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
+        uow.session.execute = AsyncMock(return_value=_attachment_reference_result([]))
 
         attachment_service = MagicMock()
         attachment_service.copy_for_forward = AsyncMock(
@@ -553,6 +560,7 @@ class TestForwardMessages:
         uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
         uow.chats.update_timestamp_by_id = AsyncMock()
         uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+        uow.session.execute = AsyncMock(return_value=_attachment_reference_result([]))
 
         attachment_service = MagicMock()
         attachment_service.copy_for_forward = AsyncMock(
@@ -723,6 +731,7 @@ class TestForwardMessages:
         uow.chats.get_last_messages = AsyncMock(return_value={src.id: src})
         uow.chats.get_user_display_names = AsyncMock(return_value={})
         uow.chats.create_message = AsyncMock(side_effect=RuntimeError("write failed"))
+        uow.session.execute = AsyncMock(return_value=_attachment_reference_result([]))
         attachment_service = MagicMock()
         attachment_service.copy_for_forward = AsyncMock(
             return_value={
@@ -750,9 +759,14 @@ class TestForwardMessages:
 
         log.warning.assert_called_once_with(logged_event)
         uow.rollback.assert_awaited_once()
-        attachment_service.cleanup_files.assert_awaited_once_with(
-            ["https://cdn.example.com/copied.png"]
-        )
+        if failing_step == "rollback":
+            uow.session.execute.assert_not_awaited()
+            attachment_service.cleanup_files.assert_not_awaited()
+        else:
+            uow.session.execute.assert_awaited_once()
+            attachment_service.cleanup_files.assert_awaited_once_with(
+                ["https://cdn.example.com/copied.png"]
+            )
         assert "rollback secret" not in caplog.text
         assert "cleanup secret" not in caplog.text
 
@@ -834,3 +848,110 @@ class TestForwardMessages:
         # Deduped → one message created, not two.
         assert uow.chats.create_message.await_count == 1
         assert len(responses) == 1
+
+
+@pytest.mark.asyncio
+async def test_forward_commit_failure_cleans_only_unreferenced_copies() -> None:
+    uow = _mock_uow()
+    user = _mock_user()
+    dest = _mock_chat()
+    source_chat_id = uuid.uuid4()
+    shared_url = "https://cdn.example.com/copied-shared.png"
+    orphan_url = "https://cdn.example.com/copied-orphan.png"
+    src = _message_dto(
+        attachments=[
+            _attachment_dto("https://cdn.example.com/source-a.png"),
+            _attachment_dto("https://cdn.example.com/source-b.png"),
+        ]
+    )
+    uow.chats.get_by_id = AsyncMock(return_value=dest)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
+    uow.chats.get_last_messages = AsyncMock(return_value={src.id: src})
+    uow.chats.get_user_display_names = AsyncMock(return_value={})
+    uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.commit = AsyncMock(side_effect=ConnectionError("commit outcome unknown"))
+    order: list[str] = []
+
+    async def rollback() -> None:
+        order.append("rollback")
+
+    async def lookup(_statement: object) -> MagicMock:
+        order.append("reference_lookup")
+        return _attachment_reference_result([shared_url])
+
+    uow.rollback.side_effect = rollback
+    uow.session.execute = AsyncMock(side_effect=lookup)
+    attachment_service = MagicMock()
+    attachment_service.copy_for_forward = AsyncMock(
+        side_effect=[
+            {
+                "url": shared_url,
+                "file_type": "image",
+                "filename": "shared.png",
+                "size": 1234,
+            },
+            {
+                "url": orphan_url,
+                "file_type": "image",
+                "filename": "orphan.png",
+                "size": 1234,
+            },
+        ]
+    )
+    attachment_service.cleanup_files = AsyncMock()
+
+    with pytest.raises(ConnectionError, match="commit outcome unknown"):
+        await ChatMessageDispatcher(
+            uow, attachment_service, AsyncMock()
+        ).forward_messages(dest.id, user, source_chat_id, [src.id], locale="en")
+
+    assert order == ["rollback", "reference_lookup"]
+    attachment_service.cleanup_files.assert_awaited_once_with([orphan_url])
+
+
+@pytest.mark.asyncio
+async def test_forward_reference_lookup_failure_retains_copied_object() -> None:
+    uow = _mock_uow()
+    user = _mock_user()
+    dest = _mock_chat()
+    source_chat_id = uuid.uuid4()
+    src = _message_dto(attachments=[_attachment_dto()])
+    uow.chats.get_by_id = AsyncMock(return_value=dest)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
+    uow.chats.get_last_messages = AsyncMock(return_value={src.id: src})
+    uow.chats.get_user_display_names = AsyncMock(return_value={})
+    uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.commit = AsyncMock(side_effect=ConnectionError("commit outcome unknown"))
+    order: list[str] = []
+
+    async def rollback() -> None:
+        order.append("rollback")
+
+    async def lookup(_statement: object) -> object:
+        order.append("reference_lookup")
+        raise OSError("reference query unavailable")
+
+    uow.rollback.side_effect = rollback
+    uow.session.execute = AsyncMock(side_effect=lookup)
+    attachment_service = MagicMock()
+    attachment_service.copy_for_forward = AsyncMock(
+        return_value={
+            "url": "https://cdn.example.com/copied.png",
+            "file_type": "image",
+            "filename": "a.png",
+            "size": 1234,
+        }
+    )
+    attachment_service.cleanup_files = AsyncMock()
+
+    with pytest.raises(ConnectionError, match="commit outcome unknown"):
+        await ChatMessageDispatcher(
+            uow, attachment_service, AsyncMock()
+        ).forward_messages(dest.id, user, source_chat_id, [src.id], locale="en")
+
+    assert order == ["rollback", "reference_lookup"]
+    attachment_service.cleanup_files.assert_not_awaited()

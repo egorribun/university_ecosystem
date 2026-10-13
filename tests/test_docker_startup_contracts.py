@@ -1467,6 +1467,63 @@ def test_nats_consumers_wait_for_a_healthy_broker() -> None:
             assert dependency["condition"] == "service_healthy"
 
 
+def test_full_nats_credentials_use_literal_safe_config_rendering() -> None:
+    project = _compose("docker-compose.full.yml")
+    nats = project["services"]["nats"]
+    entrypoint = nats["entrypoint"]
+    assert entrypoint[:2] == ["sh", "-c"]
+    renderer = entrypoint[2]
+
+    assert "set -eu" in renderer
+    assert "umask 077" in renderer
+    assert "LC_ALL=C awk" in renderer
+    assert 'ENVIRON["NATS_USER"]' in renderer
+    assert 'ENVIRON["NATS_PASSWORD"]' in renderer
+    assert "function quote_nats" in renderer
+    assert "function render_line" in renderer
+    assert "control_hex" in renderer
+    assert "print render_line($$0, user, password)" in renderer
+    assert "user_marker_count != 1 || password_marker_count != 1" in renderer
+    assert "exec /usr/local/bin/nats-server --config /tmp/nats.conf" in renderer
+    assert "sed " not in renderer
+    assert "envsubst" not in renderer
+    assert "--user" not in renderer
+    assert "--pass" not in renderer
+
+    assert nats["image"] == (
+        "nats:2.12.15-alpine@sha256:"
+        "b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6"
+    )
+    assert nats["environment"] == [
+        "NATS_USER=" + "$" + "{NATS_USER:?NATS_USER is required - set in .env file}",
+        "NATS_PASSWORD="
+        + "$"
+        + "{NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}",
+    ]
+    assert nats["volumes"] == [
+        "./config/nats.conf.template:/etc/nats/nats.conf.template:ro",
+        "nats-data:/data",
+    ]
+    assert nats["networks"] == ["internal"]
+    assert "ports" not in nats
+    assert nats["restart"] == "unless-stopped"
+    assert nats["deploy"]["resources"]["limits"] == {"cpus": "0.25", "memory": "1G"}
+    assert nats["healthcheck"]["test"] == [
+        "CMD",
+        "wget",
+        "-qO-",
+        "http://localhost:8222/healthz",
+    ]
+
+    template = _read("config/nats.conf.template")
+    assert "port: 4222\nhttp_port: 8222\n" in template
+    assert "  store_dir: /data\n  max_file: 10GB\n  max_mem: 512MB\n" in template
+    assert template.count("@NATS_USER@") == 1
+    assert template.count("@NATS_PASSWORD@") == 1
+    assert "$NATS_USER" not in template
+    assert "$NATS_PASSWORD" not in template
+
+
 def test_base_python_services_keep_nats_token_out_of_the_url() -> None:
     services = _compose("docker-compose.yml")["services"]
     expected_token = "${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}"

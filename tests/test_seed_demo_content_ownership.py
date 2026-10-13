@@ -2,15 +2,22 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.dialects.sqlite import dialect as SQLiteDialect
 
 from app.models.events import Event
 from app.models.news import News
 from app.models.schedule import Schedule
 from app.models.stories import Story
 from scripts import seed_demo_data
+
+
+def _persisted_schedule_uuid(sequence: int) -> UUID:
+    """Return a stable UUIDv7 like the Schedule DB default at INSERT time."""
+    unix_millis = 1_800_000_000_000
+    return UUID(int=(unix_millis << 80) | (0x7 << 76) | (0b10 << 62) | sequence)
 
 
 class Rows:
@@ -20,12 +27,19 @@ class Rows:
     def all(self) -> list[object]:
         return list(self._rows)
 
+    def scalars(self) -> Rows:
+        return self
+
 
 class DemoContentSession:
+    def get_bind(self) -> SimpleNamespace:
+        return SimpleNamespace(dialect=SQLiteDialect())
+
     def __init__(self, content_rows: list[object]) -> None:
         self.content_rows = list(content_rows)
         self.schedule_rows: list[Schedule] = []
         self.added: list[object] = []
+        self._schedule_id_sequence = 0
 
     async def scalar(self, statement: object) -> object:
         entity = statement.column_descriptions[0].get("entity")
@@ -77,6 +91,29 @@ class DemoContentSession:
         group_id = parameters["group_id_1"]
         return Rows([row for row in self.schedule_rows if row.group_id == group_id])
 
+    async def execute(self, statement: object) -> Rows:
+        entity = statement.column_descriptions[0].get("entity")
+        if entity is not Schedule:
+            raise AssertionError(f"Unexpected execute query entity: {entity!r}")
+
+        parameters = statement.compile().params
+        group_id = parameters["group_id_1"]
+        teachers = next(
+            (
+                value
+                for name, value in parameters.items()
+                if name.startswith("teacher_")
+            ),
+            (),
+        )
+        matching = [
+            row
+            for row in self.schedule_rows
+            if row.group_id == group_id or row.teacher in teachers
+        ]
+        matching.sort(key=lambda row: (row.weekday, row.start_time))
+        return Rows(matching)
+
     def add(self, entity: object) -> None:
         self.added.append(entity)
         if isinstance(entity, Schedule):
@@ -85,7 +122,11 @@ class DemoContentSession:
             self.content_rows.append(entity)
 
     async def flush(self) -> None:
-        return None
+        # SQLAlchemy applies UUID7 defaults while inserting at flush time.
+        for row in self.schedule_rows:
+            if row.id is None:
+                self._schedule_id_sequence += 1
+                row.id = _persisted_schedule_uuid(self._schedule_id_sequence)
 
 
 @pytest.mark.asyncio
@@ -453,6 +494,7 @@ async def test_schedule_seed_skips_natural_key_collision_without_mutation_or_dup
     weekday, pair_number, subject, *_rest, parity = seed_demo_data.SCHEDULE_DATA[0]
     start, end = seed_demo_data._pair(seed_demo_data._DAY_BASE[weekday], pair_number)
     user_row = Schedule(
+        id=_persisted_schedule_uuid(100_000),
         group_id=group_id,
         creator_id=user_row_id if user_row_creator == "other" else None,
         subject=subject,

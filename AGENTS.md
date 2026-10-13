@@ -141,10 +141,29 @@ for the MVP release; the current plan is
      to the internal synthetic demo). A separate 2026-10-12 UTC decision
      approved exactly one additional public NATS image digest identity at
      `tests/test_workflow_fail_closed_contracts.py:43`. The original 85 identities
-     remain unchanged, for 86 exact policy identities total. The baseline
-     remains at 319 identities and the 78 required contexts remain unchanged.
+     remain unchanged, for 86 exact policy identities total. On 2026-10-13 UTC,
+     the owner separately approved exactly 27 additional identities (12 public
+     integrity digests and 15 independent contract fingerprints), bringing the
+     approved scope to 113 exact identities at that decision, preserving the prior 86.
+     The owner reaffirmed this scope on 2026-10-13. The baseline remains at 319
+     identities and the 78 required contexts remain unchanged.
      No further findings, baseline entries, inline pragmas, broad exclusions,
      or unmatched/changed identities are authorized. This does not replace
+     final-source validation.
+     Separately, the owner approved one exact Caddy image-digest disposition;
+     this distinct decision extended the approved scope from 113 to 114.
+     Implementation is tracked in [MVP STATUS](docs/superpowers/plans/STATUS.md). On 2026-10-13
+     UTC, the owner also approved exactly four additional exact-match
+     dispositions: two synthetic fake Redis `Secret Keyword` findings in
+     `tests/test_chat_command_failure_paths.py`, one public NATS image digest,
+     and one public imgproxy image digest in
+     `tests/test_docker_startup_contracts.py`. These records are scoped to
+     exact path, detector type, and finding digest and expire on 2027-01-10;
+     changed or unmatched identities remain fail-closed. The approved scope is
+     118 exact identities: 113 prior identities + the separately approved
+     Caddy identity + four newly approved identities. This changes none of the
+     319 baseline identities, 78 required contexts, CodeQL rule, or hooks.
+     Approval does not replace policy integration, tests, hosted checks, or
      final-source validation.
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).

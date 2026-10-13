@@ -683,14 +683,68 @@ services:
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     # TD-09 (audit 2026-03-06): credentials via config file, not CLI args.
-    # --user/--pass appear in `docker ps` output and /proc/<pid>/cmdline.
-    # envsubst renders the template at startup; generated file lives in /tmp (not persisted).
+    # Render credentials as escaped NATS string literals; never place their values in process arguments.
+    # The generated config is private to the container and is not persisted.
     entrypoint:
       - "sh"
       - "-c"
       - |
-        sed "s/\$$NATS_USER/$NATS_USER/g; s/\$$NATS_PASSWORD/$NATS_PASSWORD/g" /etc/nats/nats.conf.template > /tmp/nats.conf
-        exec nats-server --config /tmp/nats.conf
+        set -eu
+        umask 077
+        LC_ALL=C awk '
+        function quote_nats(value, quoted, i, character) {
+          quoted = "\""
+          for (i = 1; i <= length(value); i++) {
+            character = substr(value, i, 1)
+            if (character == "\\") quoted = quoted "\\\\"
+            else if (character == "\"") quoted = quoted "\\\""
+            else if (character == "\n") quoted = quoted "\\n"
+            else if (character == "\r") quoted = quoted "\\r"
+            else if (character == "\t") quoted = quoted "\\t"
+            else if (character in control_hex) quoted = quoted "\\x" control_hex[character]
+            else quoted = quoted character
+          }
+          return quoted "\""
+        }
+        function render_line(value, user, password, output, user_marker, password_marker) {
+          user_marker = "@NATS_USER@"
+          password_marker = "@NATS_PASSWORD@"
+          output = ""
+          while (length(value) > 0) {
+            if (substr(value, 1, length(user_marker)) == user_marker) {
+              output = output user
+              value = substr(value, length(user_marker) + 1)
+              user_marker_count++
+            } else if (substr(value, 1, length(password_marker)) == password_marker) {
+              output = output password
+              value = substr(value, length(password_marker) + 1)
+              password_marker_count++
+            } else {
+              output = output substr(value, 1, 1)
+              value = substr(value, 2)
+            }
+          }
+          return output
+        }
+        BEGIN {
+          for (code = 1; code < 32; code++) {
+            if (code != 9 && code != 10 && code != 13) {
+              control_hex[sprintf("%c", code)] = sprintf("%02X", code)
+            }
+          }
+          control_hex[sprintf("%c", 127)] = "7F"
+          user = quote_nats(ENVIRON["NATS_USER"])
+          password = quote_nats(ENVIRON["NATS_PASSWORD"])
+        }
+        {
+          print render_line($$0, user, password)
+        }
+        END {
+          if (user_marker_count != 1 || password_marker_count != 1) {
+            exit 1
+          }
+        }' /etc/nats/nats.conf.template > /tmp/nats.conf
+        exec /usr/local/bin/nats-server --config /tmp/nats.conf
     environment:
       - NATS_USER=${NATS_USER:?NATS_USER is required - set in .env file}
       - NATS_PASSWORD=${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}

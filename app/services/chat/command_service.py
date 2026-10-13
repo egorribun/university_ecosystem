@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 
 from fastapi import HTTPException, status
 from redis.exceptions import WatchError
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.validation import (
     ensure_exists,
@@ -162,6 +164,29 @@ class ChatMessageDispatcher:
         self.session = uow.session
         self.attachment_service = attachment_service
         self.notification_service = notification_service
+
+    async def _cleanup_unreferenced_uploaded_files(self, urls: list[str]) -> None:
+        """Delete failed-transaction files only when no Attachment owns their URL.
+
+        A database can commit while its acknowledgement is lost. A later rollback
+        cannot undo committed rows, so check the primary session after rollback.
+        Keep every object if that ownership check cannot be completed.
+        """
+        candidates = list(dict.fromkeys(url for url in urls if url))
+        if not candidates:
+            return
+        try:
+            result = await self.session.execute(
+                select(Attachment.url).where(Attachment.url.in_(candidates)).distinct()
+            )
+            referenced = set(result.scalars().all())
+        except (SQLAlchemyError, ConnectionError, OSError):  # RZ-22-01
+            # Retain the objects if attachment ownership cannot be checked.
+            logger.warning("chat_attachment_reference_check_failed")
+            return
+        unreferenced = [url for url in candidates if url not in referenced]
+        if unreferenced:
+            await self.attachment_service.cleanup_files(unreferenced)
 
     async def send_message(
         self,
@@ -351,9 +376,10 @@ class ChatMessageDispatcher:
 
         # ── Phase 2: Atomic DB write ─────────────────────────────────────────
         # All uploads succeeded — now write Message + Attachments + MessageSent
-        # event in a single transaction.  If this fails we clean up the uploaded
-        # files (best-effort) and release the idempotency pending slot so the
-        # next retry can start fresh — closing the RACE-BE-01 window.
+        # event in a single transaction. If commit has begun and its outcome is
+        # unknown, keep the bounded pending lease so an immediate retry cannot
+        # create a duplicate message.
+        commit_attempted = False
         try:
             if _idempotency_cache_key and _pending_value:
                 # Uploads may outlive the lease. Verify and renew ownership before
@@ -419,17 +445,43 @@ class ChatMessageDispatcher:
             # atomically in the uow.commit() call below.
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
 
-            async with self.uow:
-                await self.uow.commit()
+            # DI supplies a UOW bound to the request-owned session. Commit it
+            # directly so a failing context-manager rollback cannot replace the
+            # commit error before this method performs its one guarded rollback.
+            commit_attempted = True
+            await self.uow.commit()
 
-        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleans up uploaded files then re-raises (reviewed TD-27-04)
-            # RACE-BE-01: Phase 2 failed — clean up already-uploaded files and
-            # release the idempotency slot so the next retry can re-upload fresh
-            # copies rather than re-using orphaned S3 objects.
-            if saved_urls:
-                await self.attachment_service.cleanup_files(saved_urls)
+        except Exception:  # RZ-22-01-JUSTIFIED: rollback and cleanup before re-raising (reviewed TD-27-04)
+            # RACE-BE-01: Phase 2 failed — rollback first, then preserve any file
+            # that a possibly committed Attachment row still references.
+            rollback_succeeded = True
+            try:
+                await self.uow.rollback()
+            except (
+                Exception
+            ):  # RZ-22-01-JUSTIFIED: preserve failure; retain files on rollback error
+                rollback_succeeded = False
+                logger.warning("chat_message_rollback_failed")
+            if saved_urls and rollback_succeeded:
+                try:
+                    await self._cleanup_unreferenced_uploaded_files(saved_urls)
+                except Exception:  # RZ-22-01-JUSTIFIED: best-effort cleanup must preserve the transaction failure
+                    logger.warning("chat_message_attachment_cleanup_failed")
             if _idempotency_cache_key and _pending_value:
-                await _change_idempotency_slot(_idempotency_cache_key, _pending_value)
+                try:
+                    if commit_attempted:
+                        # Compare-and-renew only our still-live lease. If commit
+                        # acknowledgement was lost, this blocks immediate retries
+                        # for one bounded TTL without claiming durable idempotency.
+                        await _change_idempotency_slot(
+                            _idempotency_cache_key, _pending_value, _pending_value
+                        )
+                    else:
+                        await _change_idempotency_slot(
+                            _idempotency_cache_key, _pending_value
+                        )
+                except Exception:  # RZ-22-01-JUSTIFIED: cache cleanup must preserve the transaction failure
+                    logger.warning("chat_message_idempotency_cleanup_failed")
             raise
 
         # Record the committed ID before response hydration, which may itself
@@ -633,19 +685,22 @@ class ChatMessageDispatcher:
 
             # One timestamp bump and one atomic commit for all N messages.
             await self.repository.update_timestamp_by_id(dest_chat_id, now)
-            async with self.uow:
-                await self.uow.commit()
+            # The injected UOW borrows the request session; the catch below
+            # owns rollback and must see the original commit exception.
+            await self.uow.commit()
         except (
             Exception,
             asyncio.CancelledError,
         ):  # RZ-22-01-JUSTIFIED: attempt transaction and copied-file rollback before re-raising failure or cancellation
+            rollback_succeeded = True
             try:
                 await self.uow.rollback()
-            except Exception:  # RZ-22-01-JUSTIFIED: preserve original failure and continue storage rollback
+            except Exception:  # RZ-22-01-JUSTIFIED: preserve original failure and retain files when rollback fails
+                rollback_succeeded = False
                 logger.warning("chat_forward_rollback_failed")
-            if copied_urls:
+            if copied_urls and rollback_succeeded:
                 try:
-                    await self.attachment_service.cleanup_files(copied_urls)
+                    await self._cleanup_unreferenced_uploaded_files(copied_urls)
                 except Exception:  # RZ-22-01-JUSTIFIED: best-effort file cleanup must not mask original failure
                     logger.warning("chat_forward_copy_cleanup_failed")
             raise

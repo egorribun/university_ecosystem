@@ -186,7 +186,7 @@ export function NewsDetailEditDialog({
       <DialogContent className="space-y-6 pt-4">
         {!sourceReady || sourceLoading || sourceLoadFailed ? (
           <div role={sourceLoadFailed ? "alert" : "status"}>
-            {sourceLoadFailed ? t("common:errors.generic") : t("common:buttons.loading")}
+            {sourceLoadFailed ? t("common:errors.generic") : t("common:statuses.loading")}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

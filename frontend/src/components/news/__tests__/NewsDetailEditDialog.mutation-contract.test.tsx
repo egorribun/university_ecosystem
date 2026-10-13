@@ -320,7 +320,7 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     )
     renderDialog({ language: "en" })
 
-    expect(screen.getByRole("status")).toHaveTextContent("common:buttons.loading")
+    expect(screen.getByRole("status")).toHaveTextContent("common:statuses.loading")
     const save = screen.getByRole("button", { name: "common:buttons.save" })
     expect(save).toBeDisabled()
     fireEvent.click(save)

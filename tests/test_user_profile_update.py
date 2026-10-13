@@ -20,7 +20,6 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.users import UserProfileUpdate
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
-from app.utils.files import delete_static_file
 
 
 def _make_png_bytes(color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
@@ -40,6 +39,22 @@ async def _login(
     assert response.status_code == 200
     token = response.cookies.get("access_token_v2")
     return {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
+
+
+def _make_media_uow(db_session, user, *, commit_side_effect):
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_uow = AsyncMock()
+    mock_uow.users = AsyncMock()
+    mock_uow.users.db = db_session
+    mock_uow.users.add = MagicMock()
+    mock_uow.users.get_orm_for_update_with_relations = AsyncMock(return_value=user)
+    mock_uow.users._to_dto = MagicMock(return_value=user)
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock(side_effect=commit_side_effect)
+    mock_uow.rollback = AsyncMock(side_effect=db_session.rollback)
+    return mock_uow
 
 
 @pytest.mark.asyncio
@@ -529,10 +544,15 @@ async def test_delete_avatar_ignores_invalid_path(
 
 
 @pytest.mark.asyncio
-async def test_upload_avatar_cleans_up_on_commit_failure(
+async def test_upload_avatar_retains_old_file_on_commit_failure(
     tmp_path, monkeypatch, db_session, user_factory
 ):
-    user = await user_factory(is_active=True)
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old avatar")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
 
     payload = _make_png_bytes()
     upload = UploadFile(
@@ -543,14 +563,16 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
+    from app.services.user import media_service
+
     delete_calls: list[tuple[str, uuid.UUID, str]] = []
-    original_delete = delete_static_file
+    original_delete = media_service.delete_static_file
 
     async def tracking_delete(
         url: str, *, owner_id: uuid.UUID, media_kind: str
     ) -> None:
         delete_calls.append((url, owner_id, media_kind))
-        await original_delete(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
 
     monkeypatch.setattr(
         "app.services.user.media_service.delete_static_file", tracking_delete
@@ -558,12 +580,8 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock, MagicMock
 
-    mock_uow = AsyncMock()
-    mock_uow.users = AsyncMock()
-    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
-    mock_uow.__aexit__ = AsyncMock(return_value=None)
-    mock_uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
-    mock_uow.rollback = AsyncMock()
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
 
     service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
@@ -572,21 +590,28 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError) as raised:
         await service.upload_avatar(user, upload)
 
+    assert raised.value is commit_error
     avatar_dir = tmp_path / "avatars"
     assert delete_calls, "delete_static_file should be invoked"
-    assert all(call[1:] == (user.id, "avatar") for call in delete_calls)
-    if avatar_dir.exists():
-        assert not any(avatar_dir.iterdir())
+    assert all(call[1:] == (owner_id, "avatar") for call in delete_calls)
+    assert all(call[0] != old_url for call in delete_calls)
+    assert old_path.exists()
+    assert len(list(avatar_dir.iterdir())) == 1
 
 
 @pytest.mark.asyncio
-async def test_upload_cover_cleans_up_on_commit_failure(
+async def test_upload_cover_retains_old_file_on_commit_failure(
     tmp_path, monkeypatch, db_session, user_factory
 ):
-    user = await user_factory(is_active=True)
+    owner_id = uuid.uuid4()
+    old_url = f"/static/covers/user_{owner_id}_cover_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "covers" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old cover")
+    user = await user_factory(id=owner_id, is_active=True, cover_url=old_url)
 
     payload = _make_png_bytes(color=(0, 255, 0))
     upload = UploadFile(
@@ -597,14 +622,16 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
+    from app.services.user import media_service
+
     delete_calls: list[tuple[str, uuid.UUID, str]] = []
-    original_delete = delete_static_file
+    original_delete = media_service.delete_static_file
 
     async def tracking_delete(
         url: str, *, owner_id: uuid.UUID, media_kind: str
     ) -> None:
         delete_calls.append((url, owner_id, media_kind))
-        await original_delete(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
 
     monkeypatch.setattr(
         "app.services.user.media_service.delete_static_file", tracking_delete
@@ -612,12 +639,8 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock, MagicMock
 
-    mock_uow = AsyncMock()
-    mock_uow.users = AsyncMock()
-    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
-    mock_uow.__aexit__ = AsyncMock(return_value=None)
-    mock_uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
-    mock_uow.rollback = AsyncMock()
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
 
     service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
@@ -626,14 +649,256 @@ async def test_upload_cover_cleans_up_on_commit_failure(
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError) as raised:
         await service.upload_cover(user, upload)
 
+    assert raised.value is commit_error
     cover_dir = tmp_path / "covers"
     assert delete_calls, "delete_static_file should be invoked"
-    assert all(call[1:] == (user.id, "cover") for call in delete_calls)
-    if cover_dir.exists():
-        assert not any(cover_dir.iterdir())
+    assert all(call[1:] == (owner_id, "cover") for call in delete_calls)
+    assert all(call[0] != old_url for call in delete_calls)
+    assert old_path.exists()
+    assert len(list(cover_dir.iterdir())) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("media_kind", ["avatar", "cover"])
+async def test_delete_profile_media_retains_file_on_commit_failure(
+    tmp_path, monkeypatch, db_session, user_factory, media_kind
+):
+    from unittest.mock import AsyncMock
+
+    owner_id = uuid.uuid4()
+    old_url = (
+        f"/static/{media_kind}/user_{owner_id}_{media_kind}_{uuid.uuid4().hex}.png"
+    )
+    old_path = tmp_path / media_kind / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old profile media")
+    profile_media = {f"{media_kind}_url": old_url}
+    user = await user_factory(id=owner_id, is_active=True, **profile_media)
+
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await getattr(service, f"delete_{media_kind}")(user)
+
+    assert raised.value is commit_error
+    assert old_path.exists()
+    assert delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_upload_avatar_retains_new_file_after_ambiguous_commit(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    user = await user_factory(is_active=True)
+    owner_id = user.id
+    payload = _make_png_bytes()
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    commit_error = RuntimeError("commit acknowledgement lost")
+
+    async def commit_then_lose_acknowledgement() -> None:
+        await db_session.commit()
+        raise commit_error
+
+    mock_uow = _make_media_uow(
+        db_session, user, commit_side_effect=commit_then_lose_acknowledgement
+    )
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await service.upload_avatar(user, upload)
+
+    assert raised.value is commit_error
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None and profile.avatar_url
+    uploaded_path = tmp_path / profile.avatar_url.removeprefix("/static/")
+    assert uploaded_path.exists()
+    assert delete_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["rollback", "file_cleanup"])
+async def test_upload_avatar_preserves_commit_error_when_cleanup_fails(
+    tmp_path, monkeypatch, db_session, user_factory, failure_stage
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    user = await user_factory(is_active=True)
+    payload = _make_png_bytes()
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+    cleanup_error = RuntimeError("cleanup failed")
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        if failure_stage == "file_cleanup":
+            raise cleanup_error
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
+    if failure_stage == "rollback":
+        mock_uow.rollback = AsyncMock(side_effect=RuntimeError("rollback failed"))
+    else:
+
+        async def no_profile_reference(_statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: None)
+
+        mock_uow.users.db = SimpleNamespace(execute=no_profile_reference)
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await service.upload_avatar(user, upload)
+
+    assert raised.value is commit_error
+    avatar_files = list((tmp_path / "avatars").iterdir())
+    assert len(avatar_files) == 1
+    assert avatar_files[0].exists()
+    assert bool(delete_calls) is (failure_stage == "file_cleanup")
+
+
+@pytest.mark.asyncio
+async def test_shared_cover_reference_prevents_avatar_cleanup(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"shared avatar")
+    owner = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    other_user = await user_factory(is_active=True, cover_url=old_url)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from unittest.mock import AsyncMock
+
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.user import media_service
+    from app.services.user.media_service import UserMediaService
+
+    new_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    monkeypatch.setattr(media_service, "save_upload", AsyncMock(return_value=new_url))
+    service = UserMediaService(uow_from_session(db_session))
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes()),
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    await service.upload_avatar(owner, upload)
+
+    other_profile = await db_session.get(models.UserProfile, other_user.id)
+    assert other_profile is not None and other_profile.cover_url == old_url
+    assert old_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_avatar_cleanup_retains_file_when_primary_reference_check_fails(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"avatar retained on unknown ownership")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    new_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    monkeypatch.setattr(media_service, "save_upload", AsyncMock(return_value=new_url))
+
+    class FailingPrimarySession:
+        calls = 0
+
+        async def execute(self, _statement):
+            self.calls += 1
+            raise SQLAlchemyError("synthetic primary lookup failure")
+
+    primary = FailingPrimarySession()
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=db_session.commit)
+    mock_uow.users.db = primary
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes()),
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    await service.upload_avatar(user, upload)
+
+    assert primary.calls == 1
+    db_session.expire_all()
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None
+    assert profile.avatar_url == new_url
+    assert old_path.exists()
+    assert delete_calls == []
 
 
 @pytest.mark.asyncio
@@ -973,3 +1238,92 @@ async def test_full_name_column_limit_counts_unicode_codepoints_without_normaliz
     )
     assert stored_profile is not None
     assert stored_profile.full_name == decomposed_name
+
+
+@pytest.mark.asyncio
+async def test_upload_avatar_preserves_commit_error_when_uow_exit_fails(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old avatar")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes()),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    commit_error = RuntimeError("commit failed")
+    exit_error = RuntimeError("unit of work exit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
+    mock_uow.__aexit__.side_effect = exit_error
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await service.upload_avatar(user, upload)
+
+    assert raised.value is commit_error
+    mock_uow.rollback.assert_awaited_once()
+    mock_uow.__aexit__.assert_awaited_once()
+    assert old_path.exists()
+    avatar_files = list((tmp_path / "avatars").iterdir())
+    assert avatar_files == [old_path]
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None
+    await db_session.refresh(profile)
+    assert profile.avatar_url == old_url
+
+
+@pytest.mark.asyncio
+async def test_upload_avatar_keeps_durable_new_url_when_old_file_delete_raises_oserror(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old avatar")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes(color=(0, 0, 255))),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    original_delete = media_service.delete_static_file
+    delete_calls: list[str] = []
+
+    async def fail_old_file_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        if url == old_url:
+            raise OSError("storage temporarily unavailable")
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", fail_old_file_delete)
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=db_session.commit)
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    result = await service.upload_avatar(user, upload)
+
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None
+    await db_session.refresh(profile)
+    assert profile.avatar_url and profile.avatar_url != old_url
+    assert result.profile.avatar_url == profile.avatar_url
+    new_path = tmp_path / profile.avatar_url.removeprefix("/static/")
+    assert new_path.exists()
+    assert old_path.exists()
+    assert delete_calls == [old_url]

@@ -51,6 +51,7 @@ type ServerGlobals = typeof globalThis & {
   __ssrLangGetter__?: () => string | undefined
   __ssrI18nGetter__?: () => I18nInstance | undefined
   __ssrNonceGetter__?: () => string | undefined
+  __ssrOriginGetter__?: () => string | undefined
 }
 
 const globals = globalThis as ServerGlobals
@@ -75,6 +76,7 @@ afterAll(() => {
   delete globals.__ssrLangGetter__
   delete globals.__ssrI18nGetter__
   delete globals.__ssrNonceGetter__
+  delete globals.__ssrOriginGetter__
 })
 
 describe("server entrypoint", () => {
@@ -100,6 +102,7 @@ describe("server entrypoint", () => {
     mocks.extractThemeFromRequest.mockReturnValue("dark")
     mocks.extractLangFromRequest.mockReturnValue("en")
     mocks.handlerFetch.mockImplementation(async () => {
+      expect(globals.__ssrOriginGetter__?.()).toBe("https://app.example")
       expect(globals.__ssrAuthGetter__?.()).toEqual(auth)
       expect(globals.__ssrCookieGetter__?.()).toBe("access_token_v2=opaque; ue-mode=dark")
       expect(globals.__ssrFingerprintHeadersGetter__?.()).toEqual({
@@ -131,6 +134,26 @@ describe("server entrypoint", () => {
     expect(globals.__ssrThemeGetter__?.()).toBeUndefined()
     expect(globals.__ssrLangGetter__?.()).toBeUndefined()
     expect(globals.__ssrI18nGetter__?.()).toBeUndefined()
+    expect(globals.__ssrOriginGetter__?.()).toBeUndefined()
+  })
+
+  it("keeps the generated static shell's theme asset URL relative", async () => {
+    const originalPrerendering = process.env.TSS_PRERENDERING
+    process.env.TSS_PRERENDERING = "true"
+    try {
+      mocks.handlerFetch.mockImplementation(async () => {
+        expect(globals.__ssrOriginGetter__?.()).toBeUndefined()
+        return new Response("shell")
+      })
+
+      await serverEntry.fetch(new Request("http://localhost:3000/"))
+    } finally {
+      if (originalPrerendering === undefined) {
+        delete process.env.TSS_PRERENDERING
+      } else {
+        process.env.TSS_PRERENDERING = originalPrerendering
+      }
+    }
   })
 
   it("preserves Start request options and caller context while replacing the nonce", async () => {
