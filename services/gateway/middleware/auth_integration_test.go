@@ -17,7 +17,7 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
-// startRedisContainerForAuth spins up a real redis:7-alpine container for
+// startRedisContainerForAuth spins up pinned redis:7.4.11-alpine for
 // auth-middleware integration tests. Mirrors the helper used in
 // ratelimit_integration_test.go, kept separate (per ADR-022 §"ownership stays
 // with service code") rather than promoted to a shared package.
@@ -25,7 +25,7 @@ func startRedisContainerForAuth(t *testing.T) *redis.Client {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
+	rc, err := tcredis.Run(ctx, "redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)

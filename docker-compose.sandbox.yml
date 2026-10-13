@@ -34,7 +34,7 @@ services:
           memory: 768M
 
   redis:
-    image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
+    image: redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     # 16379 (not 56379) — the 55000-57000 range is frequently reserved by
     # Windows WinNAT/Hyper-V (`netsh int ipv4 show excludedportrange tcp`).
     ports:

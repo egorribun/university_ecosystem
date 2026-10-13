@@ -26,12 +26,12 @@ import (
 	"github.com/university-ecosystem/gateway/internal/config"
 )
 
-// startRedisContainer spins up a real Redis container for Gateway integration tests.
+// startRedisContainer spins up pinned Redis 7.4.11-alpine for Gateway integration tests.
 func startRedisContainer(t *testing.T) (*redis.Client, string) {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
+	rc, err := tcredis.Run(ctx, "redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)
