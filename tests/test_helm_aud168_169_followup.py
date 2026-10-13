@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tests.test_helm_staging_contract import (
-    CHART,
-    STAGING_VALUES,
     _render_staging,
     _values,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+CHART = ROOT / "charts" / "university-ecosystem"
+STAGING_VALUES = CHART / "values-staging.yaml"
 
 
 @pytest.fixture(scope="module")

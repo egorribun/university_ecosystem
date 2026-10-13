@@ -544,7 +544,7 @@ func (c *Client) authorizeRoomJoin(ctx context.Context, room string, commitMembe
 		if retry {
 			continue
 		}
-		if !ready {
+		if !ready || lock == nil {
 			return false
 		}
 		allowed, refreshed := c.Hub.authorizeRoomJoin(ctx, c.UserID, room, pending)

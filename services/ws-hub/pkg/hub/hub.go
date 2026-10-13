@@ -1633,7 +1633,7 @@ func (h *Hub) beginRoomMembershipRevocation(
 			case <-changed:
 				continue
 			case <-ctx.Done():
-				return nil, nil, nil, ctx.Err()
+				return nil, nil, nil, fmt.Errorf("wait for room membership mutation: %w", ctx.Err())
 			}
 		}
 		epoch := &roomMembershipEpoch{marker: 1}

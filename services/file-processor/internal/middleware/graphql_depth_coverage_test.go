@@ -76,6 +76,7 @@ type trackedRequestBody struct {
 	reader    *strings.Reader
 	bytesRead int
 	closed    bool
+	closeErr  error
 }
 
 func newTrackedRequestBody(body string) *trackedRequestBody {
@@ -90,7 +91,23 @@ func (b *trackedRequestBody) Read(p []byte) (int, error) {
 
 func (b *trackedRequestBody) Close() error {
 	b.closed = true
-	return nil
+	return b.closeErr
+}
+
+func TestMaxQueryDepth_CloseErrorDoesNotReplaceHandlerResponse(t *testing.T) {
+	body := newTrackedRequestBody(`{"query":"{ health }"}`)
+	body.closeErr = io.ErrClosedPipe
+	handler := MaxQueryDepthMiddleware(2, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", nil)
+	request.Body = body
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusNoContent, recorder.Code)
+	assert.True(t, body.closed, "the original request body must still be closed")
 }
 
 func TestMaxQueryDepth_InvalidJSONRejected(t *testing.T) {

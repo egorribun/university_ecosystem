@@ -681,7 +681,7 @@ func TestRoomRevocationSerializesInFlightPrivateWriteWithAuthorizationRefresh(t 
 	auth := &roomRevocationOrderingAuth{
 		order: order,
 	}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &blockedRoomWriteSession{
 		writeStarted: make(chan struct{}, 1),

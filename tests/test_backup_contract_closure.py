@@ -756,6 +756,14 @@ _S3_TEST_CREDENTIAL_PASSWORD = make_test_url_password(
         ("http://s3.example.test", "true", "restricted"),
         ("https://s3.example.test", "false", "Invalid S3"),
     ],
+    ids=(
+        "missing-endpoint",
+        "embedded-credentials",
+        "query-token",
+        "unsupported-scheme",
+        "http-disallowed",
+        "invalid-prefix",
+    ),
 )
 def test_s3_settings_reject_unsafe_endpoint_or_bucket(
     monkeypatch: pytest.MonkeyPatch,

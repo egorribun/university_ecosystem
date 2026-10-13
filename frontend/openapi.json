@@ -3292,6 +3292,19 @@
         "title": "PresenceStatus",
         "type": "object"
       },
+      "PublicCampusConfig": {
+        "additionalProperties": false,
+        "description": "The intentionally narrow, non-secret public campus configuration.",
+        "properties": {
+          "campus_timezone": {
+            "title": "Campus Timezone",
+            "type": "string"
+          }
+        },
+        "required": ["campus_timezone"],
+        "title": "PublicCampusConfig",
+        "type": "object"
+      },
       "PushSubscriptionDelete": {
         "additionalProperties": false,
         "properties": {
@@ -7770,6 +7783,26 @@
         ],
         "summary": "Revoke Session",
         "tags": ["auth"]
+      }
+    },
+    "/api/v1/campus/config": {
+      "get": {
+        "description": "Return the single validated server timezone used by campus features.",
+        "operationId": "get_campus_config_api_v1_campus_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCampusConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get the campus timezone",
+        "tags": ["public"]
       }
     },
     "/api/v1/chats": {
@@ -13923,6 +13956,10 @@
     {
       "description": "Password API operations.",
       "name": "password"
+    },
+    {
+      "description": "Public API operations.",
+      "name": "public"
     },
     {
       "description": "Push API operations.",

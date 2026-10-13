@@ -366,7 +366,7 @@ def test_stand_environment_pins_the_project_and_keys() -> None:
             assert env[f"LIVE_HOST_PORT_{name}"] == str(port)
 
 
-def test_trusted_proxy_status_logs_only_the_configured_peer_count(
+def test_trusted_proxy_configuration_keeps_refresh_scope_without_peer_status(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     owner = object()
@@ -397,9 +397,17 @@ def test_trusted_proxy_status_logs_only_the_configured_peer_count(
         "_capture_live_trusted_proxy_inventory",
         lambda *_args: ({}, settings, addresses, network_ids),
     )
-    monkeypatch.setattr(
-        live_stand, "_run_live_trusted_proxy_refresh", lambda *_args: None
-    )
+    refreshes: list[tuple[Mapping[str, object], str]] = []
+
+    def capture_refresh(
+        _owner: object,
+        _environment: Mapping[str, str],
+        actual_settings: Mapping[str, object],
+        phase: str,
+    ) -> None:
+        refreshes.append((actual_settings, phase))
+
+    monkeypatch.setattr(live_stand, "_run_live_trusted_proxy_refresh", capture_refresh)
     monkeypatch.setattr(
         live_stand, "_assert_live_trusted_proxy_container_delta", lambda *_args: None
     )
@@ -412,13 +420,18 @@ def test_trusted_proxy_status_logs_only_the_configured_peer_count(
         live_stand, "_assert_live_trusted_proxy_environment", lambda *_args: None
     )
 
-    peer_count = live_stand._configure_live_trusted_proxy_peers(owner, {}, evidence)
-    print(live_stand._trusted_proxy_peers_status(peer_count))
+    live_stand._configure_live_trusted_proxy_peers(owner, {}, evidence)
 
-    assert peer_count == 2
-    assert capsys.readouterr().out == (
-        "trusted_proxy_peers configured=true peer_count=2\n"
-    )
+    expected_settings = {
+        "TRUSTED_PROXIES": (),
+        "GATEWAY_TRUSTED_PROXIES": peer_addresses,
+        "WS_HUB_TRUSTED_PROXIES": peer_addresses,
+    }
+    assert refreshes == [
+        (expected_settings, "edge"),
+        (expected_settings, "backend"),
+    ]
+    assert capsys.readouterr().out == ""
 
 
 def test_compose_command_targets_only_the_stand_project() -> None:

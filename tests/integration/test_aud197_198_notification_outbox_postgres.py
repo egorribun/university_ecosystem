@@ -83,8 +83,7 @@ def clean_database() -> Iterator[None]:
 
 @pytest.fixture(scope="module")
 def postgres_server():
-    if not _RUN_INTEGRATION_TESTS:
-        pytest.skip("Set RUN_INTEGRATION_TESTS=1 to provision the owned PG17 container")
+    assert _RUN_INTEGRATION_TESTS, "Owned PostgreSQL integration was not enabled"
 
     run_id = uuid.uuid4().hex
     with PostgresContainer(

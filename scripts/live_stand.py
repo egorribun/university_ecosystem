@@ -3455,7 +3455,7 @@ def _configure_live_trusted_proxy_peers(
     owner: StandOwner,
     base_environment: Mapping[str, str],
     evidence: ComposeResourceEvidence,
-) -> int:
+) -> None:
     """Bind only this run's proxy settings to current signed network peers."""
     _assert_live_trusted_proxy_source_current(owner)
     _require_owned_docker_daemon(owner)
@@ -3525,13 +3525,6 @@ def _configure_live_trusted_proxy_peers(
     final_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
     if final_evidence.fingerprint != evidence.fingerprint:
         raise StandError("live trusted proxy resource identity changed")
-    return len(actual_settings["GATEWAY_TRUSTED_PROXIES"])
-
-
-def _trusted_proxy_peers_status(peer_count: int) -> str:
-    if type(peer_count) is not int or peer_count < 0:
-        raise StandError("live trusted proxy peer count is invalid")
-    return f"trusted_proxy_peers configured=true peer_count={peer_count}"
 
 
 def _core_quiesce_container_inventory(
@@ -4230,10 +4223,9 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
     if allow_existing_owned_volumes:
         start_command.append("-AllowExistingOwnedVolumes")
     _run(start_command, cwd=WORKTREE, env=env)
-    trusted_proxy_peer_count = _configure_live_trusted_proxy_peers(
+    _configure_live_trusted_proxy_peers(
         owner, env, _verify_stand_owner_compose_resources(WORKTREE, owner)
     )
-    print(_trusted_proxy_peers_status(trusted_proxy_peer_count))
     published = dict(owner.published_ports)
     base_url = _stand_base_url(published)
     mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"

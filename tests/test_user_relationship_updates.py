@@ -226,7 +226,7 @@ async def test_anonymize_deletes_owned_avatar_but_preserves_legacy_foreign_cover
         preferences=None,
         spotify=None,
         email="real@example.com",
-        hashed_password="hash",  # pragma: allowlist secret
+        hashed_password=make_test_marker(length=16),
         is_active=True,
         mfa_required=False,
         mfa_default_method=None,

@@ -332,7 +332,10 @@ def test_release_gateway_rejects_open_or_malformed_jwks_cidrs(cidr: str) -> None
                 release_name="jwks-cidr-invalid-contract",
             )
 
-        assert "networkpolicy.gatewayjwks.egresscidrs" in error.value.stderr.lower()
+        assert error.value.returncode == 1
+        assert "networkpolicy.gatewayjwks.egresscidrs" in (
+            error.value.stderr.lower().replace("/", ".")
+        )
 
 
 def _resolved_revocation_store_args(release_name: str) -> list[str]:

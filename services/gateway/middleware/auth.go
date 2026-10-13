@@ -903,57 +903,77 @@ func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 func (m *JWTMiddleware) keyFuncAt(token *jwt.Token, now time.Time) (interface{}, error) {
 	switch token.Method.(type) {
 	case *jwt.SigningMethodRSA:
-		var keys rsaKeySet
-		if m.jwksConfigured.Load() {
-			snapshot := m.jwksSnapshot.Load()
-			if snapshot == nil {
-				return nil, fmt.Errorf("RS256 token received but JWKS snapshot is unavailable")
-			}
-			maxAge := time.Duration(m.jwksFreshnessLimit.Load())
-			if maxAge <= 0 || !now.UTC().Before(snapshot.fetchedAt.Add(maxAge)) {
-				return nil, fmt.Errorf("RS256 token rejected: JWKS key snapshot is stale")
-			}
-			keys = snapshot.keys
-		} else if snapshot := m.jwksSnapshot.Load(); snapshot != nil {
-			keys = snapshot.keys
-		}
-		if keys != nil {
-			kid, _ := token.Header["kid"].(string)
-			if key, ok := keys[kid]; ok {
-				return key, nil
-			}
-			if len(keys) == 1 {
-				if key, ok := keys[""]; ok && key != nil {
-					return key, nil
-				}
-			}
-			if kid == "" && len(keys) == 1 {
-				for _, key := range keys {
-					return key, nil
-				}
-			}
-			if kid == "" {
-				return nil, fmt.Errorf("RS256 token is missing kid while multiple JWKS keys are configured")
-			}
-			return nil, fmt.Errorf("RS256 token references unknown JWKS key id %q", kid)
-		}
-		// Compatibility path for a directly configured PEM key.
-		if key := m.rsaPublicKey.Load(); key != nil {
-			return key, nil
-		}
-		return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
+		return m.rsaVerificationKeyAt(token, now)
 	case *jwt.SigningMethodHMAC:
-		// HS256 path — only allowed when RS256 is NOT configured.
-		// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
-		// alongside RS256 would allow an attacker with knowledge of the HMAC secret
-		// to forge tokens even after the RS256 key is rotated.
-		if m.rsaConfigured() {
-			return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
-		}
-		return m.secret, nil
+		return m.hmacVerificationKey()
 	default:
 		return nil, fmt.Errorf("unexpected signing algorithm: %v", token.Header["alg"])
 	}
+}
+
+func (m *JWTMiddleware) rsaVerificationKeyAt(token *jwt.Token, now time.Time) (interface{}, error) {
+	keys, err := m.jwksKeysAt(now)
+	if err != nil {
+		return nil, err
+	}
+	if keys != nil {
+		return jwksKeyForToken(token, keys)
+	}
+	// Compatibility path for a directly configured PEM key.
+	if key := m.rsaPublicKey.Load(); key != nil {
+		return key, nil
+	}
+	return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
+}
+
+func (m *JWTMiddleware) jwksKeysAt(now time.Time) (rsaKeySet, error) {
+	if m.jwksConfigured.Load() {
+		snapshot := m.jwksSnapshot.Load()
+		if snapshot == nil {
+			return nil, fmt.Errorf("RS256 token received but JWKS snapshot is unavailable")
+		}
+		maxAge := time.Duration(m.jwksFreshnessLimit.Load())
+		if maxAge <= 0 || !now.UTC().Before(snapshot.fetchedAt.Add(maxAge)) {
+			return nil, fmt.Errorf("RS256 token rejected: JWKS key snapshot is stale")
+		}
+		return snapshot.keys, nil
+	}
+	if snapshot := m.jwksSnapshot.Load(); snapshot != nil {
+		return snapshot.keys, nil
+	}
+	return nil, nil
+}
+
+func jwksKeyForToken(token *jwt.Token, keys rsaKeySet) (interface{}, error) {
+	kid, _ := token.Header["kid"].(string)
+	if key, ok := keys[kid]; ok {
+		return key, nil
+	}
+	if len(keys) == 1 {
+		if key, ok := keys[""]; ok && key != nil {
+			return key, nil
+		}
+	}
+	if kid == "" && len(keys) == 1 {
+		for _, key := range keys {
+			return key, nil
+		}
+	}
+	if kid == "" {
+		return nil, fmt.Errorf("RS256 token is missing kid while multiple JWKS keys are configured")
+	}
+	return nil, fmt.Errorf("RS256 token references unknown JWKS key id %q", kid)
+}
+
+func (m *JWTMiddleware) hmacVerificationKey() (interface{}, error) {
+	// HS256 path — only allowed when RS256 is NOT configured.
+	// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
+	// alongside RS256 would allow an attacker with knowledge of the HMAC secret
+	// to forge tokens even after the RS256 key is rotated.
+	if m.rsaConfigured() {
+		return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
+	}
+	return m.secret, nil
 }
 
 // Validate returns a Gin middleware that validates JWT tokens.

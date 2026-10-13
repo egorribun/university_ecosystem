@@ -23,7 +23,7 @@ _EXPLAINABLE_STATEMENT_RE = re.compile(
 
 
 def normalize_explainable_query(query: str) -> str:
-    """Return one bounded SQL statement suitable for EXPLAIN ANALYZE.
+    """Return one bounded SQL statement suitable for planner-only EXPLAIN.
 
     Query logs are diagnostic input, not a trusted SQL channel. DDL, empty
     statements, NUL bytes, and stacked statements are rejected before the
@@ -186,7 +186,7 @@ async def run_explain_analysis(
     *,
     fail_on_analysis_error: bool = False,
 ) -> tuple[bool, int]:
-    """Execute EXPLAIN and optionally fail when a query cannot be analyzed."""
+    """Plan logged statements and optionally fail when analysis is incomplete."""
     has_violations = False
     checked_count = 0
 
@@ -259,15 +259,14 @@ async def run_explain_analysis(
         logger.info("Analyzing query %s", query_id)
 
         try:
-            # Wrap in a transaction that is rolled back to prevent modifications
+            # Scope planner settings and timeout to this query analysis.
             async with engine.connect() as conn:
                 async with conn.begin() as transaction:
                     # Enforce index usage by disabling sequential scans in this session
                     await conn.execute(text("SET LOCAL enable_seqscan = off"))
-                    # Run EXPLAIN with ANALYZE and BUFFERS
-                    explain_sql = (
-                        f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {clean_query}"
-                    )
+                    # Query logs omit bind values; planner-only EXPLAIN keeps
+                    # synthetic placeholders from executing DML or DML CTEs.
+                    explain_sql = f"EXPLAIN (FORMAT JSON) {clean_query}"
                     # Add timeout to explain query to prevent hangs
                     await conn.execute(text("SET statement_timeout = '15s'"))
                     result = await conn.exec_driver_sql(explain_sql)

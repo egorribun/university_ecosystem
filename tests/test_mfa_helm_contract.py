@@ -430,15 +430,31 @@ def test_deploy_renderer_clears_values_registry_without_rewriting_dependencies(
     )
 
 
-def test_deploy_renderer_executes_canonical_staging_without_required_markers() -> None:
+def test_deploy_renderer_executes_canonical_staging_without_required_markers(
+    tmp_path: Path,
+) -> None:
     bash = _bash()
     digest = f"sha256:{'a' * 64}"
+    staging_values = yaml.safe_load(
+        (CHART / "values-staging.yaml").read_text(encoding="utf-8")
+    )
+    assert isinstance(staging_values, dict)
+    network_policy = staging_values.setdefault("networkPolicy", {})
+    assert isinstance(network_policy, dict)
+    gateway_jwks = network_policy.setdefault("gatewayJWKS", {})
+    assert isinstance(gateway_jwks, dict)
+    # Reserved TEST-NET only, provided through the existing values-file input.
+    gateway_jwks["egressCIDRs"] = ["192.0.2.0/24"]
+    staging_values_path = tmp_path / "values-staging-render-contract.yaml"
+    staging_values_path.write_text(
+        yaml.safe_dump(staging_values, sort_keys=False), encoding="utf-8"
+    )
     environment = {
         **os.environ,
         "DEPLOY_ENVIRONMENT": "staging",
         "K8S_NAMESPACE": "university-ecosystem",
         "HELM_RELEASE_NAME": "staging-execution-contract",
-        "HELM_VALUES_FILE": str(CHART / "values-staging.yaml"),
+        "HELM_VALUES_FILE": str(staging_values_path),
         "CONNECTIONS_SECRET_NAME": "university-connections",  # pragma: allowlist secret
         "APPLICATION_SECRETS_NAME": "university-application",  # pragma: allowlist secret
         "REGISTRY": "ghcr.io",

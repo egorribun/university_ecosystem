@@ -617,7 +617,7 @@ jobs:
           KUBECTL_VERSION: ${{ vars.KUBECTL_VERSION }}
           KUBECTL_SHA256: ${{ vars.KUBECTL_SHA256 }}
           HELM_VERSION: v3.22.0
-          HELM_ARCHIVE_SHA256: 1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb # pragma: allowlist secret -- public Helm release checksum
+          HELM_ARCHIVE_SHA256: 1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb # public Helm release checksum
         run: |
           set -euo pipefail
           [[ "$KUBECTL_VERSION" =~ ^v1\.[0-9]+\.[0-9]+$ ]]

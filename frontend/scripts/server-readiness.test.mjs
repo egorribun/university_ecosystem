@@ -230,6 +230,78 @@ test(
   }
 )
 
+test(
+  "warmSsrRuntime keeps the request alive through timeout under forced garbage collection",
+  { timeout: 8_000 },
+  async () => {
+    const readinessModuleUrl = new URL("./server-readiness.mjs", import.meta.url).href
+    const childScript = [
+      'import assert from "node:assert/strict"',
+      `import { warmSsrRuntime } from ${JSON.stringify(readinessModuleUrl)}`,
+      'assert.equal(typeof globalThis.gc, "function")',
+      "let signal",
+      "let requestReference",
+      "const warmup = warmSsrRuntime({",
+      "  fetch(request) {",
+      "    signal = request.signal",
+      "    requestReference = new WeakRef(request)",
+      "    return new Promise(() => undefined)",
+      "  },",
+      '}, { url: "http://frontend.local/login", timeoutMs: 1_000 })',
+      "for (let attempt = 0; attempt < 8; attempt += 1) {",
+      "  globalThis.gc()",
+      "  await new Promise((resolve) => setImmediate(resolve))",
+      "}",
+      "await assert.rejects(warmup, /exceeded 1000ms/u)",
+      'assert.ok(requestReference.deref(), "request must survive forced GC through timeout")',
+      "assert.equal(signal.aborted, true)",
+      'assert.match(signal.reason?.message ?? "", /exceeded 1000ms/u)',
+      'process.stdout.write("readiness-abort-gc-ok\\n")',
+    ].join("\n")
+
+    let stdout = ""
+    let stderr = ""
+    const child = spawn(
+      process.execPath,
+      ["--expose-gc", "--max-old-space-size=128", "--input-type=module", "-e", childScript],
+      {
+        cwd: REPOSITORY_ROOT,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SYSTEMROOT: process.env.SYSTEMROOT ?? "",
+          WINDIR: process.env.WINDIR ?? "",
+          TEMP: process.env.TEMP ?? os.tmpdir(),
+          TMP: process.env.TMP ?? os.tmpdir(),
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    )
+    child.stdout.setEncoding("utf8")
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.setEncoding("utf8")
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk
+    })
+
+    const result = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => child.kill("SIGKILL"), 5_000)
+      child.once("error", (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+      child.once("close", (code, signal) => {
+        clearTimeout(timeout)
+        resolve({ code, signal })
+      })
+    })
+    assert.equal(result.signal, null, stderr)
+    assert.equal(result.code, 0, stderr)
+    assert.equal(stdout.trim(), "readiness-abort-gc-ok", stderr)
+  }
+)
+
 test("server startup warms SSR before binding the readiness port", async () => {
   const source = await readFile(new URL("./server-prod.mjs", import.meta.url), "utf8")
   const warmup = source.indexOf("await warmSsrRuntime")
@@ -287,8 +359,20 @@ test("Node production CSP defaults match the shared policy contract", async () =
     await readFile(path.join(REPOSITORY_ROOT, "quality", "frontend-csp-defaults.json"), "utf8")
   )
 
-  assert.deepEqual(buildNodeCspHeaders(contract.nonce), contract.headers)
+  const headers = buildNodeCspHeaders(contract.nonce)
+  assert.deepEqual(headers, contract.headers)
+
+  const enforced = headers["content-security-policy"]
+  const reportOnly = headers["content-security-policy-report-only"].replace(
+    "; report-uri /api/v1/csp-report",
+    ""
+  )
+  assert.ok(enforced.includes("upgrade-insecure-requests"))
+  assert.equal(reportOnly, enforced.replace("; upgrade-insecure-requests", ""))
+  assert.ok(reportOnly.includes("trusted-types app dompurify-news goog#html 'allow-duplicates'"))
+  assert.ok(reportOnly.includes("require-trusted-types-for 'script'"))
 })
+
 test("HTML CSP response headers preserve compressed bytes and leave non-HTML untouched", async () => {
   const nonce = "ResponseNonce+/_=="
   const htmlBytes = Buffer.from(

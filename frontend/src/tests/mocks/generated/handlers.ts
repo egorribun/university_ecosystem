@@ -1128,6 +1128,32 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.get(`${baseURL}/api/v1/campus/config`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getGetCampusConfigApiV1CampusConfigGet200Response(),
+        { status: 200 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/campus/config`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.get(`${baseURL}/api/v1/events/my`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -5888,6 +5914,12 @@ export function getRevokeSessionApiV1AuthSessionsSessionIdDelete422Response() {
         type: faker.lorem.words(),
       }));
     })(),
+  };
+}
+
+export function getGetCampusConfigApiV1CampusConfigGet200Response() {
+  return {
+    campus_timezone: faker.lorem.words(),
   };
 }
 

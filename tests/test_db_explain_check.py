@@ -44,7 +44,7 @@ def test_normalize_explainable_query_rejects_unsafe_input(query: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_explain_analysis_binds_calibration_and_executes_one_statement() -> (
+async def test_run_explain_analysis_binds_calibration_and_uses_planner_only_explain() -> (
     None
 ):
     calibration_connection = MagicMock()
@@ -88,10 +88,47 @@ async def test_run_explain_analysis_binds_calibration_and_executes_one_statement
     for call in calibration_connection.execute.await_args_list:
         assert call.args[1] == {"table_names": ["users"]}
     query_connection.exec_driver_sql.assert_awaited_once_with(
-        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM users WHERE id = NULL"
+        "EXPLAIN (FORMAT JSON) SELECT * FROM users WHERE id = NULL"
     )
     transaction.rollback.assert_awaited_once()
     warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "expected_sql"),
+    [
+        (
+            "INSERT INTO users (email) VALUES ($1)",
+            "INSERT INTO users (email) VALUES (NULL)",
+        ),
+        (
+            "WITH changed AS (DELETE FROM users WHERE id = $1 RETURNING id) "
+            "SELECT * FROM changed",
+            "WITH changed AS (DELETE FROM users WHERE id = NULL RETURNING id) "
+            "SELECT * FROM changed",
+        ),
+    ],
+    ids=("insert", "data-modifying-cte"),
+)
+async def test_logged_mutations_use_planner_only_explain(
+    query: str, expected_sql: str
+) -> None:
+    engine, query_connection, _ = _make_analysis_engine()
+
+    violations, checked = await db_explain_check.run_explain_analysis(
+        engine,
+        [query],
+        ["users"],
+        500.0,
+        fail_on_analysis_error=True,
+    )
+
+    assert violations is False
+    assert checked == 1
+    query_connection.exec_driver_sql.assert_awaited_once_with(
+        f"EXPLAIN (FORMAT JSON) {expected_sql}"
+    )
 
 
 @pytest.mark.asyncio

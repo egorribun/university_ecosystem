@@ -1872,6 +1872,18 @@ export type PresenceStatus = {
 }
 
 /**
+ * PublicCampusConfig
+ *
+ * The intentionally narrow, non-secret public campus configuration.
+ */
+export type PublicCampusConfig = {
+  /**
+   * Campus Timezone
+   */
+  campus_timezone: string
+}
+
+/**
  * PushSubscriptionDelete
  */
 export type PushSubscriptionDelete = {
@@ -4239,6 +4251,23 @@ export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses = {
 
 export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponse =
   RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses[keyof RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses]
+
+export type GetCampusConfigApiV1CampusConfigGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/campus/config"
+}
+
+export type GetCampusConfigApiV1CampusConfigGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PublicCampusConfig
+}
+
+export type GetCampusConfigApiV1CampusConfigGetResponse =
+  GetCampusConfigApiV1CampusConfigGetResponses[keyof GetCampusConfigApiV1CampusConfigGetResponses]
 
 export type GetChatsApiV1ChatsGetData = {
   body?: never

@@ -212,6 +212,26 @@ release readiness are separate. Revalidate the final source SHA and record the
 evidence in [STATUS](../superpowers/plans/STATUS.md) before making a release
 claim.
 
+## Owner-approved additional exact detect-secrets dispositions (2026-10-13 UTC)
+
+On 2026-10-13 UTC, the owner approved exactly 27 additional exact-match
+disposition identities from the reviewed proposal: 12 public integrity digests
+and 15 independent contract fingerprints. Each new record is limited to its
+exact repository path, detector type and finding digest. The records retain
+per-identity owner and evidence metadata, with reviewed_on 2026-10-13 and
+expires_on 2027-01-10. No wildcard, category-wide permission, or future
+finding is covered; changed or unmatched identities remain fail-closed.
+
+Together with the 86 identities approved on 2026-10-12, the active policy
+contains exactly 113 approved records. The two linked account fixtures from the
+earlier approval remain limited to the internal synthetic demo; their external
+status remains unverified. The baseline remains at 319 identities and the 78
+required contexts remain unchanged. This decision authorizes no new
+.secrets.baseline entries, inline pragmas, scanner exclusions, bypass, or
+context changes. It records the owner's policy decision only. Integration,
+final-source recheck, tests and hosted checks are pending and must be reported
+separately; no release readiness is implied.
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt

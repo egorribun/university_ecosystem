@@ -6,13 +6,17 @@ import asyncio
 import importlib.util
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 import sqlalchemy as sa
-from alembic.migration import MigrationContext
+from alembic.config import Config
 from alembic.operations import Operations
+from alembic.runtime.environment import EnvironmentContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -35,6 +39,16 @@ pytestmark = [
         reason="Set RUN_INTEGRATION_TESTS=1 for the owned PostgreSQL integration",
     ),
 ]
+
+
+@contextmanager
+def _migration_operations(connection: sa.Connection) -> Iterator[None]:
+    config = Config()
+    script = ScriptDirectory(_PROJECT_ROOT / "alembic")
+    with EnvironmentContext(config, script, as_sql=False) as environment:
+        environment.configure(connection=connection)
+        with Operations.context(environment.get_context()):
+            yield
 
 
 def _load_ownership_migration():
@@ -111,7 +125,7 @@ async def test_migration_keeps_populated_claim_across_downgrade_and_reupgrade():
         )
         connection.exec_driver_sql("CREATE TABLE users (id UUID PRIMARY KEY)")
         connection.exec_driver_sql("CREATE TABLE news (id UUID PRIMARY KEY)")
-        with Operations.context(MigrationContext.configure(connection)):
+        with _migration_operations(connection):
             migration.upgrade()
             connection.execute(
                 sa.text("INSERT INTO users (id) VALUES (:id)"), {"id": owner_id}
@@ -199,7 +213,7 @@ async def test_migration_rejects_malformed_existing_table_before_schema_writes()
             "(id UUID PRIMARY KEY, storage_url TEXT NOT NULL)"
         )
         before_tables = set(sa.inspect(connection).get_table_names(schema=schema))
-        with Operations.context(MigrationContext.configure(connection)):
+        with _migration_operations(connection):
             with pytest.raises(RuntimeError, match="unexpected columns"):
                 migration.upgrade()
 
@@ -342,7 +356,7 @@ async def test_migration_rejects_noncanonical_constraint_or_index_options(
                 for index in inspector.get_indexes("news_media_assets", schema=schema)
             ),
         )
-        with Operations.context(MigrationContext.configure(connection)):
+        with _migration_operations(connection):
             with pytest.raises(RuntimeError, match=message):
                 migration.upgrade()
 

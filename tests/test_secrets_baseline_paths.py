@@ -650,7 +650,7 @@ def test_detect_secrets_transaction_is_serialized_across_processes(
     tmp_path: Path,
 ) -> None:
     baseline = tmp_path / ".secrets.baseline"
-    baseline.write_text(json.dumps({"results": {}}), encoding="utf-8")
+    baseline.write_text(json.dumps(_baseline_document()), encoding="utf-8")
     context = multiprocessing.get_context("spawn")
     first_entered = context.Event()
     first_release = context.Event()

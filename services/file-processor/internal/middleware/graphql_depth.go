@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -26,7 +27,15 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 		// for outer preflight handlers, and reject every other unsupported method.
 		if r.Body != nil {
 			requestBody := r.Body
-			defer func() { _ = requestBody.Close() }()
+			defer func(ctx context.Context) {
+				if err := requestBody.Close(); err != nil {
+					slog.Default().WarnContext(
+						ctx,
+						"failed to close GraphQL request body",
+						"error_type", fmt.Sprintf("%T", err),
+					)
+				}
+			}(r.Context())
 		}
 		switch r.Method {
 		case http.MethodOptions:

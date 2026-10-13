@@ -180,8 +180,12 @@ def test_helm_gateway_rate_limit_rejects_zero_values(setting: str) -> None:
     result = _gateway_deployment_render("--set", f"gateway.config.{setting}=0")
 
     assert result.returncode != 0
-    assert (
-        f"gateway.config.{setting}: Must be greater than or equal to 1" in result.stderr
+    recognized_validation_errors = (
+        f"gateway.config.{setting}: Must be greater than or equal to 1",
+        f"at '/gateway/config/{setting}': minimum: got 0, want 1",
+    )
+    assert any(message in result.stderr for message in recognized_validation_errors), (
+        f"Expected positive-integer validation for {setting}: {result.stderr}"
     )
 
 

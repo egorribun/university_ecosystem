@@ -162,6 +162,8 @@ import type {
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
+  GetCampusConfigApiV1CampusConfigGetData,
+  GetCampusConfigApiV1CampusConfigGetResponses,
   GetChatApiV1ChatsChatIdGetData,
   GetChatApiV1ChatsChatIdGetErrors,
   GetChatApiV1ChatsChatIdGetResponses,
@@ -1114,6 +1116,24 @@ export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError exten
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/auth/sessions/{session_id}",
+    ...options,
+  })
+
+/**
+ * Get the campus timezone
+ *
+ * Return the single validated server timezone used by campus features.
+ */
+export const getCampusConfigApiV1CampusConfigGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetCampusConfigApiV1CampusConfigGetData, ThrowOnError>
+): RequestResult<GetCampusConfigApiV1CampusConfigGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetCampusConfigApiV1CampusConfigGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/campus/config",
     ...options,
   })
 

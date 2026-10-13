@@ -30,7 +30,7 @@ function assertNonce(nonce) {
 export function buildNodeCspHeaders(nonce) {
   assertNonce(nonce)
   const connectSources = [...new Set(DEFAULT_CONNECT_SOURCES)].sort().join(" ")
-  const enforcingPolicy = [
+  const policyDirectives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ` +
       "https://accounts.google.com 'report-sample'",
@@ -45,11 +45,15 @@ export function buildNodeCspHeaders(nonce) {
     "frame-ancestors 'self'",
     "trusted-types app dompurify-news goog#html 'allow-duplicates'",
     "require-trusted-types-for 'script'",
-  ].join("; ")
+  ]
+  const enforcingPolicy = policyDirectives.join("; ")
+  const reportOnlyPolicy = policyDirectives
+    .filter((directive) => directive !== "upgrade-insecure-requests")
+    .join("; ")
 
   return Object.freeze({
     "content-security-policy": enforcingPolicy,
-    "content-security-policy-report-only": `${enforcingPolicy}; report-uri /api/v1/csp-report`,
+    "content-security-policy-report-only": `${reportOnlyPolicy}; report-uri /api/v1/csp-report`,
   })
 }
 

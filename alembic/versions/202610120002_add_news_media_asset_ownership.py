@@ -235,22 +235,11 @@ def _assert_exact_existing_schema(bind: sa.Connection, schema: str) -> None:
         raise RuntimeError("Existing news_media_assets has unexpected indexes")
 
 
-def upgrade() -> None:
-    context = op.get_context()
-    if context.as_sql:
-        raise RuntimeError("News media ownership migration requires online PostgreSQL")
-    bind = op.get_bind()
-    if bind.dialect.name != "postgresql":
-        raise RuntimeError("News media ownership migration requires PostgreSQL")
-    schema = _schema(bind)
-    inspector = sa.inspect(bind)
-    if inspector.has_table(_TABLE, schema=schema):
-        _assert_exact_existing_schema(bind, schema)
-        return
-
-    op.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
-    op.execute(sa.text("SET LOCAL statement_timeout = '60s'"))
-    op.create_table(
+def _emit_news_media_asset_ddl(operations: Any) -> None:
+    """Emit the exact DDL shared by live upgrades and Squawk capture."""
+    operations.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+    operations.execute(sa.text("SET LOCAL statement_timeout = '60s'"))
+    operations.create_table(
         _TABLE,
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("storage_url", sa.String(length=2048), nullable=False),
@@ -268,11 +257,27 @@ def upgrade() -> None:
         sa.UniqueConstraint("storage_url", name="uq_news_media_asset_storage_url"),
         sa.UniqueConstraint("news_id", name="uq_news_media_asset_news_id"),
     )
-    op.create_index(
+    operations.create_index(
         "ix_news_media_assets_owner_user_id",
         _TABLE,
         ["owner_user_id"],
     )
+
+
+def upgrade() -> None:
+    context = op.get_context()
+    if context.as_sql:
+        raise RuntimeError("News media ownership migration requires online PostgreSQL")
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        raise RuntimeError("News media ownership migration requires PostgreSQL")
+    schema = _schema(bind)
+    inspector = sa.inspect(bind)
+    if inspector.has_table(_TABLE, schema=schema):
+        _assert_exact_existing_schema(bind, schema)
+        return
+
+    _emit_news_media_asset_ddl(op)
 
 
 def downgrade() -> None:

@@ -56,7 +56,7 @@ export const GROUP_CHAT_ACCOUNTS = {
   },
   nonMember: {
     email: "sergey.lebedev@university.dev",
-    password: "Teacher@2024test", // pragma: allowlist secret -- disposable stand seed account
+    password: "Teacher@2024test", // disposable stand seed account
   },
 } as const
 

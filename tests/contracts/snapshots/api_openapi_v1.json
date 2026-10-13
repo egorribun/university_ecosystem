@@ -2139,14 +2139,7 @@
             ]
           }
         },
-        "required": [
-          "content",
-          "id",
-          "chat_id",
-          "sender_id",
-          "created_at",
-          "read_status"
-        ],
+        "required": ["content", "id", "chat_id", "sender_id", "created_at", "read_status"],
         "title": "MessageResponse",
         "type": "object"
       },
@@ -3299,6 +3292,19 @@
         "title": "PresenceStatus",
         "type": "object"
       },
+      "PublicCampusConfig": {
+        "additionalProperties": false,
+        "description": "The intentionally narrow, non-secret public campus configuration.",
+        "properties": {
+          "campus_timezone": {
+            "title": "Campus Timezone",
+            "type": "string"
+          }
+        },
+        "required": ["campus_timezone"],
+        "title": "PublicCampusConfig",
+        "type": "object"
+      },
       "PushSubscriptionDelete": {
         "additionalProperties": false,
         "properties": {
@@ -3446,14 +3452,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "user_id",
-          "endpoint",
-          "p256dh",
-          "auth",
-          "created_at"
-        ],
+        "required": ["id", "user_id", "endpoint", "p256dh", "auth", "created_at"],
         "title": "PushSubscriptionOut",
         "type": "object"
       },
@@ -3968,13 +3967,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "group_id",
-          "subject",
-          "weekday",
-          "start_time",
-          "end_time"
-        ],
+        "required": ["group_id", "subject", "weekday", "start_time", "end_time"],
         "title": "ScheduleCreate",
         "type": "object"
       },
@@ -4078,14 +4071,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "group_id",
-          "subject",
-          "weekday",
-          "start_time",
-          "end_time",
-          "id"
-        ],
+        "required": ["group_id", "subject", "weekday", "start_time", "end_time", "id"],
         "title": "ScheduleOut",
         "type": "object"
       },
@@ -7797,6 +7783,26 @@
         ],
         "summary": "Revoke Session",
         "tags": ["auth"]
+      }
+    },
+    "/api/v1/campus/config": {
+      "get": {
+        "description": "Return the single validated server timezone used by campus features.",
+        "operationId": "get_campus_config_api_v1_campus_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCampusConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get the campus timezone",
+        "tags": ["public"]
       }
     },
     "/api/v1/chats": {
@@ -13950,6 +13956,10 @@
     {
       "description": "Password API operations.",
       "name": "password"
+    },
+    {
+      "description": "Public API operations.",
+      "name": "public"
     },
     {
       "description": "Push API operations.",

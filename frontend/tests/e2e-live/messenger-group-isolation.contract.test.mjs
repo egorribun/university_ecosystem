@@ -127,7 +127,14 @@ test("live WebSocket assertions exercise real group fan-out without transport mo
   )
   assert.match(spec, /eventsForMessage\(socket, chatId, sentMessage\.id\)/u)
   assert.match(spec, /message_edited[\s\S]*?message_deleted/u)
-  assert.match(websocketClient, /if !c\.Hub\.authorizeRoomJoinLocked\(ctx, c\.UserID, msg\.Room\)/u)
+  assert.match(
+    websocketClient,
+    /authorized := c\.authorizeRoomJoin\(ctx, msg\.Room,[\s\S]*?if !authorized \{\s*c\.rejectUnauthorizedRoomJoin\(ctx, msg\.Room\)\s*return/u
+  )
+  assert.match(
+    websocketClient,
+    /allowed, refreshed := c\.Hub\.authorizeRoomJoin\(ctx, c\.UserID, room, pending\)/u
+  )
   assert.match(websocketHub, /return h\.authClient\.CanJoinRoom\(ctx, userID, room\)/u)
   assert.match(config, /testMatch:\s*\/\.\*\\\.live\\\.spec\\\.ts\$\//u)
   assert.doesNotMatch(spec, /page\.route\(|routeWebSocket\(|fulfill\(|useMockApi/u)
