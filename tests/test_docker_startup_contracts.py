@@ -2280,7 +2280,7 @@ def test_non_root_python_images_create_the_declared_home_directory() -> None:
 def test_caddy_plugin_dependency_is_version_pinned() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
 
-    assert "ARG XCADDY_VERSION=v0.4.5" in dockerfile
+    assert "ARG XCADDY_VERSION=v0.4.7" in dockerfile
     assert "go install" in dockerfile
     assert "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}" in dockerfile
     assert "ca-certificates=20260909-r0" in dockerfile
@@ -2298,8 +2298,12 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     full_caddy = _compose("docker-compose.full.yml")["services"]["caddy"]
 
     assert "golang:1.26.9-alpine3.24@sha256:" in dockerfile
-    assert "caddy:2.11.4-alpine@sha256:" in dockerfile
-    assert "ARG CADDY_VERSION=2.11.4" in dockerfile
+    runtime_image = (
+        "FROM caddy:2.11.7-alpine@sha256:"
+        "d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
+    )
+    assert runtime_image in dockerfile
+    assert "ARG CADDY_VERSION=2.11.7" in dockerfile
     assert "--replace golang.org/x/net=golang.org/x/net@v0.60.0" in dockerfile
     assert "--replace golang.org/x/text=golang.org/x/text@v0.42.0" in dockerfile
     assert (
@@ -2329,8 +2333,8 @@ def test_ci_caddy_smokes_use_the_pinned_project_runtime() -> None:
         for path in (ROOT / ".github" / "workflows").glob("*.yml")
     )
     runtime = (
-        "caddy:2.11.4-alpine@sha256:"
-        "5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648"  # pragma: allowlist secret
+        "caddy:2.11.7-alpine@sha256:"
+        "d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
     )
 
     assert "caddy:2.11.2" not in workflows
