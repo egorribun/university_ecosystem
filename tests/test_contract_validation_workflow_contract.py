@@ -22,6 +22,36 @@ def _job() -> dict[str, Any]:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["openapi-diff"]
 
 
+def _spectral_job() -> dict[str, Any]:
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["spectral-lint"]
+
+
+def test_spectral_openapi_generation_uses_test_only_environment() -> None:
+    job = _spectral_job()
+    assert job["env"] == {
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "ENVIRONMENT": "testing",
+        "SECRET_KEY": "",
+    }
+    steps = job["steps"]
+    configure = next(
+        step
+        for step in steps
+        if step.get("name") == "Configure ephemeral application secret"
+    )
+    generate = next(
+        step
+        for step in steps
+        if step.get("name") == "Generate OpenAPI spec from FastAPI app"
+    )
+    assert steps.index(configure) < steps.index(generate)
+    assert configure["shell"] == "bash"
+    assert 'secret="$(openssl rand -hex 32)"' in configure["run"]
+    assert 'echo "::add-mask::$secret"' in configure["run"]
+    assert "SECRET_KEY=%s" in configure["run"]
+    assert "$GITHUB_ENV" in configure["run"]
+
+
 def _baseline_step() -> dict[str, Any]:
     steps = [step for step in _job()["steps"] if step.get("id") == "openapi_baseline"]
     assert len(steps) == 1, "The gate must extract the immutable event baseline"

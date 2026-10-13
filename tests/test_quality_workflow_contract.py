@@ -1169,14 +1169,25 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
     assert "--helm-values security/trivy-revocation-values.yaml" in preflight_script
     assert "Skipping chart" in preflight_script
     assert "pipefail" in preflight_script
+    assert '--helm-set "global.environment=development"' in preflight_script
+    assert "ingress.issuer.kind=Issuer" not in preflight_script
 
     configuration = next(
         step
         for step in steps
         if step.get("name") == "Run Trivy configuration scanner (IaC)"
     )
+    prepare_config = next(
+        step
+        for step in steps
+        if step.get("name") == "Prepare development Helm input for Trivy"
+    )
+    assert "security/trivy-university-config.yaml" in prepare_config["run"]
+    assert "$RUNNER_TEMP/trivy-university-config.yaml" in prepare_config["run"]
+    assert "global.environment=development" in prepare_config["run"]
+    assert steps.index(prepare_config) < steps.index(configuration)
     assert configuration["with"]["trivy-config"] == (
-        "security/trivy-university-config.yaml"
+        "${{ runner.temp }}/trivy-university-config.yaml"
     )
     assert configuration["with"]["skip-dirs"] == "charts/revocation-store"
 
@@ -2788,7 +2799,24 @@ def test_ci_ws_hub_fuzz_uses_deadline_margin() -> None:
 def test_python_fuzz_workflow_is_bounded() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "python-fuzz.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    assert workflow["jobs"]["fuzz"]["timeout-minutes"] == 15
+    job = workflow["jobs"]["fuzz"]
+    assert job["timeout-minutes"] == 15
+    assert job["env"] == {
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "ENVIRONMENT": "testing",
+        "SECRET_KEY": "",
+    }
+    steps = job["steps"]
+    configure = next(
+        step
+        for step in steps
+        if step.get("name") == "Configure ephemeral application secret"
+    )
+    fuzzer = next(step for step in steps if step.get("name") == "Run Atheris Fuzzer")
+    assert steps.index(configure) < steps.index(fuzzer)
+    assert 'secret="$(openssl rand -hex 32)"' in configure["run"]
+    assert 'echo "::add-mask::$secret"' in configure["run"]
+    assert "$GITHUB_ENV" in configure["run"]
 
 
 def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:

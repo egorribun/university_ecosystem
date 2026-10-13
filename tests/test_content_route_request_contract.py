@@ -136,9 +136,15 @@ async def test_mutations_keep_localization_and_optional_cache_contract(
         )
         assert serialize.call_args.args == (record, "ru")
         if handler is news.create_news:
-            service.create_news.assert_awaited_once_with(data, locale="ru")
+            service.create_news.assert_awaited_once_with(
+                data, locale="ru", owner_user_id=user.id
+            )
+        elif handler is news.update_news:
+            service.update_news.assert_awaited_once_with(
+                record.id, data, owner_user_id=user.id
+            )
         else:
-            getattr(service, handler.__name__).assert_awaited_once_with(record.id, data)
+            service.update_event.assert_awaited_once_with(record.id, data)
         if handler is events.update_event:
             assert serialize.call_args.kwargs == {"participant_count": 2, "files": []}
     if module is events:

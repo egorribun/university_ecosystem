@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -22,8 +22,14 @@ const { language, useTranslationMock } = vi.hoisted(() => {
     })),
   }
 })
+const { campusTimezone } = vi.hoisted(() => ({
+  campusTimezone: { current: "America/New_York" as string | null },
+}))
 vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
 }))
 const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
@@ -82,6 +88,7 @@ describe("EventDetailEditDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     language.current = "en"
+    campusTimezone.current = "America/New_York"
     mocks.patch.mockResolvedValue({ data: {} })
     mocks.uploadEventImage.mockResolvedValue("")
   })
@@ -101,6 +108,8 @@ describe("EventDetailEditDialog", () => {
     expect(screen.getByLabelText("events:form.title_en")).toHaveValue(baseEvent.title_en)
     expect(screen.getByLabelText("events:form.description_en")).toHaveValue("")
     expect(screen.getByLabelText("events:form.location_en")).toHaveValue("")
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T10:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T12:00")
   })
 
   it("does not render the dialog when closed", () => {
@@ -170,8 +179,8 @@ describe("EventDetailEditDialog", () => {
     expect(screen.getByLabelText("events:form.description")).toHaveValue(baseEvent.description)
     expect(screen.getByLabelText("events:form.type")).toHaveValue(baseEvent.event_type)
     expect(screen.getByLabelText("events:form.location")).toHaveValue(baseEvent.location)
-    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-07-01T09:00")
-    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-07-01T10:00")
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-07-01T05:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-07-01T06:00")
     expect(screen.getByLabelText("events:form.speaker")).toHaveValue("English speaker")
 
     const user = userEvent.setup()
@@ -190,6 +199,8 @@ describe("EventDetailEditDialog", () => {
         location_en: "English room",
         about: "Russian about",
         about_en: "English about",
+        starts_at: localizedEvent.starts_at,
+        ends_at: localizedEvent.ends_at,
       })
     )
   })
@@ -225,6 +236,47 @@ describe("EventDetailEditDialog", () => {
     for (const field of ["id", "title", "description", "event_type", "location", "about"]) {
       expect(payload).not.toHaveProperty(field)
     }
+  })
+
+  it("serializes changed campus wall times to UTC and blocks a DST gap", async () => {
+    const user = userEvent.setup()
+    const editView = renderDialog()
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T10:00")
+
+    fireEvent.change(screen.getByLabelText("events:form.start"), {
+      target: { value: "2026-06-16T10:30" },
+    })
+    fireEvent.change(screen.getByLabelText("events:form.end"), {
+      target: { value: "2026-06-16T11:30" },
+    })
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce())
+    expect(mocks.patch).toHaveBeenCalledWith(
+      "/events/evt-1",
+      expect.objectContaining({
+        starts_at: "2026-06-16T14:30:00.000Z",
+        ends_at: "2026-06-16T15:30:00.000Z",
+      })
+    )
+
+    editView.unmount()
+    mocks.patch.mockClear()
+    const gapEvent = { ...baseEvent, starts_at: "2026-03-08T06:00:00.000Z" }
+    const gapView = renderDialog({ ...baseProps, event: gapEvent })
+    fireEvent.change(screen.getByLabelText("events:form.start"), {
+      target: { value: "2026-03-08T02:30" },
+    })
+    expect(screen.getByText("events:form.errors.nonexistentCampusTime")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+    expect(mocks.patch).not.toHaveBeenCalled()
+    gapView.unmount()
+  })
+
+  it("blocks edit saves when the server campus timezone is unavailable", () => {
+    campusTimezone.current = null
+    renderDialog()
+    expect(screen.getAllByText("events:form.errors.campusTimezoneUnavailable")).toHaveLength(2)
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
   })
 
   it("preserves non-null optional description and type values while normalizing nulls", async () => {

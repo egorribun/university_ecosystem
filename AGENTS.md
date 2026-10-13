@@ -135,7 +135,17 @@ for the MVP release; the current plan is
      forbidden.
 3. **Pre-Commit Enforcement**:
    - `ruff` (v0.14.14 pinned — prevents syntax regressions).
-   - `detect-secrets` (scans for credentials against `.secrets.baseline`).
+   - `detect-secrets` scans against `.secrets.baseline`; ADR-047 records the
+     original finite owner approval for exactly 85 path/type/digest identities
+     (83 verified public or synthetic findings and two linked fixtures limited
+     to the internal synthetic demo). A separate 2026-10-12 UTC decision
+     approved exactly one additional public NATS image digest identity at
+     `tests/test_workflow_fail_closed_contracts.py:43`. The original 85 identities
+     remain unchanged, for 86 exact policy identities total. The baseline
+     remains at 319 identities and the 78 required contexts remain unchanged.
+     No further findings, baseline entries, inline pragmas, broad exclusions,
+     or unmatched/changed identities are authorized. This does not replace
+     final-source validation.
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).
    - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).

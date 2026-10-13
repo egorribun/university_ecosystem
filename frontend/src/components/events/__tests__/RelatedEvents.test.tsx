@@ -4,6 +4,9 @@ import { describe, it, expect, vi } from "vitest"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 import {
   RELATED_EVENT_CARD_TRANSLATION_NAMESPACES,

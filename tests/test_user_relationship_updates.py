@@ -21,6 +21,7 @@ import app.models as models
 import app.services.user.logic as logic_module
 from app.core.constants import ANONYMIZED_USER_CREDENTIAL
 from app.services.user.logic import anonymize_user_data, update_user_attributes
+from tests.helpers.synthetic_credentials import make_test_marker
 
 
 def _bare_user() -> SimpleNamespace:
@@ -162,6 +163,7 @@ async def test_anonymize_user_data_clears_avatar_and_cover(
         department="eng",
         status="active",
     )
+    password_marker = make_test_marker(length=4, required_classes=frozenset({"lower"}))
     user = SimpleNamespace(
         id=user_id,
         profile=profile,
@@ -169,7 +171,7 @@ async def test_anonymize_user_data_clears_avatar_and_cover(
         preferences=None,
         spotify=None,
         email="real@example.com",
-        hashed_password="hash",  # pragma: allowlist secret
+        hashed_password=password_marker,
         is_active=True,
         mfa_required=True,
         mfa_default_method="totp",

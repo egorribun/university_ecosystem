@@ -11,8 +11,14 @@ const { useTranslationMock } = vi.hoisted(() => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   })),
 }))
+const { campusTimezone } = vi.hoisted(() => ({
+  campusTimezone: { current: "America/New_York" as string | null },
+}))
 vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
 }))
 // NEVER let the upload request reach MSW — module-mock the api fn directly.
 // vi.hoisted so the fn exists before the hoisted vi.mock factory runs.
@@ -57,6 +63,7 @@ function fieldByLabel(labelText: string): HTMLElement {
 
 describe("EventCreateDialog", () => {
   beforeEach(() => {
+    campusTimezone.current = "America/New_York"
     uploadEventImage.mockReset()
     uploadEventImage.mockResolvedValue("https://cdn.example.com/uploaded.png")
   })
@@ -76,12 +83,7 @@ describe("EventCreateDialog", () => {
     expect(hasInvalidEventDates("2026-01-15T10:00", "not-a-date")).toBe(false)
     expect(hasInvalidEventDates("not-a-date", "2026-01-15T12:00")).toBe(false)
 
-    const parseSpy = vi.spyOn(Date, "parse")
-    parseSpy
-      .mockReturnValueOnce(Number.POSITIVE_INFINITY)
-      .mockReturnValueOnce(Number.POSITIVE_INFINITY)
     expect(hasInvalidEventDates("infinite-start", "infinite-end")).toBe(false)
-    parseSpy.mockRestore()
   })
 
   it("requires every submit precondition", () => {
@@ -198,8 +200,8 @@ describe("EventCreateDialog", () => {
     const draft = onCreated.mock.calls[0]?.[0] as Record<string, string>
     expect(draft.title).toBe("Tech Talk")
     expect(draft.location).toBe("Hall A")
-    expect(draft.starts_at).toBe("2026-01-15T10:00")
-    expect(draft.ends_at).toBe("2026-01-15T12:00")
+    expect(draft.starts_at).toBe("2026-01-15T15:00:00.000Z")
+    expect(draft.ends_at).toBe("2026-01-15T17:00:00.000Z")
     // handleSubmit also closes the dialog
     expect(onClose).toHaveBeenCalledOnce()
   })
@@ -234,6 +236,41 @@ describe("EventCreateDialog", () => {
     await user.type(fieldByLabel("events:form.end"), "2026-01-15T10:00")
 
     expect(screen.getByText("events:form.errors.endsBeforeStarts")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+  })
+
+  it.each([
+    ["en", "2026-03-08T02:30", "events:form.errors.nonexistentCampusTime"],
+    ["ru", "2026-11-01T01:30", "events:form.errors.ambiguousCampusTime"],
+  ] as const)("blocks campus DST wall time errors in %s", (language, start, errorKey) => {
+    campusTimezone.current = "America/New_York"
+    const onCreated = vi.fn()
+    render(<EventCreateDialog {...baseProps} language={language} onCreated={onCreated} />)
+
+    fireEvent.change(
+      fieldByLabel(language === "en" ? "events:form.title_en" : "events:form.title"),
+      {
+        target: { value: "DST event" },
+      }
+    )
+    fireEvent.change(
+      fieldByLabel(language === "en" ? "events:form.location_en" : "events:form.location"),
+      { target: { value: "Campus hall" } }
+    )
+    fireEvent.change(fieldByLabel("events:form.start"), { target: { value: start } })
+    fireEvent.change(fieldByLabel("events:form.end"), {
+      target: { value: "2026-11-01T03:00" },
+    })
+
+    expect(screen.getByText(errorKey)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it("shows a readable error and blocks submission without the server campus timezone", () => {
+    campusTimezone.current = null
+    render(<EventCreateDialog {...baseProps} />)
+    expect(screen.getAllByText("events:form.errors.campusTimezoneUnavailable")).toHaveLength(2)
     expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
   })
 
@@ -291,6 +328,60 @@ describe("EventCreateDialog", () => {
     } finally {
       urlCtor.createObjectURL = prevCreate
       urlCtor.revokeObjectURL = prevRevoke
+    }
+  })
+
+  it("reports upload failure, releases its preview Blob, and permits retry", async () => {
+    uploadEventImage.mockRejectedValueOnce(new Error("upload failed"))
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    const createObjectURL = vi
+      .fn<(object: unknown) => string>()
+      .mockReturnValueOnce("blob:failed-upload")
+      .mockReturnValueOnce("blob:retried-upload")
+    const revokeObjectURL = vi.fn()
+    urlCtor.createObjectURL = createObjectURL
+    urlCtor.revokeObjectURL = revokeObjectURL
+
+    try {
+      const user = userEvent.setup()
+      const onCreated = vi.fn()
+      render(<EventCreateDialog {...baseProps} onCreated={onCreated} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+
+      await user.upload(fileInput, new File(["bad"], "failed.png", { type: "image/png" }))
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "events:detail.upload.errors.failed"
+      )
+      expect(screen.queryByAltText("events:alt.preview")).not.toBeInTheDocument()
+      expect(screen.getByText("events:form.uploadImage")).toBeInTheDocument()
+      await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:failed-upload"))
+
+      await user.upload(fileInput, new File(["retry"], "retry.png", { type: "image/png" }))
+      expect(await screen.findByText("events:form.imageSelected")).toBeInTheDocument()
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute(
+        "src",
+        "https://cdn.example.com/uploaded.png"
+      )
+      await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:retried-upload"))
+
+      await user.type(fieldByLabel("events:form.title"), "Retry upload")
+      await user.type(fieldByLabel("events:form.location"), "Hall G")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+
+      expect(onCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ image_url: "https://cdn.example.com/uploaded.png" })
+      )
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
     }
   })
 

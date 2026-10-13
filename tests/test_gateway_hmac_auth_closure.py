@@ -13,8 +13,11 @@ import pytest
 from fastapi import HTTPException, status
 
 from app.api.deps import auth as auth_module
+from tests.helpers.synthetic_credentials import make_test_password
 
-_HMAC_SECRET = "backend-hmac-closure-synthetic-secret"  # pragma: allowlist secret -- synthetic HMAC test key
+_HMAC_SECRET = make_test_password(
+    length=37, required_classes=frozenset({"lower", "symbol"})
+)
 
 
 def _independent_gateway_signature(

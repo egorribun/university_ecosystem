@@ -118,7 +118,7 @@ func TestSetupRouter_OptionalRouteAbortStopsProxy(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	for _, path := range []string{"/api/public/config", "/graphql"} {
+	for _, path := range []string{"/api/public/config"} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 		router.ServeHTTP(recorder, request)

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, Response
+from fastapi.exceptions import RequestValidationError
 
 import app.api.news as news_api
 from app.models.enums import UserRole
@@ -19,6 +20,7 @@ from app.services.vector_service import (
 from tests.conftest import call_injected
 
 NEWS_ID = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df79")
+NEWS_IMAGE_URL = "/static/news_images/news_0123456789abcdef0123456789abcdef.jpg"
 
 
 def _request(*, cache: object | None = None, locale: str = "en") -> SimpleNamespace:
@@ -91,7 +93,9 @@ async def test_create_news_requires_admin_and_serializes_record() -> None:
         )
 
     assert result == {"id": NEWS_ID}
-    service.create_news.assert_awaited_once_with(data, locale="en")
+    service.create_news.assert_awaited_once_with(
+        data, locale="en", owner_user_id=uuid.UUID(int=1)
+    )
     service.serialize_news.assert_called_once_with(record, "en")
     increment.assert_awaited_once_with(request.app.state.cache)
 
@@ -221,7 +225,9 @@ async def test_update_news_success_and_missing_paths_invalidate_cache() -> None:
             provides={"NewsService": service},
         )
     assert result == {"id": NEWS_ID}
-    service.update_news.assert_awaited_once_with(NEWS_ID, data)
+    service.update_news.assert_awaited_once_with(
+        NEWS_ID, data, owner_user_id=uuid.UUID(int=1)
+    )
     cache.invalidate.assert_awaited_once()
 
     service.update_news.side_effect = ValueError("not found")
@@ -351,7 +357,7 @@ async def test_comment_news_validates_news_content_and_profile_fallback() -> Non
     )
     assert result["user_name"] == str(user.email)
     service.create_comment.assert_awaited_once_with(
-        NEWS_ID, user.id, " A comment ", locale="en"
+        NEWS_ID, user.id, "A comment", locale="en"
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -376,6 +382,99 @@ async def test_comment_news_validates_news_content_and_profile_fallback() -> Non
             provides={"NewsService": service},
         )
     assert exc_info.value.status_code == 404
+
+
+async def test_comment_news_sanitizes_content_like_patch_update() -> None:
+    handler = inspect.unwrap(news_api.comment_on_news)
+    service = AsyncMock()
+    service.get_news_item.return_value = _news_record()
+    service.create_comment.return_value = SimpleNamespace(
+        id=uuid.UUID(int=3),
+        content="safe",
+        user_id=uuid.UUID(int=2),
+        created_at="now",
+    )
+    user = _user()
+    raw_content = '<strong onclick="run()">safe</strong><script>unsafe()</script>'
+
+    await call_injected(
+        handler,
+        id=NEWS_ID,
+        request=_request(),
+        content=raw_content,
+        user=user,
+        provides={"NewsService": service},
+    )
+
+    persisted_content = service.create_comment.await_args.args[2]
+    expected_content = news_api.schemas.NewsCommentUpdate(content=raw_content).content
+    assert persisted_content == expected_content
+    assert "<strong>safe</strong>" in persisted_content
+    assert "onclick" not in persisted_content.casefold()
+    assert "<script" not in persisted_content.casefold()
+
+
+async def test_comment_news_rejects_overlong_content_before_write() -> None:
+    handler = inspect.unwrap(news_api.comment_on_news)
+    service = AsyncMock()
+    service.get_news_item.return_value = _news_record()
+    user = _user()
+
+    with pytest.raises(RequestValidationError) as exc_info:
+        await call_injected(
+            handler,
+            id=NEWS_ID,
+            request=_request(),
+            content="x" * 1001,
+            user=user,
+            provides={"NewsService": service},
+        )
+
+    errors = exc_info.value.errors()
+    assert errors
+    assert errors[0]["loc"] == ("body", "content")
+    assert "input" not in errors[0]
+    service.create_comment.assert_not_awaited()
+
+
+async def test_comment_news_rejects_content_sanitized_to_empty() -> None:
+    handler = inspect.unwrap(news_api.comment_on_news)
+    service = AsyncMock()
+    service.get_news_item.return_value = _news_record()
+    user = _user()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await call_injected(
+            handler,
+            id=NEWS_ID,
+            request=_request(),
+            content="<script></script>",
+            user=user,
+            provides={"NewsService": service},
+        )
+
+    assert exc_info.value.status_code == 400
+    service.create_comment.assert_not_awaited()
+
+
+async def test_comment_news_missing_news_precedes_overlong_validation() -> None:
+    handler = inspect.unwrap(news_api.comment_on_news)
+    service = AsyncMock()
+    service.get_news_item.return_value = None
+    user = _user()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await call_injected(
+            handler,
+            id=NEWS_ID,
+            request=_request(),
+            content="x" * 1001,
+            user=user,
+            provides={"NewsService": service},
+        )
+
+    assert exc_info.value.status_code == 404
+    service.create_comment.assert_not_awaited()
 
 
 async def test_news_interactions_not_found() -> None:
@@ -525,18 +624,32 @@ async def test_delete_comment_preserves_service_denial_after_admin_check() -> No
 async def test_upload_news_image_scans_and_saves() -> None:
     handler = inspect.unwrap(news_api.upload_news_image)
     upload = SimpleNamespace(size=12)
+    user = _admin()
+    service = AsyncMock()
 
     with (
         patch.object(news_api, "scan_for_malware", new_callable=AsyncMock) as scan,
         patch.object(
-            news_api, "save_upload", new_callable=AsyncMock, return_value="/image.jpg"
+            news_api,
+            "save_upload",
+            new_callable=AsyncMock,
+            return_value=NEWS_IMAGE_URL,
         ) as save,
     ):
-        result = await handler(file=upload, request=_request(), user=_admin())
+        result = await call_injected(
+            handler,
+            file=upload,
+            request=_request(),
+            user=user,
+            provides={"NewsService": service},
+        )
 
-    assert result == {"url": "/image.jpg"}
+    assert result == {"url": NEWS_IMAGE_URL}
     scan.assert_awaited_once_with(upload, locale="en", size_bytes=12)
     save.assert_awaited_once_with(upload, "news_images", "news", locale="en")
+    service.register_uploaded_image.assert_awaited_once_with(
+        NEWS_IMAGE_URL, owner_user_id=user.id
+    )
 
 
 async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:

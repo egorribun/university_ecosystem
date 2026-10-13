@@ -375,7 +375,7 @@ jobs:
         run: |
           set -euo pipefail
           actionlint_source_sha="5dc52e8daa4ef51bfd76a648128474bd41d65df0"
-          actionlint_archive_sha256="908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"  # pragma: allowlist secret
+          actionlint_archive_sha256="908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"
           actionlint_archive="$RUNNER_TEMP/actionlint-source.tar.gz"
           actionlint_source_dir="$RUNNER_TEMP/actionlint-source"
           curl --fail --silent --show-error --location \
@@ -876,7 +876,7 @@ jobs:
           set -euo pipefail
           slsa_verifier_version="2.7.0"
           slsa_verifier_url="https://github.com/slsa-framework/slsa-verifier/releases/download/v${slsa_verifier_version}/slsa-verifier-linux-amd64"
-          slsa_verifier_sha256="499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6" # pragma: allowlist secret -- release checksum
+          slsa_verifier_sha256="499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6" #  -- release checksum
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 \
             --output /tmp/slsa-verifier "$slsa_verifier_url"
@@ -962,7 +962,7 @@ jobs:
         env:
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
-          DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/university_db" # pragma: allowlist secret
+          DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/university_db"
         run: |
           set -euo pipefail
           echo "Linting changed Alembic migrations for ZDD safety..."
@@ -1300,7 +1300,7 @@ jobs:
             redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Helm lint — university-ecosystem chart
-        run: |  # pragma: allowlist secret
+        run: |
           helm lint charts/university-ecosystem/ --strict \
             --set-string global.environment=development \
             --set redis.enabled=false \
@@ -1310,7 +1310,7 @@ jobs:
       - name: Helm template — dry-run
         env:
           IMAGE_TAG: ${{ github.sha }}
-        run: |  # pragma: allowlist secret
+        run: |
           helm template university-ecosystem charts/university-ecosystem/ \
             --set-string global.environment=development \
             --set redis.enabled=false \
@@ -1325,7 +1325,7 @@ jobs:
           set -euo pipefail
           kubeconform_version="0.6.7"
           kubeconform_url="https://github.com/yannh/kubeconform/releases/download/v${kubeconform_version}/kubeconform-linux-amd64.tar.gz"
-          kubeconform_sha256="95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73" # pragma: allowlist secret -- release checksum
+          kubeconform_sha256="95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73" #  -- release checksum
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 \
             --output /tmp/kubeconform.tar.gz "$kubeconform_url"
@@ -1419,7 +1419,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://test@localhost:5433/test_migration
           ENVIRONMENT: test
-          SECRET_KEY: test-secret-key-for-ci-migration-gate-only  # pragma: allowlist secret
+          SECRET_KEY: test-secret-key-for-ci-migration-gate-only
           SAFE_DOWNGRADE_TARGET: ${{ steps.migration-policy.outputs.safe_target }}
         run: |
           rm -f -- .coverage.migration
@@ -1692,12 +1692,14 @@ jobs:
         run: |
           rustup toolchain install nightly --component rust-src --component llvm-tools --allow-downgrade --no-self-update
 
+      - name: Generate ephemeral ASan signing key
+        shell: bash
+        run: python -c 'import secrets; print("SECRET_KEY=" + secrets.token_urlsafe(48))' >> "$GITHUB_ENV"
       - name: Run FFI tests under ASan / LSan
         env:
           ENVIRONMENT: testing
           DATABASE_URL: "sqlite+aiosqlite:///./test_asan.db"
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
-          SECRET_KEY: test-secret-key-1234567890abcdef  # pragma: allowlist secret
         run: bash scripts/run_asan_tests.sh
 
       - name: Upload ASan report on failure
@@ -1751,12 +1753,14 @@ jobs:
         run: |
           rustup toolchain install nightly --component rust-src --component llvm-tools --allow-downgrade --no-self-update
 
+      - name: Generate ephemeral TSan signing key
+        shell: bash
+        run: python -c 'import secrets; print("SECRET_KEY=" + secrets.token_urlsafe(48))' >> "$GITHUB_ENV"
       - name: Run FFI tests under TSan
         env:
           ENVIRONMENT: testing
           DATABASE_URL: "sqlite+aiosqlite:///./test_tsan.db"
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
-          SECRET_KEY: test-secret-key-1234567890abcdef  # pragma: allowlist secret
         run: bash scripts/run_tsan_tests.sh
 
   rust-tests:

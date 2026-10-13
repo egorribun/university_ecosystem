@@ -84,6 +84,8 @@ def _base_args() -> list[str]:
         "--set",
         "fileProcessor.enabled=false",
         "--set",
+        "global.environment=development",
+        "--set",
         "global.imageTag=contract-sha",
     ]
 

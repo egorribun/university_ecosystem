@@ -54,34 +54,22 @@ def test_candidate_activation_is_bound_to_the_reviewed_helper_checkpoint() -> No
     assert activation_template.ACTIVATION_PULL_REQUEST == "1306"
     assert activation_template.ACTIVATION_HEAD_REF == "egorribun"
     assert activation_template.ACTIVATION_BASE_REF == "main"
-    assert (
-        activation_template.PINNED_HELPER_COMMIT
-        == (
-            "00b9865fdf79f8efb73a53509550d69ee7c65ba8"  # pragma: allowlist secret -- public helper commit
-        )
+    assert activation_template.PINNED_HELPER_COMMIT == (
+        "00b9865fdf79f8efb73a53509550d69ee7c65ba8"  #  -- public helper commit
     )
-    assert (
-        activation_template.PINNED_HELPER_PARENT
-        == (
-            "0fc7af03b7f403ba6c77a2aaf26602f9e60927b4"  # pragma: allowlist secret -- public helper parent
-        )
+    assert activation_template.PINNED_HELPER_PARENT == (
+        "0fc7af03b7f403ba6c77a2aaf26602f9e60927b4"  #  -- public helper parent
     )
-    assert (
-        activation_template.PINNED_HELPER_TREE
-        == (
-            "a1ecc7e691c1f4c68c2ff1b74587074e8da5d898"  # pragma: allowlist secret -- public helper tree
-        )
+    assert activation_template.PINNED_HELPER_TREE == (
+        "a1ecc7e691c1f4c68c2ff1b74587074e8da5d898"  #  -- public helper tree
     )
-    assert (
-        activation_template.PINNED_HELPER_BLOB
-        == (
-            "6f7b83c6db8ba4a11b631e02c544d987a2d8fa1c"  # pragma: allowlist secret -- public helper blob
-        )
+    assert activation_template.PINNED_HELPER_BLOB == (
+        "6f7b83c6db8ba4a11b631e02c544d987a2d8fa1c"  #  -- public helper blob
     )
     assert (
         activation_template.PINNED_HELPER_SHA256
         == (
-            "3e6caeed6edcbb2317c1c6540e736f359bb45565ecbe49fad341df6d4511a1f2"  # pragma: allowlist secret -- public helper SHA-256
+            "3e6caeed6edcbb2317c1c6540e736f359bb45565ecbe49fad341df6d4511a1f2"  #  -- public helper SHA-256
         )
     )
     assert activation_template.PINNED_HELPER_SIZE == "52338"

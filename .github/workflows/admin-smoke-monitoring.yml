@@ -89,7 +89,7 @@ jobs:
       # NATS required for backend lifespan (NatsTaskBroker can't be skipped via
       # env-flag; Dishka-injected dependency).
       nats:
-        image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
+        image: nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
         ports:
           - 4222:4222
         options: >-

@@ -85,6 +85,9 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/contexts/LanguageContext", () => ({
   useLanguage: () => ({ language: "en", setLanguage: vi.fn() }),
 }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+}))
 vi.mock("@/hooks/useDashboardEvents", () => ({
   useDashboardEvents: () => eventsState.current,
   prefetchDashboardEvents: mockPrefetchDashboardEvents,

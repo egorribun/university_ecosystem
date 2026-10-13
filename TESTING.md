@@ -52,14 +52,27 @@ the full relevant suites and policy gates.
 
 ```powershell
 New-Item -ItemType Directory -Force artifacts/coverage/python | Out-Null
-uv run pytest tests -n 4 --dist loadfile --cov=app --cov-branch `
+uv run pytest tests -n 4 --dist loadfile --cov=app --cov=alembic/versions --cov-branch `
   --cov-report=xml:coverage.xml `
   --cov-report=json:artifacts/coverage/python/coverage.json `
   --cov-report=term:skip-covered
 ```
 
 The command inherits the fail-closed threshold from `pyproject.toml`; do not
-override it on the command line.
+override it on the command line. It collects the configured Python source roots
+(`app` and `alembic/versions`) for code exercised by this local test run, but it
+does not execute the PostgreSQL migration round-trip and is not the release
+aggregate.
+
+The canonical release result is the required `Coverage & Quality Policy Gate`.
+It combines all four backend shard coverage artifacts with the `DB Migration
+Gate (Postgres)` coverage for upgrade to head, the approved supported downgrade,
+and upgrade back to head. The gate normalizes and validates the same-SHA
+`artifacts/coverage/quality-manifest.json`, then uploads the
+`quality-evidence-<sha>-attempt-<run-attempt>` artifact. Use that complete
+artifact and passing gate for current-source aggregate evidence; a local report
+does not replace PostgreSQL migration evidence. Current coverage floors,
+including Tier 0 100% requirements, remain unchanged.
 
 ### Frontend
 

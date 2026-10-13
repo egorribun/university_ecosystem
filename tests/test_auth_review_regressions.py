@@ -9,6 +9,8 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException, Request
 
+from tests.helpers.synthetic_credentials import make_test_password
+
 if TYPE_CHECKING:
     from redis.asyncio import Redis
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -152,8 +154,8 @@ async def test_login_paused_after_old_password_validation_cannot_mint_after_chan
     from app.services.session_service import SessionService
     from app.services.user.profile_service import UserProfileService
 
-    old_password = "Old-test-password-883!"  # pragma: allowlist secret
-    new_password = "New-test-password-992!"  # pragma: allowlist secret
+    old_password = make_test_password(length=27)
+    new_password = make_test_password(length=27, excluding=(old_password,))
     test_user.hashed_password = await get_password_hash(old_password)
     test_user.mfa_epoch = 0
     stale_mfa = datetime.now(UTC) - timedelta(days=1)
@@ -305,8 +307,8 @@ async def test_late_password_rehash_cannot_restore_prechange_password(
     from app.services.auth_service import AuthService
     from app.services.user.profile_service import UserProfileService
 
-    old_password = "Old-rehash-password-11!"  # pragma: allowlist secret
-    new_password = "New-rehash-password-22!"  # pragma: allowlist secret
+    old_password = make_test_password(length=27)
+    new_password = make_test_password(length=27, excluding=(old_password,))
     test_user.hashed_password = await get_password_hash(old_password)
     test_user.mfa_epoch = 0
     await db_session.commit()
@@ -737,18 +739,62 @@ def _password_change_service(db_session: AsyncSession) -> AuthService:
     )
 
 
+async def _password_change_case(
+    db_session: AsyncSession,
+    test_user: User,
+    user_factory: Callable[..., Awaitable[User]],
+) -> tuple[ActiveSession, ActiveSession, ActiveSession, AuthService, Request]:
+    from app.models import ActiveSession
+    from app.repositories.unit_of_work import uow_from_session
+
+    now = datetime.now(UTC)
+    test_user.mfa_epoch = 0
+    foreign_user = await user_factory()
+    await db_session.commit()
+    uow = uow_from_session(db_session)
+    current_dto = await _create_active_session(
+        uow.sessions, user_id=test_user.id, jti=f"pwd-current-{uuid4().hex}", now=now
+    )
+    sibling_dto = await _create_active_session(
+        uow.sessions, user_id=test_user.id, jti=f"pwd-sibling-{uuid4().hex}", now=now
+    )
+    foreign_dto = await _create_active_session(
+        uow.sessions,
+        user_id=foreign_user.id,
+        jti=f"pwd-foreign-{uuid4().hex}",
+        now=now,
+    )
+    await db_session.commit()
+    current = await db_session.get(ActiveSession, current_dto.id)
+    sibling = await db_session.get(ActiveSession, sibling_dto.id)
+    foreign = await db_session.get(ActiveSession, foreign_dto.id)
+    assert current is not None
+    assert sibling is not None
+    assert foreign is not None
+    return (
+        current,
+        sibling,
+        foreign,
+        _password_change_service(db_session),
+        _request_with_active_session(current),
+    )
+
+
 @pytest.mark.asyncio
 async def test_password_change_persists_current_epoch_and_revokes_only_owned_sibling(
     db_session: AsyncSession,
     test_user: User,
     user_factory: Callable[..., Awaitable[User]],
     mock_global_redis: Redis[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.auth.security import get_password_hash, verify_password
+    from app.core.config import settings
     from app.core.database import async_session
     from app.models import ActiveSession, User
     from app.repositories.unit_of_work import uow_from_session
     from app.schemas.schemas import UserPasswordChangeIn
+    from app.services.auth.redis_session import RedisSessionService
 
     now = datetime.now(UTC)
     current_password = f"Old!{uuid4().hex}aA9"
@@ -773,6 +819,21 @@ async def test_password_change_persists_current_epoch_and_revokes_only_owned_sib
     current = await db_session.get(ActiveSession, current_dto.id)
     assert current is not None
 
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "cache_redis_url", "redis://localhost:6379/0")
+    session_cache = RedisSessionService(redis_url="redis://localhost:6379/0")
+    await session_cache.create_session(
+        current.jti,
+        user_id,
+        fingerprint=None,
+        mfa_verified_at=None,
+        session_id=current.id,
+        mfa_epoch=0,
+    )
+    cached_current = await session_cache.get_session(current.jti)
+    assert cached_current is not None
+    assert cached_current["mfa_epoch"] == 0
+
     request = _request_with_active_session(current)
     service = _password_change_service(db_session)
     with patch("app.services.auth_service.validate_password_hibp", AsyncMock()):
@@ -794,13 +855,308 @@ async def test_password_change_persists_current_epoch_and_revokes_only_owned_sib
     assert current_row is not None
     assert current_row.mfa_epoch == 1
     assert current_row.revoked_at is None
+    assert current.mfa_epoch == 1
     assert sibling_row is not None
     assert sibling_row.revoked_at is not None
     assert foreign_row is not None
     assert foreign_row.revoked_at is None
+    assert await mock_global_redis.exists(f"revoked:jti:{current.jti}") == 0
+    assert await mock_global_redis.exists(f"revoked:jti:{sibling_dto.jti}") == 1
+    assert await mock_global_redis.exists(f"revoked:jti:{foreign_dto.jti}") == 0
+    assert await session_cache.get_session(current.jti) is None
     assert persisted_user is not None
     assert await verify_password(replacement_password, persisted_user.hashed_password)
     assert not await verify_password(current_password, persisted_user.hashed_password)
+
+
+@pytest.mark.asyncio
+async def test_password_change_without_current_session_revokes_all_owned_sessions(
+    db_session: AsyncSession,
+    test_user: User,
+    user_factory: Callable[..., Awaitable[User]],
+    mock_global_redis: Redis[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+    from app.schemas.schemas import UserPasswordChangeIn
+
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "cache_redis_url", "redis://localhost:6379/0")
+    current, sibling, foreign, service, _ = await _password_change_case(
+        db_session, test_user, user_factory
+    )
+    request = Request(
+        {
+            "type": "http",
+            "headers": [],
+            "query_string": b"",
+            "path": "/api/v1/users/me/password",
+            "method": "POST",
+        }
+    )
+    current_password = make_test_password(length=27)
+    payload = UserPasswordChangeIn(
+        current_password=current_password,
+        new_password=make_test_password(length=27, excluding=(current_password,)),
+    )
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            AsyncMock(side_effect=[True, False]),
+        ),
+        patch("app.services.auth_service.validate_password_hibp", AsyncMock()),
+        patch(
+            "app.services.auth_service.get_password_hash",
+            AsyncMock(return_value=f"test-hash-{uuid4().hex}"),
+        ),
+    ):
+        assert await service.change_password(test_user, payload, request) == (True, 2)
+
+    await db_session.refresh(test_user)
+    await db_session.refresh(current)
+    await db_session.refresh(sibling)
+    await db_session.refresh(foreign)
+    assert test_user.mfa_epoch == 1
+    assert current.revoked_at is not None
+    assert sibling.revoked_at is not None
+    assert foreign.revoked_at is None
+    assert await mock_global_redis.exists(f"revoked:jti:{current.jti}") == 1
+    assert await mock_global_redis.exists(f"revoked:jti:{sibling.jti}") == 1
+    assert await mock_global_redis.exists(f"revoked:jti:{foreign.jti}") == 0
+
+
+@pytest.mark.asyncio
+async def test_password_change_tombstone_failure_rolls_back_password_and_sessions(
+    db_session: AsyncSession,
+    test_user: User,
+    user_factory: Callable[..., Awaitable[User]],
+    mock_global_redis: Redis[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+    from app.schemas.schemas import UserPasswordChangeIn
+    from app.services.auth.redis_session import RedisSessionService
+
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "cache_redis_url", "redis://localhost:6379/0")
+    current, sibling, foreign, service, request = await _password_change_case(
+        db_session, test_user, user_factory
+    )
+    old_hash = test_user.hashed_password
+    current_password = make_test_password(length=27)
+    payload = UserPasswordChangeIn(
+        current_password=current_password,
+        new_password=make_test_password(length=27, excluding=(current_password,)),
+    )
+    cache = RedisSessionService(redis_url="redis://localhost:6379/0")
+    await cache.create_session(
+        current.jti,
+        test_user.id,
+        fingerprint=None,
+        mfa_verified_at=None,
+        session_id=current.id,
+        mfa_epoch=0,
+    )
+    commits = 0
+    real_commit = db_session.commit
+
+    async def count_commit() -> None:
+        nonlocal commits
+        commits += 1
+        await real_commit()
+
+    monkeypatch.setattr(db_session, "commit", count_commit)
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            AsyncMock(side_effect=[True, False]),
+        ),
+        patch("app.services.auth_service.validate_password_hibp", AsyncMock()),
+        patch(
+            "app.services.auth_service.get_password_hash",
+            AsyncMock(return_value=f"test-hash-{uuid4().hex}"),
+        ),
+        patch(
+            "app.services.auth.redis_session.get_revocation_redis_client",
+            AsyncMock(side_effect=OSError("revocation store unavailable")),
+        ),
+        pytest.raises(OSError, match="revocation store unavailable"),
+    ):
+        await service.change_password(test_user, payload, request)
+
+    assert commits == 0
+    await db_session.refresh(test_user)
+    await db_session.refresh(current)
+    await db_session.refresh(sibling)
+    await db_session.refresh(foreign)
+    assert test_user.hashed_password == old_hash
+    assert test_user.mfa_epoch == 0
+    assert current.mfa_epoch == 0
+    assert current.revoked_at is None
+    assert sibling.revoked_at is None
+    assert foreign.revoked_at is None
+    assert await mock_global_redis.exists(f"revoked:jti:{sibling.jti}") == 0
+    assert await cache.get_session(current.jti) is not None
+
+
+@pytest.mark.asyncio
+async def test_password_change_commit_failure_rolls_back_rows_after_tombstone(
+    db_session: AsyncSession,
+    test_user: User,
+    user_factory: Callable[..., Awaitable[User]],
+    mock_global_redis: Redis[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+    from app.schemas.schemas import UserPasswordChangeIn
+    from app.services.auth.redis_session import RedisSessionService
+
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "cache_redis_url", "redis://localhost:6379/0")
+    current, sibling, foreign, service, request = await _password_change_case(
+        db_session, test_user, user_factory
+    )
+    current_jti = current.jti
+    sibling_jti = sibling.jti
+    foreign_jti = foreign.jti
+    old_hash = test_user.hashed_password
+    current_password = make_test_password(length=27)
+    payload = UserPasswordChangeIn(
+        current_password=current_password,
+        new_password=make_test_password(length=27, excluding=(current_password,)),
+    )
+    cache = RedisSessionService(redis_url="redis://localhost:6379/0")
+    await cache.create_session(
+        current_jti,
+        test_user.id,
+        fingerprint=None,
+        mfa_verified_at=None,
+        session_id=current.id,
+        mfa_epoch=0,
+    )
+    published: list[tuple[str, str]] = []
+    real_publish = mock_global_redis.publish
+
+    async def observe_publish(channel: str, message: str) -> int:
+        published.append((channel, message))
+        return await real_publish(channel, message)
+
+    monkeypatch.setattr(mock_global_redis, "publish", observe_publish)
+    before_commit: list[tuple[int, int, int, tuple[tuple[str, str], ...]]] = []
+
+    async def fail_commit() -> None:
+        before_commit.append(
+            (
+                await mock_global_redis.exists(f"revoked:jti:{current_jti}"),
+                await mock_global_redis.exists(f"revoked:jti:{sibling_jti}"),
+                await mock_global_redis.exists(f"revoked:jti:{foreign_jti}"),
+                tuple(published),
+            )
+        )
+        raise RuntimeError("simulated database commit failure")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            AsyncMock(side_effect=[True, False]),
+        ),
+        patch("app.services.auth_service.validate_password_hibp", AsyncMock()),
+        patch(
+            "app.services.auth_service.get_password_hash",
+            AsyncMock(return_value=f"test-hash-{uuid4().hex}"),
+        ),
+        pytest.raises(RuntimeError, match="simulated database commit failure"),
+    ):
+        await service.change_password(test_user, payload, request)
+
+    expected_publish = ("session:revocations", sibling_jti)
+    assert published == [expected_publish]
+    assert before_commit == [(0, 1, 0, (expected_publish,))]
+    assert await mock_global_redis.exists(f"revoked:jti:{sibling_jti}") == 1
+    assert await mock_global_redis.exists(f"revoked:jti:{current_jti}") == 0
+    assert await mock_global_redis.exists(f"revoked:jti:{foreign_jti}") == 0
+    await db_session.refresh(test_user)
+    await db_session.refresh(current)
+    await db_session.refresh(sibling)
+    await db_session.refresh(foreign)
+    assert test_user.hashed_password == old_hash
+    assert test_user.mfa_epoch == 0
+    assert current.mfa_epoch == 0
+    assert current.revoked_at is None
+    assert sibling.revoked_at is None
+    assert foreign.revoked_at is None
+    cached_current = await cache.get_session(current_jti)
+    assert cached_current is not None
+    assert cached_current["mfa_epoch"] == 0
+
+
+@pytest.mark.asyncio
+async def test_password_change_pubsub_failure_keeps_durable_sibling_revocation(
+    db_session: AsyncSession,
+    test_user: User,
+    user_factory: Callable[..., Awaitable[User]],
+    mock_global_redis: Redis[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+    from app.schemas.schemas import UserPasswordChangeIn
+    from app.services.auth.redis_session import RedisSessionService
+
+    monkeypatch.setattr(settings, "session_storage_backend", "memory")
+    monkeypatch.setattr(settings, "cache_redis_url", "redis://localhost:6379/0")
+    current, sibling, foreign, service, request = await _password_change_case(
+        db_session, test_user, user_factory
+    )
+    cache = RedisSessionService(redis_url="redis://localhost:6379/0")
+    await cache.create_session(
+        current.jti,
+        test_user.id,
+        fingerprint=None,
+        mfa_verified_at=None,
+        session_id=current.id,
+        mfa_epoch=0,
+    )
+    current_password = make_test_password(length=27)
+    payload = UserPasswordChangeIn(
+        current_password=current_password,
+        new_password=make_test_password(length=27, excluding=(current_password,)),
+    )
+    publish_observations: list[tuple[str, str, int]] = []
+
+    async def fail_publish(channel: str, message: str) -> int:
+        tombstone_exists = await mock_global_redis.exists(f"revoked:jti:{sibling.jti}")
+        publish_observations.append((channel, message, tombstone_exists))
+        raise OSError("pubsub unavailable")
+
+    monkeypatch.setattr(mock_global_redis, "publish", fail_publish)
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            AsyncMock(side_effect=[True, False]),
+        ),
+        patch("app.services.auth_service.validate_password_hibp", AsyncMock()),
+        patch(
+            "app.services.auth_service.get_password_hash",
+            AsyncMock(return_value=f"test-hash-{uuid4().hex}"),
+        ),
+    ):
+        assert await service.change_password(test_user, payload, request) == (True, 1)
+
+    await db_session.refresh(test_user)
+    await db_session.refresh(current)
+    await db_session.refresh(sibling)
+    await db_session.refresh(foreign)
+    assert publish_observations == [("session:revocations", sibling.jti, 1)]
+    assert test_user.mfa_epoch == 1
+    assert current.mfa_epoch == 1
+    assert current.revoked_at is None
+    assert sibling.revoked_at is not None
+    assert foreign.revoked_at is None
+    assert await mock_global_redis.exists(f"revoked:jti:{sibling.jti}") == 1
+    assert await mock_global_redis.exists(f"revoked:jti:{current.jti}") == 0
+    assert await mock_global_redis.exists(f"revoked:jti:{foreign.jti}") == 0
+    assert await cache.get_session(current.jti) is None
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button"
 import { TextField } from "@/components/ui/TextField"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import { uploadEventImage } from "@/api/events"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { eventDateErrorTranslationKey, resolveCampusEventDateRange } from "@/utils/eventDateTime"
 
 type EventDraft = {
   title: string
@@ -36,11 +38,9 @@ export function normalizeLocalizedValue(primary: string, fallback: string): stri
 
 /** Date validation is only applicable once both endpoints have been supplied. */
 export function hasInvalidEventDates(startsAt: string, endsAt: string): boolean {
-  const startTimestamp = Date.parse(startsAt)
-  const endTimestamp = Date.parse(endsAt)
-  if (!Number.isFinite(startTimestamp)) return false
-  if (!Number.isFinite(endTimestamp)) return false
-  return endTimestamp <= startTimestamp
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(startsAt)) return false
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(endsAt)) return false
+  return endsAt <= startsAt
 }
 
 export type EventSubmitState = {
@@ -109,9 +109,11 @@ type EventCreateDialogProps = {
 
 export function EventCreateDialog({ open, onClose, onCreated, language }: EventCreateDialogProps) {
   const { t } = useTranslation(TRANSLATION_NAMESPACES)
+  const campusTimezone = useCampusTimezone()
 
   const [draft, setDraft] = useState<EventDraft>(INITIAL_DRAFT)
   const [imageUploading, setImageUploading] = useState(false)
+  const [imageUploadFailed, setImageUploadFailed] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const uploadGenerationRef = useRef(0)
 
@@ -133,9 +135,10 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
   const handleImageUpload = async (file: File) => {
     const uploadGeneration = ++uploadGenerationRef.current
     setImageUploading(true)
-    const localUrl = URL.createObjectURL(file)
-    setPreview(localUrl)
+    setImageUploadFailed(false)
     try {
+      const localUrl = URL.createObjectURL(file)
+      setPreview(localUrl)
       const imageUrl = await uploadEventImage(file)
       if (uploadGeneration !== uploadGenerationRef.current) return
 
@@ -143,6 +146,11 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
       // The server URL is canonical after upload; releasing the temporary Blob
       // also keeps the rendered preview aligned with the value that is submitted.
       setPreview(null)
+    } catch {
+      if (uploadGeneration === uploadGenerationRef.current) {
+        setPreview(null)
+        setImageUploadFailed(true)
+      }
     } finally {
       if (uploadGeneration === uploadGenerationRef.current) {
         setImageUploading(false)
@@ -165,6 +173,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
       createUploadGenerationCleanup(uploadGenerationRef, () => {
         setImageUploading(false)
         setPreview(null)
+        setImageUploadFailed(false)
       }),
     [open]
   )
@@ -174,17 +183,29 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
     setDraft(INITIAL_DRAFT)
     setImageUploading(false)
     setPreview(null)
+    setImageUploadFailed(false)
     onClose()
   }
 
   const handleSubmit = () => {
-    onCreated(draft)
+    const dateRange = resolveCampusEventDateRange(draft.starts_at, draft.ends_at, campusTimezone)
+    if (!dateRange.valid || !dateRange.startsAt || !dateRange.endsAt) return
+    onCreated({ ...draft, starts_at: dateRange.startsAt, ends_at: dateRange.endsAt })
     handleClose()
   }
 
   const normalizedTitle = normalizeLocalizedValue(draft.title, draft.title_en)
   const normalizedLocation = normalizeLocalizedValue(draft.location, draft.location_en)
-  const dateError = hasInvalidEventDates(draft.starts_at, draft.ends_at)
+  const dateRange = resolveCampusEventDateRange(draft.starts_at, draft.ends_at, campusTimezone)
+  const dateError = !dateRange.valid
+  const startDateErrorText =
+    dateRange.startError && dateRange.startError !== "required"
+      ? t(eventDateErrorTranslationKey(dateRange.startError, "start"))
+      : undefined
+  const endDateErrorText =
+    dateRange.endError && dateRange.endError !== "required"
+      ? t(eventDateErrorTranslationKey(dateRange.endError, "end"))
+      : undefined
 
   const canSubmit = canSubmitEventDraft({
     normalizedTitle,
@@ -270,6 +291,11 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                   }}
                 />
               </Button>
+              {imageUploadFailed && (
+                <p role="alert" className="mt-2 text-xs text-error-text">
+                  {t("events:detail.upload.errors.failed")}
+                </p>
+              )}
               {(preview || draft.image_url) && (
                 <div className="mt-3 overflow-hidden rounded-md border border-glass-border shadow-glass">
                   <SmartImage
@@ -286,6 +312,8 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                 type="datetime-local"
                 value={draft.starts_at}
                 onChange={(event) => setDraft({ ...draft, starts_at: event.target.value })}
+                error={Boolean(startDateErrorText)}
+                helperText={startDateErrorText}
                 fullWidth
               />
               <TextField
@@ -293,8 +321,8 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                 type="datetime-local"
                 value={draft.ends_at}
                 onChange={(event) => setDraft({ ...draft, ends_at: event.target.value })}
-                error={dateError}
-                helperText={dateError ? t("events:form.errors.endsBeforeStarts") : undefined}
+                error={Boolean(endDateErrorText)}
+                helperText={endDateErrorText}
                 fullWidth
               />
             </div>

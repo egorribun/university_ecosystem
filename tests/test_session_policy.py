@@ -16,6 +16,7 @@ from app.services.auth.session_policy import (
     session_is_expired,
     session_is_usable,
 )
+from tests.helpers.synthetic_credentials import make_test_password
 
 NOW = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
@@ -233,7 +234,7 @@ async def test_dummy_password_verification_uses_auth_executor(
     from app.auth import security
 
     # Synthetic input passed only to the stub verifier, never an account credential.
-    submitted_password = "submitted-value"  # pragma: allowlist secret
+    submitted_password = make_test_password(length=23)
     observed_passwords: list[str] = []
 
     def record_verification(password: str) -> None:

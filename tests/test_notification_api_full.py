@@ -304,6 +304,7 @@ class TestListNotifications:
         assert data["unread_count"] == 1
         for item in data["items"]:
             assert item["metadata"]["notificationId"] == item["id"]
+            assert item["metadata"]["recipientUserId"] == str(user.id)
             assert item["metadata"]["url"] == (item.get("url") or "/")
 
 

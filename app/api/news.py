@@ -18,6 +18,8 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from sqlalchemy import exists, func, literal, select
 
 import app.models as models
@@ -49,7 +51,7 @@ from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
-from app.services.news_service import NewsService
+from app.services.news_service import NewsImageOwnershipError, NewsService
 from app.services.vector_service import (
     SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
     SemanticSearchUnavailableError,
@@ -101,7 +103,10 @@ async def create_news(
     user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
-    record = await service.create_news(data, locale=locale)
+    try:
+        record = await service.create_news(data, locale=locale, owner_user_id=user.id)
+    except NewsImageOwnershipError:
+        raise_forbidden(locale)
     await _increment_news_list_version(getattr(request.app.state, "cache", None))
     serialized = service.serialize_news(record, locale)
     return serialized
@@ -248,7 +253,13 @@ async def update_news(
     locale = resolve_locale(request=request, user=user)
 
     try:
-        updated = await service.update_news(id, data or schemas.NewsUpdate())
+        updated = await service.update_news(
+            id,
+            data or schemas.NewsUpdate(),
+            owner_user_id=user.id,
+        )
+    except NewsImageOwnershipError:
+        raise_forbidden(locale)
     except ValueError:
         raise_not_found("news", locale)
 
@@ -325,6 +336,22 @@ async def comment_on_news(
     news = await service.get_news_item(id)
     if not news:
         raise_not_found("news", locale)
+    if not content.strip():
+        raise_validation_error("errors.validation.required", locale)
+
+    try:
+        content = schemas.NewsCommentCreate(content=content).content
+    except ValidationError as exc:
+        errors = [
+            {
+                "loc": ("body", *error.get("loc", ())),
+                "msg": error["msg"],
+                "type": error["type"],
+            }
+            for error in exc.errors()
+        ]
+        raise RequestValidationError(errors, body={"content": content}) from exc
+
     if not content.strip():
         raise_validation_error("errors.validation.required", locale)
 
@@ -419,15 +446,21 @@ async def delete_comment(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
     ],
 )
+@inject
 async def upload_news_image(
     file: UploadFile = File(...),
     *,
     request: Request,
+    service: FromDishka[NewsService],
     user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_upload(file, "news_images", "news", locale=locale)
+    try:
+        await service.register_uploaded_image(url, owner_user_id=user.id)
+    except NewsImageOwnershipError:
+        raise_forbidden(locale)
     return {"url": url}
 
 

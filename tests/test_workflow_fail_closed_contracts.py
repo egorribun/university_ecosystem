@@ -26,7 +26,7 @@ DEPLOY_SMOKE_REQUIREMENTS = {
     "certifi==2026.4.22": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a",  # pragma: allowlist secret -- public PyPI wheel checksum
     "charset-normalizer==3.4.7": "bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e",  # pragma: allowlist secret -- public PyPI wheel checksum
     "idna==3.18": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",  # pragma: allowlist secret -- public PyPI wheel checksum
-    "urllib3==2.7.0": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
 }
 
 EXPECTED_EXTERNAL_IMAGES = {
@@ -38,9 +38,9 @@ EXPECTED_EXTERNAL_IMAGES = {
         "redis:7-alpine@sha256:"
         "e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"  # pragma: allowlist secret
     ),
-    "nats:2.10.25-alpine": (
-        "nats:2.10.25-alpine@sha256:"
-        "3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"  # pragma: allowlist secret
+    "nats:2.12.15-alpine": (
+        "nats:2.12.15-alpine@sha256:"
+        "b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6"
     ),
     "ghcr.io/chrislusf/seaweedfs:4.47": (
         "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"
@@ -66,7 +66,7 @@ EXPECTED_EXTERNAL_IMAGES = {
 
 PRECOMMIT_SEMGREP_IMAGE = (
     "semgrep/semgrep:1.113.0@sha256:"
-    "136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22"  # pragma: allowlist secret
+    "136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22"
 )
 
 _DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")

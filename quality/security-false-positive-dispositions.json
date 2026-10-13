@@ -1,0 +1,1399 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "identity": {
+        "path": ".github/workflows/ci.yml",
+        "type": "Basic Auth Credentials",
+        "hashed_secret_bytes": [
+          175, 200, 72, 195, 22, 175, 26, 137, 212, 152, 38, 197, 174, 157, 0,
+          237, 118, 148, 21, 243
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference .github/workflows/ci.yml:965.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": ".github/workflows/ci.yml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          241, 238, 194, 14, 161, 97, 22, 116, 137, 59, 173, 153, 175, 41, 93,
+          194, 218, 97, 75, 228
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference .github/workflows/ci.yml:1303.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": ".github/workflows/ci.yml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          139, 35, 126, 38, 113, 16, 248, 183, 37, 98, 109, 239, 8, 187, 185,
+          12, 6, 61, 21, 94
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference .github/workflows/ci.yml:1313.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": ".github/workflows/ci.yml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          163, 198, 235, 220, 175, 221, 127, 64, 197, 237, 107, 82, 23, 110, 21,
+          217, 235, 116, 12, 97
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference .github/workflows/ci.yml:1422.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": ".github/workflows/ci.yml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          149, 74, 188, 194, 164, 227, 213, 171, 211, 232, 225, 51, 131, 144,
+          122, 41, 129, 27, 16, 152
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference .github/workflows/ci.yml:1700.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": ".github/workflows/nightly-full-gate.yml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          128, 84, 23, 17, 68, 48, 20, 190, 18, 132, 101, 126, 19, 62, 213, 246,
+          122, 239, 224, 181
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference .github/workflows/nightly-full-gate.yml:683.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": ".pre-commit-config.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          199, 140, 76, 229, 192, 148, 221, 211, 110, 68, 28, 24, 0, 182, 251,
+          241, 212, 216, 190, 30
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference .pre-commit-config.yaml:121.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "app/auth/security.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          77, 196, 166, 243, 203, 114, 84, 151, 214, 41, 156, 136, 98, 36, 200,
+          89, 70, 37, 3, 44
+        ]
+      },
+      "category": "documented_dummy_password_hash",
+      "evidence": "Documented public dummy hash for timing equalization or seed-fixture coverage; exact source reference app/auth/security.py:409.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/rust-crypto/tests/wasm.rs",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          199, 248, 215, 31, 125, 134, 220, 193, 106, 255, 209, 220, 206, 122,
+          156, 132, 60, 145, 113, 123
+        ]
+      },
+      "category": "documented_crypto_test_vector",
+      "evidence": "Deterministic public cryptographic test vector; exact source reference frontend/rust-crypto/tests/wasm.rs:49.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/rust-crypto/tests/wasm.rs",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          47, 153, 214, 203, 78, 168, 168, 56, 182, 51, 240, 228, 77, 194, 100,
+          66, 62, 138, 85, 1
+        ]
+      },
+      "category": "documented_crypto_test_vector",
+      "evidence": "Deterministic public cryptographic test vector; exact source reference frontend/rust-crypto/tests/wasm.rs:54.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/frontend-quality-contract.test.mjs",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          57, 51, 152, 68, 141, 196, 255, 121, 16, 207, 237, 102, 160, 253, 131,
+          111, 43, 36, 31, 111
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference frontend/scripts/frontend-quality-contract.test.mjs:430.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/stryker-inventory.test.mjs",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          125, 43, 77, 129, 164, 3, 130, 129, 186, 178, 236, 209, 48, 83, 150,
+          103, 59, 207, 70, 213
+        ]
+      },
+      "category": "public_package_integrity_metadata",
+      "evidence": "Public package integrity metadata in the Stryker inventory test; exact source reference frontend/scripts/stryker-inventory.test.mjs:39.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/api/hooks/__tests__/campusConfig.test.ts",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          66, 180, 68, 190, 184, 242, 119, 70, 113, 216, 167, 208, 215, 252, 28,
+          43, 249, 9, 50, 254
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference frontend/src/api/hooks/__tests__/campusConfig.test.ts:30.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/tests/e2e-live/fixtures.ts",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          204, 100, 223, 135, 182, 70, 245, 134, 145, 109, 207, 88, 137, 146,
+          128, 208, 44, 133, 189, 147
+        ]
+      },
+      "category": "internal_demo_stand_account_fixture",
+      "evidence": "Owner decision at docs/superpowers/plans/MVP_MASTER_PLAN.md:37 says data and accounts are synthetic for the internal demo; external operational status remains unverified; exact source reference frontend/tests/e2e-live/fixtures.ts:41.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/tests/e2e-live/fixtures.ts",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          13, 146, 95, 204, 140, 76, 66, 204, 152, 113, 253, 143, 105, 71, 134,
+          167, 5, 82, 122, 72
+        ]
+      },
+      "category": "internal_demo_stand_account_fixture",
+      "evidence": "Owner decision at docs/superpowers/plans/MVP_MASTER_PLAN.md:37 says data and accounts are synthetic for the internal demo; external operational status remains unverified; exact source reference frontend/tests/e2e-live/fixtures.ts:55.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/tests/e2e-live/totp-recovery.live.spec.ts",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          106, 64, 251, 179, 189, 60, 6, 115, 201, 191, 246, 173, 48, 92, 129,
+          129, 214, 72, 169, 187
+        ]
+      },
+      "category": "public_totp_algorithm_alphabet",
+      "evidence": "Public Base32 algorithm alphabet used by the local recovery decoder; exact source reference frontend/tests/e2e-live/totp-recovery.live.spec.ts:58.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/benchmark_capture_activation.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          93, 102, 73, 202, 197, 10, 128, 95, 182, 124, 108, 244, 115, 28, 79,
+          176, 229, 21, 129, 139
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/benchmark_capture_activation.py:24.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/benchmark_capture_activation.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          196, 134, 24, 101, 169, 93, 181, 90, 236, 89, 167, 36, 30, 212, 244,
+          67, 86, 57, 100, 231
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/benchmark_capture_activation.py:25.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/benchmark_capture_activation.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          157, 213, 124, 229, 175, 173, 58, 186, 8, 116, 233, 47, 148, 172, 33,
+          127, 78, 70, 97, 173
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/benchmark_capture_activation.py:26.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/benchmark_capture_activation.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          142, 167, 127, 204, 104, 197, 242, 85, 116, 221, 172, 83, 166, 112,
+          50, 86, 125, 45, 245, 167
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/benchmark_capture_activation.py:27.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/benchmark_capture_activation.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          32, 127, 105, 5, 68, 130, 123, 39, 24, 139, 36, 113, 125, 81, 94, 31,
+          15, 101, 128, 196
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/benchmark_capture_activation.py:28.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          251, 93, 206, 232, 175, 34, 46, 36, 123, 184, 192, 230, 166, 39, 38,
+          0, 89, 120, 74, 135
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/capture_isolated_benchmarks.py:36.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          102, 109, 12, 182, 71, 131, 187, 111, 197, 215, 202, 166, 122, 252,
+          88, 63, 57, 222, 55, 150
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/capture_isolated_benchmarks.py:37.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          88, 121, 55, 128, 213, 105, 227, 254, 82, 104, 17, 215, 173, 115, 10,
+          7, 78, 113, 112, 151
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/capture_isolated_benchmarks.py:38.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          181, 108, 40, 105, 41, 141, 142, 121, 249, 235, 215, 221, 214, 232,
+          199, 64, 26, 211, 225, 58
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/capture_isolated_benchmarks.py:40.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          120, 126, 123, 141, 227, 200, 194, 224, 208, 184, 155, 90, 155, 140,
+          106, 3, 194, 247, 175, 227
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference scripts/quality/capture_isolated_benchmarks.py:41.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "services/gateway/internal/handlers/handlers_identity_closure_test.go",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          98, 178, 141, 157, 212, 114, 142, 53, 52, 39, 104, 58, 96, 239, 82,
+          244, 116, 101, 27, 86
+        ]
+      },
+      "category": "synthetic_hmac_test_material",
+      "evidence": "Synthetic HMAC test material with verification or preservation assertions; exact source reference services/gateway/internal/handlers/handlers_identity_closure_test.go:16.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "services/ws-hub/pkg/hub/replay_security_adversarial_test.go",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          229, 233, 250, 27, 163, 30, 205, 26, 232, 79, 117, 202, 170, 71, 79,
+          58, 102, 63, 5, 244
+        ]
+      },
+      "category": "synthetic_hmac_test_material",
+      "evidence": "Synthetic HMAC test material with verification or preservation assertions; exact source reference services/ws-hub/pkg/hub/replay_security_adversarial_test.go:605.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          174, 125, 8, 4, 51, 75, 100, 16, 118, 87, 224, 186, 210, 188, 231,
+          101, 181, 6, 167, 199
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:2.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          208, 141, 226, 153, 26, 124, 124, 76, 218, 128, 219, 132, 156, 102,
+          15, 5, 114, 156, 47, 42
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:4.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          155, 34, 104, 38, 232, 232, 8, 18, 246, 154, 130, 28, 244, 17, 58, 53,
+          142, 41, 144, 189
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:5.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          215, 253, 127, 30, 142, 220, 35, 245, 116, 191, 41, 93, 80, 3, 111,
+          68, 40, 157, 38, 241
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:6.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          165, 41, 142, 83, 7, 91, 130, 27, 255, 170, 200, 206, 0, 185, 93, 71,
+          253, 250, 130, 65
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:7.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          255, 159, 81, 44, 228, 147, 198, 3, 182, 181, 161, 134, 97, 27, 246,
+          121, 77, 238, 130, 59
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:9.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          153, 5, 60, 43, 122, 252, 103, 127, 57, 183, 205, 155, 125, 242, 62,
+          51, 42, 4, 216, 20
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:10.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          13, 71, 113, 72, 29, 76, 111, 223, 232, 186, 3, 129, 218, 70, 205,
+          180, 73, 32, 114, 250
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:11.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          106, 225, 128, 93, 250, 246, 89, 248, 5, 34, 187, 219, 120, 131, 192,
+          143, 187, 17, 66, 92
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:12.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          12, 251, 232, 137, 68, 1, 141, 98, 52, 149, 161, 24, 104, 138, 2, 122,
+          220, 235, 41, 101
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:13.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          248, 237, 176, 97, 148, 41, 246, 135, 86, 11, 12, 80, 246, 227, 80,
+          183, 82, 39, 146, 12
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:14.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          41, 121, 3, 166, 39, 210, 112, 61, 71, 188, 65, 217, 178, 203, 150,
+          251, 245, 47, 98, 40
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:15.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          186, 204, 138, 143, 127, 191, 176, 115, 155, 12, 75, 118, 149, 218,
+          93, 175, 71, 198, 65, 59
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:16.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          218, 173, 4, 103, 108, 233, 146, 226, 249, 242, 43, 78, 158, 238, 35,
+          190, 233, 208, 195, 187
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:17.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          68, 241, 63, 180, 14, 57, 31, 226, 252, 253, 30, 4, 95, 236, 3, 183,
+          128, 9, 80, 101
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:18.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          153, 222, 61, 254, 149, 254, 154, 225, 10, 207, 194, 254, 233, 45,
+          153, 211, 60, 76, 96, 21
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:19.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          110, 141, 151, 150, 49, 18, 218, 152, 205, 216, 190, 169, 202, 61, 68,
+          181, 252, 12, 176, 212
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:20.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          93, 11, 139, 187, 250, 105, 106, 185, 198, 172, 140, 49, 200, 63, 87,
+          3, 177, 94, 22, 192
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:21.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          196, 95, 146, 196, 74, 134, 43, 12, 133, 135, 57, 120, 221, 67, 192,
+          13, 142, 115, 231, 203
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:23.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          66, 202, 140, 42, 200, 100, 12, 71, 182, 51, 150, 132, 121, 119, 249,
+          49, 88, 63, 150, 199
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:24.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          54, 49, 132, 0, 179, 96, 52, 154, 252, 197, 77, 37, 138, 223, 71, 147,
+          175, 205, 150, 237
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:25.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          161, 197, 241, 100, 49, 4, 118, 117, 4, 172, 6, 231, 182, 245, 110,
+          139, 72, 227, 202, 182
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:26.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          3, 175, 14, 116, 162, 95, 117, 82, 33, 184, 92, 196, 173, 199, 214,
+          254, 152, 123, 108, 39
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:27.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          24, 144, 245, 29, 28, 37, 108, 81, 234, 79, 149, 221, 29, 135, 134,
+          94, 215, 65, 13, 95
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:28.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          5, 191, 28, 206, 205, 239, 145, 213, 59, 134, 193, 227, 48, 175, 150,
+          65, 120, 18, 200, 232
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:37.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          63, 139, 180, 44, 161, 216, 96, 230, 103, 86, 57, 145, 230, 47, 43,
+          217, 165, 220, 9, 96
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:39.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          234, 100, 92, 190, 145, 162, 201, 4, 191, 135, 189, 183, 169, 76, 244,
+          96, 158, 159, 235, 112
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:55.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          20, 250, 45, 5, 62, 157, 142, 242, 201, 143, 116, 148, 212, 168, 68,
+          58, 144, 147, 163, 134
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:57.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          183, 180, 84, 90, 60, 190, 83, 232, 231, 18, 129, 14, 19, 10, 138, 80,
+          189, 2, 65, 100
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:71.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          102, 30, 56, 134, 194, 91, 31, 87, 121, 153, 248, 21, 46, 50, 198, 36,
+          231, 224, 161, 138
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:93.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          35, 213, 182, 113, 232, 209, 222, 172, 133, 28, 134, 11, 66, 204, 140,
+          16, 73, 102, 122, 161
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:95.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          65, 216, 252, 230, 125, 210, 45, 81, 252, 175, 221, 101, 4, 191, 77,
+          5, 150, 160, 247, 190
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent reusable backend contract fingerprint; exact source reference tests/fixtures/full-backend-reusable-baseline.v3.yaml:107.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/integration/test_historical_attendance_sender_migrations_postgres.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          44, 11, 236, 152, 107, 169, 225, 249, 173, 48, 133, 122, 167, 185,
+          182, 73, 113, 153, 133, 127
+        ]
+      },
+      "category": "synthetic_hmac_test_material",
+      "evidence": "Synthetic HMAC test material with verification or preservation assertions; exact source reference tests/integration/test_historical_attendance_sender_migrations_postgres.py:322.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_benchmark_capture_activation_workflow.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          93, 102, 73, 202, 197, 10, 128, 95, 182, 124, 108, 244, 115, 28, 79,
+          176, 229, 21, 129, 139
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_benchmark_capture_activation_workflow.py:60.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_benchmark_capture_activation_workflow.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          196, 134, 24, 101, 169, 93, 181, 90, 236, 89, 167, 36, 30, 212, 244,
+          67, 86, 57, 100, 231
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_benchmark_capture_activation_workflow.py:66.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_benchmark_capture_activation_workflow.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          157, 213, 124, 229, 175, 173, 58, 186, 8, 116, 233, 47, 148, 172, 33,
+          127, 78, 70, 97, 173
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_benchmark_capture_activation_workflow.py:72.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_benchmark_capture_activation_workflow.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          142, 167, 127, 204, 104, 197, 242, 85, 116, 221, 172, 83, 166, 112,
+          50, 86, 125, 45, 245, 167
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_benchmark_capture_activation_workflow.py:78.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_benchmark_capture_activation_workflow.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          32, 127, 105, 5, 68, 130, 123, 39, 24, 139, 36, 113, 125, 81, 94, 31,
+          15, 101, 128, 196
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_benchmark_capture_activation_workflow.py:84.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          251, 93, 206, 232, 175, 34, 46, 36, 123, 184, 192, 230, 166, 39, 38,
+          0, 89, 120, 74, 135
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_capture_isolated_benchmarks.py:279.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          102, 109, 12, 182, 71, 131, 187, 111, 197, 215, 202, 166, 122, 252,
+          88, 63, 57, 222, 55, 150
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_capture_isolated_benchmarks.py:283.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          88, 121, 55, 128, 213, 105, 227, 254, 82, 104, 17, 215, 173, 115, 10,
+          7, 78, 113, 112, 151
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_capture_isolated_benchmarks.py:287.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          181, 108, 40, 105, 41, 141, 142, 121, 249, 235, 215, 221, 214, 232,
+          199, 64, 26, 211, 225, 58
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_capture_isolated_benchmarks.py:292.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_capture_isolated_benchmarks.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          120, 126, 123, 141, 227, 200, 194, 224, 208, 184, 155, 90, 155, 140,
+          106, 3, 194, 247, 175, 227
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_capture_isolated_benchmarks.py:297.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_docker_startup_contracts.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          28, 46, 127, 33, 93, 89, 121, 143, 128, 204, 197, 210, 8, 39, 78, 66,
+          94, 16, 200, 231
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_docker_startup_contracts.py:2485.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_kind_gateway_api.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          75, 31, 70, 28, 185, 214, 229, 248, 13, 95, 216, 229, 157, 8, 5, 224,
+          233, 223, 230, 192
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_kind_gateway_api.py:49.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_live_stand_resource_guard.py",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          69, 252, 255, 50, 0, 13, 249, 0, 49, 28, 39, 226, 248, 16, 64, 97,
+          160, 190, 27, 235
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference tests/test_live_stand_resource_guard.py:859.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_live_stand_resource_guard.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          56, 95, 205, 103, 96, 246, 67, 47, 205, 197, 28, 95, 153, 94, 166, 26,
+          49, 213, 187, 171
+        ]
+      },
+      "category": "domain_resource_contract_fixture",
+      "evidence": "Synthetic domain resource-contract fixture; exact source reference tests/test_live_stand_resource_guard.py:1133.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_security_hardening_workflow_contract.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          199, 140, 76, 229, 192, 148, 221, 211, 110, 68, 28, 24, 0, 182, 251,
+          241, 212, 216, 190, 30
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_security_hardening_workflow_contract.py:28.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_security_hardening_workflow_contract.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          188, 41, 127, 42, 201, 251, 207, 199, 133, 41, 91, 92, 237, 236, 140,
+          35, 205, 154, 30, 0
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_security_hardening_workflow_contract.py:29.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_seed_admin_data.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          177, 46, 38, 70, 73, 179, 163, 13, 122, 138, 63, 121, 92, 188, 139,
+          188, 34, 167, 71, 103
+        ]
+      },
+      "category": "documented_dummy_password_hash",
+      "evidence": "Documented public dummy hash for timing equalization or seed-fixture coverage; exact source reference tests/test_seed_admin_data.py:526.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_seed_demo_account_preservation.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          124, 242, 64, 245, 253, 11, 34, 130, 71, 3, 145, 140, 248, 141, 61,
+          76, 164, 225, 64, 199
+        ]
+      },
+      "category": "documented_dummy_password_hash",
+      "evidence": "Documented public dummy hash for timing equalization or seed-fixture coverage; exact source reference tests/test_seed_demo_account_preservation.py:213.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_seed_demo_messenger.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          124, 242, 64, 245, 253, 11, 34, 130, 71, 3, 145, 140, 248, 141, 61,
+          76, 164, 225, 64, 199
+        ]
+      },
+      "category": "documented_dummy_password_hash",
+      "evidence": "Documented public dummy hash for timing equalization or seed-fixture coverage; exact source reference tests/test_seed_demo_messenger.py:323.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_seed_demo_messenger.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          25, 44, 12, 205, 83, 220, 139, 211, 222, 0, 75, 37, 187, 71, 153, 91,
+          25, 229, 237, 98
+        ]
+      },
+      "category": "documented_dummy_password_hash",
+      "evidence": "Documented public dummy hash for timing equalization or seed-fixture coverage; exact source reference tests/test_seed_demo_messenger.py:345.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_start_docker_orphan_ownership.py",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          14, 218, 143, 147, 31, 208, 150, 58, 109, 132, 85, 112, 123, 252, 173,
+          166, 254, 145, 115, 137
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "CI or test-only contract sentinel; source review found no active production credential; exact source reference tests/test_start_docker_orphan_ownership.py:123.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_workflow_fail_closed_contracts.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          232, 16, 143, 102, 101, 239, 224, 209, 64, 70, 166, 61, 241, 110, 188,
+          99, 152, 209, 18, 144
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_workflow_fail_closed_contracts.py:29.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_workflow_fail_closed_contracts.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          153, 11, 14, 95, 75, 33, 232, 85, 64, 164, 0, 214, 109, 150, 91, 202,
+          1, 6, 12, 125
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable package or image integrity metadata; exact source reference tests/test_workflow_fail_closed_contracts.py:69.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_ws_hub_client.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          64, 101, 224, 201, 45, 145, 126, 187, 160, 18, 190, 178, 131, 18, 166,
+          25, 8, 222, 250, 69
+        ]
+      },
+      "category": "documented_crypto_test_vector",
+      "evidence": "Deterministic public cryptographic test vector; exact source reference tests/test_ws_hub_client.py:97.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_workflow_fail_closed_contracts.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          251,
+          161,
+          28,
+          153,
+          216,
+          251,
+          1,
+          15,
+          253,
+          71,
+          40,
+          245,
+          100,
+          121,
+          134,
+          132,
+          251,
+          113,
+          106,
+          110
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public NATS Official Image OCI index integrity digest pinned for immutable tag nats:2.12.15-alpine; exact source reference tests/test_workflow_fail_closed_contracts.py:43.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-12",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    }
+  ]
+}

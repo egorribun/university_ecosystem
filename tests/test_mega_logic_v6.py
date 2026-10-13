@@ -1,6 +1,6 @@
 import datetime
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import UploadFile
@@ -69,6 +69,7 @@ async def test_user_service_mega():
     file = MagicMock(spec=UploadFile)
     repo.get.return_value = student_dto
     repo._get_orm.return_value = student_user
+    repo.get_orm_for_update_with_relations.return_value = student_user
     # Commit is routed through service.uow.commit() after refactor.
     mock_uow.commit.side_effect = BusinessRuleViolation("db error")
     repo.check_email_exists.return_value = True
@@ -82,11 +83,17 @@ async def test_user_service_mega():
         with pytest.raises(Exception, match="db error"):
             await service.upload_avatar(student_user, file)
         mock_uow.rollback.assert_called()
-        m_del.assert_called_with("/url")
+        m_del.assert_awaited_once_with(
+            "/url", owner_id=student_user.id, media_kind="avatar"
+        )
 
         # upload_cover error
         with pytest.raises(Exception, match="db error"):
             await service.upload_cover(student_user, file)
+        assert m_del.await_args_list == [
+            call("/url", owner_id=student_user.id, media_kind="avatar"),
+            call("/url", owner_id=student_user.id, media_kind="cover"),
+        ]
 
     # 4. admin create_user branches
     mock_uow.commit.side_effect = None

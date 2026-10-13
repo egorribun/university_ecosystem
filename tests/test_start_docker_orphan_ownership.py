@@ -120,7 +120,7 @@ def test_down_pins_project_and_preserves_local_data_without_docker_side_effects(
     bin_directory, command_log = _install_fake_docker(tmp_path)
     protected_files = {
         ".env": b"SENTINEL=keep\n",
-        ".env.docker": b"COMPOSE_PROJECT_NAME=foreign-project\n",  # pragma: allowlist secret -- synthetic Docker resource fixture bytes
+        ".env.docker": b"COMPOSE_PROJECT_NAME=foreign-project\n",  #  -- synthetic Docker resource fixture bytes
         "backups/keep.dump": b"synthetic-backup-bytes",
     }
     for relative_path, content in protected_files.items():

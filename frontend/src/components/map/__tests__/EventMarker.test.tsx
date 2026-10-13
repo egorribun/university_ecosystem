@@ -64,6 +64,9 @@ vi.mock("react-i18next", () => ({
   useTranslation: mocks.useTranslation,
 }))
 vi.mock("@/app/logger", () => ({ logError: mocks.logError }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
     children,
@@ -100,7 +103,7 @@ const formatExpectedDate = (isoString: string, locale: string) =>
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone: "Europe/Istanbul",
   }).format(new Date(isoString))
 
 describe("EventMarker", () => {

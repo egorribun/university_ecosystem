@@ -70,7 +70,7 @@ func TestBlockedJoinCannotCommitAuthorizationFromBeforeRevocation(t *testing.T) 
 			return <-refreshResult, nil
 		},
 	}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	client := &Client{
@@ -163,7 +163,7 @@ func TestBlockedWriteDrainsBeforeRevocationAndQueuedFrameIsDropped(t *testing.T)
 			return <-refreshResult, nil
 		},
 	}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	order := &roomWriteOrder{}
@@ -282,7 +282,7 @@ func TestJoinAfterRevocationWaitsForOldEvictionToFinish(t *testing.T) {
 			return <-refreshResult, nil
 		},
 	}
-	h = newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h = newNatsTestHub(auth, "internal-secret", 10)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	session := &blockedRoomWriteSession{

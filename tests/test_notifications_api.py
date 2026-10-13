@@ -302,12 +302,14 @@ def test_serialize_notification_accepts_orm_instance():
     assert serialized.type == "system"
     assert serialized.url == "/test"
     assert serialized.read is True
+    assert serialized.metadata["recipientUserId"] == str(uid)
 
 
 def test_serialize_notification_normalizes_id_and_read_flag():
     uid_str = str(uuid.uuid4())
     payload = {
         "id": f" {uid_str} ",
+        "user_id": uid_str,
         "title": "Строковый идентификатор",
         "body": "",
         "type": None,
@@ -324,6 +326,7 @@ def test_serialize_notification_normalizes_id_and_read_flag():
     assert str(serialized.id) == uid_str
     assert serialized.read is False
     assert serialized.created_at.tzinfo is not None
+    assert serialized.metadata["recipientUserId"] == uid_str
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from scripts import backup_db
+from tests.helpers.synthetic_credentials import make_test_url_password
 
 
 def _archive(tmp_path: Path, content: bytes = b"synthetic dump") -> Path:
@@ -525,18 +526,23 @@ def test_pg_tool_environment_uses_url_fields_and_only_known_fallbacks(
     monkeypatch.setenv("PGPASSWORD", "synthetic-fallback")
     monkeypatch.setenv("PGAPPNAME", "fallback-app")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "synthetic-aws-marker")
+    database_password = make_test_url_password(
+        length=12,
+        required_classes=frozenset({"lower", "symbol"}),
+    )
     environment = backup_db._pg_tool_environment(
-        "postgresql://url_user:url_password@db.example.test:5440/source"  # pragma: allowlist secret -- synthetic backup subprocess credential fixture
-        "?application_name=backup-job&sslmode=verify-full",
+        (
+            "postgresql://url_user:"
+            + database_password
+            + "@db.example.test:5440/source?application_name=backup-job&sslmode=verify-full"
+        ),  #  -- synthetic backup subprocess credential fixture
         database_override="restore_sandbox",
     )
 
     assert environment["PGHOST"] == "db.example.test"
     assert environment["PGPORT"] == "5440"
     assert environment["PGUSER"] == "url_user"
-    assert (
-        environment["PGPASSWORD"] == "url_password"  # pragma: allowlist secret
-    )
+    assert environment["PGPASSWORD"] == database_password
     assert environment["PGDATABASE"] == "restore_sandbox"
     assert environment["PGAPPNAME"] == "backup-job"
     assert environment["PGSSLMODE"] == "verify-full"
@@ -642,11 +648,17 @@ def test_restore_target_and_catalog_failures_do_not_expose_database_diagnostics(
         lambda *_args, **_kwargs: Connection(),
     )
 
+    restore_password = make_test_url_password(
+        length=18,
+        required_classes=frozenset({"lower", "symbol"}),
+    )
     with pytest.raises(
         backup_db.BackupArtifactError, match="Unable to create"
     ) as error:
         backup_db._ensure_new_database(
-            "postgresql://admin:synthetic-password@localhost/postgres",  # pragma: allowlist secret -- synthetic backup authentication fixture
+            (
+                "postgresql://admin:" + restore_password + "@localhost/postgres"
+            ),  #  -- synthetic backup authentication fixture
             "restore_sandbox",
         )
     assert "synthetic connection password marker" not in str(error.value)
@@ -725,14 +737,19 @@ def test_restore_archive_rejects_non_manifest_object_before_database(
         )
 
 
+_S3_TEST_CREDENTIAL_PASSWORD = make_test_url_password(
+    length=4, required_classes=frozenset({"lower"})
+)
+
+
 @pytest.mark.parametrize(
     ("endpoint", "allow_http", "message"),
     [
         ("", "false", "must be set"),
         (
-            "https://user:pass@s3.example.test",  # pragma: allowlist secret
-            "false",  # pragma: allowlist secret
-            "without credentials",  # pragma: allowlist secret
+            ("https://user:" + _S3_TEST_CREDENTIAL_PASSWORD + "@s3.example.test"),
+            "false",
+            "without credentials",
         ),
         ("https://s3.example.test?token=synthetic", "false", "without credentials"),
         ("ftp://s3.example.test", "false", "without credentials"),

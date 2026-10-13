@@ -14,6 +14,7 @@ from app.models.schedule import Group, Schedule
 from app.models.stories import Story
 from app.models.users import User
 from scripts import seed_demo_data
+from tests.helpers.synthetic_credentials import make_test_marker
 
 _STATE_FIELDS = {
     User: ("id", "email", "role", "hashed_password", "group_id", "demo_seed_key"),
@@ -88,9 +89,10 @@ async def test_full_demo_seed_rerun_preserves_owned_markers_and_foreign_rows(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    foreign_hash_marker = make_test_marker(length=19)
     foreign_owner = User.create(
         email="unrelated-owner@example.test",
-        hashed_password="synthetic-test-hash",  # pragma: allowlist secret -- synthetic seeded-user test password
+        hashed_password=foreign_hash_marker,  #  -- synthetic seeded-user test password
         role=UserRole.TEACHER,
     )
     db_session.add(foreign_owner)
@@ -155,6 +157,10 @@ async def test_full_demo_seed_rerun_preserves_owned_markers_and_foreign_rows(
     ]
     db_session.add_all(foreign_rows[1:])
     await db_session.flush()
+    # Snapshot persisted values before seed queries refresh ORM rows.
+    # SQLite drops timezone metadata on round-trip for timezone=True columns.
+    for row in foreign_rows:
+        await db_session.refresh(row)
     foreign_state = tuple(_state(row) for row in foreign_rows)
 
     @asynccontextmanager

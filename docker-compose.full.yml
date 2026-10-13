@@ -679,7 +679,7 @@ services:
     restart: on-failure
 
   nats:
-    image: nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652
+    image: nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     # TD-09 (audit 2026-03-06): credentials via config file, not CLI args.

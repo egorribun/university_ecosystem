@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -656,4 +657,55 @@ func TestSetupRouter_RevocationDBIsIndependentFromRateLimitDB(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 	assert.Zero(t, backendHits)
+}
+
+func TestSetupRouter_CampusConfigIsPublicOnlyForExactGet(t *testing.T) {
+	var forwardedMu sync.Mutex
+	var forwarded []string
+	forwardedSnapshot := func() []string {
+		forwardedMu.Lock()
+		defer forwardedMu.Unlock()
+		return append([]string(nil), forwarded...)
+	}
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwardedMu.Lock()
+		forwarded = append(forwarded, r.Method+" "+r.URL.Path)
+		forwardedMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"timezone":"Europe/Istanbul"}`)
+	}))
+	t.Cleanup(backend.Close)
+
+	router, cancel := newRouteBranchRouterWithUpstreams(t, backend.URL, "http://127.0.0.1:1")
+	t.Cleanup(cancel)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/campus/config", nil))
+	assert.Equal(t, http.StatusOK, recorder.Code, "the exact public campus config GET should reach the backend without a JWT")
+	assert.JSONEq(t, `{"timezone":"Europe/Istanbul"}`, recorder.Body.String())
+	assert.Equal(t, []string{"GET /api/v1/campus/config"}, forwardedSnapshot())
+
+	for _, probe := range []struct {
+		method         string
+		path           string
+		malformedToken bool
+	}{
+		{method: http.MethodGet, path: "/api/v1/campus/config/"},
+		{method: http.MethodGet, path: "/api/v1/campus/config/descendant"},
+		{method: http.MethodGet, path: "/api/v1/campus/config-extra"},
+		{method: http.MethodPost, path: "/api/v1/campus/config"},
+		{method: http.MethodHead, path: "/api/v1/campus/config"},
+		{method: http.MethodGet, path: "/api/v1/campus/config/descendant", malformedToken: true},
+		{method: http.MethodGet, path: "/api/admin/users", malformedToken: true},
+	} {
+		request := httptest.NewRequestWithContext(t.Context(), probe.method, probe.path, nil)
+		if probe.malformedToken {
+			request.Header.Set("Authorization", "Bearer definitely-not-a-jwt")
+		}
+		protected := httptest.NewRecorder()
+		router.ServeHTTP(protected, request)
+		assert.Equal(t, http.StatusUnauthorized, protected.Code, probe.method+" "+probe.path)
+		assert.Equal(t, []string{"GET /api/v1/campus/config"}, forwardedSnapshot(), "protected routes must not reach the backend")
+	}
 }

@@ -62,12 +62,17 @@ and are outside the MVP blocking release gate.
   - CI enforces the per-component thresholds from the
     [quality contract](../quality/quality-contract.json); do not duplicate or
     lower them in feature changes.
-  - In the v2 coverage manifest, `source_roots` is the canonical report
+  - In the v3 coverage manifest, `source_roots` is the canonical report
     identity boundary while `coverage_scope` names the roots actually measured
-    by each producer. Python coverage intentionally scopes to `app`; Alembic
-    revisions remain reportable under `source_roots` and are verified by the
-    PostgreSQL migration gate rather than treated as implicit coverage
-    exclusions.
+    by each producer. Python coverage includes both `app` and
+    `alembic/versions`; Alembic revisions are not an implicit coverage
+    exclusion.
+  - The required `Coverage & Quality Policy Gate` combines four backend test
+    shards with the PostgreSQL migration-gate coverage artifact, then validates
+    and publishes same-SHA quality evidence. The migration producer covers the
+    upgrade-to-head, approved supported-downgrade, and upgrade-back-to-head
+    round-trip on disposable PostgreSQL. Local pytest coverage collection does
+    not replace this migration execution evidence or the canonical aggregate.
   - Run the canonical commands in the [testing guide](../TESTING.md) before
     opening a PR.
 - **Exception Handling Conventions**:

@@ -55,6 +55,9 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 }))
 vi.mock("react-i18next", () => ({ useTranslation: useTranslationMock }))
 vi.mock("@/utils/date", () => ({ formatDate: formatDateMock }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 import { EventQuickView } from "@/components/events/EventQuickView"
 
@@ -91,13 +94,18 @@ describe("EventQuickView", () => {
     expect(useTranslationMock.mock.calls[0]).toEqual([["events"]])
     expect(mediaQueryMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
     expect(translationMock).toHaveBeenCalledWith("events:quickView.viewDetails")
-    expect(formatDateMock).toHaveBeenCalledWith(baseProps.startsAt, {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
+    expect(formatDateMock).toHaveBeenCalledWith(
+      baseProps.startsAt,
+      expect.objectContaining({
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
+    )
     expect(screen.getByText(`date:${baseProps.startsAt}`)).toBeInTheDocument()
     // category branch — badge renders the localized label key
     expect(screen.getByText("events:categories.lecture")).toBeInTheDocument()
@@ -226,7 +234,9 @@ describe("EventQuickView", () => {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-      })
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
     )
   })
 

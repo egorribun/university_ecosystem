@@ -46,12 +46,12 @@ fn hmac_base64_is_canonical_and_matches_hex_digest() {
         (
             "\u{0b}".repeat(20),
             "Hi There",
-            Some("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"), // pragma: allowlist secret
+            Some("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"),
         ),
         (
             "Jefe".to_string(),
             "what do ya want for nothing?",
-            Some("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"), // pragma: allowlist secret
+            Some("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
         ),
         ("ключ🔑".to_string(), "сообщение🌍", None),
     ];

@@ -167,9 +167,6 @@ ingress:
         - path: /api
           pathType: Prefix
           service: gateway
-        - path: /graphql
-          pathType: Exact
-          service: gateway
         - path: /ws/ticket
           pathType: Exact
           service: gateway

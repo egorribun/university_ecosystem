@@ -11,6 +11,7 @@ from app.api.internal.csp_report import router as csp_report_router
 from app.api.news import router as news_router
 from app.api.notification_dead_letters import router as notification_dead_letters_router
 from app.api.notifications import router as notifications_router
+from app.api.public_config import router as campus_config_router
 from app.api.schedule import router as schedule_api_router
 from app.api.search import router as search_router
 from app.api.sessions import router as sessions_router
@@ -48,3 +49,4 @@ router.include_router(cwv_router)
 router.include_router(images_router)
 router.include_router(csp_report_router)
 router.include_router(search_router)
+router.include_router(campus_config_router)

@@ -31,7 +31,7 @@ def _helm() -> str:
     return executable
 
 
-def _resolved_staging_args() -> list[str]:
+def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> list[str]:
     digest = "sha256:" + ("a" * 64)
     overrides = {
         "global.imageTag": "9d08136558b95d1182f889574f67b1b1d21abc9f",  # pragma: allowlist secret
@@ -73,6 +73,9 @@ def _resolved_staging_args() -> list[str]:
         "cwv.exportOIDC.workflowRef": "example/university-ecosystem/.github/workflows/cwv-field-certification.yml@refs/heads/main",
         "cwv.exportOIDC.subject": "repo:example/university-ecosystem:environment:staging",
     }
+    if gateway_jwks_cidr is not None:
+        # Reserved TEST-NET fixture only; never use as a deployment CIDR.
+        overrides["networkPolicy.gatewayJWKS.egressCIDRs[0]"] = gateway_jwks_cidr
     args: list[str] = []
     for key, value in overrides.items():
         args.extend(("--set-string", f"{key}={value}"))
@@ -82,7 +85,9 @@ def _resolved_staging_args() -> list[str]:
 
 
 def _render_staging(
-    *extra: str, release_name: str = "staging-contract"
+    *extra: str,
+    release_name: str = "staging-contract",
+    gateway_jwks_cidr: str | None = "192.0.2.0/24",
 ) -> list[dict[str, Any]]:
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
@@ -95,7 +100,7 @@ def _render_staging(
             "university-ecosystem",
             "--values",
             str(STAGING_VALUES),
-            *_resolved_staging_args(),
+            *_resolved_staging_args(gateway_jwks_cidr),
             *extra,
         ],
         check=True,
@@ -167,10 +172,41 @@ def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> 
         if resource.get("kind") == "NetworkPolicy"
         and resource["metadata"]["name"] == "jwks-transport-contract-gateway-policy"
     )
-    assert any(
-        port.get("port") == 443
+    jwks_egress = [
+        rule
         for rule in gateway_policy["spec"]["egress"]
-        for port in rule.get("ports", [])
+        if rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    ]
+    assert jwks_egress == [
+        {
+            "to": [{"ipBlock": {"cidr": "192.0.2.0/24"}}],
+            "ports": [{"protocol": "TCP", "port": 443}],
+        }
+    ]
+    assert any(
+        rule.get("to")
+        == [
+            {
+                "namespaceSelector": {
+                    "matchLabels": {"kubernetes.io/metadata.name": "kube-system"}
+                },
+                "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
+            }
+        ]
+        and rule.get("ports")
+        == [
+            {"protocol": "UDP", "port": 53},
+            {"protocol": "TCP", "port": 53},
+        ]
+        for rule in gateway_policy["spec"]["egress"]
+    )
+    assert any(
+        rule.get("to")
+        == [
+            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+        ]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+        for rule in gateway_policy["spec"]["egress"]
     )
 
     backend_policy = next(
@@ -191,6 +227,112 @@ def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> 
         )
     )
     assert ingress_controller_rule["ports"] == [{"protocol": "TCP", "port": 8000}]
+
+
+def test_development_gateway_uses_internal_jwks_without_external_cidrs() -> None:
+    resources = _render_staging(
+        "--set-string",
+        "global.environment=development",
+        "--set-string",
+        "global.jwtIssuer=university-ecosystem",
+        release_name="jwks-internal-contract",
+        gateway_jwks_cidr=None,
+    )
+    gateway = _component_resource(resources, "Deployment", "gateway")
+    gateway_env = {
+        item["name"]: item.get("value")
+        for item in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert gateway_env["JWKS_ENDPOINT"] == (
+        "http://university-ecosystem-backend:8000/.well-known/jwks.json"
+    )
+    policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"].endswith("-gateway-policy")
+    )
+    assert not any(
+        port.get("port") == 443
+        for rule in policy["spec"]["egress"]
+        for port in rule.get("ports", [])
+    )
+    assert any(
+        rule.get("to")
+        == [
+            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+        ]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+        for rule in policy["spec"]["egress"]
+    )
+
+
+def test_release_gateway_requires_explicit_jwks_cidrs() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            release_name="jwks-cidr-required-contract",
+            gateway_jwks_cidr=None,
+        )
+
+    assert "networkpolicy.gatewayjwks.egresscidrs" in error.value.stderr.lower()
+    assert "owner-verified" in error.value.stderr.lower()
+
+
+@pytest.mark.parametrize(
+    "cidr",
+    [
+        "::/128",
+        "2001:db8::/32",
+        "2001:db8:0:0:0:0:0:1/128",
+    ],
+)
+def test_release_gateway_accepts_valid_ipv6_jwks_cidrs(cidr: str) -> None:
+    release_name = "jwks-ipv6-cidr-valid-contract"
+    resources = _render_staging(
+        "--set-string",
+        f"networkPolicy.gatewayJWKS.egressCIDRs[0]={cidr}",
+        release_name=release_name,
+    )
+    policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-gateway-policy"
+    )
+    assert any(
+        rule.get("to") == [{"ipBlock": {"cidr": cidr}}]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+        for rule in policy["spec"]["egress"]
+    )
+
+
+@pytest.mark.parametrize(
+    "cidr",
+    [
+        "0.0.0.0/0",
+        "::/0",
+        "2001:db8::/129",
+        "not-a-cidr",
+        "::::/64",
+        "1::2::3/64",
+        "1:2:3:4:5:6:7:8:9/64",
+        "10000::/64",
+    ],
+)
+def test_release_gateway_rejects_open_or_malformed_jwks_cidrs(cidr: str) -> None:
+    for validation_args in ((), ("--skip-schema-validation",)):
+        helm_args = [
+            "--set-string",
+            f"networkPolicy.gatewayJWKS.egressCIDRs[0]={cidr}",
+        ]
+        helm_args[:0] = validation_args
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            _render_staging(
+                *helm_args,
+                release_name="jwks-cidr-invalid-contract",
+            )
+
+        assert "networkpolicy.gatewayjwks.egresscidrs" in error.value.stderr.lower()
 
 
 def _resolved_revocation_store_args(release_name: str) -> list[str]:
@@ -1990,10 +2132,10 @@ def test_frontend_ingress_routes_browser_requests_to_their_owners(
         "/api/v1/auth/login",
         "/api/v1/img/avatar",
         "/api/admin/users",
-        "/graphql",
         "/ws/ticket",
     ):
         assert destination(path) == "gateway", path
+    assert destination("/graphql") == "frontend"
     assert destination("/ws/chat") == "ws-hub"
     assert destination("/static/uploads/avatar.png") == "backend"
     assert destination("/.well-known/jwks.json") == "backend"

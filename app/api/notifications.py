@@ -319,7 +319,9 @@ async def _fetch_notification_rows_fallback(
 
 
 def _serialize_notification(
-    record: Notification | Mapping[str, Any], locale: str | None
+    record: Notification | Mapping[str, Any],
+    locale: str | None,
+    recipient_user_id: object | None = None,
 ) -> NotificationOut:
     if isinstance(record, Mapping):
         getter = record.get
@@ -342,11 +344,15 @@ def _serialize_notification(
         identifier = identifier.strip()
 
     topic = infer_notification_topic(type_raw)
+    resolved_recipient_user_id = recipient_user_id
+    if resolved_recipient_user_id is None:
+        resolved_recipient_user_id = getter("user_id", None)
     metadata = build_notification_metadata(
         notification_id=identifier,
         topic=topic,
         notification_type=str(type_raw) if type_raw is not None else None,
         url=str(url_raw) if url_raw is not None else None,
+        recipient_user_id=resolved_recipient_user_id,
     )
     data = {
         "id": identifier,
@@ -461,7 +467,9 @@ async def _collect_notifications(
         next_cursor = _encode_cursor(last_created, last_id)
 
     return NotificationsListOut(
-        items=[_serialize_notification(n, locale) for n in items],
+        items=[
+            _serialize_notification(n, locale, recipient_user_id=user.id) for n in items
+        ],
         unread_count=int(unread),
         has_more=has_more,
         next_cursor=next_cursor,

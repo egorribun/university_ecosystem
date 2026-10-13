@@ -82,6 +82,7 @@ jobs:
             "quality/quality-contract.json"
             "quality/release-required-checks.json"
             "quality/ci-check-catalog.json"
+            "quality/security-false-positive-dispositions.json"
             "quality/coverage-source-policy.json"
             "quality/mutation-exclusions.json"
             "security/audit-allowlist.yaml"
@@ -172,6 +173,7 @@ jobs:
             "quality/quality-contract.json"
             "quality/release-required-checks.json"
             "quality/ci-check-catalog.json"
+            "quality/security-false-positive-dispositions.json"
             "quality/coverage-source-policy.json"
             "quality/mutation-exclusions.json"
             "security/audit-allowlist.yaml"
@@ -317,6 +319,15 @@ jobs:
             charts/university-ecosystem \
             redis-20.13.4.tgz nats-8.5.4.tgz
 
+      - name: Prepare development Helm input for Trivy
+        shell: bash
+        run: |
+          set -euo pipefail
+          trivy_config="$RUNNER_TEMP/trivy-university-config.yaml"
+          cp security/trivy-university-config.yaml "$trivy_config"
+          printf '%s\n' '      - global.environment=development' >> "$trivy_config"
+          grep -Fqx '      - global.environment=development' "$trivy_config"
+
       - name: Install checksum-pinned Trivy
         env:
           TRIVY_VERSION: 0.73.0
@@ -364,7 +375,7 @@ jobs:
         with:
           scan-type: "config"
           scan-ref: "."
-          trivy-config: "security/trivy-university-config.yaml"
+          trivy-config: "${{ runner.temp }}/trivy-university-config.yaml"
           # The revocation chart is scanned separately with its required
           # release identity; keeping it out of this aggregate scan prevents
           # Helm's intentional empty defaults from being silently skipped.
@@ -423,7 +434,8 @@ jobs:
           scan_chart charts/revocation-store /tmp/trivy-revocation-preflight.log \
             --helm-values security/trivy-revocation-values.yaml
           scan_chart charts/university-ecosystem /tmp/trivy-university-preflight.log \
-            --helm-set "$trivy_application_secret_override"
+            --helm-set "$trivy_application_secret_override" \
+            --helm-set "global.environment=development"
 
       - name: Run Trivy revocation-store configuration scanner
         id: trivy_revocation
@@ -631,18 +643,37 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           TRUSTED_BASELINE_PATH: ${{ runner.temp }}/trusted-base-baseline.json
         run: |
           set -euo pipefail
+          disposition_args=()
+          if [[ "$EVENT_NAME" == "pull_request" && "$PR_AUTHOR" == "egorribun" ]]; then
+            set +e
+            git diff --quiet "$SOURCE_BASE_SHA" -- quality/security-false-positive-dispositions.json
+            disposition_diff_status=$?
+            set -e
+            case "$disposition_diff_status" in
+              0) ;;
+              1) disposition_args+=(--owner-authored-disposition-update) ;;
+              *)
+                echo "ERROR: disposition policy diff could not be verified" >&2
+                exit 1
+                ;;
+            esac
+          fi
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             python scripts/verify_secrets_baseline.py \
               .secrets.baseline /tmp/current_scan.json \
               --trusted-base-baseline "$TRUSTED_BASELINE_PATH" \
-              --trusted-base-source-sha "$SOURCE_BASE_SHA"
+              --trusted-base-source-sha "$SOURCE_BASE_SHA" \
+              "${disposition_args[@]}"
           elif [[ "$EVENT_NAME" == "push" ]]; then
             python scripts/verify_secrets_baseline.py \
               .secrets.baseline /tmp/current_scan.json \
-              --trusted-base-source-sha "$SOURCE_BASE_SHA"
+              --trusted-base-source-sha "$SOURCE_BASE_SHA" \
+              --trusted-disposition-source-sha "$HEAD_SHA"
           else
             echo "ERROR: unsupported event for secret policy verification" >&2
             exit 1

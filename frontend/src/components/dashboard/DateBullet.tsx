@@ -1,21 +1,8 @@
-import { useSyncExternalStore } from "react"
 import { useTranslation } from "react-i18next"
 import { Tooltip } from "@/components/ui/Tooltip"
 import { cn } from "@/utils/cn"
-
-const SERVER_TIME_ZONE = "UTC"
-
-function subscribeToTimeZone(): () => void {
-  return () => undefined
-}
-
-function getLocalTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone
-}
-
-function getServerTimeZone(): string {
-  return SERVER_TIME_ZONE
-}
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { formatCampusDate } from "@/utils/campusTimezone"
 
 interface DateBulletProps {
   date?: string
@@ -26,20 +13,25 @@ interface DateBulletProps {
 
 export function DateBullet({ date, locale, size }: DateBulletProps) {
   const { t } = useTranslation("common")
-  const timeZone = useSyncExternalStore(subscribeToTimeZone, getLocalTimeZone, getServerTimeZone)
+  const timeZone = useCampusTimezone()
   const d = date ? new Date(date) : null
-  const dd = d ? new Intl.DateTimeFormat(locale, { day: "2-digit", timeZone }).format(d) : "—"
-  const mmLabel = d ? new Intl.DateTimeFormat(locale, { month: "short", timeZone }).format(d) : "--"
   const fallback = t("dateUnknown")
-  const full = d
-    ? d.toLocaleString(locale, {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone,
-      })
+  const hasCampusDate = Boolean(d && !Number.isNaN(d.getTime()) && timeZone)
+  const dd = hasCampusDate ? formatCampusDate(d!, { day: "2-digit" }, locale, timeZone) : "—"
+  const mmLabel = hasCampusDate ? formatCampusDate(d!, { month: "short" }, locale, timeZone) : "--"
+  const full = hasCampusDate
+    ? formatCampusDate(
+        d!,
+        {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
+        locale,
+        timeZone
+      )
     : fallback
 
   const isCompact = size === "compact"

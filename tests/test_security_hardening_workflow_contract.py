@@ -25,8 +25,10 @@ DETECT_SECRETS_SCAN_EXCLUSION = (
     r"^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$"
 )
 
-ACTIONLINT_SOURCE_SHA = "5dc52e8daa4ef51bfd76a648128474bd41d65df0"  # pragma: allowlist secret -- immutable upstream source revision
-ACTIONLINT_ARCHIVE_SHA256 = "908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"  # pragma: allowlist secret -- source archive checksum
+ACTIONLINT_SOURCE_SHA = (
+    "5dc52e8daa4ef51bfd76a648128474bd41d65df0"  #  -- immutable upstream source revision
+)
+ACTIONLINT_ARCHIVE_SHA256 = "908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"  #  -- source archive checksum
 HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret -- release checksum
 SHELLCHECK_SHA256 = "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"  # pragma: allowlist secret -- release checksum
 CARGO_BINSTALL_SCRIPT_COMMIT = "5aafaaca52423a22d83a812fa3ca77492e2895db"  # pragma: allowlist secret -- immutable installer commit
@@ -422,24 +424,29 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
 
 def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
-    """PR checks compare against an immutable target-branch baseline."""
+    """PRs bind findings to immutable source and policy inputs."""
 
     job = _workflow(SECURITY_AUDIT)["jobs"]["detect-secrets-baseline"]
-    fetch = _step(job, "Fetch trusted base baseline (pull requests)")
-    assert fetch["if"] == "${{ github.event_name == 'pull_request' }}"
-    assert fetch["env"] == {"BASE_SHA": "${{ github.event.pull_request.base.sha }}"}
+    fetch = _step(job, "Fetch immutable trusted source base")
+    assert fetch["env"] == {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+        "PUSH_BEFORE_SHA": "${{ github.event.before }}",
+    }
     fetch_run = fetch["run"]
-    assert "^[0-9a-f]{40}$" in fetch_run
-    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in fetch_run
-    assert 'git show "$BASE_SHA:.secrets.baseline"' in fetch_run
+    assert 'pull_request) SOURCE_BASE_SHA="$PR_BASE_SHA" ;;' in fetch_run
+    assert 'push) SOURCE_BASE_SHA="$PUSH_BEFORE_SHA" ;;' in fetch_run
+    assert 'git fetch --no-tags --depth=1 origin "$SOURCE_BASE_SHA"' in fetch_run
+    assert 'git cat-file -e "${SOURCE_BASE_SHA}^{commit}"' in fetch_run
+    assert 'git show "$SOURCE_BASE_SHA:.secrets.baseline"' in fetch_run
     assert '"$RUNNER_TEMP/trusted-base-baseline.json"' in fetch_run
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
-    assert "--exclude-files" in scan
     assert f"--exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
     exclusion = re.compile(DETECT_SECRETS_SCAN_EXCLUSION)
     assert exclusion.fullmatch(".secrets.baseline")
     assert exclusion.fullmatch("frontend/WASM_SOURCE_PROVENANCE.json")
+    assert not exclusion.fullmatch("quality/security-false-positive-dispositions.json")
     assert not exclusion.search("frontend/WASM_SOURCE_PROVENANCE.json.bak")
     assert not exclusion.search("frontend/WASM_INVENTORY.json")
     assert not exclusion.search("frontend/src/generated.json")
@@ -447,16 +454,24 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
     verify = _step(job, "Verify baseline has not regressed")
     assert verify["env"] == {
         "EVENT_NAME": "${{ github.event_name }}",
+        "HEAD_SHA": "${{ github.sha }}",
+        "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
         "TRUSTED_BASELINE_PATH": "${{ runner.temp }}/trusted-base-baseline.json",
     }
     verify_run = verify["run"]
     assert '--trusted-base-baseline "$TRUSTED_BASELINE_PATH"' in verify_run
-    assert "current_scan.json" in verify_run
-
-    scan = _step(job, "Scan repo (no baseline)")["run"]
+    assert '--trusted-base-source-sha "$SOURCE_BASE_SHA"' in verify_run
+    assert '--trusted-disposition-source-sha "$HEAD_SHA"' in verify_run
     assert (
-        f"detect-secrets scan --exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
+        'if [[ "$EVENT_NAME" == "pull_request" && "$PR_AUTHOR" == "egorribun" ]]'
+        in verify_run
     )
+    assert (
+        'git diff --quiet "$SOURCE_BASE_SHA" -- '
+        "quality/security-false-positive-dispositions.json"
+    ) in verify_run
+    assert "--owner-authored-disposition-update" in verify_run
+    assert "current_scan.json" in verify_run
 
 
 def test_semgrep_is_not_a_blocking_security_audit_job() -> None:

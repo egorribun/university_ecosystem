@@ -127,9 +127,6 @@ func (l *roomMembershipLock) release() {
 }
 
 func (e *roomMembershipLockEntry) changedLocked() <-chan struct{} {
-	if e.changed == nil {
-		e.changed = make(chan struct{})
-	}
 	return e.changed
 }
 
@@ -258,6 +255,9 @@ type Hub struct {
 	runWG            sync.WaitGroup
 	clientPumpWG     sync.WaitGroup
 	clientEvictionWG sync.WaitGroup
+	// replayWG joins replay workers admitted before shutdown. startReplayWorker
+	// reserves each entry under lifecycleMu before Stop may begin waiting.
+	replayWG         sync.WaitGroup
 	limiterCleanupWG sync.WaitGroup
 	limiterCancel    context.CancelFunc
 	// sessionRevocationCancel owns the dedicated Redis Pub/Sub consumer.
@@ -677,6 +677,24 @@ func (h *Hub) startClientPumps(client *Client, clientCtx context.Context) {
 	})
 }
 
+// startReplayWorker prevents WaitGroup.Add from racing with Stop's Wait.
+// Stop sets stopped under lifecycleMu before it starts joining these workers.
+func (h *Hub) startReplayWorker(work func()) bool {
+	h.lifecycleMu.Lock()
+	if h.stopped.Load() {
+		h.lifecycleMu.Unlock()
+		return false
+	}
+	h.replayWG.Add(1)
+	h.lifecycleMu.Unlock()
+
+	StartTrackedGoroutine(func() {
+		defer h.replayWG.Done()
+		work()
+	})
+	return true
+}
+
 // unregisterClient routes teardown through the Run loop while it is live and
 // performs it synchronously once that loop has stopped or is stopping.
 func (h *Hub) unregisterClient(ctx context.Context, client *Client) {
@@ -849,13 +867,17 @@ func (h *Hub) failRoomClients(room string) {
 	}
 	h.mu.RUnlock()
 	for _, client := range clients {
-		// Fence authorized actions before teardown so an in-flight join cannot
-		// reinsert this client after unregister cleanup has cleared memberships.
+		// Fence every authorized action before any transport close can wait on a
+		// socket write, so later room members cannot keep acting during teardown.
 		client.sessionGate.Lock()
 		client.sessionRevoked.Store(true)
 		client.sessionGate.Unlock()
-		client.cancelConnection()
+	}
+	cancelClientWork(clients)
+	closeClientTransportsInParallel(clients, func(client *Client) {
 		client.closeTransport("Failed to close replay session")
+	})
+	for _, client := range clients {
 		h.unregisterAfterRegistration(client.ctx, client)
 	}
 }
@@ -1091,7 +1113,15 @@ func (h *Hub) isRoomMember(room string, client *Client) bool {
 func (h *Hub) scheduleClientEviction(client *Client) {
 	h.lifecycleMu.Lock()
 	if h.stopped.Load() {
+		runCtx := h.ctx
 		h.lifecycleMu.Unlock()
+		if runCtx != nil {
+			// Stop joins Run before closeActiveClients; only cancel here so a
+			// pending broadcast cannot serialize shutdown on this socket.
+			client.cancelConnection()
+			client.cancelAllRoomReplays()
+			return
+		}
 		client.Disconnect(websocket.CloseTryAgainLater, "slow client evicted")
 		return
 	}
@@ -1567,11 +1597,33 @@ func (h *Hub) roomMembershipLock(userID, roomID string) *roomMembershipLock {
 const roomMembershipWriteDrainTimeout = 10 * time.Second
 
 func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) error {
-	var lock *roomMembershipLock
-	var epoch *roomMembershipEpoch
-	var drained chan struct{}
+	lock, epoch, drained, err := h.beginRoomMembershipRevocation(ctx, userID, roomID)
+	if err != nil {
+		return err
+	}
+	defer lock.release()
+
+	if err := h.drainRoomMembershipWrites(ctx, lock, epoch, userID, roomID, drained); err != nil {
+		return err
+	}
+	allowed, authErr, canRefresh := h.refreshRoomAuthorizationForRevocation(ctx, userID, roomID)
+	h.finishRoomMembershipRevocation(lock, epoch, userID, roomID, allowed, authErr)
+	if authErr != nil {
+		if !canRefresh {
+			return authErr
+		}
+		return fmt.Errorf("refresh room authorization: %w", authErr)
+	}
+	return nil
+}
+
+func (h *Hub) beginRoomMembershipRevocation(
+	ctx context.Context,
+	userID string,
+	roomID string,
+) (*roomMembershipLock, *roomMembershipEpoch, chan struct{}, error) {
 	for {
-		lock = h.roomMembershipLock(userID, roomID)
+		lock := h.roomMembershipLock(userID, roomID)
 		lock.Lock()
 		entry := lock.entry
 		if entry.mutationPending {
@@ -1581,70 +1633,101 @@ func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) er
 			case <-changed:
 				continue
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil, nil, nil, ctx.Err()
 			}
 		}
-		epoch = &roomMembershipEpoch{marker: 1}
+		epoch := &roomMembershipEpoch{marker: 1}
 		entry.revocationEpoch = epoch
 		if entry.revocations == 0 {
 			entry.signalChangedLocked()
 		}
 		entry.revocations++
-		drained = entry.writesDrained
+		drained := entry.writesDrained
 		lock.unlockRetained()
-		break
+		return lock, epoch, drained, nil
 	}
-	defer lock.release()
+}
 
-	// A write admitted before the barrier gets a bounded chance to finish. Its
-	// socket deadline is best-effort, so timeout also removes membership while
-	// retaining a temporary write fence until outstanding permits are released.
-	if drained != nil {
-		drainCtx, cancel := context.WithTimeout(ctx, roomMembershipWriteDrainTimeout)
-		defer cancel()
-		select {
-		case <-drained:
-		case <-drainCtx.Done():
-			lock.Lock()
-			entry := lock.entry
-			current := entry.revocationEpoch == epoch
-			if current {
-				entry.drainFailedClosed.Store(true)
-				entry.mutationPending = true
-				h.markRoomRevocationPending(userID, roomID)
-			}
-			lock.unlockRetained()
-			if current {
-				h.removeRoomMemberWithoutWriteLock(userID, roomID)
-			}
-			lock.Lock()
-			entry = lock.entry
-			if current {
-				entry.mutationPending = false
-				if entry.writesInFlight == 0 {
-					entry.drainFailedClosed.Store(false)
-				}
-			}
-			entry.revocations--
-			if current || entry.revocations == 0 {
-				entry.signalChangedLocked()
-			}
-			lock.unlockRetained()
-			return fmt.Errorf("wait for in-flight room writes: %w", drainCtx.Err())
+func (h *Hub) drainRoomMembershipWrites(
+	ctx context.Context,
+	lock *roomMembershipLock,
+	epoch *roomMembershipEpoch,
+	userID string,
+	roomID string,
+	drained <-chan struct{},
+) error {
+	if drained == nil {
+		return nil
+	}
+	drainCtx, cancel := context.WithTimeout(ctx, roomMembershipWriteDrainTimeout)
+	defer cancel()
+	select {
+	case <-drained:
+		return nil
+	case <-drainCtx.Done():
+		drainErr := drainCtx.Err()
+		h.failClosedRoomMembershipDrain(lock, epoch, userID, roomID)
+		return fmt.Errorf("wait for in-flight room writes: %w", drainErr)
+	}
+}
+
+func (h *Hub) failClosedRoomMembershipDrain(
+	lock *roomMembershipLock,
+	epoch *roomMembershipEpoch,
+	userID string,
+	roomID string,
+) {
+	lock.Lock()
+	entry := lock.entry
+	current := entry.revocationEpoch == epoch
+	if current {
+		entry.drainFailedClosed.Store(true)
+		entry.mutationPending = true
+		h.markRoomRevocationPending(userID, roomID)
+	}
+	lock.unlockRetained()
+	if current {
+		h.removeRoomMemberWithoutWriteLock(userID, roomID)
+	}
+	lock.Lock()
+	entry = lock.entry
+	if current {
+		entry.mutationPending = false
+		if entry.writesInFlight == 0 {
+			entry.drainFailedClosed.Store(false)
 		}
 	}
-
-	refresher, ok := h.authClient.(RoomAuthorizationRefresher)
-	var allowed bool
-	var authErr error
-	if !ok {
-		authErr = errors.New("room auth client cannot confirm uncached membership state")
-	} else if err := ctx.Err(); err != nil {
-		authErr = err
-	} else {
-		allowed, authErr = refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	entry.revocations--
+	if current || entry.revocations == 0 {
+		entry.signalChangedLocked()
 	}
+	lock.unlockRetained()
+}
 
+func (h *Hub) refreshRoomAuthorizationForRevocation(
+	ctx context.Context,
+	userID string,
+	roomID string,
+) (allowed bool, authErr error, canRefresh bool) {
+	refresher, ok := h.authClient.(RoomAuthorizationRefresher)
+	if !ok {
+		return false, errors.New("room auth client cannot confirm uncached membership state"), false
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err, true
+	}
+	allowed, authErr = refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	return allowed, authErr, true
+}
+
+func (h *Hub) finishRoomMembershipRevocation(
+	lock *roomMembershipLock,
+	epoch *roomMembershipEpoch,
+	userID string,
+	roomID string,
+	allowed bool,
+	authErr error,
+) {
 	lock.Lock()
 	entry := lock.entry
 	current := entry.revocationEpoch == epoch
@@ -1661,8 +1744,6 @@ func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) er
 	}
 	lock.unlockRetained()
 
-	// The write barrier remains closed while client membership is removed, so
-	// no fresh join can commit and then be deleted by this older decision.
 	if removeMembership {
 		h.removeRoomMemberWithoutWriteLock(userID, roomID)
 	}
@@ -1678,14 +1759,6 @@ func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) er
 		entry.signalChangedLocked()
 	}
 	lock.unlockRetained()
-
-	if authErr != nil {
-		if !ok {
-			return authErr
-		}
-		return fmt.Errorf("refresh room authorization: %w", authErr)
-	}
-	return nil
 }
 
 func roomAccessRevokedNotice(roomID string) []byte {
@@ -1695,21 +1768,6 @@ func roomAccessRevokedNotice(roomID string) []byte {
 			`","room":"` + roomID +
 			`","type":"error"}`,
 	)
-}
-
-func (h *Hub) revokeRoomMember(userID, roomID string) {
-	h.mu.RLock()
-	clients := make([]*Client, 0, len(h.Rooms[roomID]))
-	for client := range h.Rooms[roomID] {
-		if client.UserID == userID {
-			clients = append(clients, client)
-		}
-	}
-	h.mu.RUnlock()
-
-	for _, client := range clients {
-		client.revokeRoom(roomID, roomAccessRevokedNotice(roomID))
-	}
 }
 
 // removeRoomMemberWithoutWriteLock runs only while the keyed admission barrier
@@ -1847,7 +1905,7 @@ func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
 
 // DisconnectUser finds active client(s) for the given userID under a read lock (Hub.mu.RLock),
 // then writes a WebSocket close control frame (code 4401, reason) and triggers unregistration.
-// Adheres strictly to RZ-22-04: Hub.mu is released BEFORE calling client.Disconnect.
+// Adheres strictly to RZ-22-04: Hub.mu is released BEFORE transport teardown begins.
 func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	if userID == "" {
 		return
@@ -1870,8 +1928,12 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	h.Logger.InfoContext(context.Background(), "Disconnecting active user sessions",
 		"user_id", userID, "count", len(targets), "code", closeCode, "reason", reason)
 
+	cancelClientWork(targets)
+	closeClientTransportsInParallel(targets, func(client *Client) {
+		client.closeTransportWithControlFrame(closeCode, reason)
+	})
 	for _, client := range targets {
-		client.Disconnect(closeCode, reason)
+		h.unregisterClient(client.ctx, client)
 	}
 }
 
@@ -1901,8 +1963,19 @@ func (h *Hub) disconnectSessionContext(ctx context.Context, jti string, closeCod
 		h.Logger.InfoContext(ctx, "Disconnecting revoked WebSocket sessions",
 			"count", len(targets), "code", closeCode, "reason", reason)
 	}
+	// Close the action gate for every matching client before transport teardown
+	// can block on any one client's write mutex.
 	for _, client := range targets {
-		client.RevokeSession(closeCode, reason)
+		client.sessionGate.Lock()
+		client.sessionRevoked.Store(true)
+		client.sessionGate.Unlock()
+	}
+	cancelClientWork(targets)
+	closeClientTransportsInParallel(targets, func(client *Client) {
+		client.closeTransportWithControlFrame(closeCode, reason)
+	})
+	for _, client := range targets {
+		h.unregisterClient(ctx, client)
 	}
 }
 
@@ -1994,6 +2067,9 @@ func (h *Hub) stop(ctx context.Context) {
 		h.clientEvictionWG.Wait()
 		h.closeActiveClients(ctx)
 		h.clientPumpWG.Wait()
+		// Stop closed replay admission under lifecycleMu before waiting. No
+		// client pump can still be preparing a replay worker after this point.
+		h.replayWG.Wait()
 		// A stopped Hub must not leave a Pub/Sub consumer behind. The listener's
 		// WaitGroup entry is registered while lifecycleMu is held, before Stop
 		// can set stopped and begin this join.
@@ -2021,13 +2097,43 @@ func (h *Hub) closeActiveClients(ctx context.Context) {
 		clients = append(clients, client)
 	}
 	h.mu.RUnlock()
+	cancelClientWork(clients)
+	closeClientTransportsInParallel(clients, func(client *Client) {
+		client.closeTransportWithControlFrame(1001, "server shutting down")
+	})
+	for _, client := range clients {
+		h.handleUnregister(ctx, client)
+	}
+}
 
+func cancelClientWork(clients []*Client) {
 	for _, client := range clients {
 		client.cancelConnection()
 		client.cancelAllRoomReplays()
-		client.closeTransportWithControlFrame(1001, "server shutting down")
-		h.handleUnregister(ctx, client)
 	}
+}
+
+const maxParallelClientCloses = 16
+
+// closeClientTransportsInParallel bounds helper goroutines while preventing one
+// socket holding writeMu from serializing the rest of a teardown fanout.
+func closeClientTransportsInParallel(clients []*Client, closeClient func(*Client)) {
+	workerCount := min(len(clients), maxParallelClientCloses)
+	jobs := make(chan *Client)
+	var workers sync.WaitGroup
+	for worker := 0; worker < workerCount; worker++ {
+		workers.Add(1)
+		startTrackedGoroutine(func() {
+			for client := range jobs {
+				closeClient(client)
+			}
+		}, workers.Done)
+	}
+	for _, client := range clients {
+		jobs <- client
+	}
+	close(jobs)
+	workers.Wait()
 }
 
 // HasJWKSCache reports whether the JWKS cache has been initialised.

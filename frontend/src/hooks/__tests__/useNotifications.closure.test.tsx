@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
 vi.mock("@/api/notifications", () => api)
 vi.mock("@/app/logger", () => ({ logWarning: vi.fn() }))
 
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 import { useNotifications } from "../useNotifications"
 
 function setup() {
@@ -30,6 +32,7 @@ function setup() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  useAuthStore.setState({ user: { id: "notifications-test-user" } as UserState, loading: false })
   api.checkSchedule.mockResolvedValue(undefined)
   api.fetchNotificationsList.mockResolvedValue({
     items: [],
@@ -85,8 +88,26 @@ describe("useNotifications live-message closure", () => {
     expect(invalidate).not.toHaveBeenCalled()
 
     act(() => {
-      dispatch({ type: "PUSH_NOTIFICATION", notificationId: " notification-1 " })
-      dispatch({ type: "PUSH_NOTIFICATION", notificationId: "notification-1" })
+      dispatch({
+        type: "PUSH_NOTIFICATION",
+        notificationId: " notification-1 ",
+        recipientUserId: "notifications-test-user",
+      })
+      dispatch({
+        type: "PUSH_NOTIFICATION",
+        notificationId: "notification-1",
+        recipientUserId: "notifications-test-user",
+      })
+    })
+    expect(invalidate).toHaveBeenCalledOnce()
+
+    act(() => {
+      dispatch({ type: "PUSH_NOTIFICATION", notificationId: "missing-recipient" })
+      dispatch({
+        type: "PUSH_NOTIFICATION",
+        notificationId: "wrong-recipient",
+        recipientUserId: "notifications-other-user",
+      })
     })
     expect(invalidate).toHaveBeenCalledOnce()
 
@@ -109,7 +130,11 @@ describe("useNotifications live-message closure", () => {
 
     const dispatch = (notificationId: string) => {
       const event = new MessageEvent("message", {
-        data: { type: "PUSH_NOTIFICATION", notificationId },
+        data: {
+          type: "PUSH_NOTIFICATION",
+          notificationId,
+          recipientUserId: "notifications-test-user",
+        },
       })
       for (const listener of listeners) listener(event)
     }

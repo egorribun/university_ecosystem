@@ -77,6 +77,9 @@ from app.models.news import (
 from app.models.news import (
     NewsLike as NewsLike,
 )
+from app.models.news import (
+    NewsMediaAsset as NewsMediaAsset,
+)
 from app.models.notifications import (
     Notification as Notification,
 )

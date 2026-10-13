@@ -11,12 +11,17 @@ from app.schemas.dtos import (
     NewsInteractionsDTO,
     NewsListingDTO,
 )
+from app.services.news_media import canonical_news_image_key
 from app.services.vector_service import (
     SemanticSearchUnavailableError,
     VectorService,
 )
 
 logger = get_logger(__name__)
+
+
+class NewsImageOwnershipError(PermissionError):
+    """The requested image is not a canonical upload owned by this actor."""
 
 
 class NewsService:
@@ -94,14 +99,43 @@ class NewsService:
             next_cursor=next_cursor,
         )
 
-    async def create_news(
-        self, data: schemas.NewsCreate, *, locale: str | None = None
-    ) -> NewsDTO:
-        if locale is None:
-            news = await self.repo.create(data.model_dump())
-        else:
-            news = await self.repo.create(data.model_dump(), locale=locale)
+    async def register_uploaded_image(
+        self, storage_url: str, *, owner_user_id: uuid.UUID
+    ) -> None:
+        """Persist actor ownership for the URL returned by the upload helper."""
+        if canonical_news_image_key(storage_url) is None:
+            raise NewsImageOwnershipError("news_image_not_owned")
         async with self.uow:
+            await self.repo.register_news_media_asset(storage_url, owner_user_id)
+            await self.uow.commit()
+
+    async def create_news(
+        self,
+        data: schemas.NewsCreate,
+        *,
+        locale: str | None = None,
+        owner_user_id: uuid.UUID | None = None,
+    ) -> NewsDTO:
+        values = data.model_dump()
+        image_url = values.get("image_url")
+        if image_url is not None:
+            if owner_user_id is None or canonical_news_image_key(image_url) is None:
+                raise NewsImageOwnershipError("news_image_not_owned")
+
+        async with self.uow:
+            if locale is None:
+                news = await self.repo.create(values)
+            else:
+                news = await self.repo.create(values, locale=locale)
+            if image_url is not None:
+                assert owner_user_id is not None  # noqa: S101
+                claimed = await self.repo.claim_news_media_asset(
+                    image_url,
+                    owner_user_id=owner_user_id,
+                    news_id=news.id,
+                )
+                if not claimed:
+                    raise NewsImageOwnershipError("news_image_not_owned")
             await self.uow.commit()
         return news
 
@@ -136,19 +170,40 @@ class NewsService:
         return await self.repo.get(news_id)
 
     async def update_news(
-        self, news_id: uuid.UUID, data: schemas.NewsUpdate
+        self,
+        news_id: uuid.UUID,
+        data: schemas.NewsUpdate,
+        *,
+        owner_user_id: uuid.UUID | None = None,
     ) -> NewsDTO:
-        news = await self.repo.get(news_id)
-        if not news:
-            raise ValueError("news_not_found")
-
-        updates = data.model_dump(exclude_unset=True)
-        # RZ-33-12: removed no-op self-assignments (updates[k] = updates.get(k))
-
-        updated_news = await self.repo.update(news_id, updates)
-        assert updated_news is not None  # noqa: S101
-
         async with self.uow:
+            news = await self.repo.get_orm_for_update(news_id)
+            if not news:
+                raise ValueError("news_not_found")
+
+            updates = data.model_dump(exclude_unset=True)
+            requested_image_url = updates.get("image_url")
+            image_changed = (
+                "image_url" in updates and requested_image_url != news.image_url
+            )
+            if image_changed:
+                if requested_image_url is not None:
+                    if (
+                        owner_user_id is None
+                        or canonical_news_image_key(requested_image_url) is None
+                    ):
+                        raise NewsImageOwnershipError("news_image_not_owned")
+
+                claimed = await self.repo.replace_news_media_asset(
+                    requested_image_url,
+                    owner_user_id=owner_user_id,
+                    news_id=news_id,
+                )
+                if not claimed:
+                    raise NewsImageOwnershipError("news_image_not_owned")
+
+            updated_news = await self.repo.update(news_id, updates)
+            assert updated_news is not None  # noqa: S101
             await self.uow.commit()
 
         # News image keys are shared and contain no verifiable news owner.

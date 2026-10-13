@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto"
 import type { Response } from "@playwright/test"
 import { expect, loginAs, ROLES, test, type Role } from "./fixtures"
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
@@ -55,7 +56,9 @@ test.describe("localized rejected-login acceptance", () => {
       await expect(page.locator("html")).toHaveAttribute("lang", language)
 
       const identity = ROLES[role].email
-      const wrongPassword = "invalid-live-password-for-acceptance" // pragma: allowlist secret -- negative-login test fixture
+      const wrongPassword = Array.from(randomBytes(36), (byte, index) =>
+        index === 1 ? "-" : String.fromCharCode(97 + (byte % 26))
+      ).join("")
       await page.locator("#email").fill(identity)
       await page.locator("#password").fill(wrongPassword)
       const loginResponsePromise = page.waitForResponse(

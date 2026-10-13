@@ -36,7 +36,7 @@ const checkerToolchain = {
     packageVersion: "10.0.0",
     lockVersion: "10.0.0",
     lockIntegrity:
-      "sha512-GLvC0LVd8RJ5SxR3eFcgb7DFKmw07DYtPXs942z6Qh7l6p7YBnFyd7lPw7nvA9UKEYDd22embrFmLlyC1XJjXw==", // pragma: allowlist secret -- public npm package integrity checksum
+      "sha512-GLvC0LVd8RJ5SxR3eFcgb7DFKmw07DYtPXs942z6Qh7l6p7YBnFyd7lPw7nvA9UKEYDd22embrFmLlyC1XJjXw==", //  -- public npm package integrity checksum
   },
   typescript: {
     dependencySpec: "npm:@typescript/typescript6@^6.0.2",

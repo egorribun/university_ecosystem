@@ -7,6 +7,7 @@ import pytest
 
 from app.models.enums import UserRole
 from scripts import seed_demo_data
+from tests.helpers.synthetic_credentials import make_test_marker
 
 
 class ExistingDemoAccountSession:
@@ -72,12 +73,14 @@ async def test_rerun_preserves_existing_synthetic_account_and_owned_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original_group_id = uuid4()
+    preserved_hash_marker = make_test_marker(length=23)
     user = SimpleNamespace(
         id=uuid4(),
         email=seed_demo_data.DEMO_PRIMARY_USER_EMAIL,
         demo_seed_key=seed_demo_data.DEMO_PRIMARY_USER_SEED_KEY,
         role=UserRole.STUDENT,
-        hashed_password="synthetic-hash-sentinel",  # pragma: allowlist secret -- synthetic seed-account test password
+        #  -- synthetic seed-account test password
+        hashed_password=preserved_hash_marker,
         group_id=original_group_id,
     )
     profile = SimpleNamespace(
@@ -110,7 +113,7 @@ async def test_rerun_preserves_existing_synthetic_account_and_owned_fields(
 
     assert first is user
     assert second is user
-    assert user.hashed_password == "synthetic-hash-sentinel"  # pragma: allowlist secret
+    assert user.hashed_password == preserved_hash_marker
     assert user.group_id == original_group_id
     assert profile.full_name == "Synthetic account owner"
     assert profile.about == "Synthetic user-authored biography"
@@ -132,7 +135,7 @@ async def test_new_primary_account_is_marked_with_private_ownership_key(
     monkeypatch.setattr(
         seed_demo_data,
         "get_password_hash_sync",
-        lambda _password: "synthetic-hash",  # pragma: allowlist secret -- synthetic password-hash test stub
+        lambda _password: make_test_marker(length=14),
     )
 
     user = await seed_demo_data.seed_user(database, SimpleNamespace(id=uuid4()))
@@ -172,12 +175,14 @@ async def test_unmarked_canonical_account_collision_fails_before_any_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original_group_id = None
+    preserved_hash_marker = make_test_marker(length=24)
     user = SimpleNamespace(
         id=uuid4(),
         email="test@university.dev",
         demo_seed_key=None,
         role=UserRole.STUDENT,
-        hashed_password="synthetic-preserved-hash",  # pragma: allowlist secret -- synthetic seed-account test password
+        #  -- synthetic seed-account test password
+        hashed_password=preserved_hash_marker,
         group_id=original_group_id,
     )
     database = OwnershipAwareDemoAccountSession(account_by_email=user)
@@ -193,9 +198,7 @@ async def test_unmarked_canonical_account_collision_fails_before_any_mutation(
 
     assert user.group_id is original_group_id
     assert user.demo_seed_key is None
-    assert (
-        user.hashed_password == "synthetic-preserved-hash"  # pragma: allowlist secret
-    )
+    assert user.hashed_password == preserved_hash_marker
     assert database.added == []
     assert database.flush_count == 0
 
@@ -207,7 +210,7 @@ async def test_canonical_account_and_owner_key_must_resolve_to_same_user() -> No
         email=seed_demo_data.DEMO_PRIMARY_USER_EMAIL,
         demo_seed_key=None,
         role=UserRole.STUDENT,
-        hashed_password="synthetic-preserved-hash",  # pragma: allowlist secret
+        hashed_password="synthetic-preserved-hash",
         group_id=None,
     )
     unrelated_owner = SimpleNamespace(

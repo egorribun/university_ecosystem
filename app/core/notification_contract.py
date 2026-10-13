@@ -65,9 +65,10 @@ def build_notification_metadata(
     topic: str | None,
     notification_type: str | None,
     url: str | None,
+    recipient_user_id: object | None = None,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build immutable identity metadata shared by in-app, live and Web Push."""
+    """Build canonical notification metadata, including a trusted recipient when known."""
 
     metadata = dict(extra or {})
     metadata.update(
@@ -78,4 +79,9 @@ def build_notification_metadata(
             "url": url or "/",
         }
     )
+    if recipient_user_id is None:
+        metadata.pop("recipientUserId", None)
+    else:
+        # Caller-supplied extras must never override the persisted owner.
+        metadata["recipientUserId"] = str(recipient_user_id)
     return metadata

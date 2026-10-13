@@ -16,8 +16,9 @@ from app.services.grade_service import (
     GradeService,
     GradeStudentNotFoundError,
 )
+from tests.helpers.synthetic_credentials import make_test_password
 
-PASSWORD = "GradesApiPass123!"  # pragma: allowlist secret
+PASSWORD = make_test_password(length=23)
 
 
 async def _login_as(async_client, user_factory, role: str):

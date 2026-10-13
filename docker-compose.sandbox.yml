@@ -51,7 +51,7 @@ services:
           memory: 128M
 
   nats:
-    image: nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652
+    image: nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
     # JetStream (-js) enabled + HTTP monitoring on 8222 for the healthcheck.
     # No auth: test-only, isolated, ephemeral.
     command: ["-js", "-m", "8222"]

@@ -602,7 +602,7 @@ func TestSubscribeToNATSTransactionalJetStreamBranches(t *testing.T) {
 		h := setupTestHub()
 		h.Nats = &nats.Conn{}
 		h.enableJetStream = true
-		h.internalSecret = "secret"         // pragma: allowlist secret -- inert unit-test fixture
+		h.internalSecret = "secret"         //  -- inert unit-test fixture
 		h.subscribeCacheInvalidations = nil // keep the durable invalidation subscription in the transactional fake
 		created := time.Now().UTC()
 		h.js = &scriptedSubscribeJetStream{

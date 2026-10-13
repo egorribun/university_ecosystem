@@ -19,7 +19,7 @@ from app.core.config import settings
 from app.core.events import NewsCommentCreated, NewsCreated, NewsUpdated
 from app.core.protocols import AsyncDatabaseSession
 from app.core.tenant import get_current_tenant
-from app.models.news import News
+from app.models.news import News, NewsMediaAsset
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import (
     NewsDTO,
@@ -59,6 +59,86 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         flag_dirty(record)
         await self.db.flush()
         return result
+
+    async def register_news_media_asset(
+        self, storage_url: str, owner_user_id: uuid.UUID
+    ) -> None:
+        """Record an image returned by the trusted news upload storage path."""
+        self.db.add(
+            NewsMediaAsset(storage_url=storage_url, owner_user_id=owner_user_id)
+        )
+        await self.db.flush()
+
+    async def claim_news_media_asset(
+        self,
+        storage_url: str,
+        *,
+        owner_user_id: uuid.UUID,
+        news_id: uuid.UUID,
+    ) -> bool:
+        """Atomically bind one uploader-owned image to at most one news row."""
+        result = await self.db.execute(
+            select(NewsMediaAsset)
+            .where(NewsMediaAsset.storage_url == storage_url)
+            .with_for_update()
+        )
+        asset = result.scalar_one_or_none()
+        if asset is None or asset.owner_user_id != owner_user_id:
+            return False
+        if asset.news_id is not None and asset.news_id != news_id:
+            return False
+
+        asset.news_id = news_id
+        await self.db.flush()
+        return True
+
+    async def replace_news_media_asset(
+        self,
+        storage_url: str | None,
+        *,
+        owner_user_id: uuid.UUID | None,
+        news_id: uuid.UUID,
+    ) -> bool:
+        """Validate and lock the requested image before releasing the current one."""
+        requested_asset: NewsMediaAsset | None = None
+        if storage_url is not None:
+            if owner_user_id is None:
+                return False
+            result = await self.db.execute(
+                select(NewsMediaAsset)
+                .where(NewsMediaAsset.storage_url == storage_url)
+                .with_for_update()
+            )
+            requested_asset = result.scalar_one_or_none()
+            if (
+                requested_asset is None
+                or requested_asset.owner_user_id != owner_user_id
+            ):
+                return False
+            if (
+                requested_asset.news_id is not None
+                and requested_asset.news_id != news_id
+            ):
+                return False
+
+        # Keep the requested row lock while clearing the unique current association.
+        await self.release_news_media_asset(news_id)
+        if requested_asset is not None:
+            requested_asset.news_id = news_id
+            await self.db.flush()
+        return True
+
+    async def release_news_media_asset(self, news_id: uuid.UUID) -> None:
+        """Release the current association without deleting the stored object."""
+        result = await self.db.execute(
+            select(NewsMediaAsset)
+            .where(NewsMediaAsset.news_id == news_id)
+            .with_for_update()
+        )
+        asset = result.scalar_one_or_none()
+        if asset is not None:
+            asset.news_id = None
+            await self.db.flush()
 
     async def update(self, id: Any, obj_in: dict[str, Any]) -> NewsDTO | None:
         result = await super().update(id, obj_in)

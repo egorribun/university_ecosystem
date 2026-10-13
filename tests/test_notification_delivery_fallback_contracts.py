@@ -531,6 +531,7 @@ async def test_redelivery_payload_preserves_canonical_topic_metadata(
     assert payload["topic"] == "news.published"
     assert payload["data"] == {
         "notificationId": str(notification.id),
+        "recipientUserId": str(notification.user_id),
         "topic": "news.published",
         "type": "news",
         "url": "/news/1",

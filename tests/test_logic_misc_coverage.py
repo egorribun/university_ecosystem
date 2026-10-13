@@ -522,7 +522,8 @@ async def test_schedule_service_update_not_found():
 
     mock_uow = MagicMock()
     mock_uow.schedules = AsyncMock()
-    mock_uow.schedules.get = AsyncMock(return_value=None)
+    mock_uow.schedules.lock_schedule_mutations = AsyncMock()
+    mock_uow.schedules.get_for_update_fresh = AsyncMock(return_value=None)
     mock_uow.groups = AsyncMock()
 
     svc = ScheduleService(mock_uow, MagicMock())
@@ -569,8 +570,8 @@ async def test_schedule_service_create_with_conflict():
 
     mock_uow = MagicMock()
     mock_uow.schedules = AsyncMock()
-    mock_uow.schedules.get_by_group = AsyncMock(return_value=[])
-    mock_uow.schedules.get_by_teacher = AsyncMock(return_value=[])
+    mock_uow.schedules.lock_schedule_mutations = AsyncMock()
+    mock_uow.schedules.get_conflict_candidates = AsyncMock(return_value=[])
     mock_uow.groups = AsyncMock()
     optimizer = MagicMock()
     optimizer.detect_conflicts = AsyncMock(return_value=[MagicMock()])
@@ -590,12 +591,13 @@ async def test_schedule_service_create_with_conflict():
 
 @pytest.mark.asyncio
 async def test_schedule_service_create_no_teacher():
-    """create_schedule skips get_by_teacher when teacher is None/falsy."""
+    """create_schedule keeps the conflict query group-only for an empty teacher."""
     from app.services.schedule_service import ScheduleService
 
     mock_uow = MagicMock()
     mock_uow.schedules = AsyncMock()
-    mock_uow.schedules.get_by_group = AsyncMock(return_value=[])
+    mock_uow.schedules.lock_schedule_mutations = AsyncMock()
+    mock_uow.schedules.get_conflict_candidates = AsyncMock(return_value=[])
     mock_uow.schedules.create = AsyncMock(return_value=MagicMock())
     mock_uow.groups = AsyncMock()
     mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
@@ -617,7 +619,9 @@ async def test_schedule_service_create_no_teacher():
         audit_factory.return_value.record_domain_event = AsyncMock()
         result = await svc.create_schedule(data, locale="en")
     assert result is not None
-    mock_uow.schedules.get_by_teacher.assert_not_called()
+    mock_uow.schedules.get_conflict_candidates.assert_awaited_once_with(
+        data.group_id, None
+    )
 
 
 # ---------------------------------------------------------------------------

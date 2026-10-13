@@ -427,7 +427,7 @@ test("live Playwright global setup verifies endpoints against the signed owner m
     PATH: process.env.PATH,
     HOME: "C:/test/live-setup-home",
     LIVE_PRIMARY_REPOSITORY_ROOT: "C:/caller-controlled-checkout",
-    TEST_PASSWORD: "do-not-forward-this-password", // pragma: allowlist secret
+    TEST_PASSWORD: "do-not-forward-this-password",
     CHROMATIC_PROJECT_TOKEN: "must-not-reach-the-verifier",
   }
   const primaryRepositoryPath = resolve(fileURLToPath(repositoryRoot), "..", "primary-checkout")

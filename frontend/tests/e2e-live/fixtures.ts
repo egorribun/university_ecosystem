@@ -38,7 +38,7 @@ export const ROLES = {
   },
   teacher: {
     email: "olga.morozova@university.dev",
-    password: "Teacher@2024test", // pragma: allowlist secret -- disposable stand seed account
+    password: "Teacher@2024test", //  -- disposable stand seed account
   },
   admin: {
     email: "admin@university.dev",
@@ -52,7 +52,7 @@ export type Role = keyof typeof ROLES
 export const GROUP_CHAT_ACCOUNTS = {
   secondMember: {
     email: "ivan.sokolov@university.dev",
-    password: "Student@2024test", // pragma: allowlist secret -- disposable stand seed account
+    password: "Student@2024test", //  -- disposable stand seed account
   },
   nonMember: {
     email: "sergey.lebedev@university.dev",

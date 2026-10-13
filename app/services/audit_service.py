@@ -359,6 +359,17 @@ _AUDIT_LOG_JSON_ARRAY_V1_FIELDS = (
 _ZERO_HASH = "0" * 64
 
 
+def _is_unchained_outbox_row(event: Any) -> bool:
+    """Return whether a row has no chain markers or domain-event provenance."""
+    metadata = getattr(event, "metadata_", None)
+    return (
+        getattr(event, "sequence_number", None) is None
+        and getattr(event, "prev_hash", None) is None
+        and getattr(event, "hash", None) is None
+        and not (isinstance(metadata, dict) and "actor_id" in metadata)
+    )
+
+
 @dataclass(frozen=True)
 class AuditSignatureStatus:
     """Verification result and exact field coverage for an audit-log signature."""
@@ -880,17 +891,7 @@ class SecureAuditService:
         # partial markers and rows retaining the producer marker are chain
         # candidates and fail below when their sequence/root is malformed.
         chain_events = [
-            event
-            for event in events
-            if not (
-                getattr(event, "sequence_number", None) is None
-                and getattr(event, "prev_hash", None) is None
-                and getattr(event, "hash", None) is None
-                and not (
-                    isinstance(getattr(event, "metadata_", None), dict)
-                    and "actor_id" in event.metadata_
-                )
-            )
+            event for event in events if not _is_unchained_outbox_row(event)
         ]
         if not chain_events:
             return True, None, None
@@ -1086,6 +1087,14 @@ class SecureAuditService:
             is_valid, _failed_id, _err_msg = await self.verify_chain_integrity(
                 db, aggregate_type=aggregate_type, aggregate_id=agg_id_str
             )
+
+        # Unchained rows are transactional outbox data, not authenticated domain
+        # history. Exclude them from recovery even when the caller skips HMAC
+        # verification; otherwise a same-aggregate outbox payload can poison the
+        # reconstructed state while verify_chain_integrity reports success.
+        events = [event for event in events if not _is_unchained_outbox_row(event)]
+        if not events:
+            return None, 0, is_valid
 
         # 3. State fold loop
         state: dict[str, Any] | None = None

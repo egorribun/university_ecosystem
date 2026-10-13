@@ -14,6 +14,7 @@ from app.repositories.unit_of_work import uow_from_session
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.services.user.compliance_service import UserComplianceService
+from tests.helpers.synthetic_credentials import make_test_password
 
 
 @pytest.mark.asyncio
@@ -69,7 +70,7 @@ async def test_delete_account_anonymizes_existing_relations(
 async def test_admin_delete_route_succeeds_for_separately_loaded_persisted_user(
     root_client, user_factory, db_session
 ):
-    password = "RegisteredTarget123!"  # pragma: allowlist secret
+    password = make_test_password(length=23)
     admin = await user_factory(
         role="admin", hashed_password=await get_password_hash(password)
     )

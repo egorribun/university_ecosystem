@@ -3268,18 +3268,23 @@ def _capture_live_trusted_proxy_inventory(
 
 def _assert_live_trusted_proxy_source_current(owner: StandOwner) -> None:
     try:
-        if load_stand_owner(WORKTREE) != owner or not owner.source_sha:
+        if load_stand_owner(WORKTREE) != owner:
+            raise StandError("live trusted proxy owner or source identity changed")
+        expected_source_sha = owner.source_sha if IN_PLACE_MODE else SOURCE_SHA
+        if not isinstance(expected_source_sha, str) or not re.fullmatch(
+            r"[0-9a-f]{40}", expected_source_sha
+        ):
             raise StandError("live trusted proxy owner or source identity changed")
         if IN_PLACE_MODE:
             if (
-                SOURCE_SHA != owner.source_sha
-                or _git("rev-parse", "HEAD") != owner.source_sha
+                SOURCE_SHA != expected_source_sha
+                or _git("rev-parse", "HEAD") != expected_source_sha
             ):
                 raise StandError("live trusted proxy source identity changed")
             if _git("status", "--porcelain", "--untracked-files=normal"):
                 raise StandError("live trusted proxy source tree changed")
         else:
-            if _git("-C", str(WORKTREE), "rev-parse", "HEAD") != owner.source_sha:
+            if _git("-C", str(WORKTREE), "rev-parse", "HEAD") != expected_source_sha:
                 raise StandError("live trusted proxy source identity changed")
             _assert_worktree_clean(WORKTREE)
     except subprocess.CalledProcessError:
@@ -3450,7 +3455,7 @@ def _configure_live_trusted_proxy_peers(
     owner: StandOwner,
     base_environment: Mapping[str, str],
     evidence: ComposeResourceEvidence,
-) -> str:
+) -> int:
     """Bind only this run's proxy settings to current signed network peers."""
     _assert_live_trusted_proxy_source_current(owner)
     _require_owned_docker_daemon(owner)
@@ -3520,11 +3525,13 @@ def _configure_live_trusted_proxy_peers(
     final_evidence = _verify_stand_owner_compose_resources(WORKTREE, owner)
     if final_evidence.fingerprint != evidence.fingerprint:
         raise StandError("live trusted proxy resource identity changed")
-    return hashlib.sha256(
-        json.dumps(actual_settings, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
-    ).hexdigest()
+    return len(actual_settings["GATEWAY_TRUSTED_PROXIES"])
+
+
+def _trusted_proxy_peers_status(peer_count: int) -> str:
+    if type(peer_count) is not int or peer_count < 0:
+        raise StandError("live trusted proxy peer count is invalid")
+    return f"trusted_proxy_peers configured=true peer_count={peer_count}"
 
 
 def _core_quiesce_container_inventory(
@@ -4003,6 +4010,9 @@ def _assert_no_ignored_in_place_build_sources() -> None:
 
 
 def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
+    global SOURCE_SHA
+    if not IN_PLACE_MODE:
+        SOURCE_SHA = None
     if stack not in LIVE_STACKS:
         raise StandError("unsupported live stand stack selection")
     _assert_stand_paths_safe(WORKTREE)
@@ -4018,7 +4028,6 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
                 "in-place mode requires a clean source checkout with no untracked files"
             )
         _assert_no_ignored_in_place_build_sources()
-        global SOURCE_SHA
         SOURCE_SHA = current_sha
     existing_owner: StandOwner | None = None
     stop_after_resource_binding = False
@@ -4100,6 +4109,20 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
         sha = resolved_sha
     else:
         sha = ensure_worktree(resolved_sha)
+        try:
+            worktree_sha = _git("-C", str(WORKTREE), "rev-parse", "HEAD")
+        except subprocess.CalledProcessError:
+            raise StandError(
+                "cannot verify live stand worktree source identity"
+            ) from None
+        if sha != resolved_sha or worktree_sha != resolved_sha:
+            raise StandError(
+                "live stand worktree source identity changed during preparation"
+            )
+        _assert_worktree_clean(WORKTREE)
+        # Normal owner schemas do not persist source_sha. Bind this post-start
+        # refresh to the exact checkout verified for the current up invocation.
+        SOURCE_SHA = worktree_sha
     _assert_stand_paths_safe(WORKTREE)
     if not (WORKTREE / STAND_FILE).is_file():
         owner = create_stand_owner(
@@ -4207,12 +4230,10 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
     if allow_existing_owned_volumes:
         start_command.append("-AllowExistingOwnedVolumes")
     _run(start_command, cwd=WORKTREE, env=env)
-    trusted_proxy_fingerprint = _configure_live_trusted_proxy_peers(
+    trusted_proxy_peer_count = _configure_live_trusted_proxy_peers(
         owner, env, _verify_stand_owner_compose_resources(WORKTREE, owner)
     )
-    print(
-        f"trusted_proxy_peers configured=true fingerprint={trusted_proxy_fingerprint}"
-    )
+    print(_trusted_proxy_peers_status(trusted_proxy_peer_count))
     published = dict(owner.published_ports)
     base_url = _stand_base_url(published)
     mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"
@@ -6575,8 +6596,8 @@ def _live_playwright_counts(output: str) -> dict[str, int]:
 
 _PlaywrightSkipIdentity = tuple[str, str, int]
 _PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES: tuple[_PlaywrightSkipIdentity, ...] = (
-    ("desktop", "tests/e2e-live/auth-roles.live.spec.ts", 36),
-    ("mobile", "tests/e2e-live/auth-roles.live.spec.ts", 36),
+    ("desktop", "tests/e2e-live/auth-roles.live.spec.ts", 37),
+    ("mobile", "tests/e2e-live/auth-roles.live.spec.ts", 37),
     ("mobile", "tests/e2e-live/navbar-layout-stability.live.spec.ts", 174),
     ("mobile", "tests/e2e-live/schedule-grid-keyboard.live.spec.ts", 5),
     ("mobile", "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts", 5),

@@ -673,3 +673,341 @@ async def test_standalone_seeders_require_live_stand_ownership_before_database_i
         capsys.readouterr()
 
     assert not initialized
+
+
+async def test_seed_schedule_uses_shared_mutation_lock_before_schedule_reads(
+    db_session, monkeypatch, capsys
+) -> None:
+    from app.repositories.schedule_repository import ScheduleRepository
+
+    group = await seed_demo_data.seed_group(db_session)
+    user = await seed_demo_data.seed_user(db_session, group)
+    events: list[str] = []
+    session_type = type(db_session)
+    original_scalars = session_type.scalars
+    original_execute = session_type.execute
+    original_flush = session_type.flush
+
+    async def observed_lock(_repository) -> None:
+        events.append("lock")
+
+    async def observed_scalars(session, statement, *args, **kwargs):
+        events.append("read")
+        return await original_scalars(session, statement, *args, **kwargs)
+
+    async def observed_execute(session, statement, *args, **kwargs):
+        events.append("read")
+        return await original_execute(session, statement, *args, **kwargs)
+
+    async def observed_flush(session, *args, **kwargs):
+        events.append("flush")
+        return await original_flush(session, *args, **kwargs)
+
+    monkeypatch.setattr(
+        ScheduleRepository,
+        "lock_schedule_mutations",
+        observed_lock,
+        raising=False,
+    )
+    monkeypatch.setattr(session_type, "scalars", observed_scalars)
+    monkeypatch.setattr(session_type, "execute", observed_execute)
+    monkeypatch.setattr(session_type, "flush", observed_flush)
+    try:
+        await seed_demo_data.seed_schedule(db_session, group, user)
+
+        assert events[0] == "lock"
+        assert events.index("lock") < events.index("read") < events.index("flush")
+    finally:
+        capsys.readouterr()
+
+
+async def test_seed_schedule_rejects_cross_group_teacher_conflict_atomically(
+    db_session, capsys
+) -> None:
+    from app.core.exceptions.domain import BusinessRuleViolation
+
+    group = await seed_demo_data.seed_group(db_session)
+    user = await seed_demo_data.seed_user(db_session, group)
+    other_group = seed_demo_data.Group(name="Unrelated API schedule group")
+    db_session.add(other_group)
+    await db_session.flush()
+    start, end = seed_demo_data._pair(seed_demo_data._DAY_BASE["monday"], 1)
+    db_session.add(
+        seed_demo_data.Schedule(
+            group_id=other_group.id,
+            subject="Existing API-created lesson",
+            teacher="Иванов А.В.",
+            room="X-101",
+            weekday="monday",
+            start_time=start,
+            end_time=end,
+            parity="both",
+            lesson_type="lecture",
+        )
+    )
+    await db_session.commit()
+
+    try:
+        with pytest.raises(BusinessRuleViolation):
+            await seed_demo_data.seed_schedule(db_session, group, user)
+
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(seed_demo_data.Schedule)
+                .where(seed_demo_data.Schedule.group_id == group.id)
+            )
+            == 0
+        )
+    finally:
+        await db_session.rollback()
+        capsys.readouterr()
+
+
+async def test_seed_schedule_ignores_unrelated_group_different_fixture_teacher(
+    db_session, capsys
+) -> None:
+    group = await seed_demo_data.seed_group(db_session)
+    user = await seed_demo_data.seed_user(db_session, group)
+    other_group = seed_demo_data.Group(name="Unrelated different-teacher schedule")
+    db_session.add(other_group)
+    await db_session.flush()
+
+    weekday, pair_num, _subject, target_teacher, _room, _kind, parity = (
+        seed_demo_data.SCHEDULE_DATA[0]
+    )
+    other_teacher = next(
+        item[3]
+        for item in seed_demo_data.SCHEDULE_DATA
+        if item[3] and item[3] != target_teacher
+    )
+    start, end = seed_demo_data._pair(seed_demo_data._DAY_BASE[weekday], pair_num)
+    unrelated_row = seed_demo_data.Schedule(
+        group_id=other_group.id,
+        subject="Unrelated group overlap",
+        teacher=other_teacher,
+        room="Different room",
+        weekday=weekday,
+        start_time=start,
+        end_time=end,
+        parity=parity,
+        lesson_type="lecture",
+    )
+    db_session.add(unrelated_row)
+    await db_session.flush()
+
+    try:
+        await seed_demo_data.seed_schedule(db_session, group, user)
+
+        seeded_rows = await db_session.scalars(
+            select(seed_demo_data.Schedule).where(
+                seed_demo_data.Schedule.group_id == group.id
+            )
+        )
+        assert len(seeded_rows.all()) == len(seed_demo_data.SCHEDULE_DATA)
+        persisted_unrelated = await db_session.get(
+            seed_demo_data.Schedule, unrelated_row.id
+        )
+        assert persisted_unrelated is not None
+        assert persisted_unrelated.group_id == other_group.id
+        assert persisted_unrelated.teacher == other_teacher
+    finally:
+        await db_session.rollback()
+        capsys.readouterr()
+
+
+async def test_seed_schedule_completes_a_valid_partial_natural_key_population(
+    db_session, capsys
+) -> None:
+    group = await seed_demo_data.seed_group(db_session)
+    user = await seed_demo_data.seed_user(db_session, group)
+    weekday, pair_num, subject, teacher, room, lesson_type, parity = (
+        seed_demo_data.SCHEDULE_DATA[0]
+    )
+    start, end = seed_demo_data._pair(seed_demo_data._DAY_BASE[weekday], pair_num)
+    partial_row = seed_demo_data.Schedule(
+        group_id=group.id,
+        creator_id=user.id,
+        subject=subject,
+        teacher=teacher,
+        room=room,
+        weekday=weekday,
+        start_time=start,
+        end_time=end,
+        parity=parity,
+        lesson_type=lesson_type,
+    )
+    db_session.add(partial_row)
+    await db_session.flush()
+    partial_id = partial_row.id
+
+    try:
+        await seed_demo_data.seed_schedule(db_session, group, user)
+        await seed_demo_data.seed_schedule(db_session, group, user)
+
+        seeded_rows = await db_session.scalars(
+            select(seed_demo_data.Schedule).where(
+                seed_demo_data.Schedule.group_id == group.id
+            )
+        )
+        saved_rows = seeded_rows.all()
+        assert len(saved_rows) == len(seed_demo_data.SCHEDULE_DATA)
+        assert sum(row.id == partial_id for row in saved_rows) == 1
+        natural_key_rows = [
+            row
+            for row in saved_rows
+            if row.weekday == weekday
+            and _event_utc(row.start_time) == _event_utc(start)
+            and row.subject == subject
+            and row.parity == parity
+        ]
+        assert len(natural_key_rows) == 1
+        assert natural_key_rows[0].id == partial_id
+    finally:
+        await db_session.rollback()
+        capsys.readouterr()
+
+
+async def test_seed_schedule_checks_existing_partial_seed_teacher_against_other_groups(
+    db_session, capsys
+) -> None:
+    from app.core.exceptions.domain import BusinessRuleViolation
+
+    group = await seed_demo_data.seed_group(db_session)
+    user = await seed_demo_data.seed_user(db_session, group)
+    other_group = seed_demo_data.Group(name="Legacy teacher conflict group")
+    db_session.add(other_group)
+    await db_session.flush()
+
+    weekday, pair_num, subject, teacher, room, lesson_type, parity = (
+        seed_demo_data.SCHEDULE_DATA[0]
+    )
+    start, end = seed_demo_data._pair(seed_demo_data._DAY_BASE[weekday], pair_num)
+    partial_row = seed_demo_data.Schedule(
+        group_id=group.id,
+        creator_id=user.id,
+        subject=subject,
+        teacher=teacher,
+        room=room,
+        weekday=weekday,
+        start_time=start,
+        end_time=end,
+        parity=parity,
+        lesson_type=lesson_type,
+    )
+    external_row = seed_demo_data.Schedule(
+        group_id=other_group.id,
+        subject="Existing external teacher lesson",
+        teacher=teacher,
+        room="Different room",
+        weekday=weekday,
+        start_time=start,
+        end_time=end,
+        parity=parity,
+        lesson_type="lecture",
+    )
+    db_session.add_all([partial_row, external_row])
+    await db_session.flush()
+    partial_id = partial_row.id
+    external_id = external_row.id
+
+    try:
+        with pytest.raises(BusinessRuleViolation):
+            await seed_demo_data.seed_schedule(db_session, group, user)
+
+        target_rows = await db_session.scalars(
+            select(seed_demo_data.Schedule).where(
+                seed_demo_data.Schedule.group_id == group.id
+            )
+        )
+        saved_target_rows = target_rows.all()
+        assert [row.id for row in saved_target_rows] == [partial_id]
+        preserved_external = await db_session.get(seed_demo_data.Schedule, external_id)
+        assert preserved_external is not None
+        assert preserved_external.group_id == other_group.id
+        assert preserved_external.teacher == teacher
+    finally:
+        await db_session.rollback()
+        capsys.readouterr()
+
+
+async def test_demo_schedule_data_has_no_internal_conflicts() -> None:
+    from app.services.schedule_optimizer import (
+        ScheduleItemInternal,
+        ScheduleOptimizerService,
+    )
+
+    items: list[ScheduleItemInternal] = []
+    for (
+        weekday,
+        pair_num,
+        _subject,
+        teacher,
+        room,
+        _lesson_type,
+        parity,
+    ) in seed_demo_data.SCHEDULE_DATA:
+        start, end = seed_demo_data._pair(seed_demo_data._DAY_BASE[weekday], pair_num)
+        items.append(
+            ScheduleItemInternal(
+                weekday=weekday,
+                start_time=start,
+                end_time=end,
+                parity=parity,
+                teacher=teacher,
+                room=room,
+            )
+        )
+
+    conflicts = await ScheduleOptimizerService().batch_detect_conflicts(items)
+
+    assert conflicts == []
+
+
+async def test_seed_schedule_rejects_but_preserves_legacy_group_conflicts(
+    db_session, capsys
+) -> None:
+    from app.core.exceptions.domain import BusinessRuleViolation
+
+    group = await seed_demo_data.seed_group(db_session)
+    user = await seed_demo_data.seed_user(db_session, group)
+    start, end = seed_demo_data._pair(seed_demo_data._DAY_BASE["friday"], 4)
+    legacy_rows = [
+        seed_demo_data.Schedule(
+            group_id=group.id,
+            creator_id=user.id,
+            subject=subject,
+            teacher=teacher,
+            room=room,
+            weekday="friday",
+            start_time=start,
+            end_time=end,
+            parity="even",
+            lesson_type="lecture",
+        )
+        for subject, teacher, room in (
+            ("Защита информации", "Лебедев П.А.", "В-215"),
+            ("Компьютерные сети", "Морозов С.Г.", "А-203"),
+        )
+    ]
+    db_session.add_all(legacy_rows)
+    await db_session.flush()
+
+    try:
+        with pytest.raises(BusinessRuleViolation):
+            await seed_demo_data.seed_schedule(db_session, group, user)
+
+        rows = await db_session.scalars(
+            select(seed_demo_data.Schedule).where(
+                seed_demo_data.Schedule.group_id == group.id
+            )
+        )
+        saved_rows = rows.all()
+        assert len(saved_rows) == 2
+        assert {row.subject for row in saved_rows} == {
+            "Защита информации",
+            "Компьютерные сети",
+        }
+    finally:
+        await db_session.rollback()
+        capsys.readouterr()

@@ -94,7 +94,7 @@ async def test_eviction_signature_matches_shared_go_wire_fixture(
     assert (
         payload["signature"]
         == (
-            "478e2845bae80bce3435d37b1087b0e32b32087db6c702a4ad2aaa58a6bdfdc1"  # pragma: allowlist secret -- deterministic public HMAC test vector
+            "478e2845bae80bce3435d37b1087b0e32b32087db6c702a4ad2aaa58a6bdfdc1"  #  -- deterministic public HMAC test vector
         )
     )
 

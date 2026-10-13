@@ -125,7 +125,13 @@ def test_csrf_contract_uses_exemptions_and_cookie_settings():
 def test_rate_limiting_contract_uses_fallbacks_and_endpoint_limits():
     app = MagicMock()
 
-    setup._configure_rate_limiting(app, _rate_settings())
+    setup._configure_rate_limiting(
+        app,
+        _rate_settings(
+            rate_limit_events="12/minute",
+            rate_limit_graphql="7/minute",
+        ),
+    )
 
     middleware = app.add_middleware.call_args.args[0]
     kwargs = app.add_middleware.call_args.kwargs
@@ -137,6 +143,7 @@ def test_rate_limiting_contract_uses_fallbacks_and_endpoint_limits():
     assert kwargs["headers_enabled"] is True
     assert kwargs["endpoint_limits"] == (
         EndpointRateLimit("/api/v1/news", 10, 60),
+        EndpointRateLimit("/api/v1/events", 12, 60),
         EndpointRateLimit("/api/v1/chat", 5, 1),
     )
 

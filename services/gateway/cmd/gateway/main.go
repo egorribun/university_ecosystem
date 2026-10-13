@@ -789,10 +789,11 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 				fileFn(c)
 				return
 			}
-			if strings.HasPrefix(subPath, "/auth/") || isPublicPasswordRecoveryRoute(subPath, c.Request.Method) ||
+			if (subPath == "/campus/config" && c.Request.Method == http.MethodGet) ||
+				strings.HasPrefix(subPath, "/auth/") || isPublicPasswordRecoveryRoute(subPath, c.Request.Method) ||
 				(strings.HasPrefix(subPath, "/img/") &&
 					(c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead)) {
-				// Auth routes: optional JWT
+				// Auth routes and the campus config read use optional JWT.
 				// Public media reads also need optional JWT so browser image tags can
 				// reach the backend's positive-prefix S3 image proxy without a token.
 				jwtMiddleware.Optional(ctx)(c)
@@ -821,16 +822,12 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		})
 	}
 
-	// GraphQL (optional JWT)
-	router.Any("/graphql", func(c *gin.Context) {
-		callOptionalAuthHandler(jwtMiddleware, ctx)(c)
-		if c.IsAborted() {
+	router.NoRoute(func(c *gin.Context) {
+		requestPath := strings.ToLower(c.Request.URL.Path)
+		if requestPath == "/graphql" || strings.HasPrefix(requestPath, "/graphql/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
 			return
 		}
-		proxyFn(c)
-	})
-
-	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
 			return

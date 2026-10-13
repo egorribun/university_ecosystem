@@ -5,7 +5,16 @@ import { sanitizeHttpUrl } from "@/utils/sanitize"
 import { CheckCircle2, Info, AlertTriangle, XCircle, X, ExternalLink } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { TIMEOUTS } from "@/config/timeouts"
-import { subscribeToPushMessages } from "@/push/pushMessageBus"
+import {
+  getCurrentPushIdentitySnapshot,
+  getCurrentPushUserId,
+  getPushBufferStorageKey,
+  subscribeToPushIdentity,
+  subscribeToPushMessages,
+} from "@/push/pushMessageBus"
+
+const SERVER_AUTH_IDENTITY = Object.freeze({ userId: null, revision: 0 })
+const getServerAuthIdentity = () => SERVER_AUTH_IDENTITY
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
@@ -21,6 +30,7 @@ export type ToastPayload = {
 }
 
 export type ActiveToast = Required<Pick<ToastPayload, "id">> & ToastPayload
+type OwnedActiveToast = { toast: ActiveToast; ownerId: string; ownerRevision: number }
 
 type ServiceWorkerMessage = {
   type?: string
@@ -35,6 +45,7 @@ const VALID_SEVERITIES: readonly SnackbarSeverity[] = [
 ] as const
 
 const MAX_BUFFER_SIZE = 20
+const LEGACY_BUFFER_STORAGE_KEY = "livePushToastBuffer"
 const MAX_SEEN_TOAST_IDS = 256
 
 /** @internal Browser snapshot used by the visibility subscription. */
@@ -57,9 +68,9 @@ export function getDefaultSeverity(): SnackbarSeverity {
   return "info"
 }
 
-/** @internal Storage key accessor keeps persistence namespaced and testable. */
-export function getBufferStorageKey(): string {
-  return "livePushToastBuffer"
+/** @internal Storage keys are scoped to a confirmed account. */
+export function getBufferStorageKey(userId: string): string {
+  return getPushBufferStorageKey(userId)
 }
 
 /** @internal Pure normalizer exported for contract tests. */
@@ -198,8 +209,6 @@ export const toActiveToast = (payload: unknown): ActiveToast | null => {
   return { ...toast, title, body, id: buildToastId(toast), url: safeUrl }
 }
 
-let memoryBuffer: ActiveToast[] | undefined
-
 /** Resolve browser storage without touching the window during SSR. */
 export function getToastStorage(): Storage | null {
   if (typeof window === "undefined") return null
@@ -217,20 +226,65 @@ export const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
   return buffer.map(toActiveToast).filter((item): item is ActiveToast => item !== null)
 }
 
+let memoryBuffer: ActiveToast[] = []
+let memoryBufferUserId: string | null = null
+let memoryBufferRevision: number | null = null
+
+function clearMemoryBuffer(): void {
+  memoryBuffer = []
+  memoryBufferUserId = null
+  memoryBufferRevision = null
+}
+
+const getCurrentBufferUserId = getCurrentPushUserId
+
+/** @internal Legacy data has no trustworthy owner and is discarded without reading. */
+function clearLegacyBuffer(): void {
+  const storage = getToastStorage()
+  if (storage === null) return
+  try {
+    const removeItem = storage.removeItem
+    if (typeof removeItem === "function") removeItem.call(storage, LEGACY_BUFFER_STORAGE_KEY)
+  } catch {
+    // Ignore unavailable storage.
+  }
+}
+
+/** @internal Clear only in-memory data; the message bus removes persisted data. */
+function clearMemoryBufferForUser(userId: string): void {
+  if (memoryBufferUserId !== userId) return
+  memoryBuffer = []
+  memoryBufferUserId = null
+  memoryBufferRevision = null
+}
+
 /** @internal Storage read is deliberately fail-closed. */
 export const readBuffer = (): ActiveToast[] => {
   const storage = getToastStorage()
   if (storage === null) {
-    memoryBuffer = []
+    clearMemoryBuffer()
     return memoryBuffer
   }
+
+  const identity = getCurrentPushIdentitySnapshot()
+  const userId = identity.userId
+  if (userId === null) {
+    clearMemoryBuffer()
+    return memoryBuffer
+  }
+  if (memoryBufferUserId !== userId || memoryBufferRevision !== identity.revision) {
+    memoryBuffer = []
+    memoryBufferUserId = userId
+    memoryBufferRevision = identity.revision
+  }
+
   const getItem = storage.getItem
   if (typeof getItem !== "function") {
-    memoryBuffer = []
+    clearMemoryBuffer()
     return memoryBuffer
   }
   try {
-    const raw = getItem.call(storage, getBufferStorageKey())
+    const raw = getItem.call(storage, getBufferStorageKey(userId))
     if (!raw) {
       memoryBuffer = []
       return memoryBuffer
@@ -239,26 +293,41 @@ export const readBuffer = (): ActiveToast[] => {
     memoryBuffer = sanitizeBuffer(parsed)
     return memoryBuffer
   } catch {
-    memoryBuffer = []
+    clearMemoryBuffer()
     return memoryBuffer
   }
 }
-
 /** @internal Storage write is best-effort and never breaks notification delivery. */
 export const writeBuffer = (buffer: ActiveToast[]) => {
-  memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
   const storage = getToastStorage()
-  if (storage === null) return
+  if (storage === null) {
+    clearMemoryBuffer()
+    return
+  }
+
+  const identity = getCurrentPushIdentitySnapshot()
+  const userId = identity.userId
+  if (userId === null) {
+    clearMemoryBuffer()
+    return
+  }
+
+  memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
+  memoryBufferUserId = userId
+  memoryBufferRevision = identity.revision
   const setItem = storage.setItem
-  if (typeof setItem !== "function") return
+  if (typeof setItem !== "function") {
+    clearMemoryBuffer()
+    return
+  }
   try {
-    setItem.call(storage, getBufferStorageKey(), JSON.stringify(memoryBuffer))
+    setItem.call(storage, getBufferStorageKey(userId), JSON.stringify(memoryBuffer))
   } catch (_e) {
-    // Ignore
+    clearMemoryBuffer()
   }
 }
-
 export const bufferToast = (toast: ActiveToast) => {
+  if (getCurrentBufferUserId() === null) return
   const existing = readBuffer()
   const deduped = existing.filter((item) => item.id !== toast.id)
   deduped.push(toast)
@@ -284,8 +353,14 @@ export const rememberToastId = (seenIds: Set<string>, id: string): boolean => {
 
 export default function LivePushToasts() {
   const { t } = useTranslation(Array.of("notifications", "common"))
-  const [queue, setQueue] = useState<ActiveToast[]>([])
-  const [current, setCurrent] = useState<ActiveToast | null>(null)
+  const identitySnapshot = useSyncExternalStore(
+    subscribeToPushIdentity,
+    getCurrentPushIdentitySnapshot,
+    getServerAuthIdentity
+  )
+  const confirmedUserId = identitySnapshot.userId
+  const [queue, setQueue] = useState<OwnedActiveToast[]>([])
+  const [current, setCurrent] = useState<OwnedActiveToast | null>(null)
   // `undefined` is the pre-render closed phase; explicit booleans are used after
   // the first transition so there is no duplicate initial-state sentinel.
   const [open, setOpen] = useState<boolean | undefined>()
@@ -295,23 +370,54 @@ export default function LivePushToasts() {
   // State initializers provide stable callback identities without reading refs
   // during render (which the React Compiler correctly rejects).  The callbacks
   // still close over the instance-owned refs/setters and are initialized once.
-  const [enqueue] = useState<(toast: ActiveToast) => void>(() => (toast: ActiveToast) => {
-    const seenIds = seenToastIdsRef.current
-    if (!rememberToastId(seenIds, toast.id)) return
-    setQueue((prev) => [...prev, toast])
-  })
+  const [enqueue] = useState<(toast: ActiveToast, ownerId: string, ownerRevision: number) => void>(
+    () => (toast: ActiveToast, ownerId: string, ownerRevision: number) => {
+      const currentIdentity = getCurrentPushIdentitySnapshot()
+      if (currentIdentity.userId !== ownerId || currentIdentity.revision !== ownerRevision) return
+      const seenIds = seenToastIdsRef.current
+      if (!rememberToastId(seenIds, toast.id)) return
+      setQueue((prev) => [...prev, { toast, ownerId, ownerRevision }])
+    }
+  )
 
   const [flushBufferedToasts] = useState<() => void>(() => () => {
+    const identity = getCurrentPushIdentitySnapshot()
+    if (identity.userId === null) return
     const buffered = consumeBufferedToasts()
-    // Route restored messages through the same identity window as live
-    // delivery.  A visibility transition can race with a push that arrived
-    // after the tab became visible; appending directly would show that toast
-    // twice and would not mark restored ids as seen.
-    buffered.forEach(enqueue)
+    // Restored messages keep the same account stamp as live bus deliveries.
+    // This prevents a visibility flush from crossing an account transition.
+    const ownerId = identity.userId
+    if (ownerId === null) return
+    buffered.forEach((toast) => enqueue(toast, ownerId, identity.revision))
   })
 
+  const activeIdentityRef = useRef(identitySnapshot)
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
+    clearLegacyBuffer()
+    const previousIdentity = activeIdentityRef.current
+    if (previousIdentity.revision === identitySnapshot.revision) {
+      if (confirmedUserId !== null && shouldFlushBufferedToasts(document.visibilityState)) {
+        flushBufferedToasts()
+      }
+      return
+    }
+
+    if (previousIdentity.userId !== null) clearMemoryBufferForUser(previousIdentity.userId)
+    activeIdentityRef.current = identitySnapshot
+    setQueue([])
+    setCurrent(null)
+    setOpen(false)
+    seenToastIdsRef.current.clear()
+    clearCloseTimer(closeTimerRef.current)
+    closeTimerRef.current = null
+
+    if (confirmedUserId !== null && shouldFlushBufferedToasts(document.visibilityState)) {
+      flushBufferedToasts()
+    }
+  }, [confirmedUserId, flushBufferedToasts, identitySnapshot])
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent, ownerId: string) => {
+      if (ownerId !== getCurrentPushUserId()) return
       const data = event.data as ServiceWorkerMessage
       switch (data.type) {
         case "PUSH_NOTIFICATION": {
@@ -323,7 +429,7 @@ export default function LivePushToasts() {
             bufferToast(normalized)
             return
           }
-          enqueue(normalized)
+          enqueue(normalized, ownerId, getCurrentPushIdentitySnapshot().revision)
           return
         }
         case "SYNC_COMPLETE": {
@@ -334,7 +440,7 @@ export default function LivePushToasts() {
             timestamp: Date.now(),
           }
           const normalized = toActiveToast(toast)
-          if (normalized) enqueue(normalized)
+          if (normalized) enqueue(normalized, ownerId, getCurrentPushIdentitySnapshot().revision)
           return
         }
       }
@@ -365,10 +471,15 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (current || queue.length === 0) return
-    setCurrent(queue[0]!)
+    const next = queue[0]!
+    if (next.ownerId !== confirmedUserId || next.ownerRevision !== identitySnapshot.revision) {
+      setQueue((prev) => prev.slice(1))
+      return
+    }
+    setCurrent(next)
     setQueue((prev) => prev.slice(1))
     setOpen(true)
-  }, [current, queue])
+  }, [confirmedUserId, current, identitySnapshot.revision, queue])
 
   const [handleClose] = useState<() => void>(() => () => {
     setOpen(false)
@@ -384,19 +495,25 @@ export default function LivePushToasts() {
   })
   useSyncExternalStore(subscribeLifecycle, getStableSnapshot, getStableSnapshot)
 
+  const currentToast = current?.toast ?? null
   const handleAction = useCallback(() => {
-    performToastAction(current, handleClose)
-  }, [current, handleClose])
+    performToastAction(currentToast, handleClose)
+  }, [currentToast, handleClose])
 
   useEffect(() => {
-    if (open && current) {
+    if (
+      open &&
+      currentToast &&
+      current?.ownerId === confirmedUserId &&
+      current?.ownerRevision === identitySnapshot.revision
+    ) {
       const timer = setTimeout(handleClose, TIMEOUTS.TOAST_LONG)
       return () => clearTimeout(timer)
     }
-  }, [open, current, handleClose])
+  }, [confirmedUserId, current, currentToast, identitySnapshot.revision, open, handleClose])
 
-  const severity = resolveSeverity(current)
-  const { title, body } = resolveToastContent(current, t)
+  const severity = resolveSeverity(currentToast)
+  const { title, body } = resolveToastContent(currentToast, t)
 
   const Icon = {
     success: CheckCircle2,
@@ -421,9 +538,17 @@ export default function LivePushToasts() {
   }[severity]
 
   return (
-    <div className="fixed top-4 right-4 z-toast flex flex-col gap-2 pointer-events-none">
+    <div
+      key={identitySnapshot.revision}
+      className="fixed top-4 right-4 z-toast flex flex-col gap-2 pointer-events-none"
+    >
       <AnimatePresence>
-        {shouldRenderToast(open === true, current) && (
+        {shouldRenderToast(
+          open === true &&
+            current?.ownerId === confirmedUserId &&
+            current?.ownerRevision === identitySnapshot.revision,
+          currentToast
+        ) && (
           <m.div
             // Keep toast motion on compositor-friendly properties. Animating
             // filter/backdrop blur can crash WebKit while the action button is
@@ -462,7 +587,7 @@ export default function LivePushToasts() {
                 {body}
               </p>
 
-              {current.url && (
+              {currentToast?.url && (
                 <button
                   onClick={handleAction}
                   className={cn(

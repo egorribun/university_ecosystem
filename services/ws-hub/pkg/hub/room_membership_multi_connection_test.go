@@ -19,7 +19,7 @@ func TestRoomRevocationCoversEveryUserConnectionReconnectAndShutdown(t *testing.
 	auth := &membershipRecordingAuthClient{
 		memberships: map[[2]string]bool{{removedUser, roomID}: false, {otherUser, roomID}: true},
 	}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	t.Cleanup(h.Stop)
 	ctx := context.Background()
 

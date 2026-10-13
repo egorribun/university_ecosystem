@@ -57,7 +57,7 @@ models.
 | WebSocket bootstrap | `POST /ws/ticket` issues a short-lived upgrade ticket; the WebSocket endpoint is `/ws` |
 | Admin read routes (both prefixes) | `GET /admin/audit`, `GET /admin/audit/time-travel`, `GET /admin/feature-flags`, `GET /api/v1/admin/audit`, `GET /api/v1/admin/audit/time-travel`, and `GET /api/v1/admin/feature-flags` |
 
-The three listed admin GET/read routes appear under both the unversioned root and `/api/v1`. The feature-flags PATCH route at `/admin/feature-flags/{name}` (also `/api/v1/admin/feature-flags/{name}`) is intentionally excluded with `include_in_schema=False`, so it is not listed in the public OpenAPI route index. Internal routes and GraphQL are also excluded with `include_in_schema=False`.
+The three listed admin GET/read routes appear under both the unversioned root and `/api/v1`. The feature-flags PATCH route at `/admin/feature-flags/{name}` (also `/api/v1/admin/feature-flags/{name}`) is intentionally excluded with `include_in_schema=False`, so it is not listed in the public OpenAPI route index. Internal routes are also excluded with `include_in_schema=False`. The backend GraphQL endpoint is not mounted in the MVP; see [ADR-046](../adr/ADR-046-codebase-consolidation-audit.md).
 
 ## Request examples
 

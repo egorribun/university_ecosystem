@@ -60,7 +60,7 @@ Our polyglot architecture maximizes throughput while maintaining low resource us
 
 ```text
 university_ecosystem/
-├── app/               # 🐍 Core API (Python 3.14 / FastAPI) - Business Logic & GraphQL
+├── app/               # 🐍 Core API (Python 3.14 / FastAPI) - Business Logic & REST API
 ├── frontend/          # ⚛️ Modern Web UI (React 19 + Vite 8/Rolldown + Valibot)
 ├── services/
 │   ├── gateway/       # 🚀 API Gateway (Go) - Auth, L1 XFetch Cache & Rate Limits
@@ -198,7 +198,7 @@ sequenceDiagram
 | Layer | Technologies | Primary Role | Policy target / current evidence |
 | :--- | :--- | :--- | :---: |
 | **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, accessibility (WCAG 2.2 AA), PWA | Policy target: 100%; fresh-SHA evidence required |
-| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Core business logic, REST & GraphQL APIs | Policy target: 100%; fresh-SHA evidence required |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0 | Core business logic and REST APIs | Policy target: 100%; fresh-SHA evidence required |
 | **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | Policy target: 100%; fresh-SHA evidence required |
 | **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | Policy target: 100%; fresh-SHA evidence required |
 | **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Implemented; fresh-SHA evidence required |

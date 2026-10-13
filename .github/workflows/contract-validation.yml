@@ -37,6 +37,10 @@ jobs:
     name: Spectral - OpenAPI lint
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+      ENVIRONMENT: testing
+      SECRET_KEY: ""
     permissions:
       contents: read
       security-events: write
@@ -55,6 +59,14 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync --frozen
+
+      - name: Configure ephemeral application secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Generate OpenAPI spec from FastAPI app
         run: |

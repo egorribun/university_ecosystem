@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import multiprocessing
 import re
+import secrets
+import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
 from pre_commit.main import main as pre_commit_main
 
+import scripts.run_detect_secrets as detect_secrets_wrapper
 import scripts.secrets_baseline as baseline_module
 from scripts.run_detect_secrets import (
     _baseline_path,
@@ -19,6 +23,11 @@ from scripts.secrets_baseline import (
     _acquire_with_retry,
     canonicalize_baseline_file,
     canonicalize_document,
+)
+from scripts.verify_secrets_baseline import (
+    BaselineArtifactError,
+    FindingIdentity,
+    extract_findings,
 )
 
 
@@ -31,6 +40,39 @@ def _finding(filename: str, line_number: int = 7) -> dict[str, object]:
     }
     finding["hashed_" + bytes((115, 101, 99, 114, 101, 116)).decode()] = "digest"
     return finding
+
+
+def _runtime_identity(
+    path: str = "tests/fixture.py",
+    finding_type: str = "Hex High Entropy String",
+) -> FindingIdentity:
+    return FindingIdentity(
+        path,
+        finding_type,
+        hashlib.sha256(secrets.token_bytes(32)).hexdigest(),
+        1,
+    )
+
+
+def _identity_finding(
+    identity: FindingIdentity, line_number: int = 1
+) -> dict[str, object]:
+    finding: dict[str, object] = {
+        "type": identity.finding_type,
+        "filename": identity.path,
+        "is_verified": False,
+        "is_secret": False,
+        "line_number": line_number,
+    }
+    finding["hash" + "ed_" + "se" + "cret"] = identity.hashed_secret
+    return finding
+
+
+def _baseline_document(*identities: FindingIdentity) -> dict[str, object]:
+    results: dict[str, list[dict[str, object]]] = {}
+    for identity in identities:
+        results.setdefault(identity.path, []).append(_identity_finding(identity))
+    return {"version": "1.5.0", "results": results}
 
 
 def _run_concurrent_baseline_update(
@@ -235,6 +277,270 @@ def test_custom_root_wrapper_succeeds_with_actual_detect_secrets_runner(
     assert result == 0
 
 
+def test_exact_reviewed_identity_is_visible_only_in_temporary_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    approved = _runtime_identity()
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_bytes(
+        (json.dumps(_baseline_document(), indent=2) + "\n").encode("utf-8")
+    )
+    before = baseline.read_bytes()
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_load_local_dispositions",
+        lambda _root: {approved},
+    )
+    seen_overlay: list[Path] = []
+
+    def runner(arguments: list[str]) -> int:
+        overlay_path = _baseline_path(arguments)
+        assert overlay_path is not None
+        assert overlay_path != baseline.resolve()
+        seen_overlay.append(overlay_path)
+        document = json.loads(overlay_path.read_text(encoding="utf-8"))
+        assert approved in extract_findings(document, artifact="test overlay")
+        return 0
+
+    result = detect_secrets_wrapper.run_detect_secrets_hook(
+        ["--baseline", str(baseline), "tests/fixture.py"], runner
+    )
+
+    assert result == 0
+    assert len(seen_overlay) == 1
+    assert baseline.read_bytes() == before
+    assert approved not in extract_findings(
+        json.loads(baseline.read_text(encoding="utf-8")), artifact="real baseline"
+    )
+
+
+@pytest.mark.parametrize("changed_field", ["path", "type", "digest"])
+def test_reviewed_identity_near_miss_remains_unsuppressed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed_field: str,
+) -> None:
+    approved = _runtime_identity()
+    if changed_field == "path":
+        scanned = FindingIdentity(
+            "tests/other.py", approved.finding_type, approved.hashed_secret, 1
+        )
+    elif changed_field == "type":
+        scanned = FindingIdentity(
+            approved.path, "Base64 High Entropy String", approved.hashed_secret, 1
+        )
+    else:
+        scanned = _runtime_identity(approved.path, approved.finding_type)
+
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_text(
+        json.dumps(_baseline_document(), indent=2) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_load_local_dispositions",
+        lambda _root: {approved},
+    )
+
+    def runner(arguments: list[str]) -> int:
+        overlay_path = _baseline_path(arguments)
+        assert overlay_path is not None
+        overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+        known = extract_findings(overlay, artifact="test overlay")
+        return 0 if scanned in known else 1
+
+    result = detect_secrets_wrapper.run_detect_secrets_hook(
+        ["--baseline", str(baseline), "tests/fixture.py"], runner
+    )
+
+    assert result == 1
+    assert scanned not in extract_findings(
+        json.loads(baseline.read_text(encoding="utf-8")), artifact="real baseline"
+    )
+
+
+def test_line_number_update_persists_only_original_baseline_identities(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    existing = _runtime_identity(path="tests/existing.py")
+    approved = _runtime_identity(path="tests/approved.py")
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_text(
+        json.dumps(_baseline_document(existing), indent=2) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_load_local_dispositions",
+        lambda _root: {approved},
+    )
+
+    def runner(arguments: list[str]) -> int:
+        overlay_path = _baseline_path(arguments)
+        assert overlay_path is not None
+        document = json.loads(overlay_path.read_text(encoding="utf-8"))
+        updated = False
+        for findings in document["results"].values():
+            for finding in findings:
+                if finding["hash" + "ed_" + "se" + "cret"] == existing.hashed_secret:
+                    finding["line_number"] = 19
+                    updated = True
+        assert updated
+        overlay_path.write_text(json.dumps(document), encoding="utf-8")
+        return 3
+
+    result = detect_secrets_wrapper.run_detect_secrets_hook(
+        ["--baseline", str(baseline), "tests/existing.py"], runner
+    )
+
+    document = json.loads(baseline.read_text(encoding="utf-8"))
+    persisted = extract_findings(document, artifact="updated real baseline")
+    assert result == 3
+    assert existing in persisted
+    assert approved not in persisted
+    assert document["results"][existing.path][0]["line_number"] == 19
+
+
+def test_local_policy_defaults_to_immutable_head_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identity = _runtime_identity()
+    head = "a" * 40
+    monkeypatch.delenv(detect_secrets_wrapper._OWNER_DISPOSITION_OPT_IN, raising=False)
+    monkeypatch.setattr(
+        detect_secrets_wrapper, "_repository_root", lambda _root: tmp_path
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_git",
+        lambda _root, *_args: subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=f"{head}\n".encode(), stderr=b""
+        ),
+    )
+    loaded: list[tuple[str, Path]] = []
+
+    def trusted_loader(source: str, *, repository_root: Path) -> set[FindingIdentity]:
+        loaded.append((source, repository_root))
+        return {identity}
+
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "load_trusted_base_false_positive_dispositions",
+        trusted_loader,
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "load_owner_authored_candidate_false_positive_dispositions",
+        lambda **_kwargs: pytest.fail("candidate policy must not load by default"),
+    )
+
+    assert detect_secrets_wrapper._load_local_dispositions(tmp_path) == {identity}
+    assert loaded == [(head, tmp_path)]
+
+
+def test_local_candidate_policy_requires_explicit_staged_clean_opt_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identity = _runtime_identity()
+    monkeypatch.setenv(detect_secrets_wrapper._OWNER_DISPOSITION_OPT_IN, "1")
+    monkeypatch.setattr(
+        detect_secrets_wrapper, "_repository_root", lambda _root: tmp_path
+    )
+    checked: list[Path] = []
+    loaded: list[Path] = []
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_candidate_policy_is_staged_and_clean",
+        lambda root: checked.append(root),
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "load_owner_authored_candidate_false_positive_dispositions",
+        lambda *, repository_root: loaded.append(repository_root) or {identity},
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "load_trusted_base_false_positive_dispositions",
+        lambda *_args, **_kwargs: pytest.fail("HEAD source must not load on opt-in"),
+    )
+
+    assert detect_secrets_wrapper._load_local_dispositions(tmp_path) == {identity}
+    assert checked == [tmp_path]
+    assert loaded == [tmp_path]
+
+
+def test_local_candidate_policy_fails_when_not_staged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(detect_secrets_wrapper._OWNER_DISPOSITION_OPT_IN, "1")
+    monkeypatch.setattr(
+        detect_secrets_wrapper, "_repository_root", lambda _root: tmp_path
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_git",
+        lambda _root, *_args: subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"", stderr=b""
+        ),
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "load_owner_authored_candidate_false_positive_dispositions",
+        lambda **_kwargs: pytest.fail("unstaged candidate policy must not load"),
+    )
+
+    with pytest.raises(detect_secrets_wrapper.BaselineArtifactError):
+        detect_secrets_wrapper._load_local_dispositions(tmp_path)
+
+
+def test_local_candidate_policy_fails_when_worktree_differs_from_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(detect_secrets_wrapper._OWNER_DISPOSITION_OPT_IN, "1")
+    monkeypatch.setattr(
+        detect_secrets_wrapper, "_repository_root", lambda _root: tmp_path
+    )
+    statuses = iter((1, 1))
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_git",
+        lambda _root, *_args: subprocess.CompletedProcess(
+            args=[], returncode=next(statuses), stdout=b"", stderr=b""
+        ),
+    )
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "load_owner_authored_candidate_false_positive_dispositions",
+        lambda **_kwargs: pytest.fail("dirty candidate policy must not load"),
+    )
+
+    with pytest.raises(detect_secrets_wrapper.BaselineArtifactError):
+        detect_secrets_wrapper._load_local_dispositions(tmp_path)
+
+
+def test_invalid_local_policy_stops_before_running_scanner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_text(
+        json.dumps(_baseline_document(), indent=2) + "\n", encoding="utf-8"
+    )
+
+    def invalid_policy(_root: Path) -> set[FindingIdentity]:
+        raise detect_secrets_wrapper.BaselineArtifactError("invalid disposition policy")
+
+    monkeypatch.setattr(
+        detect_secrets_wrapper, "_load_local_dispositions", invalid_policy
+    )
+    calls: list[list[str]] = []
+
+    with pytest.raises(detect_secrets_wrapper.BaselineArtifactError):
+        detect_secrets_wrapper.run_detect_secrets_hook(
+            ["--baseline", str(baseline)],
+            lambda arguments: calls.append(arguments) or 0,
+        )
+    assert calls == []
+
+
 def test_precommit_keeps_filename_filtering_and_example_exclusions() -> None:
     config = yaml.safe_load(Path(".pre-commit-config.yaml").read_text(encoding="utf-8"))
     hook = next(
@@ -398,3 +704,268 @@ def test_detect_secrets_transaction_is_serialized_across_processes(
         "app/first.py",
         "app/second.py",
     ]
+
+
+def test_disposition_overlay_restores_canonical_self_filter_and_stabilizes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    existing = _runtime_identity(path="tests/existing.py")
+    approved = _runtime_identity(path="tests/reviewed.py")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    baseline = repository / ".secrets.baseline"
+    other_filter = {
+        "path": "detect_secrets.filters.allowlist.is_line_allowlisted",
+        "pattern": ["fixture-only"],
+    }
+    self_filter = {
+        "path": "detect_secrets.filters.common.is_baseline_file",
+        "filename": str(tmp_path / "stale-overlay" / ".secrets.baseline"),
+    }
+    document = _baseline_document(existing)
+    document["filters_used"] = [other_filter, self_filter]
+    document["generated_at"] = "initial-scan"
+    baseline.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_load_local_dispositions",
+        lambda _root: {approved},
+    )
+
+    overlay_paths: list[Path] = []
+    filter_paths_seen_by_runner: list[str] = []
+    approved_lines_before_scan: list[int] = []
+    approved_lines_after_scan: list[int] = []
+
+    def runner(arguments: list[str]) -> int:
+        overlay_path = _baseline_path(arguments)
+        assert overlay_path is not None
+        overlay_path = overlay_path.resolve()
+        overlay_paths.append(overlay_path)
+        current = json.loads(overlay_path.read_text(encoding="utf-8"))
+        baseline_filters = [
+            item
+            for item in current["filters_used"]
+            if item.get("path") == "detect_secrets.filters.common.is_baseline_file"
+        ]
+        assert len(baseline_filters) == 1
+        baseline_filter = baseline_filters[0]
+        filter_paths_seen_by_runner.append(baseline_filter["filename"])
+        baseline_filter["filename"] = str(overlay_path)
+
+        approved_finding = current["results"][approved.path][0]
+        approved_lines_before_scan.append(approved_finding["line_number"])
+        approved_finding["line_number"] = 23
+        approved_lines_after_scan.append(approved_finding["line_number"])
+        if len(overlay_paths) == 1:
+            current["results"][existing.path][0]["line_number"] = 19
+        current["generated_at"] = f"scan-{len(overlay_paths)}"
+        overlay_path.write_text(json.dumps(current), encoding="utf-8")
+        return 3
+
+    first_result = run_detect_secrets_hook(
+        ["-C", str(repository), "--baseline=.secrets.baseline", "tests/existing.py"],
+        runner,
+    )
+    after_first = json.loads(baseline.read_text(encoding="utf-8"))
+    after_first_bytes = baseline.read_bytes()
+    second_result = run_detect_secrets_hook(
+        ["-C", str(repository), "--baseline=.secrets.baseline", "tests/existing.py"],
+        runner,
+    )
+    after_second = json.loads(baseline.read_text(encoding="utf-8"))
+
+    assert first_result == 3
+    assert second_result == 0
+    assert len(overlay_paths) == 2
+    assert overlay_paths[0] != overlay_paths[1]
+    assert [Path(path).resolve() for path in filter_paths_seen_by_runner] == (
+        overlay_paths
+    )
+    assert approved_lines_before_scan == [1, 1]
+    assert approved_lines_after_scan == [23, 23]
+    assert baseline.read_bytes() == after_first_bytes
+    expected_filters = [
+        other_filter,
+        {
+            "path": "detect_secrets.filters.common.is_baseline_file",
+            "filename": ".secrets.baseline",
+        },
+    ]
+    assert after_first["filters_used"] == expected_filters
+    assert after_second["filters_used"] == after_first["filters_used"]
+    assert after_first["generated_at"] == "scan-1"
+    assert after_second["generated_at"] == "scan-1"
+    persisted = extract_findings(after_second, artifact="stable baseline")
+    assert existing in persisted
+    assert approved not in persisted
+    assert after_second["results"][existing.path][0]["line_number"] == 19
+
+
+def test_stale_self_filter_is_committed_when_scan_returns_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    approved = _runtime_identity(path="tests/approved.py")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    baseline = repository / ".secrets.baseline"
+    other_filter = {
+        "path": "detect_secrets.filters.allowlist.is_line_allowlisted",
+        "pattern": ["fixture-only"],
+    }
+    stale_filter = {
+        "path": "detect_secrets.filters.common.is_baseline_file",
+        "filename": str(tmp_path / "old-overlay" / ".secrets.baseline"),
+    }
+    document = _baseline_document()
+    document["filters_used"] = [other_filter, stale_filter]
+    baseline.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_load_local_dispositions",
+        lambda _root: {approved},
+    )
+
+    seen_overlay_paths: list[tuple[str, str]] = []
+
+    def no_change_runner(arguments: list[str]) -> int:
+        overlay_path = _baseline_path(arguments)
+        assert overlay_path is not None
+        current = json.loads(overlay_path.read_text(encoding="utf-8"))
+        self_filter = next(
+            item
+            for item in current["filters_used"]
+            if item.get("path") == "detect_secrets.filters.common.is_baseline_file"
+        )
+        seen_overlay_paths.append(
+            (str(overlay_path.resolve()), self_filter["filename"])
+        )
+        return 0
+
+    arguments = [
+        "-C",
+        str(repository),
+        "--baseline=.secrets.baseline",
+        "tests/existing.py",
+    ]
+    first_result = run_detect_secrets_hook(arguments, no_change_runner)
+    repaired = json.loads(baseline.read_text(encoding="utf-8"))
+    second_result = run_detect_secrets_hook(arguments, no_change_runner)
+    after_second = json.loads(baseline.read_text(encoding="utf-8"))
+
+    assert first_result == 3
+    assert second_result == 0
+    assert len(seen_overlay_paths) == 2
+    assert seen_overlay_paths[0][0] != seen_overlay_paths[1][0]
+    assert all(
+        Path(actual).resolve() == Path(recorded).resolve()
+        for actual, recorded in seen_overlay_paths
+    )
+    expected_filters = [
+        other_filter,
+        {
+            "path": "detect_secrets.filters.common.is_baseline_file",
+            "filename": ".secrets.baseline",
+        },
+    ]
+    assert repaired["filters_used"] == expected_filters
+    assert after_second["filters_used"] == expected_filters
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        None,
+        {"filters_used": "invalid"},
+        {
+            "filters_used": [
+                {
+                    "path": "detect_secrets.filters.common.is_baseline_file",
+                    "filename": ".secrets.baseline",
+                },
+                {
+                    "path": "detect_secrets.filters.common.is_baseline_file",
+                    "filename": ".secrets.baseline",
+                },
+            ]
+        },
+        {"filters_used": [{"path": "detect_secrets.filters.common.is_baseline_file"}]},
+    ],
+)
+def test_invalid_self_filter_metadata_fails_closed(document: object) -> None:
+    with pytest.raises(detect_secrets_wrapper.BaselineArtifactError):
+        detect_secrets_wrapper._baseline_filter_entries(document)
+
+
+def test_empty_self_filter_filename_fails_closed() -> None:
+    with pytest.raises(detect_secrets_wrapper.BaselineArtifactError):
+        detect_secrets_wrapper._set_baseline_filter_filename({"filters_used": []}, "")
+
+
+def test_external_baseline_filter_uses_normalized_caller_spelling(
+    tmp_path: Path,
+) -> None:
+    scan_root = tmp_path / "repository"
+    scan_root.mkdir()
+    outside_baseline = tmp_path / "outside" / ".secrets.baseline"
+
+    assert (
+        detect_secrets_wrapper._canonical_baseline_filter_filename(
+            outside_baseline, scan_root, "../outside/.secrets.baseline"
+        )
+        == "../outside/.secrets.baseline"
+    )
+
+
+def test_disposition_only_scan_rejects_concurrent_baseline_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    approved = _runtime_identity(path="tests/reviewed.py")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    baseline = repository / ".secrets.baseline"
+    baseline.write_bytes(
+        (json.dumps(_baseline_document(), indent=2) + "\n").encode("utf-8")
+    )
+    original_bytes = baseline.read_bytes()
+    concurrent_bytes: list[bytes] = []
+    monkeypatch.setattr(
+        detect_secrets_wrapper,
+        "_load_local_dispositions",
+        lambda _root: {approved},
+    )
+
+    def runner(arguments: list[str]) -> int:
+        overlay_path = _baseline_path(arguments)
+        assert overlay_path is not None
+        overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+        approved_finding = overlay["results"][approved.path][0]
+        assert approved_finding["line_number"] == 1
+        approved_finding["line_number"] = 23
+        overlay["generated_at"] = "scanner-only-update"
+        overlay_path.write_text(json.dumps(overlay), encoding="utf-8")
+
+        concurrent_document = json.loads(baseline.read_text(encoding="utf-8"))
+        concurrent_document["generated_at"] = "concurrent-editor-update"
+        baseline.write_bytes(
+            (json.dumps(concurrent_document, indent=2) + "\n").encode("utf-8")
+        )
+        concurrent_bytes.append(baseline.read_bytes())
+        return 3
+
+    with pytest.raises(
+        BaselineArtifactError, match="baseline changed during scanner update"
+    ):
+        run_detect_secrets_hook(
+            [
+                "-C",
+                str(repository),
+                "--baseline=.secrets.baseline",
+                "tests/existing.py",
+            ],
+            runner,
+        )
+
+    assert concurrent_bytes
+    assert baseline.read_bytes() == concurrent_bytes[0]
+    assert baseline.read_bytes() != original_bytes

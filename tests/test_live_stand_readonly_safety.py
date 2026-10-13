@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from scripts import live_stand
+from tests.helpers.synthetic_credentials import make_test_password
 
 
 def test_status_does_not_recreate_missing_owner_key_or_touch_stand_files(
@@ -49,8 +50,11 @@ def test_status_does_not_recreate_missing_owner_key_or_touch_stand_files(
     )
     vapid_before = vapid_file.read_bytes()
     password_file = worktree / live_stand.ADMIN_PASSWORD_FILE
+    stored_password = make_test_password(
+        length=18, required_classes=frozenset({"lower", "symbol"})
+    )
     password_file.write_text(
-        json.dumps({"password": "synthetic-password"}),  # pragma: allowlist secret
+        json.dumps({"password": stored_password}),
         encoding="utf-8",
     )
     password_before = password_file.read_bytes()

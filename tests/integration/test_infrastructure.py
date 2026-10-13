@@ -34,7 +34,7 @@ def nats_server():
     from testcontainers.core.container import DockerContainer
 
     with DockerContainer(
-        "nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"
+        "nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6"
     ).with_exposed_ports(4222) as nats:
         yield nats
 

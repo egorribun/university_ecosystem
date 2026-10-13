@@ -263,15 +263,15 @@ def upgrade() -> None:
             "push_subscriptions",
             type_="foreignkey",
         )
-    if "push_subscriptions_user_id_fkey" not in push_sub_fks:
-        op.create_foreign_key(
-            "push_subscriptions_user_id_fkey",
-            "push_subscriptions",
-            "users",
-            ["user_id"],
-            ["id"],
-            ondelete="CASCADE",
-        )
+    # The inspector set is a pre-DDL snapshot; rebuild the FK after any drop.
+    op.create_foreign_key(
+        "push_subscriptions_user_id_fkey",
+        "push_subscriptions",
+        "users",
+        ["user_id"],
+        ["id"],
+        ondelete="CASCADE",
+    )
     # Check column existence before dropping
     push_sub_columns = (
         {c["name"] for c in inspector.get_columns("push_subscriptions")}

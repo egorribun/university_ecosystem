@@ -91,15 +91,14 @@ def test_phase_four_policy_accounts_for_all_remaining_exceptions() -> None:
             Path(__file__).resolve().parents[1] / "quality/model-default-policy.json"
         ).read_text(encoding="utf-8")
     )
-    # Later schema revisions advance the inventory head; BE-02 phase four
-    # itself remains pinned to its original revision.
-    assert policy["expected"]["migration_head"] == "202610120001"
+    # AUD180 adds the news ownership table, so inventory follows the graph head.
+    assert policy["expected"]["migration_head"] == "202610120002"
     assert policy["expected"]["effective_counts"] == {
-        "both": 80,
-        "python_only": 39,
+        "both": 81,
+        "python_only": 40,
         "server_only": 0,
     }
-    assert len(policy["exceptions"]) == 39
+    assert len(policy["exceptions"]) == 40
 
 
 def test_conflicting_timestamp_default_is_rejected() -> None:

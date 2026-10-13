@@ -1,4 +1,5 @@
 import { expect, test } from "./test"
+import { JSDOM } from "jsdom"
 
 function nonceFromPolicy(policy: string | undefined): string {
   const nonce = policy?.match(/script-src[^;]*'nonce-([^']+)'/u)?.[1]
@@ -10,20 +11,19 @@ function expectNativeNoncePair(headers: Record<string, string>, html: string): s
   const nonce = nonceFromPolicy(headers["content-security-policy"])
   expect(headers["content-security-policy-report-only"]).toContain(`'nonce-${nonce}'`)
 
-  const nonceMeta = html
-    .match(/<meta\b[^>]*>/gu)
-    ?.find((tag) => /\bproperty="csp-nonce"/u.test(tag))
-  const metaNonce = nonceMeta?.match(/\bcontent="([^"]+)"/u)?.[1]
+  const { document } = new JSDOM(html).window
+  const nonceMeta = document.querySelector<HTMLMetaElement>('meta[property="csp-nonce"]')
+  const metaNonce = nonceMeta?.getAttribute("content")
   expect(metaNonce).toBe(nonce)
 
   // RootShell emits a trusted inline bootstrap; an external bundle nonce alone is insufficient.
-  const inlineScripts = Array.from(html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/giu))
+  const inlineScripts = Array.from(document.querySelectorAll("script"))
   expect(
     inlineScripts.some(
-      ([, attributes = "", body = ""]) =>
-        !/(?:^|\s)src\s*=/iu.test(attributes) &&
-        attributes.match(/(?:^|\s)nonce\s*=\s*"([^"]+)"/iu)?.[1] === nonce &&
-        body.trim().length > 0
+      (script) =>
+        !script.hasAttribute("src") &&
+        script.getAttribute("nonce") === nonce &&
+        (script.textContent?.trim().length ?? 0) > 0
     )
   ).toBe(true)
   expect(headers["cache-control"]).toBe("no-store, private, max-age=0")

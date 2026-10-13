@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from scripts import backup_db
+from tests.helpers.synthetic_credentials import make_test_url_password
 
 _PREFIX_NOT_SUPPLIED = object()
 
@@ -1207,9 +1208,7 @@ def test_restore_snapshot_cli_requires_an_explicit_target_public_base_url() -> N
 def test_restore_snapshot_cli_reads_admin_url_from_environment_and_passes_prefix(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    secret = (
-        "synthetic-admin-secret"  # pragma: allowlist secret -- synthetic test fixture
-    )
+    secret = make_test_url_password()
     backup_settings = _s3_settings("synthetic-backups")
     storage_settings = _s3_settings("synthetic-restore")
     calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []

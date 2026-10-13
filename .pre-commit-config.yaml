@@ -118,7 +118,7 @@ repos:
 
   # Temporary upstream PR #745 pin; return to a supported release once it includes cache-mode.
   - repo: https://github.com/rhysd/actionlint
-    rev: 5dc52e8daa4ef51bfd76a648128474bd41d65df0  # pragma: allowlist secret -- immutable upstream source revision
+    rev: 5dc52e8daa4ef51bfd76a648128474bd41d65df0  #  -- immutable upstream source revision
     hooks:
       - id: actionlint
 

@@ -40,7 +40,6 @@ from app.core.ratelimit.exceptions import (
 )
 from app.core.static import PublicStaticFiles
 from app.core.versioning import API_V1_PREFIX, API_VERSION
-from app.graphql.schema import graphql_router
 from app.openapi import install_custom_openapi
 from app.services.file_scanner import (
     scan_for_malware as _scan_for_malware,
@@ -159,7 +158,6 @@ app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)
 app.include_router(websocket_router)
 app.include_router(ws_ticket_router)  # RZ-W14-01: POST /ws/ticket
-app.include_router(graphql_router, prefix="/graphql", include_in_schema=False)
 install_custom_openapi(app)
 
 __all__ = ["_ensure_vary_header", "app", "scan_for_malware"]

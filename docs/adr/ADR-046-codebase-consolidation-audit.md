@@ -50,9 +50,13 @@ helper `tests/minio_chaos_client.py`.
 
 ### Deliberately kept
 
-- **GraphQL** stays: it is documented as a public API surface. Its
-  authentication now matches REST. There is no in-repository consumer, so a
-  future decision to retire it needs external-client evidence.
+- **Backend GraphQL** was retained at the time of this audit because it was
+  documented as a public API surface. The owner decision of 2026-10-12
+  supersedes that choice for the MVP: FastAPI does not mount `/graphql`, and the
+  public edge no longer forwards that path to the backend. AUD-353, AUD-367,
+  and AUD-448 close for this release by endpoint removal. The Python schema,
+  resolver, and dependency files remain pending a separate source inventory;
+  this decision does not affect the Go file-processor GraphQL runtime (AUD-368).
 - **Python `/ws/chat` fallback** stays for topologies without ws-hub; its wire
   format differs from ws-hub for control errors (`message` vs `code`/`detail`),
   which the frontend schema tolerates. A shared frame schema is follow-up work.

@@ -3,10 +3,12 @@
 ## Current contract
 
 The FastAPI application publishes semantic API version `1.0.0`. Its REST
-surface is mounted under `/api/v1`; health, WebSocket, GraphQL and well-known
-discovery endpoints intentionally use infrastructure-specific root paths.
-Interactive documentation and `/api/openapi.json` are available only in
-development-like environments.
+surface is mounted under `/api/v1`; health, WebSocket, and well-known
+discovery endpoints intentionally use infrastructure-specific root paths. The
+backend GraphQL endpoint is excluded from the MVP and is not a FastAPI route;
+see [ADR-046](adr/ADR-046-codebase-consolidation-audit.md). The Go
+file-processor GraphQL runtime is a separate service. Interactive documentation
+and `/api/openapi.json` are available only in development-like environments.
 
 The implementation lives in
 [`app/main.py`](../app/main.py), while the version and prefix constants are

@@ -276,7 +276,7 @@ async def test_sent_path_normalizes_payload(
         url="/rich",
         badge="/badge.png",
         tag="rich-tag",
-        payload_data={"extra": "value"},
+        payload_data={"extra": "value", "recipientUserId": "spoofed-recipient"},
         actions=[
             {"action": "open", "title": "Open", "icon": "/i.png", "junk": "drop"},
             {"action": "no-title"},  # filtered: missing title
@@ -299,6 +299,7 @@ async def test_sent_path_normalizes_payload(
     assert sent_payload["data"] == {
         "extra": "value",
         "notificationId": str(sent_payload["data"]["notificationId"]),
+        "recipientUserId": str(user.id),
         "topic": "system.release",
         "type": None,
         "url": "/rich",
@@ -677,7 +678,11 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
         db_session,
         notification_ids=[notification_id, notification_id],
         channel="push",
-        payload_data={"category": "news", "articleId": "42"},
+        payload_data={
+            "category": "news",
+            "articleId": "42",
+            "recipientUserId": "spoofed-recipient",
+        },
     )
     second = await notifications_delivery.redeliver_notifications(
         db_session,
@@ -696,6 +701,7 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
         "category": "news",
         "articleId": "42",
         "notificationId": str(notification_id),
+        "recipientUserId": str(user.id),
         "topic": "news.published",
         "type": "news",
         "url": "/news/42",

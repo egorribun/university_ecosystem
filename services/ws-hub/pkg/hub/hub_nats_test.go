@@ -245,7 +245,7 @@ func TestHandleCacheInvalidation_ValidSignature(t *testing.T) {
 	const user = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	auth := &recordingAuthClient{}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	handler := h.handleCacheInvalidation(context.Background())
 
 	payload := signedInvalidationPayload(t, "internal-secret",
@@ -277,7 +277,7 @@ func TestHandleCacheInvalidation_WildcardUserInvalidation(t *testing.T) {
 
 	const user = "11111111-1111-1111-1111-111111111111"
 	auth := &recordingAuthClient{}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	payload := signedInvalidationPayload(t, "internal-secret", invalidationData{
 		Timestamp: 1234,
 		UserID:    user,
@@ -333,7 +333,7 @@ func TestHandleCacheInvalidation_InvalidIdentifiersAreTermed(t *testing.T) {
 			}
 
 			auth := &recordingAuthClient{}
-			h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+			h := newNatsTestHub(auth, "internal-secret", 10)
 			h.handleCacheInvalidation(context.Background())(&nats.Msg{
 				Subject: "cache.invalidate",
 				Data:    signedInvalidationPayload(t, "internal-secret", tc.data),
@@ -380,7 +380,7 @@ func TestHandleCacheInvalidation_EvictsOnlyRemovedUsersRoom(t *testing.T) {
 	const removedUser = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	auth := &membershipRecordingAuthClient{memberships: map[[2]string]bool{{removedUser, room}: false}}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	removed := newClientOn(h, serverConn, "removed-client", removedUser)
 	other := newClientOn(h, otherServerConn, "other-client", "other-user")
 	removed.JoinRoom(room)
@@ -417,7 +417,7 @@ func TestHandleCacheInvalidation_ReplayedEvictionKeepsReaddedMember(t *testing.T
 	const user = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	auth := &membershipRecordingAuthClient{memberships: map[[2]string]bool{{user, room}: true}}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	client := newClientOn(h, serverConn, "readded-client", user)
 	client.JoinRoom(room)
 
@@ -461,7 +461,7 @@ func TestHandleCacheInvalidation_RefreshFailureNaksWithoutAck(t *testing.T) {
 		memberships: map[[2]string]bool{{user, room}: true},
 		refreshErr:  errors.New("redis invalidation unavailable"),
 	}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	client := newClientOn(h, serverConn, "unconfirmed-revocation", user)
 	client.JoinRoom(room)
 	require.True(t, authorizeRoomJoinForTest(h, context.Background(), user, room))
@@ -502,7 +502,7 @@ func TestBroadcastRecipientSnapshotDoesNotDeliverAfterRoomEviction(t *testing.T)
 	const user = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	auth := &membershipRecordingAuthClient{memberships: map[[2]string]bool{{user, room}: false}}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	client := newClientOn(h, serverConn, "removed-client", user)
 	client.JoinRoom(room)
 	msg := &Message{Type: "new_message", Room: room}
@@ -532,7 +532,7 @@ func TestReplayFlushQueuedFrameIsNotWrittenAfterRoomRevocation(t *testing.T) {
 	const user = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	auth := &membershipRecordingAuthClient{memberships: map[[2]string]bool{{user, room}: false}}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	client := newClientOn(h, serverConn, "replay-revoked-client", user)
 	client.Send = make(chan []byte, 1)
 	client.JoinRoom(room)
@@ -586,7 +586,7 @@ func TestRoomScopedErrorPayloadIsDroppedAfterRoomRevocation(t *testing.T) {
 	const user = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	auth := &membershipRecordingAuthClient{memberships: map[[2]string]bool{{user, room}: false}}
-	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h := newNatsTestHub(auth, "internal-secret", 10)
 	client := newClientOn(h, serverConn, "revoked-error-frame-client", user)
 	client.JoinRoom(room)
 	client.Send <- []byte(`{"type":"error","room":"22222222-2222-2222-2222-222222222222","code":"backend_error","detail":"private failure","payload":{"secret":"private-data"}}`)

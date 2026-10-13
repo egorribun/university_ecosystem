@@ -13,6 +13,7 @@ from app.models.chat import Chat
 from app.models.enums import UserRole
 from app.models.users import EducationPath, User, UserProfile
 from scripts import seed_demo_data
+from tests.helpers.synthetic_credentials import make_test_marker
 
 
 class ScalarRows:
@@ -175,9 +176,11 @@ async def test_demo_peer_and_dm_are_owned_idempotent_and_preserve_custom_fields(
     )
 
     group = SimpleNamespace(id=uuid4())
+    owner_hash_marker = make_test_marker(length=20)
     owner = User(
         email="synthetic.owner@example.test",
-        hashed_password="synthetic-owner-hash",  # pragma: allowlist secret -- synthetic messenger test password
+        #  -- synthetic messenger test password
+        hashed_password=owner_hash_marker,
         role=UserRole.STUDENT,
         is_active=True,
     )
@@ -185,9 +188,11 @@ async def test_demo_peer_and_dm_are_owned_idempotent_and_preserve_custom_fields(
     database = DemoMessengerSession([None], user_owner_responses=[None])
 
     peer = await seed_demo_data.seed_demo_peer_user(database, group)
+    third_party_hash_marker = make_test_marker(length=20)
     third_participant = User(
         email="synthetic.third@example.test",
-        hashed_password="synthetic-third-hash",  # pragma: allowlist secret -- synthetic messenger test password
+        #  -- synthetic messenger test password
+        hashed_password=third_party_hash_marker,
         role=UserRole.STUDENT,
     )
     third_participant.id = uuid4()
@@ -257,12 +262,14 @@ async def test_demo_peer_and_dm_are_owned_idempotent_and_preserve_custom_fields(
 async def test_reserved_peer_identity_conflict_fails_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    peer_hash_marker = make_test_marker(length=24)
     peer = SimpleNamespace(
         id=uuid4(),
         email=seed_demo_data.DEMO_PEER_EMAIL,
         role=UserRole.STUDENT,
         group_id=uuid4(),
-        hashed_password="synthetic-preserved-hash",  # pragma: allowlist secret -- synthetic messenger test password
+        #  -- synthetic messenger test password
+        hashed_password=peer_hash_marker,
     )
     database = DemoMessengerSession([peer], user_owner_responses=[None])
     monkeypatch.setattr(
@@ -275,18 +282,18 @@ async def test_reserved_peer_identity_conflict_fails_without_mutation(
         await seed_demo_data.seed_demo_peer_user(database, SimpleNamespace(id=uuid4()))
 
     assert database.added == []
-    assert (
-        peer.hashed_password == "synthetic-preserved-hash"  # pragma: allowlist secret
-    )
+    assert peer.hashed_password == peer_hash_marker
 
 
 @pytest.mark.asyncio
 async def test_reserved_peer_seed_key_collision_is_not_claimed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    key_owner_hash_marker = make_test_marker(length=14)
     key_owner = User(
         email="synthetic.unrelated@example.test",
-        hashed_password="synthetic-hash",  # pragma: allowlist secret -- synthetic messenger test password
+        #  -- synthetic messenger test password
+        hashed_password=key_owner_hash_marker,
         role=UserRole.STUDENT,
     )
     key_owner.id = uuid4()
@@ -313,7 +320,7 @@ async def test_reserved_peer_with_another_role_is_not_promoted_or_reset(
         id=uuid4(),
         email=seed_demo_data.DEMO_PEER_EMAIL,
         role=UserRole.TEACHER,
-        hashed_password="synthetic-preserved-hash",  # pragma: allowlist secret
+        hashed_password="synthetic-preserved-hash",
     )
     database = DemoMessengerSession([account], user_owner_responses=[None])
     monkeypatch.setattr(
@@ -326,7 +333,7 @@ async def test_reserved_peer_with_another_role_is_not_promoted_or_reset(
         await seed_demo_data.seed_demo_peer_user(database, SimpleNamespace(id=uuid4()))
 
     assert account.role is UserRole.TEACHER
-    expected_hash = "synthetic-preserved-hash"  # pragma: allowlist secret
+    expected_hash = "synthetic-preserved-hash"
     assert account.hashed_password == expected_hash
     assert database.added == []
 
@@ -335,13 +342,15 @@ async def test_reserved_peer_with_another_role_is_not_promoted_or_reset(
 async def test_duplicate_exact_dms_fail_closed_instead_of_choosing_one() -> None:
     owner = User(
         email="synthetic.owner@example.test",
-        hashed_password="synthetic-owner-hash",  # pragma: allowlist secret
+        hashed_password="synthetic-owner-hash",
         role=UserRole.STUDENT,
     )
     owner.id = uuid4()
+    peer_hash_marker = make_test_marker(length=19)
     peer = User(
         email="synthetic.peer@example.test",
-        hashed_password="synthetic-peer-hash",  # pragma: allowlist secret -- synthetic messenger test password
+        #  -- synthetic messenger test password
+        hashed_password=peer_hash_marker,
         role=UserRole.STUDENT,
     )
     peer.id = uuid4()

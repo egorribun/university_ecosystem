@@ -102,7 +102,7 @@ for those semantics:
   at an `HTTPRoute`, and rejects a request above its configured limit with 413.
   The dormant chart template isolates `/api/v1` on its own route and attaches
   the fixed `50Mi` limit there, preserving the Go Gateway as the HTTP/auth and
-  gRPC-dispatch owner. `/ws`, `/webtransport`, `/graphql`, and `/.well-known`
+  gRPC-dispatch owner. `/ws`, `/webtransport`, and `/.well-known`
   remain outside that body-buffer policy. The filter fully buffers each request
   before forwarding it; the externally managed Envoy data plane has no accepted
   concurrent-buffer memory budget, and this route does not prove the existing
@@ -114,7 +114,9 @@ body-limit scope and data-plane memory budget above, it needs a non-spoofable
 per-client rate and burst policy and a safe per-client connection policy, each
 covered by rendered contracts. No manual override exists. Route values continue
 to assign API/auth traffic to the Go Gateway, public JWKS to the backend,
-`/ws/ticket` to the Go Gateway, and `/ws/chat` to ws-hub.
+`/ws/ticket` to the Go Gateway, and `/ws/chat` to ws-hub. The backend GraphQL
+HTTP route is excluded from the MVP; the file-processor GraphQL runtime is a
+separate service and is unchanged.
 
 This review uses the pinned [Envoy Gateway v1.9 request-buffering](https://gateway.envoyproxy.io/v1.9/tasks/traffic/request-buffering/),
 [local-rate-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/local-rate-limit/),

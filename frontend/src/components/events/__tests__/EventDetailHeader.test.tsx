@@ -28,6 +28,9 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/utils/date", () => ({
   formatDate: formatDateMock,
 }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 import { EventDetailHeader } from "@/components/events/EventDetailHeader"
 
@@ -75,7 +78,9 @@ describe("EventDetailHeader", () => {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-      })
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
     )
     expect(screen.getByRole("button", { name: "events:detail.actions.share" })).toHaveAttribute(
       "aria-label",

@@ -12,6 +12,8 @@ import { uploadEventImage } from "@/api/events"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
 import type { Event, EventEditDraft } from "@/types/Event"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { resolveCampusEventDateRange } from "@/utils/eventDateTime"
 
 interface EventDetailEditDialogProps {
   open: boolean
@@ -39,6 +41,7 @@ export function EventDetailEditDialog({
 }: EventDetailEditDialogProps) {
   const { t, i18n } = useTranslation(EVENT_DIALOG_NAMESPACES)
   const queryClient = useQueryClient()
+  const campusTimezone = useCampusTimezone()
 
   const initialDraft: EventEditDraft = useMemo(
     () => ({
@@ -66,6 +69,12 @@ export function EventDetailEditDialog({
   const [imageLoading, setImageLoading] = useState(false)
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const dateRange = resolveCampusEventDateRange(
+    draft.starts_at ?? "",
+    draft.ends_at ?? "",
+    campusTimezone,
+    { startsAt: event.starts_at, endsAt: event.ends_at }
+  )
 
   // Create/revoke ObjectURL preview when user picks a new image
   useEffect(() => {
@@ -78,6 +87,14 @@ export function EventDetailEditDialog({
   }, [newImage])
 
   const handleSave = useCallback(async () => {
+    const dateRange = resolveCampusEventDateRange(
+      draft.starts_at ?? "",
+      draft.ends_at ?? "",
+      campusTimezone,
+      { startsAt: event.starts_at, endsAt: event.ends_at }
+    )
+    if (!dateRange.valid || !dateRange.startsAt || !dateRange.endsAt) return
+
     setLoading(true)
     try {
       // Upload image if changed
@@ -88,7 +105,12 @@ export function EventDetailEditDialog({
         setImageLoading(false)
       }
 
-      const update = { ...draft, image_url: imageUrl }
+      const update = {
+        ...draft,
+        starts_at: dateRange.startsAt,
+        ends_at: dateRange.endsAt,
+        image_url: imageUrl,
+      }
       delete update.id
       if (i18n.language === "en") {
         // The event response's source fields are localized by Accept-Language.
@@ -113,7 +135,20 @@ export function EventDetailEditDialog({
       setLoading(false)
       setImageLoading(false)
     }
-  }, [draft, newImage, event.id, i18n.language, queryClient, onSuccess, onError, onClose, t])
+  }, [
+    campusTimezone,
+    draft,
+    newImage,
+    event.id,
+    event.starts_at,
+    event.ends_at,
+    i18n.language,
+    queryClient,
+    onSuccess,
+    onError,
+    onClose,
+    t,
+  ])
 
   // Reset state when dialog closes
   const handleClose = useCallback(() => {
@@ -136,7 +171,9 @@ export function EventDetailEditDialog({
       onSave={() => void handleSave()}
       loading={loading}
       imageLoading={imageLoading}
-      dateError={false}
+      dateError={!dateRange.valid}
+      startDateError={dateRange.startError}
+      endDateError={dateRange.endError}
       normalizedTitle={normalizedTitle}
       normalizedLocation={normalizedLocation}
       newImage={newImage}

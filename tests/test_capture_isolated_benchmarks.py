@@ -276,25 +276,25 @@ def test_trusted_go_benchmark_overlay_is_pinned_and_materialized_outside_checkou
 def test_trusted_go_benchmark_bootstrap_provenance_is_explicit() -> None:
     assert (
         TRUSTED_GO_BENCHMARK_COMMIT
-        == "6a1d1a78a5a78e793b0df32fc6dea1f192b0732f"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+        == "6a1d1a78a5a78e793b0df32fc6dea1f192b0732f"  #  -- public Git/SHA-256 provenance
     )
     assert (
         TRUSTED_GO_BENCHMARK_PARENT
-        == "7fe9b621af3091ad88701c08c0f6441deecf8c26"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+        == "7fe9b621af3091ad88701c08c0f6441deecf8c26"  #  -- public Git/SHA-256 provenance
     )
     assert (
         TRUSTED_GO_BENCHMARK_TREE
-        == "9040080eb32793c6abf8964814e1bab3514593a8"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+        == "9040080eb32793c6abf8964814e1bab3514593a8"  #  -- public Git/SHA-256 provenance
     )
     assert TRUSTED_GO_BENCHMARK_PATH == "services/ws-hub/pkg/hub/hub_bench_test.go"
     assert (
         TRUSTED_GO_BENCHMARK_BLOB
-        == "02659ee9e5b86c832f9afda1e938e9e10da3d613"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+        == "02659ee9e5b86c832f9afda1e938e9e10da3d613"  #  -- public Git/SHA-256 provenance
     )
     assert (
         TRUSTED_GO_BENCHMARK_SHA256
         == (
-            "a3f340ebaad4ac8248f52e8a0989a2e97e2616c3481e9f7785ac9c90ceaf1018"  # pragma: allowlist secret -- public Git/SHA-256 provenance
+            "a3f340ebaad4ac8248f52e8a0989a2e97e2616c3481e9f7785ac9c90ceaf1018"  #  -- public Git/SHA-256 provenance
         )
     )
 

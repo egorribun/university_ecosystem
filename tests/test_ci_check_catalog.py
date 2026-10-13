@@ -373,6 +373,23 @@ def test_attempt_bound_sha_artifact_uses_attempt_provenance() -> None:
     ]
 
 
+def test_migration_artifact_metadata_does_not_weaken_required_gate() -> None:
+    value = _catalog()
+    workflows = value["workflows"]
+    assert isinstance(workflows, list)
+    ci = next(item for item in workflows if item["path"] == ".github/workflows/ci.yml")
+    jobs = ci["jobs"]
+    migration = jobs["db-migration-gate"]
+
+    assert migration["profile"] == "required-pr-main"
+    required_profile = value["profiles"]["required-pr-main"]
+    assert required_profile["classification"] == "required"
+    assert "pull_request_main" in required_profile["required_events"]
+    assert migration["artifacts"][0]["required"] is False
+    assert "db-migration-gate" in jobs["ci-success"]["needs"]
+    assert _errors(value) == []
+
+
 def test_workflow_and_job_additions_or_removals_fail_closed() -> None:
     value = _catalog()
     workflows = value["workflows"]

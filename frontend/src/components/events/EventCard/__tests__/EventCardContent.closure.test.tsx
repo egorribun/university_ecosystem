@@ -6,7 +6,10 @@ const { formatDateMock, useTranslationMock, translationMock } = vi.hoisted(() =>
   const translationMock = vi.fn((key: string) => key)
   return {
     formatDateMock: vi.fn((value: string) => `formatted:${value}`),
-    useTranslationMock: vi.fn(() => ({ t: translationMock })),
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
     translationMock,
   }
 })
@@ -38,6 +41,9 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/utils/date", () => ({
   formatDate: formatDateMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
 }))
 
 import EventCardContent from "@/components/events/EventCard/EventCardContent"
@@ -93,7 +99,9 @@ describe("EventCardContent closure", () => {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-      })
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
     )
     expect(translationMock).toHaveBeenCalledWith("events:card.statuses.open")
   })

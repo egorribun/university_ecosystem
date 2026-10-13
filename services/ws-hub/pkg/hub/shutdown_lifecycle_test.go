@@ -9,10 +9,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/quic-go/webtransport-go"
 	"github.com/stretchr/testify/assert"
@@ -89,6 +91,112 @@ func (s *blockingShutdownSession) SetReadDeadline(time.Time) error { return nil 
 func (s *blockingShutdownSession) SetWriteDeadline(time.Time) error { return nil }
 
 func (s *blockingShutdownSession) SetPongHandler(func(string) error) {}
+
+func TestHubStopWaitsForDetachedReplayWorker(t *testing.T) {
+	h := setupTestHub()
+	pullStarted := make(chan struct{})
+	releasePull := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releasePull) }) }
+	baseline := testutil.ToFloat64(ActiveGoroutines)
+	var pullCalls atomic.Int32
+	t.Cleanup(func() {
+		release()
+		h.Stop()
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	client := &Client{
+		ID:     "detached-replay-stop-client",
+		UserID: "detached-replay-stop-user",
+		Rooms:  make(map[string]bool),
+		Send:   make(chan []byte, 1),
+		Hub:    h,
+		ctx:    ctx,
+		cancel: cancel,
+	}
+	h.handleRegister(context.Background(), client)
+
+	h.js = &scriptedPullSubscription{pull: func(string, string, ...nats.SubOpt) (*nats.Subscription, error) {
+		if pullCalls.Add(1) == 1 {
+			close(pullStarted)
+		}
+		<-releasePull
+		return &nats.Subscription{}, nil
+	}}
+	const room = "detached-replay-stop-room"
+	replayCtx, state := client.prepareRoomReplay(ctx, room)
+	client.runRoomReplay(replayCtx, room, 0, "", state)
+	require.Eventually(t, func() bool {
+		select {
+		case <-pullStarted:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, time.Millisecond)
+
+	// The replay worker is now running, but its client leaves the active set
+	// before shutdown takes its snapshot. Stop must still join that worker.
+	h.handleUnregister(context.Background(), client)
+	h.mu.RLock()
+	_, stillActive := h.Clients[client.ID]
+	h.mu.RUnlock()
+	require.False(t, stillActive, "fixture must place the replay worker outside Stop's active-client snapshot")
+
+	stopDone := make(chan struct{})
+	go func() {
+		h.Stop()
+		close(stopDone)
+	}()
+	require.Eventually(t, func() bool { return h.stopped.Load() }, time.Second, time.Millisecond)
+
+	// Once shutdown seals admission, the production launch path must discard
+	// a prepared replay instead of adding work after Stop begins waiting.
+	lateParentCtx, cancelLateParent := context.WithCancel(context.Background())
+	t.Cleanup(cancelLateParent)
+	lateStateContext, cancelLateState := context.WithCancel(lateParentCtx)
+	t.Cleanup(cancelLateState)
+	lateState := &roomReplayState{
+		ctx:      lateStateContext,
+		cancel:   cancelLateState,
+		buffered: make(map[uint64][]byte),
+	}
+	client.replayMu.Lock()
+	client.replays[room+"-late"] = lateState
+	client.replayMu.Unlock()
+	require.True(t, h.stopped.Load(), "late replay setup must observe sealed shutdown admission")
+	require.NoError(t, lateParentCtx.Err(), "late replay caller must remain live to exercise shutdown admission")
+	require.NoError(t, lateStateContext.Err(), "prepared replay state must remain live before admission")
+	client.runRoomReplay(lateParentCtx, room+"-late", 0, "", lateState)
+	client.replayMu.Lock()
+	_, retainedLateState := client.replays[room+"-late"]
+	client.replayMu.Unlock()
+	require.False(t, retainedLateState, "replay admission rejected by Stop must clear its prepared barrier")
+	require.Equal(t, int32(1), pullCalls.Load(), "a rejected late replay must not start a second PullSubscribe worker")
+
+	stopReturnedBeforeReplayCleanup := false
+	select {
+	case <-stopDone:
+		stopReturnedBeforeReplayCleanup = true
+	case <-time.After(150 * time.Millisecond):
+	}
+	release()
+	require.Eventually(t, func() bool { return testutil.ToFloat64(ActiveGoroutines) == baseline-1 }, 2*time.Second, time.Millisecond)
+	select {
+	case <-stopDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop did not complete after replay cleanup")
+	}
+
+	cancelledReplayContext, cancelReplay := context.WithCancel(context.Background())
+	cancelReplay()
+	_, completed := client.replayOfflineMessagesContext(cancelledReplayContext, room, 0, "")
+	require.False(t, completed, "cancelled replay must stop before creating a pull subscription")
+	require.Equal(t, int32(1), pullCalls.Load(), "a replay cancelled before setup must not create another pull subscription")
+	require.False(t, stopReturnedBeforeReplayCleanup, "Stop returned while a detached replay worker still owned its PullSubscribe setup")
+}
 
 func TestHubStop_ClosesActiveClientAndStopsItsPumps(t *testing.T) {
 	h := setupTestHub()
@@ -1052,4 +1160,232 @@ func TestRegisterClientRejectsDuplicateClientReservation(t *testing.T) {
 		t.Fatal("Run did not exit after duplicate-reservation test")
 	}
 	assert.Equal(t, baseline, testutil.ToFloat64(ActiveConnections))
+}
+
+type closeNotifyingSession struct {
+	*recordingSession
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (s *closeNotifyingSession) Close() error {
+	s.once.Do(func() { close(s.closed) })
+	return s.recordingSession.Close()
+}
+
+func TestCloseClientTransportsInParallelDoesNotWaitForEarlierSocket(t *testing.T) {
+	blockedSession := &closeNotifyingSession{recordingSession: &recordingSession{}, closed: make(chan struct{})}
+	readySession := &closeNotifyingSession{recordingSession: &recordingSession{}, closed: make(chan struct{})}
+	blocked := &Client{Conn: blockedSession}
+	ready := &Client{Conn: readySession}
+	blocked.writeMu.Lock()
+	done := make(chan struct{})
+	go func() {
+		closeClientTransportsInParallel([]*Client{blocked, ready}, func(client *Client) {
+			client.closeTransportWithControlFrame(1001, "test shutdown")
+		})
+		close(done)
+	}()
+	select {
+	case <-readySession.closed:
+		blocked.writeMu.Unlock()
+	case <-time.After(time.Second):
+		blocked.writeMu.Unlock()
+		<-done
+		t.Fatal("a socket waiting on writeMu serialized another transport close")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("parallel transport close did not finish after releasing writeMu")
+	}
+}
+
+func TestDisconnectSessionContextRevokesAllTargetsBeforeTransportCloses(t *testing.T) {
+	h := setupTestHub()
+	t.Cleanup(h.Stop)
+	clients := make([]*Client, 0, 2)
+	for _, id := range []string{"revocation-fanout-a", "revocation-fanout-b"} {
+		clientCtx, cancel := context.WithCancel(context.Background())
+		client := &Client{
+			ID:         id,
+			UserID:     "revocation-fanout-user",
+			SessionJTI: "revocation-fanout-jti",
+			Conn:       &recordingSession{},
+			Rooms:      make(map[string]bool),
+			Send:       make(chan []byte, 1),
+			Hub:        h,
+			ctx:        clientCtx,
+			cancel:     cancel,
+		}
+		client.writeMu.Lock()
+		clients = append(clients, client)
+		h.mu.Lock()
+		h.Clients[id] = client
+		h.mu.Unlock()
+	}
+	unlocked := false
+	unlockWrites := func() {
+		if unlocked {
+			return
+		}
+		for _, client := range clients {
+			client.writeMu.Unlock()
+		}
+		unlocked = true
+	}
+	defer unlockWrites()
+	done := make(chan struct{})
+	go func() {
+		h.disconnectSessionContext(context.Background(), "revocation-fanout-jti", 1008, "revoked")
+		close(done)
+	}()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	for _, client := range clients {
+		select {
+		case <-client.ctx.Done():
+		case <-deadline.C:
+			unlockWrites()
+			<-done
+			t.Fatal("a blocked earlier socket delayed cancellation of another revoked session")
+		}
+	}
+	for _, client := range clients {
+		if !client.sessionRevoked.Load() {
+			unlockWrites()
+			<-done
+			t.Fatal("session teardown cancelled a client before revoking every matching action gate")
+		}
+	}
+	select {
+	case <-done:
+		unlockWrites()
+		t.Fatal("session teardown completed while transport write locks were held")
+	default:
+	}
+	unlockWrites()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("session teardown did not finish after transport locks were released")
+	}
+}
+
+func TestScheduleClientEvictionDuringStopDefersCloseUntilRunDrains(t *testing.T) {
+	h := setupTestHub()
+	t.Cleanup(h.Stop)
+	session := &closeNotifyingSession{recordingSession: &recordingSession{}, closed: make(chan struct{})}
+	clientCtx, cancel := context.WithCancel(context.Background())
+	client := &Client{
+		ID:     "stopping-eviction-client",
+		UserID: "stopping-eviction-user",
+		Conn:   session,
+		Hub:    h,
+		Rooms:  make(map[string]bool),
+		Send:   make(chan []byte, 1),
+		ctx:    clientCtx,
+		cancel: cancel,
+	}
+	h.mu.Lock()
+	h.Clients[client.ID] = client
+	h.mu.Unlock()
+	h.lifecycleMu.Lock()
+	h.ctx = context.Background()
+	h.stopped.Store(true)
+	h.lifecycleMu.Unlock()
+	client.writeMu.Lock()
+	unlocked := false
+	unlockWrite := func() {
+		if !unlocked {
+			client.writeMu.Unlock()
+			unlocked = true
+		}
+	}
+	defer unlockWrite()
+	done := make(chan struct{})
+	go func() {
+		h.scheduleClientEviction(client)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		unlockWrite()
+		<-done
+		t.Fatal("eviction blocked Run on a socket write after Stop began")
+	}
+	assert.ErrorIs(t, clientCtx.Err(), context.Canceled)
+	select {
+	case <-session.closed:
+		t.Fatal("stopping eviction closed its transport before Stop drained Run")
+	default:
+	}
+	h.mu.RLock()
+	_, registered := h.Clients[client.ID]
+	h.mu.RUnlock()
+	assert.True(t, registered, "Stop owns unregister after Run drains")
+	unlockWrite()
+	h.closeActiveClients(context.Background())
+	select {
+	case <-session.closed:
+	case <-time.After(time.Second):
+		t.Fatal("Stop-owned close did not close the deferred eviction")
+	}
+}
+
+func TestCloseClientTransportsInParallelBoundsWorkerCount(t *testing.T) {
+	clients := make([]*Client, maxParallelClientCloses+1)
+	for i := range clients {
+		clients[i] = &Client{}
+	}
+	entered := make(chan *Client, len(clients))
+	release := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		closeClientTransportsInParallel(clients, func(client *Client) {
+			entered <- client
+			<-release
+		})
+		close(done)
+	}()
+	released := false
+	finished := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+		if !finished {
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Error("close worker goroutine remained blocked during test cleanup")
+			}
+		}
+	}()
+	for worker := 0; worker < maxParallelClientCloses; worker++ {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("bounded close workers did not start")
+		}
+	}
+	select {
+	case <-entered:
+		t.Fatal("close worker limit was exceeded")
+	default:
+	}
+	close(release)
+	released = true
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("remaining close job did not start after a worker was released")
+	}
+	select {
+	case <-done:
+		finished = true
+	case <-time.After(time.Second):
+		t.Fatal("bounded close workers did not finish")
+	}
 }

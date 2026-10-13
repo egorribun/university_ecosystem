@@ -130,7 +130,9 @@ if exists {
 - Keys are restricted to a maximum length of 1024 bytes; metadata options maps must contain $\le$ 10 entries.
 
 ### 5.3. GraphQL Engine Safeguards
-- The embedded GraphQL engine enforces a maximum query depth limit of **10** and a hard **30s** request timeout middleware.
+- The Go file-processor GraphQL engine enforces a maximum query depth limit of
+  **10** and a hard **30s** request timeout middleware; it is independent of
+  the retired FastAPI `/graphql` endpoint.
 - Strict `gql.ID` scalar usage with `graph-gophers/graphql-go v1.9.0+`.
 - Escaped quotes must be handled correctly in `estimateQueryDepth`.
 
@@ -145,7 +147,10 @@ routing tables in lockstep.
 
 ### 6.1. Edge Routing Table
 - Edge liveness: `/healthz` responded locally by Caddy.
-- Dynamic APIs: `/api/*` and `/graphql*` -> `gateway:8080`.
+- Dynamic APIs: `/api/*` -> `gateway:8080`. The retired backend `/graphql`
+  path is not forwarded to the Gateway; on the frontend host it reaches the SSR
+  not-found path, and the Gateway returns a local 404 on its catch-all host. The
+  Go file-processor GraphQL runtime in section 5.3 is separate and unchanged.
 - WS Ticket Issuance: `/ws/ticket` -> `gateway:8080`.
 - WebSocket Tunnel: `/ws/chat*` -> `ws-hub:8081` (rewriting path to `/ws`).
 - Static Assets & JWKS: `/static/*` and `/.well-known/*` -> `backend:8000`.

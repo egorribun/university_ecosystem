@@ -22,8 +22,21 @@ const maxGraphQLBodyBytes = 1 << 20
 // RZ-24-05: Parity with Python backend's QueryDepthLimiter defense layer.
 func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
+		// The relay handler accepts POST JSON bodies only. Keep OPTIONS available
+		// for outer preflight handlers, and reject every other unsupported method.
+		if r.Body != nil {
+			requestBody := r.Body
+			defer func() { _ = requestBody.Close() }()
+		}
+		switch r.Method {
+		case http.MethodOptions:
 			next.ServeHTTP(w, r)
+			return
+		case http.MethodPost:
+			// Continue with the bounded JSON/depth checks below.
+		default:
+			w.Header().Set("Allow", "POST, OPTIONS")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 

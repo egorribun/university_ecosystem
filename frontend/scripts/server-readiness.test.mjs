@@ -7,6 +7,7 @@ import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 import { gunzipSync, gzipSync } from "node:zlib"
+import { JSDOM } from "jsdom"
 
 import {
   applyNodeCspToHtmlResponse,
@@ -25,20 +26,13 @@ const SAFE_NOT_FOUND_HTML_FIXTURE = [
   "<script>raw()</script>",
 ].join("")
 
-const SCRIPT_ELEMENT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/giu
-const NONCE_ATTRIBUTE_PATTERN = /(?:^|\s)nonce\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/iu
-const SOURCE_ATTRIBUTE_PATTERN = /(?:^|\s)src\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/iu
-
 function parseScriptElements(html) {
-  return Array.from(html.matchAll(SCRIPT_ELEMENT_PATTERN), ([, attributes, body]) => {
-    const nonceMatch = attributes.match(NONCE_ATTRIBUTE_PATTERN)
-    const sourceMatch = attributes.match(SOURCE_ATTRIBUTE_PATTERN)
-    return {
-      nonce: nonceMatch?.[1] ?? nonceMatch?.[2] ?? nonceMatch?.[3] ?? null,
-      src: sourceMatch?.[1] ?? sourceMatch?.[2] ?? sourceMatch?.[3] ?? null,
-      body: body.trim(),
-    }
-  })
+  const { document } = new JSDOM(html).window
+  return Array.from(document.querySelectorAll("script"), (script) => ({
+    nonce: script.getAttribute("nonce"),
+    src: script.getAttribute("src"),
+    body: script.textContent?.trim() ?? "",
+  }))
 }
 
 async function reserveLoopbackPort() {

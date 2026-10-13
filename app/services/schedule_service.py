@@ -52,14 +52,12 @@ class ScheduleService:
         locale: str = "en",
         creator_id: uuid.UUID | None = None,
     ) -> ScheduleDTO:
-        # Conflict check
-        existing_group = await self.repo.get_by_group(data.group_id)
-
-        existing_teacher: Sequence[ScheduleDTO] = []
-        if data.teacher:
-            existing_teacher = await self.repo.get_by_teacher(data.teacher)
-
-        all_existing: list[ScheduleDTO] = list(existing_group) + list(existing_teacher)
+        # Serialize the conflict read and write in one transaction. The
+        # repository query bypasses the display cache and its 500-row cap.
+        await self.repo.lock_schedule_mutations()
+        all_existing = await self.repo.get_conflict_candidates(
+            data.group_id, data.teacher
+        )
 
         target = ScheduleItemInternal(
             weekday=data.weekday,
@@ -112,20 +110,20 @@ class ScheduleService:
     async def update_schedule(
         self, schedule_id: uuid.UUID | str, data: schemas.ScheduleUpdate
     ) -> ScheduleDTO:
-        sched = await self.repo.get(schedule_id)
+        # Acquire before loading the current row so this update uses state that
+        # reflects any competing schedule mutation that committed while waiting.
+        await self.repo.lock_schedule_mutations()
+        sched = await self.repo.get_for_update_fresh(schedule_id)
         if not sched:
             raise ValueError(translate("errors.schedule.not_found"))
 
         update_values = data.model_dump(exclude_unset=True)
         group_id = update_values.get("group_id", sched.group_id)
         teacher = update_values.get("teacher", sched.teacher)
-        existing_group = await self.repo.get_by_group(group_id)
-        existing_teacher: Sequence[ScheduleDTO] = []
-        if teacher:
-            existing_teacher = await self.repo.get_by_teacher(teacher)
-
         all_existing = [
-            item for item in [*existing_group, *existing_teacher] if item.id != sched.id
+            item
+            for item in await self.repo.get_conflict_candidates(group_id, teacher)
+            if item.id != sched.id
         ]
         target = ScheduleItemInternal(
             id=sched.id,

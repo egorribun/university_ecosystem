@@ -277,6 +277,7 @@ async def redeliver_notifications(
                     topic=topic,
                     notification_type=notification.type,
                     url=notification.url,
+                    recipient_user_id=notification.user_id,
                     extra=payload_data,
                 ),
             }
@@ -633,6 +634,7 @@ async def create_notifications_for_users(
                 topic=normalized_topic,
                 notification_type=type,
                 url=url,
+                recipient_user_id=user_id,
                 extra=payload_data,
             )
             prepared_payload = prepare_push_payload_for_user(

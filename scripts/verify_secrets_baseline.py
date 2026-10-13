@@ -6,6 +6,10 @@ list of files.  A fresh scan must therefore be a subset of the baseline (old
 entries are allowed to become stale when a secret is removed), while a pull
 request must not add a new suppression relative to a trusted base baseline.
 
+An owner-authored policy update may opt into exact-identity dispositions only
+when the protected workflow explicitly confirms the author and candidate change.
+Other pull requests use the trusted base and ignore candidate policy additions.
+
 Usage::
 
     python scripts/verify_secrets_baseline.py BASELINE CURRENT_SCAN
@@ -31,6 +35,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +53,125 @@ _INLINE_SECRET_ALLOWLIST_PATTERN = re.compile(
     r"\bpragma\s*:\s*allowlist\s+secret\b", re.IGNORECASE
 )
 _DIFF_HUNK_PATTERN = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+_FALSE_POSITIVE_ALLOWED_TYPE = "Hex High Entropy String"
+_FALSE_POSITIVE_HEX_CATEGORIES = frozenset(
+    {
+        "public_integrity_digest",
+        "documented_crypto_test_vector",
+        "independent_contract_fingerprint",
+    }
+)
+_FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
+    "ci_test_contract_sentinel": frozenset(
+        {
+            (".github/workflows/ci.yml", "Basic Auth Credentials"),
+            (".github/workflows/ci.yml", "Secret Keyword"),
+            (".github/workflows/nightly-full-gate.yml", "Secret Keyword"),
+            (
+                "frontend/scripts/frontend-quality-contract.test.mjs",
+                "Secret Keyword",
+            ),
+            (
+                "frontend/src/api/hooks/__tests__/campusConfig.test.ts",
+                "Secret Keyword",
+            ),
+            (
+                "tests/test_live_stand_resource_guard.py",
+                "Base64 High Entropy String",
+            ),
+            (
+                "tests/test_start_docker_orphan_ownership.py",
+                "Base64 High Entropy String",
+            ),
+        }
+    ),
+    "public_package_integrity_metadata": frozenset(
+        {
+            (
+                "frontend/scripts/stryker-inventory.test.mjs",
+                "Base64 High Entropy String",
+            ),
+        }
+    ),
+    "public_totp_algorithm_alphabet": frozenset(
+        {
+            (
+                "frontend/tests/e2e-live/totp-recovery.live.spec.ts",
+                "Base64 High Entropy String",
+            ),
+        }
+    ),
+    "documented_dummy_password_hash": frozenset(
+        {
+            ("app/auth/security.py", "Secret Keyword"),
+            ("tests/test_seed_admin_data.py", "Secret Keyword"),
+            (
+                "tests/test_seed_demo_account_preservation.py",
+                "Secret Keyword",
+            ),
+            ("tests/test_seed_demo_messenger.py", "Secret Keyword"),
+        }
+    ),
+    "synthetic_hmac_test_material": frozenset(
+        {
+            (
+                "services/gateway/internal/handlers/handlers_identity_closure_test.go",
+                "Secret Keyword",
+            ),
+            (
+                "services/ws-hub/pkg/hub/replay_security_adversarial_test.go",
+                "Secret Keyword",
+            ),
+            (
+                "tests/integration/test_historical_attendance_sender_migrations_postgres.py",
+                "Secret Keyword",
+            ),
+        }
+    ),
+    "domain_resource_contract_fixture": frozenset(
+        {
+            ("tests/test_live_stand_resource_guard.py", "Secret Keyword"),
+        }
+    ),
+    "internal_demo_stand_account_fixture": frozenset(
+        {
+            ("frontend/tests/e2e-live/fixtures.ts", "Secret Keyword"),
+        }
+    ),
+}
+_FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
+    "internal_demo_stand_account_fixture": (
+        "docs/superpowers/plans/MVP_MASTER_PLAN.md:37",
+        "external operational status remains unverified",
+    ),
+}
+_FALSE_POSITIVE_CATEGORIES = _FALSE_POSITIVE_HEX_CATEGORIES | frozenset(
+    _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES
+)
+_INDEPENDENT_CONTRACT_FINGERPRINT_PATH = (
+    "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
+)
+_FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
+_FALSE_POSITIVE_RECORD_FIELDS = frozenset(
+    {
+        "identity",
+        "category",
+        "evidence",
+        "owner",
+        "reviewed_on",
+        "expires_on",
+        "approval_status",
+    }
+)
+_FALSE_POSITIVE_DOCUMENT_FIELDS = frozenset({"schema_version", "records"})
+_FALSE_POSITIVE_POLICY_PATH = "quality/security-false-positive-dispositions.json"
+_FALSE_POSITIVE_RECORD_LIMIT = 512
+_FALSE_POSITIVE_EVIDENCE_LIMIT = 1000
+_FALSE_POSITIVE_OWNER_LIMIT = 120
+_FALSE_POSITIVE_PLACEHOLDER_OWNERS = frozenset(
+    {"", "owner", "pending", "tbd", "unknown", "n/a", "todo"}
+)
+_DISPOSITION_WILDCARDS = frozenset("*?[]")
 
 
 def _decode_git_quoted_path(value: str) -> str:
@@ -120,7 +244,10 @@ def _find_added_inline_secret_pragmas(diff_text: str) -> list[tuple[str, int]]:
     current_path: str | None = None
     new_line_number: int | None = None
 
-    for line in diff_text.splitlines():
+    lines = diff_text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    for line in lines:
         if line.startswith("diff --git "):
             current_path = None
             new_line_number = None
@@ -198,16 +325,18 @@ def find_new_inline_secret_pragmas(
                 cwd=root,
                 capture_output=True,
                 check=False,
-                encoding="utf-8",
-                errors="surrogateescape",
-                text=True,
                 shell=False,
             )
         except (OSError, UnicodeError) as error:
             raise SourceDeltaError("Git source comparison could not run") from error
         if result.returncode != 0:
             raise SourceDeltaError("Git source comparison failed")
-        return result.stdout
+        try:
+            return result.stdout.decode("utf-8", errors="surrogateescape")
+        except UnicodeError as error:
+            raise SourceDeltaError(
+                "Git source comparison could not be decoded"
+            ) from error
 
     run_git("cat-file", "-e", f"{trusted_base_sha}^{{commit}}")
     head_sha = run_git("rev-parse", "--verify", "HEAD^{commit}").strip()
@@ -434,6 +563,288 @@ def validate_baseline_triage(document: object) -> None:
                 )
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def validate_false_positive_dispositions(
+    document: object, *, today: date | None = None
+) -> set[FindingIdentity]:
+    """Validate exact dispositions without claiming their source is trusted.
+
+    Callers must select immutable trusted-base data by default. Candidate data
+    is valid only after the explicit owner-authored update gate succeeds. The
+    closed schema accepts reviewed identities with finite expiry metadata.
+    """
+
+    artifact = "false-positive dispositions"
+    if (
+        not isinstance(document, dict)
+        or set(document) != _FALSE_POSITIVE_DOCUMENT_FIELDS
+    ):
+        raise BaselineArtifactError(f"{artifact}: document schema is invalid")
+    version = document.get("schema_version")
+    if type(version) is not int or version != 1:
+        raise BaselineArtifactError(f"{artifact}: schema version is invalid")
+    records = document.get("records")
+    if not isinstance(records, list) or len(records) > _FALSE_POSITIVE_RECORD_LIMIT:
+        raise BaselineArtifactError(f"{artifact}: record list is invalid")
+
+    current_date = today or date.today()
+    findings: set[FindingIdentity] = set()
+    for record in records:
+        if not isinstance(record, dict) or set(record) != _FALSE_POSITIVE_RECORD_FIELDS:
+            raise BaselineArtifactError(f"{artifact}: record schema is invalid")
+        identity = record.get("identity")
+        if (
+            not isinstance(identity, dict)
+            or set(identity) != _FALSE_POSITIVE_IDENTITY_FIELDS
+        ):
+            raise BaselineArtifactError(f"{artifact}: identity schema is invalid")
+
+        raw_path = identity.get("path")
+        if (
+            not isinstance(raw_path, str)
+            or any(marker in raw_path for marker in _DISPOSITION_WILDCARDS)
+            or any(
+                ord(character) < 32 or ord(character) == 127 for character in raw_path
+            )
+        ):
+            raise BaselineArtifactError(f"{artifact}: identity path is invalid")
+        path = _canonical_result_path(raw_path, artifact=artifact)
+        if path != raw_path:
+            raise BaselineArtifactError(f"{artifact}: identity path is not canonical")
+
+        finding_type = identity.get("type")
+        raw_digest_bytes = identity.get("hashed_secret_bytes")
+        if (
+            not isinstance(finding_type, str)
+            or not finding_type
+            or not isinstance(raw_digest_bytes, list)
+            or len(raw_digest_bytes) != 20
+            or any(
+                type(byte) is not int or not 0 <= byte <= 255
+                for byte in raw_digest_bytes
+            )
+        ):
+            raise BaselineArtifactError(f"{artifact}: identity is not supported")
+        hashed_secret = bytes(raw_digest_bytes).hex()
+
+        category = record.get("category")
+        if not isinstance(category, str) or category not in _FALSE_POSITIVE_CATEGORIES:
+            raise BaselineArtifactError(f"{artifact}: category is invalid")
+        if category in _FALSE_POSITIVE_HEX_CATEGORIES:
+            category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+            if category == "independent_contract_fingerprint":
+                category_matches = category_matches and path == (
+                    _INDEPENDENT_CONTRACT_FINGERPRINT_PATH
+                )
+        else:
+            allowed_pairs = _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES.get(
+                category, frozenset()
+            )
+            category_matches = (path, finding_type) in allowed_pairs
+        if not category_matches:
+            raise BaselineArtifactError(
+                f"{artifact}: category does not allow this path and detector type"
+            )
+        evidence = record.get("evidence")
+        if (
+            not isinstance(evidence, str)
+            or not evidence.strip()
+            or evidence != evidence.strip()
+            or len(evidence) > _FALSE_POSITIVE_EVIDENCE_LIMIT
+            or any(
+                ord(character) < 32 or ord(character) == 127 for character in evidence
+            )
+        ):
+            raise BaselineArtifactError(f"{artifact}: evidence is invalid")
+        required_evidence = _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS.get(category, ())
+        if any(
+            marker.casefold() not in evidence.casefold() for marker in required_evidence
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: evidence does not resolve the category scope"
+            )
+
+        owner = record.get("owner")
+        if (
+            not isinstance(owner, str)
+            or not owner.strip()
+            or owner != owner.strip()
+            or len(owner) > _FALSE_POSITIVE_OWNER_LIMIT
+            or owner.casefold() in _FALSE_POSITIVE_PLACEHOLDER_OWNERS
+            or any(ord(character) < 32 or ord(character) == 127 for character in owner)
+        ):
+            raise BaselineArtifactError(f"{artifact}: owner metadata is invalid")
+        if record.get("approval_status") != "approved":
+            raise BaselineArtifactError(f"{artifact}: record is not approved")
+
+        raw_reviewed = record.get("reviewed_on")
+        raw_expires = record.get("expires_on")
+        if not isinstance(raw_reviewed, str) or not isinstance(raw_expires, str):
+            raise BaselineArtifactError(f"{artifact}: date metadata is invalid")
+        try:
+            reviewed_on = date.fromisoformat(raw_reviewed)
+            expires_on = date.fromisoformat(raw_expires)
+        except ValueError as error:
+            raise BaselineArtifactError(
+                f"{artifact}: date metadata is invalid"
+            ) from error
+        if (
+            reviewed_on.isoformat() != raw_reviewed
+            or expires_on.isoformat() != raw_expires
+            or reviewed_on > current_date
+            or expires_on < current_date
+            or expires_on <= reviewed_on
+            or expires_on - reviewed_on > timedelta(days=90)
+        ):
+            raise BaselineArtifactError(f"{artifact}: date range is invalid")
+
+        finding = FindingIdentity(path, finding_type, hashed_secret, 1)
+        if finding in findings:
+            raise BaselineArtifactError(f"{artifact}: duplicate identity")
+        findings.add(finding)
+    return findings
+
+
+def load_trusted_base_false_positive_dispositions(
+    trusted_base_sha: str,
+    *,
+    repository_root: str | Path,
+    today: date | None = None,
+) -> set[FindingIdentity]:
+    """Load the optional disposition artifact exclusively from a trusted tree."""
+
+    if (
+        not isinstance(trusted_base_sha, str)
+        or _SOURCE_SHA_PATTERN.fullmatch(trusted_base_sha) is None
+        or trusted_base_sha == "0" * 40
+    ):
+        raise BaselineArtifactError("trusted source base SHA is invalid")
+    try:
+        root = Path(repository_root).resolve(strict=True)
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise BaselineArtifactError("repository root is unavailable") from error
+
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise BaselineArtifactError("trusted disposition lookup could not run")
+    try:
+        git_executable = str(Path(git_executable).resolve(strict=True))
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise BaselineArtifactError(
+            "trusted disposition lookup could not run"
+        ) from error
+
+    def run_git(*arguments: str) -> bytes:
+        try:
+            # The only variable arguments are the validated commit SHA and a
+            # fixed repository-relative artifact path; shell parsing is off.
+            result = subprocess.run(  # noqa: S603
+                [git_executable, *arguments],
+                cwd=root,
+                capture_output=True,
+                check=False,
+                shell=False,
+            )
+        except (OSError, UnicodeError) as error:
+            raise BaselineArtifactError(
+                "trusted disposition lookup could not run"
+            ) from error
+        if result.returncode != 0:
+            raise BaselineArtifactError("trusted disposition lookup failed")
+        return result.stdout
+
+    try:
+        run_git("cat-file", "-e", f"{trusted_base_sha}^{{commit}}")
+        tree_entries = (
+            run_git(
+                "ls-tree",
+                "-r",
+                "--full-tree",
+                trusted_base_sha,
+                "--",
+                _FALSE_POSITIVE_POLICY_PATH,
+            )
+            .decode("utf-8")
+            .splitlines()
+        )
+    except UnicodeError as error:
+        raise BaselineArtifactError("trusted disposition tree is invalid") from error
+
+    if not tree_entries:
+        return set()
+    if len(tree_entries) != 1 or "\t" not in tree_entries[0]:
+        raise BaselineArtifactError("trusted disposition tree entry is invalid")
+    metadata, path = tree_entries[0].rsplit("\t", 1)
+    fields = metadata.split()
+    if (
+        path != _FALSE_POSITIVE_POLICY_PATH
+        or len(fields) != 3
+        or fields[:2] != ["100644", "blob"]
+    ):
+        raise BaselineArtifactError("trusted disposition tree entry is invalid")
+
+    try:
+        raw_document = run_git(
+            "show", f"{trusted_base_sha}:{_FALSE_POSITIVE_POLICY_PATH}"
+        )
+        if len(raw_document) > 512 * 1024:
+            raise BaselineArtifactError(
+                "false-positive disposition artifact is too large"
+            )
+        document = json.loads(
+            raw_document.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
+        if isinstance(error, BaselineArtifactError):
+            raise
+        raise BaselineArtifactError(
+            "false-positive disposition artifact is invalid"
+        ) from error
+    return validate_false_positive_dispositions(document, today=today)
+
+
+def load_owner_authored_candidate_false_positive_dispositions(
+    *, repository_root: str | Path, today: date | None = None
+) -> set[FindingIdentity]:
+    """Load the candidate policy after the trusted workflow owner gate passes."""
+
+    try:
+        root = Path(repository_root).resolve(strict=True)
+        policy_path = root.joinpath(*_FALSE_POSITIVE_POLICY_PATH.split("/"))
+        resolved_policy_path = policy_path.resolve(strict=True)
+        if (
+            resolved_policy_path != policy_path
+            or not resolved_policy_path.is_file()
+            or resolved_policy_path.stat().st_size > 512 * 1024
+        ):
+            raise BaselineArtifactError("candidate disposition artifact is unavailable")
+        raw_document = resolved_policy_path.read_bytes()
+        document = json.loads(
+            raw_document.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys
+        )
+    except BaselineArtifactError:
+        raise
+    except (
+        OSError,
+        RuntimeError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as error:
+        raise BaselineArtifactError(
+            "candidate disposition artifact is invalid"
+        ) from error
+    return validate_false_positive_dispositions(document, today=today)
+
+
 def _describe_findings(findings: set[FindingIdentity]) -> str:
     """Render bounded, deterministic diagnostics without secret material."""
 
@@ -459,6 +870,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--trusted-base-source-sha",
         help="immutable trusted source commit used to detect new inline suppressions",
+    )
+    parser.add_argument(
+        "--trusted-disposition-source-sha",
+        help="trusted commit whose false-positive disposition artifact is loaded",
+    )
+    parser.add_argument(
+        "--owner-authored-disposition-update",
+        action="store_true",
+        help="use candidate dispositions only after the trusted owner-policy gate passes",
     )
     return parser
 
@@ -502,8 +922,50 @@ def main(argv: Sequence[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+    if (
+        arguments.owner_authored_disposition_update
+        and arguments.trusted_base_source_sha is None
+    ):
+        print(
+            "ERROR: owner-authored disposition mode requires a trusted source base.",
+            file=sys.stderr,
+        )
+        return 2
+    if (
+        arguments.trusted_disposition_source_sha is not None
+        and arguments.trusted_base_source_sha is None
+    ):
+        print(
+            "ERROR: trusted dispositions require a trusted source base.",
+            file=sys.stderr,
+        )
+        return 2
 
-    new_findings = current_findings - baseline_findings
+    trusted_dispositions: set[FindingIdentity] = set()
+    disposition_source_sha = (
+        arguments.trusted_disposition_source_sha or arguments.trusted_base_source_sha
+    )
+    if disposition_source_sha is not None:
+        try:
+            if arguments.owner_authored_disposition_update:
+                trusted_dispositions = (
+                    load_owner_authored_candidate_false_positive_dispositions(
+                        repository_root=Path(__file__).resolve().parents[1]
+                    )
+                )
+            else:
+                trusted_dispositions = load_trusted_base_false_positive_dispositions(
+                    disposition_source_sha,
+                    repository_root=Path(__file__).resolve().parents[1],
+                )
+        except BaselineArtifactError:
+            print(
+                "ERROR: trusted false-positive dispositions could not be verified.",
+                file=sys.stderr,
+            )
+            return 2
+
+    new_findings = current_findings - baseline_findings - trusted_dispositions
     stale_suppressions = baseline_findings - current_findings
     # Only a newly added baseline entry that actually suppresses a finding in
     # this scan changes security semantics.  New stale entries remain harmless
@@ -519,6 +981,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "INFO: .secrets.baseline contains "
             f"{len(stale_suppressions)} stale finding(s) "
             "(removed files or secrets are allowed)."
+        )
+
+    matched_dispositions = current_findings & trusted_dispositions
+    if matched_dispositions:
+        print(
+            "INFO: trusted base reviewed "
+            f"{len(matched_dispositions)} exact false-positive finding(s)."
         )
 
     if new_findings:
@@ -540,17 +1009,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     if source_pragma_findings:
-        locations = ", ".join(
-            f"{json.dumps(path, ensure_ascii=True)}:{line_number}"
-            for path, line_number in source_pragma_findings[:20]
-        )
-        overflow = len(source_pragma_findings) - 20
-        if overflow > 0:
-            locations += f", ... (+{overflow} more)"
         print(
             "ERROR: source delta adds "
-            f"{len(source_pragma_findings)} inline secret-allowlist pragma line(s): "
-            f"{locations}",
+            f"{len(source_pragma_findings)} inline secret-allowlist pragma line(s).",
             file=sys.stderr,
         )
 

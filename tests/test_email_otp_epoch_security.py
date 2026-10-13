@@ -23,9 +23,10 @@ from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.schemas.schemas import UserPasswordChangeIn
 from app.services.auth.login_service import LoginService
 from app.services.auth_service import AuthService
+from tests.helpers.synthetic_credentials import make_test_password
 
-OLD_PASSWORD = "Old-email-mfa-password-11!"  # pragma: allowlist secret
-NEW_PASSWORD = "New-email-mfa-password-22!"  # pragma: allowlist secret
+OLD_PASSWORD = make_test_password(length=27)
+NEW_PASSWORD = make_test_password(length=27, excluding=(OLD_PASSWORD,))
 FINGERPRINT = "f" * 64
 IP = "203.0.113.8"
 SESSION = "verified-password-nonce"

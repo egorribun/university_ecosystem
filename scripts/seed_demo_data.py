@@ -37,6 +37,8 @@ from sqlalchemy.sql import Select
 
 from app.auth.security import get_password_hash_sync
 from app.core.database import async_session, init_database
+from app.core.exceptions.domain import BusinessRuleViolation
+from app.core.localization import translate
 from app.models.chat import Chat, chat_participants
 from app.models.enums import UserRole
 from app.models.events import Event
@@ -44,6 +46,12 @@ from app.models.news import News
 from app.models.schedule import Group, Schedule
 from app.models.stories import Story
 from app.models.users import EducationPath, User, UserProfile
+from app.repositories.schedule_repository import ScheduleRepository
+from app.schemas.dtos import ScheduleDTO
+from app.services.schedule_optimizer import (
+    ScheduleItemInternal,
+    ScheduleOptimizerService,
+)
 from scripts.seed_target import require_owned_live_stand_target
 
 # RFC 2606 example.com identities remain synthetic and satisfy the API EmailStr contract.
@@ -698,7 +706,7 @@ SCHEDULE_DATA = [
         "both",
     ),
     ("friday", 4, "Защита информации", "Лебедев П.А.", "В-215", "lecture", "even"),
-    ("friday", 4, "Компьютерные сети", "Морозов С.Г.", "А-203", "lecture", "even"),
+    ("friday", 4, "Компьютерные сети", "Морозов С.Г.", "А-203", "lecture", "odd"),
 ]
 
 _DAY_BASE = {
@@ -1402,44 +1410,137 @@ async def seed_archived_events(db: AsyncSession, user: User) -> None:
 
 
 async def seed_schedule(db, group: Group, user: User) -> None:
-    rows = 0
-    existing_rows = await db.scalars(
-        select(Schedule).where(Schedule.group_id == group.id)
+    # Share the API's transaction-scoped lock. Keep it until the caller's
+    # existing seed transaction commits so API writers recheck after this batch.
+    repository = ScheduleRepository(db)
+    await repository.lock_schedule_mutations()
+    teachers = tuple(dict.fromkeys(item[3] for item in SCHEDULE_DATA if item[3]))
+    candidates = await repository.get_conflict_candidates(group.id, teachers)
+
+    # The first uncached read includes every target-group row and every fixture
+    # teacher. Legacy rows can name teachers absent from the fixture, so extend
+    # the same uncached query to cover those teachers' cross-group obligations.
+    target_group_teachers = {
+        entry.teacher
+        for entry in candidates
+        if entry.group_id == group.id and entry.teacher
+    }
+    conflict_teachers = tuple(
+        dict.fromkeys((*teachers, *sorted(target_group_teachers)))
     )
-    existing_keys = {
-        (
+    if conflict_teachers != teachers:
+        candidates = await repository.get_conflict_candidates(
+            group.id, conflict_teachers
+        )
+
+    def natural_key(
+        entry: Schedule | ScheduleDTO,
+    ) -> tuple[str, datetime, str, str]:
+        start_time = entry.start_time
+        start_utc = (
+            start_time.replace(tzinfo=UTC)
+            if start_time.tzinfo is None
+            else start_time.astimezone(UTC)
+        )
+        return (
             entry.weekday,
-            entry.start_time.replace(tzinfo=UTC)
-            if entry.start_time.tzinfo is None
-            else entry.start_time.astimezone(UTC),
+            start_utc,
             entry.parity,
             entry.subject,
         )
-        for entry in existing_rows.all()
+
+    existing_keys = {
+        natural_key(entry) for entry in candidates if entry.group_id == group.id
     }
+    candidate_items = {
+        entry.id: ScheduleItemInternal(
+            id=entry.id,
+            weekday=entry.weekday,
+            start_time=entry.start_time,
+            end_time=entry.end_time,
+            parity=entry.parity,
+            room=entry.room,
+            teacher=entry.teacher,
+        )
+        for entry in candidates
+    }
+    optimizer = ScheduleOptimizerService()
+    group_entries = [entry for entry in candidates if entry.group_id == group.id]
+    group_items = [candidate_items[entry.id] for entry in group_entries]
+    if group_items and await optimizer.batch_detect_conflicts(group_items):
+        # Preserve legacy data, but do not silently treat a corrupt target group
+        # as a valid seed state or add rows on top of its conflicting schedule.
+        raise BusinessRuleViolation(translate("errors.schedule.conflict"))
+
+    # Existing natural-key rows are skipped below, but still need the same
+    # teacher-conflict check as newly proposed rows. Otherwise a partial seed
+    # can conceal a cross-group teacher collision indefinitely.
+    for entry in group_entries:
+        if not entry.teacher:
+            continue
+        external_teacher_items = [
+            candidate_items[candidate.id]
+            for candidate in candidates
+            if candidate.group_id != group.id and candidate.teacher == entry.teacher
+        ]
+        if external_teacher_items and await optimizer.detect_conflicts(
+            candidate_items[entry.id], external_teacher_items
+        ):
+            raise BusinessRuleViolation(translate("errors.schedule.conflict"))
+
+    proposed_items: list[ScheduleItemInternal] = []
+    new_entries: list[Schedule] = []
     for weekday, pair_num, subject, teacher, room, lesson_type, parity in SCHEDULE_DATA:
         base = _DAY_BASE[weekday]
         start, end = _pair(base, pair_num)
         key = (weekday, start, parity, subject)
         if key in existing_keys:
             continue
-        entry = Schedule(
-            group_id=group.id,
-            creator_id=user.id,
-            subject=subject,
-            teacher=teacher,
-            room=room,
+
+        target = ScheduleItemInternal(
             weekday=weekday,
             start_time=start,
             end_time=end,
             parity=parity,
-            lesson_type=lesson_type,
+            teacher=teacher,
         )
+        # The optimizer has no group_id field and treats every supplied row as
+        # relevant to this target. Keep all same-group rows plus only the
+        # cross-group rows for this target's teacher.
+        relevant_existing_items = [
+            candidate_items[entry.id]
+            for entry in candidates
+            if entry.group_id == group.id
+            or (teacher is not None and entry.teacher == teacher)
+        ]
+        conflicts = await optimizer.detect_conflicts(
+            target, [*relevant_existing_items, *proposed_items]
+        )
+        if conflicts:
+            raise BusinessRuleViolation(translate("errors.schedule.conflict"))
+
+        proposed_items.append(target)
+        new_entries.append(
+            Schedule(
+                group_id=group.id,
+                creator_id=user.id,
+                subject=subject,
+                teacher=teacher,
+                room=room,
+                weekday=weekday,
+                start_time=start,
+                end_time=end,
+                parity=parity,
+                lesson_type=lesson_type,
+            )
+        )
+
+    # Validate the complete schedule before the first ORM add/flush. The caller
+    # retains the lock through its existing transaction commit.
+    for entry in new_entries:
         db.add(entry)
-        existing_keys.add(key)
-        rows += 1
     await db.flush()
-    print(f"  ✓ Schedule: {rows} entries (odd + even weeks)")
+    print(f"  ✓ Schedule: {len(new_entries)} entries (odd + even weeks)")
 
 
 # ---------------------------------------------------------------------------

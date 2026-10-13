@@ -625,6 +625,7 @@ def test_all_caddy_configs_expose_the_same_auth_and_websocket_routes() -> None:
 
         assert "handle /.well-known/*" in caddyfile
         assert "handle /api/*" in caddyfile
+        assert "handle /graphql*" not in caddyfile
         assert "handle /ws/ticket" in caddyfile
         assert "handle /ws/chat*" in caddyfile
         assert "rewrite * /ws" in caddyfile
@@ -641,7 +642,7 @@ def test_all_caddy_configs_expose_the_same_auth_and_websocket_routes() -> None:
 
     production = _read("services/caddy/Caddyfile")
     api_block = production[
-        production.index("handle /api/*") : production.index("handle /graphql*")
+        production.index("handle /api/*") : production.index("handle /ws/ticket")
     ]
     assert re.search(r"health_uri\s+/health(?:\s|$)", api_block)
     assert "health_uri /healthz" not in api_block
@@ -2479,12 +2480,9 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
     dockerfile = _read("Dockerfile.protogen")
 
     assert (
-        (
-            "golang:1.26.9-alpine3.24@sha256:"
-            "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"  # pragma: allowlist secret
-        )
-        in dockerfile
-    )
+        "golang:1.26.9-alpine3.24@sha256:"
+        "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"
+    ) in dockerfile
     assert 'ARG BUF_VERSION="v1.72.0"' in dockerfile
     assert dockerfile.count("GOBIN=/usr/local/bin go install") == 3
     assert '"github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}"' in dockerfile
@@ -2499,7 +2497,7 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
 def test_go_service_builders_use_the_patched_repository_toolchain() -> None:
     expected = (
         "golang:1.26.9-alpine3.24@sha256:"
-        "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"  # pragma: allowlist secret
+        "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"
     )
 
     for relative_path in (

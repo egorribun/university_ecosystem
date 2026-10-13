@@ -172,7 +172,7 @@ async def test_get_news_item_passthrough(news_service, mock_repo):
 
 @pytest.mark.asyncio
 async def test_update_news_missing_raises(news_service, mock_repo):
-    mock_repo.get.return_value = None
+    mock_repo.get_orm_for_update.return_value = None
     with pytest.raises(ValueError, match="news_not_found"):
         await news_service.update_news(uuid4(), schemas.NewsUpdate(title="x"))
 
@@ -183,19 +183,15 @@ async def test_update_news_retains_legacy_image_on_change(
 ):
     existing = MagicMock()
     existing.image_url = "/static/news_images/shared-banner.png"
-    updated = MagicMock()
-    updated.image_url = "/static/news_images/replacement-banner.png"
-    mock_repo.get.return_value = existing
-    mock_repo.update.return_value = updated
+    mock_repo.get_orm_for_update.return_value = existing
 
-    with patch("app.utils.files.delete_static_file", new=AsyncMock()) as del_file:
-        result = await news_service.update_news(
-            uuid4(), schemas.NewsUpdate(image_url="new.png")
+    with pytest.raises(PermissionError, match="news_image_not_owned"):
+        await news_service.update_news(
+            uuid4(), schemas.NewsUpdate(image_url="https://foreign.example/image.jpg")
         )
 
-    assert result is updated
-    mock_uow.commit.assert_awaited_once()
-    del_file.assert_not_awaited()
+    mock_repo.update.assert_not_awaited()
+    mock_uow.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

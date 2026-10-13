@@ -406,7 +406,7 @@ async def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 # Public throw-away seed for timing equalization; never an account credential.
-_DUMMY_PASSWORD_HASH_SOURCE = "dummy-password-hash-source"  # noqa: S105  # nosec B105  # pragma: allowlist secret
+_DUMMY_PASSWORD_HASH_SOURCE = "dummy-password-hash-source"  # noqa: S105  # nosec B105  #
 _dummy_password_hash: str | None = None
 
 

@@ -57,3 +57,19 @@ Do not use `Semgrep suppression`.
 Do not use `SKIP=semgrep`.
 
 Do not use `--no-verify`.
+
+## Owner-approved Rust exception, 2026-10-12
+
+The owner approved only Ammonia `4.2.3` in PR
+[#1306](https://github.com/egorribun/university_ecosystem/pull/1306), addressing
+[RUSTSEC-2021-0157](https://rustsec.org/advisories/RUSTSEC-2021-0157.html).
+The approval covers the seven-day release-age requirement for the Ammonia
+version/checksum entries in `frontend/wasm-sanitizer/Cargo.lock` and
+`frontend/wasm-sanitizer/fuzz/Cargo.lock`. Version `4.2.3` reaches seven days on
+2026-10-18 at 06:27:36 UTC; the exception then expires.
+
+This decision does not change routine cooldown rules, Cargo Deny configuration,
+vulnerability gates, tests, or the ordinary PR flow. Sanitizer tests, the WASM
+rebuild/provenance checks, and required CI must still pass on the updated source.
+The owner is the approving reviewer; approval does not substitute for that
+validation evidence.

@@ -48,10 +48,8 @@ async def test_create_event_value_error(request_mock):
                 create_event,
                 data=data,
                 request=request_mock,
-                background=MagicMock(),
                 user=user,
                 provides={
-                    "NotificationService": MagicMock(),
                     "EventService": events_service,
                 },
             )

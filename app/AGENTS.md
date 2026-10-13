@@ -206,14 +206,17 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 
 ---
 
-## 8. GraphQL Defense Layers
+## 8. Backend GraphQL MVP Scope
 
-GraphQL queries (via Strawberry GraphQL) pass through 5 protective middleware layers:
-1. **`QueryDepthLimiter`**: Rejects queries exceeding max depth of 10.
-2. **`MaxTokensLimiter`**: Rejects queries with excessive token counts.
-3. **`QueryCostExtension`**: Calculates query complexity and rejects expensive requests.
-4. **`RequestTimeoutExtension`**: Hard 30s timeout per GraphQL request.
-5. **`PersistedQueryExtension`**: Enforces pre-registered queries in production.
+The FastAPI backend does not mount or serve `/graphql` in the MVP. This owner
+decision supersedes the historical public-surface choice in
+[ADR-046](../docs/adr/ADR-046-codebase-consolidation-audit.md) and is recorded
+in the [October audit](../docs/audits/AUDIT-2026-10.md). AUD-353, AUD-367, and
+AUD-448 close for this release by endpoint removal. The `app/graphql`
+implementation and its Python dependencies remain pending a separate source
+inventory; they do not define a supported HTTP contract. The Go file-processor
+GraphQL runtime (AUD-368) is separate and remains governed by
+[`services/AGENTS.md`](../services/AGENTS.md).
 
 ---
 

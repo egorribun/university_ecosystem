@@ -130,6 +130,41 @@ def _new_git_fixture(tmp_path: Path) -> tuple[Path, str]:
     return repository, _commit_git_fixture(repository, "trusted base")
 
 
+def _reviewed_disposition(
+    *,
+    path: str = "src/known.py",
+    finding_type: str = "Hex High Entropy String",
+    digest: str = "a" * 40,
+    category: str = "documented_crypto_test_vector",
+) -> dict[str, Any]:
+    return {
+        "identity": {
+            "path": path,
+            "type": finding_type,
+            "hashed_secret_bytes": list(bytes.fromhex(digest)),
+        },
+        "category": category,
+        "evidence": "Published test vector documented in docs/security/test-vectors.md",
+        "owner": "Security Maintainers",
+        "reviewed_on": "2026-10-12",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    }
+
+
+def _disposition_document(*records: dict[str, Any]) -> dict[str, Any]:
+    return {"schema_version": 1, "records": list(records)}
+
+
+def _commit_dispositions(repository: Path, records: list[dict[str, Any]]) -> str:
+    policy_path = repository / "quality" / "security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(
+        json.dumps(_disposition_document(*records)), encoding="utf-8"
+    )
+    return _commit_git_fixture(repository, "add reviewed test dispositions")
+
+
 def test_source_delta_rejects_added_marker_in_quoted_path(tmp_path: Path) -> None:
     repository, base_sha = _new_git_fixture(tmp_path)
     relative_path = Path("folder with spaces") / "marker-é-quoted.py"
@@ -145,6 +180,22 @@ def test_source_delta_rejects_added_marker_in_quoted_path(tmp_path: Path) -> Non
     )
 
     assert findings == [(relative_path.as_posix(), 1)]
+
+
+def test_source_delta_parses_forced_text_binary_hunk_with_unicode_separators(
+    tmp_path: Path,
+) -> None:
+    repository, base_sha = _new_git_fixture(tmp_path)
+    binary_path = repository / "opaque.bin"
+    payload = ("prefix\u0085middle\u2028# " + _inline_pragma_marker() + "\n").encode(
+        "utf-8"
+    )
+    binary_path.write_bytes(b"\x00" + payload)
+    _commit_git_fixture(repository, "add forced-text binary marker")
+
+    assert verifier.find_new_inline_secret_pragmas(
+        base_sha, repository_root=repository
+    ) == [("opaque.bin", 1)]
 
 
 def test_source_delta_rejects_a_moved_legacy_marker(tmp_path: Path) -> None:
@@ -243,6 +294,41 @@ def test_source_delta_does_not_surface_git_error_output(
         verifier.find_new_inline_secret_pragmas("1" * 40, repository_root=repository)
 
     assert "synthetic private diagnostic" not in str(error.value)
+
+
+def test_source_delta_diagnostic_reports_count_without_untrusted_paths(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        verifier,
+        "load_trusted_base_false_positive_dispositions",
+        lambda *_args, **_kwargs: set(),
+    )
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(tmp_path / "current.json", _document())
+    sensitive_path = "synthetic-private-secret-derived-path.py"
+    monkeypatch.setattr(
+        verifier,
+        "find_new_inline_secret_pragmas",
+        lambda *_args, **_kwargs: [(sensitive_path, 91)],
+    )
+
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            "1" * 40,
+        ]
+    )
+
+    diagnostic = capsys.readouterr().err
+    assert result == 1
+    assert "1 inline secret-allowlist pragma line(s)" in diagnostic
+    assert sensitive_path not in diagnostic
+    assert ":91" not in diagnostic
 
 
 def test_security_workflow_passes_source_base_for_supported_events() -> None:
@@ -536,3 +622,663 @@ def test_base_baseline_alias_is_supported(
 
     assert result == 1
     assert "trusted base" in capsys.readouterr().err.lower()
+
+
+def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
+    identity = verifier.FindingIdentity(
+        "src/known.py", "Hex High Entropy String", "a" * 40, 1
+    )
+
+    dispositions = verifier.validate_false_positive_dispositions(
+        _disposition_document(_reviewed_disposition()),
+        today=verifier.date(2026, 10, 12),
+    )
+
+    assert dispositions == {identity}
+
+
+def test_independent_contract_fingerprint_category_remains_exact() -> None:
+    record = _reviewed_disposition(
+        path="tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        category="independent_contract_fingerprint",
+    )
+
+    dispositions = verifier.validate_false_positive_dispositions(
+        _disposition_document(record),
+        today=verifier.date(2026, 10, 12),
+    )
+
+    assert dispositions == {
+        verifier.FindingIdentity(
+            "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+            "Hex High Entropy String",
+            "a" * 40,
+            1,
+        )
+    }
+
+
+@pytest.mark.parametrize(
+    ("category", "path", "finding_type"),
+    [
+        (
+            "ci_test_contract_sentinel",
+            ".github/workflows/ci.yml",
+            "Basic Auth Credentials",
+        ),
+        (
+            "ci_test_contract_sentinel",
+            ".github/workflows/ci.yml",
+            "Secret Keyword",
+        ),
+        (
+            "ci_test_contract_sentinel",
+            ".github/workflows/nightly-full-gate.yml",
+            "Secret Keyword",
+        ),
+        (
+            "ci_test_contract_sentinel",
+            "frontend/scripts/frontend-quality-contract.test.mjs",
+            "Secret Keyword",
+        ),
+        (
+            "ci_test_contract_sentinel",
+            "frontend/src/api/hooks/__tests__/campusConfig.test.ts",
+            "Secret Keyword",
+        ),
+        (
+            "ci_test_contract_sentinel",
+            "tests/test_live_stand_resource_guard.py",
+            "Base64 High Entropy String",
+        ),
+        (
+            "ci_test_contract_sentinel",
+            "tests/test_start_docker_orphan_ownership.py",
+            "Base64 High Entropy String",
+        ),
+        (
+            "public_package_integrity_metadata",
+            "frontend/scripts/stryker-inventory.test.mjs",
+            "Base64 High Entropy String",
+        ),
+        (
+            "public_totp_algorithm_alphabet",
+            "frontend/tests/e2e-live/totp-recovery.live.spec.ts",
+            "Base64 High Entropy String",
+        ),
+        (
+            "documented_dummy_password_hash",
+            "app/auth/security.py",
+            "Secret Keyword",
+        ),
+        (
+            "documented_dummy_password_hash",
+            "tests/test_seed_admin_data.py",
+            "Secret Keyword",
+        ),
+        (
+            "documented_dummy_password_hash",
+            "tests/test_seed_demo_account_preservation.py",
+            "Secret Keyword",
+        ),
+        (
+            "documented_dummy_password_hash",
+            "tests/test_seed_demo_messenger.py",
+            "Secret Keyword",
+        ),
+        (
+            "synthetic_hmac_test_material",
+            "services/gateway/internal/handlers/handlers_identity_closure_test.go",
+            "Secret Keyword",
+        ),
+        (
+            "synthetic_hmac_test_material",
+            "services/ws-hub/pkg/hub/replay_security_adversarial_test.go",
+            "Secret Keyword",
+        ),
+        (
+            "synthetic_hmac_test_material",
+            "tests/integration/test_historical_attendance_sender_migrations_postgres.py",
+            "Secret Keyword",
+        ),
+        (
+            "domain_resource_contract_fixture",
+            "tests/test_live_stand_resource_guard.py",
+            "Secret Keyword",
+        ),
+        (
+            "internal_demo_stand_account_fixture",
+            "frontend/tests/e2e-live/fixtures.ts",
+            "Secret Keyword",
+        ),
+    ],
+)
+def test_non_hex_dispositions_are_scoped_to_reviewed_path_and_type(
+    category: str, path: str, finding_type: str
+) -> None:
+    record = _reviewed_disposition(
+        path=path,
+        finding_type=finding_type,
+        digest="c" * 40,
+        category=category,
+    )
+    if category == "internal_demo_stand_account_fixture":
+        record["evidence"] = (
+            "Owner decision at docs/superpowers/plans/MVP_MASTER_PLAN.md:37 "
+            "states internal-demo accounts are synthetic; external operational "
+            "status remains unverified."
+        )
+
+    dispositions = verifier.validate_false_positive_dispositions(
+        _disposition_document(record),
+        today=verifier.date(2026, 10, 12),
+    )
+
+    assert dispositions == {verifier.FindingIdentity(path, finding_type, "c" * 40, 1)}
+
+
+@pytest.mark.parametrize(
+    ("category", "path", "finding_type"),
+    [
+        (
+            "ci_test_contract_sentinel",
+            "tests/test_auth_review_regressions.py",
+            "Secret Keyword",
+        ),
+        (
+            "ci_test_contract_sentinel",
+            ".github/workflows/ci.yml",
+            "Base64 High Entropy String",
+        ),
+        (
+            "public_package_integrity_metadata",
+            "frontend/scripts/stryker-inventory.test.mjs",
+            "Secret Keyword",
+        ),
+        (
+            "public_totp_algorithm_alphabet",
+            "frontend/tests/e2e-live/totp-recovery.live.spec.ts",
+            "Basic Auth Credentials",
+        ),
+        (
+            "documented_dummy_password_hash",
+            "tests/test_auth_review_regressions.py",
+            "Secret Keyword",
+        ),
+        (
+            "synthetic_hmac_test_material",
+            "app/auth/security.py",
+            "Secret Keyword",
+        ),
+        (
+            "domain_resource_contract_fixture",
+            "tests/test_live_stand_resource_guard.py",
+            "Base64 High Entropy String",
+        ),
+        (
+            "internal_demo_stand_account_fixture",
+            "frontend/tests/e2e-live/fixtures.ts",
+            "Base64 High Entropy String",
+        ),
+    ],
+)
+def test_non_hex_dispositions_reject_wrong_source_or_type(
+    category: str, path: str, finding_type: str
+) -> None:
+    record = _reviewed_disposition(
+        path=path,
+        finding_type=finding_type,
+        category=category,
+    )
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 12),
+        )
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "Internal demo fixture, external operational status remains unverified.",
+        "Owner decision at docs/superpowers/plans/MVP_MASTER_PLAN.md:37.",
+    ],
+)
+def test_internal_demo_account_requires_both_owner_evidence_markers(
+    evidence: str,
+) -> None:
+    record = _reviewed_disposition(
+        path="frontend/tests/e2e-live/fixtures.ts",
+        finding_type="Secret Keyword",
+        category="internal_demo_stand_account_fixture",
+    )
+    record["evidence"] = evidence
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 12),
+        )
+
+
+def test_internal_demo_account_category_does_not_approve_pending_record() -> None:
+    record = _reviewed_disposition(
+        path="frontend/tests/e2e-live/fixtures.ts",
+        finding_type="Secret Keyword",
+        category="internal_demo_stand_account_fixture",
+    )
+    record["approval_status"] = "pending"
+    record["evidence"] = (
+        "Owner decision at docs/superpowers/plans/MVP_MASTER_PLAN.md:37 "
+        "states internal-demo accounts are synthetic; external operational "
+        "status remains unverified."
+    )
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 12),
+        )
+
+
+@pytest.mark.parametrize(
+    ("candidate_path", "candidate_type", "candidate_digest"),
+    [
+        ("src/other.py", "Hex High Entropy String", "a" * 40),
+        ("src/known.py", "Hex High Entropy String", "b" * 40),
+    ],
+)
+def test_reviewed_disposition_does_not_match_other_path_or_digest(
+    candidate_path: str, candidate_type: str, candidate_digest: str
+) -> None:
+    dispositions = verifier.validate_false_positive_dispositions(
+        _disposition_document(_reviewed_disposition()),
+        today=verifier.date(2026, 10, 12),
+    )
+
+    assert (
+        verifier.FindingIdentity(candidate_path, candidate_type, candidate_digest, 1)
+        not in dispositions
+    )
+
+
+def test_reviewed_disposition_rejects_unapproved_finding_type() -> None:
+    record = _reviewed_disposition(finding_type="AWS Access Key")
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 12)
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda record: record.update(category="unreviewed_category"),
+        lambda record: record.update(approval_status="pending"),
+        lambda record: record.update(expires_on="2026-10-11"),
+        lambda record: record.update(reviewed_on="2026-10-13"),
+        lambda record: record.update(expires_on="2027-01-11"),
+        lambda record: record.pop("owner"),
+        lambda record: record.pop("evidence"),
+        lambda record: record.pop("reviewed_on"),
+    ],
+    ids=(
+        "unknown-category",
+        "pending",
+        "expired",
+        "future-review",
+        "expiry-over-90-days",
+        "missing-owner",
+        "missing-evidence",
+        "missing-review-date",
+    ),
+)
+def test_reviewed_disposition_requires_approved_owner_and_finite_dates(
+    change: Any,
+) -> None:
+    record = _reviewed_disposition()
+    change(record)
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 12)
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_path",
+    ["src/*.py", "../src/known.py", "src//known.py", "src\\known.py"],
+)
+def test_reviewed_disposition_rejects_non_exact_paths(invalid_path: str) -> None:
+    record = _reviewed_disposition(path=invalid_path)
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 12)
+        )
+
+
+def test_reviewed_disposition_rejects_duplicate_identities() -> None:
+    record = _reviewed_disposition()
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record, _reviewed_disposition()),
+            today=verifier.date(2026, 10, 12),
+        )
+
+
+def test_reviewed_disposition_rejects_unknown_fields_and_bad_digest() -> None:
+    record = _reviewed_disposition()
+    record["identity"]["unreviewed"] = False
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 12)
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_bytes",
+    [[0] * 19, [0] * 19 + [-1], [0] * 19 + [256], [0] * 19 + [True]],
+)
+def test_reviewed_disposition_rejects_malformed_digest_bytes(
+    invalid_bytes: list[int],
+) -> None:
+    record = _reviewed_disposition()
+    record["identity"]["hashed_secret_bytes"] = invalid_bytes
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 12)
+        )
+
+
+def test_reviewed_disposition_does_not_cover_an_unrelated_finding() -> None:
+    unrelated = verifier.FindingIdentity(
+        "src/known.py", "Hex High Entropy String", "b" * 40, 7
+    )
+    dispositions = verifier.validate_false_positive_dispositions(
+        _disposition_document(_reviewed_disposition()),
+        today=verifier.date(2026, 10, 12),
+    )
+
+    assert unrelated not in dispositions
+
+
+def test_trusted_disposition_loader_uses_base_tree_not_worktree(
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    record = _reviewed_disposition()
+    trusted_sha = _commit_dispositions(repository, [record])
+    policy_path = repository / "quality" / "security-false-positive-dispositions.json"
+    policy_path.write_text(
+        json.dumps(_disposition_document({**record, "approval_status": "pending"})),
+        encoding="utf-8",
+    )
+
+    dispositions = verifier.load_trusted_base_false_positive_dispositions(
+        trusted_sha,
+        repository_root=repository,
+        today=verifier.date(2026, 10, 12),
+    )
+
+    assert dispositions == {
+        verifier.FindingIdentity("src/known.py", "Hex High Entropy String", "a" * 40, 1)
+    }
+
+
+def test_trusted_disposition_loader_ignores_candidate_only_artifact(
+    tmp_path: Path,
+) -> None:
+    repository, trusted_sha = _new_git_fixture(tmp_path)
+    policy_path = repository / "quality" / "security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        json.dumps(_disposition_document(_reviewed_disposition())), encoding="utf-8"
+    )
+
+    dispositions = verifier.load_trusted_base_false_positive_dispositions(
+        trusted_sha,
+        repository_root=repository,
+        today=verifier.date(2026, 10, 12),
+    )
+
+    assert dispositions == set()
+
+
+def test_trusted_disposition_loader_rejects_duplicate_json_keys(
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    policy_path = repository / "quality" / "security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        '{"schema_version":1,"schema_version":1,"records":[]}', encoding="utf-8"
+    )
+    trusted_sha = _commit_git_fixture(repository, "add malformed disposition file")
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.load_trusted_base_false_positive_dispositions(
+            trusted_sha,
+            repository_root=repository,
+            today=verifier.date(2026, 10, 12),
+        )
+
+
+def test_main_uses_trusted_exact_dispositions(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    trusted_sha = _commit_dispositions(repository, [_reviewed_disposition()])
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    finding = ("src/known.py", "Hex High Entropy String", "a" * 40, 4)
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(tmp_path / "current.json", _document(finding))
+
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+        ]
+    )
+
+    assert result == 0
+    assert "1 exact false-positive finding(s)" in capsys.readouterr().out
+
+
+def test_owner_authored_candidate_disposition_is_explicit_opt_in(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repository, trusted_sha = _new_git_fixture(tmp_path)
+    policy_path = repository / "quality" / "security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        json.dumps(_disposition_document(_reviewed_disposition())), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    finding = ("src/known.py", "Hex High Entropy String", "a" * 40, 4)
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(tmp_path / "current.json", _document(finding))
+
+    without_owner_gate = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+        ]
+    )
+    with_owner_gate = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+            "--owner-authored-disposition-update",
+        ]
+    )
+
+    assert without_owner_gate == 1
+    assert with_owner_gate == 0
+    assert "new finding" in capsys.readouterr().err
+
+
+def test_candidate_disposition_tamper_expiry_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    expired = _reviewed_disposition()
+    expired["expires_on"] = "2026-10-11"
+    policy_path = repository / "quality" / "security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(json.dumps(_disposition_document(expired)), encoding="utf-8")
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=repository,
+            today=verifier.date(2026, 10, 12),
+        )
+
+
+def test_push_can_use_accepted_head_policy_while_source_diff_uses_before_sha(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repository, before_sha = _new_git_fixture(tmp_path)
+    current_sha = _commit_dispositions(repository, [_reviewed_disposition()])
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    finding = ("src/known.py", "Hex High Entropy String", "a" * 40, 4)
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(tmp_path / "current.json", _document(finding))
+
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            before_sha,
+            "--trusted-disposition-source-sha",
+            current_sha,
+        ]
+    )
+
+    assert result == 0
+    assert "exact false-positive" in capsys.readouterr().out
+
+
+def test_trusted_disposition_does_not_allow_new_baseline_suppression(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    trusted_sha = _commit_dispositions(repository, [_reviewed_disposition()])
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    finding = ("src/known.py", "Hex High Entropy String", "a" * 40, 4)
+    baseline_path = _write(tmp_path / "baseline.json", _document(finding))
+    current_path = _write(tmp_path / "current.json", _document(finding))
+    trusted_path = _write(tmp_path / "trusted.json", _document())
+
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-baseline",
+            str(trusted_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+        ]
+    )
+
+    assert result == 1
+    assert "trusted base" in capsys.readouterr().err.lower()
+
+
+def test_trusted_disposition_does_not_allow_added_inline_pragma(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    trusted_sha = _commit_dispositions(repository, [_reviewed_disposition()])
+    marker_path = repository / "new_source.py"
+    marker_path.write_text(
+        f"value = 'synthetic'  # {_inline_pragma_marker()}\n", encoding="utf-8"
+    )
+    _commit_git_fixture(repository, "add inline marker")
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    finding = ("src/known.py", "Hex High Entropy String", "a" * 40, 4)
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(tmp_path / "current.json", _document(finding))
+
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+        ]
+    )
+
+    assert result == 1
+    assert "inline secret-allowlist pragma" in capsys.readouterr().err
+
+
+def test_disposition_file_is_protected_by_existing_owner_policy_gates() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    protected_path = "quality/security-false-positive-dispositions.json"
+    workflow_paths = (
+        ".github/workflows/codeql.yml",
+        ".github/workflows/checkov.yml",
+        ".github/workflows/dependency-review.yml",
+        ".github/workflows/gitleaks.yml",
+        ".github/workflows/reusable-security-audit.yml",
+        ".github/workflows/zizmor.yml",
+    )
+
+    for relative_path in workflow_paths:
+        workflow = (repository_root / relative_path).read_text(encoding="utf-8")
+        assert f'"{protected_path}"' in workflow
+        assert 'if [[ "$PR_AUTHOR" != "egorribun" ]]' in workflow
+
+    policy_integrity = (
+        repository_root / ".github" / "workflows" / "security-policy-integrity.yml"
+    ).read_text(encoding="utf-8")
+    assert "quality/*" in policy_integrity
+    assert 'if [[ "$PR_AUTHOR" != "egorribun" ]]' in policy_integrity
+
+    security_audit = (
+        repository_root / ".github" / "workflows" / "reusable-security-audit.yml"
+    ).read_text(encoding="utf-8")
+    assert '"$PR_AUTHOR" == "egorribun"' in security_audit
+    assert (
+        'if [[ "$EVENT_NAME" == "pull_request" && "$PR_AUTHOR" == "egorribun" ]]'
+        in security_audit
+    )
+    assert (
+        'git diff --quiet "$SOURCE_BASE_SHA" -- '
+        "quality/security-false-positive-dispositions.json" in security_audit
+    )
+    assert "--owner-authored-disposition-update" in security_audit
+    assert '--trusted-disposition-source-sha "$HEAD_SHA"' in security_audit

@@ -21,6 +21,8 @@ import { QueryClientProvider } from "@tanstack/react-query"
 // browser-only, so server CANNOT use PersistQueryClientProvider regardless.
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
 import { queryClient, persistOptions } from "@/app/queryClient"
+import { fetchCampusTimezone } from "@/api/hooks/campusConfig"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 
 // Wave 125 Phase 2 — pre-paint inline scripts. These run in the document
 // scaffold BEFORE any React code or bundle JS evaluates, so they avoid
@@ -268,6 +270,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     ],
   }),
   shellComponent: RootShell,
+  loader: async () => ({ campusTimezone: await fetchCampusTimezone() }),
   component: RootComponent,
 })
 
@@ -395,6 +398,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  const { campusTimezone } = Route.useLoaderData()
   // Wave 127 SW1 — provider hoisting. Both SSR and client paths now mount
   // the full provider chain via __root.tsx instead of via main.tsx → App.tsx
   // → AppProviders. AppShellProvider, AuthProvider, LanguageProvider,
@@ -413,7 +417,11 @@ function RootComponent() {
   // stub User on SSR so Navbar renders without crashing on useAuth()
   // returning null.
   if (import.meta.env.SSR) {
-    return <SsrRoot />
+    return (
+      <CampusTimezoneProvider timeZone={campusTimezone}>
+        <SsrRoot />
+      </CampusTimezoneProvider>
+    )
   }
   // W149 SW2 — PersistQueryClientProvider wraps RootComponent so the client
   // tree matches SsrRoot's structure (QueryClientProvider wraps everything)
@@ -430,26 +438,28 @@ function RootComponent() {
   // profile synchronization and provider initialization before changing this
   // SSR/client-cache invariant.
   return (
-    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-      <ThemeProvider>
-        <AppProviders>
-          {/*
-            Keep the boot loader in the route tree, rather than only in the
-            document shell.  Both the server and client trees then own the
-            same node, so static-SPA mounting and hydrateRoot can complete the
-            loader lifecycle without leaving an orphaned hit target behind.
-          */}
-          <BrandBootLoader />
-          <MainLayout>
-            <PageErrorBoundary>
-              <Outlet />
-            </PageErrorBoundary>
+    <CampusTimezoneProvider timeZone={campusTimezone}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+        <ThemeProvider>
+          <AppProviders>
+            {/*
+              Keep the boot loader in the route tree, rather than only in the
+              document shell. Both the server and client trees then own the
+              same node, so static-SPA mounting and hydrateRoot can complete
+              the loader lifecycle without leaving an orphaned hit target behind.
+            */}
+            <BrandBootLoader />
+            <MainLayout>
+              <PageErrorBoundary>
+                <Outlet />
+              </PageErrorBoundary>
 
-            <DeferredGlobalOverlays />
-          </MainLayout>
-        </AppProviders>
-      </ThemeProvider>
-    </PersistQueryClientProvider>
+              <DeferredGlobalOverlays />
+            </MainLayout>
+          </AppProviders>
+        </ThemeProvider>
+      </PersistQueryClientProvider>
+    </CampusTimezoneProvider>
   )
 }
 

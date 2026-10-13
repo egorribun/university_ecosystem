@@ -3,14 +3,14 @@
   "expected": {
     "computed_columns": ["events.search_vector"],
     "effective_counts": {
-      "both": 80,
-      "python_only": 39,
+      "both": 81,
+      "python_only": 40,
       "server_only": 0
     },
-    "effective_default_count": 119,
-    "migration_head": "202610120001",
+    "effective_default_count": 121,
+    "migration_head": "202610120002",
     "source_counts": {
-      "both": 80,
+      "both": 81,
       "python_only": 17,
       "server_only": 0
     },
@@ -29,8 +29,8 @@
       "schedule.lesson_type",
       "users.demo_seed_key"
     ],
-    "source_mapped_column_count": 97,
-    "table_count": 43
+    "source_mapped_column_count": 98,
+    "table_count": 44
   },
   "exceptions": [
     {
@@ -179,6 +179,12 @@
     },
     {
       "column": "news_likes.id",
+      "kind": "inherited_uuid7_primary_key",
+      "owner": "backend-platform",
+      "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."
+    },
+    {
+      "column": "news_media_assets.id",
       "kind": "inherited_uuid7_primary_key",
       "owner": "backend-platform",
       "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."

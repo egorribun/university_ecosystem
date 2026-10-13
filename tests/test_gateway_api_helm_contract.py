@@ -244,7 +244,6 @@ def test_gateway_api_route_values_keep_api_auth_and_ws_ownership_distinct() -> N
         for path in values["ingress"]["hosts"][0]["paths"]
     ] == [
         ("/api", "Prefix", "gateway"),
-        ("/graphql", "Exact", "gateway"),
         ("/ws/ticket", "Exact", "gateway"),
         ("/ws/chat", "Exact", "ws-hub"),
         ("/static", "Prefix", "backend"),

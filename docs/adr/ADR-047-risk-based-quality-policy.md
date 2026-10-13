@@ -181,6 +181,37 @@ Docker-backed Semgrep pre-commit hook mandatory locally and skipped in CI.
 Hosted evidence is still required for the updated source. The 15-minute budget
 is measured as critical-path wall time; a miss leaves the budget criterion open.
 
+## Owner-approved exact detect-secrets dispositions (2026-10-12 UTC)
+
+On 2026-10-12 UTC, the owner approved exact-match dispositions for 85 reviewed
+identities: 83 verified public or synthetic findings and two linked account
+fixtures limited to the internal synthetic demo. The external status of those
+linked fixtures remains unverified; this approval does not authorize their use
+outside that demo.
+
+A separate owner decision on 2026-10-12 UTC approves exactly one additional
+identity: the public NATS image digest detected at
+tests/test_workflow_fail_closed_contracts.py:43 as a Hex High Entropy String
+(category public_integrity_digest). This is the sole 86th identity in the
+approved set; it does not amend or broaden the original 85-identity approval.
+The added record retains reviewed_on 2026-10-12 and expires_on 2027-01-10.
+No other finding, baseline entry, inline pragma, scanner exclusion, or policy
+change is covered.
+
+Each record is scoped to an exact repository path, detector type and finding
+digest, and carries owner and evidence metadata with `reviewed_on` 2026-10-12
+and `expires_on` 2027-01-10 (90 days). No wildcard, category-wide permission, or
+future finding is covered. An unmatched or changed identity remains fail-closed
+and requires a separate owner decision. This approval authorizes no new
+`.secrets.baseline` entries, inline pragmas, or broad scanner exclusions.
+
+The existing baseline identity set remains at 319 and the 78 required contexts
+remain unchanged. This decision authorizes no bypass or further context change.
+It records policy scope only; implementation, test results, hosted checks and
+release readiness are separate. Revalidate the final source SHA and record the
+evidence in [STATUS](../superpowers/plans/STATUS.md) before making a release
+claim.
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt

@@ -318,7 +318,7 @@ func metadataCtx(token string) context.Context {
 }
 
 func TestAuthFunc_ValidTokenPutsSubInContext(t *testing.T) {
-	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{})
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), validAuthClaims("grpc-user", "grpc-session"))
 
 	ctx, err := fn(metadataCtx(token))
@@ -328,7 +328,7 @@ func TestAuthFunc_ValidTokenPutsSubInContext(t *testing.T) {
 
 // As above, this exercises verifier behavior, not current token minting.
 func TestAuthFunc_TenantContextUsesSignedClaimOnly(t *testing.T) {
-	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{})
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{
 		"sub":       "grpc-tenant-user",
 		"tenant_id": "claim-tenant",
@@ -371,7 +371,7 @@ func TestAuthFunc_TenantContextUsesSignedClaimOnly(t *testing.T) {
 }
 
 func TestAuthFunc_InvalidTokenUnauthenticated(t *testing.T) {
-	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{})
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("other-secret"), jwt.MapClaims{"sub": "x"})
 
 	_, err := fn(metadataCtx(token))
@@ -380,7 +380,7 @@ func TestAuthFunc_InvalidTokenUnauthenticated(t *testing.T) {
 }
 
 func TestAuthFunc_MissingSubRejected(t *testing.T) {
-	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{})
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{"role": "nobody"})
 
 	_, err := fn(metadataCtx(token))
@@ -401,7 +401,7 @@ func TestAuthFunc_NonMapClaimsAreRejected(t *testing.T) {
 }
 
 func TestAuthFunc_MissingMetadataErrors(t *testing.T) {
-	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{}) // pragma: allowlist secret
+	fn := authFuncWithOptions("grpc-secret", nil, testLogger(), jwtAuthOptions{})
 	_, err := fn(context.Background())
 	require.Error(t, err)
 }

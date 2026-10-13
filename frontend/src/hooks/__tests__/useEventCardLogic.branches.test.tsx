@@ -3,6 +3,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import { useEventCardLogic } from "../useEventCardLogic"
 
 const { language } = vi.hoisted(() => ({ language: { current: "ru" } }))
+const { campusTimezone } = vi.hoisted(() => ({
+  campusTimezone: { current: "America/New_York" as string | null },
+}))
 
 // Mock dependencies (mirrors the existing useEventCardLogic.test.tsx scaffold).
 vi.mock("@/contexts/AuthContext", () => ({
@@ -23,6 +26,9 @@ vi.mock("react-i18next", () => ({
       },
     },
   })),
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
 }))
 
 vi.mock("@/components/ui/Spotlight", () => ({
@@ -64,6 +70,7 @@ describe("useEventCardLogic (branches)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     language.current = "ru"
+    campusTimezone.current = "America/New_York"
     createObjectURL = vi.fn(() => "blob:preview-url")
     revokeObjectURL = vi.fn()
     ;(globalThis.URL as any).createObjectURL = createObjectURL
@@ -226,6 +233,55 @@ describe("useEventCardLogic (branches)", () => {
     )
     expect(onChange).toHaveBeenCalled()
     await waitFor(() => expect(result.current.snackbar).toBe("events:card.messages.saveSuccess"))
+  })
+
+  it("serializes changed campus wall values into UTC before patching", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    act(() => {
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: "2026-12-02T10:00",
+        ends_at: "2026-12-02T11:00",
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({
+        starts_at: "2026-12-02T15:00:00.000Z",
+        ends_at: "2026-12-02T16:00:00.000Z",
+      })
+    )
+  })
+
+  it("does not upload or patch a card edit with a nonexistent campus wall time", async () => {
+    const props = {
+      ...eventProps,
+      starts_at: "2026-03-08T07:00:00.000Z",
+      ends_at: "2026-03-08T08:00:00.000Z",
+    }
+    const { result } = renderHook(() => useEventCardLogic(props))
+    act(() => {
+      result.current.setNewImage(new File(["img"], "new.png", { type: "image/png" }))
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: "2026-03-08T02:30",
+        ends_at: "2026-03-08T04:00",
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(false)
+    expect(result.current.snackbar).toBe("events:form.errors.nonexistentCampusTime")
   })
 
   it("handleEdit: English card saves translated fields without overwriting Russian source fields", async () => {

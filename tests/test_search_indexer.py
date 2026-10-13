@@ -16,6 +16,7 @@ import app.models as models
 from app.cli import search as search_cli
 from app.services import event_handlers, search_indexer
 from tests.helpers.search_rebuild import RebuildProgress
+from tests.helpers.synthetic_credentials import make_test_password
 
 
 def _fake_service() -> MagicMock:
@@ -81,16 +82,19 @@ async def _event(
 
 
 def test_build_search_service_uses_settings_and_optional_auth():
+    password = make_test_password(
+        length=25, required_classes=frozenset({"lower", "symbol"})
+    )
     with patch.object(search_indexer, "settings") as settings:
         settings.elasticsearch_url = "http://es:9200"
         settings.elasticsearch_user = "elastic"
-        settings.elasticsearch_password = "secret"  # pragma: allowlist secret
+        settings.elasticsearch_password = password
         authed = search_indexer.build_search_service()
         settings.elasticsearch_password = ""
         anonymous = search_indexer.build_search_service()
 
     assert authed._hosts == ["http://es:9200"]
-    assert authed._http_auth == ("elastic", "secret")
+    assert authed._http_auth == ("elastic", password)
     assert anonymous._http_auth is None
 
 

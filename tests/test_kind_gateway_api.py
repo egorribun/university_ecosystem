@@ -46,7 +46,7 @@ CONTEXT = f"kind-{CLUSTER}"
 NODE_IMAGE = "kindest/node:v1.35.1"
 PINNED_NODE_IMAGE = (
     "kindest/node:v1.36.4@sha256:"
-    "099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed"  # pragma: allowlist secret (public kind image digest)
+    "099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed"  #  (public kind image digest)
 )
 REGISTRY_IMAGE = f"registry@sha256:{'a' * 64}"
 

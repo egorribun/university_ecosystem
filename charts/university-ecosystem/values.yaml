@@ -417,9 +417,6 @@ ingress:
         - path: /api
           pathType: Prefix
           service: gateway
-        - path: /graphql
-          pathType: Exact
-          service: gateway
         - path: /ws/ticket
           pathType: Exact
           service: gateway
@@ -499,6 +496,17 @@ otel:
   samplerArg: "0.1"   # 10% in production; set 1.0 in staging/dev
 
 networkPolicy:
+  # DNS destinations are deliberately scoped to CoreDNS pods. Override these
+  # selectors only when the cluster's DNS deployment uses different labels.
+  dns:
+    namespaceSelector:
+      "kubernetes.io/metadata.name": kube-system
+    podSelector:
+      "k8s-app": kube-dns
+  # Required only when staging/production fetches JWKS from the external HTTPS
+  # issuer. Populate with owner-verified endpoint CIDRs; there is no open default.
+  gatewayJWKS:
+    egressCIDRs: []
   ingressController:
     # Namespace where the ingress controller pods live.
     namespaceSelector:

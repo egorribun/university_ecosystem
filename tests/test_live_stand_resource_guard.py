@@ -255,7 +255,11 @@ def _install_hermetic_stand(
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "_git_common_directory", lambda: metadata)
-    monkeypatch.setattr(live_stand, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        live_stand,
+        "_git",
+        lambda *args: "a" * 40 if args[-2:] == ("rev-parse", "HEAD") else "",
+    )
     monkeypatch.setattr(live_stand.secrets, "token_hex", lambda _bytes: "a" * 16)
     monkeypatch.setattr(
         live_stand, "docker_daemon_fingerprint", lambda: _DAEMON_FINGERPRINT
@@ -264,6 +268,11 @@ def _install_hermetic_stand(
         live_stand, "load_vapid", lambda _worktree: {"public": "pub", "private": "priv"}
     )
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(
+        live_stand,
+        "_configure_live_trusted_proxy_peers",
+        lambda _owner, _environment, _evidence: 0,
+    )
     monkeypatch.setattr(live_stand.subprocess, "run", fake_subprocess_run)
     return repository, worktree, compose_calls, volume_labels
 
@@ -680,7 +689,7 @@ def test_incomplete_previous_resource_marker_cannot_adopt_existing_network(
     monkeypatch.setattr(live_stand, "resolve_stand_ref", lambda _ref: "a" * 40)
     monkeypatch.setattr(live_stand, "choose_published_ports", lambda: ports)
     monkeypatch.setattr(live_stand, "require_free_ports", lambda *_args: None)
-    monkeypatch.setattr(live_stand, "ensure_worktree", lambda _sha: worktree)
+    monkeypatch.setattr(live_stand, "ensure_worktree", lambda sha: sha)
     monkeypatch.setattr(live_stand, "_assert_worktree_clean", lambda _path: None)
     monkeypatch.setattr(
         live_stand,
@@ -847,7 +856,7 @@ def test_teardown_refuses_redirected_volume_before_compose_down(
         )
     else:
         (worktree / ".env.docker").write_text(
-            "LIVE_TEST_VOLUME=shared-volume\n",  # pragma: allowlist secret
+            "LIVE_TEST_VOLUME=shared-volume\n",
             encoding="utf-8",
         )
 
@@ -1054,7 +1063,7 @@ def test_stop_refuses_compose_resource_redirect_before_command(
         _create_complete_hermetic_stand(monkeypatch, tmp_path)
     )
     (worktree / ".env.docker").write_text(
-        "LIVE_TEST_VOLUME=shared-volume\n",  # pragma: allowlist secret
+        "LIVE_TEST_VOLUME=shared-volume\n",
         encoding="utf-8",
     )
     lifecycle_calls: list[list[str]] = []
@@ -1121,7 +1130,7 @@ def test_stop_preserves_owned_files_and_volumes(
         worktree / ".env.docker": f"LIVE_TEST_VOLUME={volume_name}\n".encode(),
         stand_marker: stand_marker.read_bytes(),
         vapid_file: b'{"public":"synthetic","private":"synthetic"}',
-        admin_password_file: b'{"password":"synthetic"}',  # pragma: allowlist secret -- synthetic resource-preservation bytes
+        admin_password_file: b'{"password":"synthetic"}',  #  -- synthetic resource-preservation bytes
     }
     for path, contents in preserved_files.items():
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1156,7 +1165,7 @@ def test_seed_refuses_compose_resource_redirect_before_run(
     )
     owner = live_stand.load_stand_owner(worktree)
     (worktree / ".env.docker").write_text(
-        "LIVE_TEST_VOLUME=shared-volume\n",  # pragma: allowlist secret
+        "LIVE_TEST_VOLUME=shared-volume\n",
         encoding="utf-8",
     )
     lifecycle_calls: list[list[str]] = []
@@ -1293,7 +1302,11 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "_git_common_directory", lambda: metadata)
-    monkeypatch.setattr(live_stand, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        live_stand,
+        "_git",
+        lambda *args: "a" * 40 if args[-2:] == ("rev-parse", "HEAD") else "",
+    )
     monkeypatch.setattr(live_stand.secrets, "token_hex", lambda _bytes: "a" * 16)
     monkeypatch.setattr(live_stand, "_assert_stand_paths_safe", lambda *_args: None)
     monkeypatch.setattr(live_stand, "_assert_worktree_paths_safe", lambda *_args: None)
@@ -1302,7 +1315,7 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
     monkeypatch.setattr(live_stand, "choose_published_ports", lambda: ports)
     monkeypatch.setattr(live_stand, "require_free_ports", lambda *_args: None)
 
-    def fake_ensure_worktree(_sha: str) -> Path:
+    def fake_ensure_worktree(sha: str) -> str:
         if not worktree.exists():
             worktree.mkdir()
             (worktree / live_stand.OVERLAY).write_text(
@@ -1311,7 +1324,7 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
             (worktree / "docker-compose.full.yml").write_text(
                 _COMPOSE_SOURCE, encoding="utf-8"
             )
-        return worktree
+        return sha
 
     monkeypatch.setattr(live_stand, "ensure_worktree", fake_ensure_worktree)
     monkeypatch.setattr(
@@ -1367,7 +1380,8 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
         assert managed_networks == (("default", f"{_PROJECT_NAME}_default"),)
         assert managed_services == ("backend",)
         assert allow_existing_owned is (
-            existing_reservation_schema
+            "start" in events
+            or existing_reservation_schema
             in {
                 live_stand.PREVIOUS_OWNER_SCHEMA_VERSION,
                 live_stand.RESOURCE_OWNER_SCHEMA_VERSION,
@@ -1443,6 +1457,24 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
 
     monkeypatch.setattr(live_stand, "_run", fake_run)
 
+    def fake_configure_trusted_proxies(
+        owner: live_stand.StandOwner,
+        environment: dict[str, str],
+        evidence: live_stand.ComposeResourceEvidence,
+    ) -> int:
+        assert owner.project_name == _PROJECT_NAME
+        assert evidence.fingerprint == fingerprint
+        assert environment == prepare_environment
+        assert live_stand.SOURCE_SHA == "a" * 40
+        events.append("proxy-config")
+        return 0
+
+    monkeypatch.setattr(
+        live_stand,
+        "_configure_live_trusted_proxy_peers",
+        fake_configure_trusted_proxies,
+    )
+
     if prepare_fails:
         with pytest.raises(subprocess.CalledProcessError):
             live_stand._up_locked("HEAD")
@@ -1476,7 +1508,16 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
             live_stand.RESOURCE_OWNER_SCHEMA_VERSION,
         }:
             expected_events.extend(["evidence", "volume-check", "stop"])
-        expected_events.extend(["evidence", "volume-check", "start"])
+        expected_events.extend(
+            [
+                "evidence",
+                "volume-check",
+                "start",
+                "evidence",
+                "volume-check",
+                "proxy-config",
+            ]
+        )
         assert events == expected_events
 
 
@@ -1526,7 +1567,7 @@ def test_existing_v5_stand_can_retry_after_incomplete_startup_with_owned_volumes
     monkeypatch.setattr(live_stand, "resolve_stand_ref", lambda _ref: "a" * 40)
     monkeypatch.setattr(live_stand, "choose_published_ports", lambda: ports)
     monkeypatch.setattr(live_stand, "require_free_ports", lambda *_args: None)
-    monkeypatch.setattr(live_stand, "ensure_worktree", lambda _sha: worktree)
+    monkeypatch.setattr(live_stand, "ensure_worktree", lambda sha: sha)
     monkeypatch.setattr(live_stand, "_assert_worktree_clean", lambda _worktree: None)
     monkeypatch.setattr(
         live_stand,

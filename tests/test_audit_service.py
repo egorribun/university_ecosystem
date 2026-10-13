@@ -883,6 +883,60 @@ async def test_verify_chain_integrity_skips_only_unhashed_outbox_rows(db_session
 
 
 @pytest.mark.asyncio
+async def test_reconstruct_state_ignores_unchained_outbox_rows(db_session):
+    from app.models.domain_events import StoredEvent
+
+    service = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    aggregate_id = uuid4()
+    created_at = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    db_session.add(
+        StoredEvent(
+            event_type="SCHEDULE_CREATED",
+            aggregate_type="schedule",
+            aggregate_id=str(aggregate_id),
+            payload={"room": "untrusted outbox value"},
+            metadata_={"source": "legacy-outbox"},
+            created_at=datetime(2026, 1, 1, 11, 0, tzinfo=UTC),
+        )
+    )
+    await db_session.flush()
+    await service.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_UPDATED",
+        aggregate_type="schedule",
+        aggregate_id=aggregate_id,
+        payload={"current_state": {"teacher": "trusted chain value"}},
+        created_at=created_at,
+    )
+
+    state, count, valid = await service.reconstruct_state(
+        db_session,
+        aggregate_type="schedule",
+        aggregate_id=aggregate_id,
+        target_timestamp=datetime(2026, 1, 1, 13, 0, tzinfo=UTC),
+    )
+
+    assert valid is True
+    assert count == 1
+    assert state is not None
+    assert state["teacher"] == "trusted chain value"
+    assert "room" not in state
+
+    unchecked_state, unchecked_count, _ = await service.reconstruct_state(
+        db_session,
+        aggregate_type="schedule",
+        aggregate_id=aggregate_id,
+        target_timestamp=datetime(2026, 1, 1, 13, 0, tzinfo=UTC),
+        verify_chain=False,
+    )
+
+    assert unchecked_count == 1
+    assert unchecked_state is not None
+    assert unchecked_state["teacher"] == "trusted chain value"
+    assert "room" not in unchecked_state
+
+
+@pytest.mark.asyncio
 async def test_verify_chain_integrity_rejects_partially_marked_outbox_row(db_session):
     from app.models.domain_events import StoredEvent
 

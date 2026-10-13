@@ -6,6 +6,7 @@ import {
   createRoute,
   createRouter,
   Outlet,
+  useLoaderData,
   RouterProvider,
 } from "@tanstack/react-router"
 import { hydrateRoot, type Root } from "react-dom/client"
@@ -13,6 +14,7 @@ import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { LanguageProvider } from "@/contexts/LanguageContext"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 import i18n from "@/i18n/config"
 import { dashboardEventsQueryKey, type DashboardEvent } from "@/hooks/useDashboardEvents"
 
@@ -53,7 +55,19 @@ function createQueryClient(events: DashboardEvent[] = [SEEDED_EVENT]): QueryClie
 }
 
 function createDashboardTree(queryClient: QueryClient) {
-  const rootRoute = createRootRoute({ component: Outlet })
+  const rootRoute = createRootRoute({
+    loader: () => ({ campusTimezone: "Europe/Istanbul" }),
+    component: function RootWithCampusTimezone() {
+      const { campusTimezone } = useLoaderData({ strict: false }) as {
+        campusTimezone: string
+      }
+      return (
+        <CampusTimezoneProvider timeZone={campusTimezone}>
+          <Outlet />
+        </CampusTimezoneProvider>
+      )
+    },
+  })
   const dashboardRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/dashboard",
@@ -80,7 +94,7 @@ function createDashboardTree(queryClient: QueryClient) {
   return { router, tree }
 }
 
-describe("EventsCard SSR hydration across host timezones", () => {
+describe("EventsCard SSR hydration with the serialized campus timezone", () => {
   afterEach(async () => {
     if (hydratedRoot) {
       await act(async () => hydratedRoot?.unmount())
@@ -107,7 +121,7 @@ describe("EventsCard SSR hydration across host timezones", () => {
     await i18n.changeLanguage(previousI18nLanguage)
   })
 
-  it("uses one event-time string for the server and first browser render, then keeps local time", async () => {
+  it("uses the same campus event-time string in the server and first browser render", async () => {
     previousTimezone = process.env.TZ
     previousLanguage = window.localStorage.getItem("ue:language")
     previousSelectedLanguage = window.__UE_SELECTED_LANG__
@@ -134,7 +148,7 @@ describe("EventsCard SSR hydration across host timezones", () => {
       }
     }
 
-    expect(serverMarkup).toContain("15:00")
+    expect(serverMarkup).toContain("18:00")
 
     process.env.TZ = "Europe/Istanbul"
     const browserSetup = createDashboardTree(createQueryClient())
@@ -159,7 +173,7 @@ describe("EventsCard SSR hydration across host timezones", () => {
     )
   })
 
-  it("keeps the server and first client event-day filter aligned across local midnight", async () => {
+  it("keeps the server and first client event-day filter on the campus calendar", async () => {
     previousTimezone = process.env.TZ
     previousLanguage = window.localStorage.getItem("ue:language")
     previousSelectedLanguage = window.__UE_SELECTED_LANG__
@@ -186,7 +200,7 @@ describe("EventsCard SSR hydration across host timezones", () => {
       }
     }
 
-    expect(serverMarkup).not.toContain(MIDNIGHT_EVENT.title)
+    expect(serverMarkup).toContain(MIDNIGHT_EVENT.title)
 
     process.env.TZ = "Europe/Istanbul"
     const browserSetup = createDashboardTree(createQueryClient([MIDNIGHT_EVENT]))

@@ -44,7 +44,8 @@ def mock_db():
 async def test_upload_avatar_success(mock_uow, monkeypatch):
     user_id = uuid.uuid4()
     mock_user = User(id=user_id)
-    mock_user.profile = UserProfile(avatar_url="old_url")
+    old_avatar = f"avatars/user_{user_id}_avatar_{uuid.uuid4().hex}.jpg"
+    mock_user.profile = UserProfile(avatar_url=old_avatar)
     mock_uow.users.get_orm_for_update_with_relations.return_value = mock_user
     mock_uow.users._to_dto.return_value = MagicMock(spec=UserDTO)
 
@@ -66,7 +67,9 @@ async def test_upload_avatar_success(mock_uow, monkeypatch):
     res = await svc.upload_avatar(user_id, file_mock)
 
     assert res is not None
-    mock_delete.assert_called_once_with("old_url")
+    mock_delete.assert_called_once_with(
+        old_avatar, owner_id=user_id, media_kind="avatar"
+    )
     mock_update.assert_called_once_with(mock_user, {"avatar_url": "new_url"})
     mock_uow.commit.assert_called_once()
 
@@ -84,7 +87,8 @@ async def test_upload_avatar_not_found(mock_uow):
 async def test_delete_avatar(mock_uow, monkeypatch, recwarn):
     user_id = uuid.uuid4()
     mock_user = User(id=user_id)
-    mock_user.profile = UserProfile(avatar_url="to_delete")
+    avatar_to_delete = f"avatars/user_{user_id}_avatar_{uuid.uuid4().hex}.jpg"
+    mock_user.profile = UserProfile(avatar_url=avatar_to_delete)
     mock_uow.users.get_orm_for_update_with_relations.return_value = mock_user
     mock_uow.users._to_dto.return_value = MagicMock(spec=UserDTO)
 
@@ -102,7 +106,9 @@ async def test_delete_avatar(mock_uow, monkeypatch, recwarn):
     await svc.delete_avatar(user_id)
     gc.collect()
 
-    mock_delete.assert_called_once_with("to_delete")
+    mock_delete.assert_called_once_with(
+        avatar_to_delete, owner_id=user_id, media_kind="avatar"
+    )
     mock_update.assert_called_once_with(mock_user, {"avatar_url": None})
     mock_uow.commit.assert_called_once()
     assert not any(issubclass(warning.category, RuntimeWarning) for warning in recwarn)

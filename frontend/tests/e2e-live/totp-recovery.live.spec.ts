@@ -55,7 +55,7 @@ async function inspectAlertState(page: Page) {
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
 function decodeBase32(value: string): Buffer {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" // pragma: allowlist secret -- public TOTP test alphabet
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" //  -- public TOTP test alphabet
   const normalized = value.replace(/\s+/gu, "").replace(/=+$/u, "").toUpperCase()
   const bytes: number[] = []
   let accumulator = 0

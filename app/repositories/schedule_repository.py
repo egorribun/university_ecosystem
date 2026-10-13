@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select, text
 
 import app.models as models
 from app.core.cache import schedule_cache
@@ -83,6 +83,67 @@ class ScheduleRepository(
 
     # Safety cap: a group cannot realistically have more schedule items than this.
     _MAX_ITEMS_PER_GROUP: int = 500
+
+    async def lock_schedule_mutations(self) -> None:
+        """Serialize schedule conflict checks and writes for the active transaction.
+
+        A PostgreSQL transaction-scoped advisory lock closes the check-then-write
+        race without changing the SQLite test contract. The two-part key has a
+        schedule-specific namespace and is released automatically by the UOW's
+        commit or rollback; it is compatible with PgBouncer transaction pooling.
+        """
+        if self.db.get_bind().dialect.name != "postgresql":
+            return
+
+        await self.db.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtext(:namespace), hashtext(:operation))"
+            ),
+            {
+                "namespace": "university_ecosystem.schedule",
+                "operation": "mutation",
+            },
+        )
+
+    async def get_conflict_candidates(
+        self, group_id: uuid.UUID, teacher: str | Sequence[str] | None
+    ) -> Sequence[ScheduleDTO]:
+        """Read every row relevant to a conflict check, bypassing the read cache.
+
+        The display query is cached and capped at 500 rows. Neither behaviour is
+        safe for a write invariant, especially after waiting on the transaction
+        lock, so conflict checks use a fresh unbounded database query.
+        """
+        criteria = [self.model.group_id == group_id]
+        teachers: tuple[str, ...]
+        if isinstance(teacher, str):
+            teachers = (teacher,) if teacher else ()
+        else:
+            teachers = tuple(name for name in teacher or () if name)
+        if teachers:
+            criteria.append(self.model.teacher.in_(teachers))
+
+        stmt = (
+            select(self.model)
+            .where(or_(*criteria))
+            .order_by(self.model.weekday, self.model.start_time)
+            .execution_options(populate_existing=True)
+        )
+        result = await self.db.execute(stmt)
+        return [self._to_dto(item) for item in result.scalars().all()]
+
+    async def get_for_update_fresh(
+        self, schedule_id: uuid.UUID | str
+    ) -> ScheduleDTO | None:
+        """Lock and refresh the row after a writer waited for the schedule lock."""
+        item = await self.db.get(
+            self.model,
+            self._cast_id(schedule_id),
+            with_for_update=True,
+            populate_existing=True,
+        )
+        return self._to_dto(item) if item is not None else None
 
     async def get_by_group(self, group_id: uuid.UUID) -> Sequence[ScheduleDTO]:
         """Get schedule for a group with caching."""

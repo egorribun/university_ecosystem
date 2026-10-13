@@ -22,6 +22,7 @@ from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.user.compliance_service import UserComplianceService
+from tests.helpers.synthetic_credentials import make_test_totp_secret
 
 
 class _Uow:
@@ -311,7 +312,7 @@ async def test_export_user_data_includes_persisted_mfa_summary_without_secrets(
     other_user = await user_factory()
     user_id = user.id
     now = datetime.now(UTC)
-    enrollment_secret = "test-only-enrollment-secret"  # pragma: allowlist secret
+    enrollment_secret = make_test_totp_secret()
     other_enrollment_secret = secrets.token_urlsafe(24)
     enrollment_id = uuid4()
     revoked_enrollment_id = uuid4()

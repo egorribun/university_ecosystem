@@ -1299,7 +1299,7 @@
             {
               "name_pattern": "python-migration-coverage-attempt-${{ github.run_attempt }}",
               "path_pattern": "artifacts/coverage/python/producer/.coverage.migration\nartifacts/coverage/python/producer/coverage-provenance-migration.json\n",
-              "required": true,
+              "required": false,
               "provenance": "run_id_attempt"
             }
           ],

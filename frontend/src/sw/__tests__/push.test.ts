@@ -7,18 +7,33 @@ import {
   type NotificationData,
 } from "@/push/notification-helpers"
 
-// Mock notification helpers
-vi.mock("@/push/notification-helpers", () => ({
-  parsePushEventData: vi.fn((data: any) => ({
-    body: "Mock Body",
-    url: "/mock-url",
-    data: { type: data ? data.type : "default" },
-  })),
-  buildNotificationDetails: vi.fn((payload: any) => {
-    const data = { url: payload.url, type: payload.data?.type }
-    return { title: "Mock Title", options: { body: payload.body, data }, data }
-  }),
-}))
+// Mock notification helpers while keeping the localized generic defaults available.
+vi.mock("@/push/notification-helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/push/notification-helpers")>()
+  return {
+    ...actual,
+    parsePushEventData: vi.fn((data: any) => ({
+      body: "Mock Body",
+      url: "/mock-url",
+      data: {
+        type: data ? data.type : "default",
+        ...(typeof data?.recipientUserId === "string"
+          ? { recipientUserId: data.recipientUserId }
+          : {}),
+      },
+    })),
+    buildNotificationDetails: vi.fn((payload: any) => {
+      const data = {
+        url: payload.url,
+        type: payload.data?.type,
+        ...(typeof payload.data?.recipientUserId === "string"
+          ? { recipientUserId: payload.data.recipientUserId }
+          : {}),
+      }
+      return { title: "Mock Title", options: { body: payload.body, data }, data }
+    }),
+  }
+})
 
 const notificationDetails = (title: string, body: string, data: NotificationData) => ({
   title,
@@ -95,6 +110,7 @@ describe("Service Worker - Push Notifications", () => {
           url: "/mock-url",
           type: "in-app",
           notificationId: "018f10c0-0000-7000-8000-000000000001",
+          recipientUserId: "00000000-0000-4000-8000-000000000001",
           topic: "news.published",
         })
       )
@@ -116,13 +132,17 @@ describe("Service Worker - Push Notifications", () => {
       expect(mockClient.postMessage).toHaveBeenCalledWith({
         type: "PUSH_NOTIFICATION",
         notificationId: "018f10c0-0000-7000-8000-000000000001",
+        recipientUserId: "00000000-0000-4000-8000-000000000001",
         topic: "news.published",
         toast: {
           id: "018f10c0-0000-7000-8000-000000000001",
           title: "Mock Title",
           body: "Mock Body",
           url: "/mock-url",
-          data: expect.objectContaining({ topic: "news.published" }),
+          data: expect.objectContaining({
+            topic: "news.published",
+            recipientUserId: "00000000-0000-4000-8000-000000000001",
+          }),
         },
       })
       expect((self as any).registration.showNotification).not.toHaveBeenCalled()
@@ -146,13 +166,21 @@ describe("Service Worker - Push Notifications", () => {
       })
     })
 
-    it.each([
+    const deliveryCases: Array<{
+      scenario: string
+      type: "in-app" | "default"
+      visibility: Array<"visible" | "hidden">
+      recipients: number[]
+      systemNotifications: number
+      recipientUserId: string | undefined
+    }> = [
       {
         scenario: "delivers in-app messages only to the visible windows",
         type: "in-app",
         visibility: ["visible", "hidden", "visible"],
         recipients: [0, 2],
         systemNotifications: 0,
+        recipientUserId: undefined,
       },
       {
         scenario: "shows a system notification when every window is hidden",
@@ -160,6 +188,7 @@ describe("Service Worker - Push Notifications", () => {
         visibility: ["hidden", "hidden"],
         recipients: [],
         systemNotifications: 1,
+        recipientUserId: "00000000-0000-4000-8000-000000000001",
       },
       {
         scenario: "keeps default pushes as system notifications with a visible window",
@@ -167,43 +196,422 @@ describe("Service Worker - Push Notifications", () => {
         visibility: ["visible", "hidden"],
         recipients: [],
         systemNotifications: 1,
+        recipientUserId: undefined,
       },
-    ])("$scenario", async ({ type, visibility, recipients, systemNotifications }) => {
-      const clients = visibility.map((visibilityState) => ({
-        visibilityState,
-        postMessage: vi.fn(),
-      }))
-      ;((self as any).clients.matchAll as any).mockResolvedValue(clients)
+    ]
+    it.each(deliveryCases)(
+      "$scenario",
+      async ({ type, visibility, recipients, systemNotifications, recipientUserId }) => {
+        const clients = visibility.map((visibilityState) => ({
+          visibilityState,
+          postMessage: vi.fn(),
+        }))
+        ;((self as any).clients.matchAll as any).mockResolvedValue(clients)
+        if (recipientUserId) {
+          vi.stubGlobal(
+            "fetch",
+            vi.fn().mockResolvedValue({
+              ok: true,
+              status: 200,
+              json: async () => ({ id: recipientUserId }),
+            })
+          )
+        }
+        const event = {
+          data: { type, ...(recipientUserId ? { recipientUserId } : {}) },
+          waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+        }
+
+        eventListeners.push?.(event)
+        expect(event.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+        await event.waitUntil.mock.calls[0]?.[0]
+
+        expect((self as any).clients.matchAll).toHaveBeenCalledExactlyOnceWith({
+          type: "window",
+          includeUncontrolled: true,
+        })
+        for (const [index, client] of clients.entries()) {
+          if (recipients.includes(index)) {
+            expect(client.postMessage).toHaveBeenCalledExactlyOnceWith({
+              type: "PUSH_NOTIFICATION",
+              toast: { title: "Mock Title", body: "Mock Body", url: "/mock-url" },
+            })
+          } else {
+            expect(client.postMessage).not.toHaveBeenCalled()
+          }
+        }
+        expect((self as any).registration.showNotification).toHaveBeenCalledTimes(
+          systemNotifications
+        )
+        if (systemNotifications) {
+          expect((self as any).registration.showNotification).toHaveBeenCalledWith("Mock Title", {
+            body: "Mock Body",
+            data: {
+              url: "/mock-url",
+              type,
+              ...(recipientUserId ? { recipientUserId } : {}),
+            },
+          })
+        }
+      }
+    )
+
+    it("shows a topic-only public broadcast without probing the browser account", async () => {
+      const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+        "@/push/notification-helpers"
+      )
+      vi.mocked(parsePushEventData).mockImplementationOnce(helpers.parsePushEventData)
+      vi.mocked(buildNotificationDetails).mockImplementationOnce(helpers.buildNotificationDetails)
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      const payload = {
+        title: "Campus update",
+        body: "A public update was published.",
+        data: { topic: "news.published" },
+      }
       const event = {
-        data: { type },
+        data: {
+          json: () => payload,
+          text: () => "",
+        },
         waitUntil: vi.fn<(promise: Promise<void>) => void>(),
       }
 
       eventListeners.push?.(event)
-      expect(event.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
       await event.waitUntil.mock.calls[0]?.[0]
 
-      expect((self as any).clients.matchAll).toHaveBeenCalledExactlyOnceWith({
-        type: "window",
-        includeUncontrolled: true,
-      })
-      for (const [index, client] of clients.entries()) {
-        if (recipients.includes(index)) {
-          expect(client.postMessage).toHaveBeenCalledExactlyOnceWith({
-            type: "PUSH_NOTIFICATION",
-            toast: { title: "Mock Title", body: "Mock Body", url: "/mock-url" },
+      const details = helpers.buildNotificationDetails(payload)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect((self as any).registration.showNotification).toHaveBeenCalledExactlyOnceWith(
+        details.title,
+        details.options
+      )
+    })
+
+    it.each([
+      {
+        label: "notification ID only",
+        payloadData: {},
+        notificationData: { notificationId: "private-notification-id" },
+      },
+      {
+        label: "non-default type only",
+        payloadData: { type: "schedule.changed" },
+        notificationData: { type: "schedule.changed" },
+      },
+    ])(
+      "suppresses recipientless private content marked by $label",
+      async ({ payloadData, notificationData }) => {
+        ;((self as any).clients.matchAll as any).mockResolvedValue([])
+        vi.mocked(parsePushEventData).mockReturnValueOnce({ data: payloadData } as any)
+        vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+          notificationDetails("Private title", "Private body", {
+            url: "/private-message/123",
+            ...notificationData,
           })
-        } else {
-          expect(client.postMessage).not.toHaveBeenCalled()
+        )
+        const fetchMock = vi.fn()
+        vi.stubGlobal("fetch", fetchMock)
+        const event = {
+          data: { type: "default" },
+          waitUntil: vi.fn<(promise: Promise<void>) => void>(),
         }
+
+        eventListeners.push?.(event)
+        await event.waitUntil.mock.calls[0]?.[0]
+
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect((self as any).registration.showNotification).not.toHaveBeenCalled()
       }
-      expect((self as any).registration.showNotification).toHaveBeenCalledTimes(systemNotifications)
-      if (systemNotifications) {
-        expect((self as any).registration.showNotification).toHaveBeenCalledWith("Mock Title", {
-          body: "Mock Body",
-          data: { url: "/mock-url", type },
+    )
+    it("confirms the recipient before showing a targeted native preview", async () => {
+      const recipientUserId = "00000000-0000-4000-8000-000000000001"
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      vi.mocked(parsePushEventData).mockReturnValueOnce({
+        data: { type: "news.published" },
+      } as any)
+      vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+        notificationDetails("Private title", "Private body", {
+          url: "/private-message/123",
+          type: "news.published",
+          recipientUserId,
+          notificationId: "018f10c0-0000-7000-8000-000000000002",
         })
+      )
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: recipientUserId }),
+      })
+      vi.stubGlobal("fetch", fetchMock)
+      const event = {
+        data: { type: "news.published" },
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
       }
+
+      eventListeners.push?.(event)
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+        new URL("/api/v1/users/me", self.location.origin),
+        expect.objectContaining({
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: { Accept: "application/json", "Cache-Control": "no-store" },
+          signal: expect.any(AbortSignal),
+        })
+      )
+      expect((self as any).registration.showNotification).toHaveBeenCalledExactlyOnceWith(
+        "Private title",
+        expect.objectContaining({
+          body: "Private body",
+          data: expect.objectContaining({
+            url: "/private-message/123",
+            recipientUserId,
+          }),
+        })
+      )
+    })
+
+    it.each([
+      {
+        scenario: "a different confirmed account",
+        response: {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "00000000-0000-4000-8000-000000000002" }),
+        },
+      },
+      {
+        scenario: "an unauthenticated session",
+        response: { ok: false, status: 401, json: async () => ({}) },
+      },
+      {
+        scenario: "an authorization refusal",
+        response: { ok: false, status: 403, json: async () => ({}) },
+      },
+    ])("suppresses native private content for $scenario", async ({ response }) => {
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      vi.mocked(parsePushEventData).mockReturnValueOnce({
+        data: { type: "news.published" },
+      } as any)
+      vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+        notificationDetails("Private title", "Private body", {
+          type: "news.published",
+          recipientUserId: "00000000-0000-4000-8000-000000000001",
+          notificationId: "private-notification-id",
+          url: "/private-message/123",
+        })
+      )
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response))
+      const event = {
+        data: { type: "news.published" },
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+      }
+
+      eventListeners.push?.(event)
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      expect((self as any).registration.showNotification).not.toHaveBeenCalled()
+    })
+
+    it("suppresses a native private notification with no valid recipient", async () => {
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      vi.mocked(parsePushEventData).mockReturnValueOnce({
+        data: { type: "news.published" },
+      } as any)
+      vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+        notificationDetails("Private title", "Private body", {
+          type: "news.published",
+          notificationId: "private-notification-id",
+          url: "/private-message/123",
+        })
+      )
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+      const event = {
+        data: { type: "news.published" },
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+      }
+
+      eventListeners.push?.(event)
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect((self as any).registration.showNotification).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      {
+        scenario: "the session endpoint is unavailable",
+        setupFetch: () => vi.fn().mockRejectedValue(new Error("offline")),
+      },
+      {
+        scenario: "the session endpoint returns a server error",
+        setupFetch: () => vi.fn().mockResolvedValue({ ok: false, status: 503 }),
+      },
+      {
+        scenario: "the session response is malformed",
+        setupFetch: () =>
+          vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: "bad" }) }),
+      },
+      {
+        scenario: "the session response contains malformed JSON",
+        setupFetch: () =>
+          vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => {
+              throw new SyntaxError("invalid JSON")
+            },
+          }),
+      },
+    ])("uses a generic privacy-safe native notification when $scenario", async ({ setupFetch }) => {
+      const recipientUserId = "00000000-0000-4000-8000-000000000001"
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      vi.mocked(parsePushEventData).mockReturnValueOnce({
+        data: { type: "schedule.changed" },
+      } as any)
+      vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+        notificationDetails("Private title", "Private body", {
+          type: "schedule.changed",
+          recipientUserId,
+          notificationId: "private-notification-id",
+          url: "/private-message/123",
+        })
+      )
+      vi.stubGlobal("fetch", setupFetch())
+      const event = {
+        data: { type: "schedule.changed" },
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+      }
+      const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+        "@/push/notification-helpers"
+      )
+
+      eventListeners.push?.(event)
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      expect((self as any).registration.showNotification).toHaveBeenCalledExactlyOnceWith(
+        helpers.getDefaultNotificationTitle(),
+        {
+          body: helpers.getDefaultNotificationBody(),
+          icon: helpers.DEFAULT_ICON,
+          badge: helpers.DEFAULT_ICON,
+          data: { url: "/" },
+        }
+      )
+      expect(
+        JSON.stringify((self as any).registration.showNotification.mock.calls[0])
+      ).not.toContain("Private")
+      expect(
+        JSON.stringify((self as any).registration.showNotification.mock.calls[0])
+      ).not.toContain(recipientUserId)
+    })
+
+    it("uses a generic privacy-safe notification when the session request times out", async () => {
+      vi.useFakeTimers()
+      try {
+        const recipientUserId = "00000000-0000-4000-8000-000000000001"
+        ;((self as any).clients.matchAll as any).mockResolvedValue([])
+        vi.mocked(parsePushEventData).mockReturnValueOnce({
+          data: { type: "schedule.changed" },
+        } as any)
+        vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+          notificationDetails("Private title", "Private body", {
+            type: "schedule.changed",
+            recipientUserId,
+            notificationId: "private-notification-id",
+            url: "/private-message/123",
+          })
+        )
+        let requestSignal: AbortSignal | null | undefined
+        const fetchMock = vi.fn<typeof fetch>(
+          (_input, init) =>
+            new Promise<Response>((_, reject) => {
+              requestSignal = init?.signal
+              requestSignal?.addEventListener(
+                "abort",
+                () => reject(new Error("session request aborted")),
+                { once: true }
+              )
+            })
+        )
+        vi.stubGlobal("fetch", fetchMock)
+        const event = {
+          data: { type: "schedule.changed" },
+          waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+        }
+
+        ;(eventListeners.push as any)(event)
+        const handling = event.waitUntil.mock.calls[0]?.[0]
+        expect(handling).toBeDefined()
+        await Promise.resolve()
+        expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+          new URL("/api/v1/users/me", self.location.origin),
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
+        )
+
+        await vi.advanceTimersByTimeAsync(2_000)
+        await handling
+
+        expect(requestSignal?.aborted).toBe(true)
+        const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+          "@/push/notification-helpers"
+        )
+        expect((self as any).registration.showNotification).toHaveBeenCalledExactlyOnceWith(
+          helpers.getDefaultNotificationTitle(),
+          {
+            body: helpers.getDefaultNotificationBody(),
+            icon: helpers.DEFAULT_ICON,
+            badge: helpers.DEFAULT_ICON,
+            data: { url: "/" },
+          }
+        )
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+    it("uses a generic native notification without probing when the worker is offline", async () => {
+      const recipientUserId = "00000000-0000-4000-8000-000000000001"
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      vi.mocked(parsePushEventData).mockReturnValueOnce({
+        data: { type: "schedule.changed" },
+      } as any)
+      vi.mocked(buildNotificationDetails).mockReturnValueOnce(
+        notificationDetails("Private title", "Private body", {
+          type: "schedule.changed",
+          recipientUserId,
+          notificationId: "private-notification-id",
+          url: "/private-message/123",
+        })
+      )
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+      onlineSpy.mockReturnValue(false)
+      const event = {
+        data: { type: "schedule.changed" },
+        waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+      }
+      const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
+        "@/push/notification-helpers"
+      )
+
+      eventListeners.push?.(event)
+      await event.waitUntil.mock.calls[0]?.[0]
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect((self as any).registration.showNotification).toHaveBeenCalledExactlyOnceWith(
+        helpers.getDefaultNotificationTitle(),
+        {
+          body: helpers.getDefaultNotificationBody(),
+          icon: helpers.DEFAULT_ICON,
+          badge: helpers.DEFAULT_ICON,
+          data: { url: "/" },
+        }
+      )
     })
 
     it("shows a fallback system notification for empty push data with a visible window", async () => {
@@ -234,22 +642,46 @@ describe("Service Worker - Push Notifications", () => {
     it.each([
       {
         label: "notification ID without a topic",
-        metadata: { notificationId: "notification-1" },
-        messageFields: { notificationId: "notification-1" },
+        metadata: {
+          notificationId: "notification-1",
+          recipientUserId: "00000000-0000-4000-8000-000000000001",
+        },
+        messageFields: {
+          notificationId: "notification-1",
+          recipientUserId: "00000000-0000-4000-8000-000000000001",
+        },
         toastFields: {
           id: "notification-1",
-          data: { url: "/target", type: "in-app", notificationId: "notification-1" },
+          data: {
+            url: "/target",
+            type: "in-app",
+            notificationId: "notification-1",
+            recipientUserId: "00000000-0000-4000-8000-000000000001",
+          },
         },
       },
       {
         label: "topic without a notification ID",
-        metadata: { topic: "news.published" },
-        messageFields: { topic: "news.published" },
-        toastFields: { data: { url: "/target", type: "in-app", topic: "news.published" } },
+        metadata: {
+          topic: "news.published",
+          recipientUserId: "00000000-0000-4000-8000-000000000001",
+        },
+        messageFields: {
+          topic: "news.published",
+          recipientUserId: "00000000-0000-4000-8000-000000000001",
+        },
+        toastFields: {
+          data: {
+            url: "/target",
+            type: "in-app",
+            topic: "news.published",
+            recipientUserId: "00000000-0000-4000-8000-000000000001",
+          },
+        },
       },
       {
         label: "non-string metadata",
-        metadata: { notificationId: 42, topic: true },
+        metadata: { notificationId: 42, topic: true, recipientUserId: 42 },
         messageFields: {},
         toastFields: {},
       },

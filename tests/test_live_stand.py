@@ -26,6 +26,8 @@ import pytest
 import yaml
 from py_vapid import Vapid
 
+from tests.helpers.synthetic_credentials import make_test_password
+
 ROOT = Path(__file__).resolve().parents[1]
 _SPEC = importlib.util.spec_from_file_location(
     "live_stand", ROOT / "scripts" / "live_stand.py"
@@ -364,6 +366,61 @@ def test_stand_environment_pins_the_project_and_keys() -> None:
             assert env[f"LIVE_HOST_PORT_{name}"] == str(port)
 
 
+def test_trusted_proxy_status_logs_only_the_configured_peer_count(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    owner = object()
+    evidence = SimpleNamespace(fingerprint="stable-evidence")
+    peer_addresses = ("synthetic-peer-secret-a", "synthetic-peer-secret-b")
+    settings = {
+        "TRUSTED_PROXIES": (),
+        "GATEWAY_TRUSTED_PROXIES": peer_addresses,
+        "WS_HUB_TRUSTED_PROXIES": peer_addresses,
+    }
+    addresses = {"caddy": "caddy", "gateway": "gateway", "ws-hub": "ws-hub"}
+    network_ids = {"network": "stable-network"}
+
+    monkeypatch.setattr(
+        live_stand, "_assert_live_trusted_proxy_source_current", lambda *_args: None
+    )
+    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda *_args: None)
+    monkeypatch.setattr(
+        live_stand,
+        "_verify_stand_owner_compose_resources",
+        lambda *_args: evidence,
+    )
+    monkeypatch.setattr(
+        live_stand, "_require_live_trusted_proxy_http_health", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_capture_live_trusted_proxy_inventory",
+        lambda *_args: ({}, settings, addresses, network_ids),
+    )
+    monkeypatch.setattr(
+        live_stand, "_run_live_trusted_proxy_refresh", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        live_stand, "_assert_live_trusted_proxy_container_delta", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_trusted_proxy_network_ids_unchanged",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        live_stand, "_assert_live_trusted_proxy_environment", lambda *_args: None
+    )
+
+    peer_count = live_stand._configure_live_trusted_proxy_peers(owner, {}, evidence)
+    print(live_stand._trusted_proxy_peers_status(peer_count))
+
+    assert peer_count == 2
+    assert capsys.readouterr().out == (
+        "trusted_proxy_peers configured=true peer_count=2\n"
+    )
+
+
 def test_compose_command_targets_only_the_stand_project() -> None:
     assert live_stand.compose_command(
         "ps", project_name="ue-live-0123456789abcdef"
@@ -427,7 +484,7 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
     original_token_urlsafe = live_stand.secrets.token_urlsafe
     inherited_password = original_token_urlsafe(32)
     base_environment = {"COMPOSE_PROJECT_NAME": owner.project_name}
-    base_environment["TEST_PASSWORD"] = inherited_password  # pragma: allowlist secret
+    base_environment["TEST_PASSWORD"] = inherited_password
 
     def generate_token(size: int) -> str:
         token_sizes.append(size)
@@ -602,13 +659,14 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     token_sizes: list[int] = []
     original_token_urlsafe = live_stand.secrets.token_urlsafe
     ambient_password = original_token_urlsafe(32)
+    vapid_keys = live_stand.generate_vapid_keys()
     base_environment = {
         "COMPOSE_PROJECT_NAME": owner.project_name,
-        "LIVE_VAPID_PUBLIC_KEY": "public-marker",
-        "LIVE_VAPID_PRIVATE_KEY": "private-marker",  # pragma: allowlist secret
+        "LIVE_VAPID_PUBLIC_KEY": vapid_keys["public"],
+        "LIVE_VAPID_PRIVATE_KEY": vapid_keys["private"],
         "LIVE_HOST_PORT_CADDY_HTTP": str(port_map["CADDY_HTTP"]),
         "LIVE_MAILPIT_PORT": str(port_map["MAILPIT"]),
-        "TEST_PASSWORD": ambient_password,  # pragma: allowlist secret
+        "TEST_PASSWORD": ambient_password,
     }
     forwarded_secret_names = (
         "CHROMATIC_PROJECT_TOKEN",
@@ -1232,16 +1290,20 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
         "TMPDIR": str(tmp_path),
         "CI": "true",
         "GITHUB_ACTIONS": "true",
-        "TEST_PASSWORD": "admin-password-sentinel",  # pragma: allowlist secret
+        "TEST_PASSWORD": make_test_password(
+            length=23, required_classes=frozenset({"lower", "symbol"})
+        ),
         "LIVE_BASE_URL": "http://sensitive-endpoint.invalid",
         "LIVE_MAILPIT_URL": "http://sensitive-mail.invalid",
         "LIVE_E2E_OUTPUT_DIR": str(output_path),
         "PLAYWRIGHT_TEST_OUTPUT_DIR": str(output_path),
         "LIVE_PRIMARY_REPOSITORY_ROOT": "caller-controlled-root-sentinel",
-        "CHROMATIC_PROJECT_TOKEN": "chromatic-secret-sentinel",  # pragma: allowlist secret
-        "GH_TOKEN": "github-secret-sentinel",  # pragma: allowlist secret
-        "ACTIONS_RUNTIME_TOKEN": "actions-secret-sentinel",  # pragma: allowlist secret
-        "UNRELATED_API_KEY": "api-key-sentinel",  # pragma: allowlist secret
+        "CHROMATIC_PROJECT_TOKEN": "chromatic-secret-sentinel",
+        "GH_TOKEN": "github-secret-sentinel",
+        "ACTIONS_RUNTIME_TOKEN": "actions-secret-sentinel",
+        "UNRELATED_API_KEY": make_test_password(
+            length=16, required_classes=frozenset({"lower", "symbol"})
+        ),
         "NODE_OPTIONS": "--require=untrusted.js",
         "NPM_CONFIG_REGISTRY": "https://private-registry.invalid",
         "NPM_CONFIG_USERCONFIG": "caller-userconfig-sentinel",
@@ -1406,9 +1468,15 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
 ) -> None:
     password = live_stand.secrets.token_urlsafe(32) + "!Aa0"
     reset_token = live_stand.secrets.token_urlsafe(32)
-    registration_password = "Live-Registration-Pw9!"  # pragma: allowlist secret
-    student_password = "student-fixture-sentinel"  # pragma: allowlist secret
-    teacher_password = "teacher-fixture-sentinel"  # pragma: allowlist secret
+    registration_password = make_test_password(length=22)
+    student_password = make_test_password(
+        length=24, required_classes=frozenset({"lower", "symbol"})
+    )
+    teacher_password = make_test_password(
+        length=24,
+        required_classes=frozenset({"lower", "symbol"}),
+        excluding=(student_password,),
+    )
     stdout = (
         "1 failed (3.2s)\n"
         "2 passed (9.1s)\n"
@@ -6250,6 +6318,21 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     )
     monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda _owner: None)
 
+    def configure_trusted_proxy_peers(
+        owner: live_stand.StandOwner,
+        _environment: dict[str, str],
+        _evidence: live_stand.ComposeResourceEvidence | None,
+    ) -> int:
+        assert owner.source_sha == resolved_sha
+        assert live_stand.SOURCE_SHA == resolved_sha
+        return 0
+
+    monkeypatch.setattr(
+        live_stand,
+        "_configure_live_trusted_proxy_peers",
+        configure_trusted_proxy_peers,
+    )
+
     def capture(
         command: list[str], *, cwd: Path, env: dict[str, str] | None = None
     ) -> None:
@@ -7110,12 +7193,28 @@ def test_up_preflights_every_port_before_stopping_or_building(
         lambda *args: "" if "status" in args else "resolved-sha",
     )
     monkeypatch.setattr(live_stand, "_run", run)
+
+    def configure_trusted_proxy_peers(
+        owner: live_stand.StandOwner,
+        _environment: dict[str, str],
+        evidence: live_stand.ComposeResourceEvidence,
+    ) -> int:
+        assert owner.source_sha is None
+        assert live_stand.SOURCE_SHA == "resolved-sha"
+        assert evidence.fingerprint == owner.compose_resource_fingerprint
+        return 0
+
+    monkeypatch.setattr(
+        live_stand,
+        "_configure_live_trusted_proxy_peers",
+        configure_trusted_proxy_peers,
+    )
     monkeypatch.setattr(live_stand, "require_free_ports", check_ports)
     monkeypatch.setattr(live_stand, "choose_published_ports", lambda: new_ports)
     monkeypatch.setattr(
         live_stand,
         "ensure_worktree",
-        lambda ref: events.append(f"ensure:{ref}") or "sha",
+        lambda ref: events.append(f"ensure:{ref}") or "resolved-sha",
     )
     monkeypatch.setattr(live_stand, "stand_environment", lambda *_args: {})
     monkeypatch.setattr(live_stand.shutil, "which", lambda name: "pwsh")
@@ -7140,6 +7239,7 @@ def test_up_preflights_every_port_before_stopping_or_building(
         "-File",
         "start-docker.ps1",
         "-PrepareOnly",
+        "-InitializeTrustedProxyBootstrap",
         "-ExtraCompose",
         live_stand.OVERLAY,
     ]
@@ -7160,6 +7260,8 @@ def test_up_preflights_every_port_before_stopping_or_building(
     started_owner = live_stand.load_stand_owner(worktree)
     assert dict(started_owner.published_ports) == new_ports
     assert started_owner.compose_resource_fingerprint is not None
+    assert started_owner.source_sha is None
+    assert live_stand.SOURCE_SHA == "resolved-sha"
 
 
 def test_up_port_conflict_preserves_the_running_stand_and_never_builds(
@@ -7188,6 +7290,53 @@ def test_up_port_conflict_preserves_the_running_stand_and_never_builds(
         live_stand._up_locked("HEAD")
 
     assert events == []
+
+
+def test_normal_trusted_proxy_source_requires_the_verified_checkout_sha(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    expected_sha = "a" * 40
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args == ("-C", str(worktree), "rev-parse", "HEAD"):
+            return expected_sha
+        if args == (
+            "-C",
+            str(worktree),
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+        ):
+            return ""
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", None)
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+    assert owner.source_sha is None
+    with pytest.raises(
+        live_stand.StandError,
+        match="live trusted proxy owner or source identity changed",
+    ):
+        live_stand._assert_live_trusted_proxy_source_current(owner)
+    assert git_calls == []
+
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", expected_sha)
+    live_stand._assert_live_trusted_proxy_source_current(owner)
+    assert git_calls == [
+        ("-C", str(worktree), "rev-parse", "HEAD"),
+        ("-C", str(worktree), "status", "--porcelain", "--untracked-files=no"),
+    ]
+
+    monkeypatch.setattr(live_stand, "SOURCE_SHA", "b" * 40)
+    with pytest.raises(
+        live_stand.StandError,
+        match="live trusted proxy source identity changed",
+    ):
+        live_stand._assert_live_trusted_proxy_source_current(owner)
 
 
 _AUTH_HTTP_DIAG_TEST_OPERATIONS = (

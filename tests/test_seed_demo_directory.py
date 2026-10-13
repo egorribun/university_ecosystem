@@ -11,15 +11,14 @@ from app.core.database import async_session
 from app.core.di_provider import create_dishka_container
 from app.models import DataAccessLog, Group
 from scripts import seed_demo_data
+from tests.helpers.synthetic_credentials import make_test_password
 
 
 @pytest.mark.asyncio
 async def test_seeded_peers_are_readable_by_admin_directory_with_fresh_sessions(
     root_client, app, user_factory, db_session
 ):
-    password = (
-        "DirectoryProbe123!"  # pragma: allowlist secret -- synthetic login fixture
-    )
+    password = make_test_password()
     admin = await user_factory(
         role="admin",
         email="directory-admin@example.com",

@@ -64,7 +64,7 @@
 	# Pre-W131: a single root-level reverse_proxy sent ALL traffic to backend
 	# — internal-only configuration that never had a frontend service. Phase
 	# 4 introduces a Node SSR frontend runtime, so prefixes now route
-	# explicitly: /api/*, /graphql*, /ws/* go to backend services; /sw.js
+	# explicitly: /api/* and /ws/* go to backend services; /sw.js
 	# plus the default handle go to frontend:3000.
 	# Public key discovery bypasses the gateway so edge and service clients can
 	# refresh the backend's RS256 key without an authentication dependency.
@@ -82,12 +82,6 @@
 		}
 	}
 
-	handle /graphql* {
-		reverse_proxy gateway:8080 {
-			header_up X-Real-IP {http.request.remote}
-			header_up X-Forwarded-Proto https
-		}
-	}
 
 	# Ticket issuance is an ordinary authenticated HTTP request handled by the
 	# gateway. It must not fall through to the WebSocket server.

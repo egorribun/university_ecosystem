@@ -3,6 +3,7 @@ from sqlalchemy import select
 
 import app.models as models
 from scripts.seed_admin_data import AUDIT_ACTIONS, seed_audit_logs
+from tests.helpers.synthetic_credentials import make_test_marker
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -431,10 +432,11 @@ async def test_reseeding_existing_extra_user_repairs_missing_demo_relations(
         seed_admin_data.EXTRA_USERS[0]
     )
     groups = await seed_admin_data.seed_extra_groups(db_session)
+    stored_hash_marker = make_test_marker(length=9)
     existing = await user_factory(
         email=email,
         role=role,
-        hashed_password="kept-hash",  # pragma: allowlist secret
+        hashed_password=stored_hash_marker,
     )
     profile = await db_session.scalar(
         select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
@@ -459,7 +461,7 @@ async def test_reseeding_existing_extra_user_repairs_missing_demo_relations(
     output = capsys.readouterr()
 
     assert any(user.id == existing.id for user in users)
-    assert existing.hashed_password == "kept-hash"  # pragma: allowlist secret
+    assert existing.hashed_password == stored_hash_marker
     assert existing.role == role
     assert existing.group_id == groups[group_name].id
     assert restored_profile is not None
@@ -480,11 +482,12 @@ async def test_reseeding_extra_user_rejects_role_collision_before_mutating_accou
         seed_admin_data.EXTRA_USERS[0]
     )
     groups = await seed_admin_data.seed_extra_groups(db_session)
+    stored_hash_marker = make_test_marker(length=14)
     existing = await user_factory(
         email=email,
         role=models.UserRole.TEACHER,
         group_id=None,
-        hashed_password="preserved-hash",  # pragma: allowlist secret
+        hashed_password=stored_hash_marker,
         full_name="Existing account name",
     )
     original_hash = existing.hashed_password
@@ -520,7 +523,7 @@ async def test_reseeding_existing_extra_user_preserves_existing_custom_data(
     existing = await user_factory(
         email=email,
         role=role,
-        hashed_password="kept-hash",  # pragma: allowlist secret
+        hashed_password="kept-hash",
     )
     existing.group_id = groups["ЭК-401"].id
 
@@ -557,7 +560,7 @@ async def test_reseeding_existing_extra_user_preserves_existing_custom_data(
     capsys.readouterr()
 
     assert any(user.id == existing.id for user in users)
-    assert existing.hashed_password == "kept-hash"  # pragma: allowlist secret
+    assert existing.hashed_password == "kept-hash"
     assert existing.role == role
     assert existing.group_id == groups["ЭК-401"].id
     assert profile.full_name == "Custom existing name"

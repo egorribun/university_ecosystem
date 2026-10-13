@@ -51,6 +51,7 @@ jobs:
             "native/rust_ext/deny.toml"
             "scripts/quality/filter_checkov_sarif.py"
             "quality/ci-check-catalog.json"
+            "quality/security-false-positive-dispositions.json"
             "security/audit-allowlist.yaml"
           )
           changed=()
