@@ -31,7 +31,7 @@
   window.__UE_SELECTED_LANG__ = lang
 
   // 3. Static Shell Hooks
-  import("/static-shell-i18n.js")
+  import("./static-shell-i18n.js")
     .then(function (mod) {
       mod.applyDocumentLanguage(document, lang)
       mod.applyMetaTranslations(document, lang)

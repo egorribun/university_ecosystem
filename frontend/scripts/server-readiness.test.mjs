@@ -565,7 +565,9 @@ test("server nonce flows only through the trusted Start router option", async ()
 
   assert.match(serverSource, /requestNonceStorage\.run\(nonce/u)
   const healthFastPath = serverSource.indexOf('url.pathname === "/healthz"')
-  const nonceGeneration = serverSource.indexOf('process.env.TSS_PRERENDERING === "true"')
+  const nonceGeneration = serverSource.search(
+    /^[ \t]*const nonce[ \t]*=[ \t\r\n]*process\.env\.TSS_PRERENDERING === "true"/mu
+  )
   assert.ok(
     healthFastPath >= 0 && nonceGeneration > healthFastPath,
     "the JSON health fast path stays ahead of nonce and CSP work"
