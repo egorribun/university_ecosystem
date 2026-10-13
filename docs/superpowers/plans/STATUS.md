@@ -9,10 +9,11 @@
 
 - Один checkout, ветка egorribun, существующий
   [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  База текущего пакета — 976de540; точный head определяется Git и PR.
+  Исправления — 834b3344, Caddy — b8193e1a, Redis — 62fe5949;
+  точный head определяется Git и PR.
   PR snapshot 2026-10-13 11:18 UTC: OPEN/BLOCKED, head 976de540,
   100 SUCCESS / 10 FAILURE / 26 SKIPPED; main — ac74e915.
-  Пакет 976de540 сохранён обычными commit/push с hooks.
+  Новые пакеты прошли обычные hooks; свежий published-source CI pending.
 - Действуют 78 обязательных пар context/integration и CodeQL code_scanning.
   Q1/Q4 внедрены; CodeQL blocking, Semgrep в pre-commit.
   До Q3 текущие coverage floors и 100% patch coverage сохраняются.
@@ -37,7 +38,7 @@
   Frontend CSP/static bootstrap: 68 tests, TypeScript, ESLint и production build
   с canonical WASM PASS. После реального entrypoint/createRoot сохраняются
   dark/en, nonce и ровно один theme-init script; SSR hydration не менялась.
-  Эти исправления пока не опубликованы; реальные browser checks pending.
+  Реальные browser checks остаются pending до свежего Core.
 - Ambiguous COMMIT: cleanup проверяет ссылки Attachment на primary после
   rollback; ошибки rollback/cleanup сохраняют исходную ошибку. Pending lease
   того же владельца продлевается на 300 секунд; durable DB idempotency не
@@ -100,15 +101,16 @@
   JetStream template: startup/auth PASS для обычных и сложных синтетических
   credentials; source contracts PASS. Причина прежнего hosted Core failure
   не установлена; нужен новый CI/Core. После прогонов owned resources — 0.
-  Caddy source — 2.11.4; cooldown 2.11.7 истёк. Official metadata/pins
-  перепроверены; private 2.11.7 custom-plugin build, version/module и обе
-  конфигурации PASS на Buildx 0.37.2. Owned builder удалён; проверенный image
-  сохранён для приёмки. Отдельная Caddy digest disposition уже включена
-  в политику118; dependency candidate пока не интегрирован.
-  реальные маршруты/JWKS/WS требуют свежего Core.
-  Test/sandbox Redis 7.4.2: проверен candidate 7.4.11 (CVE floor 7.4.6).
+  Caddy 2.11.7 интегрирован отдельно: 113 tests, Ruff и hooks/actionlint PASS.
+  Official metadata/pins/cooldown проверены; custom-plugin build, version/module
+  и обе конфигурации PASS на Buildx 0.37.2. Owned builder удалён; проверенный
+  image сохранён. Caddy disposition включена в policy118; маршруты/JWKS/WS
+  требуют свежего Core. Redis 7.4.11 интегрирован в test/sandbox и четыре Go
+  testcontainers callers: contract, обе Compose configs, Ruff/gofmt/hooks PASS;
+  свежие Go integration checks ещё pending в CI.
   Imgproxy: четыре применимых advisory исправлены в candidate 4.0.17;
-  cooldown и static compatibility проверены, runtime и интеграция pending.
+  cooldown/static compatibility проверены. Runtime-проба старого image прошла
+  PNG/SVG; no-fetch assertion исследуется, принятие нового image pending.
   SeaweedFS: TUS не опубликован; upstream metadata/source discrepancy сохраняется.
 - AUD-226: Alembic включён в coverage/provenance; нужен штатный aggregate
   четырёх backend shards и PG migration artifact нового source.
@@ -117,10 +119,8 @@
 
 ## Ближайшие шаги
 
-Работа возобновлена владельцем; root готовит обычный commit/push.
-Source на базе976de540; точное staged/unstaged состояние задаёт Git.
-Владелец утвердил ещё четыре FP: с отдельной Caddy записью policy118; baseline319.
-Profile-media RED/GREEN закрыт локально; imgproxy runtime и свежий CI pending.
+Исправления, Caddy и Redis сохранены обычными commits; root готовит push.
+Код на базе62fe5949; точное staged/unstaged состояние задаёт Git.
 
 1. Закрыть текущие CI/browser/startup failures, проверить auth/data finding,
    сохранить исправления обычным commit/push; Caddy — отдельным dependency
