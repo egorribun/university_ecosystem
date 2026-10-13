@@ -48,53 +48,75 @@ async def test_group_repository_rebuilds_dtos_from_the_cache():
 
 
 @pytest.mark.asyncio
-async def test_schedule_repository_rebuilds_dtos_from_the_cache():
+@pytest.mark.parametrize(
+    ("database_rows", "expected_subjects"),
+    [([object()], ["Updated Physics"]), ([], [])],
+    ids=["updated-in-another-worker", "deleted-in-another-worker"],
+)
+async def test_schedule_repository_ignores_stale_process_cache(
+    database_rows, expected_subjects
+):
+    """A stale worker-local value must not replace the current database result."""
+
     repo = ScheduleRepository(MagicMock())
     group_id = uuid4()
-    lesson_id = uuid4()
-    cached = [
-        ScheduleDTO(
-            id=lesson_id,
-            group_id=group_id,
-            weekday="monday",
-            start_time=datetime(2026, 1, 1, 9, 0),
-            end_time=datetime(2026, 1, 1, 10, 30),
-            subject="Physics",
-            teacher="Prof. Xavier",
-            room="A-101",
-        ).model_dump(mode="json")
-    ]
+    old_item = ScheduleDTO(
+        id=uuid4(),
+        group_id=group_id,
+        weekday="monday",
+        start_time=datetime(2026, 1, 1, 9, 0),
+        end_time=datetime(2026, 1, 1, 10, 30),
+        subject="Old Physics",
+        teacher="Prof. Xavier",
+        room="A-101",
+    )
+    current_item = ScheduleDTO(
+        id=uuid4(),
+        group_id=group_id,
+        weekday="monday",
+        start_time=datetime(2026, 1, 1, 9, 0),
+        end_time=datetime(2026, 1, 1, 10, 30),
+        subject="Updated Physics",
+        teacher="Prof. Xavier",
+        room="A-101",
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = database_rows
+    repo.db.execute = AsyncMock(return_value=result)
 
-    with patch.object(schedule_cache, "get", new=AsyncMock(return_value=cached)):
-        result = await repo.get_by_group(group_id)
+    with (
+        patch.object(
+            schedule_cache,
+            "get",
+            new=AsyncMock(return_value=[old_item.model_dump(mode="json")]),
+        ) as cache_get,
+        patch.object(schedule_cache, "set", new=AsyncMock()) as cache_set,
+        patch.object(repo, "_to_dto", return_value=current_item) as to_dto,
+    ):
+        rows = await repo.get_by_group(group_id)
 
-    assert [type(item) for item in result] == [ScheduleDTO]
-    assert result[0].subject == "Physics"
-    # The ICS export reads these three; a dict would have yielded None for each
-    # and produced an empty calendar.
-    assert result[0].weekday == "monday"
-    assert result[0].start_time is not None
-    assert result[0].end_time is not None
+    assert [row.subject for row in rows] == expected_subjects
+    repo.db.execute.assert_awaited_once()
+    cache_get.assert_not_awaited()
+    cache_set.assert_not_awaited()
+    if database_rows:
+        to_dto.assert_called_once_with(database_rows[0])
+    else:
+        to_dto.assert_not_called()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("repository_kind", ["group", "schedule"])
 @pytest.mark.parametrize("cached", [{"items": []}, "invalid-cache-payload", False])
-async def test_non_list_cache_hit_returns_empty_collection(repository_kind, cached):
-    """Malformed cached containers must not leak mappings or scalars to callers."""
+async def test_non_list_group_cache_hit_returns_empty_collection(cached):
+    """Malformed group-cache containers must not leak mappings or scalars."""
 
     db = MagicMock(execute=AsyncMock())
-    group_id = uuid4()
     with (
         patch.object(schedule_cache, "get", new=AsyncMock(return_value=cached)) as get,
         patch.object(schedule_cache, "set", new=AsyncMock()) as set_cache,
     ):
-        if repository_kind == "group":
-            result = await GroupRepository(db).list_groups()
-            get.assert_awaited_once_with("schedule:groups")
-        else:
-            result = await ScheduleRepository(db).get_by_group(group_id)
-            get.assert_awaited_once_with(f"schedule:group:{group_id}")
+        result = await GroupRepository(db).list_groups()
+        get.assert_awaited_once_with("schedule:groups")
 
     assert result == []
     db.execute.assert_not_awaited()
@@ -193,27 +215,28 @@ async def test_group_repository_cache_miss_queries_and_serializes():
 
 
 @pytest.mark.asyncio
-async def test_schedule_repository_cache_miss_queries_and_serializes():
+async def test_schedule_repository_queries_without_process_cache():
     repo = ScheduleRepository(MagicMock())
     group_id = uuid4()
     item = MagicMock()
     dto = MagicMock()
-    dto.model_dump.return_value = {"subject": "Physics"}
     result = MagicMock()
     result.scalars.return_value.all.return_value = [item]
     repo.db.execute = AsyncMock(return_value=result)
 
     with (
-        patch.object(schedule_cache, "get", new=AsyncMock(return_value=None)),
-        patch.object(schedule_cache, "set", new=AsyncMock()) as set_cache,
+        patch.object(
+            schedule_cache, "get", new=AsyncMock(return_value=None)
+        ) as cache_get,
+        patch.object(schedule_cache, "set", new=AsyncMock()) as cache_set,
         patch.object(repo, "_to_dto", return_value=dto),
     ):
         result_dtos = await repo.get_by_group(group_id)
 
     assert result_dtos == [dto]
-    set_cache.assert_awaited_once_with(
-        f"schedule:group:{group_id}", [{"subject": "Physics"}]
-    )
+    repo.db.execute.assert_awaited_once()
+    cache_get.assert_not_awaited()
+    cache_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio

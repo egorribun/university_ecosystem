@@ -492,6 +492,16 @@ def test_backend_image_retries_transient_uv_registry_failures() -> None:
     assert "uv sync failed (network), retry $n/5 in 5s" in dockerfile
 
 
+def test_backend_disables_uvicorn_access_logging_with_query_strings() -> None:
+    """UvicornWorker emits the full ASGI target; keep access logging disabled."""
+    dockerfile = _read("backend.Dockerfile")
+    command = dockerfile[dockerfile.index('CMD ["gunicorn"') :]
+
+    assert '"--worker-class", "uvicorn.workers.UvicornWorker"' in command
+    assert '"--access-logfile"' not in command
+    assert '"--error-logfile", "-"' in command
+
+
 def test_launcher_validates_and_reconciles_existing_rsa_material() -> None:
     script = _read("start-docker.ps1")
     private_key_function = _powershell_function(

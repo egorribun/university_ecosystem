@@ -28,6 +28,7 @@
 				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
 				regexp ([?&]token=)[^&]* ${1}REDACTED
 				regexp ([?&]ticket=)[^&]* ${1}REDACTED
+				regexp ([?&]code=)[^&]* ${1}REDACTED
 				regexp ([?&]password=)[^&]* ${1}REDACTED
 			}
 		}
@@ -191,6 +192,7 @@
 				regexp ^/reset-password/[^/?]+ /reset-password/REDACTED
 				regexp ([?&]token=)[^&]* ${1}REDACTED
 				regexp ([?&]ticket=)[^&]* ${1}REDACTED
+				regexp ([?&]code=)[^&]* ${1}REDACTED
 				regexp ([?&]password=)[^&]* ${1}REDACTED
 			}
 		}

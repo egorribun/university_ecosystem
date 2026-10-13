@@ -113,6 +113,8 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 # TD-007 (audit 2026-03-19): Use gunicorn as process manager with uvicorn workers
 # Workers = 2 × CPU + 1 (using 2 workers for baseline memory limits).
 # --graceful-timeout 30: matches terminationGracePeriodSeconds in K8s
+# Access logging is intentionally disabled: UvicornWorker writes the full ASGI
+# request target, including its query string, through uvicorn.access.
 CMD ["gunicorn", "app.main:app", \
     "--worker-class", "uvicorn.workers.UvicornWorker", \
     "--workers", "2", \
@@ -120,5 +122,4 @@ CMD ["gunicorn", "app.main:app", \
     "--graceful-timeout", "30", \
     "--timeout", "60", \
     "--keep-alive", "5", \
-    "--access-logfile", "-", \
     "--error-logfile", "-"]
