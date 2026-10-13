@@ -203,6 +203,7 @@ COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanit
 # The `.d.mts` TypeScript declarations are NOT copied — runtime-only Node
 # doesn't need them.
 COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
+COPY --chown=node:node frontend/scripts/server-csp.mjs ./scripts/server-csp.mjs
 COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
 COPY --chown=node:node frontend/scripts/not-found-response.mjs ./scripts/not-found-response.mjs
 COPY --chown=node:node frontend/scripts/lhci-ssr-response.mjs ./scripts/lhci-ssr-response.mjs

@@ -10,16 +10,16 @@
 - Один checkout, ветка egorribun, существующий
   [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
   Исправления — 834b3344, Caddy — b8193e1a, Redis — 62fe5949.
-  PR snapshot 2026-10-13 17:53 UTC: OPEN/BLOCKED, head 04825a9b,
-  102 SUCCESS / 8 FAILURE / 26 SKIPPED; main — ac74e915.
-  Imgproxy — ff7398ac, frontend CI — 0fd0abdb, backend — ade441cd; ещё локальные.
+  Published head — 32a34d6c; обычный push и pre-push TypeScript PASS.
+  Main — ac74e915. Hosted frontend нового head полностью GREEN.
+  Imgproxy ff7398ac, frontend 0fd0abdb, backend ade441cd и 32a34d6c опубликованы.
 - Действуют 78 обязательных пар context/integration и CodeQL code_scanning.
   Q1/Q4 внедрены; CodeQL blocking, Semgrep в pre-commit.
   До Q3 текущие coverage floors и 100% patch coverage сохраняются.
 - Hosted CI 04825a9b выявил locale/Knip/nonce contracts, media mocks,
   отключение app.auth при загрузке Alembic и downgrade probe от head.
-  Эти причины воспроизведены и исправлены локально; aggregate ещё pending.
-  Локальные PASS ниже не заменяют published-source CI нового head:
+  Эти причины исправлены; новый CI выявил старое cache assertion в PG test и
+  отсутствие server-csp.mjs в runtime image. Local PG1 и Node7/format PASS;
   нужны свежие результаты всех 78 contexts и CodeQL.
 - В объём входят [October audit](../../audits/AUDIT-2026-10.md) и
   [dependency report](../../audits/dependency-updates-2026-10/README.md).
@@ -87,7 +87,7 @@
 - Политика detect-secrets: 118 owner-approved exact dispositions, baseline319.
   Сохранены 113; отдельно Caddy1 и четыре Fakeredis/NATS/imgproxy до 2027-01-10.
   Private validator: 103 PASS; canonical validator: 102 PASS.
-  Последний published scan113: 387 findings/0 unreviewed; новый full scan pending.
+  Full tracked scan 32a34d6c: 392 findings, 93 approved FP, 0 unreviewed; PASS.
   Новых inline allowlist pragmas нет; новые подавления без решения запрещены.
 - Ammonia 4.2.3 имеет точное owner cooldown exception в двух Cargo.lock.
   Linux Rust 1.97.1 / wasm-pack 0.13.1 / wasm-opt 117 build и 3 runtime smoke PASS.
@@ -101,8 +101,8 @@
   credentials; source contracts PASS. Причина прежнего hosted Core failure
   не установлена; нужен новый CI/Core. После прогонов owned resources — 0.
   Caddy 2.11.7 интегрирован отдельно: 113 tests, Ruff и hooks/actionlint PASS.
-  Official metadata/pins/cooldown проверены; custom-plugin build, version/module
-  и обе конфигурации PASS на Buildx 0.37.2. Owned builder удалён; проверенный
+  Official metadata/pins/cooldown, custom build и version/module PASS; actual Caddy:
+  обе конфигурации, health и redaction двух log channels PASS. Проверенный
   image сохранён. Caddy disposition включена в policy118; маршруты/JWKS/WS
   требуют свежего Core. Redis 7.4.11 интегрирован в test/sandbox и четыре Go
   testcontainers callers: contract, обе Compose configs, Ruff/gofmt/hooks PASS;
@@ -119,7 +119,7 @@
 
 ## Ближайшие шаги
 
-Последний published source — 04825a9b; новые пакеты проверены локально.
+Последний published source — 32a34d6c; PG test и frontend runtime COPY проверены локально.
 Точные local/published head и staged/unstaged состояние задают Git и PR.
 
 1. Закрыть текущие CI/browser/startup failures, проверить auth/data finding,

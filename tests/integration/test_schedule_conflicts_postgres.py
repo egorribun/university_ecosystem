@@ -379,10 +379,14 @@ async def test_create_conflict_ignores_stale_capped_group_cache(
 
     display_rows = await ScheduleRepository(db_session).get_by_group(group_id)
     assert len(display_rows) == 500
-    assert len(cache_reads) == 1
+    assert cache_reads == []
 
-    # Populate the cache first, then commit a conflicting row beyond its
-    # display cap. Write validation must bypass that now-stale cached view.
+    # Preserve the capped snapshot a different worker could still hold, then
+    # commit a conflicting row beyond its display cap. Reads and write
+    # validation must bypass that now-stale process-local view.
+    _cached[f"schedule:group:{group_id}"] = [
+        row.model_dump(mode="json") for row in display_rows
+    ]
     db_session.add(_schedule_row(group_id, weekday="tuesday", start_time=tuesday))
     await db_session.commit()
     service = ScheduleService(uow_from_session(db_session), ScheduleOptimizerService())
@@ -400,7 +404,7 @@ async def test_create_conflict_ignores_stale_capped_group_cache(
                         parity="both",
                     )
                 )
-        assert len(cache_reads) == 1
+        assert cache_reads == []
     finally:
         await db_session.rollback()
         await db_session.execute(
