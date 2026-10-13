@@ -611,11 +611,29 @@ def test_imgproxy_signing_is_wired_end_to_end() -> None:
     assert "$imgproxyKey" in launcher
     assert "$imgproxySalt" in launcher
     assert "Ensure-ImgproxyEnvironment" in launcher
+    expected_image = (
+        "darthsim/imgproxy:v4.0.17@sha256:"
+        "db0b4b9cd690c8b3590203dea300fb759a18c4ec2af7b37424f0bdef23ce317d"
+    )
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         compose = _compose(relative_path)
-        image_proxy = compose["services"]["imgproxy"]["environment"]
+        service = compose["services"]["imgproxy"]
+        image_proxy = service["environment"]
+        assert service["image"] == expected_image
         assert "is required" in image_proxy["IMGPROXY_KEY"]
         assert "is required" in image_proxy["IMGPROXY_SALT"]
+        assert image_proxy["IMGPROXY_ALLOWED_SOURCES"] == "http://backend:8000/static/"
+        assert image_proxy["IMGPROXY_DEVELOPMENT_ERRORS_MODE"] == "false"
+        assert image_proxy["IMGPROXY_USE_LAST_MODIFIED"] == "false"
+        assert service["healthcheck"]["test"] == ["CMD", "imgproxy", "health"]
+        if relative_path == "docker-compose.yml":
+            assert image_proxy["IMGPROXY_USE_ETAG"] == "true"
+            assert service["networks"] == ["service_net"]
+            assert "ports" not in service
+        else:
+            assert image_proxy["IMGPROXY_USE_ETAG"] == "false"
+            assert service["networks"] == ["internal", "public"]
+            assert service["ports"] == ["127.0.0.1:8082:8080"]
 
     for relative_path in ("services/caddy/Caddyfile", "infrastructure/Caddyfile"):
         caddyfile = _read(relative_path)

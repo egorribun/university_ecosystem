@@ -1371,7 +1371,7 @@ services:
           memory: 128M
 
   imgproxy:
-    image: darthsim/imgproxy:v3.28.0@sha256:afa85d78fc28c1b37ca965f022a9e55100f17dcac9edefbe684ca5af9df3a1e1
+    image: darthsim/imgproxy:v4.0.17@sha256:db0b4b9cd690c8b3590203dea300fb759a18c4ec2af7b37424f0bdef23ce317d
     ports:
       - "127.0.0.1:8082:8080"
     environment:
@@ -1382,6 +1382,9 @@ services:
       IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/static/"
       # SECURITY: NEVER enable in production — leaks internal paths and stacktraces
       IMGPROXY_DEVELOPMENT_ERRORS_MODE: "false"
+      # Preserve v3.28 conditional-header defaults; v4 enables them by default.
+      IMGPROXY_USE_ETAG: "false"
+      IMGPROXY_USE_LAST_MODIFIED: "false"
     networks:
       - internal
       - public

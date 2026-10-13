@@ -9,17 +9,16 @@
 
 - Один checkout, ветка egorribun, существующий
   [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Исправления — 834b3344, Caddy — b8193e1a, Redis — 62fe5949;
-  точный head определяется Git и PR.
-  PR snapshot 2026-10-13 11:18 UTC: OPEN/BLOCKED, head 976de540,
-  100 SUCCESS / 10 FAILURE / 26 SKIPPED; main — ac74e915.
-  Новые пакеты прошли обычные hooks; свежий published-source CI pending.
+  Исправления — 834b3344, Caddy — b8193e1a, Redis — 62fe5949.
+  PR snapshot 2026-10-13 17:26 UTC: OPEN/BLOCKED, head 04825a9b,
+  101 SUCCESS / 4 FAILURE / 20 SKIPPED / 2 running; main — ac74e915.
+  Пакеты опубликованы с обычными hooks; новый source ещё проверяется.
 - Действуют 78 обязательных пар context/integration и CodeQL code_scanning.
   Q1/Q4 внедрены; CodeQL blocking, Semgrep в pre-commit.
   До Q3 текущие coverage floors и 100% patch coverage сохраняются.
-- Hosted CI 976de540 выявил frontend fixtures/i18n, backend seed fixture,
-  утечку offline Alembic shim, CSP shadow mismatch, browser Trusted Types
-  и NATS startup в advisory Core. Aggregate failures учитывают эти же сбои.
+- Hosted CI 04825a9b выявил PWA locale contract drift, Knip import resolution,
+  nonce-order source predicate и частичный downgrade до irreversible boundary.
+  Последний сбой требует проверки transaction semantics на PostgreSQL.
   Локальные PASS ниже не заменяют published-source CI нового head:
   нужны свежие результаты всех 78 contexts и CodeQL.
 - В объём входят [October audit](../../audits/AUDIT-2026-10.md) и
@@ -108,9 +107,10 @@
   требуют свежего Core. Redis 7.4.11 интегрирован в test/sandbox и четыре Go
   testcontainers callers: contract, обе Compose configs, Ruff/gofmt/hooks PASS;
   свежие Go integration checks ещё pending в CI.
-  Imgproxy: четыре применимых advisory исправлены в candidate 4.0.17;
-  cooldown/static compatibility проверены. Runtime-проба старого image прошла
-  PNG/SVG; no-fetch assertion исследуется, принятие нового image pending.
+  Imgproxy 4.0.17: четыре применимых advisory, cooldown и pins проверены;
+  old/new PNG/SVG, tampered/disallowed no-fetch, health и cache headers PASS.
+  SVG natural DPI меняется 72→96; 114 contracts, Ruff и static Compose model
+  PASS. Проверка app-endpoint на свежем Core остаётся pending.
   SeaweedFS: TUS не опубликован; upstream metadata/source discrepancy сохраняется.
 - AUD-226: Alembic включён в coverage/provenance; нужен штатный aggregate
   четырёх backend shards и PG migration artifact нового source.
@@ -119,12 +119,12 @@
 
 ## Ближайшие шаги
 
-Исправления, Caddy и Redis сохранены обычными commits; root готовит push.
-Код на базе62fe5949; точное staged/unstaged состояние задаёт Git.
+Исправления, Caddy и Redis опубликованы обычными commits в 04825a9b.
+Imgproxy проверен локально; точное staged/unstaged состояние задаёт Git.
 
 1. Закрыть текущие CI/browser/startup failures, проверить auth/data finding,
-   сохранить исправления обычным commit/push; Caddy — отдельным dependency
-   commit. Получить свежие 78 contexts и CodeQL нового head.
+   сохранить исправления обычным commit/push, обновления dependencies — отдельно.
+   Получить свежие 78 contexts и CodeQL нового head.
 2. На чистом опубликованном source поднять один новый Core (23 сервиса).
    Два полных прогона 59 live specs desktop/mobile с одним worker, seed и
    stop/start; persistence сравнить до повторного seed. Старый Core остановлен,
