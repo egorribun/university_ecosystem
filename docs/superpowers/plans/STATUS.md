@@ -10,15 +10,15 @@
 - Один checkout, ветка egorribun, существующий
   [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
   Исправления — 834b3344, Caddy — b8193e1a, Redis — 62fe5949.
-  PR snapshot 2026-10-13 17:26 UTC: OPEN/BLOCKED, head 04825a9b,
-  101 SUCCESS / 4 FAILURE / 20 SKIPPED / 2 running; main — ac74e915.
-  Пакеты опубликованы с обычными hooks; новый source ещё проверяется.
+  PR snapshot 2026-10-13 17:53 UTC: OPEN/BLOCKED, head 04825a9b,
+  102 SUCCESS / 8 FAILURE / 26 SKIPPED; main — ac74e915.
+  Imgproxy — ff7398ac, frontend CI repair — 0fd0abdb; новые commits ещё локальные.
 - Действуют 78 обязательных пар context/integration и CodeQL code_scanning.
   Q1/Q4 внедрены; CodeQL blocking, Semgrep в pre-commit.
   До Q3 текущие coverage floors и 100% patch coverage сохраняются.
-- Hosted CI 04825a9b выявил PWA locale contract drift, Knip import resolution,
-  nonce-order source predicate и частичный downgrade до irreversible boundary.
-  Последний сбой требует проверки transaction semantics на PostgreSQL.
+- Hosted CI 04825a9b выявил locale/Knip/nonce contracts, media mocks,
+  отключение app.auth при загрузке Alembic и downgrade probe от head.
+  Эти причины воспроизведены и исправлены локально; aggregate ещё pending.
   Локальные PASS ниже не заменяют published-source CI нового head:
   нужны свежие результаты всех 78 contexts и CodeQL.
 - В объём входят [October audit](../../audits/AUDIT-2026-10.md) и
@@ -27,17 +27,17 @@
 
 ## Текущая контрольная точка
 
-- Текущий пакет исправляет frontend providers/loader stubs, конечный i18n
-  registry и loading key: 30 целевых tests, i18n и TypeScript PASS.
-  Offline Alembic shims ограничены try/finally: 3 regression tests PASS.
-  На PG17 AUD197/198 → AUD226 в одном процессе: 7 PASS, owned cleanup — 0.
-  Seed double согласован с insert-time UUID defaults: 14 tests PASS.
-  CSP shadow сохраняет enforcement/Trusted Types и убирает только неприменимый
-  upgrade directive; custom/configured report-uri не дублируются: 44 tests и Ruff PASS.
-  Frontend CSP/static bootstrap: 68 tests, TypeScript, ESLint и production build
-  с canonical WASM PASS. После реального entrypoint/createRoot сохраняются
-  dark/en, nonce и ровно один theme-init script; SSR hydration не менялась.
-  Реальные browser checks остаются pending до свежего Core.
+- Frontend providers/loader/i18n: 30 tests, i18n и TypeScript PASS.
+  Offline Alembic shims ограничены try/finally: 3 tests PASS.
+  PG17 AUD197/198 → AUD226: 7 PASS; seed double/UUID defaults: 14 PASS.
+  CSP shadow сохраняет enforcement/Trusted Types и custom report-uri: 44 PASS.
+  CSP/static bootstrap: 68 tests, TypeScript, ESLint, production build и
+  canonical WASM PASS; после createRoot сохраняются dark/en, nonce и один script.
+  Новый frontend CI repair: 206 live contracts, 15 Node checks, Knip/format PASS.
+  Alembic сохраняет существующие loggers; последовательный audit/media suite: 83 PASS.
+  PG17 probe откатывает внешний transaction: head, sentinel и DND schema сохранены;
+  1 PASS после logging fix, app.auth сохранён, owned resources — 0.
+  HTTP cache privacy: 35 PASS / 1 штатный PG skip, 100% file line/branch, Ruff/format PASS.
 - Ambiguous COMMIT: cleanup проверяет ссылки Attachment на primary после
   rollback; ошибки rollback/cleanup сохраняют исходную ошибку. Pending lease
   того же владельца продлевается на 300 секунд; durable DB idempotency не
@@ -106,7 +106,7 @@
   image сохранён. Caddy disposition включена в policy118; маршруты/JWKS/WS
   требуют свежего Core. Redis 7.4.11 интегрирован в test/sandbox и четыре Go
   testcontainers callers: contract, обе Compose configs, Ruff/gofmt/hooks PASS;
-  свежие Go integration checks ещё pending в CI.
+  Go integration на published 04825a9b PASS; новый source ещё требует CI.
   Imgproxy 4.0.17: четыре применимых advisory, cooldown и pins проверены;
   old/new PNG/SVG, tampered/disallowed no-fetch, health и cache headers PASS.
   SVG natural DPI меняется 72→96; 114 contracts, Ruff и static Compose model
@@ -119,8 +119,8 @@
 
 ## Ближайшие шаги
 
-Исправления, Caddy и Redis опубликованы обычными commits в 04825a9b.
-Imgproxy проверен локально; точное staged/unstaged состояние задаёт Git.
+Последний published source — 04825a9b; новые пакеты проверены локально.
+Точные local/published head и staged/unstaged состояние задают Git и PR.
 
 1. Закрыть текущие CI/browser/startup failures, проверить auth/data finding,
    сохранить исправления обычным commit/push, обновления dependencies — отдельно.

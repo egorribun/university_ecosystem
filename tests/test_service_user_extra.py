@@ -22,6 +22,10 @@ from app.services.user.media_service import UserMediaService
 def mock_uow():
     uow = AsyncMock()
     users = MagicMock()
+    users.db = MagicMock()
+    unreferenced_media_result = MagicMock()
+    unreferenced_media_result.scalar_one_or_none.return_value = None
+    users.db.execute = AsyncMock(return_value=unreferenced_media_result)
     users.get_orm_for_update_with_relations = AsyncMock()
     users.get_orm_for_anonymization = AsyncMock()
     users.delete_sensitive_data = AsyncMock()
@@ -67,7 +71,7 @@ async def test_upload_avatar_success(mock_uow, monkeypatch):
     res = await svc.upload_avatar(user_id, file_mock)
 
     assert res is not None
-    mock_delete.assert_called_once_with(
+    mock_delete.assert_awaited_once_with(
         old_avatar, owner_id=user_id, media_kind="avatar"
     )
     mock_update.assert_called_once_with(mock_user, {"avatar_url": "new_url"})
@@ -106,7 +110,7 @@ async def test_delete_avatar(mock_uow, monkeypatch, recwarn):
     await svc.delete_avatar(user_id)
     gc.collect()
 
-    mock_delete.assert_called_once_with(
+    mock_delete.assert_awaited_once_with(
         avatar_to_delete, owner_id=user_id, media_kind="avatar"
     )
     mock_update.assert_called_once_with(mock_user, {"avatar_url": None})

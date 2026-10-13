@@ -28,6 +28,8 @@ async def test_user_service_mega():
     repo.add = MagicMock()
     repo.add_all = MagicMock()
     repo._to_dto = MagicMock()
+    # This repository shares the UoW's primary session for media ownership checks.
+    repo.db = db
     mock_uow = AsyncMock()
     mock_uow.users = repo
     mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
@@ -63,9 +65,10 @@ async def test_user_service_mega():
     # 2. update_user_profile - duplicate email
     with pytest.raises(ValidationError, match="use /users/me/email"):
         schemas.UserProfileUpdate(email="taken@e.com")
-    mock_res_dup = MagicMock()
-    mock_res_dup.scalar_one_or_none.return_value = 3
-    db.execute.return_value = mock_res_dup
+    # Failed-upload cleanup must see no durable reference before deleting its file.
+    mock_media_reference = MagicMock()
+    mock_media_reference.scalar_one_or_none.return_value = None
+    db.execute.return_value = mock_media_reference
     file = MagicMock(spec=UploadFile)
     repo.get.return_value = student_dto
     repo._get_orm.return_value = student_user

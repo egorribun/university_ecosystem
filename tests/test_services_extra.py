@@ -53,6 +53,7 @@ async def test_user_service_basics():
     notifications = AsyncMock()
     db = AsyncMock()
     user_repo = AsyncMock()
+    user_repo.db = db
     mock_uow = AsyncMock()
     mock_uow.users = user_repo
     mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
@@ -81,6 +82,7 @@ async def test_user_service_basics():
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = None
     mock_result.scalars.return_value.all.return_value = []
+    mock_result.scalar_one_or_none.return_value = None
     db.execute.return_value = mock_result
 
     # update_user_profile
@@ -110,6 +112,7 @@ async def test_user_service_basics():
         await service.delete_avatar(user)
         assert user.profile.avatar_url is None
         m_del.assert_called_once()
+        db.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio

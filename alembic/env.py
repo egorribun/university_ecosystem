@@ -25,7 +25,7 @@ from app.core.db.retained_table_metadata import build_migration_metadata
 _settings = Settings(_allow_missing=True)
 config: Config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = build_migration_metadata(models.Base.metadata)
 

@@ -43,6 +43,8 @@ def _build_request(
     method: str = "GET",
     if_none_match: str | None = None,
     accept_language: str | None = "en",
+    cookie: str | None = None,
+    authorization: str | None = None,
 ) -> Request:
     """Minimal ASGI ``Request`` mirroring tests/test_etag.py::_build_request."""
     headers: list[tuple[bytes, bytes]] = []
@@ -50,6 +52,10 @@ def _build_request(
         headers.append((b"if-none-match", if_none_match.encode("latin-1")))
     if accept_language is not None:
         headers.append((b"accept-language", accept_language.encode("latin-1")))
+    if cookie is not None:
+        headers.append((b"cookie", cookie.encode("latin-1")))
+    if authorization is not None:
+        headers.append((b"authorization", authorization.encode("latin-1")))
     scope = {
         "type": "http",
         "method": method,
@@ -109,7 +115,7 @@ async def test_cache_disabled_returns_200_with_etag_and_language_headers() -> No
     assert out.headers["ETag"].startswith('"')
     assert out.headers["Cache-Control"] == "private, max-age=180"
     assert "Content-Language" in out.headers
-    assert "Accept-Language" in out.headers["Vary"]
+    _assert_identity_vary(out)
     # dict fallback serialization path.
     assert out.body == orjson.dumps({"a": 1}, option=orjson.OPT_SORT_KEYS)
 
@@ -130,6 +136,8 @@ async def test_cache_disabled_returns_304_on_matching_if_none_match() -> None:
     assert second.status_code == 304
     assert second.body == b""
     assert second.headers["ETag"] == etag
+    assert second.headers["Cache-Control"] == "private, max-age=180"
+    _assert_identity_vary(second)
 
 
 # ── 3. Cache enabled (MemoryCache) ───────────────────────────────────────────
@@ -158,8 +166,8 @@ async def test_cache_enabled_miss_executes_then_hit_returns_cached_payload() -> 
 
 
 @pytest.mark.asyncio
-async def test_authenticated_identity_is_part_of_personalized_cache_key() -> None:
-    """A user-private response must never be served to another user."""
+async def test_authenticated_identity_is_private_and_cache_key_isolated() -> None:
+    """HTTP and Redis caches must keep identity-specific responses separated."""
     cache = MemoryCache()
     set_cache_backend(cache)
     calls = {"n": 0}
@@ -168,20 +176,47 @@ async def test_authenticated_identity_is_part_of_personalized_cache_key() -> Non
         def __init__(self, user_id: str) -> None:
             self.id = user_id
 
-    @_decorate()
+    @cached_endpoint(
+        version_resolver=_StubVersionResolver(),
+        cache_prefix="identity-test",
+        cache_control="public, max-age=60",
+    )
     async def endpoint(*, user: _User, **_kwargs: Any) -> dict[str, str]:
         calls["n"] += 1
         return {"user_id": user.id}
 
     user_a = _User("user-a")
     user_b = _User("user-b")
-    first = await endpoint(request=_build_request(), response=Response(), user=user_a)
-    second = await endpoint(request=_build_request(), response=Response(), user=user_b)
-    third = await endpoint(request=_build_request(), response=Response(), user=user_a)
+    a_headers = {"cookie": "session=a", "authorization": "Bearer a"}
+    b_headers = {"cookie": "session=b", "authorization": "Bearer b"}
+    first = await endpoint(
+        request=_build_request(**a_headers), response=Response(), user=user_a
+    )
+    second = await endpoint(
+        request=_build_request(**b_headers), response=Response(), user=user_b
+    )
+    third_response = Response()
+    third = await endpoint(
+        request=_build_request(**a_headers), response=third_response, user=user_a
+    )
 
     assert first.body == b'{"user_id":"user-a"}'
     assert second.body == b'{"user_id":"user-b"}'
+    assert first.headers["Cache-Control"] == "private, no-store"
+    assert second.headers["Cache-Control"] == "private, no-store"
+    _assert_identity_vary(first)
+    _assert_identity_vary(second)
     assert third == {"user_id": "user-a"}
+    assert third_response.headers["Cache-Control"] == "private, no-store"
+    _assert_identity_vary(third_response)
+    not_modified = await endpoint(
+        request=_build_request(if_none_match=first.headers["ETag"], **a_headers),
+        response=Response(),
+        user=user_a,
+    )
+    assert not_modified.status_code == 304
+    assert not_modified.headers["Cache-Control"] == "private, no-store"
+    _assert_identity_vary(not_modified)
     assert calls["n"] == 2
 
 
@@ -231,6 +266,8 @@ async def test_cache_enabled_hit_returns_304_on_match() -> None:
     )
     assert second.status_code == 304
     assert second.headers["ETag"] == etag
+    assert second.headers["Cache-Control"] == "private, max-age=180"
+    _assert_identity_vary(second)
 
 
 @pytest.mark.asyncio
@@ -340,7 +377,9 @@ async def test_existing_vary_header_is_appended() -> None:
     resp = Response()
     resp.headers["Vary"] = "Accept-Encoding"
     await endpoint(request=_build_request(), response=resp)
-    assert resp.headers["Vary"] == "Accept-Encoding, Accept-Language"
+    assert resp.headers["Vary"] == (
+        "Accept-Encoding, Accept-Language, Cookie, Authorization"
+    )
 
 
 @pytest.mark.asyncio
@@ -354,7 +393,24 @@ async def test_existing_accept_language_vary_not_duplicated() -> None:
     resp = Response()
     resp.headers["Vary"] = "Accept-Language"
     await endpoint(request=_build_request(), response=resp)
-    assert resp.headers["Vary"] == "Accept-Language"
+    assert resp.headers["Vary"] == "Accept-Language, Cookie, Authorization"
+
+
+@pytest.mark.asyncio
+async def test_vary_merge_deduplicates_case_insensitively_and_preserves_origin() -> (
+    None
+):
+    set_cache_backend(NullCache())
+
+    @_decorate()
+    async def endpoint(**_kwargs: Any) -> dict[str, int]:
+        return {"a": 1}
+
+    resp = Response()
+    resp.headers["Vary"] = "oRiGiN, accept-language, ORIGIN, cOoKiE"
+    await endpoint(request=_build_request(), response=resp)
+
+    assert resp.headers["Vary"] == ("oRiGiN, accept-language, cOoKiE, Authorization")
 
 
 # ── 6. generate_cache_key (standalone) ───────────────────────────────────────
@@ -379,3 +435,192 @@ def test_generate_cache_key_distinct_params_distinct_key() -> None:
     a = generate_cache_key("p", "1", "en", {"limit": 10})
     b = generate_cache_key("p", "1", "en", {"limit": 20})
     assert a != b
+
+
+@pytest.mark.asyncio
+async def test_public_anonymous_responses_vary_identity_on_miss_hit_and_304() -> None:
+    cache = MemoryCache()
+    set_cache_backend(cache)
+    calls = {"n": 0}
+    public_policy = "public, max-age=60, stale-while-revalidate=120"
+
+    @cached_endpoint(
+        version_resolver=_StubVersionResolver(),
+        cache_prefix="public-test",
+        cache_control=public_policy,
+    )
+    async def endpoint(*, user: Any = None, **_kwargs: Any) -> dict[str, None]:
+        calls["n"] += 1
+        return {"user": None if user is None else user.id}
+
+    first = await endpoint(request=_build_request(), response=Response(), user=None)
+    assert isinstance(first, Response)
+    assert first.status_code == 200
+    assert first.headers["Cache-Control"] == public_policy
+    _assert_identity_vary(first)
+
+    hit_response = Response()
+    hit = await endpoint(request=_build_request(), response=hit_response, user=None)
+    assert hit == {"user": None}
+    assert hit_response.headers["Cache-Control"] == public_policy
+    _assert_identity_vary(hit_response)
+
+    not_modified = await endpoint(
+        request=_build_request(if_none_match=first.headers["ETag"]),
+        response=Response(),
+        user=None,
+    )
+    assert not_modified.status_code == 304
+    assert not_modified.headers["Cache-Control"] == public_policy
+    _assert_identity_vary(not_modified)
+    assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_nonpublic_tenant_response_uses_private_no_store() -> None:
+    cache = MemoryCache()
+    set_cache_backend(cache)
+
+    @_decorate(cache_control="public, max-age=60")
+    async def endpoint(**_kwargs: Any) -> dict[str, str]:
+        return {"tenant": get_current_tenant()}
+
+    token = set_current_tenant("tenant-a")
+    try:
+        out = await endpoint(request=_build_request(), response=Response(), user=None)
+    finally:
+        tenant_id_ctx.reset(token)
+
+    assert out.status_code == 200
+    assert out.headers["Cache-Control"] == "private, no-store"
+    _assert_identity_vary(out)
+
+
+@pytest.mark.asyncio
+async def test_response_passthrough_receives_identity_cache_headers() -> None:
+    set_cache_backend(NullCache())
+
+    class _User:
+        id = "user-a"
+
+    @_decorate(cache_control="public, max-age=60")
+    async def endpoint(**_kwargs: Any) -> Response:
+        return Response(content=b"payload", headers={"Vary": "Origin"})
+
+    out = await endpoint(
+        request=_build_request(cookie="session=a", authorization="Bearer a"),
+        response=Response(),
+        user=_User(),
+    )
+
+    assert out.status_code == 200
+    assert out.body == b"payload"
+    assert out.headers["Cache-Control"] == "private, no-store"
+    _assert_identity_vary(out)
+    assert "origin" in _vary_tokens(out)
+
+
+def _vary_tokens(response: Response) -> set[str]:
+    return {
+        value.strip().casefold()
+        for value in response.headers.get("Vary", "").split(",")
+        if value.strip()
+    }
+
+
+def _assert_identity_vary(response: Response) -> None:
+    assert {"cookie", "authorization", "accept-language"} <= _vary_tokens(response)
+
+
+@pytest.mark.asyncio
+async def test_anonymous_response_passthrough_preserves_explicit_cache_policy() -> None:
+    set_cache_backend(NullCache())
+
+    @_decorate(cache_control="public, max-age=60")
+    async def endpoint(**_kwargs: Any) -> Response:
+        return Response(
+            content=b"payload",
+            headers={"Cache-Control": "no-store", "Vary": "Origin"},
+        )
+
+    out = await endpoint(request=_build_request(), response=Response(), user=None)
+
+    assert out.status_code == 200
+    assert out.body == b"payload"
+    assert out.headers["Cache-Control"] == "no-store"
+    _assert_identity_vary(out)
+    assert "origin" in _vary_tokens(out)
+
+
+@pytest.mark.asyncio
+async def test_anonymous_response_passthrough_gets_configured_policy_if_absent() -> (
+    None
+):
+    set_cache_backend(NullCache())
+    public_policy = "public, max-age=60"
+
+    @_decorate(cache_control=public_policy)
+    async def endpoint(**_kwargs: Any) -> Response:
+        return Response(content=b"payload", headers={"Vary": "Origin"})
+
+    out = await endpoint(request=_build_request(), response=Response(), user=None)
+
+    assert out.status_code == 200
+    assert out.headers["Cache-Control"] == public_policy
+    _assert_identity_vary(out)
+    assert "origin" in _vary_tokens(out)
+
+
+@pytest.mark.asyncio
+async def test_vary_wildcard_remains_a_standalone_dimension() -> None:
+    set_cache_backend(NullCache())
+
+    @_decorate()
+    async def endpoint(**_kwargs: Any) -> Response:
+        return Response(content=b"payload", headers={"Vary": "*, Origin, Cookie"})
+
+    out = await endpoint(request=_build_request(), response=Response())
+
+    assert out.headers["Vary"] == "*"
+
+
+@pytest.mark.asyncio
+async def test_idless_principal_stays_private_on_memory_cache_hit() -> None:
+    cache = MemoryCache()
+    set_cache_backend(cache)
+    calls = {"n": 0}
+
+    class _TransientPrincipal:
+        id = None
+
+    principal = _TransientPrincipal()
+    public_policy = "public, max-age=60"
+
+    @cached_endpoint(
+        version_resolver=_StubVersionResolver(),
+        cache_prefix="idless-principal-test",
+        cache_control=public_policy,
+    )
+    async def endpoint(*, user: _TransientPrincipal, **_kwargs: Any) -> dict[str, str]:
+        calls["n"] += 1
+        return {"principal": "transient"}
+
+    auth_headers = {"cookie": "session=idless", "authorization": "Bearer idless"}
+    first = await endpoint(
+        request=_build_request(**auth_headers), response=Response(), user=principal
+    )
+    assert isinstance(first, Response)
+    assert first.body == b'{"principal":"transient"}'
+    assert first.headers["Cache-Control"] == "private, no-store"
+    _assert_identity_vary(first)
+
+    hit_response = Response()
+    hit = await endpoint(
+        request=_build_request(**auth_headers),
+        response=hit_response,
+        user=principal,
+    )
+    assert hit == {"principal": "transient"}
+    assert hit_response.headers["Cache-Control"] == "private, no-store"
+    _assert_identity_vary(hit_response)
+    assert calls["n"] == 1

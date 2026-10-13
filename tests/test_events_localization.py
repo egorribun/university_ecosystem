@@ -79,7 +79,7 @@ async def test_events_localization(async_client, db_session, user_factory):
         headers={**headers, "Accept-Language": "en"},
     )
     assert response_en.status_code == 200
-    assert response_en.headers.get("Cache-Control") == "private, max-age=180"
+    assert response_en.headers.get("Cache-Control") == "private, no-store"
     assert response_en.headers.get("Content-Language") == "en"
     vary_en = response_en.headers.get("Vary", "")
     assert any(
@@ -114,7 +114,7 @@ async def test_events_localization(async_client, db_session, user_factory):
         headers={**headers, "Accept-Language": "ru"},
     )
     assert response_ru.status_code == 200
-    assert response_ru.headers.get("Cache-Control") == "private, max-age=180"
+    assert response_ru.headers.get("Cache-Control") == "private, no-store"
     assert response_ru.headers.get("Content-Language") == "ru"
     vary_ru = response_ru.headers.get("Vary", "")
     assert any(
@@ -216,7 +216,7 @@ async def test_events_etag_and_not_modified(
     assert list_response.status_code == status.HTTP_200_OK
     list_etag = list_response.headers.get("ETag")
     assert list_etag
-    assert list_response.headers.get("Cache-Control") == "private, max-age=180"
+    assert list_response.headers.get("Cache-Control") == "private, no-store"
 
     list_not_modified = await async_client.get(
         "/events",
@@ -224,7 +224,7 @@ async def test_events_etag_and_not_modified(
     )
     assert list_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
     assert list_not_modified.headers.get("Content-Language") == "en"
-    assert list_not_modified.headers.get("Cache-Control") == "private, max-age=180"
+    assert list_not_modified.headers.get("Cache-Control") == "private, no-store"
     vary_list = list_not_modified.headers.get("Vary", "")
     assert any(
         value.strip().lower() == "accept-language"
@@ -237,7 +237,7 @@ async def test_events_etag_and_not_modified(
     assert my_response.status_code == status.HTTP_200_OK
     my_etag = my_response.headers.get("ETag")
     assert my_etag
-    assert my_response.headers.get("Cache-Control") == "private, max-age=180"
+    assert my_response.headers.get("Cache-Control") == "private, no-store"
 
     my_not_modified = await async_client.get(
         "/events/my",
@@ -246,7 +246,7 @@ async def test_events_etag_and_not_modified(
     assert my_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
     assert my_not_modified.headers.get("Content-Language") == "en"
     assert my_not_modified.headers.get("ETag") == my_etag
-    assert my_not_modified.headers.get("Cache-Control") == "private, max-age=180"
+    assert my_not_modified.headers.get("Cache-Control") == "private, no-store"
 
 
 @requires_postgresql

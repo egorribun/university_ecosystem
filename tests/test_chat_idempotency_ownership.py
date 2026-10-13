@@ -29,6 +29,9 @@ def dispatcher(user, chat_id, created, *, upload=None):
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()
     uow.session = AsyncMock()
+    empty_reference_result = MagicMock()
+    empty_reference_result.scalars.return_value.all.return_value = []
+    uow.session.execute = AsyncMock(return_value=empty_reference_result)
     repo = uow.chats
     repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=chat_id))
     repo.check_participant = AsyncMock(return_value=True)

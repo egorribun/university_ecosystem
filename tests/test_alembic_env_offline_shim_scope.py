@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import textwrap
 from io import StringIO
 from pathlib import Path
@@ -63,16 +64,22 @@ def test_online_upgrade_does_not_leave_offline_shims_installed(
     monkeypatch.setenv("DATABASE_URL", database_url)
     script_dir = _make_script(tmp_path, upgrade_body="op.execute(sa.text('SELECT 1'))")
     original = _patch_identity()
+    application_logger = logging.getLogger("app.auth")
+    previous_disabled = application_logger.disabled
+    application_logger.disabled = False
     try:
         command.upgrade(
             _make_config(script_dir, database_url=database_url),
             "head",
         )
         after_upgrade = _patch_identity()
+        logger_disabled_after_upgrade = application_logger.disabled
     finally:
         _restore_patch_identity(original)
+        application_logger.disabled = previous_disabled
 
     assert after_upgrade == original
+    assert logger_disabled_after_upgrade is False
 
 
 def test_offline_upgrade_restores_shims_after_success(
