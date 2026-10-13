@@ -23,6 +23,15 @@ release claims require fresh evidence under the master plan.
 - [Dependency update report, October 2026](dependency-updates-2026-10/README.md)
   — read-only snapshot of patch/minor/major updates and security fixes for
   `04fdd84c2`; current applied changes and verification are tracked in STATUS.
+- Targeted rclone disposition (2026-10-13): opt-in backup CronJob pins
+  `rclone/rclone:1.75.1` and runs only S3-client `mkdir` and `copyto`
+  ([image pin](../../charts/university-ecosystem/values.yaml#L124), [CronJob](../../charts/university-ecosystem/templates/backup-cronjob.yaml#L76-L104)); it uses neither `--rc-serve` nor
+  global `--header`. Version-wide status remains unresolved: [GHSA-xqmq-v4wj-rw5m](https://github.com/rclone/rclone/security/advisories/GHSA-xqmq-v4wj-rw5m)
+  metadata lists affected through 1.74.1 but its body reports a 1.75.1
+  reproduction; see the [official advisory index](https://github.com/rclone/rclone/security/advisories). Independent image/security
+  gates remain binding; keep 1.75.2 behind cooldown through 2026-10-16
+  10:31:57 UTC and recheck registry timestamp/digest before pinning; no
+  deployment/runtime claim is made.
 - [Merge exceptions](merge-exceptions.md) — break-glass log of every Admin
   bypass merge into `main` (AGENTS.md §5).
 - [Codebase consolidation decisions](../adr/ADR-046-codebase-consolidation-audit.md)

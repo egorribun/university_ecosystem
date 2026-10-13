@@ -131,7 +131,7 @@ services:
   # OpenFeature evaluation service. The source file is shared with the K8s
   # kustomization so local Docker and production evaluate identical flags.
   flagd:
-    image: ghcr.io/open-feature/flagd:v0.16.1@sha256:9525b3c2916183810f93f0a72774c1dfad48d1ae22852c753719c46db80af5e7
+    image: ghcr.io/open-feature/flagd:v0.16.3@sha256:a11ae82ec6e40e89edae4327392a1e4ffc03e211f1b724879bb35b2e4f271bb3
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     command:
@@ -1399,7 +1399,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.10.0@sha256:4a61322ac1103a0e3aea2a61ef1718422a48fa046441f299d71e660a3bc71ae9
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     entrypoint: ["/bin/sh", "-ec"]

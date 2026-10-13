@@ -11,8 +11,9 @@
   [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
   Отправная точка локального пакета и CI-снимка ниже: 627337a9cb196c2c5f02a37c79e734a20844c452.
   Origin/main: ac74e915ae539f098f0fa1e7c83b355703069984.
-  Последний read-only fetch 2026-10-13 подтвердил тот же HEAD/origin;
+  Read-only fetch 2026-10-13 02:34 UTC подтвердил прежние remote refs;
   PR snapshot остаётся OPEN/BLOCKED.
+  Основной пакет сохранён обычным commit c5384ce7; следующий пакет ещё локальный.
   Локальные PASS ниже требуют отдельного published-source CI после публикации.
 - Действуют 78 обязательных пар context/integration и CodeQL code_scanning.
   Q1/Q4 внедрены; CodeQL blocking, Semgrep в pre-commit.
@@ -82,9 +83,7 @@
   неизменённом auth_service.py; production auth fix не требуется. Gateway v1.2
   прошёл Linux race во всех шести пакетах, lint 0 и exact coverage 100% в 00:28;
   kid primary/custom принимаются только в конечном окне PEM bootstrap LKG.
-- Stale CI contracts/fixtures исправлены по текущему source:
-  events/user cleanup/resource ownership — 54 Python PASS и Ruff PASS.
-  Слепые rerun старого SHA не выполняются.
+- Stale CI contracts/fixtures (events/user cleanup/resource ownership): 54 Python и Ruff PASS.
 - Secret mechanism интегрирован: 166 Python PASS и Ruff PASS; 34 literal
   findings заменены генерацией синтетических тестовых данных.
   Владелец утвердил ровно 85 exact dispositions, затем отдельно один публичный
@@ -102,7 +101,9 @@
   GREEN: 132 tests и Ruff/format PASS. Временные строки approved findings больше
   не меняют canonical baseline; реальные updates сохраняют status 3, concurrent
   external edit останавливает hook. Штатный pre-commit PASS: baseline и index
-  неизменны при повторном запуске; commit/push и hosted proof ещё pending.
+  неизменны при повторном запуске; обычный commit PASS, push/hosted proof pending.
+- AUD-224: hook guard интегрирован; RED подтверждён, GREEN 78 tests / Ruff / harness 28/28 PASS.
+  AUD-225: три RED, strict EXPLAIN GREEN 44 tests / Ruff PASS; optional mode сохранён.
 - AUD-226: Alembic включён в coverage/provenance; TESTING/CONTRIBUTING отражают
   штатный aggregate четырёх backend shards и PG migration artifact.
   Диагностическая выборка дала 59,53% statements / 29,98% branches:
@@ -111,8 +112,10 @@
 - urllib3/Werkzeug lock синхронизирован. Ammonia 4.2.3 в двух Cargo.lock имеет
   точное owner cooldown exception; Rust 1.97.1 rebuild, ensure-wasm/provenance
   и три Node WASM smoke PASS; Linux parity pending.
-  NATS 2.12.15 pinned по публичному OCI digest: девять source files и 32 workflow
-  contracts PASS; свежий Core runtime ещё pending.
+  NATS 2.12.15: 7 ws-hub, 6 file-processor и Python DLQ PASS на реальном брокере;
+  лимиты 1 GiB / 2 CPU и очистка проверены; Core pending.
+  Node 24.21.0, Helm 3.22.0, Kyverno 1.19.1, Nuclei 3.11.1, Prometheus 3.15.0
+  и flagd 0.16.3 интегрированы локально; published-source checks pending.
   Caddy source — 2.11.4; 2.11.7 допускается с 2026-10-13 05:52:45 UTC.
   Остальной dependency report остаётся на перепроверке.
 - Developer harness --repo-only: 28/28 PASS. Это не product/release certification.

@@ -18,8 +18,6 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	tclog "github.com/testcontainers/testcontainers-go/log"
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
@@ -85,57 +83,62 @@ func TestExternalNATSTestURLRequiresLoopback(t *testing.T) {
 	}
 }
 
-func startJetStreamNATSContainer(t *testing.T) (*nats.Conn, nats.JetStreamContext, func()) {
+func startJetStreamNATSContainer(t *testing.T) (*nats.Conn, nats.JetStreamContext) {
 	t.Helper()
 	ctx := context.Background()
 	if connectionString := os.Getenv("NATS_TEST_URL"); connectionString != "" {
 		require.NoError(t, validateExternalNATSTestURL(connectionString))
 		nc, err := nats.Connect(connectionString)
+		if nc != nil {
+			t.Cleanup(nc.Close)
+		}
 		require.NoError(t, err)
 		js, err := nc.JetStream()
 		require.NoError(t, err)
-		return nc, js, nc.Close
+		return nc, js
 	}
 
 	container, err := tcnats.Run(
 		ctx,
-		"nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652",
-		testcontainers.WithLogger(tclog.TestLogger(t)),
+		"nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6",
+		natsContainerOptions(t, "ws-hub-nats", "ws-hub-jetstream-integration")...,
 	)
+	if container != nil {
+		t.Cleanup(func() {
+			if err := container.Terminate(context.Background()); err != nil {
+				t.Logf("JetStream NATS container cleanup: %v", err)
+			}
+		})
+	}
 	if err != nil {
 		t.Fatalf("JetStream NATS container start: %v", err)
+	}
+	if container == nil {
+		t.Fatal("JetStream NATS container start returned nil container")
 	}
 
 	connectionString, err := container.ConnectionString(ctx)
 	if err != nil {
-		_ = container.Terminate(ctx)
 		t.Fatalf("JetStream NATS connection string: %v", err)
 	}
 
 	nc, err := nats.Connect(connectionString)
+	if nc != nil {
+		t.Cleanup(nc.Close)
+	}
 	if err != nil {
-		_ = container.Terminate(ctx)
 		t.Fatalf("JetStream NATS connect: %v", err)
 	}
 	js, err := nc.JetStream()
 	if err != nil {
-		nc.Close()
-		_ = container.Terminate(ctx)
 		t.Fatalf("JetStream context: %v", err)
 	}
 
-	cleanup := func() {
-		nc.Close()
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("JetStream NATS container cleanup: %v", err)
-		}
-	}
-	return nc, js, cleanup
+	return nc, js
 }
 
 func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
-	nc, js, cleanup := startJetStreamNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc, js := startJetStreamNATSContainer(t)
 	namespace := integrationNamespace(t)
 	chatStream := "CHAT_" + strings.ToUpper(namespace)
 	notificationStream := "NOTIFICATIONS_" + strings.ToUpper(namespace)
@@ -220,8 +223,7 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 }
 
 func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {
-	nc, js, cleanup := startJetStreamNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc, js := startJetStreamNATSContainer(t)
 	require.True(t, nc.IsConnected())
 	namespace := integrationNamespace(t)
 	foreignStream := "FOREIGN_" + strings.ToUpper(namespace)
@@ -245,8 +247,7 @@ func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {
 }
 
 func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
-	nc, js, cleanup := startJetStreamNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc, js := startJetStreamNATSContainer(t)
 	namespace := integrationNamespace(t)
 	chatStream := "CHAT_" + strings.ToUpper(namespace)
 	room := "replay-" + strings.ToLower(namespace)

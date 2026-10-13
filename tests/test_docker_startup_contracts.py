@@ -24,6 +24,10 @@ def _find_repo_root() -> Path:
 
 
 ROOT = _find_repo_root()
+PROMETHEUS_IMAGE = (
+    "prom/prometheus:v3.15.0@"
+    "sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e"
+)
 
 
 def _helm_skip_dep_flag(helm: str) -> list[str]:
@@ -1061,13 +1065,14 @@ def test_prometheus_scrapes_the_authenticated_backend_and_real_exporters() -> No
     assert "nats:8222" not in prometheus_config
 
     full = _compose("docker-compose.full.yml")["services"]
+    assert full["prometheus"]["image"] == PROMETHEUS_IMAGE
     assert full["backend"]["environment"]["ENABLE_METRICS_ENDPOINT"] == "true"
     assert full["backend"]["environment"]["METRICS_BASIC_AUTH_USERNAME"] == (
         "metrics_scraper"
     )
-    observability_backend = _compose("docker-compose.observability.yml")["services"][
-        "backend"
-    ]
+    observability = _compose("docker-compose.observability.yml")["services"]
+    assert observability["prometheus"]["image"] == PROMETHEUS_IMAGE
+    observability_backend = observability["backend"]
     assert (
         observability_backend["environment"]["METRICS_BASIC_AUTH_USERNAME"]
         == "metrics_scraper"

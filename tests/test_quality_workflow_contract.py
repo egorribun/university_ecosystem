@@ -782,6 +782,8 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         for step in kyverno_job.get("steps", [])
         if isinstance(step, dict)
     )
+    assert 'version="v1.19.1"' in kyverno_text
+    assert 'archive="kyverno-cli_v1.19.1_linux_x86_64.tar.gz"' in kyverno_text
     assert "kyverno test k8s/kyverno/tests/ --require-tests" in kyverno_text
     assert "--retry-connrefused" in kyverno_text
     assert "--retry-all-errors" not in kyverno_text
@@ -1148,7 +1150,7 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
     assert helm_setup["uses"] == (
         "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310"
     )
-    assert helm_setup["with"]["version"] == "3.17.0"
+    assert helm_setup["with"]["version"] == "3.22.0"
 
     dependency_build = next(
         step
@@ -2638,6 +2640,16 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "issues": "write",
     }
     assert jobs["notify-failure"]["timeout-minutes"] == 5
+    nightly_kyverno_install = next(
+        step
+        for step in jobs["kyverno-test"]["steps"]
+        if step.get("name") == "Install Kyverno CLI v1.19.1"
+    )
+    assert 'version="v1.19.1"' in nightly_kyverno_install["run"]
+    assert (
+        'archive="kyverno-cli_v1.19.1_linux_x86_64.tar.gz"'
+        in nightly_kyverno_install["run"]
+    )
     assert jobs["kyverno-test"]["timeout-minutes"] == 15
     assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
     assert jobs["miri"]["env"]["MIRIFLAGS"] == (
@@ -3088,7 +3100,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     run_script = mutation_steps[run_step_index]["run"]
 
     assert stats_helm["uses"].startswith("azure/setup-helm@")
-    assert stats_helm["with"] == {"version": "v3.17.0"}
+    assert stats_helm["with"] == {"version": "v3.22.0"}
     _assert_helm_dependency_helper_invocation(
         stats_dependencies["run"], skip_refresh=True
     )
@@ -3103,7 +3115,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         if step.get("name") == "Resolve Helm chart dependencies"
     )
     assert mutation_helm["uses"].startswith("azure/setup-helm@")
-    assert mutation_helm["with"] == {"version": "v3.17.0"}
+    assert mutation_helm["with"] == {"version": "v3.22.0"}
     _assert_helm_dependency_helper_invocation(
         mutation_dependencies["run"], skip_refresh=True
     )
@@ -3665,7 +3677,7 @@ def test_dast_active_scans_do_not_accept_pr_label_authorization() -> None:
         for step in workflow["jobs"]["nuclei"]["steps"]
         if step.get("uses", "").startswith("projectdiscovery/nuclei-action@")
     )
-    assert nuclei_setup["with"] == {"version": "v3.3.9", "install-only": True}
+    assert nuclei_setup["with"] == {"version": "v3.11.1", "install-only": True}
 
 
 def _step_named(job: dict[str, object], name: str) -> dict[str, object]:
@@ -6516,6 +6528,29 @@ def test_local_infra_sandbox_scopes_database_reset_opt_in_to_pytest() -> None:
     assert "finally" in backend
     assert "Remove-Item Env:\\" + marker in backend
     assert "$env:" + marker + " = $previousDatabaseResetOptIn" in backend
+
+
+def test_release_evidence_workflows_pin_current_node_lts() -> None:
+    expected_node_pins = {
+        "nightly-full-gate.yml": 4,
+        "release.yml": 1,
+        "manual-mutation-evidence.yml": 4,
+    }
+    for workflow_name, expected_count in expected_node_pins.items():
+        workflow = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / workflow_name).read_text(
+                encoding="utf-8"
+            )
+        )
+        node_versions = [
+            step.get("with", {}).get("node-version")
+            for job in workflow["jobs"].values()
+            for step in (job.get("steps") or [])
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith("actions/setup-node@")
+        ]
+        assert node_versions.count("24.21.0") == expected_count
+        assert "24.15.0" not in node_versions
 
 
 def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:

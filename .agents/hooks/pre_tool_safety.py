@@ -7,7 +7,9 @@ and allows safe development workflows (allow).
 
 from __future__ import annotations
 
+import os
 import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -97,14 +99,6 @@ DENY_COMMAND_PATTERNS = [
         ),
         "Attempted piping of sensitive secret data to network endpoints.",
     ),
-    # Forced push to main or master
-    (
-        re.compile(
-            r"\bgit\s+push\b.*(--force(?:-with-lease)?|-f)\b.*(\bmain\b|\bmaster\b)",
-            re.IGNORECASE,
-        ),
-        "Force-pushing to primary branch (main/master) is strictly prohibited.",
-    ),
     (
         re.compile(
             r"\bpython(?:3)?\b.*(?:open|read_text|Path).*?(?:\.env|\.secrets|\.pem|id_rsa).*?(?:requests|httpx|urllib|socket|curl|post|send)",
@@ -155,6 +149,300 @@ CRITICAL_PROTECTED_FILES = {
     ".git/config",
     ".git/HEAD",
 }
+PROTECTED_GIT_BRANCHES = frozenset({"main", "master", "egorribun"})
+HOOK_PATH_TOKEN = re.compile(
+    r"(?i)(?:^|[^A-Za-z0-9_])\.agents/hooks(?:/|\.json(?=$|[^A-Za-z0-9_.-])|$)"
+)
+HOOK_MUTATORS = frozenset(
+    {
+        "add-content",
+        "chmod",
+        "clear-content",
+        "copy",
+        "copy-item",
+        "cp",
+        "del",
+        "erase",
+        "icacls",
+        "install",
+        "ln",
+        "move-item",
+        "mv",
+        "new-item",
+        "out-file",
+        "patch",
+        "remove-item",
+        "rename-item",
+        "rm",
+        "rmdir",
+        "rd",
+        "set-acl",
+        "set-content",
+        "tee",
+        "touch",
+        "truncate",
+        "xcopy",
+        "robocopy",
+    }
+)
+GIT_GLOBAL_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace"}
+PUSH_WITH_VALUE = {"--exec", "--push-option", "--receive-pack", "--repo", "-o"}
+SHELL_FLAGS = {
+    "bash": {"-c", "-lc", "-cl"},
+    "cmd": {"/c", "/k"},
+    "cmd.exe": {"/c", "/k"},
+    "powershell": {"-c", "-command"},
+    "pwsh": {"-c", "-command"},
+    "sh": {"-c"},
+    "zsh": {"-c", "-lc", "-cl"},
+}
+INLINE_WRITE = re.compile(
+    r"(?i)(?:\b(?:write(?:_text|_bytes)?|writeFile(?:Sync)?|unlink(?:Sync)?|"
+    r"rename(?:Sync)?|replace|remove|chmod|Set-Content|Add-Content|Out-File|"
+    r"Remove-Item|Move-Item|Copy-Item|New-Item|copy(?:file|2)?)\s*(?:\(|\b)|"
+    r"\bopen\s*\([^)]*,\s*['\"](?:w|a|x)|(?:^|\s)(?:>>?|&>>?|>\|)\s*)"
+)
+
+
+def _shell_segments(command: str) -> list[list[str]]:
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|>\n")
+    lexer.whitespace = " \t\r"
+    lexer.escape = ""
+    lexer.whitespace_split = True
+    lexer.commenters = "#"
+    result: list[list[str]] = []
+    current: list[str] = []
+    for token in lexer:
+        if token and all(char in ";&|\n" for char in token):
+            if current:
+                result.append(current)
+                current = []
+        else:
+            current.append(token)
+    if current:
+        result.append(current)
+    return result
+
+
+def _program(token: str) -> str:
+    return token.replace("\\", "/").rsplit("/", 1)[-1].casefold()
+
+
+def _unwrap_command(tokens: list[str]) -> list[str]:
+    index = 0
+    wrappers = {"sudo", "command", "env", "exec", "nohup", "time"}
+    value_options = {"-u", "--unset", "-C", "--chdir", "--user", "--group", "-g"}
+    while index < len(tokens) and _program(tokens[index]) in wrappers:
+        wrapper = _program(tokens[index])
+        index += 1
+        if wrapper in {"env", "sudo", "command", "time"}:
+            while index < len(tokens) and tokens[index].startswith("-"):
+                option = tokens[index]
+                index += 2 if option in value_options else 1
+        if wrapper == "env":
+            while index < len(tokens) and re.match(
+                r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[index]
+            ):
+                index += 1
+    while index < len(tokens) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[index]):
+        index += 1
+    return tokens[index:]
+
+
+def _git_call(tokens: list[str]) -> tuple[str, list[str]] | None:
+    tokens = _unwrap_command(tokens)
+    if not tokens or _program(tokens[0]) not in {"git", "git.exe"}:
+        return None
+    index = 1
+    while index < len(tokens) and tokens[index].startswith("-"):
+        option = tokens[index]
+        if option == "--":
+            index += 1
+            break
+        index += 2 if option in GIT_GLOBAL_WITH_VALUE else 1
+    if index >= len(tokens):
+        return None
+    return tokens[index].casefold(), tokens[index + 1 :]
+
+
+def _protected_ref(value: str, *, refspec: bool = False) -> bool:
+    branch = value.strip("'\"")
+    if refspec and ":" in branch:
+        branch = branch.rsplit(":", 1)[1]
+    branch = branch.lstrip("+").casefold()
+    for prefix in ("refs/heads/", "refs/remotes/"):
+        if branch.startswith(prefix):
+            branch = branch[len(prefix) :]
+    if branch.startswith("origin/"):
+        branch = branch[len("origin/") :]
+    if branch in PROTECTED_GIT_BRANCHES:
+        return True
+    if branch.count("*") == 1:
+        prefix, suffix = branch.split("*", 1)
+        return any(
+            name.startswith(prefix)
+            and name.endswith(suffix)
+            and len(name) >= len(prefix) + len(suffix)
+            for name in PROTECTED_GIT_BRANCHES
+        )
+    return False
+
+
+def _push_state(args: list[str]) -> tuple[list[str], bool, bool]:
+    refs: list[str] = []
+    force = delete = False
+    index = 0
+    while index < len(args):
+        option = args[index]
+        if option == "--":
+            refs.extend(args[index + 1 :])
+            break
+        if option in {
+            "--force",
+            "--force-with-lease",
+            "-f",
+            "-uf",
+            "-fu",
+        } or option.startswith("--force-with-lease="):
+            force = True
+        if option in {"--delete", "-d", "--prune"}:
+            delete = True
+        if option == "--mirror":
+            force = delete = True
+        if option in PUSH_WITH_VALUE:
+            index += 2
+            continue
+        if option.startswith("--") and "=" in option:
+            index += 1
+            continue
+        if option.startswith("-"):
+            force = force or (
+                not option.startswith("--") and "f" in option[1:].casefold()
+            )
+            delete = delete or (
+                not option.startswith("--") and "d" in option[1:].casefold()
+            )
+            index += 1
+            continue
+        refs.append(option)
+        index += 1
+    if (
+        len(refs) > 1
+        and ":" not in refs[0]
+        and not refs[0].startswith(("+", "refs/heads/"))
+    ):
+        refs = refs[1:]
+    elif (
+        len(refs) == 1
+        and refs[0].casefold() not in PROTECTED_GIT_BRANCHES
+        and ":" not in refs[0]
+        and not refs[0].startswith(("+", "refs/heads/"))
+    ):
+        refs = []
+    forced_refspec = any(ref.startswith("+") for ref in refs)
+    return (
+        refs,
+        force or forced_refspec,
+        delete or any(ref.startswith(":") for ref in refs),
+    )
+
+
+def _protected_git_reason(tokens: list[str]) -> str | None:
+    parsed = _git_call(tokens)
+    if parsed is None:
+        return None
+    command, args = parsed
+    if command == "push":
+        refs, force, delete = _push_state(args)
+        if any(option in {"--mirror", "--prune"} for option in args):
+            return "Mirror or prune pushes may delete protected branches."
+        if delete and any(_protected_ref(ref, refspec=True) for ref in refs):
+            return "Deleting main/master/egorribun through git push is prohibited."
+        if force and (
+            not refs or any(_protected_ref(ref, refspec=True) for ref in refs)
+        ):
+            return "Force-pushing to main/master/egorribun is prohibited."
+    if command in {"branch", "update-ref", "symbolic-ref"}:
+        deleting = any(
+            arg in {"-d", "-D", "--delete"}
+            or (arg.startswith("-") and "d" in arg[1:].casefold())
+            for arg in args
+        )
+        targets = [arg for arg in args if arg != "--" and not arg.startswith("-")]
+        if deleting and any(_protected_ref(target) for target in targets):
+            return "Deleting main/master/egorribun refs is prohibited."
+    return None
+
+
+def _mutates_hook(tokens: list[str]) -> bool:
+    tokens = _unwrap_command(tokens)
+    if not tokens or not any(
+        HOOK_PATH_TOKEN.search(token.replace("\\", "/")) for token in tokens
+    ):
+        return False
+    program = _program(tokens[0])
+    if program in HOOK_MUTATORS:
+        return True
+    if program in {"sed", "perl"} and any(
+        arg == "-i" or arg.startswith("-i") for arg in tokens[1:]
+    ):
+        return True
+    inline_code_programs = {
+        "python",
+        "python3",
+        "python.exe",
+        "python3.exe",
+        "node",
+        "node.exe",
+    }
+    if program in inline_code_programs:
+        code_flags = {"-c", "-e", "--eval"}
+        has_code_flag = any(arg.casefold() in code_flags for arg in tokens[1:])
+        if has_code_flag and INLINE_WRITE.search(" ".join(tokens[1:])):
+            return True
+    flags = {flag.casefold() for flag in SHELL_FLAGS.get(program, set())}
+    if any(arg.casefold() in flags for arg in tokens[1:]) and INLINE_WRITE.search(
+        " ".join(tokens[1:])
+    ):
+        return True
+    if any(token in {">", ">>", "&>", "&>>", ">|", "&>|"} for token in tokens):
+        return True
+    parsed = _git_call(tokens)
+    return parsed is not None and parsed[0] in {
+        "apply",
+        "checkout",
+        "restore",
+        "rm",
+        "mv",
+        "reset",
+    }
+
+
+def _nested_shell(tokens: list[str]) -> list[list[str]]:
+    tokens = _unwrap_command(tokens)
+    if not tokens:
+        return []
+    flags = {flag.casefold() for flag in SHELL_FLAGS.get(_program(tokens[0]), set())}
+    for index, token in enumerate(tokens[1:], start=1):
+        if token.casefold() in flags:
+            payload = " ".join(tokens[index + 1 :])
+            return _shell_segments(payload) if payload else []
+    return []
+
+
+def _pre_tool_command_policy(command: str) -> str | None:
+    try:
+        segments = _shell_segments(command)
+        for segment in segments:
+            for tokens in [segment, *_nested_shell(segment)]:
+                if _mutates_hook(tokens):
+                    return "Modifying files under .agents/hooks or .agents/hooks.json is prohibited."
+                reason = _protected_git_reason(tokens)
+                if reason is not None:
+                    return reason
+    except ValueError:
+        return "Unable to safely inspect malformed shell quoting; command denied."
+    return None
 
 
 def evaluate_run_command(cmd_line: str) -> dict[str, Any]:
@@ -163,6 +451,13 @@ def evaluate_run_command(cmd_line: str) -> dict[str, Any]:
         return {"decision": "allow", "reason": "Empty command."}
 
     cmd_normalized = cmd_line.strip()
+
+    policy_reason = _pre_tool_command_policy(cmd_normalized)
+    if policy_reason is not None:
+        return {
+            "decision": "deny",
+            "reason": f"[PreToolUse Safety Block] {policy_reason} Command: {cmd_normalized[:80]}",
+        }
 
     # Check DENY patterns
     for pattern, reason in DENY_COMMAND_PATTERNS:
@@ -191,8 +486,20 @@ def evaluate_file_modification(tool_name: str, args: dict[str, Any]) -> dict[str
     if not target_file:
         return {"decision": "allow", "reason": "No target file specified."}
 
-    # Normalize and resolve path
-    target_path = Path(target_file)
+    # Resolve relative tool paths from the repository root and normalize
+    # backslash separators before checking the final in-repository target.
+    repo_root = find_repo_root()
+    target_text = str(target_file)
+    if os.name != "nt":
+        target_text = target_text.replace("\\", "/")
+        if re.match(r"^[a-zA-Z]:/", target_text):
+            return {
+                "decision": "deny",
+                "reason": f"[PreToolUse Safety Block] File modifications must stay inside the repository: '{target_file}'.",
+            }
+    target_path = Path(target_text)
+    if not target_path.is_absolute():
+        target_path = repo_root / target_path
     try:
         resolved_path = target_path.resolve()
         path_str = resolved_path.as_posix()
@@ -210,7 +517,7 @@ def evaluate_file_modification(tool_name: str, args: dict[str, Any]) -> dict[str
         "c:/program files (x86)/",
     ]
     path_lower = path_str.lower()
-    raw_lower = str(target_file).replace("\\", "/").lower()
+    raw_lower = target_text.replace("\\", "/").lower()
     for sys_path in system_paths:
         if (
             path_lower.startswith(sys_path)
@@ -224,12 +531,21 @@ def evaluate_file_modification(tool_name: str, args: dict[str, Any]) -> dict[str
             }
 
     # Check critical protected files
-    repo_root = find_repo_root()
     try:
         resolved_repo = repo_root.resolve()
         resolved_path = target_path.resolve()
         rel_path = resolved_path.relative_to(resolved_repo).as_posix()
-        if rel_path in CRITICAL_PROTECTED_FILES:
+        rel_path_key = rel_path.casefold()
+        if (
+            rel_path_key == ".agents/hooks"
+            or rel_path_key == ".agents/hooks.json"
+            or rel_path_key.startswith(".agents/hooks/")
+        ):
+            return {
+                "decision": "deny",
+                "reason": f"[PreToolUse Safety Block] Modifications to hook policy files are prohibited: '{rel_path}'.",
+            }
+        if rel_path_key in {path.casefold() for path in CRITICAL_PROTECTED_FILES}:
             return {
                 "decision": "ask",
                 "reason": f"[PreToolUse Safety Prompt] Target file '{rel_path}' is a critical security artifact. Overwrite requires confirmation.",

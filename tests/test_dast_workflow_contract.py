@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,82 @@ def test_nuclei_nonzero_exit_remains_terminal_after_artifact_uploads() -> None:
         scan_index < index and step["if"] == "always()"
         for index, step in artifact_steps
     )
+
+
+def _nuclei_scan_contract_options(command: str) -> tuple[list[str], set[str]]:
+    """Normalize supported flag aliases and attached values from a Nuclei command."""
+
+    continued = " ".join(
+        line.rstrip().removesuffix("\\") for line in command.splitlines()
+    )
+    tokens = shlex.split(continued)
+    template_roots: list[str] = []
+    forbidden_options: set[str] = set()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--":
+            break
+        option, separator, inline_value = token.partition("=")
+        dash_count = len(option) - len(option.lstrip("-"))
+        if dash_count in (1, 2):
+            name = option[dash_count:]
+            if name in {"t", "templates"}:
+                if separator:
+                    template_root = inline_value
+                else:
+                    index += 1
+                    assert index < len(tokens), f"{token} requires a template root"
+                    template_root = tokens[index]
+                    assert not template_root.startswith("-"), (
+                        f"{token} requires a template root"
+                    )
+                assert template_root, f"{token} requires a non-empty template root"
+                template_roots.append(template_root)
+            elif name in {"code", "dast", "fuzz"}:
+                forbidden_options.add(name)
+        index += 1
+    return template_roots, forbidden_options
+
+
+def test_nuclei_option_parser_normalizes_supported_aliases_and_inline_values() -> None:
+    """All documented flag spellings participate in the DAST contract."""
+
+    template_roots, forbidden_options = _nuclei_scan_contract_options(
+        "nuclei -t cves/ --t=exposures/ -templates misconfiguration/ "
+        "--templates=vulnerabilities/ -t=network/ -code --code=false "
+        "-dast=true --dast -fuzz=true --fuzz"
+    )
+
+    assert template_roots == [
+        "cves/",
+        "exposures/",
+        "misconfiguration/",
+        "vulnerabilities/",
+        "network/",
+    ]
+    assert forbidden_options == {"code", "dast", "fuzz"}
+
+
+def test_nuclei_pins_signed_official_template_compatible_release() -> None:
+    """Keep Nuclei on a release that accepts signed official JS templates."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["nuclei"]["steps"]
+    setup = next(step for step in steps if step.get("name") == "Set up Nuclei")
+    scan = next(step for step in steps if step.get("name") == "Run Nuclei scan")
+
+    assert setup["with"] == {"version": "v3.11.1", "install-only": True}
+
+    template_roots, forbidden_options = _nuclei_scan_contract_options(scan["run"])
+    assert template_roots == [
+        "cves/",
+        "exposures/",
+        "misconfiguration/",
+        "vulnerabilities/",
+        "network/",
+    ]
+    assert forbidden_options == set()
 
 
 def test_zap_preflight_contract_rejects_exit_after_the_empty_target_branch() -> None:

@@ -1290,7 +1290,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: "3.17.0"
+          version: "3.22.0"
 
       - name: Helm dependency build
         shell: bash
@@ -3025,11 +3025,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Kyverno CLI v1.19.0
+      - name: Install Kyverno CLI v1.19.1
         shell: bash
         run: |
-          version="v1.19.0"
-          archive="kyverno-cli_v1.19.0_linux_x86_64.tar.gz"
+          version="v1.19.1"
+          archive="kyverno-cli_v1.19.1_linux_x86_64.tar.gz"
           base="https://github.com/kyverno/kyverno/releases/download/${version}"
           # Retry only transport/connection and curl-classified transient
           # failures; deterministic HTTP errors must fail the gate immediately.

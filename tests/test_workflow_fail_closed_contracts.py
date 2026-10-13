@@ -20,7 +20,7 @@ PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
 LOCKED_PRE_COMMIT_VERSION = "4.6.2"
-HELM_3_17_0_LINUX_AMD64_SHA256 = "fb5d12662fde6eeff36ac4ccacbf3abed96b0ee2de07afdde4edb14e613aee24"  # pragma: allowlist secret -- public Helm release checksum
+HELM_3_22_0_LINUX_AMD64_SHA256 = "1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb"  # pragma: allowlist secret -- public Helm release checksum
 DEPLOY_SMOKE_REQUIREMENTS = {
     "requests==2.33.1": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a",  # pragma: allowlist secret -- public PyPI wheel checksum
     "certifi==2026.4.22": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a",  # pragma: allowlist secret -- public PyPI wheel checksum
@@ -962,8 +962,8 @@ def test_deploy_bootstraps_checksum_bound_tools_before_oidc() -> None:
     assert tooling["env"] == {
         "KUBECTL_VERSION": "${{ vars.KUBECTL_VERSION }}",
         "KUBECTL_SHA256": "${{ vars.KUBECTL_SHA256 }}",
-        "HELM_VERSION": "v3.17.0",
-        "HELM_ARCHIVE_SHA256": HELM_3_17_0_LINUX_AMD64_SHA256,
+        "HELM_VERSION": "v3.22.0",
+        "HELM_ARCHIVE_SHA256": HELM_3_22_0_LINUX_AMD64_SHA256,
     }
 
     run = str(tooling["run"])

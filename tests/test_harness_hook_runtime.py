@@ -25,6 +25,7 @@ if str(HOOKS_DIR) not in sys.path:
 
 common = importlib.import_module("common")
 post_tool_linter = importlib.import_module("post_tool_linter")
+pre_tool_safety = importlib.import_module("pre_tool_safety")
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +40,195 @@ def test_runtime_contract_binds_to_hook_implementation_files() -> None:
     assert Path(common.__file__).resolve() == COMMON_SOURCE.resolve()
     assert (
         Path(post_tool_linter.__file__).resolve() == POST_TOOL_LINTER_SOURCE.resolve()
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "git push --force origin main",
+        "git push origin refs/heads/master --force-with-lease",
+        "git -C C:/repo push origin +HEAD:refs/heads/egorribun",
+        "git push origin +HEAD:refs/heads/main",
+        "git push origin +HEAD:egorribun",
+        "git push --force origin 'refs/heads/*:refs/heads/*'",
+        "git push origin '+refs/heads/*:refs/heads/*'",
+        "git push --delete origin main",
+        "git push origin :refs/heads/egorribun",
+        "git branch -D main",
+        "git -C C:/repo branch -d egorribun",
+        "git update-ref -d refs/heads/master",
+        "git push --mirror origin",
+        "git push --prune origin",
+        "env git push --force origin main",
+        "MODE=test git push --force origin main",
+        "env MODE=test git push --force origin main",
+        "env -u MODE git push --force origin main",
+        "bash -c 'git push --force origin main'",
+        'cmd /c "git push --force origin main"',
+        'powershell -Command "git push --force origin main"',
+    ),
+)
+def test_primary_branch_force_and_delete_operations_are_denied(
+    command: str,
+) -> None:
+    result = pre_tool_safety.evaluate_run_command(command)
+
+    assert result["decision"] == "deny"
+    assert "PreToolUse Safety Block" in result["reason"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "git push origin egorribun",
+        "git push origin +HEAD:feature-x",
+        "git push --force origin 'refs/heads/feature/*:refs/heads/feature/*'",
+        "git push --force origin feature-x",
+        "git branch -D feature-x",
+        "git push --delete origin feature-x",
+        "git push --force origin feature-x && echo main",
+        "bash -c 'echo \"git push --force origin main\"'",
+        "echo 'git push --force origin main'",
+        "git status --short",
+    ),
+)
+def test_normal_branch_workflow_and_unprotected_refs_remain_allowed(
+    command: str,
+) -> None:
+    assert pre_tool_safety.evaluate_run_command(command)["decision"] == "allow"
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        ".agents/hooks/pre_tool_safety.py",
+        ".agents/hooks/nested/new_hook.py",
+        ".agents/hooks.json",
+        ".AGENTS/HOOKS/runner.py",
+    ),
+)
+def test_hook_policy_files_cannot_be_modified(
+    tmp_path: Path, monkeypatch: Any, relative_path: str
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".agents" / "hooks").mkdir(parents=True)
+    monkeypatch.setattr(pre_tool_safety, "find_repo_root", lambda: repo_root)
+
+    result = pre_tool_safety.evaluate_file_modification(
+        "write_to_file", {"TargetFile": str(repo_root / relative_path)}
+    )
+
+    assert result["decision"] == "deny"
+    assert "hook policy files" in result["reason"]
+
+
+def test_unrelated_repository_files_remain_modifiable(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(pre_tool_safety, "find_repo_root", lambda: repo_root)
+
+    result = pre_tool_safety.evaluate_file_modification(
+        "write_to_file", {"TargetFile": str(repo_root / "docs" / "note.md")}
+    )
+
+    assert result["decision"] == "allow"
+
+
+def test_relative_backslash_and_traversal_paths_cannot_reach_hook_files(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".agents" / "hooks").mkdir(parents=True)
+    working_dir = repo_root / "nested"
+    working_dir.mkdir()
+    monkeypatch.setattr(pre_tool_safety, "find_repo_root", lambda: repo_root)
+    monkeypatch.chdir(working_dir)
+
+    for target in (
+        ".agents/hooks/runner.py",
+        ".agents/hooks/nested/../runner.py",
+        r".agents\hooks\runner.py",
+    ):
+        result = pre_tool_safety.evaluate_file_modification(
+            "replace_file_content", {"TargetFile": target}
+        )
+        assert result["decision"] == "deny", target
+
+
+def test_similarly_named_non_hook_path_remains_modifiable(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(pre_tool_safety, "find_repo_root", lambda: repo_root)
+
+    result = pre_tool_safety.evaluate_file_modification(
+        "write_to_file",
+        {"TargetFile": str(repo_root / ".agents" / "hooks-backup" / "note.py")},
+    )
+
+    assert result["decision"] == "allow"
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "Set-Content -Path .agents/hooks/pre_tool_safety.py -Value changed",
+        "printf changed > .agents/hooks.json",
+        "git restore -- .agents/hooks/runner.py",
+        "rm .agents/hooks/stop_quality_gate.py",
+        "sed -i 's/allow/deny/' .agents/hooks/pre_tool_safety.py",
+        "bash -c 'printf changed > .agents/hooks/runner.py'",
+        "bash -c 'sed -i s/x/y/ .agents/hooks/pre_tool_safety.py'",
+        "env bash -c 'printf changed > .agents/hooks.json'",
+        "python -c \"from pathlib import Path; Path('.agents/hooks/pre_tool_safety.py').write_text('x')\"",
+        "python -c \"from pathlib import Path; Path('.agents/hooks.json').write_text('x')\"",
+        'powershell -Command "Set-Content .agents/hooks.json changed"',
+        "node -e \"require('fs').writeFileSync('.agents/hooks.json', 'x')\"",
+    ),
+)
+def test_shell_commands_cannot_mutate_hook_policy_files(command: str) -> None:
+    result = pre_tool_safety.evaluate_run_command(command)
+
+    assert result["decision"] == "deny"
+    assert "hook" in result["reason"].lower()
+
+
+def test_hook_json_backup_suffix_is_not_classified_as_hook_policy() -> None:
+    command = (
+        'python -c "from pathlib import Path; '
+        "Path('.agents/hooks.json.backup').write_text('x')\""
+    )
+    assert pre_tool_safety.evaluate_run_command(command)["decision"] == "allow"
+
+
+def test_reading_or_running_hook_files_remains_allowed() -> None:
+    assert (
+        pre_tool_safety.evaluate_run_command("python .agents/hooks/runner.py pre-tool")[
+            "decision"
+        ]
+        == "allow"
+    )
+    assert (
+        pre_tool_safety.evaluate_run_command(
+            "Get-Content .agents/hooks/pre_tool_safety.py"
+        )["decision"]
+        == "allow"
+    )
+    assert (
+        pre_tool_safety.evaluate_run_command(
+            "python -c \"print(Path('.agents/hooks/pre_tool_safety.py').read_text())\""
+        )["decision"]
+        == "allow"
+    )
+    assert (
+        pre_tool_safety.evaluate_run_command(
+            "echo 'Set-Content .agents/hooks/pre_tool_safety.py'"
+        )["decision"]
+        == "allow"
     )
 
 
