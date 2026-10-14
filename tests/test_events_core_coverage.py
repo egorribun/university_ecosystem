@@ -522,3 +522,46 @@ class TestEventRegistry:
         assert ChatDeleted.EVENT_TYPE in _EVENT_REGISTRY
         assert "ChatParticipantRemoved" in _EVENT_REGISTRY
         assert ChatParticipantRemoved.EVENT_TYPE in _EVENT_REGISTRY
+
+
+def test_news_comment_created_from_dict_converts_uuid_and_filters_untrusted_envelope():
+    from app.core.events import NewsCommentCreated
+
+    comment_id = uuid.uuid4()
+    payload = {
+        "comment_id": str(comment_id),
+        "locale": "en",
+        "_schema_version": 2,
+        "event_id": "payload-controlled",
+        "unrecognized": "ignored",
+    }
+
+    event = NewsCommentCreated.from_dict(payload)
+
+    assert event.comment_id == comment_id
+    assert event.locale == "en"
+    assert event.event_id != "payload-controlled"
+    assert "_schema_version" not in payload
+
+
+@pytest.mark.parametrize("raw_id", [None, uuid.UUID(int=7)])
+def test_news_comment_created_from_dict_accepts_none_and_uuid(raw_id):
+    from app.core.events import NewsCommentCreated
+
+    event = NewsCommentCreated.from_dict({"comment_id": raw_id})
+    assert event.comment_id == raw_id
+
+
+def test_news_comment_created_from_dict_defaults_missing_id_and_ignores_unknown_fields():
+    from app.core.events import NewsCommentCreated
+
+    event = NewsCommentCreated.from_dict({"legacy_extra": "ignored"})
+    assert event.comment_id is None
+    assert not hasattr(event, "legacy_extra")
+
+
+def test_news_comment_created_from_dict_rejects_non_uuid_values():
+    from app.core.events import NewsCommentCreated
+
+    with pytest.raises(TypeError, match="comment_id must be a UUID"):
+        NewsCommentCreated.from_dict({"comment_id": 7})

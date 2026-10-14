@@ -119,7 +119,13 @@ for the MVP release; the current plan is
 
 1. **Coverage**:
    - Tier 0 files (`tier0_rules` in `quality/ownership-mapping.json`) require 100% line,
-     statement, branch and function coverage.
+     statement, branch and function coverage, except for the exact 131 unchanged
+     Alembic files in the 2026-10-14 owner-approved, source-bound no-decrease baseline from
+     commit ac74e915; the approved contract
+     retains its per-file evidence and provenance. The exception expires
+     2026-11-13. New, modified, or unmatched migrations (including PR-touched
+     migrations), and every other Tier 0 file remain at 100% for all metrics.
+     See [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md).
    - Other components keep their current contract floors until ADR-047 stage Q3 replaces
      them with a no-decrease ratchet and a 90% patch floor for changed lines.
 2. **Mutation Testing**:
@@ -147,9 +153,10 @@ for the MVP release; the current plan is
      approved scope to 113 exact identities at that decision, preserving the prior 86.
      The owner reaffirmed this scope on 2026-10-13. The baseline remains at 319
      identities and the 78 required contexts remain unchanged.
-     No further findings, baseline entries, inline pragmas, broad exclusions,
-     or unmatched/changed identities are authorized. This does not replace
-     final-source validation.
+     That decision covered only its exact 27 additions; changed or unmatched
+     identities remain fail-closed. It authorized no baseline entry, inline
+     pragma, broad scanner exclusion, bypass, or context change. Final-source
+     validation remains required.
      Separately, the owner approved one exact Caddy image-digest disposition;
      this distinct decision extended the approved scope from 113 to 114.
      Implementation is tracked in [MVP STATUS](docs/superpowers/plans/STATUS.md). On 2026-10-13
@@ -165,6 +172,19 @@ for the MVP release; the current plan is
      319 baseline identities, 78 required contexts, CodeQL rule, or hooks.
      Approval does not replace policy integration, tests, hosted checks, or
      final-source validation.
+
+     On 2026-10-14 UTC, the owner separately approved exactly 17 additional
+     exact-match identities, extending the approved scope from 118 to 135 while
+     preserving all prior 118 records. They are the exact path, detector-type, and
+     finding-digest tuples in quality/security-false-positive-dispositions.json: 15
+     public_integrity_digest / Hex High Entropy String findings at
+     quality/quality-contract.json and 2 at
+     scripts/quality/validate_quality_contract.py. Each carries reviewed_on
+     2026-10-14 and expires_on 2027-01-10. No other identity, baseline entry, inline
+     pragma, broad scanner exclusion, bypass, or context change is authorized. The
+     baseline remains 319 identities, the 78 required contexts, blocking CodeQL
+     rule, and hooks remain unchanged. Approval does not replace policy integration,
+     tests, hosted checks, or final-source validation.
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).
    - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).

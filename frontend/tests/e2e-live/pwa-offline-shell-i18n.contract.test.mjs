@@ -52,7 +52,16 @@ test("live offline shell keeps the selected RU and EN locale with the real preca
   assert.match(spec, /navigator\.serviceWorker\.controller/u)
   assert.match(spec, /context\.setOffline\(true\)/u)
   assert.match(spec, /page\.goto\(["']\/register["']/u)
-  assert.match(spec, /data-render-mode/u)
+  assert.match(
+    spec,
+    /await response\?\.text\(\)[\s\S]*?data-render-mode=\["'\]static-spa\["'\]/u,
+    "the original offline navigation body proves the static shell was served"
+  )
+  assert.doesNotMatch(
+    spec,
+    /page\.locator\(["']html["']\)\)\.toHaveAttribute\(["']data-render-mode["']/u,
+    "the consumed marker is not asserted on the post-mount DOM"
+  )
   assert.match(spec, /toHaveAttribute\(["']lang["'],\s*language\)/u)
   assert.match(spec, /name:\s*copy\.signUp/u)
   assert.match(spec, /name:\s*copy\.name/u)

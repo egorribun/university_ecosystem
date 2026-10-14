@@ -14,7 +14,7 @@ changes stays in force exactly as it is today.
 
 ## Context
 
-The quality contract requires 100 % line, statement, branch and function
+At the time this ADR was adopted, the quality contract required 100 % line, statement, branch and function
 coverage for every measured component and a 100 % viable mutation score for
 mutmut (backend) and Stryker (frontend). The requirement is enforced in several
 places at once:
@@ -53,18 +53,22 @@ the gate competes directly with product work.
 
 ## Decision
 
-1. **Tier 0 keeps 100 %.** Files matched by `tier0_rules` in
-   `quality/ownership-mapping.json` (authentication, sessions, MFA, security,
-   rate limiting, PII, cryptography, ReBAC, CSRF, migrations, native and WASM
-   crates) keep 100 % line, statement, branch and function coverage. The rule
-   list is unchanged by this ADR.
+1. **Tier 0 keeps 100 %, subject only to the finite migration decision below.**
+   Files matched by tier0_rules in quality/ownership-mapping.json (authentication,
+   sessions, MFA, security, rate limiting, PII, cryptography, ReBAC, CSRF,
+   migrations, native and WASM crates) keep 100 % line, statement, branch and
+   function coverage. The sole exception is the exact source-bound baseline
+   approved on 2026-10-14 for 131 unchanged legacy migration files, through
+   2026-11-13. New, modified or unmatched migrations and every other Tier 0 file
+   remain at 100 % for all metrics; see the later owner decision below.
 2. **Non-Tier 0 coverage becomes a ratchet.** Each component floor equals the
    value measured on the last certified `main` run, rounded down to one decimal,
    and may never decrease. Changed non-Tier 0 lines in a pull request need at
    least 90 % patch coverage. Until the first certified `main` baseline exists,
    the current floors stay in force and remain blocking in CI. Owner clarification
    on 2026-10-08 keeps these gates until Q3; if they block MVP, bringing Q3 forward
-   requires a separate decision. Tier 0 is never relaxed.
+   requires a separate decision. Other Tier 0 files remain strict; the only finite
+   migration exception is the source-bound 131-file baseline described below.
 3. **Mutation testing leaves the release gate.** `ci-success` stops depending
    on mutation jobs. Full mutmut and Stryker runs continue in
    `nightly-full-gate.yml` and `manual-mutation-evidence.yml`. After Q2 lands,
@@ -259,6 +263,41 @@ authorizes no new `.secrets.baseline` entries, inline pragmas, scanner
 exclusions, bypass, or context changes. It records the owner's policy decision
 only. Policy integration, final-source recheck, tests and hosted checks remain
 separate and must be reported separately; no release readiness is implied.
+
+## Owner-approved exact 17 detect-secrets dispositions (2026-10-14 UTC)
+
+On 2026-10-14 UTC, the owner approved exactly 17 additional exact-match
+disposition identities. They are the exact repository-path, detector-type, and
+finding-digest tuples recorded in quality/security-false-positive-dispositions.json:
+15 public_integrity_digest / Hex High Entropy String findings in
+quality/quality-contract.json and two in
+scripts/quality/validate_quality_contract.py. Each new record has reviewed_on
+2026-10-14 and expires_on 2027-01-10. No raw finding digests are duplicated in
+this prose; the policy records remain the identity source.
+
+The previous 118 records remain unchanged. This decision extends the approved
+scope to exactly 135 identities; it authorizes no other finding, wildcard,
+category-wide permission, baseline entry, inline pragma, broad scanner
+exclusion, bypass, or context change. Changed or unmatched identities remain
+fail-closed. The baseline remains at 319 identities, all 78 required contexts
+remain unchanged, CodeQL remains blocking, and hooks are unchanged. Approval
+does not itself change the policy file or certify a source SHA; integration,
+tests, hosted checks, and final-source validation remain separate.
+
+## Owner-approved finite legacy migration baseline (2026-10-14 UTC)
+
+On 2026-10-14 UTC, the owner approved a finite no-decrease baseline for exactly
+131 unchanged Alembic migration files under alembic/versions, source-bound to
+base commit ac74e915 and expiring 2026-11-13.
+The per-file native or derived metrics, source identity, and provenance remain
+in the quality contract and its bound evidence; this is not an aggregate-only
+exemption. The baseline applies only while each listed source file is
+unchanged. New, modified, or unmatched migrations, including PR-touched files,
+remain subject to 100 % lines, statements, branches, and functions. All other
+Tier 0 files, current per-component floors, the 100 % patch floor, and the
+blocking validator remain unchanged. Q3 and its coverage ratchet remain v1.1;
+this approval does not advance Q3. Policy integration and final-source
+verification are separate from the owner decision.
 
 ## Consequences
 

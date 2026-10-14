@@ -13,8 +13,9 @@ a fresh baseline.
 
 Last rendered: `2026-10-10`
 Configured current patch-coverage floor: **100%**
-Tier 0 keeps 100% coverage. Current component floors remain blocking until
-ADR-047 Q3.
+Tier 0 keeps 100% coverage, subject only to the finite migration decision
+in [ADR-047](../adr/ADR-047-risk-based-quality-policy.md).
+Current component floors remain blocking until ADR-047 Q3.
 The planned Q3 coverage ratchet and 90% non-Tier 0 patch floor are not implemented.
 Configured viable-mutation score value: **100%**
 ADR-047 Q1 keeps full mutmut/Stryker runs on nightly/manual lanes and removes

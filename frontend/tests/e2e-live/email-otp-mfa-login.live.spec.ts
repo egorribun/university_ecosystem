@@ -535,7 +535,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     }
     await expect(login.page.locator(OTP_INPUTS)).toHaveCount(6)
     await expect(
-      login.page.getByRole("heading", { name: /Код из письма|Email code/iu })
+      login.page.getByRole("heading", { level: 3, name: /Код из письма|Email code/iu })
     ).toBeVisible()
 
     const resendAvailableAt = Date.parse(emailLoginChallenge.resend_available_at)

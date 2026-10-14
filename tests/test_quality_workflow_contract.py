@@ -5603,6 +5603,23 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     combine = _provenance_step(job, "Combine Python shard coverage")
     combine_run = str(combine["run"])
     assert (
+        "coverage xml --data-file=.coverage --fail-under=0 -o coverage.xml"
+        in combine_run
+    )
+    assert (
+        "coverage json --data-file=.coverage --fail-under=0 "
+        "-o artifacts/coverage/python/coverage.json"
+    ) in combine_run
+    coverage_config = tomllib.loads(
+        (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["tool"]["coverage"]["report"]
+    assert coverage_config["fail_under"] == 100
+    validate = _provenance_step(
+        job, "Validate quality policy, mutation registry, and Tier0 manifest"
+    )
+    assert job["steps"].index(combine) < job["steps"].index(validate)
+    assert not validate.get("continue-on-error", False)
+    assert (
         "coverage_version=\"$(uv run python -c 'import coverage; print(coverage.__version__)')\""
         in combine_run
     )
@@ -6570,3 +6587,61 @@ def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:
     assert package["packageManager"] == "npm@11.17.0"
     assert "engine-strict=true" in npmrc.splitlines()
     assert "strict-allow-scripts=true" in npmrc.splitlines()
+
+
+def test_focused_migration_tests_append_to_existing_coverage_producer() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["db-migration-gate"]
+    steps = job["steps"]
+    roundtrip = _provenance_step(
+        job, "Run supported migration round-trip and verify boundary"
+    )
+    focused = _provenance_step(job, "Append focused migration tests to coverage")
+    image_build = _provenance_step(job, "Build backend image for password preflight")
+    provenance = _provenance_step(job, "Write migration coverage provenance")
+    upload = _provenance_step(job, "Upload migration coverage data for aggregation")
+
+    assert steps.index(roundtrip) < steps.index(focused) < steps.index(image_build)
+    assert steps.index(focused) < steps.index(provenance) < steps.index(upload)
+    assert roundtrip["env"]["DATABASE_URL"] == (
+        "postgresql+asyncpg://test@localhost:5433/test_migration"
+    )
+    assert focused["env"]["DATABASE_URL"] == "sqlite+aiosqlite:///:memory:"
+    assert focused["env"]["ENVIRONMENT"] == roundtrip["env"]["ENVIRONMENT"]
+    assert focused["env"]["SECRET_KEY"] == roundtrip["env"]["SECRET_KEY"]
+    assert focused["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    reset_opt_in = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
+    for environment in (
+        workflow.get("env", {}),
+        job.get("env", {}),
+        focused.get("env", {}),
+    ):
+        assert reset_opt_in not in environment
+
+    run = str(focused["run"])
+    assert "uv run coverage run --append --data-file=.coverage.migration" in run
+    assert "--source=alembic/versions -m pytest" in run
+    assert "rm -f -- .coverage.migration" not in run
+    targets = (
+        "tests/test_touched_tier0_migration_contracts.py",
+        "tests/test_reconcile_schema_drift_migration.py",
+        "tests/test_legacy_migration_guard_contracts.py",
+        "tests/integration/test_aud038_default_partition_redistribution_postgres.py",
+        "tests/integration/test_historical_migration_semantics_postgres.py",
+        "tests/integration/test_aud226_partitioning_generated_ids_postgres.py",
+    )
+    offsets = [run.index(path) for path in targets]
+    assert offsets == sorted(offsets)
+    assert all(run.count(path) == 1 for path in targets)
+
+    assert provenance["env"]["ARTIFACT_NAME"] == (
+        "python-migration-coverage-attempt-${{ github.run_attempt }}"
+    )
+    assert upload["with"]["name"] == provenance["env"]["ARTIFACT_NAME"]
+    assert "artifacts/coverage/python/producer/.coverage.migration" in str(
+        upload["with"]["path"]
+    )
+    assert (
+        "artifacts/coverage/python/producer/coverage-provenance-migration.json"
+        in str(upload["with"]["path"])
+    )

@@ -958,7 +958,9 @@ def _log_query_before_execute(
 
 
 @pytest.fixture(autouse=True)
-async def cleanup_asyncio_tasks():
+async def cleanup_asyncio_tasks(
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[None]:
     """Cancel tasks spawned by the current test without touching test runners.
 
     Async tests in this suite are executed by both pytest-asyncio and AnyIO.
@@ -972,6 +974,8 @@ async def cleanup_asyncio_tasks():
     """
     import asyncio
     import gc
+
+    from tests.fixtures.database.database import _is_pure_parser_profile_case
 
     # Snapshot the loop before the test body starts.  The AnyIO dispatcher is
     # present here and must survive teardown; the outer waiter is handled by
@@ -997,8 +1001,11 @@ async def cleanup_asyncio_tasks():
         except TimeoutError:
             pass
 
-    # Reclaim memory to prevent OOM-killer termination in CI
-    gc.collect()
+    # Reclaim memory to prevent OOM-killer termination in CI. Only the exact
+    # allowlisted parser matrices avoid a full GC per parameter; task scanning
+    # and cancellation above remain unconditional.
+    if not _is_pure_parser_profile_case(request.node):
+        gc.collect()
 
 
 def _is_async_test_framework_task(task: Any) -> bool:

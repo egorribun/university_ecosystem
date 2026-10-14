@@ -305,3 +305,48 @@ def test_offline_revision_has_no_schema_or_data_mutations():
         _revision().upgrade()
         _revision().downgrade()
     assert output.getvalue() == ""
+
+
+def test_migration_owned_columns_skip_absent_runtime_tables() -> None:
+    from app.core.db.retained_table_metadata import (
+        MIGRATION_OWNED_TENANT_TABLES,
+        build_migration_metadata,
+    )
+
+    runtime = sa.MetaData()
+    sa.Table("tenants", runtime, sa.Column("id", sa.UUID(), primary_key=True))
+    sa.Table("messages", runtime, sa.Column("id", sa.UUID(), primary_key=True))
+
+    metadata = build_migration_metadata(runtime)
+
+    assert "tenant_id" in metadata.tables["messages"].c
+    assert not (set(MIGRATION_OWNED_TENANT_TABLES) - {"messages"}).intersection(
+        metadata.tables
+    )
+
+
+def test_migration_owned_tenant_column_conflict_fails_closed() -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _runtime_metadata_with_tenant_tables()
+    runtime.tables["users"].append_column(sa.Column("tenant_id", sa.UUID()))
+
+    with pytest.raises(
+        ValueError,
+        match="Migration-owned tenant_id has competing runtime ownership: users",
+    ):
+        build_migration_metadata(runtime)
+
+
+def test_migration_owned_tenant_index_conflict_fails_closed() -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _runtime_metadata_with_tenant_tables()
+    sa.Index("ix_users_tenant_id", runtime.tables["users"].c.id)
+
+    with pytest.raises(
+        ValueError,
+        match="Migration-owned tenant index has competing runtime ownership: "
+        "ix_users_tenant_id",
+    ):
+        build_migration_metadata(runtime)

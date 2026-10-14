@@ -60,6 +60,18 @@ export declare function assertRegistrationWaitFits(
   nowMonotonicMs?: number
 ): number
 
+/** Internal timer seam used by deterministic request-drain deadline tests. */
+export declare function waitForTrackedRequests(
+  activeRequests: Readonly<{ size: number }>,
+  changed: Array<() => void>,
+  deadlineAtMs: number,
+  options?: {
+    now?: () => number
+    scheduleTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>
+    clearTimer?: (timer: ReturnType<typeof setTimeout>) => void
+  }
+): Promise<boolean>
+
 export declare function initializeLiveRegistrationAdmission(
   stateRoot: string,
   options?: { now?: () => number; sleep?: (milliseconds: number) => Promise<void> }

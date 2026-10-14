@@ -1485,6 +1485,23 @@ jobs:
 
           echo "=== Migration round-trip complete ==="
 
+      - name: Append focused migration tests to coverage
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          ENVIRONMENT: test
+          SECRET_KEY: test-secret-key-for-ci-migration-gate-only
+          RUN_INTEGRATION_TESTS: "1"
+        run: |
+          uv run coverage run --append --data-file=.coverage.migration \
+            --source=alembic/versions -m pytest \
+            tests/test_touched_tier0_migration_contracts.py \
+            tests/test_reconcile_schema_drift_migration.py \
+            tests/test_legacy_migration_guard_contracts.py \
+            tests/integration/test_aud038_default_partition_redistribution_postgres.py \
+            tests/integration/test_historical_migration_semantics_postgres.py \
+            tests/integration/test_aud226_partitioning_generated_ids_postgres.py \
+            --tb=short
+
       - name: Build backend image for password preflight
         shell: bash
         run: |
@@ -2512,8 +2529,8 @@ jobs:
         run: |
           set -euo pipefail
           uv run coverage combine --data-file=.coverage artifacts/coverage/python/shards
-          uv run coverage xml --data-file=.coverage -o coverage.xml
-          uv run coverage json --data-file=.coverage -o artifacts/coverage/python/coverage.json
+          uv run coverage xml --data-file=.coverage --fail-under=0 -o coverage.xml
+          uv run coverage json --data-file=.coverage --fail-under=0 -o artifacts/coverage/python/coverage.json
           test -s coverage.xml
           test -s artifacts/coverage/python/coverage.json
           python_version="$(uv run python -c 'import platform; print(platform.python_version())')"

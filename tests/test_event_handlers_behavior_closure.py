@@ -833,3 +833,123 @@ async def test_outbox_retries_participant_eviction_publish_failure(
         event_id=str(stored_event.id),
         raise_on_failure=True,
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (None, "Missing durable content identifier"),
+        (object(), "Invalid durable content identifier"),
+    ],
+)
+def test_required_event_uuid_rejects_missing_or_malformed_durable_ids(value, message):
+    with pytest.raises(ValueError, match=message):
+        event_handlers._required_event_uuid(value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "field", "handler_name", "model_name"),
+    [
+        (EventCreated, "event_id_entity", "handle_event_created_notification", "Event"),
+        (NewsCreated, "news_id", "handle_news_created_notification", "News"),
+    ],
+)
+async def test_created_notification_handler_skips_deleted_source_record(
+    monkeypatch, event_type, field, handler_name, model_name
+):
+    event_id = uuid4()
+    db = AsyncMock()
+    db.get.return_value = None
+    notify = AsyncMock()
+    notify_name = "notify_about_event" if model_name == "Event" else "notify_about_news"
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, notify_name, notify)
+
+    await getattr(event_handlers, handler_name)(event_type(**{field: event_id}))
+
+    db.get.assert_awaited_once_with(
+        getattr(event_handlers.models, model_name), event_id
+    )
+    notify.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "records",
+    [
+        [SimpleNamespace(news_id=uuid4(), user_id=uuid4()), None, object()],
+        [SimpleNamespace(news_id=uuid4(), user_id=uuid4()), object(), None],
+    ],
+    ids=["missing-news", "missing-author"],
+)
+async def test_comment_notification_fails_closed_when_news_or_author_disappears(
+    monkeypatch, records
+):
+    from app.core.events import NewsCommentCreated
+
+    db = AsyncMock()
+    db.get.side_effect = records
+    notify = AsyncMock()
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, "notify_about_comment", notify)
+
+    await event_handlers.handle_news_comment_created_notification(
+        NewsCommentCreated(comment_id=uuid4(), locale="en")
+    )
+
+    assert db.get.await_count == 3
+    notify.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_comment_notification_commits_only_after_all_durable_sources_exist(
+    monkeypatch,
+):
+    from app.core.events import NewsCommentCreated
+
+    comment_id, news_id, author_id = uuid4(), uuid4(), uuid4()
+    comment = SimpleNamespace(news_id=news_id, user_id=author_id)
+    news = SimpleNamespace(id=news_id)
+    author = SimpleNamespace(id=author_id)
+    db = AsyncMock()
+    db.get.side_effect = [comment, news, author]
+    notify = AsyncMock()
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, "notify_about_comment", notify)
+
+    await event_handlers.handle_news_comment_created_notification(
+        NewsCommentCreated(comment_id=comment_id, locale="en")
+    )
+
+    assert [call.args[0] for call in db.get.await_args_list] == [
+        event_handlers.models.NewsComment,
+        event_handlers.models.News,
+        event_handlers.models.User,
+    ]
+    notify.assert_awaited_once_with(db, news, comment, author, locale="en")
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_comment_notification_skips_deleted_comment_before_loading_sources(
+    monkeypatch,
+):
+    from app.core.events import NewsCommentCreated
+
+    comment_id = uuid4()
+    db = AsyncMock()
+    db.get.return_value = None
+    notify = AsyncMock()
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, "notify_about_comment", notify)
+
+    await event_handlers.handle_news_comment_created_notification(
+        NewsCommentCreated(comment_id=comment_id, locale="en")
+    )
+
+    db.get.assert_awaited_once_with(event_handlers.models.NewsComment, comment_id)
+    notify.assert_not_awaited()
+    db.commit.assert_not_awaited()

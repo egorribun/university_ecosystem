@@ -131,7 +131,3484 @@
     "scripts": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}}
   },
   "tier0": {
-    "coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}
+    "coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100},
+    "legacy_migration_baselines": {
+      "version": 1,
+      "base_sha": "ac74e915ae539f098f0fa1e7c83b355703069984",
+      "expires_on": "2026-11-13",
+      "evidence": {
+        "workflow_run_id": "38461068743",
+        "coverage_policy_job_id": "115538982660",
+        "tested_commit_sha": "2f3ab23623c342a058073da7d2681019afc4c4c5",
+        "source_head_sha": "532ea7d1aae1d21045ecb0e99ea930cf13c6afc2",
+        "unit_shards": [
+          {
+            "shard_id": "0",
+            "coverage_sha256": "f517592e397dc280b39fa17c00c1cbcb2bbf241697f069269b437bb1821255bc",
+            "provenance_sha256": "7fc96dfb26d5978d32b70c167fab861b321ce6cb9f1576b94a4c3e9c35f891c9"
+          },
+          {
+            "shard_id": "1",
+            "coverage_sha256": "80044adbd4bf0fcde247ce5164e056d7d2ed620fa50abeb2e8b919fb32ee86c7",
+            "provenance_sha256": "d5044d592c9185c5d1bddbedac768722add787fc14094a02a4eb73bcb0416f8b"
+          },
+          {
+            "shard_id": "2",
+            "coverage_sha256": "6369283b619e117a1135858331c9ea64ca687b7233bfa0d2fbfce6e7c7619043",
+            "provenance_sha256": "857ae01f5435c646afc457009daf9aff36821dfe658cc10a2533abed8abaf6a1"
+          },
+          {
+            "shard_id": "3",
+            "coverage_sha256": "44051d9aaa8113e28e28a04e5afefc4201edb223f497dcb3df18a72cc64baf06",
+            "provenance_sha256": "877b582546631cd60ee5d185ecfb46fc1b569dd50f805d9380e21421cf596388"
+          }
+        ],
+        "migration": {
+          "coverage_sha256": "1180a32ec821efdbef9ad8bc183f2cbabcc0bac01df4cacb2c1f6dbb8b853519",
+          "provenance_sha256": "6445461aa3390f7a6ef5737d79e3abb027872cf10864335180ce07c221b60e31"
+        },
+        "reconstructed_reports": {
+          "coverage_py_version": "7.16.1",
+          "json_sha256": "884efa00d9168acea1a8e65c66404eeecbd0a8d965a0329e96c259b02fe92a8d",
+          "xml_sha256": "0959ba5dedf16dbc437f5ae4e3bfc9bfa6d28db1555f4494ef57e67490634198"
+        }
+      },
+      "files": [
+        {
+          "path": "alembic/versions/0d36ef3a49c2_merge_multiple_heads_for_wave_6.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/125613bc3543_merge_heads.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/148642dd1207_fix_missing_tables.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 338,
+              "total": 724
+            },
+            "statements": {
+              "status": "native",
+              "covered": 338,
+              "total": 724
+            },
+            "branches": {
+              "status": "native",
+              "covered": 81,
+              "total": 406
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 15,
+              "total": 17,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/1b15294cc8d7_add_pgvector_embeddings.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 34,
+              "total": 47
+            },
+            "statements": {
+              "status": "native",
+              "covered": 34,
+              "total": 47
+            },
+            "branches": {
+              "status": "native",
+              "covered": 10,
+              "total": 28
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202501200001_add_english_fields_to_events.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 12,
+              "total": 38
+            },
+            "statements": {
+              "status": "native",
+              "covered": 12,
+              "total": 38
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 24
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202502010001_add_english_fields_to_notifications.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 13,
+              "total": 35
+            },
+            "statements": {
+              "status": "native",
+              "covered": 13,
+              "total": 35
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 16
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202503010001_create_active_sessions_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 32
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 32
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 12
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202503150001_encrypt_spotify_tokens.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 38,
+              "total": 71
+            },
+            "statements": {
+              "status": "native",
+              "covered": 38,
+              "total": 71
+            },
+            "branches": {
+              "status": "native",
+              "covered": 8,
+              "total": 30
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 5,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202505010001_add_attempted_at_to_notification_deliveries.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 55
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 55
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 18
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 5,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202505200001_add_client_metadata_to_active_sessions.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 35,
+              "total": 49
+            },
+            "statements": {
+              "status": "native",
+              "covered": 35,
+              "total": 49
+            },
+            "branches": {
+              "status": "native",
+              "covered": 7,
+              "total": 24
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 4,
+              "total": 5,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202505250001_add_timezone_to_users.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 22,
+              "total": 29
+            },
+            "statements": {
+              "status": "native",
+              "covered": 22,
+              "total": 29
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 10
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202506010001_add_dedupe_key_to_notifications.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 20,
+              "total": 40
+            },
+            "statements": {
+              "status": "native",
+              "covered": 20,
+              "total": 40
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 16
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 5,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202506150001_add_notification_queue_jobs_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 35,
+              "total": 55
+            },
+            "statements": {
+              "status": "native",
+              "covered": 35,
+              "total": 55
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 22
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202506200001_add_stories_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 28,
+              "total": 43
+            },
+            "statements": {
+              "status": "native",
+              "covered": 28,
+              "total": 43
+            },
+            "branches": {
+              "status": "native",
+              "covered": 6,
+              "total": 22
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202506250001_add_indexes_for_attendance_stats.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 15,
+              "total": 31
+            },
+            "statements": {
+              "status": "native",
+              "covered": 15,
+              "total": 31
+            },
+            "branches": {
+              "status": "native",
+              "covered": 2,
+              "total": 14
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202506260001_add_user_push_topics_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 20,
+              "total": 60
+            },
+            "statements": {
+              "status": "native",
+              "covered": 20,
+              "total": 60
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 28
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/2025070100011_add_failed_login_attempts_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 18,
+              "total": 32
+            },
+            "statements": {
+              "status": "native",
+              "covered": 18,
+              "total": 32
+            },
+            "branches": {
+              "status": "native",
+              "covered": 4,
+              "total": 18
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507010001_add_data_access_logs.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 25,
+              "total": 43
+            },
+            "statements": {
+              "status": "native",
+              "covered": 25,
+              "total": 43
+            },
+            "branches": {
+              "status": "native",
+              "covered": 6,
+              "total": 22
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507100001_add_retry_fields_to_notification_queue_jobs.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 23,
+              "total": 37
+            },
+            "statements": {
+              "status": "native",
+              "covered": 23,
+              "total": 37
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 20
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507200001_add_session_signing_key.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 34,
+              "total": 43
+            },
+            "statements": {
+              "status": "native",
+              "covered": 34,
+              "total": 43
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 14
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507300001_add_mfa_tables.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 96,
+              "total": 178
+            },
+            "statements": {
+              "status": "native",
+              "covered": 96,
+              "total": 178
+            },
+            "branches": {
+              "status": "native",
+              "covered": 24,
+              "total": 106
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 4,
+              "total": 6,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507300002_add_mfa_verified_at.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 22,
+              "total": 30
+            },
+            "statements": {
+              "status": "native",
+              "covered": 22,
+              "total": 30
+            },
+            "branches": {
+              "status": "native",
+              "covered": 2,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507310001_add_webauthn_attestation_fields.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 34,
+              "total": 47
+            },
+            "statements": {
+              "status": "native",
+              "covered": 34,
+              "total": 47
+            },
+            "branches": {
+              "status": "native",
+              "covered": 7,
+              "total": 22
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507310002_tokenize_event_attendance.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 27,
+              "total": 115
+            },
+            "statements": {
+              "status": "native",
+              "covered": 27,
+              "total": 115
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 56
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 7,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507310003_add_pending_index_to_notification_queue_jobs.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 16,
+              "total": 23
+            },
+            "statements": {
+              "status": "native",
+              "covered": 16,
+              "total": 23
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202507310004_normalize_user_emails.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 22,
+              "total": 35
+            },
+            "statements": {
+              "status": "native",
+              "covered": 22,
+              "total": 35
+            },
+            "branches": {
+              "status": "native",
+              "covered": 4,
+              "total": 12
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509010001_merge_push_topics_and_email_heads.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 7,
+              "total": 7
+            },
+            "statements": {
+              "status": "native",
+              "covered": 7,
+              "total": 7
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509100001_add_event_search_indexes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 16,
+              "total": 22
+            },
+            "statements": {
+              "status": "native",
+              "covered": 16,
+              "total": 22
+            },
+            "branches": {
+              "status": "native",
+              "covered": 2,
+              "total": 6
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509200001_add_event_search_vector_column.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 37
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 37
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 10
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509210001_add_attempt_count_to_mfa_challenges.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 23,
+              "total": 31
+            },
+            "statements": {
+              "status": "native",
+              "covered": 23,
+              "total": 31
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509220001_add_consumed_expires_index_to_mfa_challenges.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 24,
+              "total": 31
+            },
+            "statements": {
+              "status": "native",
+              "covered": 24,
+              "total": 31
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509230001_drop_webauthn_credentials.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 20,
+              "total": 27
+            },
+            "statements": {
+              "status": "native",
+              "covered": 20,
+              "total": 27
+            },
+            "branches": {
+              "status": "native",
+              "covered": 4,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509240001_mark_pending_totp_inactive.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 23,
+              "total": 31
+            },
+            "statements": {
+              "status": "native",
+              "covered": 23,
+              "total": 31
+            },
+            "branches": {
+              "status": "native",
+              "covered": 2,
+              "total": 6
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202509250001_remove_mfa_recovery_codes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 29,
+              "total": 45
+            },
+            "statements": {
+              "status": "native",
+              "covered": 29,
+              "total": 45
+            },
+            "branches": {
+              "status": "native",
+              "covered": 4,
+              "total": 16
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 4,
+              "total": 5,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202511240001_drop_legacy_user_columns.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 18,
+              "total": 35
+            },
+            "statements": {
+              "status": "native",
+              "covered": 18,
+              "total": 35
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 20
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202512210001_add_session_fingerprint_columns.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 32,
+              "total": 44
+            },
+            "statements": {
+              "status": "native",
+              "covered": 32,
+              "total": 44
+            },
+            "branches": {
+              "status": "native",
+              "covered": 6,
+              "total": 20
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 4,
+              "total": 5,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202512230001_chat_message_index.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 12,
+              "total": 20
+            },
+            "statements": {
+              "status": "native",
+              "covered": 12,
+              "total": 20
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202601130001_add_performance_indexes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 47
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 47
+            },
+            "branches": {
+              "status": "native",
+              "covered": 6,
+              "total": 32
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202601130002_add_recovery_codes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 21
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 21
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202601130003_add_login_history.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 21
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 21
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202601260001_add_outbox_columns_to_stored_events.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 12
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602010001_add_shadow_uuid_v7_columns.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 28,
+              "total": 45
+            },
+            "statements": {
+              "status": "native",
+              "covered": 28,
+              "total": 45
+            },
+            "branches": {
+              "status": "native",
+              "covered": 8,
+              "total": 22
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602010002_add_shadow_fks.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 16
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602010003_final_cutover_swap.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 201,
+              "total": 359
+            },
+            "statements": {
+              "status": "native",
+              "covered": 201,
+              "total": 359
+            },
+            "branches": {
+              "status": "native",
+              "covered": 106,
+              "total": 222
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602010004_drop_legacy_columns.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 29,
+              "total": 73
+            },
+            "statements": {
+              "status": "native",
+              "covered": 29,
+              "total": 73
+            },
+            "branches": {
+              "status": "native",
+              "covered": 10,
+              "total": 28
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602040001_add_created_at_to_users.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 20
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 20
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602040002_cleanup_spotify_legacy.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 13,
+              "total": 21
+            },
+            "statements": {
+              "status": "native",
+              "covered": 13,
+              "total": 21
+            },
+            "branches": {
+              "status": "native",
+              "covered": 2,
+              "total": 6
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602050001_fix_mfa_challenges_session_id.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 26,
+              "total": 43
+            },
+            "statements": {
+              "status": "native",
+              "covered": 26,
+              "total": 43
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602260001_add_active_sessions_partial_index.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 10,
+              "total": 11
+            },
+            "statements": {
+              "status": "native",
+              "covered": 10,
+              "total": 11
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602270001_merge_heads.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602270002_bound_user_profile_string_columns.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 40,
+              "total": 54
+            },
+            "statements": {
+              "status": "native",
+              "covered": 40,
+              "total": 54
+            },
+            "branches": {
+              "status": "native",
+              "covered": 13,
+              "total": 30
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202602270003_audit_2026_02_26_security_schema_fixes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 34,
+              "total": 58
+            },
+            "statements": {
+              "status": "native",
+              "covered": 34,
+              "total": 58
+            },
+            "branches": {
+              "status": "native",
+              "covered": 9,
+              "total": 36
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603030001_add_functional_index_full_name_lower.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 18,
+              "total": 24
+            },
+            "statements": {
+              "status": "native",
+              "covered": 18,
+              "total": 24
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603040001_add_trgm_index_full_name.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 19,
+              "total": 25
+            },
+            "statements": {
+              "status": "native",
+              "covered": 19,
+              "total": 25
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603060001_add_chat_participants_covering_indexes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 29
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 29
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603070001_add_message_unread_partial_index.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 23
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 23
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603090001_add_pending_email_to_users.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 11,
+              "total": 12
+            },
+            "statements": {
+              "status": "native",
+              "covered": 11,
+              "total": 12
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603130001_add_mfa_challenge_state_enum.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 21
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 21
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603130002_add_pg_cron_cleanup_jobs.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 26
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 26
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603130003_add_trusted_device_binding_hashes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 12,
+              "total": 14
+            },
+            "statements": {
+              "status": "native",
+              "covered": 12,
+              "total": 14
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603140001_add_subscription_id_to_notification_deliveries.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 19,
+              "total": 24
+            },
+            "statements": {
+              "status": "native",
+              "covered": 19,
+              "total": 24
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603140002_add_stored_events_pending_partial_indexes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 30
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 30
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603140003_add_stored_events_aggregate_ordering.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 15,
+              "total": 22
+            },
+            "statements": {
+              "status": "native",
+              "covered": 15,
+              "total": 22
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603140004_add_failed_outbox_events_dlq.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 15,
+              "total": 20
+            },
+            "statements": {
+              "status": "native",
+              "covered": 15,
+              "total": 20
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603150001_add_news_comment_cursor_index.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 25
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 25
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603150002_add_totp_last_used_code.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 15,
+              "total": 17
+            },
+            "statements": {
+              "status": "native",
+              "covered": 15,
+              "total": 17
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603160001_add_message_pagination_index.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 23
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 23
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603170001_add_message_pagination_covering_index.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 29
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 29
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603170002_add_creator_id_to_schedule.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 12,
+              "total": 14
+            },
+            "statements": {
+              "status": "native",
+              "covered": 12,
+              "total": 14
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603170003_enable_rls_on_messages.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 24
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 24
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603230001_add_email_and_key_length_constraints.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 13,
+              "total": 17
+            },
+            "statements": {
+              "status": "native",
+              "covered": 13,
+              "total": 17
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202603280001_reconcile_post_uuid_migration_drift.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 57,
+              "total": 70
+            },
+            "statements": {
+              "status": "native",
+              "covered": 57,
+              "total": 70
+            },
+            "branches": {
+              "status": "native",
+              "covered": 17,
+              "total": 26
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605070001_failed_login_attempts_user_id_nullable.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 19,
+              "total": 34
+            },
+            "statements": {
+              "status": "native",
+              "covered": 19,
+              "total": 34
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 16
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605300001_add_read_at_to_messages.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 22,
+              "total": 29
+            },
+            "statements": {
+              "status": "native",
+              "covered": 22,
+              "total": 29
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 10
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605300002_add_edited_deleted_to_messages.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 23,
+              "total": 31
+            },
+            "statements": {
+              "status": "native",
+              "covered": 23,
+              "total": 31
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 14
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605300003_create_message_reactions.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 18,
+              "total": 24
+            },
+            "statements": {
+              "status": "native",
+              "covered": 18,
+              "total": 24
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605300004_add_reply_to_message_id.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 24,
+              "total": 32
+            },
+            "statements": {
+              "status": "native",
+              "covered": 24,
+              "total": 32
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 10
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605300005_add_group_chat_fields.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 30,
+              "total": 42
+            },
+            "statements": {
+              "status": "native",
+              "covered": 30,
+              "total": 42
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 18
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605300006_create_chat_read_receipts.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 16,
+              "total": 21
+            },
+            "statements": {
+              "status": "native",
+              "covered": 16,
+              "total": 21
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 2,
+              "total": 3,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202605300007_add_forwarded_fields_to_messages.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 30,
+              "total": 42
+            },
+            "statements": {
+              "status": "native",
+              "covered": 30,
+              "total": 42
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 18
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202607070001_add_query_plan_indexes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 12,
+              "total": 15
+            },
+            "statements": {
+              "status": "native",
+              "covered": 12,
+              "total": 15
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202607230001_multi_tenant_rls.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 39,
+              "total": 56
+            },
+            "statements": {
+              "status": "native",
+              "covered": 39,
+              "total": 56
+            },
+            "branches": {
+              "status": "native",
+              "covered": 10,
+              "total": 24
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202607240001_add_hash_chaining_to_stored_events.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 20,
+              "total": 32
+            },
+            "statements": {
+              "status": "native",
+              "covered": 20,
+              "total": 32
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 14
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202608250001_expand_email_otp_mfa.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 59,
+              "total": 64
+            },
+            "statements": {
+              "status": "native",
+              "covered": 59,
+              "total": 64
+            },
+            "branches": {
+              "status": "native",
+              "covered": 11,
+              "total": 20
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 6,
+              "total": 6,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202608250002_contract_retire_webauthn.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 211,
+              "total": 222
+            },
+            "statements": {
+              "status": "native",
+              "covered": 211,
+              "total": 222
+            },
+            "branches": {
+              "status": "native",
+              "covered": 84,
+              "total": 110
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 16,
+              "total": 16,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202608250003_add_trusted_cwv_evidence.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 12,
+              "total": 15
+            },
+            "statements": {
+              "status": "native",
+              "covered": 12,
+              "total": 15
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202608270001_reconcile_mfa_schema.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 47,
+              "total": 58
+            },
+            "statements": {
+              "status": "native",
+              "covered": 47,
+              "total": 58
+            },
+            "branches": {
+              "status": "native",
+              "covered": 14,
+              "total": 22
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 6,
+              "total": 8,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202608270002_reconcile_failed_login_schema.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 46,
+              "total": 55
+            },
+            "statements": {
+              "status": "native",
+              "covered": 46,
+              "total": 55
+            },
+            "branches": {
+              "status": "native",
+              "covered": 14,
+              "total": 22
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 5,
+              "total": 6,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202608270003_reconcile_partitioned_schema.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 101,
+              "total": 124
+            },
+            "statements": {
+              "status": "native",
+              "covered": 101,
+              "total": 124
+            },
+            "branches": {
+              "status": "native",
+              "covered": 35,
+              "total": 56
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 14,
+              "total": 15,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202609150001_phase_auth_boolean_defaults.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 100,
+              "total": 141
+            },
+            "statements": {
+              "status": "native",
+              "covered": 100,
+              "total": 141
+            },
+            "branches": {
+              "status": "native",
+              "covered": 25,
+              "total": 48
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 16,
+              "total": 18,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202609220001_phase_literal_scalar_defaults.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 139,
+              "total": 171
+            },
+            "statements": {
+              "status": "native",
+              "covered": 139,
+              "total": 171
+            },
+            "branches": {
+              "status": "native",
+              "covered": 46,
+              "total": 64
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 18,
+              "total": 19,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/202609250001_phase_semantic_defaults.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 102,
+              "total": 110
+            },
+            "statements": {
+              "status": "native",
+              "covered": 102,
+              "total": 110
+            },
+            "branches": {
+              "status": "native",
+              "covered": 43,
+              "total": 50
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 10,
+              "total": 10,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/23d991e593b5_add_user_quiet_hours.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "branches": {
+              "status": "native",
+              "covered": 4,
+              "total": 16
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/2956fd6376cc_fix_groups_id_sequence.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 19,
+              "total": 28
+            },
+            "statements": {
+              "status": "native",
+              "covered": 19,
+              "total": 28
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/2bc18c38157c_add_department_and_position_to_user.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 28
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 28
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 12
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/2e93eecad1e0_add_role_constraints.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 9,
+              "total": 10
+            },
+            "statements": {
+              "status": "native",
+              "covered": 9,
+              "total": 10
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/306c0a36d925_merge_heads.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/3081a2b724cc_create_dead_letter_jobs_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "statements": {
+              "status": "native",
+              "covered": 21,
+              "total": 34
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 20
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/30fa2627aa5e_add_lesson_type_to_schedule.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 24
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 24
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/31e81f57c53d_add_signature_to_data_access_logs.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 16,
+              "total": 27
+            },
+            "statements": {
+              "status": "native",
+              "covered": 16,
+              "total": 27
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 12
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/33160e3a674f_add_hnsw_index_to_news_embedding.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 10,
+              "total": 12
+            },
+            "statements": {
+              "status": "native",
+              "covered": 10,
+              "total": 12
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/3f1cf9168805_decompose_user_model.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 25,
+              "total": 67
+            },
+            "statements": {
+              "status": "native",
+              "covered": 25,
+              "total": 67
+            },
+            "branches": {
+              "status": "native",
+              "covered": 7,
+              "total": 50
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/40c81cc4a086_add_missing_outbox_columns_to_stored_.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 25,
+              "total": 31
+            },
+            "statements": {
+              "status": "native",
+              "covered": 25,
+              "total": 31
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 10
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/4e39503c07cd_add_outbox_notification_trigger.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 13,
+              "total": 18
+            },
+            "statements": {
+              "status": "native",
+              "covered": 13,
+              "total": 18
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/4fa4374013f3_add_parity_to_schedule.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 24
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 24
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/57bdf5bf9375_resolve_role_case_mismatch_and_drop_.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 19,
+              "total": 22
+            },
+            "statements": {
+              "status": "native",
+              "covered": 19,
+              "total": 22
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 6
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/65319a2b1d7f_add_english_fields_to_news.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 13,
+              "total": 35
+            },
+            "statements": {
+              "status": "native",
+              "covered": 13,
+              "total": 35
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 16
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/6bdc356a128b_add_is_used_to_invite_codes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 26
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 26
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/776d6f9def10_add_invite_code_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/7ad848733a4b_merge_heads_email_constraints_and_hnsw_.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/7ad8a9a11478_delete_personal_schedule.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 15,
+              "total": 21
+            },
+            "statements": {
+              "status": "native",
+              "covered": 15,
+              "total": 21
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/7db0b7a03e37_add_speaker_and_photo_url_to_events.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 28
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 28
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 12
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/7ea701e08870_add_about_to_event.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 24
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 24
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/8793a392b5a2_merge_failed_login_attempts_and_retry_.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/933372f5da9a_init_schema.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 94,
+              "total": 289
+            },
+            "statements": {
+              "status": "native",
+              "covered": 94,
+              "total": 289
+            },
+            "branches": {
+              "status": "native",
+              "covered": 38,
+              "total": 174
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 9,
+              "total": 13,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/96809b6dc35d_add_chat_models.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/a4bfc1ba3076_add_invite_codes_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/ab93b27831f3_add_webauthn_support_v2.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 57,
+              "total": 138
+            },
+            "statements": {
+              "status": "native",
+              "covered": 57,
+              "total": 138
+            },
+            "branches": {
+              "status": "native",
+              "covered": 24,
+              "total": 108
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 4,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/b05ae64aaeef_init.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 15,
+              "total": 32
+            },
+            "statements": {
+              "status": "native",
+              "covered": 15,
+              "total": 32
+            },
+            "branches": {
+              "status": "native",
+              "covered": 2,
+              "total": 12
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/b0ad41552220_update_foreign_key_ondelete.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 39,
+              "total": 72
+            },
+            "statements": {
+              "status": "native",
+              "covered": 39,
+              "total": 72
+            },
+            "branches": {
+              "status": "native",
+              "covered": 6,
+              "total": 26
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 7,
+              "total": 8,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/b85f4f3edc89_add_attachments.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/bd67902ca2cd_emove_author_from_news_add_image_url.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 16,
+              "total": 45
+            },
+            "statements": {
+              "status": "native",
+              "covered": 16,
+              "total": 45
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 18
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 3,
+              "total": 5,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/c8d0b5515f2d_add_schedule_and_news_indexes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 14,
+              "total": 31
+            },
+            "statements": {
+              "status": "native",
+              "covered": 14,
+              "total": 31
+            },
+            "branches": {
+              "status": "native",
+              "covered": 3,
+              "total": 14
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/d0b0cb4c1910_merge_data_access_logs_head.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/ede66395ff71_merge_chat_message_index_and_.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/f2d2414a6b67_add_functional_email_index.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 12,
+              "total": 17
+            },
+            "statements": {
+              "status": "native",
+              "covered": 12,
+              "total": 17
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 4
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/f7aa476e968a_add_stored_events_table_for_domain_.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 18,
+              "total": 27
+            },
+            "statements": {
+              "status": "native",
+              "covered": 18,
+              "total": 27
+            },
+            "branches": {
+              "status": "native",
+              "covered": 1,
+              "total": 8
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/f9d2b1f5e2d0_create_push_subscriptions_table.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 33,
+              "total": 69
+            },
+            "statements": {
+              "status": "native",
+              "covered": 33,
+              "total": 69
+            },
+            "branches": {
+              "status": "native",
+              "covered": 5,
+              "total": 30
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 5,
+              "total": 8,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/ffe470bc9ca2_merge_quiet_hours_push_subscriptions.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "statements": {
+              "status": "native",
+              "covered": 8,
+              "total": 9
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/fix_sender_id_type.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 17,
+              "total": 62
+            },
+            "statements": {
+              "status": "native",
+              "covered": 17,
+              "total": 62
+            },
+            "branches": {
+              "status": "native",
+              "covered": 4,
+              "total": 40
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        },
+        {
+          "path": "alembic/versions/wave14_composite_indexes.py",
+          "metrics": {
+            "lines": {
+              "status": "native",
+              "covered": 15,
+              "total": 21
+            },
+            "statements": {
+              "status": "native",
+              "covered": 15,
+              "total": 21
+            },
+            "branches": {
+              "status": "derived",
+              "covered": 0,
+              "total": 0,
+              "derivation": "AST source contains no branch construct"
+            },
+            "functions": {
+              "status": "derived",
+              "covered": 1,
+              "total": 2,
+              "derivation": "AST function entries covered when the first executable body line is reported as executed"
+            }
+          }
+        }
+      ]
+    }
   },
   "coverage_manifest": {
     "schema_version": 3,

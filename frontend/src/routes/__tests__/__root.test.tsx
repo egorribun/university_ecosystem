@@ -11,13 +11,17 @@ import { withExpectedConsole } from "@/tests/strictConsole"
 import type { ReactNode } from "react"
 
 let Route: (typeof import("../__root"))["Route"]
+const mockedScripts = vi.hoisted(() => vi.fn((): any => null))
+const mockedFetchCampusTimezone = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve<string | null>(null))
+)
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<any>()
   return {
     ...actual,
     HeadContent: () => null,
-    Scripts: () => null,
+    Scripts: mockedScripts,
     Outlet: () => <div data-testid="outlet">Outlet Content</div>,
     useRouteContext: vi.fn().mockImplementation(() => {
       return {
@@ -124,6 +128,26 @@ describe("__root.tsx components", () => {
     }
   })
 
+  it("returns campus timezone from the root route loader", async () => {
+    mockedFetchCampusTimezone.mockReset()
+    vi.doMock("@/api/hooks/campusConfig", () => ({
+      fetchCampusTimezone: mockedFetchCampusTimezone,
+    }))
+    vi.resetModules()
+
+    try {
+      const { Route: loaderRoute } = await import("../__root")
+      const loader = (loaderRoute.options as any).loader
+      mockedFetchCampusTimezone.mockResolvedValueOnce("Europe/Istanbul")
+
+      await expect(loader()).resolves.toEqual({ campusTimezone: "Europe/Istanbul" })
+      expect(mockedFetchCampusTimezone).toHaveBeenCalledOnce()
+    } finally {
+      vi.doUnmock("@/api/hooks/campusConfig")
+      vi.resetModules()
+    }
+  })
+
   describe("RootShell component", () => {
     it("renders root shell markup using global theme/lang cookie variables", async () => {
       const initialDocumentClass = document.documentElement.className
@@ -173,6 +197,10 @@ describe("__root.tsx components", () => {
         window,
         "__UE_THEME_INIT_SCRIPT_RAN__"
       )
+      const previousStaticMountMarker = Object.getOwnPropertyDescriptor(
+        window,
+        "__UE_STATIC_SPA_DOCUMENT_MOUNT__"
+      )
       const previousRenderMode = document.documentElement.getAttribute("data-render-mode")
       const nonceMeta = document.createElement("meta")
       nonceMeta.setAttribute("property", "csp-nonce")
@@ -181,10 +209,18 @@ describe("__root.tsx components", () => {
       prepaintScript.id = "theme-init-script"
       prepaintScript.src = window.location.origin + "/theme-init.js"
       prepaintScript.setAttribute("nonce", "static-spa-nonce")
+      const prepaintScriptText = prepaintScript.textContent
+      const moduleEntryScript = document.createElement("script")
+      moduleEntryScript.type = "module"
+      moduleEntryScript.src = window.location.origin + "/assets/static-entry.js"
+      moduleEntryScript.async = true
+      moduleEntryScript.setAttribute("nonce", "static-spa-nonce")
+      const moduleEntryText = moduleEntryScript.textContent
       let staticRoot: ReturnType<typeof createRoot> | undefined
 
       try {
         document.head.append(nonceMeta, prepaintScript)
+        document.body.append(moduleEntryScript)
         document.documentElement.classList.add("dark")
         document.documentElement.setAttribute("lang", "en")
         document.documentElement.dataset.renderMode = "static-spa"
@@ -219,7 +255,8 @@ describe("__root.tsx components", () => {
             ...actual,
             createRoot: (...args: Parameters<typeof createRoot>) => {
               expect(args[0]).toBe(document)
-              expect(prepaintScript.isConnected).toBe(false)
+              expect(prepaintScript.isConnected).toBe(true)
+              expect(moduleEntryScript.isConnected).toBe(true)
               staticRoot = actual.createRoot(...args)
               return staticRoot
             },
@@ -231,19 +268,21 @@ describe("__root.tsx components", () => {
         })
 
         expect(staticRoot).toBeDefined()
+        expect(Reflect.get(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__")).toBe(true)
         expect(document.documentElement).toHaveClass("dark")
         expect(document.documentElement).toHaveAttribute("lang", "en")
         expect(window.__UE_SELECTED_LANG__).toBe("en")
         expect(document.documentElement).not.toHaveAttribute("data-render-mode")
-        expect(document.getElementById("theme-init-script")).toHaveAttribute(
-          "src",
-          prepaintScript.getAttribute("src")
+        expect(document.getElementById("theme-init-script")).toBe(prepaintScript)
+        expect(document.querySelectorAll('script[src$="/assets/static-entry.js"]')).toHaveLength(1)
+        expect(document.querySelector('script[src$="/assets/static-entry.js"]')).toBe(
+          moduleEntryScript
         )
-        expect(document.getElementById("theme-init-script")).toHaveAttribute(
-          "nonce",
-          "static-spa-nonce"
-        )
-        expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(1)
+        expect(prepaintScript.src).toBe(window.location.origin + "/theme-init.js")
+        expect(prepaintScript.nonce).toBe("static-spa-nonce")
+        expect(prepaintScript.textContent).toBe(prepaintScriptText)
+        expect(moduleEntryScript.nonce).toBe("static-spa-nonce")
+        expect(moduleEntryScript.textContent).toBe(moduleEntryText)
       } finally {
         if (staticRoot) {
           await act(async () => {
@@ -259,6 +298,7 @@ describe("__root.tsx components", () => {
         bootstrapRoot.remove()
         nonceMeta.remove()
         prepaintScript.remove()
+        moduleEntryScript.remove()
         if (previousRenderMode === null)
           document.documentElement.removeAttribute("data-render-mode")
         else document.documentElement.setAttribute("data-render-mode", previousRenderMode)
@@ -268,6 +308,15 @@ describe("__root.tsx components", () => {
           Object.defineProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__", previousThemeMarker)
         } else {
           Reflect.deleteProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__")
+        }
+        if (previousStaticMountMarker) {
+          Object.defineProperty(
+            window,
+            "__UE_STATIC_SPA_DOCUMENT_MOUNT__",
+            previousStaticMountMarker
+          )
+        } else {
+          Reflect.deleteProperty(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__")
         }
         document.documentElement.className = initialDocumentClass
         if (initialDocumentLang === null) document.documentElement.removeAttribute("lang")
@@ -300,47 +349,65 @@ describe("__root.tsx components", () => {
       expect(headData).not.toHaveProperty("scripts")
     })
 
-    it("passes an app-policy TrustedScriptURL through the document-root createRoot sink", async () => {
+    it("preserves parser-run scripts during a strict Trusted Types static document mount", async () => {
+      const previousStaticMountMarker = Object.getOwnPropertyDescriptor(
+        window,
+        "__UE_STATIC_SPA_DOCUMENT_MOUNT__"
+      )
       const policyCacheKeys = ["__ttAppPolicy", "__ttSanitizePolicy"] as const
       const previousPolicyCache = policyCacheKeys.map((key) => ({
         key,
         hadOwnProperty: Object.prototype.hasOwnProperty.call(window, key),
         value: Reflect.get(window, key),
       }))
-      const brandedUrls = new WeakSet<object>()
-      const appPolicy = {
-        createScriptURL: vi.fn((value: string) => {
-          const trustedUrl = { toString: () => value }
-          brandedUrls.add(trustedUrl)
-          return trustedUrl
-        }),
-        createHTML: (value: string) => value,
+      const originalInnerHTMLDescriptor = Object.getOwnPropertyDescriptor(
+        Element.prototype,
+        "innerHTML"
+      )
+      if (!originalInnerHTMLDescriptor?.set) throw new Error("Element.innerHTML setter is missing")
+      const strictInnerHTMLSetter = function (this: Element, value: string) {
+        if (/<script(?:\s|>)/iu.test(value)) {
+          throw new TypeError("TrustedHTML required for script markup")
+        }
+        originalInnerHTMLDescriptor.set?.call(this, value)
       }
       const createPolicy = vi.fn((name: string) => {
         expect(name).toBe("app")
-        return appPolicy
+        return {
+          createScriptURL: (value: string) => value,
+          createHTML: (value: string) => value,
+        }
       })
       const nonceMeta = document.createElement("meta")
       nonceMeta.setAttribute("property", "csp-nonce")
       nonceMeta.content = "static-shell-nonce"
+      const parserThemeScript = document.createElement("script")
+      parserThemeScript.id = "theme-init-script"
+      parserThemeScript.src = window.location.origin + "/theme-init.js"
+      parserThemeScript.setAttribute("nonce", "static-shell-nonce")
+      const parserModuleScript = document.createElement("script")
+      parserModuleScript.type = "module"
+      parserModuleScript.src = window.location.origin + "/assets/static-entry.js"
+      parserModuleScript.async = true
+      parserModuleScript.setAttribute("nonce", "static-shell-nonce")
+      const themeText = parserThemeScript.textContent
+      const moduleText = parserModuleScript.textContent
+      document.documentElement.classList.add("dark")
+      document.documentElement.lang = "en"
+      window.__UE_SELECTED_LANG__ = "en"
       let root: ReturnType<typeof createRoot> | undefined
-      let scriptSourceSink: ReturnType<typeof vi.spyOn> | undefined
 
       try {
+        mockedScripts.mockReturnValue(<script type="module" src="/assets/static-entry.js" />)
         vi.stubGlobal("trustedTypes", { createPolicy })
         for (const { key } of previousPolicyCache) Reflect.deleteProperty(window, key)
-        document.head.append(nonceMeta)
-
-        const originalSetAttribute = HTMLScriptElement.prototype.setAttribute
-        scriptSourceSink = vi
-          .spyOn(HTMLScriptElement.prototype, "setAttribute")
-          .mockImplementation(function (this: HTMLScriptElement, name: string, value: string) {
-            if (name === "src" && this.id === "theme-init-script") {
-              expect(typeof value).toBe("object")
-              expect(brandedUrls.has(value as unknown as object)).toBe(true)
-            }
-            return originalSetAttribute.call(this, name, value)
-          })
+        Reflect.set(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__", true)
+        document.head.append(nonceMeta, parserThemeScript)
+        document.body.append(parserModuleScript)
+        Object.defineProperty(Element.prototype, "innerHTML", {
+          ...originalInnerHTMLDescriptor,
+          set: strictInnerHTMLSetter,
+        })
 
         const Shell = (Route.options as any).shellComponent
         root = createRoot(document)
@@ -352,25 +419,73 @@ describe("__root.tsx components", () => {
           )
         })
 
-        expect(createPolicy).toHaveBeenCalledOnce()
-        expect(scriptSourceSink).toHaveBeenCalled()
-        expect(document.getElementById("theme-init-script")).toHaveAttribute(
-          "src",
-          `${window.location.origin}/theme-init.js`
+        expect(createPolicy).not.toHaveBeenCalled()
+        expect(mockedScripts).not.toHaveBeenCalled()
+        expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(1)
+        expect(document.getElementById("theme-init-script")).toBe(parserThemeScript)
+        expect(parserThemeScript.isConnected).toBe(true)
+        expect(parserThemeScript.src).toBe(window.location.origin + "/theme-init.js")
+        expect(parserThemeScript.nonce).toBe("static-shell-nonce")
+        expect(parserThemeScript.textContent).toBe(themeText)
+        expect(document.querySelectorAll('script[src$="/assets/static-entry.js"]')).toHaveLength(1)
+        expect(document.querySelector('script[src$="/assets/static-entry.js"]')).toBe(
+          parserModuleScript
         )
-        expect(document.getElementById("theme-init-script")).toHaveAttribute(
-          "nonce",
-          "static-shell-nonce"
-        )
-        expect(document.getElementById("theme-init-script")?.textContent).toBe("")
+        expect(parserModuleScript.isConnected).toBe(true)
+        expect(parserModuleScript.nonce).toBe("static-shell-nonce")
+        expect(parserModuleScript.textContent).toBe(moduleText)
         expect(document.querySelector("style")?.textContent).toContain("--initial-bg")
+        expect(document.documentElement).toHaveClass("dark")
+        expect(document.documentElement).toHaveAttribute("lang", "en")
+        expect(window.__UE_SELECTED_LANG__).toBe("en")
+
+        await act(async () => {
+          root?.render(
+            <Shell>
+              <div>Updated static SPA content</div>
+            </Shell>
+          )
+        })
+
+        expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(1)
+        expect(document.getElementById("theme-init-script")).toBe(parserThemeScript)
+        expect(parserThemeScript.nonce).toBe("static-shell-nonce")
+        expect(parserThemeScript.textContent).toBe(themeText)
+        expect(document.querySelectorAll('script[src$="/assets/static-entry.js"]')).toHaveLength(1)
+        expect(document.querySelector('script[src$="/assets/static-entry.js"]')).toBe(
+          parserModuleScript
+        )
+        expect(parserModuleScript.nonce).toBe("static-shell-nonce")
+        expect(parserModuleScript.textContent).toBe(moduleText)
+        expect(document.documentElement).toHaveClass("dark")
+        expect(document.documentElement).toHaveAttribute("lang", "en")
+        expect(window.__UE_SELECTED_LANG__).toBe("en")
+        expect(mockedScripts).not.toHaveBeenCalled()
       } finally {
-        if (root) await act(async () => root?.unmount())
-        scriptSourceSink?.mockRestore()
-        nonceMeta.remove()
-        for (const { key, hadOwnProperty, value } of previousPolicyCache) {
-          if (hadOwnProperty) Reflect.set(window, key, value)
-          else Reflect.deleteProperty(window, key)
+        if (originalInnerHTMLDescriptor) {
+          Object.defineProperty(Element.prototype, "innerHTML", originalInnerHTMLDescriptor)
+        }
+        try {
+          if (root) await act(async () => root?.unmount())
+        } finally {
+          mockedScripts.mockReset()
+          mockedScripts.mockReturnValue(null)
+          nonceMeta.remove()
+          parserThemeScript.remove()
+          parserModuleScript.remove()
+          if (previousStaticMountMarker) {
+            Object.defineProperty(
+              window,
+              "__UE_STATIC_SPA_DOCUMENT_MOUNT__",
+              previousStaticMountMarker
+            )
+          } else {
+            Reflect.deleteProperty(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__")
+          }
+          for (const { key, hadOwnProperty, value } of previousPolicyCache) {
+            if (hadOwnProperty) Reflect.set(window, key, value)
+            else Reflect.deleteProperty(window, key)
+          }
         }
       }
     })
@@ -463,6 +578,57 @@ describe("__root.tsx components", () => {
 
         expect(script.props.src).toBe("https://ssr.example/theme-init.js")
         expect(script.props.nonce).toBe("request-scoped-nonce")
+      } finally {
+        vi.stubGlobal("document", originalDocument)
+        vi.stubGlobal("window", originalWindow)
+      }
+    })
+
+    it("keeps an existing relative theme URL when SSR has no window origin", () => {
+      const previousScripts = Array.from(
+        document.querySelectorAll<HTMLScriptElement>('script[id="theme-init-script"]')
+      )
+      previousScripts.forEach((script) => script.remove())
+      const existingScript = document.createElement("script")
+      existingScript.id = "theme-init-script"
+      existingScript.setAttribute("src", "theme-init.js")
+      document.head.append(existingScript)
+      const originalWindow = globalThis.window
+      vi.stubGlobal("window", undefined)
+
+      try {
+        const Shell = (Route.options as any).shellComponent
+        const shellTree = Shell({ children: null }) as any
+        const head = shellTree.props.children.find((child: any) => child?.type === "head")
+        const script = head.props.children.find(
+          (child: any) => child?.props?.id === "theme-init-script"
+        )
+
+        expect(script.props.src).toBe("theme-init.js")
+      } finally {
+        vi.stubGlobal("window", originalWindow)
+        existingScript.remove()
+        previousScripts.forEach((script) => document.head.append(script))
+      }
+    })
+
+    it("uses relative theme URL and no nonce when SSR has neither DOM nor origin", () => {
+      const originalDocument = globalThis.document
+      const originalWindow = globalThis.window
+      vi.stubGlobal("__ssrNonceGetter__", undefined)
+      vi.stubGlobal("__ssrOriginGetter__", undefined)
+      vi.stubGlobal("document", undefined)
+      vi.stubGlobal("window", undefined)
+      try {
+        const Shell = (Route.options as any).shellComponent
+        const shellTree = Shell({ children: null }) as any
+        const head = shellTree.props.children.find((child: any) => child?.type === "head")
+        const script = head.props.children.find(
+          (child: any) => child?.props?.id === "theme-init-script"
+        )
+
+        expect(script.props.src).toBe("/theme-init.js")
+        expect(script.props.nonce).toBeUndefined()
       } finally {
         vi.stubGlobal("document", originalDocument)
         vi.stubGlobal("window", originalWindow)

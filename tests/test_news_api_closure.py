@@ -852,3 +852,75 @@ async def test_semantic_search_returns_serialized_matches() -> None:
     vector.get_embedding.assert_awaited_once_with("query")
     vector.search_similar.assert_awaited_once()
     assert response.headers["ETag"]
+
+
+@pytest.mark.asyncio
+async def test_create_news_maps_media_ownership_conflict_to_forbidden_without_mutation():
+    from app.schemas import schemas
+    from app.services.news_service import NewsImageOwnershipError
+
+    handler = inspect.unwrap(news_api.create_news)
+    service = AsyncMock()
+    service.create_news.side_effect = NewsImageOwnershipError("news_image_not_owned")
+    service.serialize_news = MagicMock()
+    request = _request(cache=object(), locale="ru")
+
+    with (
+        patch.object(
+            news_api, "_increment_news_list_version", new_callable=AsyncMock
+        ) as increment,
+        pytest.raises(HTTPException) as exc,
+    ):
+        await call_injected(
+            handler,
+            data=schemas.NewsCreate(
+                title="Owned image", content="Body", image_url=NEWS_IMAGE_URL
+            ),
+            request=request,
+            user=_admin(),
+            provides={"NewsService": service},
+        )
+
+    assert exc.value.status_code == 403
+    service.create_news.assert_awaited_once()
+    increment.assert_not_awaited()
+    service.serialize_news.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_news_image_maps_registration_conflict_after_scan_and_save():
+    from app.services.news_service import NewsImageOwnershipError
+
+    handler = inspect.unwrap(news_api.upload_news_image)
+    upload = SimpleNamespace(size=12)
+    service = AsyncMock()
+    service.register_uploaded_image.side_effect = NewsImageOwnershipError(
+        "news_image_not_owned"
+    )
+    order: list[str] = []
+
+    async def scan(_file, *, locale, size_bytes):
+        order.append(f"scan:{locale}:{size_bytes}")
+
+    async def save(_file, folder, prefix, *, locale):
+        order.append(f"save:{folder}:{prefix}:{locale}")
+        return NEWS_IMAGE_URL
+
+    with (
+        patch.object(news_api, "scan_for_malware", side_effect=scan),
+        patch.object(news_api, "save_upload", side_effect=save),
+        pytest.raises(HTTPException) as exc,
+    ):
+        await call_injected(
+            handler,
+            file=upload,
+            request=_request(locale="en"),
+            user=_admin(),
+            provides={"NewsService": service},
+        )
+
+    assert exc.value.status_code == 403
+    assert order == ["scan:en:12", "save:news_images:news:en"]
+    service.register_uploaded_image.assert_awaited_once_with(
+        NEWS_IMAGE_URL, owner_user_id=_admin().id
+    )

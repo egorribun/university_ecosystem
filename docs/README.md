@@ -39,8 +39,9 @@ handoffs are intentionally not part of the canonical index.
   current roadmap, product acceptance for `v1.0.0`, retained work checkpoints
   and the certification backlog for `v1.1`.
 - [ADR-047: risk-based quality policy](adr/ADR-047-risk-based-quality-policy.md)
-  — Tier 0 keeps 100% coverage; mutation testing is a nightly signal, not a
-  release gate after Q1. Current coverage floors remain enforced until Q3.
+  — Tier 0 keeps 100% coverage, with the owner-approved finite no-decrease
+  baseline for exactly 131 unchanged migrations through 2026-11-13. Mutation
+  testing is a nightly signal after Q1; other coverage floors remain until Q3.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)

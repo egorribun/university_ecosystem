@@ -65,7 +65,12 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
   assert.match(spec, /hydrationDiagnostics/u)
   assert.match(spec, /rawTranslationKeys\.server/u)
   assert.match(spec, /rawTranslationKeys\.client/u)
-  assert.match(spec, /new DOMParser\(\)\.parseFromString/u)
+  assert.match(spec, /new JSDOM\(markup\)/u)
+  assert.match(
+    spec,
+    /page\.evaluate\(\s*\(\)\s*=> document\.querySelector\("#root"\)\?\.outerHTML/u
+  )
+  assert.doesNotMatch(spec, /new DOMParser\(\)|page\.evaluate\(\s*\(markup\)/u)
   assert.match(
     spec,
     /querySelectorAll<HTMLElement>\([\s\S]*?aria-label[\s\S]*?aria-description[\s\S]*?alt/u

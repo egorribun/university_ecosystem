@@ -19,7 +19,16 @@ test("offline shell browser acceptance exercises the real worker and precached a
   assert.match(specSource, /Network\.setCacheDisabled/u)
   assert.match(specSource, /context\.setOffline\(true\)/u)
   assert.match(specSource, /page\.goto\("\/events"/u)
-  assert.match(specSource, /data-render-mode/u)
+  assert.match(
+    specSource,
+    /await response\?\.text\(\)[\s\S]*?data-render-mode=\["'\]static-spa\["'\]/u,
+    "the offline navigation response proves the worker served the static shell"
+  )
+  assert.doesNotMatch(
+    specSource,
+    /page\.locator\(["']html["']\)\)\.toHaveAttribute\(["']data-render-mode["']/u,
+    "the consumed marker is checked on the response body, not the post-mount DOM"
+  )
   assert.match(specSource, /window\.__APP_HYDRATED/u)
   assert.match(specSource, /workbox-precache/u)
   assert.doesNotMatch(specSource, /\bvi\.mock\s*\(|\bpage\.route\s*\(/u)
@@ -29,8 +38,8 @@ test("offline shell browser acceptance exercises the real worker and precached a
   assert.match(precachingSource, /matchPrecache\("_shell\.html"\)/u)
   assert.ok(
     PWA_INJECT_CONFIG.globPatterns.some((pattern) =>
-      ["js", "css", "html"].every((extension) => pattern.includes(extension))
+      ["js", "css", "html", "woff2"].every((extension) => pattern.includes(extension))
     ),
-    "the production precache must include HTML shells and their JavaScript/CSS assets"
+    "the production precache must include HTML, JavaScript, CSS, and WOFF2 assets"
   )
 })

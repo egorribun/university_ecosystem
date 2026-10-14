@@ -251,9 +251,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // returning users see SSR-rendered HTML matching their pre-paint state —
   // no more hardcoded `<html lang="ru">` mismatch on dark-mode + English.
   //
-  // The shell also runs during the static SPA createRoot mount. Its external
-  // pre-paint script therefore uses a TrustedScriptURL at React's client DOM
-  // sink, while SSR and hydration reuse the request's serialized URL/nonce.
+  // Static SPA fallbacks already executed their parser-loaded theme and
+  // bundle scripts before createRoot(document). React 19 creates script nodes
+  // through an HTML parsing sink, which strict Trusted Types rejects. Keep those
+  // tags in SSR/hydration, but omit their recreation in the static document mount.
   //
   // `suppressHydrationWarning` on `<html>` is defense-in-depth for edge
   // cases the server cannot detect:
@@ -273,7 +274,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
     (typeof document !== "undefined"
       ? document.querySelector<HTMLMetaElement>('meta[property="csp-nonce"]')?.content
       : undefined)
-  const themeInitScriptSrc = getThemeInitScriptSrc()
+  const isStaticSpaDocumentMount =
+    typeof window !== "undefined" &&
+    Reflect.get(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__") === true
+  const themeInitScriptSrc = isStaticSpaDocumentMount ? undefined : getThemeInitScriptSrc()
   const ssrLang = globalThis.__ssrLangGetter__?.()
   // On a client document mount, keep the attributes already selected by the
   // parser-run pre-paint asset. A static SPA shell has no request-scoped SSR
@@ -314,12 +318,14 @@ function RootShell({ children }: { children: React.ReactNode }) {
     <html lang={lang} className={htmlClassName} suppressHydrationWarning>
       <head>
         <HeadContent />
-        <script
-          id="theme-init-script"
-          src={themeInitScriptSrc}
-          nonce={ssrNonce}
-          suppressHydrationWarning
-        />
+        {themeInitScriptSrc === undefined ? null : (
+          <script
+            id="theme-init-script"
+            src={themeInitScriptSrc}
+            nonce={ssrNonce}
+            suppressHydrationWarning
+          />
+        )}
         {isLhci ? (
           <style id="lhci-static-effects" data-lhci-static-effects="">
             {LHCI_STATIC_EFFECTS_CSS}
@@ -384,7 +390,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
         <noscript>
           <style>{`#root { display: block !important; }`}</style>
         </noscript>
-        <Scripts />
+        {isStaticSpaDocumentMount ? null : <Scripts />}
       </body>
     </html>
   )

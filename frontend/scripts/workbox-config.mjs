@@ -98,7 +98,7 @@ export const enforcePrecacheBudget = (manifestEntries) =>
 
 /** @type {import("workbox-build").InjectManifestOptions} */
 export const PWA_INJECT_CONFIG = {
-  globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
+  globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json,woff2}"],
   globIgnores: [
     "**/bundle-stats.*",
     "**/jspdf*.js",

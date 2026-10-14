@@ -25,6 +25,39 @@ def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
 _TEST_DATABASE_NAME = re.compile(r"(?:^test|[-_]test(?:[-_]|$))", re.IGNORECASE)
 
 
+_PURE_PARSER_TEST_NAMES = frozenset(
+    {
+        "test_live_playwright_page_errors_accept_only_fixed_domains",
+        "test_live_playwright_http_status_accepts_only_fixed_domains",
+        "test_live_playwright_page_errors_accept_admin_hydration_domains",
+        "test_live_playwright_email_otp_and_mfa_http_statuses_are_closed",
+        "test_live_playwright_auth_http_parser_accepts_closed_status_mismatches",
+        "test_live_playwright_story_setup_parser_accepts_closed_stages",
+        "test_live_playwright_a11y_contrast_accepts_bounded_closed_records",
+        "test_live_playwright_http_status_accepts_auth_status_checks",
+        "test_live_playwright_http_status_rejects_malformed_records",
+        "test_live_playwright_page_errors_reject_malformed_records",
+        "test_live_playwright_push_observation_accepts_closed_records",
+        "test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions",
+        "test_live_playwright_counts_reject_malformed_summary_records",
+    }
+)
+
+
+def _is_pure_parser_profile_case(node: object) -> bool:
+    if getattr(node, "originalname", None) not in _PURE_PARSER_TEST_NAMES:
+        return False
+    node_path = getattr(node, "path", None)
+    root_path = getattr(getattr(node, "config", None), "rootpath", None)
+    if node_path is None or root_path is None:
+        return False
+    try:
+        expected_path = Path(root_path) / "tests" / "test_live_stand.py"
+        return Path(node_path).absolute() == expected_path.absolute()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
 def _is_sqlite_memory_database(database_url: str) -> bool:
     parsed = make_url(database_url)
     return parsed.get_backend_name() == "sqlite" and parsed.database in {
@@ -622,7 +655,9 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def clean_database(prepare_database: None) -> AsyncIterator[None]:
+async def clean_database(
+    prepare_database: None, request: pytest.FixtureRequest
+) -> AsyncIterator[None]:
     """
     Clean up tables between tests to ensure isolation.
     Uses TRUNCATE on PostgreSQL or DELETE on SQLite.
@@ -633,6 +668,9 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     from sqlalchemy.exc import OperationalError
 
     yield
+
+    if _is_pure_parser_profile_case(request.node):
+        return
 
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = (

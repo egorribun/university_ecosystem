@@ -152,7 +152,7 @@ describe("browser entrypoint", () => {
     expect(readBootstrapStatus()).toBe("disabled")
   })
 
-  it("removes the executed parser theme script before mounting the static SPA fallback", async () => {
+  it("preserves the executed parser theme script while mounting the static SPA fallback", async () => {
     vi.stubEnv("PROD", false)
     const originalClass = document.documentElement.className
     const originalLang = document.documentElement.getAttribute("lang")
@@ -161,6 +161,10 @@ describe("browser entrypoint", () => {
       window,
       "__UE_THEME_INIT_SCRIPT_RAN__"
     )
+    const originalStaticMountMarker = Object.getOwnPropertyDescriptor(
+      window,
+      "__UE_STATIC_SPA_DOCUMENT_MOUNT__"
+    )
     const nonceMeta = document.createElement("meta")
     nonceMeta.setAttribute("property", "csp-nonce")
     nonceMeta.content = "static-spa-nonce"
@@ -168,6 +172,7 @@ describe("browser entrypoint", () => {
     parserThemeScript.id = "theme-init-script"
     parserThemeScript.src = window.location.origin + "/theme-init.js"
     parserThemeScript.setAttribute("nonce", "static-spa-nonce")
+    const parserThemeText = parserThemeScript.textContent
 
     try {
       document.head.append(nonceMeta, parserThemeScript)
@@ -179,9 +184,10 @@ describe("browser entrypoint", () => {
       expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(1)
 
       mocks.createRoot.mockImplementation((container: Document) => {
+        expect(Reflect.get(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__")).toBe(true)
         expect(container).toBe(document)
-        expect(parserThemeScript.isConnected).toBe(false)
-        expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(0)
+        expect(parserThemeScript.isConnected).toBe(true)
+        expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(1)
         return { render: mocks.render }
       })
 
@@ -194,8 +200,11 @@ describe("browser entrypoint", () => {
       expect(document.documentElement).toHaveClass("dark")
       expect(document.documentElement).toHaveAttribute("lang", "en")
       expect(window.__UE_SELECTED_LANG__).toBe("en")
-      expect(parserThemeScript.isConnected).toBe(false)
-      expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(0)
+      expect(parserThemeScript.src).toBe(window.location.origin + "/theme-init.js")
+      expect(parserThemeScript.nonce).toBe("static-spa-nonce")
+      expect(parserThemeScript.textContent).toBe(parserThemeText)
+      expect(parserThemeScript.isConnected).toBe(true)
+      expect(document.querySelectorAll('[id="theme-init-script"]')).toHaveLength(1)
     } finally {
       nonceMeta.remove()
       parserThemeScript.remove()
@@ -209,6 +218,11 @@ describe("browser entrypoint", () => {
         Object.defineProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__", originalThemeMarker)
       } else {
         Reflect.deleteProperty(window, "__UE_THEME_INIT_SCRIPT_RAN__")
+      }
+      if (originalStaticMountMarker) {
+        Object.defineProperty(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__", originalStaticMountMarker)
+      } else {
+        Reflect.deleteProperty(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__")
       }
     }
   })

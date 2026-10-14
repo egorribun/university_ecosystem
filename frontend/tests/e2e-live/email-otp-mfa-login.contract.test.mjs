@@ -174,6 +174,10 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
     /enterCode\(login\.page/u,
     "the login challenge is completed through the six-digit UI"
   )
+  requireMatch(
+    /login\.page\.getByRole\("heading",\s*\{\s*level:\s*3,\s*name:\s*\/Код из письма\|Email code\/iu\s*\}\)/u,
+    "the OTP method heading is selected by its unique semantic level"
+  )
   requireMatch(/toHaveURL\(\/\\\/dashboard\$\//u, "successful email-MFA login reaches the app")
 
   requireMatch(/newContext\(/u, "the MFA login starts in an isolated browser context")

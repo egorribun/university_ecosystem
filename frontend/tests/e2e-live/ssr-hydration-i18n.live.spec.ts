@@ -1,4 +1,5 @@
 import { type BrowserContext, type Page } from "@playwright/test"
+import { JSDOM } from "jsdom"
 import { expect, loginAs, test } from "./fixtures"
 
 type Language = "ru" | "en"
@@ -6,44 +7,42 @@ type Language = "ru" | "en"
 const HYDRATION_DIAGNOSTIC =
   /hydration|hydrated|server(?:-rendered)? html|text content does not match|expected server html|react error #(?:418|423|425)/iu
 
+function hasRawTranslationKey(markup: string | null): boolean {
+  if (markup === null) return false
+
+  // Parse captured server/client markup outside the CSP-constrained page. JSDOM
+  // does not execute embedded scripts unless explicitly configured to do so.
+  const root = new JSDOM(markup).window.document.querySelector("#root")
+  if (!root) return false
+
+  const rawNamespaceKey = /\b[a-z][a-z0-9_-]*:[a-z][a-z0-9_.-]*\b/iu
+  const visibleText = root.textContent ?? ""
+  const accessibleText = Array.from(
+    root.querySelectorAll<HTMLElement>(
+      "[aria-label], [aria-description], [title], [placeholder], [alt], [value], [aria-valuetext]"
+    )
+  )
+    .flatMap((element) => [
+      element.getAttribute("aria-label"),
+      element.getAttribute("aria-description"),
+      element.getAttribute("title"),
+      element.getAttribute("placeholder"),
+      element.getAttribute("alt"),
+      element.getAttribute("value"),
+      element.getAttribute("aria-valuetext"),
+    ])
+    .filter((value): value is string => value !== null)
+    .join(" ")
+
+  return rawNamespaceKey.test(`${visibleText} ${accessibleText}`)
+}
+
 async function inspectRawTranslationKeys(page: Page, serverMarkup: string | null) {
-  return page.evaluate((markup) => {
-    const rawNamespaceKey = /\b[a-z][a-z0-9_-]*:[a-z][a-z0-9_.-]*\b/iu
-    const hasRawTranslationKey = (root: ParentNode | null) => {
-      if (!root) return false
-
-      const visibleText = root.textContent ?? ""
-      const accessibleText = Array.from(
-        root.querySelectorAll<HTMLElement>(
-          "[aria-label], [aria-description], [title], [placeholder], [alt], [value], [aria-valuetext]"
-        )
-      )
-        .flatMap((element) => [
-          element.getAttribute("aria-label"),
-          element.getAttribute("aria-description"),
-          element.getAttribute("title"),
-          element.getAttribute("placeholder"),
-          element.getAttribute("alt"),
-          element.getAttribute("value"),
-          element.getAttribute("aria-valuetext"),
-        ])
-        .filter((value): value is string => value !== null)
-        .join(" ")
-
-      return rawNamespaceKey.test(`${visibleText} ${accessibleText}`)
-    }
-
-    let server: boolean | null = null
-    if (markup !== null) {
-      const serverDocument = new DOMParser().parseFromString(markup, "text/html")
-      server = hasRawTranslationKey(serverDocument.querySelector("#root"))
-    }
-
-    return {
-      server,
-      client: hasRawTranslationKey(document.querySelector("#root")),
-    }
-  }, serverMarkup)
+  const clientMarkup = await page.evaluate(() => document.querySelector("#root")?.outerHTML ?? null)
+  return {
+    server: serverMarkup === null ? null : hasRawTranslationKey(serverMarkup),
+    client: hasRawTranslationKey(clientMarkup),
+  }
 }
 
 async function assertDashboardHydratesAndNavigatesInLanguage(

@@ -75,7 +75,10 @@ test.describe("PWA precached shell fallback", () => {
       // fall back to the canonical static shell and load its precached JS.
       const response = await page.goto("/events", { waitUntil: "domcontentloaded" })
       expect(response?.status()).toBe(200)
-      await expect(page.locator("html")).toHaveAttribute("data-render-mode", "static-spa")
+      const staticShellMarkup = await response?.text()
+      expect(staticShellMarkup).toMatch(
+        /<html(?=\s|>)[^>]*\sdata-render-mode=["']static-spa["'](?=\s|>)[^>]*>/iu
+      )
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page.getByRole("heading", { name: "Мероприятия" })).toBeVisible()
       expect(failedBundles).toEqual([])

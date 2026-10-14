@@ -151,7 +151,7 @@ def upgrade() -> None:
         op.execute("DROP TABLE data_access_logs_old")
 
     # --- 2. Notifications ---
-    if "notifications" in existing_tables and not is_partitioned("notifications"):
+    if not is_partitioned("notifications"):
         safe_rename("notifications", "notifications_old")
         op.execute(
             """
@@ -263,19 +263,17 @@ def downgrade() -> None:
         op.execute(
             "ALTER TABLE notification_deliveries RENAME TO notification_deliveries_part"
         )
-    if "notifications" in existing_tables:
-        if "notifications_part" in existing_tables:
-            op.execute("DROP TABLE notifications_part")
-        op.execute("ALTER TABLE notifications RENAME TO notifications_part")
+    if "notifications_part" in existing_tables:
+        op.execute("DROP TABLE notifications_part")
+    op.execute("ALTER TABLE notifications RENAME TO notifications_part")
     if "data_access_logs" in existing_tables:
         if "data_access_logs_part" in existing_tables:
             op.execute("DROP TABLE data_access_logs_part")
         op.execute("ALTER TABLE data_access_logs RENAME TO data_access_logs_part")
 
     # Recreate notifications
-    if "notifications" in existing_tables:
-        op.execute(
-            """
+    op.execute(
+        """
             CREATE TABLE notifications (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -291,8 +289,8 @@ def downgrade() -> None:
                 read_at TIMESTAMPTZ
             );
         """
-        )
-        op.execute("INSERT INTO notifications SELECT * FROM notifications_part")
+    )
+    op.execute("INSERT INTO notifications SELECT * FROM notifications_part")
 
     # Recreate deliveries
     if "notification_deliveries" in existing_tables:
@@ -346,7 +344,6 @@ def downgrade() -> None:
 
     if "notification_deliveries" in existing_tables:
         op.execute("DROP TABLE notification_deliveries_part")
-    if "notifications" in existing_tables:
-        op.execute("DROP TABLE notifications_part")
+    op.execute("DROP TABLE notifications_part")
     if "data_access_logs" in existing_tables:
         op.execute("DROP TABLE data_access_logs_part")

@@ -1,6 +1,6 @@
 # University Ecosystem: полный цикл приёмки и выпуска MVP v1.0.0
 
-Редакция 7 от 2026-10-12 (Europe/Istanbul). Единственный действующий план,
+Редакция 8 от 2026-10-14 (Europe/Istanbul). Единственный действующий план,
 объединяющий прежний мастер-план и решение коммита
 `60a886529c6e89176e2d53395268ca6279805cb4` с уточнениями владельца в этой беседе.
 Основание качества — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
@@ -53,12 +53,17 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
 
 ## Переход качества: решение и фактический CI
 
-- Tier 0 сохраняет 100% всех применимых coverage-метрик. До Q3 **все нынешние
-  per-component floors из `quality/quality-contract.json` и текущий 100% patch
-  coverage остаются машинно обязательными**; unsupported метрики не превращать
-  в новые требования.
-  Ratchet и 90% non-Tier-0 patch coverage ещё не внедрены. Если действующие floors
-  блокируют MVP, отдельно согласовать включение Q3; не снижать их молча.
+- Tier 0 сохраняет 100% всех применимых coverage-метрик. Единственное конечное
+  исключение — решение владельца от 2026-10-14 UTC о source-bound baseline ровно
+  для 131 неизменённых файлов Alembic из alembic/versions, привязанной к base
+  ac74e915 и истекающей 2026-11-13. Per-file
+  evidence и provenance сохранены в quality contract. Новые, изменённые или
+  unmatched migrations, включая затронутые PR миграции, и все остальные Tier 0
+  файлы сохраняют 100% всех метрик.
+- До Q3 все прочие нынешние per-component floors из quality/quality-contract.json
+  и текущий 100% patch coverage остаются обязательными; unsupported метрики не
+  становятся требованиями. Ratchet и 90% non-Tier-0 patch coverage остаются
+  v1.1; это решение не продвигает Q3. Floors не снижать молча.
 - Q1 обязателен до MVP: мутации исключаются из release gate и перестают запускаться
   как PR/main blocking lane; полные mutmut/Stryker остаются nightly/manual.
   Q1/Q4 source migration и разрешённое обновление protections внедрены.
@@ -83,6 +88,19 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   пороге до Q2; они не дают основания подменять результат или считать регрессию
   реализованной. Equivalent exclusions — только доказанные, с owner/evidence и
   сроком до 90 дней; quarantine и ручной `Killed` запрещены.
+- Решение владельца 2026-10-14 UTC: утверждены ровно 17 дополнительных
+  exact-match detect-secrets dispositions: 15 findings в
+  quality/quality-contract.json и 2 в
+  scripts/quality/validate_quality_contract.py. Это точные path/type/digest
+  tuples категории public_integrity_digest и типа Hex High Entropy String,
+  reviewed_on 2026-10-14, expires_on 2027-01-10; previous 118 records
+  сохраняются без изменений, утверждённый набор расширен до 135. Изменённые
+  или unmatched identities остаются fail-closed; иных findings, baseline
+  entries, pragmas, broad exclusions, bypass или context changes решение не
+  разрешает. Baseline 319, 78 required contexts, CodeQL blocking и hooks
+  сохраняются. Policy integration и final-source validation выполняются
+  отдельно; см. ADR-047.
+
 - Уже готовые security, signing, SBOM/provenance и WASM parity шаги image producer
   сохраняются. Отложена дополнительная сертификация/продвижение в kind, а не
   удаление работающей защиты или публикация произвольного набора образов.
@@ -875,7 +893,7 @@ ownership вместе с проверками:
 | Направление | Сохранённая область и обязательная будущая приёмка |
 | --- | --- |
 | Q2/mutation debt | Nightly regression >1 п.п., dashboard, полный canonical inventory и разбор слабых поведенческих тестов; рабочие цели ADR-047, без ручного Killed. |
-| Q3/coverage | Доверенная main baseline, no-decrease ratchet и90% non-Tier-0 patch coverage; Tier 0 остаётся100%. До Q3 текущие floors сохраняются. |
+| Q3/coverage | Доверенная main baseline, no-decrease ratchet и 90% non-Tier-0 patch coverage; Tier 0 остаётся 100%, кроме конечного baseline для ровно 131 неизменённого migration-файла выше. Новые/изменённые/unmatched migrations остаются 100%; Q3 остаётся v1.1. |
 | O1–O8 | Три comparable полных green runs, population/source provenance, timing/cost/critical path и operability report; начатые инструменты сохраняются. |
 | Release certification/kind | Опубликованные шесть GHCR digests, их полный kind deploy, TLS/routes/policies, Kyverno/ExternalSecrets/HPA, failure recovery/rollback; подписи/SBOM/provenance уже сохраняются в MVP producer. |
 | Storage/DR/observability | RPO24h/RTO30m, согласованный paired restore по документированному набору, реальные targets/logs/traces, dashboards/alerts; MVP one-time restore не исключает DB/S3 consistency. |

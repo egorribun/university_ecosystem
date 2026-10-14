@@ -1,7 +1,7 @@
-# Статус MVP v1.0.0
+# Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-13 (Europe/Istanbul). Единственный действующий план —
-[MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), редакция 7; продукт —
+Обновлено: 2026-10-14 (UTC / Europe/Istanbul). Действующий план —
+[MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), редакция 8; продукт —
 [ТЗ MVP](University_Ecosystem_MVP.md), качество —
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
@@ -9,142 +9,102 @@
 
 - Один checkout, ветка egorribun, существующий
   [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306).
-  Исправления — 834b3344, Caddy — b8193e1a, Redis — 62fe5949.
-  Published head — 32a34d6c; обычный push и pre-push TypeScript PASS.
-  Main — ac74e915. Hosted frontend нового head полностью GREEN.
-  Imgproxy ff7398ac, frontend 0fd0abdb, backend ade441cd и 32a34d6c опубликованы.
-- Действуют 78 обязательных пар context/integration и CodeQL code_scanning.
-  Q1/Q4 внедрены; CodeQL blocking, Semgrep в pre-commit.
-  До Q3 текущие coverage floors и 100% patch coverage сохраняются.
-- Hosted CI 04825a9b выявил locale/Knip/nonce contracts, media mocks,
-  отключение app.auth при загрузке Alembic и downgrade probe от head.
-  Эти причины исправлены; новый CI выявил старое cache assertion в PG test и
-  отсутствие server-csp.mjs в runtime image. Local PG1 и Node7/format PASS;
-  нужны свежие результаты всех 78 contexts и CodeQL.
-- В объём входят [October audit](../../audits/AUDIT-2026-10.md) и
-  [dependency report](../../audits/dependency-updates-2026-10/README.md).
-  Исторические OPEN и версии в исходных отчётах требуют текущей классификации.
+  Текущий head задают Git и PR; последний завершённый hosted snapshot —
+  532ea7d1, main — ac74e915.
+- Этот snapshot: 111 SUCCESS, 23 SKIPPED, 2 FAILURE. Не прошли
+  Coverage & Quality Policy Gate и зависимый CI Success; CodeQL и advisory
+  Owned live acceptance прошли. Общая coverage остановилась на пороге 100%.
+  Advisory smoke не заменяет полные 59 live specs.
+- Действуют 78 required contexts и blocking CodeQL code_scanning.
+  Q1/Q4 source migration внедрена; Semgrep остаётся в pre-commit.
+  Новый source требует собственных hosted checks. Бюджет PR 15 минут открыт.
 
-## Текущая контрольная точка
+## Проверенные локальные исправления
 
-- Frontend providers/loader/i18n: 30 tests, i18n и TypeScript PASS.
-  Offline Alembic shims ограничены try/finally: 3 tests PASS.
-  PG17 AUD197/198 → AUD226: 7 PASS; seed double/UUID defaults: 14 PASS.
-  CSP/static bootstrap: 68 tests, TypeScript, ESLint, production build и
-  canonical WASM PASS; после createRoot сохраняются dark/en, nonce и один script.
-  Новый frontend CI repair: 206 live contracts, 15 Node checks, Knip/format PASS.
-  Alembic сохраняет существующие loggers; последовательный audit/media suite: 83 PASS.
-  PG17 probe откатывает внешний transaction: head, sentinel и DND schema сохранены;
-  1 PASS после logging fix, app.auth сохранён, owned resources — 0.
-  HTTP cache privacy: 35 PASS / 1 штатный PG skip, 100% file line/branch, Ruff/format PASS.
-  Schedule stale L1: RED2 → GREEN30; routing/startup10/102 и backend log probe PASS.
-- Ambiguous COMMIT: cleanup проверяет ссылки Attachment на primary после
-  rollback; ошибки rollback/cleanup сохраняют исходную ошибку. Pending lease
-  того же владельца продлевается на 300 секунд; durable DB idempotency не
-  заявляется. RED: пять regressions; GREEN: 97 chat tests, Ruff PASS;
-  все 42 изменённые исполняемые строки выполнены. Частичная file coverage
-  диагностическая и не заменяет обязательный aggregate.
-- Profile media: сначала durable COMMIT, затем удаление только unreferenced
-  owner-scoped файла; rollback/query uncertainty сохраняет объект и исходную ошибку.
-  RED: 27 regressions; GREEN: 126 tests, Ruff, 100% file line/branch coverage.
-  Primary-session и shared-reference checks проверены; свежий Core ещё pending.
-- Предыдущие пакеты сохраняют ownership/retention news media, durable outbox,
-  campus timezone, advisory schedule locks, trusted proxy/IP, ограниченный
-  Gateway egress, MFA/session guards, WS membership/replay epochs, recipient
-  isolation уведомлений и SSR nonce/no-store. Нужна свежая Core-приёмка.
-- Generated OpenAPI/client/MSW синхронизированы штатными генераторами с
-  GET /api/v1/campus/config; пять файлов совпадают с generated CI output.
-  Live contracts: 179 PASS; TypeScript PASS.
-  Backend OpenAPI snapshot также синхронизирован; три shard-3 failures
-  воспроизведены на Helm 3.22.0. После исправления диагностических assertions
-  и snapshot: 40 OpenAPI/proxy contracts PASS, Ruff PASS. Ещё 266 затронутых
-  Helm contracts отдельно проверены на 3.22.0: PASS.
-- Strict DB gate использует planner-only EXPLAIN: не исполняет logged DML/CTE,
-  сохраняет cost/scan checks и fail-closed поведение. Это не runtime benchmark.
-  RED воспроизведён; combined live-stand/DB/S3 suite: 1827 PASS, Ruff PASS.
-  Необязательный count-only log, вызвавший CodeQL alert 3505, удалён;
-  dismissal не применялся, свежий CodeQL pending.
-- News-media DDL выделен в общий emitter для online migration и Squawk.
-  Offline/PG/schema guards сохранены; 17 contract tests PASS.
-  На реальном PostgreSQL 17: 12 ownership/migration integration PASS;
-  отдельный полный migration cycle до head PASS. Контейнеры удалены.
-  Actual hosted Squawk для нового source ещё pending.
-- Backend fixtures: 328 PASS; отдельно исправленные Helm CIDR assertions —
-  8 PASS, S3 parametrization в двух xdist workers — 6 PASS.
-  Обновлены проверенные activation/workflow fingerprints, сохранены provenance
-  guards. Source inventory/anti-pattern validation PASS.
-- SSR сохраняет Request до abort при timeout; forced-GC RED и 15 Node checks PASS.
-  Worker/CSP/bootstrap проверены текущим пакетом выше; реальные browser checks pending.
-  Бюджет предыдущего published пакета: main JS 168,06 KiB, initial JS gzip 373,83 KiB,
-  initial CSS gzip 38,58 KiB. Реальные browser console/hydration/Worker checks
-  остаются pending до свежего Core.
-- Go fixes для Nilaway, file-processor Close и Gateway keyFunc интегрированы
-  после review. Linux race, exact 100% block/statement coverage, lint и Nilaway
-  PASS для всех трёх сервисов; WS stress: 20 repetitions PASS.
-  FP contextcheck fix проверен повторными race/coverage/lint. FP/Gateway Nilaway
-  прошли последовательный полный analysis в 6 GiB cgroup после OOM в 4 GiB;
-  область анализа не менялась. Owned containers/processes после прогонов — 0.
-- Политика detect-secrets: 118 owner-approved exact dispositions, baseline319.
-  Сохранены 113; отдельно Caddy1 и четыре Fakeredis/NATS/imgproxy до 2027-01-10.
-  Private validator: 103 PASS; canonical validator: 102 PASS.
-  Full tracked scan 32a34d6c: 392 findings, 93 approved FP, 0 unreviewed; PASS.
-  Новых inline allowlist pragmas нет; новые подавления без решения запрещены.
-- Ammonia 4.2.3 имеет точное owner cooldown exception в двух Cargo.lock.
-  Linux Rust 1.97.1 / wasm-pack 0.13.1 / wasm-opt 117 build и 3 runtime smoke PASS.
-  Две дополнительные чистые Linux build совпали с первой по всем 12 package
-  outputs; provenance и 3 runtime smoke PASS. Два бинарника и metadata приняты;
-  свежий hosted parity для нового published source ещё pending.
-- NATS 2.12.15 проверен на реальном брокере; Node 24.21.0, Helm 3.22.0,
-  Kyverno 1.19.1, Nuclei 3.11.1, Prometheus 3.15.0 и flagd 0.16.3 опубликованы.
-  Новый literal-safe renderer проверен с полным production entrypoint и
-  JetStream template: startup/auth PASS для обычных и сложных синтетических
-  credentials; source contracts PASS. Причина прежнего hosted Core failure
-  не установлена; нужен новый CI/Core. После прогонов owned resources — 0.
-  Caddy 2.11.7 интегрирован отдельно: 113 tests, Ruff и hooks/actionlint PASS.
-  Official metadata/pins/cooldown, custom build и version/module PASS; actual Caddy:
-  обе конфигурации, health и redaction двух log channels PASS. Проверенный
-  image сохранён. Caddy disposition включена в policy118; маршруты/JWKS/WS
-  требуют свежего Core. Redis 7.4.11 интегрирован в test/sandbox и четыре Go
-  testcontainers callers: contract, обе Compose configs, Ruff/gofmt/hooks PASS;
-  Go integration на published 04825a9b PASS; новый source ещё требует CI.
-  Imgproxy 4.0.17: четыре применимых advisory, cooldown и pins проверены;
-  old/new PNG/SVG, tampered/disallowed no-fetch, health и cache headers PASS.
-  SVG natural DPI меняется 72→96; 114 contracts, Ruff и static Compose model
-  PASS. Проверка app-endpoint на свежем Core остаётся pending.
-  SeaweedFS: TUS не опубликован; upstream metadata/source discrepancy сохраняется.
-- AUD-226: Alembic включён в coverage/provenance; нужен штатный aggregate
-  четырёх backend shards и PG migration artifact нового source.
-  Частичная диагностическая coverage не проходит действующие floors.
-  Developer harness --repo-only: 28/28 PASS в предыдущем пакете.
+- Backend application: 241 PASS и отдельные 61 PASS. Диагностические прогоны
+  выполнили все 54 ранее недостававшие строки и 33 branch arcs приложения.
+  Это targeted evidence; свежий обязательный aggregate остаётся необходимым.
+- Миграции: required-table preflight db31 отклоняет неполную схему до DDL.
+  Реальный PostgreSQL RED воспроизвёл прежний сбой на отсутствующей users;
+  GREEN — 77 unit и 6 исторических PostgreSQL checks. Добавленные empty/zero
+  sequence cases проверяют порядок запросов и setval; весь guard suite — 38 PASS.
+  У всех девяти затронутых миграций 100% line/branch в диагностическом union.
+  Перед повторным измерением двух изменённых файлов старые данные удалены.
+- CI migration producer дополняет прежний round-trip тремя unit и тремя
+  PostgreSQL suites до записи provenance. Обвязка pytest использует SQLite
+  в памяти; реальные PG suites сохраняют собственные capped containers.
+  Все шесть suites одним процессом — 81 PASS; workflow contracts — 181 PASS.
+  Hosted producer и aggregate нового source ещё нужны.
+- Frontend: 67 Vitest, 21 Node checks, TypeScript, ESLint и production build PASS.
+  RootShell, htmlText и MapLibre loader имеют 100% измеренных метрик.
+  Main entrypoint проверен поведением и исключён прежней coverage policy.
+  Precache: 195 файлов / 4 269 211 bytes; все 9 CSS-referenced WOFF2 включены.
+  CSP/Trusted Types, Worker, SSR и offline fixes требуют свежего native Core.
+- Q4 cleanup ограничена 13 точными чистыми parser functions.
+  Те же 576 cases: 63,24 → 2,23 s; следующие 256: 26,24 → 1,50 s.
+  Task scan/cancel/await и session preparation сохраняются.
+  Lifecycle/isolation плюс прежние 576 cases: 603 PASS / 2 штатных
+  subprocess-only skip. Shards/max-parallel, assertions и resource gates сохранены;
+  Для следующих девяти функций те же 291 cases: 30,05 → 1,64 s;
+  lifecycle/isolation — 45 PASS / 2 штатных subprocess-only skip.
+  Точные populations сверены; независимое ревью PASS. Локальное ускорение
+  не закрывает hosted critical-path budget.
+- Принятые auth/session, media ownership, outbox, timezone/schedule, proxy,
+  Gateway/WS, Go race/lint/coverage, WASM и dependency fixes сохраняются.
+  Local checks прежних пакетов не подменяют final-source acceptance.
+
+## Политика качества
+
+- Активны ровно 135 owner-approved secret dispositions; baseline319 неизменна.
+  Новые identities, baseline entries, inline pragmas и broad exclusions
+  без отдельного решения не разрешены.
+- Владелец 2026-10-14 UTC утвердил finite131: no-decrease baseline ровно
+  для 131 неизменённого migration blob base ac74e915 до 2026-11-13.
+  Точный пакет V8 применён; все четыре canonical quality modules —
+  423 PASS / 1 штатный Windows skip. Затронутые/new/unmatched migrations
+  и остальные Tier 0 сохраняют 100%; Q3 остаётся v1.1.
+- Отдельно утверждены и применены ровно 17 public-integrity identities:
+  15 в coverage contract и 2 в validator, reviewed_on 2026-10-14,
+  expiry 2027-01-10. Прежние 118 records сохранены без изменений.
+  Полный tracked scan PASS: 409 findings, 110 exact approved matches,
+  baseline319 неизменна. Обычные hooks и hosted checks нового source ещё нужны.
+
+## Core, audit и зависимости
+
+- Full E2E 532 прерван как диагностический после каскада ошибок; он не acceptance.
+  Core остановлен, данные сохранены. Новому source нужен новый run UUID.
+  Unsafe-eval и исходный ambiguous registration request требуют browser evidence;
+  тихий drain и rate-limit/deadline guards не ослаблены.
+- [October audit](../../audits/AUDIT-2026-10.md) и
+  [dependency report](../../audits/dependency-updates-2026-10/README.md) остаются в scope.
+  Все 63 platform IDs требуют final-RC классификации; blanket CLOSED запрещён.
+  AUD-497 updater side effects проверяются отдельно приватно, исправление не принято.
+  Уже согласованные P2 dispositions AUD-100/134/236 сохраняются в audit index.
+- Caddy 2.11.7, Redis 7.4.11, Imgproxy 4.0.17 и другие принятые обновления
+  имеют scoped checks; runtime/app-endpoint proof ещё нужен.
+  SeaweedFS TUS metadata/source discrepancy остаётся открытым.
 
 ## Ближайшие шаги
 
-Последний published source — 32a34d6c; PG test и frontend runtime COPY проверены локально.
-Точные local/published head и staged/unstaged состояние задают Git и PR.
-
-1. Закрыть текущие CI/browser/startup failures, проверить auth/data finding,
-   сохранить исправления обычным commit/push, обновления dependencies — отдельно.
-   Получить свежие 78 contexts и CodeQL нового head.
-2. На чистом опубликованном source поднять один новый Core (23 сервиса).
-   Два полных прогона 59 live specs desktop/mobile с одним worker, seed и
-   stop/start; persistence сравнить до повторного seed. Старый Core остановлен,
-   данные сохранены.
-3. News/Events/Schedule: 36 captures RU/EN, light/dark, 390/768/1440;
-   360/1024 risk/a11y/reduced motion, main JS <500 KB; Lighthouse: семь routes,
-   по три измерения. Утверждён только Home12 ddbbc84d.
-4. Один paired DB/S3 restore в изолированную цель с чтением объекта по restored
-   DB reference; final-source security/data review, revalidation 63 ledger IDs
-   и закрытие оставшихся audit/dependency findings.
-5. Frozen RC, full smoke, ordinary merge, resulting-main checks,
-   producer ровно шести образов, tag/release v1.0.0.
+1. Завершить полный скан и обычные hooks, затем commit/push текущего пакета.
+   Проверить 78 contexts и CodeQL нового head.
+2. На чистом опубликованном source поднять один Core с новым UUID; проверить
+   focused browser failures, затем два полных прогона 59 live specs.
+   Между ними: seed, paired DB/S3 snapshot/restore с avatar canary, stop/start
+   того же frozen Core, persistence comparison до reseed и чтение restored object
+   по DB reference. Old Core data не перезаписывать.
+3. Risk/a11y/reduced-motion checks; News/Events/Schedule — 36 captures
+   RU/EN, light/dark, 390/768/1440; 360/1024 risk. Утверждён только Home12 ddbbc84d.
+   Новые visual baselines сохранять после приёмки; Lighthouse — 7 routes × 3.
+4. Final-source security/data review, 63 audit IDs и remaining dependencies;
+   frozen RC, full smoke, ordinary merge, resulting-main checks,
+   producer ровно шести images, tag/release v1.0.0.
 
 ## Ресурсы и сохранность
 
-Root управляет Git/интеграцией; три GPT-6 Luna Max ведут private tasks/review.
-Core data и приватные candidates сохранены; тяжёлые проверки последовательны.
-Owned Docker-ресурсы очищаются после прогонов; чужие ресурсы сохраняются.
-RAM admission ≤75% / free ≥8 GiB, runtime stop ≥85% / <4 GiB.
-Исключение только для serial Linux screenshots: admission ≤80% / ≥6 GiB,
-browser ≤1 GiB / 2 CPU. Удалять только доказанно owned ресурсы; Core data,
-чужие env/тома/backups, migration/Git history и приватный rescue bundle сохраняются.
+Root владеет Git; три GPT-6 Luna Max ведут disjoint private tasks/review.
+Тяжёлый локальный процесс один. Admission RAM ≤75% / free ≥8 GiB;
+runtime stop ≥85% / <4 GiB. Только serial Linux screenshots: ≤80% / ≥6 GiB,
+browser ≤1 GiB / 2 CPU. Удалять только доказанно owned resources;
+Core data, backups, чужие env/volumes, Git/migration history и rescue bundle сохраняются.
 Q2/Q3, global mutation, kind certification, три comparable CI и RPO/RTO — v1.1.

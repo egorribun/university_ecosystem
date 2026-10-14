@@ -471,3 +471,56 @@ async def test_news_and_event_push_metadata_is_json_serializable(
     )
     serialized_payload = json.loads(json.dumps(delivery_event.payload["payload_data"]))
     assert serialized_payload[entity_id_key] == str(entity.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["news", "event", "comment"])
+async def test_notification_dedupe_skips_recipients_already_notified(
+    fake_create, monkeypatch, kind
+):
+    db = AsyncMock()
+    recipients = [uuid.uuid4(), uuid.uuid4()]
+    monkeypatch.setattr(
+        news_events,
+        "_unnotified_user_ids",
+        AsyncMock(return_value=[]),
+    )
+
+    if kind == "news":
+        entity = _make_news()
+        key = f"news.created:{entity.id}"
+        monkeypatch.setattr(
+            news_events, "_fetch_active_user_ids", AsyncMock(return_value=recipients)
+        )
+        result = await news_events.notify_about_news(db, entity, locale="en")
+    elif kind == "event":
+        entity = _make_event()
+        key = f"events.created:{entity.id}"
+        monkeypatch.setattr(
+            news_events, "_fetch_active_user_ids", AsyncMock(return_value=recipients)
+        )
+        result = await news_events.notify_about_event(db, entity, locale="en")
+    else:
+        entity = _make_news()
+        comment = _make_comment()
+        key = f"news.comment:{comment.id}"
+        monkeypatch.setattr(
+            notifications_core, "_fetch_admin_ids", AsyncMock(return_value=recipients)
+        )
+        monkeypatch.setattr(
+            news_events,
+            "render_notification_template",
+            lambda *args, **kwargs: {
+                "title": "Comment",
+                "body": "A new comment",
+                "url": f"/news/{entity.id}",
+                "tag": "news-comment",
+            },
+        )
+        result = await news_events.notify_about_comment(
+            db, entity, comment, _make_author(), locale="en"
+        )
+
+    assert result == 0
+    news_events._unnotified_user_ids.assert_awaited_once_with(db, key, recipients)
+    fake_create.assert_not_awaited()

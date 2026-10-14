@@ -749,24 +749,73 @@ function requirePageOrigin(page) {
   return expectedOrigin
 }
 
-function waitForTrackedRequests(activeRequests, changed, deadlineAtMs) {
+const REQUEST_DRAIN_TIMER_RECHECK_MS = 1_000
+const EARLY_TIMER_TOLERANCE_MS = 1
+const MAX_EARLY_REQUEST_DRAIN_TIMER_CALLBACKS = 2
+
+/** Internal timer seam for deterministic request-drain deadline tests. */
+export function waitForTrackedRequests(
+  activeRequests,
+  changed,
+  deadlineAtMs,
+  { now = () => performance.now(), scheduleTimer = setTimeout, clearTimer = clearTimeout } = {}
+) {
   if (activeRequests.size === 0) return Promise.resolve(true)
-  const remaining = Math.floor(deadlineAtMs - performance.now() - DEADLINE_MARGIN_MS)
-  if (remaining <= 0) return Promise.resolve(false)
+  const initialNowMs = now()
+  const initialRemainingMs =
+    Number.isFinite(initialNowMs) && Number.isFinite(deadlineAtMs)
+      ? Math.floor(deadlineAtMs - initialNowMs - DEADLINE_MARGIN_MS)
+      : 0
+  if (initialRemainingMs <= 0) return Promise.resolve(false)
+
   return new Promise((resolvePromise) => {
     let timer
-    const finish = (settled) => {
-      if (timer !== undefined) clearTimeout(timer)
+    let finished = false
+    let scheduledTimerAtMs = initialNowMs + initialRemainingMs
+    let earlyTimerCallbackCount = 0
+    const finish = (requestSettled) => {
+      if (finished) return
+      finished = true
+      if (timer !== undefined) {
+        clearTimer(timer)
+        timer = undefined
+      }
       const index = changed.indexOf(onChanged)
       if (index >= 0) changed.splice(index, 1)
-      resolvePromise(settled)
+      resolvePromise(requestSettled)
     }
     const onChanged = () => finish(true)
+    const onTimer = () => {
+      if (finished) return
+      timer = undefined
+      const currentNowMs = now()
+      const remainingMs =
+        Number.isFinite(currentNowMs) && Number.isFinite(deadlineAtMs)
+          ? Math.floor(deadlineAtMs - currentNowMs - DEADLINE_MARGIN_MS)
+          : 0
+      if (remainingMs <= 0) {
+        finish(false)
+        return
+      }
+
+      if (currentNowMs + EARLY_TIMER_TOLERANCE_MS < scheduledTimerAtMs) {
+        earlyTimerCallbackCount += 1
+      } else {
+        earlyTimerCallbackCount = 0
+      }
+      if (earlyTimerCallbackCount >= MAX_EARLY_REQUEST_DRAIN_TIMER_CALLBACKS) {
+        finish(false)
+        return
+      }
+
+      const recheckDelayMs = Math.min(remainingMs, REQUEST_DRAIN_TIMER_RECHECK_MS)
+      scheduledTimerAtMs = currentNowMs + recheckDelayMs
+      timer = scheduleTimer(onTimer, recheckDelayMs)
+    }
     changed.push(onChanged)
-    timer = setTimeout(() => finish(false), remaining)
+    timer = scheduleTimer(onTimer, initialRemainingMs)
   })
 }
-
 export async function runLiveRegistrationAdmission(
   page,
   deadlineAtMs,

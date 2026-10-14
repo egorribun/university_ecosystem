@@ -164,3 +164,25 @@ async def test_static_filesystem_preserves_a_traversal_alias(
     assert storage._extract_relative_path(traversal_url) is None
     assert deleted is False
     assert target.is_file()
+
+
+@pytest.mark.asyncio
+async def test_unsupported_profile_media_kind_fails_closed_and_preserves_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    storage = StaticFSStorage(tmp_path, base_url="/static")
+    key = _profile_key(_OWNER, "avatar")
+    target = tmp_path / key
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"profile image")
+    delete = AsyncMock()
+    monkeypatch.setattr(file_utils, "_get_storage_backend", lambda: storage)
+    monkeypatch.setattr(user_logic, "delete_static_file", delete)
+
+    deleted = await user_logic.delete_owned_profile_media(
+        f"{storage.base_url}/{key}", owner_id=_OWNER, media_kind="banner"
+    )
+
+    assert deleted is False
+    assert target.read_bytes() == b"profile image"
+    delete.assert_not_awaited()

@@ -399,62 +399,118 @@ def test_trusted_devices_upgrade_idempotence_and_historical_downgrade(
         )
 
 
-def test_trusted_devices_missing_users_failure_rolls_back_partial_ddl(
+def test_trusted_devices_missing_required_table_fails_before_ddl(
     postgres_engine: sa.Engine,
 ) -> None:
     migration = _load_migration(
         TRUSTED_DEVICES_PATH, "historic_trusted_devices_dependency"
     )
     with _isolated_schema(postgres_engine) as connection:
-        connection.execute(
-            sa.text(
-                "CREATE TABLE event_attendance (id integer PRIMARY KEY, "
-                "registered_at timestamp without time zone)"
-            )
+        # Keep the historical anchor and every unconditional DDL dependency
+        # except the FK target. The migration must reject this catalog before
+        # it alters event_attendance or touches any other table.
+        statements = (
+            "CREATE TABLE event_attendance (id integer PRIMARY KEY, "
+            "registered_at timestamp without time zone)",
+            "CREATE TABLE notification_deliveries (id integer PRIMARY KEY, "
+            "delivered_at timestamp without time zone)",
+            "CREATE TABLE notifications (id integer PRIMARY KEY, "
+            "dedupe_key varchar(255), created_at timestamp without time zone, "
+            "read_at timestamp without time zone)",
+            "CREATE TABLE push_subscriptions (id integer PRIMARY KEY, "
+            "user_id integer, created_at timestamp without time zone, "
+            "last_seen_at timestamp without time zone, active boolean, "
+            "updated_at timestamp without time zone)",
+            "CREATE TABLE user_push_topics (id integer PRIMARY KEY, "
+            "user_id integer, updated_at timestamp without time zone)",
+            "INSERT INTO event_attendance VALUES (1, '2025-10-12 09:30:00')",
+            "INSERT INTO notification_deliveries VALUES (1, '2025-10-12 06:45:00')",
+            "INSERT INTO notifications VALUES "
+            "(1, 'dedupe-1', '2025-10-12 06:00:00', '2025-10-12 06:30:00')",
+            "INSERT INTO push_subscriptions VALUES "
+            "(1, 1, '2025-10-12 07:00:00', NULL, true, '2025-10-12 07:45:00')",
+            "INSERT INTO user_push_topics VALUES (1, 1, '2025-10-12 08:00:00')",
         )
-        connection.execute(
-            sa.text(
-                "CREATE TABLE push_subscriptions (id integer PRIMARY KEY, "
-                "user_id integer, created_at timestamp without time zone NOT NULL, "
-                "last_seen_at timestamp without time zone)"
-            )
-        )
-        connection.execute(
-            sa.text("INSERT INTO event_attendance VALUES (1, '2025-10-12 09:30:00')")
-        )
-        connection.execute(
-            sa.text(
-                "INSERT INTO push_subscriptions VALUES "
-                "(1, 1, '2025-10-12 07:00:00', NULL)"
-            )
-        )
+        for statement in statements:
+            connection.execute(sa.text(statement))
 
+        write_statements: list[str] = []
+
+        def record_write(
+            _connection: sa.Connection,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            if re.match(
+                r"^\s*(?:ALTER|CREATE|DROP|TRUNCATE|INSERT|UPDATE|DELETE)\b",
+                statement,
+                re.IGNORECASE,
+            ):
+                write_statements.append(statement)
+
+        sa.event.listen(connection, "before_cursor_execute", record_write)
+        expected_error = (
+            "db31ef5d7ea4 requires existing tables before upgrade DDL; missing: users"
+        )
         try:
-            with connection.begin_nested():
-                _run_revision(migration, connection, "upgrade")
-        except sa.exc.NoReferencedTableError:
-            pass
-        except sa.exc.DBAPIError as error:
-            sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
-                error.orig, "pgcode", None
-            )
-            assert sqlstate == "42P01"
-        else:
-            pytest.fail("upgrade unexpectedly created a user foreign key without users")
+            with pytest.raises(RuntimeError, match=re.escape(expected_error)):
+                with connection.begin_nested():
+                    _run_revision(migration, connection, "upgrade")
+        finally:
+            sa.event.remove(connection, "before_cursor_execute", record_write)
 
+        assert write_statements == []
         assert not _is_timezone_aware(connection, "event_attendance", "registered_at")
+        assert not _is_timezone_aware(
+            connection, "notification_deliveries", "delivered_at"
+        )
+        assert {"status_code", "detail"}.isdisjoint(
+            _columns(connection, "notification_deliveries")
+        )
+        assert not _is_timezone_aware(connection, "notifications", "created_at")
+        assert "ix_notifications_dedupe_key" not in _indexes(
+            connection, "notifications"
+        )
+        assert _columns(connection, "push_subscriptions")["user_id"]["nullable"]
         assert not _is_timezone_aware(connection, "push_subscriptions", "created_at")
         assert "ix_push_subscriptions_last_seen_at" not in _indexes(
             connection, "push_subscriptions"
         )
-        assert _columns(connection, "push_subscriptions")["user_id"]["nullable"]
+        assert "ix_user_push_topics_user_id" not in _indexes(
+            connection, "user_push_topics"
+        )
         assert (
             connection.execute(
-                sa.text("SELECT created_at FROM push_subscriptions WHERE id = 1")
-            )
-            .scalar_one()
-            .isoformat()
-            == "2025-10-12T07:00:00"
+                sa.text("SELECT count(*) FROM event_attendance")
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM notification_deliveries")
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM notifications")
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM push_subscriptions")
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM user_push_topics")
+            ).scalar_one()
+            == 1
         )
 
 

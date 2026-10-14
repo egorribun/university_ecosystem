@@ -48,6 +48,16 @@ def _load_contract() -> dict[str, object]:
     return deepcopy(json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8")))
 
 
+def _quality_validator_module() -> object:
+    module_directory = str(REPOSITORY_ROOT / "scripts" / "quality")
+    sys.path.insert(0, module_directory)
+    try:
+        import validate_quality_contract as validator
+    finally:
+        sys.path.remove(module_directory)
+    return validator
+
+
 def _run_contract(
     cwd: Path,
     contract: dict[str, object],
@@ -510,6 +520,241 @@ def test_rejects_tier0_coverage_below_100(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "tier0.coverage.functions must equal 100" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("expiry", "expires_on must be after validation day"),
+        ("unknown_path", "canonical Alembic Python path"),
+        ("duplicate_path", "duplicates an earlier baseline"),
+        ("source_hash", "contains unsupported key: source_sha256"),
+        ("metric_baseline", "immutable baseline digest"),
+    ),
+)
+def test_legacy_migration_exception_fails_closed_on_policy_changes(
+    tmp_path: Path,
+    mutation: str,
+    message: str,
+) -> None:
+    contract = _load_contract()
+    policy = contract["tier0"]["legacy_migration_baselines"]
+    records = policy["files"]
+    if mutation == "expiry":
+        policy["expires_on"] = date.today().isoformat()
+    elif mutation == "unknown_path":
+        records[-1]["path"] = "app/services/unauthorized.py"
+    elif mutation == "duplicate_path":
+        records[-1]["path"] = records[0]["path"]
+    elif mutation == "source_hash":
+        records[0]["source_sha256"] = "0" * 64
+    else:
+        records[0]["metrics"]["lines"]["covered"] += 1
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert message in result.stderr
+
+
+def test_nonbaseline_migration_functions_require_evidence_at_validator_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    validator = _quality_validator_module()
+    contract = _load_contract()
+    path = "alembic/versions/future_revision.py"
+    rule = "migration-fixture-rule"
+    monkeypatch.setattr(validator, "_load_canonical_tier0_rules", lambda *_: [rule])
+    monkeypatch.setattr(
+        validator,
+        "_expected_tier0_inventory",
+        lambda *_: {("python", path)},
+    )
+    monkeypatch.setattr(
+        validator, "_validate_legacy_migration_source_binding", lambda *_: []
+    )
+    monkeypatch.setattr(validator, "_safe_repository_file", lambda *_: Path(__file__))
+    monkeypatch.setattr(validator, "_tier0_rule_matches", lambda *_: True)
+
+    unsupported = {
+        "status": "unsupported",
+        "covered": None,
+        "total": None,
+        "percent": None,
+        "reason_code": "fixture_counter_unavailable",
+    }
+    unsupported_errors = validator._validate_tier0_manifest(
+        _future_migration_tier0_manifest(path, rule, unsupported, contract),
+        contract,
+        REPOSITORY_ROOT,
+    )
+    assert any(
+        f"{path}.functions is unsupported but its component floor is 100" in error
+        for error in unsupported_errors
+    )
+
+    derived_zero = {
+        "status": "derived",
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "derivation": "AST source contains no function definitions",
+    }
+    accepted_errors = validator._validate_tier0_manifest(
+        _future_migration_tier0_manifest(path, rule, derived_zero, contract),
+        contract,
+        REPOSITORY_ROOT,
+    )
+    assert accepted_errors == []
+
+
+def _future_migration_tier0_manifest(
+    path: str,
+    rule: str,
+    function_metric: dict[str, object],
+    contract: dict[str, object],
+) -> dict[str, object]:
+    measured = {"status": "native", "covered": 1, "total": 1, "percent": 100.0}
+    file_metrics = {
+        "lines": measured,
+        "statements": measured,
+        "branches": measured,
+        "functions": function_metric,
+    }
+    aggregate_metrics = {name: dict(metric) for name, metric in file_metrics.items()}
+    summary = {
+        name: {
+            "applicable_files": int(metric["status"] in {"native", "derived"}),
+            "not_applicable_files": int(metric["status"] == "unsupported"),
+        }
+        for name, metric in file_metrics.items()
+    }
+    return {
+        "coverage_scope": contract["coverage_scope"],
+        "source_roots": contract["source_roots"],
+        "tier0": {
+            "status": "ready",
+            "errors": [],
+            "rules": [rule],
+            "files": [{"path": path, "component": "python", "metrics": file_metrics}],
+            "metric_summary": summary,
+            "coverage": aggregate_metrics,
+        },
+    }
+
+
+def test_legacy_migration_exception_is_exactly_source_bound() -> None:
+    validator = _quality_validator_module()
+    contract = _load_contract()
+    policy = contract["tier0"]["legacy_migration_baselines"]
+
+    assert len(policy["files"]) == 131
+    assert policy["expires_on"] == "2026-11-13"
+    assert (
+        validator._validate_legacy_migration_source_binding(contract, REPOSITORY_ROOT)
+        == []
+    )
+
+
+def test_legacy_migration_exception_rejects_a_changed_source_blob(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    validator = _quality_validator_module()
+    contract = _load_contract()
+    policy = contract["tier0"]["legacy_migration_baselines"]
+    changed_path = policy["files"][0]["path"]
+    changed_source = tmp_path / "changed-migration.py"
+    changed_source.write_text("revision = 'changed'\n", encoding="utf-8")
+    original_safe_file = validator._safe_repository_file
+
+    def safe_file_with_changed_blob(
+        repository_root: Path, path: str, field: str, errors: list[str]
+    ) -> Path | None:
+        if path == changed_path:
+            return changed_source
+        return original_safe_file(repository_root, path, field, errors)
+
+    monkeypatch.setattr(validator, "_safe_repository_file", safe_file_with_changed_blob)
+    errors = validator._validate_legacy_migration_source_binding(
+        contract, REPOSITORY_ROOT
+    )
+
+    assert any(
+        "contains changed, new, or non-migration paths" in error
+        and changed_path in error
+        for error in errors
+    )
+
+
+@pytest.mark.parametrize(
+    "replacement_path",
+    (
+        "alembic/versions/202607020001_create_range_partitions.py",
+        "alembic/versions/202610120001_dnd_wall_clock_time.py",
+        "alembic/versions/new_unreviewed_revision.py",
+        "app/services/not_a_migration.py",
+    ),
+)
+def test_legacy_migration_exception_rejects_changed_new_or_nonmigration_paths(
+    replacement_path: str,
+) -> None:
+    validator = _quality_validator_module()
+    contract = _load_contract()
+    policy = contract["tier0"]["legacy_migration_baselines"]
+    policy["files"][0]["path"] = replacement_path
+
+    errors = validator._validate_legacy_migration_source_binding(
+        contract, REPOSITORY_ROOT
+    )
+
+    assert any(
+        "contains changed, new, or non-migration paths" in error for error in errors
+    )
+
+
+def test_legacy_migration_baseline_allows_improvement_but_rejects_regression() -> None:
+    validator = _quality_validator_module()
+    baseline = {"status": "native", "covered": 8, "total": 10}
+    improved = {"status": "native", "covered": 9, "total": 10, "percent": 90.0}
+    regressed = {"status": "native", "covered": 7, "total": 10, "percent": 70.0}
+
+    assert (
+        validator.validate_metric_at_legacy_baseline(
+            improved,
+            baseline,
+            field="alembic/versions/sample.py.lines",
+            allowed_statuses=frozenset({"native"}),
+        )
+        == []
+    )
+    assert any(
+        "covered regressed" in error
+        for error in validator.validate_metric_at_legacy_baseline(
+            regressed,
+            baseline,
+            field="alembic/versions/sample.py.lines",
+            allowed_statuses=frozenset({"native"}),
+        )
+    )
+
+
+def test_python_aggregate_misses_must_equal_current_migration_residual() -> None:
+    validator = _quality_validator_module()
+    allowed = validator.validate_metric_with_exact_missing(
+        {"status": "native", "covered": 95, "total": 100, "percent": 95.0},
+        expected_missing=5,
+        field="components.python.lines",
+        allowed_statuses=frozenset({"native"}),
+    )
+    additional_app_gap = validator.validate_metric_with_exact_missing(
+        {"status": "native", "covered": 94, "total": 100, "percent": 94.0},
+        expected_missing=5,
+        field="components.python.lines",
+        allowed_statuses=frozenset({"native"}),
+    )
+
+    assert allowed == []
+    assert any("legacy-migration residual" in error for error in additional_app_gap)
 
 
 @pytest.mark.parametrize("field", ("patch_coverage", "viable_mutant_score"))

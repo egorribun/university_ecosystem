@@ -33,3 +33,41 @@ def test_generate_schedule_ics_omits_empty_description():
     assert "BEGIN:VEVENT" in result
     assert "DESCRIPTION:" not in result
     assert "LOCATION:" not in result
+
+
+def test_generate_schedule_ics_skips_nonexistent_campus_wall_time_during_dst_gap():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import app.services.ical as ical_module
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 3, 2, 12, tzinfo=tz)
+
+    lesson = SimpleNamespace(
+        id="dst-gap",
+        weekday="sunday",
+        start_time=time(2, 30),
+        end_time=time(3, 30),
+        parity="both",
+        subject="Morning seminar",
+        lesson_type=None,
+        teacher=None,
+        room=None,
+    )
+
+    zone = ZoneInfo("America/New_York")
+    with (
+        patch.object(ical_module, "datetime", FrozenDateTime),
+        patch.object(ical_module, "ZoneInfo", lambda _name: zone),
+        patch.object(ical_module, "translate_lesson_type", return_value=None),
+    ):
+        calendar = generate_schedule_ics(
+            SimpleNamespace(name="Group"), [lesson], weeks=1, locale="en"
+        )
+
+    assert "BEGIN:VCALENDAR" in calendar
+    assert "BEGIN:VEVENT" not in calendar
+    assert "DTSTART:" not in calendar

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from jsonschema import Draft202012Validator
 from tests.quality_normalizer_v2_testkit import (
     CANONICAL_REPORT_ARGUMENTS,
     TOOL_VERSION_ARGUMENTS,
+    write_all_strict_synthetic_contract,
     write_complete_evidence,
 )
 from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED
@@ -36,7 +38,7 @@ def evidence_repo(tmp_path: Path) -> Path:
     )
     contract_target = tmp_path / "quality" / "quality-contract.json"
     contract_target.parent.mkdir(parents=True, exist_ok=True)
-    contract_target.write_bytes(CONTRACT_PATH.read_bytes())
+    write_all_strict_synthetic_contract(CONTRACT_PATH, contract_target)
     (tmp_path / "quality" / "coverage-manifest.schema.json").write_bytes(
         SCHEMA_PATH.read_bytes()
     )
@@ -50,6 +52,27 @@ def evidence_repo(tmp_path: Path) -> Path:
     write_complete_evidence(tmp_path)
     _commit_all(tmp_path, "fixture")
     return tmp_path
+
+
+def test_evidence_repo_contract_is_all_strict_synthetic_copy(
+    evidence_repo: Path,
+) -> None:
+    active_contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    fixture_contract = json.loads(
+        (evidence_repo / "quality" / "quality-contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_contract = deepcopy(active_contract)
+    expected_contract["tier0"].pop("legacy_migration_baselines")
+
+    assert fixture_contract == expected_contract
+    assert "legacy_migration_baselines" in active_contract["tier0"]
+    assert "legacy_migration_baselines" not in fixture_contract["tier0"]
+    assert fixture_contract["tier0"]["coverage"] == active_contract["tier0"]["coverage"]
+    assert fixture_contract["coverage_scope"] == active_contract["coverage_scope"]
+    assert fixture_contract["source_roots"] == active_contract["source_roots"]
+    assert json.loads(CONTRACT_PATH.read_text(encoding="utf-8")) == active_contract
 
 
 def _commit_all(root: Path, message: str) -> None:

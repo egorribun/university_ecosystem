@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from tests.quality_normalizer_v2_testkit import (
     TOOL_VERSION_ARGUMENTS,
+    make_all_strict_synthetic_contract,
+    write_all_strict_synthetic_contract,
     write_complete_evidence,
 )
 
@@ -416,7 +419,7 @@ def _run_normalizer_in_isolated_repo(
 
     contract_target = quality_root / "quality-contract.json"
     if source_contract is None:
-        contract_target.write_bytes(QUALITY_CONTRACT_PATH.read_bytes())
+        write_all_strict_synthetic_contract(QUALITY_CONTRACT_PATH, contract_target)
     else:
         source_contract_bytes = source_contract.read_bytes()
         try:
@@ -536,6 +539,116 @@ def _normalizer_module() -> object:
     finally:
         sys.path.remove(module_directory)
     return normalizer
+
+
+def _aggregate_legacy_migration_fixture(
+    *,
+    legacy_covered: int = 8,
+    legacy_baseline_covered: int = 8,
+    changed_covered: int = 10,
+    changed_function_metric: dict[str, object] | None = None,
+) -> tuple[object, dict[str, object]]:
+    normalizer = _normalizer_module()
+    legacy_path = "alembic/versions/legacy_revision.py"
+    changed_path = "alembic/versions/new_revision.py"
+    metrics_by_path = {
+        legacy_path: {
+            "lines": normalizer._measured_metric("native", legacy_covered, 10),
+            "statements": normalizer._measured_metric("native", legacy_covered, 10),
+            "branches": normalizer._measured_metric("native", 1, 2),
+            "functions": normalizer._measured_metric("native", 1, 2),
+        },
+        changed_path: {
+            "lines": normalizer._measured_metric("native", changed_covered, 10),
+            "statements": normalizer._measured_metric("native", changed_covered, 10),
+            "branches": normalizer._measured_metric("native", 2, 2),
+            "functions": (
+                changed_function_metric
+                if changed_function_metric is not None
+                else normalizer._measured_metric("native", 2, 2)
+            ),
+        },
+    }
+    report = normalizer._ParsedReport(
+        component="python",
+        report_format="test-fixture",
+        path=Path("coverage.xml"),
+        metrics={
+            metric: (
+                normalizer._unmeasured_metric(
+                    "unsupported", reason_code="fixture_counter_unavailable"
+                )
+                if any(
+                    values[metric]["status"] == "unsupported"
+                    for values in metrics_by_path.values()
+                )
+                else normalizer._measured_metric(
+                    "native",
+                    sum(
+                        values[metric]["covered"] for values in metrics_by_path.values()
+                    ),
+                    sum(values[metric]["total"] for values in metrics_by_path.values()),
+                )
+            )
+            for metric in ("lines", "statements", "branches", "functions")
+        },
+        file_metrics=metrics_by_path,
+        sha256="0" * 64,
+    )
+    reports_by_component = defaultdict(list)
+    reports_by_component["python"].append(report)
+    floors = {
+        component: {
+            metric: 100 for metric in ("lines", "statements", "branches", "functions")
+        }
+        for component in normalizer.COMPONENTS
+    }
+    floors["python"]["functions"] = 0
+    metric_statuses = {
+        component: {
+            metric: frozenset({"native", "derived", "unsupported"})
+            for metric in ("lines", "statements", "branches", "functions")
+        }
+        for component in normalizer.COMPONENTS
+    }
+    baseline = {
+        legacy_path: {
+            "metrics": {
+                metric: {
+                    "status": values["status"],
+                    "covered": (
+                        legacy_baseline_covered
+                        if metric in {"lines", "statements"}
+                        else values["covered"]
+                    ),
+                    "total": values["total"],
+                    **(
+                        {"derivation": values["derivation"]}
+                        if "derivation" in values
+                        else {}
+                    ),
+                }
+                for metric, values in metrics_by_path[legacy_path].items()
+            }
+        }
+    }
+    active_contract = json.loads(
+        Path(QUALITY_CONTRACT_PATH).read_text(encoding="utf-8")
+    )
+    coverage_scope = {
+        component: tuple(roots)
+        for component, roots in active_contract["coverage_scope"].items()
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(normalizer, "COVERAGE_SCOPE_ROOTS", coverage_scope)
+        result = normalizer._aggregate_tier0(
+            reports_by_component,
+            floors,
+            metric_statuses,
+            {"python": (legacy_path, changed_path)},
+            baseline,
+        )
+    return normalizer, result
 
 
 def _deeply_nested_json_object(depth: int = DEEP_JSON_DEPTH) -> str:
@@ -920,6 +1033,68 @@ def test_tier0_missing_evidence_is_fail_closed_before_enforcement(
         "Tier0 source inventory is missing evidence for services/pkg/spicedb/client.go"
         in tier0["errors"]
     )
+
+
+def test_legacy_migration_baseline_keeps_exact_residual_and_new_revision_strict() -> (
+    None
+):
+    _, tier0 = _aggregate_legacy_migration_fixture()
+
+    assert tier0["status"] == "ready"
+    assert tier0["errors"] == []
+    assert tier0["coverage"]["lines"]["covered"] == 18
+    assert tier0["coverage"]["lines"]["total"] == 20
+    assert tier0["coverage"]["lines"]["percent"] == 90.0
+
+
+def test_legacy_migration_baseline_rejects_regression_and_changed_revision_gap() -> (
+    None
+):
+    _, regressed = _aggregate_legacy_migration_fixture(
+        legacy_covered=7,
+        legacy_baseline_covered=8,
+    )
+    _, changed_gap = _aggregate_legacy_migration_fixture(changed_covered=9)
+
+    assert any(
+        "regressed below its approved legacy baseline" in error
+        for error in regressed["errors"]
+    )
+    assert any(
+        "new_revision.py (python).lines is below 100%" in error
+        for error in changed_gap["errors"]
+    )
+
+
+def test_nonbaseline_migration_functions_require_measured_evidence() -> None:
+    normalizer = _normalizer_module()
+    unsupported = normalizer._unmeasured_metric(
+        "unsupported", reason_code="fixture_counter_unavailable"
+    )
+    _, rejected = _aggregate_legacy_migration_fixture(
+        changed_function_metric=unsupported
+    )
+    assert rejected["status"] == "failed"
+    assert any(
+        "new_revision.py (python).functions is unsupported but its floor is 100"
+        in error
+        for error in rejected["errors"]
+    )
+
+    derived_zero = normalizer._vacuous_metric(
+        "AST source contains no function definitions"
+    )
+    _, accepted = _aggregate_legacy_migration_fixture(
+        changed_function_metric=derived_zero
+    )
+    new_file = next(
+        record
+        for record in accepted["files"]
+        if record["path"] == "alembic/versions/new_revision.py"
+    )
+    assert accepted["status"] == "ready"
+    assert accepted["errors"] == []
+    assert new_file["metrics"]["functions"] == derived_zero
 
 
 def test_ast_derived_metrics_ignore_mutmut_generated_functions(
@@ -2769,7 +2944,10 @@ def test_output_cannot_alias_an_input_or_the_contract(tmp_path: Path) -> None:
 def test_contract_expiry_uses_the_caller_supplied_generated_at_date(
     tmp_path: Path,
 ) -> None:
-    contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    # Isolate the generated-at exclusion check from the real-source migration exception.
+    contract = make_all_strict_synthetic_contract(
+        json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    )
     contract["exclusions"] = [
         {
             "created_on": "2026-07-01",

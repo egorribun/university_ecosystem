@@ -35,6 +35,19 @@ def upgrade() -> None:
         return
 
     existing_tables = set(inspector.get_table_names())
+    required_tables = {
+        "notification_deliveries",
+        "notifications",
+        "push_subscriptions",
+        "user_push_topics",
+        "users",
+    }
+    missing_tables = required_tables - existing_tables
+    if missing_tables:
+        raise RuntimeError(
+            "db31ef5d7ea4 requires existing tables before upgrade DDL; missing: "
+            f"{', '.join(sorted(missing_tables))}"
+        )
 
     # Check if constraint exists before dropping
     if "active_sessions" in existing_tables:
@@ -48,11 +61,7 @@ def upgrade() -> None:
 
     # Pre-fetch indexes for safety
 
-    users_indexes = (
-        {ix["name"] for ix in inspector.get_indexes("users")}
-        if "users" in existing_tables
-        else set()
-    )
+    users_indexes = {ix["name"] for ix in inspector.get_indexes("users")}
     events_indexes = (
         {ix["name"] for ix in inspector.get_indexes("events")}
         if "events" in existing_tables
@@ -68,26 +77,16 @@ def upgrade() -> None:
         if "news" in existing_tables
         else set()
     )
-    notif_indexes = (
-        {ix["name"] for ix in inspector.get_indexes("notifications")}
-        if "notifications" in existing_tables
-        else set()
-    )
-    push_sub_indexes = (
-        {ix["name"] for ix in inspector.get_indexes("push_subscriptions")}
-        if "push_subscriptions" in existing_tables
-        else set()
-    )
+    notif_indexes = {ix["name"] for ix in inspector.get_indexes("notifications")}
+    push_sub_indexes = {
+        ix["name"] for ix in inspector.get_indexes("push_subscriptions")
+    }
     scheduler_indexes = (
         {ix["name"] for ix in inspector.get_indexes("schedule")}
         if "schedule" in existing_tables
         else set()
     )
-    user_push_indexes = (
-        {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
-        if "user_push_topics" in existing_tables
-        else set()
-    )
+    user_push_indexes = {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
 
     # Safe column alterations with type checks
     def alter_column_if_needed(table_name, column_name, target_type, **kwargs):
@@ -165,11 +164,9 @@ def upgrade() -> None:
         )
     if "ix_news_published_at_desc" in news_indexes:
         op.drop_index(op.f("ix_news_published_at_desc"), table_name="news")
-    notif_del_columns = (
-        {c["name"] for c in inspector.get_columns("notification_deliveries")}
-        if "notification_deliveries" in existing_tables
-        else set()
-    )
+    notif_del_columns = {
+        c["name"] for c in inspector.get_columns("notification_deliveries")
+    }
     if "status_code" not in notif_del_columns:
         op.add_column(
             "notification_deliveries",
@@ -179,29 +176,27 @@ def upgrade() -> None:
         op.add_column(
             "notification_deliveries", sa.Column("detail", sa.Text(), nullable=True)
         )
-    if "notification_deliveries" in existing_tables:
-        alter_column_if_needed(
-            "notification_deliveries",
-            "delivered_at",
-            sa.DateTime(timezone=True),
-            existing_type=postgresql.TIMESTAMP(),
-            existing_nullable=True,
-        )
-    if "notifications" in existing_tables:
-        alter_column_if_needed(
-            "notifications",
-            "created_at",
-            sa.DateTime(timezone=True),
-            existing_type=postgresql.TIMESTAMP(),
-            existing_nullable=True,
-        )
-        alter_column_if_needed(
-            "notifications",
-            "read_at",
-            sa.DateTime(timezone=True),
-            existing_type=postgresql.TIMESTAMP(),
-            existing_nullable=True,
-        )
+    alter_column_if_needed(
+        "notification_deliveries",
+        "delivered_at",
+        sa.DateTime(timezone=True),
+        existing_type=postgresql.TIMESTAMP(),
+        existing_nullable=True,
+    )
+    alter_column_if_needed(
+        "notifications",
+        "created_at",
+        sa.DateTime(timezone=True),
+        existing_type=postgresql.TIMESTAMP(),
+        existing_nullable=True,
+    )
+    alter_column_if_needed(
+        "notifications",
+        "read_at",
+        sa.DateTime(timezone=True),
+        existing_type=postgresql.TIMESTAMP(),
+        existing_nullable=True,
+    )
     if "ix_notifications_dedupe_key" not in notif_indexes:
         op.create_index(
             op.f("ix_notifications_dedupe_key"),
@@ -224,19 +219,18 @@ def upgrade() -> None:
             existing_type=postgresql.TIMESTAMP(),
             existing_nullable=True,
         )
-    if "push_subscriptions" in existing_tables:
-        op.alter_column(
-            "push_subscriptions", "user_id", existing_type=sa.INTEGER(), nullable=False
-        )
-        alter_column_if_needed(
-            "push_subscriptions",
-            "created_at",
-            sa.DateTime(timezone=True),
-            existing_type=postgresql.TIMESTAMP(),
-            nullable=False,
-        )
-        # Note: attempted_at is NOT altered here as it's typically TIMESTAMPTZ already
-        # if the table was created by implement_partitioning.
+    op.alter_column(
+        "push_subscriptions", "user_id", existing_type=sa.INTEGER(), nullable=False
+    )
+    alter_column_if_needed(
+        "push_subscriptions",
+        "created_at",
+        sa.DateTime(timezone=True),
+        existing_type=postgresql.TIMESTAMP(),
+        nullable=False,
+    )
+    # Note: attempted_at is NOT altered here as it's typically TIMESTAMPTZ already
+    # if the table was created by implement_partitioning.
     if "ix_push_subscriptions_active" in push_sub_indexes:
         op.drop_index(
             op.f("ix_push_subscriptions_active"), table_name="push_subscriptions"
@@ -252,11 +246,9 @@ def upgrade() -> None:
             ["last_seen_at"],
             unique=False,
         )
-    push_sub_fks = (
-        {fk["name"] for fk in inspector.get_foreign_keys("push_subscriptions")}
-        if "push_subscriptions" in existing_tables
-        else set()
-    )
+    push_sub_fks = {
+        fk["name"] for fk in inspector.get_foreign_keys("push_subscriptions")
+    }
     if "push_subscriptions_user_id_fkey" in push_sub_fks:
         op.drop_constraint(
             "push_subscriptions_user_id_fkey",
@@ -273,11 +265,7 @@ def upgrade() -> None:
         ondelete="CASCADE",
     )
     # Check column existence before dropping
-    push_sub_columns = (
-        {c["name"] for c in inspector.get_columns("push_subscriptions")}
-        if "push_subscriptions" in existing_tables
-        else set()
-    )
+    push_sub_columns = {c["name"] for c in inspector.get_columns("push_subscriptions")}
     if "updated_at" in push_sub_columns:
         op.drop_column("push_subscriptions", "updated_at")
     if "active" in push_sub_columns:
@@ -310,21 +298,20 @@ def upgrade() -> None:
             ["user_id"],
             unique=False,
         )
-    if "users" in existing_tables:
-        alter_column_if_needed(
-            "users",
-            "spotify_token_expires_at",
-            sa.DateTime(timezone=True),
-            existing_type=postgresql.TIMESTAMP(),
-            existing_nullable=True,
-        )
-        alter_column_if_needed(
-            "users",
-            "spotify_last_checked_at",
-            sa.DateTime(timezone=True),
-            existing_type=postgresql.TIMESTAMP(),
-            existing_nullable=True,
-        )
+    alter_column_if_needed(
+        "users",
+        "spotify_token_expires_at",
+        sa.DateTime(timezone=True),
+        existing_type=postgresql.TIMESTAMP(),
+        existing_nullable=True,
+    )
+    alter_column_if_needed(
+        "users",
+        "spotify_last_checked_at",
+        sa.DateTime(timezone=True),
+        existing_type=postgresql.TIMESTAMP(),
+        existing_nullable=True,
+    )
     if "ux_users_lower_email" in users_indexes:
         op.drop_index(op.f("ux_users_lower_email"), table_name="users")
     # ### end Alembic commands ###
@@ -395,22 +382,20 @@ def downgrade() -> None:
             [sa.literal_column("lower(email::text)")],
             unique=True,
         )
-    if "users" in existing_tables:
-        op.alter_column(
-            "users",
-            "spotify_last_checked_at",
-            existing_type=sa.DateTime(timezone=True),
-            type_=postgresql.TIMESTAMP(),
-            existing_nullable=True,
-        )
-    if "users" in existing_tables:
-        op.alter_column(
-            "users",
-            "spotify_token_expires_at",
-            existing_type=sa.DateTime(timezone=True),
-            type_=postgresql.TIMESTAMP(),
-            existing_nullable=True,
-        )
+    op.alter_column(
+        "users",
+        "spotify_last_checked_at",
+        existing_type=sa.DateTime(timezone=True),
+        type_=postgresql.TIMESTAMP(),
+        existing_nullable=True,
+    )
+    op.alter_column(
+        "users",
+        "spotify_token_expires_at",
+        existing_type=sa.DateTime(timezone=True),
+        type_=postgresql.TIMESTAMP(),
+        existing_nullable=True,
+    )
     if (
         "ix_user_push_topics_user_id" in user_push_indexes
         and "user_push_topics" in existing_tables

@@ -758,3 +758,30 @@ def test_secure_audit_verify_integrity_accepts_legacy_signature_in_python_fallba
 
     assert service.signature_covers_metadata(log) is False
     rust.verify_audit_signature.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_state_never_replays_unchained_outbox_payload():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    outbox_row = _event(
+        "OUTBOX",
+        {"kind": "notification", "sensitive_state": "must not become history"},
+        sequence_number=1,
+    )
+    outbox_row.sequence_number = None
+    outbox_row.prev_hash = None
+    outbox_row.hash = None
+    outbox_row.metadata_ = {"source": "transactional-outbox"}
+    db.execute = AsyncMock(return_value=_Result([outbox_row]))
+
+    result = await service.reconstruct_state(
+        db,
+        aggregate_type="aggregate",
+        aggregate_id="aggregate-1",
+        target_timestamp=datetime.now(UTC),
+        verify_chain=False,
+    )
+
+    assert result == (None, 0, True)
+    db.execute.assert_awaited_once()

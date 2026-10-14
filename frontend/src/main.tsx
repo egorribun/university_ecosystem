@@ -144,19 +144,6 @@ function deferLhciHydration(): void {
   window.addEventListener("load", scheduleAfterLoad, { once: true })
 }
 
-function removeExecutedStaticThemeInitScript(): void {
-  const identifiedNodes = document.querySelectorAll('[id="theme-init-script"]')
-  if (identifiedNodes.length !== 1) return
-
-  const candidate = identifiedNodes.item(0)
-  if (!(candidate instanceof HTMLScriptElement)) return
-  if (candidate.parentElement !== document.head) return
-  if (Reflect.get(window, "__UE_THEME_INIT_SCRIPT_RAN__") !== true) return
-  if (candidate.src !== `${window.location.origin}/theme-init.js`) return
-
-  candidate.remove()
-}
-
 // A real server response is route-specific and can be hydrated safely. The
 // post-build SPA fallback is intentionally the same file for every URL, so its
 // prerendered route content cannot be hydrated at a different deep link. That
@@ -164,7 +151,9 @@ function removeExecutedStaticThemeInitScript(): void {
 // React's document root is required because RootShell renders <html> directly.
 const isStaticSpaShell = document.documentElement.dataset.renderMode === "static-spa"
 if (isStaticSpaShell) {
-  removeExecutedStaticThemeInitScript()
+  // Keep this per-document marker for later RootShell renders. The parser has
+  // already executed the bootstrap scripts; RootShell preserves them in place.
+  Reflect.set(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__", true)
   delete document.documentElement.dataset.renderMode
   // The static shell is deliberately a route-agnostic snapshot. It may
   // contain a different pending/loader subtree than the current client
