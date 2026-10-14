@@ -2,37 +2,35 @@
 
 Обновлено: 2026-10-14 UTC. Действующий порядок и критерии — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Source и CI
+## Источник и hosted CI
 
-- Один checkout, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Текущий HEAD задают Git и PR; последний проверенный hosted snapshot — 81b40d7b.
-- Snapshot 81: 106 SUCCESS, 26 SKIPPED, 4 FAILURE. Failed backend shards 1/3, зависимый CI Success и advisory Owned Live Acceptance; quality aggregate SKIPPED. CodeQL и остальные security checks прошли. Advisory smoke остановился на PWA glob до браузера и не является продуктовой приёмкой.
-- Действуют 78 required contexts и blocking CodeQL `code_scanning`. Q1/Q4 source migration внедрена; Semgrep остаётся в pre-commit. Каждый новый source требует собственных required-check results.
-- Бюджет PR 15 минут остаётся OPEN: backend pytest steps snapshot 81 дали critical path 35:10 при max-parallel 2. Локальное ускорение не закрывает этот критерий.
+- PR #1306 остаётся на ветке `egorribun`. Текущий HEAD задают Git и PR; последний проверенный hosted source — `c1a0d1b0`, tree `6b32c866`.
+- Hosted run `38520159099`: все 4 backend shards, backend aggregate, integration, migrations, Python security и CodeQL прошли. Все 4 frontend shards и WASM contract завершились неуспешно; coverage gate пропущен (SKIPPED), не считается PASS. Это не зелёный PR.
+- Наблюдаемый промежуток выполнения backend shards при `max-parallel=2` — 38:44 (06:19:59–06:58:43 UTC); самый длинный shard — 19:50. Это отдельные измерения, а не вычисленный critical path всего pipeline. Целевой PR-бюджет 15 минут не достигнут.
+- Сохраняются 78 required contexts и blocking CodeQL `code_scanning`; Semgrep остаётся в pre-commit. Новый source требует собственных актуальных required-check результатов.
 
-## Локально проверенный пакет
+## Локально проверенные результаты
 
-- Три backend CI fixture regressions: 51 PASS. Finite131 и production validators не ослаблены; historical-reference negative controls сохранены.
-- PWA glob сохраняет прежние восемь расширений и включает WOFF2; существующий Node live-contract suite — 211 PASS.
-- Q4 cleanup ограничена 35 точными чистыми parser functions. Следующие одинаковые 228 cases: 24,795 → 1,685 s; lifecycle/isolation — 95 PASS / 2 прежних subprocess-only skips. Session preparation, task scan/cancel/await, shards, max-parallel, assertions и resource gates сохранены.
-- Auth: функциональный React updater выполняет только преобразование данных; committed state управляет query/cache ownership и записью профиля. Исправлены rebase-публикация и потеря очистки storage при coalesced local/remote logout. Авторитетный локальный logout очищает storage до broadcast; remote persist:false не пишет storage.
-- Auth regression suite: 749/749 PASS. У трёх изменённых production-файлов 100% line/statement/branch/function coverage. Полные frontend lint, TypeScript и форматирование текущего пакета PASS; обычные hooks и проверки опубликованного source ещё нужны.
-- RED/GREEN подтвердил и исправил запаздывающую запись при смене shared generation: async persistence теперь проверяет captured session epoch. Случай anonymous null→null без смены nonce остаётся OPEN; новая проверка его не закрывает. Результат локальных auth tests не означает завершение независимой final-RC security/browser acceptance.
+- Q4 cleanup ограничен 35 точными чистыми parser functions. Повторные 228 cases сократились с 24,795 до 1,685 s; lifecycle/isolation — 95 PASS / 2 прежних subprocess-only skips. Session preparation, task scan/cancel/await, четыре shard, `max-parallel=2`, assertions и resource gates сохранены. Это ускорение не закрывает 15-минутный бюджет.
+- На C1 native CSP/Worker проверка дала 20 PASS после ограниченного ожидания paint timestamps. AUD174 с обычным Enter отправил 1 native POST; query и canary — 0, проверки прошли. Причина перехвата мышиного клика остаётся неустановленной, UX этим результатом не подтверждён.
+- Focused8 дал 24 PASS / 10 FAIL / 6 утверждённых skips и не является приёмкой.
+- Рабочий frontend пакет: 8966/8966 PASS, без skips; все шесть изменённых production-файлов имеют 100% lines/statements/branches/functions. Полные TypeScript, ESLint и форматирование PASS. Исправлены преждевременная публикация профиля, remount дерева, три concurrency-регрессии и утечка языкового маркера между тестами; реальный known-owner refetch проверен через QueryClient/MSW. Это локальные результаты, свежие hosted checks и browser acceptance ещё нужны.
+- Для anonymous `null→null` без ротации nonce ограниченный статический разбор текущего потока не выявил достижимой поздней положительной записи профиля. Это не заменяет final-RC auth/browser security review.
 
 ## Политика и сохранность
 
-- Ровно 135 owner-approved exact secret dispositions; baseline 319 неизменна. Новые identities, baseline entries, pragmas и broad exclusions не разрешены.
-- Finite131: source-bound no-decrease baseline ровно для 131 неизменённых migration blobs base ac74e915 до 2026-11-13. Все touched/new/unmatched migrations и остальные Tier 0 сохраняют 100%. Канонический quality suite — 423 PASS / 1 прежний Windows skip.
-- SeaweedFS 4.47 TUS component probe V7 прошёл: ownership denials, create/complete/cancel, deleted-resource check, offset и payload readback. Это scoped component evidence; реальный app multipart/S3 upload и readback ещё нужны на свежем Core.
-- Удалены только подтверждённые owned ресурсы: 46 остановленных контейнеров и 6 сетей двух старых Core проектов, а также временные SeaweedFS probe resources. Сохранены 12 named volumes, state, bind data, backups, Core 532 и failed Core 81.
-- Full E2E source 532 был прерван как диагностика; это не acceptance. Для следующего Core нужен новый UUID и чистый опубликованный source.
+- Действуют ровно 135 owner-approved exact secret dispositions; baseline остаётся на 319 identities. Не добавлять identities, baseline entries, pragmas или broad exclusions.
+- Finite131 привязан к 131 неизменённому migration blob из base `ac74e915` до 2026-11-13. Все touched/new/unmatched migrations и остальные Tier 0 сохраняют 100%; app и patch floors не снижены. Quality contract tests: 423 PASS / 1 прежний Windows skip.
+- SeaweedFS 4.47 TUS V7 прошёл scoped component probe: ownership denials, create/complete/cancel, deleted-resource check, offset и payload readback. Реальные app multipart/S3 upload и readback всё ещё требуются на свежем Core.
+- Core C1 остановлен: сохранены 23 контейнера и 6 volumes; активных Docker stands нет. Ранее остановленные Core 532 и failed Core 81, их state/backups и 12 named volumes остаются сохранены. Full E2E source 532 был диагностическим и не считается приёмкой.
 
 ## Оставшиеся gates
 
-1. Завершить текущий ограниченный auth пакет, ordinary hooks и tracked-secrets scan; commit/push и свежие 78 contexts, CodeQL и hosted coverage.
-2. На новом Core: native CSP/Worker и focused product checks, затем два последовательных полных прогона 59 live specs. Между ними создать avatar canary, снять row baseline, выполнить paired DB/S3 snapshot, stop/up того же Core, persistence comparison и source-object readback до reseed; восстановить в отдельные DB/bucket/prefix и прочитать объект по восстановленной DB reference до второго полного прогона.
-3. Risk/a11y/reduced-motion checks; News/Events/Schedule — 36 Linux captures RU/EN, light/dark, 390/768/1440 и risk 360/1024. Утверждён только Home12 ddbbc84d. Новые baselines — после визуального решения владельца; затем serial Lighthouse 7 routes × 3.
-4. Final-RC revalidation всех 63 platform IDs, [October audit](../../audits/AUDIT-2026-10.md) и [dependency report](../../audits/dependency-updates-2026-10/README.md); отсутствие открытых P0/P1, frozen-RC full smoke, ordinary merge, resulting-main checks, шесть GHCR images существующим producer, tag/release v1.0.0.
+1. Завершить обычные hooks и tracked-secrets scan, затем commit/push текущего проверенного пакета. На опубликованном SHA дождаться свежих 78 contexts, CodeQL и hosted coverage.
+2. На новом UUID Core с опубликованным source выполнить native CSP/Worker и focused product checks, затем два последовательных полных запуска 59 live specs. После первого запуска создать avatar canary и row baseline, сделать paired DB/S3 snapshot, остановить и поднять тот же Core, сравнить persistence и прочитать исходный объект до reseed. Восстановить данные в отдельные DB/bucket/prefix и проверить объект через восстановленную DB reference до второго запуска.
+3. Выполнить risk/a11y/reduced-motion checks; снять News/Events/Schedule — 36 Linux captures RU/EN, light/dark, 390/768/1440 и risk 360/1024. Единственное утверждённое визуальное решение Home12 — `ddbbc84d`. Новые baselines разрешены только после решения владельца; затем serial Lighthouse 7 routes × 3.
+4. Перед final RC повторно проверить все 63 platform IDs, [October audit](../../audits/AUDIT-2026-10.md) и [dependency report](../../audits/dependency-updates-2026-10/README.md), отсутствие P0/P1, frozen-RC full smoke, ordinary merge и resulting-main checks, шесть GHCR images существующим producer, tag/release v1.0.0.
 
-## Ресурсы
+## Ресурсы и scope
 
-Root владеет Git и runtime; максимум три GPT-6 Luna Max работают в непересекающихся областях. Тяжёлый локальный процесс один. Admission RAM ≤75% / free ≥8 GiB, stop ≥85% / free <4 GiB; только serial Linux screenshots допускают ≤80% / ≥6 GiB при cap 1 GiB / 2 CPU. Lighthouse сохраняет 75% / 8 GiB и cap 2 GiB / 2 CPU. Чужие процессы, env, volumes, история Git/миграций и private rescue bundle сохраняются. Q2/Q3, global mutation, kind certification, три comparable CI и RPO/RTO — v1.1.
+Root владеет Git и runtime; максимум три GPT-6 Luna Max работают в непересекающихся областях. Тяжёлый локальный процесс один. Admission RAM ≤75% / free ≥8 GiB, stop ≥85% / free <4 GiB; serial Linux screenshots допускают ≤80% / ≥6 GiB при cap 1 GiB / 2 CPU. Lighthouse сохраняет 75% / 8 GiB и cap 2 GiB / 2 CPU. Чужие процессы, env, volumes, история Git/миграций и private rescue bundle сохраняются. Q2/Q3, global mutation, kind certification, три comparable CI и RPO/RTO остаются в v1.1.

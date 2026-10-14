@@ -16,6 +16,12 @@ const resetTitle =
 const adminNotificationsPath =
   "/workspace/frontend/tests/e2e-live/admin-notifications-rbac.live.spec.ts"
 const authRolesPath = "/workspace/frontend/tests/e2e-live/auth-roles.live.spec.ts"
+const mapGesturePath = "/workspace/frontend/tests/e2e-live/map-gesture-isolation.live.spec.ts"
+const mapGestureTitles = [
+  "live map captures wheel zoom without page scroll or center drift",
+  "live map leaves page scrolling available outside the map",
+  "live mobile map keeps pinch and one-finger pan inside the map",
+]
 const authRoleTitles = [
   "student is denied access to admin pages, user listing, and feature flags",
   "teacher is denied access to admin pages, user listing, and feature flags",
@@ -143,6 +149,71 @@ test("admin notification diagnostics require exact desktop/mobile file and test 
   assert.equal(result.status, 0)
   assert.equal(result.stderr, "")
   assert.equal(result.stdout, "[true,true,true,false,false,false,false]\n")
+})
+
+test("map gesture diagnostics require exact project, file, and title", () => {
+  const childSource =
+    "import { isLiveMapGestureScenario } from " +
+    JSON.stringify(helperUrl.href) +
+    ";\n" +
+    "console.log(JSON.stringify([" +
+    'isLiveMapGestureScenario("desktop", ' +
+    JSON.stringify(mapGesturePath) +
+    ", " +
+    JSON.stringify(mapGestureTitles[0]) +
+    ")," +
+    'isLiveMapGestureScenario("mobile", ' +
+    JSON.stringify(mapGesturePath) +
+    ", " +
+    JSON.stringify(mapGestureTitles[2]) +
+    ")," +
+    'isLiveMapGestureScenario("private-project", ' +
+    JSON.stringify(mapGesturePath) +
+    ", " +
+    JSON.stringify(mapGestureTitles[0]) +
+    ")," +
+    'isLiveMapGestureScenario("desktop", ' +
+    JSON.stringify(mapGesturePath + ".backup") +
+    ", " +
+    JSON.stringify(mapGestureTitles[0]) +
+    ")," +
+    'isLiveMapGestureScenario("desktop", ' +
+    JSON.stringify(mapGesturePath) +
+    ", " +
+    JSON.stringify(mapGestureTitles[0] + " private-title") +
+    ")," +
+    'isLiveMapGestureScenario("desktop", { toString() { throw Error("private-file") } }, ' +
+    JSON.stringify(mapGestureTitles[0]) +
+    ")" +
+    "]));"
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], {
+    encoding: "utf8",
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stderr, "")
+  assert.equal(result.stdout, "[true,true,false,false,false,false]\n")
+})
+
+test("map gesture diagnostics emit fixed route and error categories only", () => {
+  const output = reportInChild(
+    [
+      "const diagnostics = createLivePageErrorDiagnostics();",
+      'diagnostics.record(new Error("private-message"), "/map", "map-gesture");',
+      'diagnostics.record(new TypeError("private-message"), "/login", "map-gesture");',
+      'diagnostics.record(new TypeError("private-message"), "/map?private-token", "map-gesture");',
+      'diagnostics.report("desktop", "map-gesture");',
+    ].join("\n")
+  )
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture " + "page=map type=error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture " +
+        "page=login type=type-error count=1\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=other type=type-error count=1\n",
+    ].join("")
+  )
+  assert.doesNotMatch(output, /private-message|private-token/u)
 })
 
 test("auth role diagnostics require the exact denied student and teacher scenarios", () => {
@@ -284,7 +355,17 @@ test("page error diagnostics reject unrelated labels without output", () => {
       for (const project of ["", "Desktop", "private-project", "desktop\\n", "desktop\\r", null, undefined, 1, privateValue]) {
         reportLivePageErrors(project, "password-reset", [new Error("private-message")]);
       }
-      for (const check of ["", "private-check", "password-reset\\n", "admin-notifications\\n", null, undefined, 1, privateValue]) {
+      for (const check of [
+        "",
+        "private-check",
+        "password-reset\\n",
+        "admin-notifications\\n",
+        "map-gesture\\n",
+        null,
+        undefined,
+        1,
+        privateValue,
+      ]) {
         reportLivePageErrors("desktop", check, [new Error("private-message")]);
       }
       reportLivePageErrors("desktop", "password-reset", []);
@@ -303,12 +384,12 @@ test("page error diagnostics saturate counts and deduplicate bounded worker outp
   )
   assert.equal(
     reportInChild(`
-      for (let count = 1; count <= 379; count += 1) {
+      for (let count = 1; count <= 457; count += 1) {
         reportLivePageErrors("desktop", "password-reset", Array.from({ length: count }, () => new Error("private-message")));
       }
     `),
     Array.from(
-      { length: 378 },
+      { length: 456 },
       (_, i) =>
         `UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=${i + 1}\n`
     ).join("")
@@ -379,6 +460,8 @@ test("auth role fixture wires diagnostics only to its exact denied-role tests", 
   const fixtures = await readFile(fixtureUrl, "utf8")
   const authRoleSpec = await readFile(new URL("./auth-roles.live.spec.ts", import.meta.url), "utf8")
   assert.ok(fixtures.includes("isLiveAuthRoleDenialScenario("))
+  assert.ok(fixtures.includes("isLiveMapGestureScenario("))
+  assert.ok(fixtures.includes('isMapGestureScenario\n              ? "map-gesture"'))
   assert.ok(fixtures.includes('isAuthRoleDenialScenario\n            ? "auth-roles"'))
   assert.ok(fixtures.includes("errors.push(error)"))
   assert.ok(

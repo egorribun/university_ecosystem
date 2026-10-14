@@ -6440,15 +6440,15 @@ def _live_playwright_rate_limit_headers(output: str) -> list[_PlaywrightRateLimi
 
 _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
     r"UE_LIVE_PAGE_ERROR_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>password-reset|admin-notifications|auth-roles) "
+    r"check=(?P<check>password-reset|admin-notifications|auth-roles|map-gesture) "
     r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|"
-    r"admin-notifications|admin-users|admin-feature-flags|other) "
+    r"admin-notifications|admin-users|admin-feature-flags|map|other) "
     r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
     r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
     r"count=(?P<count>[1-9][0-9]{0,2})"
 )
 # One aggregate per allowed project/check/page/type combination across all checks.
-_PLAYWRIGHT_PAGE_ERROR_LIMIT = 378
+_PLAYWRIGHT_PAGE_ERROR_LIMIT = 456
 
 
 _PLAYWRIGHT_PROFILE_SAVE_LINE = re.compile(
@@ -6547,6 +6547,9 @@ def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, 
                 "admin-feature-flags",
                 "other",
             }:
+                continue
+        elif match["check"] == "map-gesture":
+            if match["page"] not in {"login", "map", "other"}:
                 continue
         elif (
             match["page"]

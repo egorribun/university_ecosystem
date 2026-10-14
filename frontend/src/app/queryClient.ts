@@ -46,7 +46,10 @@ const defaultOptions = {
 const browserClients = new Set<WeakRef<QueryClient>>()
 
 export const createQueryClient = () => {
-  const client = new QueryClient({ defaultOptions, mutationCache: createSessionMutationCache() })
+  const client = new QueryClient({
+    defaultOptions,
+    mutationCache: createSessionMutationCache(),
+  })
   const cancel = client.cancelQueries.bind(client)
   client.cancelQueries = (...args) => {
     const owns = captureSessionEpoch()
@@ -198,6 +201,43 @@ useAuthStore.subscribe((state) => {
 })
 
 const scopedKey = (owner: string) => `reactQuery:v2:${encodeURIComponent(owner)}`
+// Reject malformed snapshots before filtering, owner checks, or restore.
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const hasPersistedClientShape = (value: unknown): value is PersistedClient => {
+  if (
+    !isObjectRecord(value) ||
+    typeof value.timestamp !== "number" ||
+    !Number.isFinite(value.timestamp) ||
+    typeof value.buster !== "string" ||
+    !isObjectRecord(value.clientState)
+  )
+    return false
+
+  const { queries, mutations } = value.clientState
+  return (
+    Array.isArray(queries) &&
+    Array.isArray(mutations) &&
+    queries.every(
+      (query) =>
+        isObjectRecord(query) &&
+        typeof query.queryHash === "string" &&
+        Array.isArray(query.queryKey) &&
+        typeof query.dehydratedAt === "number" &&
+        Number.isFinite(query.dehydratedAt) &&
+        isObjectRecord(query.state) &&
+        (query.meta === undefined || isObjectRecord(query.meta))
+    ) &&
+    mutations.every(
+      (mutation) =>
+        isObjectRecord(mutation) &&
+        (mutation.mutationKey === undefined || Array.isArray(mutation.mutationKey)) &&
+        isObjectRecord(mutation.state) &&
+        (mutation.meta === undefined || isObjectRecord(mutation.meta))
+    )
+  )
+}
 const belongsToOwner = (client: PersistedClient, owner: string) =>
   client.clientState.queries.some((query) => {
     const data = query.state.data as { id?: unknown } | undefined
@@ -210,12 +250,20 @@ export const idbPersister: Persister = {
     const owner = cacheIdentity
     const epoch = cacheEpoch
     const session = captureSessionEpoch()
-    if (!owner || !getBrowserSessionGeneration() || !belongsToOwner(client, owner)) return
+    if (!owner || !getBrowserSessionGeneration() || !hasPersistedClientShape(client)) return
+    const persistableClient: PersistedClient = {
+      ...client,
+      clientState: {
+        ...client.clientState,
+        queries: client.clientState.queries.filter((query) => query.meta?.persist !== false),
+      },
+    }
+    if (!belongsToOwner(persistableClient, owner)) return
     const key = scopedKey(owner)
     const owns = () => session() && cacheIdentity === owner && cacheEpoch === epoch
     const write = persistenceQueue.then(async () => {
       if (!owns()) return
-      await createIDBPersister(key).persistClient(client)
+      await createIDBPersister(key).persistClient(persistableClient)
       if (!owns()) await del(key)
     })
     persistenceQueue = write.catch(() => undefined)
@@ -235,6 +283,7 @@ export const idbPersister: Persister = {
       cacheIdentity !== owner ||
       cacheEpoch !== epoch ||
       !saved ||
+      !hasPersistedClientShape(saved) ||
       !belongsToOwner(saved, owner)
     )
       return undefined
@@ -260,7 +309,8 @@ export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
   maxAge: PERSIST_MAX_AGE_MS,
   buster: APP_VERSION_BUSTER,
   dehydrateOptions: {
-    shouldDehydrateQuery: (query) => query.state.status === "success",
+    shouldDehydrateQuery: (query) =>
+      query.state.status === "success" && query.meta?.persist !== false,
     shouldDehydrateMutation: (mutation) =>
       mutation.state.isPaused || mutation.state.status === "pending",
   },

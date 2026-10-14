@@ -7,6 +7,7 @@ import { resolve } from "node:path"
 import { QueryClient } from "@tanstack/react-query"
 import { useRouteContext } from "@tanstack/react-router"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
+import { createI18nInstance } from "@/i18n/config"
 import { withExpectedConsole } from "@/tests/strictConsole"
 import type { ReactNode } from "react"
 
@@ -146,6 +147,66 @@ describe("__root.tsx components", () => {
       vi.doUnmock("@/api/hooks/campusConfig")
       vi.resetModules()
     }
+  })
+
+  it("uses the request or pre-paint language for the root document title", () => {
+    const getHead = () => (Route.options as any).head()
+    const getDocumentTitle = () =>
+      getHead().meta.find((entry: { title?: string }) => "title" in entry).title
+    const getMeta = (key: string) =>
+      getHead().meta.find(
+        (entry: { name?: string; property?: string }) =>
+          entry.name === key || entry.property === key
+      )
+
+    document.documentElement.lang = "ru"
+    window.__UE_SELECTED_LANG__ = "ru"
+    const requestI18n = createI18nInstance("en")
+    vi.stubGlobal("__ssrLangGetter__", () => "en")
+    vi.stubGlobal("__ssrI18nGetter__", () => requestI18n)
+    expect(getDocumentTitle()).toBe("GUU Ecosystem")
+    expect(getMeta("og:title").content).toBe("GUU Ecosystem")
+    expect(getMeta("og:locale").content).toBe("en_US")
+    expect(getMeta("description").content).toBe(
+      "Everything you need—profile, schedule, news, and campus events—in one place."
+    )
+    expect(getMeta("og:description").content).toBe(
+      "Your personal account: profile, schedule, news, and campus events."
+    )
+    expect(getMeta("twitter:description").content).toBe(
+      "Your personal account: profile, schedule, news, and campus events."
+    )
+
+    vi.stubGlobal("__ssrLangGetter__", undefined)
+    vi.stubGlobal("__ssrI18nGetter__", undefined)
+    window.__UE_SELECTED_LANG__ = "en"
+    expect(getDocumentTitle()).toBe("GUU Ecosystem")
+    expect(getMeta("og:locale").content).toBe("en_US")
+
+    Reflect.deleteProperty(window, "__UE_SELECTED_LANG__")
+    expect(getDocumentTitle()).toBe("Экосистема ГУУ")
+    expect(getMeta("og:locale").content).toBe("ru_RU")
+  })
+
+  it("uses the selected browser locale when root metadata is reevaluated after a switch", () => {
+    const getHead = () => (Route.options as any).head()
+    const getDocumentTitle = () =>
+      getHead().meta.find((entry: { title?: string }) => "title" in entry).title
+    const getMeta = (key: string) =>
+      getHead().meta.find(
+        (entry: { name?: string; property?: string }) =>
+          entry.name === key || entry.property === key
+      )
+
+    document.documentElement.lang = "ru"
+    window.__UE_SELECTED_LANG__ = "ru"
+    expect(getMeta("og:locale").content).toBe("ru_RU")
+
+    // LanguageProvider writes both values together after a browser locale switch.
+    document.documentElement.lang = "en"
+    window.__UE_SELECTED_LANG__ = "en"
+    expect(getDocumentTitle()).toBe("GUU Ecosystem")
+    expect(getMeta("og:locale").content).toBe("en_US")
   })
 
   describe("RootShell component", () => {

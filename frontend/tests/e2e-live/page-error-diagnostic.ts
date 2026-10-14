@@ -1,13 +1,19 @@
-// The fixed three-domain protocol has 378 admissible project/check/page/type tuples.
+// The fixed four-domain protocol has 456 admissible project/check/page/type tuples.
 const emittedRecords = new Set<string>()
-const MAX_RECORDS = 378
+const MAX_RECORDS = 456
 const MAX_COUNT = 999
 
-type DiagnosticCheck = "password-reset" | "admin-notifications" | "auth-roles"
+type DiagnosticCheck = "password-reset" | "admin-notifications" | "auth-roles" | "map-gesture"
 
 const AUTH_ROLE_DENIAL_TITLES = new Set([
   "student is denied access to admin pages, user listing, and feature flags",
   "teacher is denied access to admin pages, user listing, and feature flags",
+])
+
+const MAP_GESTURE_TITLES = new Set([
+  "live map captures wheel zoom without page scroll or center drift",
+  "live map leaves page scrolling available outside the map",
+  "live mobile map keeps pinch and one-finger pan inside the map",
 ])
 
 const ADMIN_NOTIFICATIONS_TITLES = new Set([
@@ -15,6 +21,15 @@ const ADMIN_NOTIFICATIONS_TITLES = new Set([
   "student cannot view or mutate notification queue data",
   "teacher cannot view or mutate notification queue data",
 ])
+
+export function isLiveMapGestureScenario(project: unknown, file: unknown, title: unknown): boolean {
+  if (project !== "desktop" && project !== "mobile") return false
+  if (typeof file !== "string") return false
+  if (!file.replace(/\\/g, "/").endsWith("/tests/e2e-live/map-gesture-isolation.live.spec.ts")) {
+    return false
+  }
+  return typeof title === "string" && MAP_GESTURE_TITLES.has(title)
+}
 
 export function isLiveAdminNotificationsScenario(
   project: unknown,
@@ -121,6 +136,17 @@ function currentPage(pathname: unknown, check: DiagnosticCheck): string {
     }
   }
 
+  if (check === "map-gesture") {
+    switch (pathname) {
+      case "/login":
+        return "login"
+      case "/map":
+        return "map"
+      default:
+        return "other"
+    }
+  }
+
   switch (pathname) {
     case "/register":
       return "register"
@@ -152,7 +178,10 @@ export function createLivePageErrorDiagnostics() {
     report(project: string, check: DiagnosticCheck): void {
       if (
         (project !== "desktop" && project !== "mobile") ||
-        (check !== "password-reset" && check !== "admin-notifications" && check !== "auth-roles")
+        (check !== "password-reset" &&
+          check !== "admin-notifications" &&
+          check !== "auth-roles" &&
+          check !== "map-gesture")
       )
         return
       for (const { currentPage, type, count } of counts.values()) {

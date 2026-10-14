@@ -3,19 +3,25 @@ import { Browser, BrowserContext, Page, Response, TestInfo } from "@playwright/t
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
 import {
   withLiveRegistrationAdmission,
+  assessLiveRateLimitRetry,
   expect,
+  liveDeadlineBoundedTimeoutMs,
   freshPassword,
   loginAs,
   loginWith,
   mailFor,
   mailText,
+  parseLiveRateLimitRetryAfter,
   stubBreachedPasswordLookup,
   submitLogin,
   test,
+  waitForLiveRateLimitRetry,
 } from "./fixtures"
 
 const EMAIL_CODE = /(?:Verification code|Код подтверждения):\s*(\d{6})/iu
 const OTP_INPUTS = 'input[inputmode="numeric"][maxlength="1"]'
+const MFA_LOGIN_RETRY_REQUEST_BUDGET_MS = 20_000
+const MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS = 100_000
 
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
@@ -507,8 +513,71 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     const priorLoginMessages = new Set((await mailFor(email)).map((message) => message.ID))
     const loginResponsePromise = login.page.waitForResponse(isApiResponse("/auth/login"))
     await submitLogin(login.page, email, password)
-    const loginResponse = await loginResponsePromise
+    let loginResponse = await loginResponsePromise
     reportLiveHttpStatus(testInfo.project.name, "email-mfa-enabled-login", loginResponse.status())
+    if (loginResponse.status() === 429) {
+      const retryAfter = parseLiveRateLimitRetryAfter(loginResponse.headers()["retry-after"])
+      const retryDecision = assessLiveRateLimitRetry(
+        testInfo,
+        retryAfter,
+        MFA_LOGIN_RETRY_REQUEST_BUDGET_MS,
+        MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS
+      )
+      if (
+        retryAfter === null ||
+        retryDecision.decision !== "retry" ||
+        retryDecision.deadlineAtMs === null
+      ) {
+        throw new Error("Rate-limited MFA login has no safe bounded retry window")
+      }
+
+      await waitForLiveRateLimitRetry(retryAfter)
+      const afterWait = assessLiveRateLimitRetry(
+        testInfo,
+        0,
+        MFA_LOGIN_RETRY_REQUEST_BUDGET_MS,
+        MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS
+      )
+      if (afterWait.decision !== "retry" || afterWait.deadlineAtMs === null) {
+        throw new Error("MFA login retry no longer fits the remaining test slot")
+      }
+
+      const requestDeadlineAtMs = afterWait.deadlineAtMs - MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS
+      const responseTimeoutMs = liveDeadlineBoundedTimeoutMs(
+        requestDeadlineAtMs,
+        MFA_LOGIN_RETRY_REQUEST_BUDGET_MS
+      )
+      const retryActionDeadlineAtMs = Math.min(
+        requestDeadlineAtMs,
+        performance.now() + MFA_LOGIN_RETRY_REQUEST_BUDGET_MS
+      )
+      const actionTimeoutMs = liveDeadlineBoundedTimeoutMs(
+        retryActionDeadlineAtMs,
+        MFA_LOGIN_RETRY_REQUEST_BUDGET_MS
+      )
+      if (responseTimeoutMs === null || actionTimeoutMs === null) {
+        throw new Error("MFA login retry exhausted its bounded request budget")
+      }
+
+      const retryResponsePromise = login.page.waitForResponse(isApiResponse("/auth/login"), {
+        timeout: responseTimeoutMs,
+      })
+      const retryAction = submitLogin(
+        login.page,
+        email,
+        password,
+        retryActionDeadlineAtMs,
+        actionTimeoutMs
+      )
+      const [retryResponseOutcome, retryActionOutcome] = await Promise.allSettled([
+        retryResponsePromise,
+        retryAction,
+      ])
+      if (retryResponseOutcome.status === "rejected") throw retryResponseOutcome.reason
+      if (retryActionOutcome.status === "rejected") throw retryActionOutcome.reason
+      loginResponse = retryResponseOutcome.value
+      reportLiveHttpStatus(testInfo.project.name, "email-mfa-enabled-login", loginResponse.status())
+    }
     expect(loginResponse.status()).toBe(202)
     const pendingChallenge = (await loginResponse.json()) as {
       methods?: Array<{

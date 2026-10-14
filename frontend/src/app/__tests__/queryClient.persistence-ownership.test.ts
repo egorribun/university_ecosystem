@@ -42,20 +42,32 @@ vi.mock("idb-keyval", async (importOriginal) => {
   }
 })
 
-import { createQueryClient, idbPersister, setQueryCacheIdentity } from "../queryClient"
+import {
+  createQueryClient,
+  idbPersister,
+  persistOptions,
+  setQueryCacheIdentity,
+} from "../queryClient"
 
 const sessionKey = "ecosystem.session.generation.v1"
 const accountKey = (owner: string) => `reactQuery:v2:${encodeURIComponent(owner)}`
 
 function publishAccount(id: string | null) {
-  useAuthStore.setState({ user: id === null ? null : { ...testUser, id }, loading: false })
+  useAuthStore.setState({
+    user: id === null ? null : { ...testUser, id },
+    loading: false,
+  })
 }
 
 function snapshot(owner: string, profileKey: QueryKey = ["users", "me"]): PersistedClient {
   const source = createQueryClient()
   source.setQueryData(profileKey, { ...testUser, id: owner })
   source.setQueryData(["schedule"], [`schedule for ${owner}`])
-  const saved = { timestamp: Date.now(), buster: "1.0.0", clientState: dehydrate(source) }
+  const saved = {
+    timestamp: Date.now(),
+    buster: "1.0.0",
+    clientState: dehydrate(source),
+  }
   source.clear()
   return saved
 }
@@ -133,6 +145,175 @@ describe("confirmed profile persistence", () => {
     await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
   })
 
+  it("fails closed for malformed persisted snapshots before filtering", async () => {
+    const valid = snapshot("A")
+    const malformedSnapshots: unknown[] = [
+      null,
+      {},
+      { ...valid, timestamp: Number.NaN },
+      { ...valid, timestamp: Number.POSITIVE_INFINITY },
+      {
+        ...valid,
+        clientState: {
+          ...valid.clientState,
+          queries: valid.clientState.queries.map((query, index) =>
+            index === 0 ? { ...query, dehydratedAt: Number.NaN } : query
+          ),
+        },
+      },
+      {
+        ...valid,
+        clientState: {
+          ...valid.clientState,
+          queries: valid.clientState.queries.map((query, index) =>
+            index === 0 ? { ...query, dehydratedAt: Number.POSITIVE_INFINITY } : query
+          ),
+        },
+      },
+      { clientState: null },
+      { clientState: { queries: null, mutations: [] } },
+      { ...valid, clientState: { ...valid.clientState, queries: null } },
+      {
+        ...valid,
+        clientState: { ...valid.clientState, queries: [null, ...valid.clientState.queries] },
+      },
+      { ...valid, clientState: { ...valid.clientState, mutations: null } },
+      {
+        ...valid,
+        clientState: { ...valid.clientState, mutations: [null, ...valid.clientState.mutations] },
+      },
+      {
+        ...valid,
+        clientState: {
+          ...valid.clientState,
+          mutations: [{ mutationKey: { invalid: true }, state: {} }],
+        },
+      },
+      {
+        ...valid,
+        clientState: { ...valid.clientState, mutations: [{ state: {}, meta: [] }] },
+      },
+    ]
+
+    for (const malformed of malformedSnapshots) {
+      await expect(
+        idbPersister.persistClient(malformed as PersistedClient)
+      ).resolves.toBeUndefined()
+    }
+    expect(await keys()).toEqual([])
+
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    for (const malformed of malformedSnapshots) {
+      await expect(
+        idbPersister.persistClient(malformed as PersistedClient)
+      ).resolves.toBeUndefined()
+    }
+    expect(await keys()).toEqual([])
+
+    for (const malformed of malformedSnapshots) {
+      await set(accountKey("A"), malformed)
+      await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
+    }
+  })
+
+  it("round-trips valid pending mutations with optional fields omitted or shaped", async () => {
+    publishAccount("A")
+    const base = snapshot("A")
+    const state = {
+      context: undefined,
+      data: undefined,
+      error: null,
+      failureCount: 0,
+      failureReason: null,
+      isPaused: true,
+      status: "pending" as const,
+      variables: { scheduleId: "schedule-1" },
+      submittedAt: Date.now(),
+    }
+    const optionalFieldsOmitted = {
+      state,
+    } satisfies PersistedClient["clientState"]["mutations"][number]
+    const optionalFieldsPresent = {
+      mutationKey: ["schedule", "create"],
+      meta: { persist: true },
+      state,
+    } satisfies PersistedClient["clientState"]["mutations"][number]
+    const saved: PersistedClient = {
+      ...base,
+      clientState: {
+        ...base.clientState,
+        mutations: [optionalFieldsOmitted, optionalFieldsPresent],
+      },
+    }
+
+    await idbPersister.persistClient(saved)
+    const persisted = await get<PersistedClient>(accountKey("A"))
+    expect(persisted?.clientState.mutations).toEqual([optionalFieldsOmitted, optionalFieldsPresent])
+    expect(persisted?.clientState.mutations[0]).not.toHaveProperty("mutationKey")
+    expect(persisted?.clientState.mutations[0]).not.toHaveProperty("meta")
+
+    const restored = await idbPersister.restoreClient()
+    expect(restored?.clientState.mutations).toEqual([optionalFieldsOmitted, optionalFieldsPresent])
+  })
+
+  it("excludes non-persisted bootstrap profiles from account snapshots", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+
+    const source = createQueryClient()
+    const bootstrapKey = ["auth", "bootstrap", "current-user", "scope", 2, 7] as const
+    const ownedProfile = { ...testUser, id: "A" }
+    const stagedProfile = {
+      ...testUser,
+      id: "staged-bootstrap-profile-id",
+      email: "staged-bootstrap-profile@example.invalid",
+    }
+    source.setQueryDefaults(bootstrapKey, { meta: { persist: false } })
+    source.setQueryData(["users", "me"], ownedProfile)
+    source.setQueryData(bootstrapKey, stagedProfile)
+
+    const configuredSnapshot = dehydrate(source, persistOptions.dehydrateOptions)
+    expect(configuredSnapshot.queries.some((query) => query.queryKey[0] === "auth")).toBe(false)
+    expect(
+      configuredSnapshot.queries.some(
+        (query) =>
+          query.queryKey[0] === "users" &&
+          query.queryKey[1] === "me" &&
+          query.state.data === ownedProfile
+      )
+    ).toBe(true)
+
+    // Exercise the persister boundary even if an upstream caller accidentally
+    // dehydrates every successful query instead of using persistOptions.
+    const inclusiveSnapshot = dehydrate(source, {
+      shouldDehydrateQuery: () => true,
+    })
+    expect(
+      inclusiveSnapshot.queries.some(
+        (query) => query.queryKey[0] === "auth" && query.state.data === stagedProfile
+      )
+    ).toBe(true)
+    await idbPersister.persistClient({
+      timestamp: Date.now(),
+      buster: "1.0.0",
+      clientState: inclusiveSnapshot,
+    })
+
+    const saved = await get<PersistedClient>(accountKey("A"))
+    expect(saved).toBeDefined()
+    expect(saved!.clientState.queries.some((query) => query.queryKey[0] === "auth")).toBe(false)
+    expect(JSON.stringify(saved)).not.toContain(stagedProfile.id)
+    expect(JSON.stringify(saved)).not.toContain(stagedProfile.email)
+    expect(
+      saved!.clientState.queries.find(
+        (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
+      )?.state.data
+    ).toEqual(ownedProfile)
+    source.clear()
+  })
   it("keeps account namespaces distinct when an id contains reserved URL characters", async () => {
     publishAccount("A/B:C")
     await idbPersister.persistClient(snapshot("A/B:C"))
@@ -199,7 +380,10 @@ describe("confirmed profile persistence", () => {
   it("restores the profile confirmed while legacy deletion was pending", async () => {
     const saved = snapshot("A")
     await set(accountKey("A"), saved)
-    useAuthStore.setState({ user: { ...testUser, id: "ssr-stub" }, loading: true })
+    useAuthStore.setState({
+      user: { ...testUser, id: "ssr-stub" },
+      loading: true,
+    })
     const legacyDeletion = pause()
     io.beforeDelete = legacyDeletion.hold
     const restoring = idbPersister.restoreClient()

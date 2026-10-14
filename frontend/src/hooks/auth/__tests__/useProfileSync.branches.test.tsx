@@ -399,9 +399,12 @@ describe("useProfileSync focused mutation survivor contracts", () => {
     }
     vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
     const queryClient = createQueryClient()
-    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const fetchQuery = vi
+      .spyOn(queryClient, "fetchQuery")
+      .mockReturnValue(new Promise(() => undefined) as never)
     const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
     await waitFor(() => expect(view.result.current.loading).toBe(true))
+    await waitFor(() => expect(fetchQuery).toHaveBeenCalled())
     expect(channels).toHaveLength(1)
 
     const cancelQueries = vi.spyOn(queryClient, "cancelQueries")
@@ -414,10 +417,15 @@ describe("useProfileSync focused mutation survivor contracts", () => {
       await Promise.resolve()
     })
 
-    expect(cancelQueries).toHaveBeenCalledTimes(1)
-    expect(cancelQueries.mock.calls[0]?.[0]).toEqual({
-      queryKey: currentUserQueryKey,
-    })
+    const bootstrapRequestKey = fetchQuery.mock.calls
+      .map(([options]) => options.queryKey)
+      .find((key) => key[0] === "auth" && key[1] === "bootstrap")
+    expect(bootstrapRequestKey).toBeDefined()
+
+    const canceledQueryKeys = cancelQueries.mock.calls.map(([filters]) => filters?.queryKey)
+    expect(cancelQueries).toHaveBeenCalledTimes(2)
+    expect(canceledQueryKeys).toContainEqual(currentUserQueryKey)
+    expect(canceledQueryKeys).toContainEqual(bootstrapRequestKey?.slice(0, 4))
     expect(channels).toHaveLength(1)
     expect(channels[0]?.posts).toEqual([])
     view.unmount()

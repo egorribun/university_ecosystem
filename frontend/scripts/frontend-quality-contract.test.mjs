@@ -200,7 +200,7 @@ test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", asyn
   )
   const hookStart = profileSyncSource.indexOf("export const useProfileSync")
   assert.ok(hookStart >= 0, "useProfileSync export must remain discoverable")
-  const initializerStart = profileSyncSource.indexOf("useState<UserState>", hookStart)
+  const initializerStart = profileSyncSource.indexOf("useState<ProfileSyncState>", hookStart)
   const initializerEnd = profileSyncSource.indexOf("const [pendingMfaState", initializerStart)
   assert.ok(initializerStart >= 0 && initializerEnd > initializerStart)
   const initializer = profileSyncSource.slice(initializerStart, initializerEnd)

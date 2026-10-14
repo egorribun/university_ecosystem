@@ -126,6 +126,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const {
     user,
+    committedUser,
     loading: profileLoading,
     pendingMfa,
     setUser,
@@ -171,15 +172,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       ...actionsValue,
       resetEtagCache,
       authOperation,
-      user,
+      user: committedUser,
       loading: profileLoading,
       pendingMfa,
     }),
-    [actionsValue, authOperation, user, profileLoading, pendingMfa]
+    [actionsValue, authOperation, committedUser, profileLoading, pendingMfa]
   )
 
   const queryClient = useQueryClient()
-  const cacheOwner = getConfirmedUserId({ user, loading: false })
+  const cacheOwner = getConfirmedUserId({ user: committedUser, loading: false })
   const profileMatchesOwner = useCallback(
     (owner: string | null) => {
       const profile = queryClient.getQueryData(currentUserQueryKey)

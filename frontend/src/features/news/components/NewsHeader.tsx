@@ -85,21 +85,23 @@ export const NewsHeader = ({
       <header className="space-y-4">
         {/* Row 1: Title + search + admin button */}
         <FadeSection delay="60ms" className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 text-fluid-h1">
             <div className="news-badge-matte hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-primary shrink-0">
               <Newspaper size={20} strokeWidth={2.2} />
             </div>
-            <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary whitespace-nowrap">
+            <h1 className="font-extrabold tracking-tight text-text-primary whitespace-nowrap">
               {t("news:pageTitle")}
-              {newsCount != null && (
-                <span
-                  className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none"
-                  style={{ fontSize: "0.45em" }}
-                >
-                  {newsCount}
-                </span>
-              )}
             </h1>
+            {newsCount != null && (
+              <span
+                role="status"
+                aria-label={t("news:pageTitle") + ": " + newsCount}
+                className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none"
+                style={{ fontSize: "0.45em" }}
+              >
+                {newsCount}
+              </span>
+            )}
           </div>
 
           {/* Search */}

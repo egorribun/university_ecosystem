@@ -190,6 +190,9 @@ afterEach(async () => {
   etagCache.clear()
   responseCache.clear()
   await i18n.changeLanguage("en")
+  if (typeof window !== "undefined") {
+    Reflect.deleteProperty(window, "__UE_SELECTED_LANG__")
+  }
   if (typeof document !== "undefined") {
     document.documentElement.lang = "en"
   }

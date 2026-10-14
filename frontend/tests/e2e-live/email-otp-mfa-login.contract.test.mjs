@@ -27,6 +27,7 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
     "email-mfa-enable-start",
     "email-mfa-enable-accept",
     "email-mfa-enabled-login",
+    "email-mfa-enabled-login",
     "email-mfa-login-resend-early",
     "email-mfa-login-accept",
   ]

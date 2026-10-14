@@ -24,6 +24,7 @@ import { queryClient, persistOptions } from "@/app/queryClient"
 import { fetchCampusTimezone } from "@/api/hooks/campusConfig"
 import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 import { createTrustedScriptURL } from "@/utils/trustedTypes"
+import i18n from "@/i18n/config"
 
 // React's TypeScript DOM props accept only strings for `src`, while the
 // installed React DOM runtime forwards this value unchanged to setAttribute.
@@ -179,6 +180,26 @@ const LHCI_STATIC_EFFECTS_CSS = `/* data-lhci-static-effects */
   animation: none !important;
 }`
 
+function getRootLanguage(): string {
+  const ssrLang = globalThis.__ssrLangGetter__?.()
+  const browserLang = typeof window === "undefined" ? undefined : window.__UE_SELECTED_LANG__
+  const selectedBrowserLang = browserLang === "ru" || browserLang === "en" ? browserLang : undefined
+  const documentLang =
+    typeof document !== "undefined" &&
+    (document.documentElement.lang === "ru" || document.documentElement.lang === "en")
+      ? document.documentElement.lang
+      : undefined
+  return ssrLang ?? selectedBrowserLang ?? documentLang ?? "ru"
+}
+
+function getRootMetadataText(
+  key: "navigation:brandName" | "navigation:brandDescription" | "navigation:socialDescription"
+): string {
+  const language = getRootLanguage()
+  const requestI18n = globalThis.__ssrI18nGetter__?.()
+  return (requestI18n ?? i18n).t(key, { lng: language })
+}
+
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Keep SSR enabled at the root so public and data routes receive a complete
   // TanStack Start manifest. Child auth/admin layouts may opt down to client
@@ -195,31 +216,21 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { name: "color-scheme", content: "light dark" },
       { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#f8fafc" },
       { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#020617" },
-      {
-        name: "description",
-        content:
-          "Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте.",
-      },
+      { name: "description", content: getRootMetadataText("navigation:brandDescription") },
       { property: "og:type", content: "website" },
-      { property: "og:title", content: "Экосистема ГУУ" },
-      {
-        property: "og:description",
-        content: "Личный кабинет: профиль, расписание, новости и события кампуса.",
-      },
+      { property: "og:title", content: getRootMetadataText("navigation:brandName") },
+      { property: "og:description", content: getRootMetadataText("navigation:socialDescription") },
       { property: "og:url", content: "/" },
       { property: "og:image", content: "/og-image.png" },
-      { property: "og:locale", content: "ru_RU" },
+      { property: "og:locale", content: getRootLanguage() === "en" ? "en_US" : "ru_RU" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Экосистема ГУУ" },
-      {
-        name: "twitter:description",
-        content: "Личный кабинет: профиль, расписание, новости и события кампуса.",
-      },
+      { name: "twitter:title", content: getRootMetadataText("navigation:brandName") },
+      { name: "twitter:description", content: getRootMetadataText("navigation:socialDescription") },
       { name: "twitter:image", content: "/og-image.png" },
       { name: "google-site-verification", content: "not-applicable" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { title: "Экосистема ГУУ" },
+      { title: getRootMetadataText("navigation:brandName") },
     ],
     links: [
       { rel: "icon", href: "/favicon.ico", sizes: "any" },
@@ -278,24 +289,13 @@ function RootShell({ children }: { children: React.ReactNode }) {
     typeof window !== "undefined" &&
     Reflect.get(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__") === true
   const themeInitScriptSrc = isStaticSpaDocumentMount ? undefined : getThemeInitScriptSrc()
-  const ssrLang = globalThis.__ssrLangGetter__?.()
   // On a client document mount, keep the attributes already selected by the
-  // parser-run pre-paint asset. A static SPA shell has no request-scoped SSR
-  // getters, and createRoot(document) replaces its initial document tree.
-  // Hydration also sees the server attributes here, so it remains aligned unless
-  // the pre-paint script intentionally applied a browser choice.
+  // parser-run pre-paint asset. Hydration continues to prefer the request locale.
   const browserIsDark =
     typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-  const browserLang = typeof window === "undefined" ? undefined : window.__UE_SELECTED_LANG__
-  const selectedBrowserLang = browserLang === "ru" || browserLang === "en" ? browserLang : undefined
-  const documentLang =
-    typeof document !== "undefined" &&
-    (document.documentElement.lang === "ru" || document.documentElement.lang === "en")
-      ? document.documentElement.lang
-      : undefined
   const isDark = ssrTheme === undefined ? browserIsDark : ssrTheme === "dark"
   const isLhci = import.meta.env.VITE_LHCI === "true"
-  const lang = ssrLang ?? selectedBrowserLang ?? documentLang ?? "ru"
+  const lang = getRootLanguage()
   // The server-rendered tree uses a role-only auth stub so authenticated
   // routes can paint immediately. Preserve that same fact in the document
   // shell for the first browser render; the client consumes this marker and

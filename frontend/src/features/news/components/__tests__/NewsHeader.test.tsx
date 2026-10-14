@@ -37,6 +37,12 @@ const renderHeader = async (overrides: Partial<Props> = {}) => {
 }
 
 describe("NewsHeader", () => {
+  it("keeps the count separate from the localized heading name", async () => {
+    await renderHeader()
+    expect(screen.getByRole("heading", { level: 1, name: "University news" })).toBeInTheDocument()
+    expect(screen.getByRole("status", { name: "University news: 7" })).toHaveTextContent("7")
+  })
+
   it("renders the news count badge and search input", async () => {
     await renderHeader()
     expect(screen.getByText("7")).toBeInTheDocument()

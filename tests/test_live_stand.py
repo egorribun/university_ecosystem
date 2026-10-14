@@ -3242,6 +3242,23 @@ def test_live_playwright_page_errors_accept_auth_roles_domain(
     ]
 
 
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("page", ["login", "map", "other"])
+@pytest.mark.parametrize("kind", ["type-error", "react-418", "other"])
+@pytest.mark.parametrize("count", [1, 999])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_page_errors_accept_map_gesture_domain(
+    project: str, page: str, kind: str, count: int, newline: str
+) -> None:
+    sentinel = (
+        f"UE_LIVE_PAGE_ERROR_V1 project={project} check=map-gesture page={page} "
+        f"type={kind} count={count}{newline}"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == [
+        (project, "map-gesture", page, kind, count)
+    ]
+
+
 @pytest.mark.parametrize(
     ("check", "page", "kind"),
     [
@@ -3258,6 +3275,8 @@ def test_live_playwright_page_errors_accept_auth_roles_domain(
         ("auth-roles", "forgot-password", "error"),
         ("auth-roles", "reset-password", "error"),
         ("auth-roles", "admin-notifications", "error"),
+        ("map-gesture", "admin-users", "error"),
+        ("map-gesture", "reset-password", "error"),
     ],
 )
 def test_live_playwright_page_errors_reject_cross_scenario_domains(
@@ -3317,7 +3336,7 @@ def test_live_playwright_page_errors_deduplicate_and_bound_records() -> None:
     )
     assert live_stand._live_playwright_page_errors(output) == [
         ("desktop", "password-reset", "reset-password", "other", count)
-        for count in range(1, 379)
+        for count in range(1, 457)
     ]
 
 

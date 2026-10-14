@@ -11,6 +11,7 @@ import {
 } from "@playwright/test"
 import {
   createLivePageErrorDiagnostics,
+  isLiveMapGestureScenario,
   isLiveAdminNotificationsScenario,
   isLiveAuthRoleDenialScenario,
 } from "./page-error-diagnostic"
@@ -961,6 +962,11 @@ export const test = base.extend<{
         testInfo.file.replace(/\\/g, "/").endsWith("/tests/e2e-live/password-reset.live.spec.ts") &&
         testInfo.title ===
           "a student resets with the Mailpit link without retaining tokens or following hostile redirects"
+      const isMapGestureScenario = isLiveMapGestureScenario(
+        testInfo.project.name,
+        testInfo.file,
+        testInfo.title
+      )
       const isAdminNotificationsScenario = isLiveAdminNotificationsScenario(
         testInfo.project.name,
         testInfo.file,
@@ -977,7 +983,9 @@ export const test = base.extend<{
           ? "admin-notifications"
           : isAuthRoleDenialScenario
             ? "auth-roles"
-            : null
+            : isMapGestureScenario
+              ? "map-gesture"
+              : null
       const pageErrorDiagnostics = createLivePageErrorDiagnostics()
       page.on("pageerror", (error) => {
         errors.push(error)
