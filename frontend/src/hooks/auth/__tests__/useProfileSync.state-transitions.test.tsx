@@ -13,7 +13,7 @@ import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { testUser } from "@/tests/mocks/handlers"
 import { server } from "@/tests/mocks/server"
-import { withExpectedConsole } from "@/tests/strictConsole"
+import { getStrictConsoleDiagnostics, withExpectedConsole } from "@/tests/strictConsole"
 
 const generationKey = "ecosystem.session.generation.v1"
 const snapshot = (storage: Storage): Array<[string, string]> => {
@@ -151,11 +151,36 @@ const withCacheClearDiagnostic = <T,>(action: () => T | Promise<T>) =>
 
 const withoutDiagnostic = async <T,>(action: () => T | Promise<T>) => action()
 
+const waitForNewCacheClearDiagnostic = (
+  baselineDiagnostics: ReturnType<typeof getStrictConsoleDiagnostics>
+) =>
+  waitFor(
+    () => {
+      const matchingDiagnostics = getStrictConsoleDiagnostics()
+        .slice(baselineDiagnostics.length)
+        .filter(
+          (diagnostic) =>
+            diagnostic.method === "warn" &&
+            diagnostic.args[0] === "profile_cache.cleared" &&
+            (diagnostic.args[1] as { reason?: string } | undefined)?.reason === "parse_error"
+        )
+      expect(matchingDiagnostics).toHaveLength(1)
+    },
+    { timeout: 2_000 }
+  )
+
 const renderProfile = async (authenticated = true, holdKey = false) =>
   (holdKey ? withoutDiagnostic : withCacheClearDiagnostic)(async () => {
+    const diagnosticsBeforeMount = getStrictConsoleDiagnostics()
     const queryClient = createQueryClient()
-    if (authenticated) queryClient.setQueryData(currentUserQueryKey, testUser)
-    server.use(http.get("*/users/me", () => new HttpResponse(null, { status: 401 })))
+    let profileRequestCount = 0
+    server.use(
+      http.get("*/users/me", () => {
+        profileRequestCount += 1
+        if (authenticated && profileRequestCount === 1) return HttpResponse.json(testUser)
+        return new HttpResponse(null, { status: 401 })
+      })
+    )
     const { operations, track } = createOperationTracker()
     const releases: Array<() => void> = []
     // Signing-key backoff can leave an online profile without a cache key.
@@ -222,6 +247,7 @@ const renderProfile = async (authenticated = true, holdKey = false) =>
       expect(view.result.current.user).toBeNull()
     } else {
       await waitFor(() => expect(view.result.current.loading).toBe(false), { timeout: 2_000 })
+      if (!authenticated) await waitForNewCacheClearDiagnostic(diagnosticsBeforeMount)
       expect(view.result.current.user).toEqual(authenticated ? testUser : null)
     }
     return {

@@ -148,7 +148,7 @@ test("live PWA shell acceptance exercises the real worker without server mutatio
   assert.match(precaching, /handlerDidError/u)
   assert.match(precaching, /matchPrecache\("_shell\.html"\)/u)
   assert.ok(
-    workboxConfig.includes('globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"]'),
+    workboxConfig.includes('globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json,woff2}"]'),
     "the production precache must include shell HTML and its app bundles"
   )
 })

@@ -25,37 +25,77 @@ def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
 _TEST_DATABASE_NAME = re.compile(r"(?:^test|[-_]test(?:[-_]|$))", re.IGNORECASE)
 
 
-_PURE_PARSER_TEST_NAMES = frozenset(
-    {
-        "test_live_playwright_page_errors_accept_only_fixed_domains",
-        "test_live_playwright_http_status_accepts_only_fixed_domains",
-        "test_live_playwright_page_errors_accept_admin_hydration_domains",
-        "test_live_playwright_email_otp_and_mfa_http_statuses_are_closed",
-        "test_live_playwright_auth_http_parser_accepts_closed_status_mismatches",
-        "test_live_playwright_story_setup_parser_accepts_closed_stages",
-        "test_live_playwright_a11y_contrast_accepts_bounded_closed_records",
-        "test_live_playwright_http_status_accepts_auth_status_checks",
-        "test_live_playwright_http_status_rejects_malformed_records",
-        "test_live_playwright_page_errors_reject_malformed_records",
-        "test_live_playwright_push_observation_accepts_closed_records",
-        "test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions",
-        "test_live_playwright_counts_reject_malformed_summary_records",
-    }
-)
+_PURE_PARSER_TEST_CASES = {
+    "tests/test_live_stand.py": frozenset(
+        {
+            "test_live_playwright_page_errors_accept_only_fixed_domains",
+            "test_live_playwright_http_status_accepts_only_fixed_domains",
+            "test_live_playwright_page_errors_accept_admin_hydration_domains",
+            "test_live_playwright_email_otp_and_mfa_http_statuses_are_closed",
+            "test_live_playwright_auth_http_parser_accepts_closed_status_mismatches",
+            "test_live_playwright_story_setup_parser_accepts_closed_stages",
+            "test_live_playwright_a11y_contrast_accepts_bounded_closed_records",
+            "test_live_playwright_http_status_accepts_auth_status_checks",
+            "test_live_playwright_http_status_rejects_malformed_records",
+            "test_live_playwright_page_errors_reject_malformed_records",
+            "test_live_playwright_push_observation_accepts_closed_records",
+            "test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions",
+            "test_live_playwright_counts_reject_malformed_summary_records",
+            "test_live_playwright_auth_status_rows_accept_lf_and_crlf",
+            "test_live_playwright_profile_save_diagnostics_reject_malformed_records",
+            "test_live_playwright_retry_diagnostics_reject_malformed_records",
+            "test_live_playwright_page_errors_reject_cross_scenario_domains",
+            "test_live_playwright_footer_parser_rejects_malformed_rows",
+            "test_live_playwright_counts_accept_all_bounded_summary_categories",
+            "test_live_playwright_rate_limit_metadata_rejects_malformed_or_unterminated_rows",
+            "test_live_playwright_a11y_contrast_rejects_malformed_records",
+            "test_live_playwright_story_setup_parser_accepts_closed_exception_kinds",
+            "test_live_playwright_page_errors_accept_auth_roles_domain",
+            "test_live_playwright_a11y_paint_parser_rejects_malformed_rows",
+            "test_live_playwright_a11y_phase_parser_rejects_malformed_rows",
+            "test_live_playwright_auth_ui_parser_accepts_exact_failure_records",
+            "test_live_playwright_auth_registration_parser_rejects_inconsistent_phases",
+            "test_live_playwright_rate_limit_metadata_accepts_bounded_logout_headers",
+            "test_live_playwright_counts_accept_numeric_durations",
+        }
+    ),
+    "tests/test_cwv_contract_vectors.py": frozenset(
+        {
+            "test_route_group_allowlist_is_complete_and_normalizes_url_delimiters",
+            "test_origin_parser_rejects_credentials_paths_and_non_https_exactly",
+        }
+    ),
+    "tests/test_logging_pii_redaction_contract.py": frozenset(
+        {
+            "test_field_names_normalize_across_naming_styles",
+        }
+    ),
+    "tests/test_backup_paired_snapshot_restore.py": frozenset(
+        {
+            "test_storage_public_base_url_rejects_unsafe_root_relative_paths",
+            "test_storage_public_base_url_rejects_invalid_unparsed_values",
+            "test_application_storage_key_rejects_keys_outside_app_contract",
+        }
+    ),
+}
 
 
 def _is_pure_parser_profile_case(node: object) -> bool:
-    if getattr(node, "originalname", None) not in _PURE_PARSER_TEST_NAMES:
-        return False
+    original_name = getattr(node, "originalname", None)
     node_path = getattr(node, "path", None)
     root_path = getattr(getattr(node, "config", None), "rootpath", None)
-    if node_path is None or root_path is None:
+    if original_name is None or node_path is None or root_path is None:
         return False
     try:
-        expected_path = Path(root_path) / "tests" / "test_live_stand.py"
-        return Path(node_path).absolute() == expected_path.absolute()
+        absolute_node_path = Path(node_path).absolute()
+        absolute_root_path = Path(root_path).absolute()
+        for relative_path, test_names in _PURE_PARSER_TEST_CASES.items():
+            expected_path = (absolute_root_path / relative_path).absolute()
+            if absolute_node_path == expected_path:
+                return original_name in test_names
     except (OSError, RuntimeError, TypeError, ValueError):
         return False
+    return False
 
 
 def _is_sqlite_memory_database(database_url: str) -> bool:

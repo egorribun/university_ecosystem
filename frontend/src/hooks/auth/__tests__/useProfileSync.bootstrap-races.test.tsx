@@ -90,11 +90,18 @@ afterEach(async () => {
   if (failures.length) throw new AggregateError(failures, "Profile test cleanup failed")
 })
 
-const renderBootstrap = ({ holdRequest = false, holdResult = false } = {}) => {
+const renderBootstrap = ({
+  holdProfileResponse = false,
+  holdRequest = false,
+  holdResult = false,
+} = {}) => {
+  const profileGate = gate()
   const requestGate = gate()
   const resultGate = gate()
+  if (!holdProfileResponse) profileGate.release()
   if (!holdRequest) requestGate.release()
   if (!holdResult) resultGate.release()
+  let profileStarted = false
   let started = false
   let acquired = false
   const operations: Promise<unknown>[] = []
@@ -103,6 +110,11 @@ const renderBootstrap = ({ holdRequest = false, holdResult = false } = {}) => {
     return promise
   }
   server.use(
+    http.get("*/users/me", async () => {
+      profileStarted = true
+      await profileGate.promise
+      return HttpResponse.json(olderProfile)
+    }),
     http.get("*/auth/session/signing-key", async () => {
       started = true
       await requestGate.promise
@@ -111,7 +123,6 @@ const renderBootstrap = ({ holdRequest = false, holdResult = false } = {}) => {
   )
   const getSpy = vi.spyOn(api, "get")
   const queryClient = createQueryClient()
-  queryClient.setQueryData(currentUserQueryKey, olderProfile)
   const wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
@@ -152,6 +163,7 @@ const renderBootstrap = ({ holdRequest = false, holdResult = false } = {}) => {
       } catch (error) {
         failures.push(error)
       } finally {
+        profileGate.release()
         requestGate.release()
         resultGate.release()
         try {
@@ -179,6 +191,8 @@ const renderBootstrap = ({ holdRequest = false, holdResult = false } = {}) => {
     queryClient,
     getSpy,
     track,
+    profileStarted: () => profileStarted,
+    releaseProfileResponse: profileGate.release,
     started: () => started,
     acquired: () => acquired,
     releaseRequest: requestGate.release,
@@ -199,12 +213,18 @@ describe("profile bootstrap ownership races", () => {
     }
   })
 
-  it("does not request a key after a newer identity overtakes cached query continuation", async () => {
-    const view = renderBootstrap()
+  it("does not request a key after a newer identity overtakes a late profile response", async () => {
+    const view = renderBootstrap({ holdProfileResponse: true })
+    await waitFor(() => expect(view.profileStarted()).toBe(true))
     act(() => view.result.current.profile.setUser(newerProfile))
+    await act(async () => {
+      view.releaseProfileResponse()
+    })
     await waitFor(() => expect(view.result.current.profile.loading).toBe(false))
     expect(view.result.current.profile.user?.id).toBe(newerProfile.id)
-    expect(view.getSpy).not.toHaveBeenCalled()
+    const requestedPaths = view.getSpy.mock.calls.map(([path]) => String(path).split("?")[0])
+    expect(requestedPaths.filter((path) => path === "/users/me")).toHaveLength(1)
+    expect(requestedPaths.filter((path) => path === "/auth/session/signing-key")).toHaveLength(0)
     expect(view.queryClient.getQueryData(currentUserQueryKey)).toEqual(newerProfile)
   })
 

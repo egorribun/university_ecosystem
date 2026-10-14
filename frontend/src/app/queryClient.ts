@@ -154,10 +154,26 @@ let cacheIdentity: string | null = null
 let cacheEpoch = 0
 let restoredClient: PersistedClient | undefined
 let persistenceQueue: Promise<void> = Promise.resolve()
+const cacheIdentityListeners = new Set<() => void>()
+
+/** Subscribe render barriers to cache-owner changes after retired data is cleared. */
+export function subscribeQueryCacheIdentity(listener: () => void) {
+  cacheIdentityListeners.add(listener)
+  return () => cacheIdentityListeners.delete(listener)
+}
+
+/** Read the committed owner used to namespace the browser query cache. */
+export const getQueryCacheIdentity = (): string | null => cacheIdentity
+
+/** Whether the current query cache has been committed for this auth owner. */
+export const isQueryCacheIdentity = (owner: string | null): boolean => cacheIdentity === owner
 
 /** Publish the identity before rendering a new profile or clearing its caches. */
-export function setQueryCacheIdentity(owner: string | null) {
-  if (owner === cacheIdentity) return
+export function setQueryCacheIdentity(owner: string | null, beforeNotify?: () => void): boolean {
+  if (owner === cacheIdentity) {
+    beforeNotify?.()
+    return false
+  }
   cacheIdentity = owner
   cacheEpoch += 1
   invalidateSessionEpoch()
@@ -170,6 +186,9 @@ export function setQueryCacheIdentity(owner: string | null) {
     if (client) client.clear()
     else browserClients.delete(reference)
   }
+  beforeNotify?.()
+  for (const listener of cacheIdentityListeners) listener()
+  return true
 }
 
 useAuthStore.subscribe((state) => {

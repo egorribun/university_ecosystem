@@ -11,6 +11,9 @@ from types import ModuleType
 
 import pytest
 
+from tests.quality_normalizer_v2_testkit import (
+    make_all_strict_synthetic_contract,
+)
 from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -73,7 +76,9 @@ def _missing() -> dict[str, object]:
 def _valid_manifest_fixture(
     tmp_path: Path,
 ) -> tuple[dict[str, object], dict[str, object], Path]:
-    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract = make_all_strict_synthetic_contract(
+        json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    )
     assert contract["version"] == 2
     tier0_source = tmp_path / "services" / "pkg" / "spicedb" / "client.go"
     tier0_source.parent.mkdir(parents=True, exist_ok=True)
@@ -259,6 +264,15 @@ def _validate(
         repository_root=repo_root,
         schema_path=SCHEMA_PATH,
     )
+
+
+def test_synthetic_manifest_contract_omits_repository_bound_migration_baseline(
+    git_evidence_root: Path,
+) -> None:
+    contract, _, _ = _valid_manifest_fixture(git_evidence_root)
+    tier0 = contract["tier0"]
+    assert isinstance(tier0, dict)
+    assert "legacy_migration_baselines" not in tier0
 
 
 def test_v2_manifest_accepts_go_tier0_na_only_for_zero_floor(
@@ -706,12 +720,15 @@ def test_validator_cli_uses_explicit_schema_and_artifact_root(
     git_evidence_root: Path,
 ) -> None:
     validator = _load_validator()
-    _, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    contract_path = git_evidence_root / "quality" / "quality-contract.json"
+    contract_path.parent.mkdir(parents=True, exist_ok=True)
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
 
     exit_code = validator.main(
         [
             "--contract",
-            str(CONTRACT_PATH),
+            str(contract_path),
             "--manifest",
             str(manifest_path),
             "--schema",
