@@ -12,6 +12,7 @@ export type LiveRateLimitRetryCheck =
   | "password-reset-replay"
   | "email-otp-verification-wrong-code"
   | "email-otp-verification-stale-code"
+  | "email-mfa-enabled-login"
 export type LiveRateLimitRetryDecision =
   "retry" | "declined-header" | "declined-deadline" | "not-retried"
 
@@ -169,7 +170,8 @@ export function reportLiveRateLimitRetry(
     (check !== "auth-logout" &&
       check !== "password-reset-replay" &&
       check !== "email-otp-verification-wrong-code" &&
-      check !== "email-otp-verification-stale-code") ||
+      check !== "email-otp-verification-stale-code" &&
+      check !== "email-mfa-enabled-login") ||
     !validRetryAfter ||
     (decision !== "retry" &&
       decision !== "declined-header" &&

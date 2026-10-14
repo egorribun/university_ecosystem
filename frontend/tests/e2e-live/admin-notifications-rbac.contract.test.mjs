@@ -205,9 +205,20 @@ test("admin page-error diagnostics are scoped to these exact scenarios and prese
     pageErrorDiagnostic.includes("teacher cannot view or mutate notification queue data"),
     "teacher denial title is an explicit allowed case"
   )
-  assert.ok(
-    pageErrorDiagnostic.includes('type DiagnosticCheck = "password-reset" | "admin-notifications"'),
-    "the emitted check label is a finite union"
+  const diagnosticCheckType =
+    pageErrorDiagnostic.match(/type DiagnosticCheck =([\s\S]*?)\r?\ntype DiagnosticSource/u)?.[1] ??
+    ""
+  const diagnosticChecks = [...diagnosticCheckType.matchAll(/"([^"]+)"/gu)].map((match) => match[1])
+  assert.deepEqual(
+    diagnosticChecks,
+    [
+      "password-reset",
+      "admin-notifications",
+      "auth-roles",
+      "map-gesture",
+      "schedule-grid-keyboard",
+    ],
+    "the emitted check label is the exact finite union"
   )
   assert.ok(
     pageErrorDiagnostic.includes('case "/admin/notifications":'),

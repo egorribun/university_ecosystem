@@ -139,6 +139,11 @@ export const dynamicTranslationRegistry = {
     "auth:mfa.otp.descriptions.totp",
     "auth:mfa.otp.descriptions.email_otp",
   ],
+  rootMetadataKey: [
+    "navigation:brandName",
+    "navigation:brandDescription",
+    "navigation:socialDescription",
+  ],
   "navigation:role.${roleKey}": [
     "navigation:role.admin",
     "navigation:role.teacher",

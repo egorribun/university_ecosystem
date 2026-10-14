@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   deletedUserIds: [],
   browser: undefined,
   pageContextCount: 0,
+  deadlineReads: [],
 }))
 
 vi.mock("../scripts/live-e2e-credentials.mjs", () => ({
@@ -27,14 +28,24 @@ vi.mock("../scripts/live-e2e-credentials.mjs", () => ({
 
 vi.mock("../scripts/live-registration-admission.mjs", () => ({
   REGISTRATION_MAX_TEST_TIMEOUT_MS: 360_000,
-  readPlaywrightTestSlotDeadlineAtMs() {
-    throw new Error("Unexpected registration admission access in cleanup-only tests")
+  readPlaywrightTestSlotDeadlineAtMs(testInfo, maximumTimeoutMs) {
+    state.deadlineReads.push({ testInfo, maximumTimeoutMs })
+    if (testInfo?.deadlineReaderThrows) throw new Error("unavailable")
+    if (
+      !Number.isFinite(testInfo?.timeout) ||
+      testInfo.timeout <= 0 ||
+      testInfo.timeout > maximumTimeoutMs
+    ) {
+      return null
+    }
+    return testInfo.translatedDeadlineAtMs ?? null
   },
   reportLiveRegistrationAdmissionFailure() {},
   runLiveRegistrationAdmission() {
     throw new Error("Unexpected registration admission access in cleanup-only tests")
   },
 }))
+
 vi.mock("./e2e-live/http-status-diagnostic", async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -133,6 +144,7 @@ beforeEach(() => {
   state.deletedUserIds = []
   state.browser = createBrowserMock()
   state.pageContextCount = 0
+  state.deadlineReads = []
 })
 
 function createPage(scenario = state.scenario) {
@@ -273,14 +285,19 @@ it("uses the real remaining budget instead of an arbitrary short delay ceiling",
   expect(fixtureModule.liveRateLimitRetryFitsDeadline(60_000, 1, 10_000, 9_000, 45_001)).toBe(false)
 })
 
-it("uses the pinned test-slot deadline after setup elapsed and preserves a valid retry window", () => {
+it("uses the translated local deadline when Playwright's worker clock has a different origin", () => {
   const info = {
     ...testInfo(),
-    _deadline: () => ({ deadline: 60_000, timeout: 60_000 }),
+    translatedDeadlineAtMs: 60_000,
+    _deadline: () => ({ deadline: 510_000, timeout: 60_000 }),
   }
-  const slotDeadline = fixtureModule.liveTestSlotDeadlineAtMs(info, 10_000)
+  const slotDeadline = fixtureModule.liveTestSlotDeadlineAtMs(info)
   expect(slotDeadline).toBe(60_000)
-  expect(slotDeadline).not.toBe(70_000)
+  expect(slotDeadline).not.toBe(510_000)
+  expect(state.deadlineReads[state.deadlineReads.length - 1]).toEqual({
+    testInfo: info,
+    maximumTimeoutMs: 180_000,
+  })
 
   const beforeBody = fixtureModule.assessLiveRateLimitRetry(info, 9, 20_000, 20_000, 10_000)
   expect(beforeBody).toEqual({ decision: "retry", deadlineAtMs: 60_000 })
@@ -289,38 +306,23 @@ it("uses the pinned test-slot deadline after setup elapsed and preserves a valid
 })
 
 it.each([
-  ["missing clock", testInfo()],
+  ["missing translated deadline", { ...testInfo() }],
+  ["non-finite translated deadline", { ...testInfo(), translatedDeadlineAtMs: Number.NaN }],
   [
-    "thrown clock",
-    {
-      ...testInfo(),
-      _deadline() {
-        throw new Error("unavailable")
-      },
-    },
+    "timeout above the approved ceiling",
+    { ...testInfo({ timeout: 180_001 }), translatedDeadlineAtMs: 180_001 },
   ],
-  ["malformed clock", { ...testInfo(), _deadline: () => ({ deadline: NaN, timeout: 60_000 }) }],
-  [
-    "mismatched timeout",
-    { ...testInfo(), _deadline: () => ({ deadline: 60_000, timeout: 59_999 }) },
-  ],
-  ["expired slot", { ...testInfo(), _deadline: () => ({ deadline: 10_000, timeout: 60_000 }) }],
-])("declines retry when the actual slot deadline is %s", (_label, info) => {
-  expect(fixtureModule.liveTestSlotDeadlineAtMs(info, 20_000)).toBeNull()
+])("declines retry when the translated slot deadline is %s", (_label, info) => {
+  expect(fixtureModule.liveTestSlotDeadlineAtMs(info)).toBeNull()
   expect(fixtureModule.assessLiveRateLimitRetry(info, 1, 20_000, 20_000, 20_000)).toEqual({
     decision: "declined-deadline",
     deadlineAtMs: null,
   })
 })
 
-it("declines when reading the private slot clock throws", () => {
-  const info = testInfo()
-  Object.defineProperty(info, "_deadline", {
-    get() {
-      throw new Error("unavailable")
-    },
-  })
-  expect(fixtureModule.liveTestSlotDeadlineAtMs(info, 20_000)).toBeNull()
+it("declines when the shared slot clock reader throws", () => {
+  const info = { ...testInfo(), deadlineReaderThrows: true }
+  expect(fixtureModule.liveTestSlotDeadlineAtMs(info)).toBeNull()
   expect(fixtureModule.assessLiveRateLimitRetry(info, 1, 20_000, 20_000, 20_000)).toEqual({
     decision: "declined-deadline",
     deadlineAtMs: null,
@@ -330,7 +332,7 @@ it("declines when reading the private slot clock throws", () => {
 it("declines once delay, request and shared assertion tail no longer fit", () => {
   const info = {
     ...testInfo(),
-    _deadline: () => ({ deadline: 60_000, timeout: 60_000 }),
+    translatedDeadlineAtMs: 60_000,
   }
   expect(fixtureModule.assessLiveRateLimitRetry(info, 1, 20_000, 20_000, 19_800)).toEqual({
     decision: "declined-deadline",
@@ -342,9 +344,9 @@ it("declines once delay, request and shared assertion tail no longer fit", () =>
 it("accepts the existing 150 second OTP slot but fails closed above the approved 180 second ceiling", () => {
   const info = {
     ...testInfo({ timeout: 150_000 }),
-    _deadline: () => ({ deadline: 150_000, timeout: 150_000 }),
+    translatedDeadlineAtMs: 150_000,
   }
-  expect(fixtureModule.liveTestSlotDeadlineAtMs(info, 1_000)).toBe(150_000)
+  expect(fixtureModule.liveTestSlotDeadlineAtMs(info)).toBe(150_000)
   expect(fixtureModule.assessLiveRateLimitRetry(info, 5, 20_000, 50_000, 1_000)).toEqual({
     decision: "retry",
     deadlineAtMs: 150_000,
@@ -352,9 +354,9 @@ it("accepts the existing 150 second OTP slot but fails closed above the approved
 
   const overCeiling = {
     ...testInfo({ timeout: 180_001 }),
-    _deadline: () => ({ deadline: 180_001, timeout: 180_001 }),
+    translatedDeadlineAtMs: 180_001,
   }
-  expect(fixtureModule.liveTestSlotDeadlineAtMs(overCeiling, 1_000)).toBeNull()
+  expect(fixtureModule.liveTestSlotDeadlineAtMs(overCeiling)).toBeNull()
   expect(fixtureModule.assessLiveRateLimitRetry(overCeiling, 5, 20_000, 50_000, 1_000)).toEqual({
     decision: "declined-deadline",
     deadlineAtMs: null,

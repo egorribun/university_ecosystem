@@ -17,6 +17,8 @@ const adminNotificationsPath =
   "/workspace/frontend/tests/e2e-live/admin-notifications-rbac.live.spec.ts"
 const authRolesPath = "/workspace/frontend/tests/e2e-live/auth-roles.live.spec.ts"
 const mapGesturePath = "/workspace/frontend/tests/e2e-live/map-gesture-isolation.live.spec.ts"
+const scheduleGridPath = "/workspace/frontend/tests/e2e-live/schedule-grid-keyboard.live.spec.ts"
+const scheduleGridTitle = "Enter opens the lesson in the keyboard-selected schedule grid cell"
 const mapGestureTitles = [
   "live map captures wheel zoom without page scroll or center drift",
   "live map leaves page scrolling available outside the map",
@@ -208,12 +210,110 @@ test("map gesture diagnostics emit fixed route and error categories only", () =>
     output,
     [
       "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture " + "page=map type=error count=1\n",
+      "UE_LIVE_PAGE_ERROR_DETAIL_V1 project=desktop check=map-gesture page=map type=error source=unknown line=0 column=0 count=1\n",
       "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture " +
         "page=login type=type-error count=1\n",
+      "UE_LIVE_PAGE_ERROR_DETAIL_V1 project=desktop check=map-gesture page=login type=type-error source=unknown line=0 column=0 count=1\n",
       "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=other type=type-error count=1\n",
+      "UE_LIVE_PAGE_ERROR_DETAIL_V1 project=desktop check=map-gesture page=other type=type-error source=unknown line=0 column=0 count=1\n",
     ].join("")
   )
   assert.doesNotMatch(output, /private-message|private-token/u)
+})
+
+test("schedule grid diagnostics require the exact project, file, and title", () => {
+  const childSource =
+    "import { isLiveScheduleGridKeyboardScenario } from " +
+    JSON.stringify(helperUrl.href) +
+    ";\n" +
+    "console.log(JSON.stringify([" +
+    'isLiveScheduleGridKeyboardScenario("desktop", ' +
+    JSON.stringify(scheduleGridPath) +
+    ", " +
+    JSON.stringify(scheduleGridTitle) +
+    ")," +
+    'isLiveScheduleGridKeyboardScenario("mobile", ' +
+    JSON.stringify(scheduleGridPath) +
+    ", " +
+    JSON.stringify(scheduleGridTitle) +
+    ")," +
+    'isLiveScheduleGridKeyboardScenario("private-project", ' +
+    JSON.stringify(scheduleGridPath) +
+    ", " +
+    JSON.stringify(scheduleGridTitle) +
+    ")," +
+    'isLiveScheduleGridKeyboardScenario("desktop", ' +
+    JSON.stringify(scheduleGridPath + ".backup") +
+    ", " +
+    JSON.stringify(scheduleGridTitle) +
+    ")," +
+    'isLiveScheduleGridKeyboardScenario("desktop", ' +
+    JSON.stringify(scheduleGridPath) +
+    ", " +
+    JSON.stringify(scheduleGridTitle + " private-title") +
+    ")," +
+    'isLiveScheduleGridKeyboardScenario("desktop", { toString() { throw Error("private-file") } }, ' +
+    JSON.stringify(scheduleGridTitle) +
+    ")" +
+    "]));"
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], {
+    encoding: "utf8",
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stderr, "")
+  assert.equal(result.stdout, "[true,false,false,false,false,false]\n")
+})
+
+test("map and schedule diagnostics emit only fixed source buckets and numeric positions", () => {
+  const output = reportInChild(
+    [
+      "const diagnostics = createLivePageErrorDiagnostics();",
+      'const first = new EvalError("private-message https://private.invalid/private-path?token=secret");',
+      'first.stack = "EvalError: private-message\\n    at eval (eval at loadScript (https://private.invalid/assets/maplibre-gl-worker-CupLwWe3.mjs?token=secret:1:15069), <anonymous>:1:1)";',
+      'const second = new EvalError("private-message");',
+      'second.stack = "EvalError: private-message\\n    at eval (eval at loadScript (https://private.invalid/assets/maplibre-gl-worker-OtherHash.mjs:9:77), <anonymous>:1:1)";',
+      'diagnostics.record(first, "/map", "map-gesture");',
+      'diagnostics.record(second, "/map", "map-gesture");',
+      'const scheduleError = new TypeError("private-message");',
+      'scheduleError.stack = "TypeError: private-message\\n    at render (https://private.invalid/assets/schedule-view-Qwerty12.js:27:88)";',
+      'diagnostics.record(scheduleError, "/schedule", "schedule-grid-keyboard");',
+      'diagnostics.report("desktop", "map-gesture");',
+      'diagnostics.report("desktop", "schedule-grid-keyboard");',
+    ].join("\n")
+  )
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=eval-error count=2\n",
+      "UE_LIVE_PAGE_ERROR_DETAIL_V1 project=desktop check=map-gesture page=map type=eval-error source=map-worker line=1 column=15069 count=2\n",
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=schedule-grid-keyboard page=schedule type=type-error count=1\n",
+      "UE_LIVE_PAGE_ERROR_DETAIL_V1 project=desktop check=schedule-grid-keyboard page=schedule type=type-error source=schedule-bundle line=27 column=88 count=1\n",
+    ].join("")
+  )
+  assert.doesNotMatch(
+    output,
+    /private-message|private\.invalid|private-path|token=|secret|CupLwWe3|Qwerty12|<anonymous>/u
+  )
+})
+
+test("source detail diagnostics tolerate private or malformed stack access", () => {
+  const output = reportInChild(
+    [
+      "const diagnostics = createLivePageErrorDiagnostics();",
+      'const malformed = { name: "EvalError", get stack() { throw new Error("private-stack-getter") } };',
+      'diagnostics.record(malformed, "/map", "map-gesture");',
+      'diagnostics.record({ name: "EvalError", stack: { toString() { throw Error("private-coercion") } } }, "/map", "map-gesture");',
+      'diagnostics.report("desktop", "map-gesture");',
+    ].join("\n")
+  )
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=eval-error count=2\n",
+      "UE_LIVE_PAGE_ERROR_DETAIL_V1 project=desktop check=map-gesture page=map type=eval-error source=unknown line=0 column=0 count=2\n",
+    ].join("")
+  )
+  assert.doesNotMatch(output, /private-stack-getter|private-coercion/u)
 })
 
 test("auth role diagnostics require the exact denied student and teacher scenarios", () => {
@@ -384,12 +484,12 @@ test("page error diagnostics saturate counts and deduplicate bounded worker outp
   )
   assert.equal(
     reportInChild(`
-      for (let count = 1; count <= 457; count += 1) {
+      for (let count = 1; count <= 535; count += 1) {
         reportLivePageErrors("desktop", "password-reset", Array.from({ length: count }, () => new Error("private-message")));
       }
     `),
     Array.from(
-      { length: 456 },
+      { length: 534 },
       (_, i) =>
         `UE_LIVE_PAGE_ERROR_V1 project=desktop check=password-reset page=reset-password type=error count=${i + 1}\n`
     ).join("")
@@ -419,14 +519,19 @@ test("page error diagnostics have no browser, private error field, or artifact a
   const source = await readFile(helperUrl, "utf8")
   assert.doesNotMatch(
     source,
-    /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\.(?:stack|code)\b|\b(?:page|browser|context|response|request)\.|\bURL\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
+    /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\.code\b|\b(?:page|browser|context|response|request)\.|\bURL\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
+  )
+  assert.equal(
+    (source.match(/\.stack\b/gu) ?? []).length,
+    1,
+    "the only stack read is the guarded, bounded source-location classifier"
   )
   assert.equal(
     (source.match(/\.message\b/gu) ?? []).length,
     1,
     "the only private-message read is the fixed React 418 classifier"
   )
-  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
+  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 2)
 })
 
 test("reset diagnostic wiring preserves the hard page error and replay assertions", async () => {

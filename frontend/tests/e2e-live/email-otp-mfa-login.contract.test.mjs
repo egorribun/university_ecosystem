@@ -32,8 +32,48 @@ test("email OTP MFA login uses a live synthetic account without exposing challen
     "email-mfa-login-accept",
   ]
   requireMatch(
-    /import \{ reportLiveHttpStatus \} from ["']\.\/http-status-diagnostic/u,
-    "MFA HTTP status observations use the bounded diagnostic helper"
+    /import \{ reportLiveHttpStatus, reportLiveRateLimitRetry \} from ["']\.\/http-status-diagnostic/u,
+    "MFA status and retry observations use the bounded diagnostic helper"
+  )
+  requireMatch(
+    /const retryAfter = parseLiveRateLimitRetryAfter\(loginResponse\.headers\(\)\["retry-after"\]\)/u,
+    "the reporter is fed only the parsed Retry-After seconds or null"
+  )
+  requireMatch(
+    /reportLiveRateLimitRetry\(\s*testInfo\.project\.name\s*,\s*["']email-mfa-enabled-login["']\s*,\s*retryAfter/u,
+    "MFA login retry diagnostics use the one closed label and parsed seconds"
+  )
+  requireMatch(
+    /Math\.max\(0, Math\.min\(60_000, Math\.floor\(deadline - performance\.now\(\)\)\)\)/u,
+    "remaining milliseconds are clamped to the parser's closed 0..60000 range"
+  )
+  requireMatch(
+    /retryAfter === null \? ["']declined-header["'] : ["']declined-deadline["'][\s\S]*?boundedRetryRemainingMs\(testInfo, retryDecision\.deadlineAtMs\)/u,
+    "an invalid header or initial deadline decline is reported without exposing header text"
+  )
+  requireMatch(
+    /afterWait\.decision[\s\S]*?boundedRetryRemainingMs\(testInfo, afterWait\.deadlineAtMs\)/u,
+    "a retry that no longer fits after the bounded wait is reported as declined"
+  )
+  requireMatch(
+    /if \(responseTimeoutMs === null \|\| actionTimeoutMs === null\)[\s\S]*?throw new Error\("MFA login retry exhausted its bounded request budget"\)\s*\}\s*reportLiveRateLimitRetry\(\s*testInfo\.project\.name\s*,\s*["']email-mfa-enabled-login["']\s*,\s*retryAfter\s*,\s*["']retry["']\s*,\s*boundedRetryRemainingMs\(testInfo, afterWait\.deadlineAtMs\)\s*\)\s*const retryResponsePromise/u,
+    "a retry decision is emitted only after both deadline checks and request-timeout validation"
+  )
+  requireMatch(
+    /MFA_LOGIN_RETRY_REQUEST_BUDGET_MS = 20_000/u,
+    "the retry request budget remains 20 seconds"
+  )
+  requireMatch(
+    /MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS = 100_000/u,
+    "the cleanup reserve remains 100 seconds"
+  )
+  requireMatch(
+    /expect\(loginResponse\.status\(\)\)\.toBe\(202\)/u,
+    "MFA login still requires the final 202 response"
+  )
+  requireMatch(
+    /expect\(earlyResendResponse\.status\(\)\)\.toBe\(429\)/u,
+    "the early resend 429 remains a hard assertion"
   )
   assert.deepEqual(
     [

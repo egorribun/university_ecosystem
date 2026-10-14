@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto"
 import { Browser, BrowserContext, Page, Response, TestInfo } from "@playwright/test"
-import { reportLiveHttpStatus } from "./http-status-diagnostic"
+import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import {
   withLiveRegistrationAdmission,
   assessLiveRateLimitRetry,
   expect,
   liveDeadlineBoundedTimeoutMs,
+  liveTestSlotDeadlineAtMs,
   freshPassword,
   loginAs,
   loginWith,
@@ -22,6 +23,12 @@ const EMAIL_CODE = /(?:Verification code|Код подтверждения):\s*(
 const OTP_INPUTS = 'input[inputmode="numeric"][maxlength="1"]'
 const MFA_LOGIN_RETRY_REQUEST_BUDGET_MS = 20_000
 const MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS = 100_000
+
+function boundedRetryRemainingMs(testInfo: TestInfo, deadlineAtMs: number | null): number {
+  const deadline = deadlineAtMs ?? liveTestSlotDeadlineAtMs(testInfo)
+  if (deadline === null || !Number.isFinite(deadline)) return 0
+  return Math.max(0, Math.min(60_000, Math.floor(deadline - performance.now())))
+}
 
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
@@ -528,6 +535,13 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
         retryDecision.decision !== "retry" ||
         retryDecision.deadlineAtMs === null
       ) {
+        reportLiveRateLimitRetry(
+          testInfo.project.name,
+          "email-mfa-enabled-login",
+          retryAfter,
+          retryAfter === null ? "declined-header" : "declined-deadline",
+          boundedRetryRemainingMs(testInfo, retryDecision.deadlineAtMs)
+        )
         throw new Error("Rate-limited MFA login has no safe bounded retry window")
       }
 
@@ -539,6 +553,13 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
         MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS
       )
       if (afterWait.decision !== "retry" || afterWait.deadlineAtMs === null) {
+        reportLiveRateLimitRetry(
+          testInfo.project.name,
+          "email-mfa-enabled-login",
+          retryAfter,
+          afterWait.decision,
+          boundedRetryRemainingMs(testInfo, afterWait.deadlineAtMs)
+        )
         throw new Error("MFA login retry no longer fits the remaining test slot")
       }
 
@@ -556,8 +577,22 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
         MFA_LOGIN_RETRY_REQUEST_BUDGET_MS
       )
       if (responseTimeoutMs === null || actionTimeoutMs === null) {
+        reportLiveRateLimitRetry(
+          testInfo.project.name,
+          "email-mfa-enabled-login",
+          retryAfter,
+          "declined-deadline",
+          boundedRetryRemainingMs(testInfo, afterWait.deadlineAtMs)
+        )
         throw new Error("MFA login retry exhausted its bounded request budget")
       }
+      reportLiveRateLimitRetry(
+        testInfo.project.name,
+        "email-mfa-enabled-login",
+        retryAfter,
+        "retry",
+        boundedRetryRemainingMs(testInfo, afterWait.deadlineAtMs)
+      )
 
       const retryResponsePromise = login.page.waitForResponse(isApiResponse("/auth/login"), {
         timeout: responseTimeoutMs,

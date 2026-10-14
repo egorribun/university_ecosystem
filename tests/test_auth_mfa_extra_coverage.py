@@ -41,6 +41,7 @@ from app.auth.mfa.totp import (
 )
 from app.core.config import settings
 from app.core.ratelimit.exceptions import RateLimitExceeded
+from app.core.ratelimit.models import RateLimitInfo
 from app.models import (
     ActiveSession,
     MfaChallenge,
@@ -564,19 +565,21 @@ async def test_challenge_rate_limiting_disabled(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_challenge_rate_limiting_exceeded():
-    # Mock enforce_rate_limit to raise RateLimitExceeded -> raises HTTPException (lines 69-70 covered)
+@pytest.mark.parametrize("retry_after", [0, 17, 60, 600])
+async def test_challenge_rate_limiting_exceeded(retry_after: int) -> None:
+    info = RateLimitInfo(allowed=False, remaining=0, retry_after=retry_after)
     with patch(
         "app.auth.mfa.challenge.enforce_rate_limit",
-        side_effect=RateLimitExceeded(info=MagicMock()),
+        side_effect=RateLimitExceeded(info=info),
     ):
         with patch.object(settings, "mfa_challenge_max_attempts", 5):
-            with patch.object(settings, "mfa_challenge_ttl_seconds", 300):
+            with patch.object(settings, "mfa_challenge_ttl_seconds", 600):
                 with pytest.raises(HTTPException) as exc:
                     await _enforce_challenge_rate_limit(
                         user_id=uuid4(), challenge_type="totp"
                     )
                 assert exc.value.status_code == 429
+                assert exc.value.headers == {"Retry-After": str(retry_after)}
 
 
 def test_extract_attempt_limit_none():

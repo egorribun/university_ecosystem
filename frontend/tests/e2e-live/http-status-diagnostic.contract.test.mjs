@@ -140,6 +140,25 @@ test("retry decisions retain the original V1 five-field protocol", () => {
   )
 })
 
+test("MFA login retry diagnostics accept only bounded decisions", () => {
+  const output = reportInChild(`
+    reportLiveRateLimitRetry("mobile", "email-mfa-enabled-login", 17, "retry", 60000);
+    reportLiveRateLimitRetry("desktop", "email-mfa-enabled-login", null, "declined-header", 0);
+    reportLiveRateLimitRetry("mobile", "email-mfa-enabled-login", 17, "declined-deadline", 1);
+    reportLiveRateLimitRetry("desktop", "email-mfa-enabled-login", 17, "not-retried", 1);
+    reportLiveRateLimitRetry("desktop", "email-mfa-enabled-login-private", 17, "retry", 1);
+    reportLiveRateLimitRetry("desktop", "email-mfa-enabled-login", 61, "retry", 1);
+  `)
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_RETRY_V1 project=mobile check=email-mfa-enabled-login retry_after_seconds=17 decision=retry remaining_ms=60000\n",
+      "UE_LIVE_RETRY_V1 project=desktop check=email-mfa-enabled-login retry_after_seconds=invalid decision=declined-header remaining_ms=0\n",
+      "UE_LIVE_RETRY_V1 project=mobile check=email-mfa-enabled-login retry_after_seconds=17 decision=declined-deadline remaining_ms=1\n",
+    ].join("")
+  )
+})
+
 test("stale-code throttling records bounded Retry-After without retrying", () => {
   const output = reportInChild(`
     const shortWindow = parseLiveRateLimitRetryAfterForDiagnostic("61");

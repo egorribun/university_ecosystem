@@ -2146,6 +2146,94 @@ def _footer_geometry_row(**overrides: str) -> str:
     )
 
 
+def _news_viewport_row(**overrides: str) -> str:
+    fields = {
+        "project": "desktop",
+        "language": "ru",
+        "width": "390",
+        "viewportHeight": "900",
+        "scrollY": "-12",
+        "top": "-4",
+        "bottom": "22",
+        "left": "0",
+        "right": "390",
+    }
+    fields.update(overrides)
+    return (
+        "UE_LIVE_NEWS_VIEWPORT_V1 "
+        + " ".join(f"{name}={value}" for name, value in fields.items())
+        + "\n"
+    )
+
+
+def _page_error_detail_row(**overrides: str) -> str:
+    fields = {
+        "project": "desktop",
+        "check": "map-gesture",
+        "page": "map",
+        "type": "type-error",
+        "source": "map-worker",
+        "line": "17",
+        "column": "4",
+        "count": "2",
+    }
+    fields.update(overrides)
+    return (
+        "UE_LIVE_PAGE_ERROR_DETAIL_V1 "
+        + " ".join(f"{name}={value}" for name, value in fields.items())
+        + "\n"
+    )
+
+
+def test_live_playwright_news_viewport_accepts_bounded_crlf_row() -> None:
+    row = _news_viewport_row().replace("\n", "\r\n")
+    assert live_stand._live_playwright_news_viewports(row) == [
+        ("desktop", "ru", 390, 900, -12, -4, 22, 0, 390)
+    ]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        _news_viewport_row(project="private-project"),
+        _news_viewport_row(language="fr"),
+        _news_viewport_row(width="391"),
+        _news_viewport_row(viewportHeight="0"),
+        _news_viewport_row(viewportHeight="1000000"),
+        _news_viewport_row(scrollY="1000000"),
+        _news_viewport_row(scrollY="-1000000"),
+        _news_viewport_row(top="-1000000"),
+        _news_viewport_row(bottom="-5"),
+        _news_viewport_row(right="-1"),
+        _news_viewport_row(bottom="not-a-number"),
+        _news_viewport_row().replace("right=390", "right=390 private-token"),
+        _news_viewport_row().rstrip("\n"),
+        _news_viewport_row().replace("\n", "\x00\n"),
+    ],
+)
+def test_live_playwright_news_viewport_rejects_malformed_or_private_rows(
+    row: str,
+) -> None:
+    assert live_stand._live_playwright_news_viewports(row) == []
+
+
+def test_live_playwright_news_viewport_deduplicates_and_caps_allowed_tuples() -> None:
+    rows = "".join(
+        _news_viewport_row(project=project, language=language, width=str(width))
+        for project in ("desktop", "mobile")
+        for language in ("ru", "en")
+        for width in (360, 390, 768, 1024, 1440)
+    )
+    parsed = live_stand._live_playwright_news_viewports(rows + rows)
+    assert len(parsed) == 20
+    assert {(record[0], record[1], record[2]) for record in parsed} == {
+        (project, language, width)
+        for project in ("desktop", "mobile")
+        for language in ("ru", "en")
+        for width in (360, 390, 768, 1024, 1440)
+    }
+
+
 def test_live_playwright_a11y_phase_parser_accepts_two_fixed_phases_per_route() -> None:
     rows = (
         _a11y_phase_row()
@@ -2508,7 +2596,10 @@ def test_live_playwright_rate_limit_metadata_deduplicates_and_caps_records() -> 
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
-@pytest.mark.parametrize("check", ["auth-logout", "password-reset-replay"])
+@pytest.mark.parametrize(
+    "check",
+    ["auth-logout", "password-reset-replay", "email-mfa-enabled-login"],
+)
 @pytest.mark.parametrize("retry_after", [1, 40, 60])
 @pytest.mark.parametrize("decision", ["retry", "declined-deadline"])
 def test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions(
@@ -2524,7 +2615,10 @@ def test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions(
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
-@pytest.mark.parametrize("check", ["auth-logout", "email-otp-verification-wrong-code"])
+@pytest.mark.parametrize(
+    "check",
+    ["auth-logout", "email-otp-verification-wrong-code", "email-mfa-enabled-login"],
+)
 def test_live_playwright_retry_diagnostic_accepts_closed_check_values(
     project: str, check: str
 ) -> None:
@@ -2568,6 +2662,9 @@ def test_live_playwright_stale_code_throttle_diagnostic_is_not_retried(
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=1 decision=declined-header remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=invalid decision=declined-deadline remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=601 decision=not-retried remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=email-mfa-enabled-login retry_after_seconds=17 decision=not-retried remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=email-mfa-enabled-login retry_after_seconds=61 decision=retry remaining_ms=10\n",
+        "UE_LIVE_RETRY_V1 project=desktop check=email-mfa-enabled-login-private retry_after_seconds=17 decision=retry remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=61 decision=retry remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=email-otp-verification-stale-code retry_after_seconds=61 decision=declined-deadline remaining_ms=10\n",
         "UE_LIVE_RETRY_V1 project=desktop check=auth-logout retry_after_seconds=61 decision=not-retried remaining_ms=10\n",
@@ -3107,6 +3204,8 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
         "retry_after_seconds=40 decision=retry remaining_ms=30000\n"
         "UE_LIVE_RETRY_V1 project=mobile check=email-otp-verification-wrong-code "
         "retry_after_seconds=2 decision=retry remaining_ms=1200\n"
+        "UE_LIVE_RETRY_V1 project=mobile check=email-mfa-enabled-login "
+        "retry_after_seconds=17 decision=retry remaining_ms=59999\n"
         "UE_LIVE_RETRY_V1 project=desktop check=password-reset-replay "
         "retry_after_seconds=invalid decision=declined-header remaining_ms=0\n"
     )
@@ -3154,6 +3253,7 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
         "live E2E HTTP project=mobile check=admin-feature-flags status=403",
         "live E2E retry project=mobile check=auth-logout retry_after_seconds=40 decision=retry remaining_ms=30000",
         "live E2E retry project=mobile check=email-otp-verification-wrong-code retry_after_seconds=2 decision=retry remaining_ms=1200",
+        "live E2E retry project=mobile check=email-mfa-enabled-login retry_after_seconds=17 decision=retry remaining_ms=59999",
         "live E2E retry project=desktop check=password-reset-replay retry_after_seconds=invalid decision=declined-header remaining_ms=0",
         "live E2E rate-limit project=mobile check=auth-logout x_ratelimit_limit=5 x_ratelimit_remaining=0",
         f"live E2E outcome={outcome} exit_code={return_code}",
@@ -3259,6 +3359,177 @@ def test_live_playwright_page_errors_accept_map_gesture_domain(
     ]
 
 
+@pytest.mark.parametrize("page", ["login", "schedule", "other"])
+@pytest.mark.parametrize("kind", ["error", "react-418", "other"])
+def test_live_playwright_page_errors_accept_schedule_keyboard_domain(
+    page: str, kind: str
+) -> None:
+    sentinel = (
+        "UE_LIVE_PAGE_ERROR_V1 project=desktop check=schedule-grid-keyboard "
+        f"page={page} type={kind} count=2\r\n"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == [
+        ("desktop", "schedule-grid-keyboard", page, kind, 2)
+    ]
+
+
+def test_live_playwright_page_error_details_accept_only_matching_fixed_summaries() -> (
+    None
+):
+    map_summary = (
+        "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map "
+        "type=type-error count=2\n"
+    )
+    map_detail = _page_error_detail_row().replace("\n", "\r\n")
+    assert live_stand._live_playwright_page_error_details(
+        map_summary + map_detail + map_detail
+    ) == [("desktop", "map-gesture", "map", "type-error", "map-worker", 17, 4, 2)]
+    schedule_summary = (
+        "UE_LIVE_PAGE_ERROR_V1 project=desktop check=schedule-grid-keyboard "
+        "page=schedule type=reference-error count=1\n"
+    )
+    schedule_detail = _page_error_detail_row(
+        project="desktop",
+        check="schedule-grid-keyboard",
+        page="schedule",
+        type="reference-error",
+        source="schedule-bundle",
+        line="211",
+        column="9",
+        count="1",
+    )
+    assert live_stand._live_playwright_page_error_details(
+        schedule_summary + schedule_detail
+    ) == [
+        (
+            "desktop",
+            "schedule-grid-keyboard",
+            "schedule",
+            "reference-error",
+            "schedule-bundle",
+            211,
+            9,
+            1,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("summary", "detail"),
+    [
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(source="schedule-bundle", type="error", count="1"),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=mobile check=schedule-grid-keyboard page=schedule type=error count=1\n",
+            _page_error_detail_row(
+                project="mobile",
+                check="schedule-grid-keyboard",
+                page="schedule",
+                source="schedule-bundle",
+                line="211",
+                column="9",
+                type="error",
+                count="1",
+            ),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=schedule-grid-keyboard page=schedule type=error count=1\n",
+            _page_error_detail_row(
+                check="schedule-grid-keyboard",
+                page="schedule",
+                source="map-worker",
+                type="error",
+                count="1",
+            ),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(
+                source="unknown", line="1", column="0", type="error", count="1"
+            ),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(
+                source="unknown", line="0", column="1", type="error", count="1"
+            ),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(line="0", column="0", type="error", count="1"),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(
+                source="remote-script?query=fixture", type="error", count="1"
+            ),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(line="1000000", type="error", count="1"),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(column="1000000", type="error", count="1"),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=1\n",
+            _page_error_detail_row(count="1000", type="error"),
+        ),
+        (
+            "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map type=error count=2\n",
+            _page_error_detail_row(type="error", count="1"),
+        ),
+    ],
+)
+def test_live_playwright_page_error_details_reject_invalid_pair_or_summary(
+    summary: str, detail: str
+) -> None:
+    assert live_stand._live_playwright_page_error_details(summary + detail) == []
+
+
+def test_live_playwright_page_error_details_require_summary_and_bound_records() -> None:
+    detail = _page_error_detail_row()
+    assert live_stand._live_playwright_page_error_details(detail) == []
+    summary = (
+        "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map "
+        "type=type-error count=2\n"
+    )
+    records = "".join(_page_error_detail_row(line=str(line)) for line in range(1, 158))
+    parsed = live_stand._live_playwright_page_error_details(summary + records + records)
+    assert len(parsed) == 156
+    assert parsed[0] == (
+        "desktop",
+        "map-gesture",
+        "map",
+        "type-error",
+        "map-worker",
+        1,
+        4,
+        2,
+    )
+    assert parsed[-1] == (
+        "desktop",
+        "map-gesture",
+        "map",
+        "type-error",
+        "map-worker",
+        156,
+        4,
+        2,
+    )
+
+
+def test_live_playwright_page_errors_reject_mobile_schedule_project() -> None:
+    row = (
+        "UE_LIVE_PAGE_ERROR_V1 project=mobile check=schedule-grid-keyboard "
+        "page=schedule type=error count=1\n"
+    )
+    assert live_stand._live_playwright_page_errors(row) == []
+
+
 @pytest.mark.parametrize(
     ("check", "page", "kind"),
     [
@@ -3277,6 +3548,8 @@ def test_live_playwright_page_errors_accept_map_gesture_domain(
         ("auth-roles", "admin-notifications", "error"),
         ("map-gesture", "admin-users", "error"),
         ("map-gesture", "reset-password", "error"),
+        ("schedule-grid-keyboard", "map", "error"),
+        ("schedule-grid-keyboard", "admin-users", "error"),
     ],
 )
 def test_live_playwright_page_errors_reject_cross_scenario_domains(
@@ -3336,7 +3609,7 @@ def test_live_playwright_page_errors_deduplicate_and_bound_records() -> None:
     )
     assert live_stand._live_playwright_page_errors(output) == [
         ("desktop", "password-reset", "reset-password", "other", count)
-        for count in range(1, 457)
+        for count in range(1, 535)
     ]
 
 
@@ -3382,6 +3655,61 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
         "live E2E page error project=mobile check=password-reset page=reset-password type=other count=999",
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_playwright_emits_only_bounded_news_and_page_error_details(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    news = _news_viewport_row()
+    summary = (
+        "UE_LIVE_PAGE_ERROR_V1 project=desktop check=map-gesture page=map "
+        "type=type-error count=2\n"
+    )
+    detail = _page_error_detail_row()
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        0,
+        stdout=(
+            news + summary + detail + "private text https://private.invalid/path\n"
+        ).encode(),
+        stderr=(
+            _news_viewport_row(project="mobile", language="en", width="1440")
+            + "UE_LIVE_PAGE_ERROR_V1 project=desktop check=schedule-grid-keyboard "
+            "page=schedule type=reference-error count=1\n"
+            + _page_error_detail_row(
+                project="desktop",
+                check="schedule-grid-keyboard",
+                page="schedule",
+                type="reference-error",
+                source="schedule-bundle",
+                line="211",
+                column="9",
+                count="1",
+            )
+            + "private stderr diagnostic\n"
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E news viewport project=desktop language=ru width=390 "
+        "viewportHeight=900 scrollY=-12 top=-4 bottom=22 left=0 right=390",
+        "live E2E page error project=desktop check=map-gesture page=map "
+        "type=type-error count=2",
+        "live E2E page error detail project=desktop check=map-gesture page=map "
+        "type=type-error source=map-worker line=17 column=4 count=2",
+        "live E2E outcome=passed exit_code=0",
+    ]
+    assert "private" not in printed.out + printed.err
     assert printed.err == ""
     assert completed.stdout == completed.stderr == b""
 

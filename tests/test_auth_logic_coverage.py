@@ -128,9 +128,20 @@ async def test_issue_and_get_challenge(db_session, test_user):
         user_id=test_user.id,
         challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
         ttl_seconds=300,
+        attempt_limit=3,
     )
     assert challenge.challenge_token
     assert challenge.challenge.challenge_type == CHALLENGE_TYPE_TOTP_VERIFY
+    assert challenge.id == challenge.challenge.id
+    assert challenge.expires_at == challenge.challenge.expires_at
+    persisted_payload_result = await db_session.execute(
+        select(models.MfaChallenge.payload).where(
+            models.MfaChallenge.id == challenge.id
+        )
+    )
+    persisted_payload = persisted_payload_result.scalar_one()
+    assert persisted_payload is not None
+    assert persisted_payload["attempt_limit"] == 3
 
     retrieved = await mfa.get_challenge(
         db_session,
@@ -306,10 +317,13 @@ async def test_purge_challenges(db_session, test_user):
         db_session, user_id=test_user.id, challenge_type="test"
     )
 
-    c1.challenge.expires_at = datetime.now(UTC) - timedelta(hours=1)
+    purge_now = datetime.now(UTC)
+    c1.challenge.expires_at = purge_now - timedelta(hours=1)
     await db_session.commit()
 
-    purged = await mfa.purge_expired_challenges(db_session, grace_period_seconds=0)
+    purged = await mfa.purge_expired_challenges(
+        db_session, grace_period_seconds=0, now=purge_now
+    )
     assert purged >= 1
 
     # c1 should be gone

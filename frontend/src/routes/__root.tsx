@@ -193,11 +193,12 @@ function getRootLanguage(): string {
 }
 
 function getRootMetadataText(
-  key: "navigation:brandName" | "navigation:brandDescription" | "navigation:socialDescription"
+  rootMetadataKey:
+    "navigation:brandName" | "navigation:brandDescription" | "navigation:socialDescription"
 ): string {
   const language = getRootLanguage()
   const requestI18n = globalThis.__ssrI18nGetter__?.()
-  return (requestI18n ?? i18n).t(key, { lng: language })
+  return (requestI18n ?? i18n).t(rootMetadataKey, { lng: language })
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({

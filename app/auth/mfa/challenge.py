@@ -96,11 +96,13 @@ async def _enforce_challenge_rate_limit(
             window_seconds=window,
             strategy=get_default_strategy("mfa"),
         )
-    except RateLimitExceeded:
+    except RateLimitExceeded as exc:
+        retry_after = max(0, int(exc.info.retry_after))
         raise_http_error(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "errors.rate_limit.generic",
             locale or "en",
+            headers={"Retry-After": str(retry_after)},
         )
 
 

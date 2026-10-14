@@ -4893,6 +4893,21 @@ _PlaywrightFooterGeometry = tuple[
 ]
 
 
+_PLAYWRIGHT_NEWS_VIEWPORT_LINE = re.compile(
+    r"UE_LIVE_NEWS_VIEWPORT_V1 project=(?P<project>desktop|mobile) "
+    r"language=(?P<language>ru|en) "
+    r"width=(?P<width>360|390|768|1024|1440) "
+    r"viewportHeight=(?P<viewport_height>[1-9][0-9]{0,5}) "
+    r"scrollY=(?P<scroll_y>-?(?:0|[1-9][0-9]{0,5})) "
+    r"top=(?P<top>-?(?:0|[1-9][0-9]{0,5})) "
+    r"bottom=(?P<bottom>-?(?:0|[1-9][0-9]{0,5})) "
+    r"left=(?P<left>-?(?:0|[1-9][0-9]{0,5})) "
+    r"right=(?P<right>-?(?:0|[1-9][0-9]{0,5}))"
+)
+_PLAYWRIGHT_NEWS_VIEWPORT_LIMIT = 20
+_PlaywrightNewsViewport = tuple[str, str, int, int, int, int, int, int, int]
+
+
 _PlaywrightPushObservation = tuple[str, str, str, str, bool, bool, int]
 _PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
     r"UE_LIVE_PUSH_OBS_V1 project=(?P<project>desktop|mobile) "
@@ -6086,7 +6101,8 @@ _PLAYWRIGHT_HTTP_STATUS_LIMIT = 104
 _PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
     r"UE_LIVE_RETRY_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>auth-logout|password-reset-replay|"
-    r"email-otp-verification-wrong-code|email-otp-verification-stale-code) "
+    r"email-otp-verification-wrong-code|email-otp-verification-stale-code|"
+    r"email-mfa-enabled-login) "
     r"retry_after_seconds=(?P<retry_after>invalid|[1-9][0-9]{0,2}) "
     r"decision=(?P<decision>retry|declined-header|declined-deadline|not-retried) "
     r"remaining_ms=(?P<remaining>0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|60000)"
@@ -6300,6 +6316,56 @@ def _live_playwright_footer_geometries(output: str) -> list[_PlaywrightFooterGeo
     return records
 
 
+def _live_playwright_news_viewports(output: str) -> list[_PlaywrightNewsViewport]:
+    # Parse only the fixed stdout geometry fields.
+    records: list[_PlaywrightNewsViewport] = []
+    seen: set[tuple[str, str, int]] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 256 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_NEWS_VIEWPORT_LINE.fullmatch(line)
+        if match is None:
+            continue
+        viewport_height = int(match["viewport_height"])
+        scroll_y = int(match["scroll_y"])
+        top = int(match["top"])
+        bottom = int(match["bottom"])
+        left = int(match["left"])
+        right = int(match["right"])
+        if (
+            viewport_height <= 0
+            or bottom < top
+            or right < left
+            or any(
+                abs(value) > 999_999 for value in (scroll_y, top, bottom, left, right)
+            )
+        ):
+            continue
+        project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
+        language = match["language"]
+        width = int(match["width"])
+        key = (project, language, width)
+        if key in seen:
+            continue
+        record: _PlaywrightNewsViewport = (
+            project,
+            language,
+            width,
+            viewport_height,
+            scroll_y,
+            top,
+            bottom,
+            left,
+            right,
+        )
+        records.append(record)
+        seen.add(key)
+        if len(records) == _PLAYWRIGHT_NEWS_VIEWPORT_LIMIT:
+            break
+    return records
+
+
 def _live_playwright_push_observations(
     output: str,
 ) -> list[_PlaywrightPushObservation]:
@@ -6440,15 +6506,30 @@ def _live_playwright_rate_limit_headers(output: str) -> list[_PlaywrightRateLimi
 
 _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
     r"UE_LIVE_PAGE_ERROR_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>password-reset|admin-notifications|auth-roles|map-gesture) "
+    r"check=(?P<check>password-reset|admin-notifications|auth-roles|map-gesture|"
+    r"schedule-grid-keyboard) "
     r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|"
-    r"admin-notifications|admin-users|admin-feature-flags|map|other) "
+    r"admin-notifications|admin-users|admin-feature-flags|map|schedule|other) "
     r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
     r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
     r"count=(?P<count>[1-9][0-9]{0,2})"
 )
 # One aggregate per allowed project/check/page/type combination across all checks.
-_PLAYWRIGHT_PAGE_ERROR_LIMIT = 456
+_PLAYWRIGHT_PAGE_ERROR_LIMIT = 534
+
+_PLAYWRIGHT_PAGE_ERROR_DETAIL_LINE = re.compile(
+    r"UE_LIVE_PAGE_ERROR_DETAIL_V1 project=(?P<project>desktop|mobile) "
+    r"check=(?P<check>map-gesture|schedule-grid-keyboard) "
+    r"page=(?P<page>login|map|schedule|other) "
+    r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
+    r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
+    r"source=(?P<source>map-worker|map-shared|map-bundle|schedule-bundle|remote-script|unknown) "
+    r"line=(?P<line>0|[1-9][0-9]{0,5}) "
+    r"column=(?P<column>0|[1-9][0-9]{0,5}) "
+    r"count=(?P<count>[1-9][0-9]{0,2})"
+)
+_PLAYWRIGHT_PAGE_ERROR_DETAIL_LIMIT = 156
+_PlaywrightPageErrorDetail = tuple[str, str, str, str, str, int, int, int]
 
 
 _PLAYWRIGHT_PROFILE_SAVE_LINE = re.compile(
@@ -6551,6 +6632,13 @@ def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, 
         elif match["check"] == "map-gesture":
             if match["page"] not in {"login", "map", "other"}:
                 continue
+        elif match["check"] == "schedule-grid-keyboard":
+            if match["project"] != "desktop" or match["page"] not in {
+                "login",
+                "schedule",
+                "other",
+            }:
+                continue
         elif (
             match["page"]
             not in {
@@ -6575,6 +6663,63 @@ def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, 
             records.append(record)
             if len(records) == _PLAYWRIGHT_PAGE_ERROR_LIMIT:
                 break
+    return records
+
+
+def _live_playwright_page_error_details(
+    output: str,
+) -> list[_PlaywrightPageErrorDetail]:
+    # Retain only bounded source buckets linked to accepted summaries.
+    summaries = set(_live_playwright_page_errors(output))
+    records: list[_PlaywrightPageErrorDetail] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 256 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_PAGE_ERROR_DETAIL_LINE.fullmatch(line)
+        if match is None:
+            continue
+        check = match["check"]
+        page = match["page"]
+        source = match["source"]
+        if check == "map-gesture":
+            if page not in {"login", "map", "other"} or source not in {
+                "map-worker",
+                "map-shared",
+                "map-bundle",
+                "remote-script",
+                "unknown",
+            }:
+                continue
+        elif (
+            match["project"] != "desktop"
+            or page not in {"login", "schedule", "other"}
+            or source not in {"schedule-bundle", "remote-script", "unknown"}
+        ):
+            continue
+        line_number = int(match["line"])
+        column = int(match["column"])
+        if (source == "unknown") != (line_number == 0 and column == 0):
+            continue
+        if source != "unknown" and (line_number == 0 or column == 0):
+            continue
+        count = int(match["count"])
+        record: _PlaywrightPageErrorDetail = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            check,
+            page,
+            match["type"],
+            source,
+            line_number,
+            column,
+            count,
+        )
+        summary = (record[0], check, page, record[3], count)
+        if summary not in summaries or record in records:
+            continue
+        records.append(record)
+        if len(records) == _PLAYWRIGHT_PAGE_ERROR_DETAIL_LIMIT:
+            break
     return records
 
 
@@ -7012,9 +7157,11 @@ def _run_live_playwright(
     a11y_paint_states = _live_playwright_a11y_paint_states(stdout)
     a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
     footer_geometries = _live_playwright_footer_geometries(stdout)
+    news_viewports = _live_playwright_news_viewports(stdout)
     retry_decisions = _live_playwright_retry_decisions(stdout)
     rate_limit_headers = _live_playwright_rate_limit_headers(stdout)
     page_errors = _live_playwright_page_errors(stdout)
+    page_error_details = _live_playwright_page_error_details(stdout)
     profile_save_diagnostics = _live_playwright_profile_save_diagnostics(stdout)
     # A header from one stream must never authorize frames from the other.
     failure_locations = list(
@@ -7242,6 +7389,23 @@ def _run_live_playwright(
             f"cb_top_milli={cb_top} cb_bottom_milli={cb_bottom}",
             flush=True,
         )
+    for (
+        project,
+        language,
+        width,
+        viewport_height,
+        scroll_y,
+        top,
+        bottom,
+        left,
+        right,
+    ) in news_viewports:
+        print(
+            f"live E2E news viewport project={project} language={language} width={width} "
+            f"viewportHeight={viewport_height} scrollY={scroll_y} top={top} "
+            f"bottom={bottom} left={left} right={right}",
+            flush=True,
+        )
     for project, check, retry_after, decision, remaining_ms in retry_decisions:
         retry_after_label = "invalid" if retry_after is None else str(retry_after)
         print(
@@ -7262,6 +7426,22 @@ def _run_live_playwright(
         print(
             f"live E2E page error project={project} check={check} "
             f"page={current_page} type={error_type} count={count}",
+            flush=True,
+        )
+    for (
+        project,
+        check,
+        current_page,
+        error_type,
+        source,
+        line_number,
+        column,
+        count,
+    ) in page_error_details:
+        print(
+            f"live E2E page error detail project={project} check={check} page={current_page} "
+            f"type={error_type} source={source} line={line_number} "
+            f"column={column} count={count}",
             flush=True,
         )
     if return_code != 0:

@@ -12,6 +12,7 @@ import {
 import {
   createLivePageErrorDiagnostics,
   isLiveMapGestureScenario,
+  isLiveScheduleGridKeyboardScenario,
   isLiveAdminNotificationsScenario,
   isLiveAuthRoleDenialScenario,
 } from "./page-error-diagnostic"
@@ -270,44 +271,17 @@ export function liveRateLimitRetryFitsDeadline(
 }
 
 /**
- * Uses TestInfo's slot deadline from pinned @playwright/test 1.63.0. The API is
- * private and deliberately fails closed on an upgrade or an unexpected shape.
+ * Reads the active slot through the shared adapter, which translates Playwright's
+ * worker clock into this process's performance.now() domain and fails closed.
  */
-export function liveTestSlotDeadlineAtMs(
-  testInfo: TestInfo,
-  nowMs = performance.now()
-): number | null {
-  if (!Number.isFinite(nowMs)) return null
-  const timeoutMs = testInfo.timeout
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > LIVE_MAX_RETRY_TEST_TIMEOUT_MS) {
-    return null
-  }
-  let deadlineMethod: unknown
+export function liveTestSlotDeadlineAtMs(testInfo: TestInfo): number | null {
+  let deadlineAtMs: number | null
   try {
-    deadlineMethod = Reflect.get(testInfo, "_deadline")
+    deadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(testInfo, LIVE_MAX_RETRY_TEST_TIMEOUT_MS)
   } catch {
     return null
   }
-  if (typeof deadlineMethod !== "function") return null
-
-  let slot: unknown
-  try {
-    slot = Reflect.apply(deadlineMethod, testInfo, [])
-  } catch {
-    return null
-  }
-  if (typeof slot !== "object" || slot === null || Array.isArray(slot)) return null
-  const values = slot as { deadline?: unknown; timeout?: unknown }
-  if (
-    typeof values.deadline !== "number" ||
-    !Number.isFinite(values.deadline) ||
-    values.timeout !== timeoutMs ||
-    values.deadline <= nowMs ||
-    values.deadline > nowMs + timeoutMs + 1
-  ) {
-    return null
-  }
-  return values.deadline
+  return deadlineAtMs !== null && Number.isFinite(deadlineAtMs) ? deadlineAtMs : null
 }
 
 export type LiveRateLimitRetryDecision = "retry" | "declined-header" | "declined-deadline"
@@ -317,7 +291,7 @@ export function assessLiveRateLimitRetry(
   delaySeconds: number | null,
   requestBudgetMs: number,
   reserveMs: number,
-  nowMs = performance.now()
+  nowMs?: number
 ): { decision: LiveRateLimitRetryDecision; deadlineAtMs: number | null } {
   if (
     delaySeconds === null ||
@@ -327,10 +301,17 @@ export function assessLiveRateLimitRetry(
   ) {
     return { decision: "declined-header", deadlineAtMs: null }
   }
-  const deadlineAtMs = liveTestSlotDeadlineAtMs(testInfo, nowMs)
+  const deadlineAtMs = liveTestSlotDeadlineAtMs(testInfo)
+  const comparisonNowMs = nowMs === undefined ? performance.now() : nowMs
   if (
     deadlineAtMs === null ||
-    !liveRateLimitRetryFitsDeadline(deadlineAtMs, delaySeconds, requestBudgetMs, reserveMs, nowMs)
+    !liveRateLimitRetryFitsDeadline(
+      deadlineAtMs,
+      delaySeconds,
+      requestBudgetMs,
+      reserveMs,
+      comparisonNowMs
+    )
   ) {
     return { decision: "declined-deadline", deadlineAtMs }
   }
@@ -967,6 +948,11 @@ export const test = base.extend<{
         testInfo.file,
         testInfo.title
       )
+      const isScheduleGridKeyboardScenario = isLiveScheduleGridKeyboardScenario(
+        testInfo.project.name,
+        testInfo.file,
+        testInfo.title
+      )
       const isAdminNotificationsScenario = isLiveAdminNotificationsScenario(
         testInfo.project.name,
         testInfo.file,
@@ -985,7 +971,9 @@ export const test = base.extend<{
             ? "auth-roles"
             : isMapGestureScenario
               ? "map-gesture"
-              : null
+              : isScheduleGridKeyboardScenario
+                ? "schedule-grid-keyboard"
+                : null
       const pageErrorDiagnostics = createLivePageErrorDiagnostics()
       page.on("pageerror", (error) => {
         errors.push(error)

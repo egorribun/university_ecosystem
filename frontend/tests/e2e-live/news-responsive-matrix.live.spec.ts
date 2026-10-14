@@ -1,5 +1,5 @@
 import { expect, loginAs, test } from "./fixtures"
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
 
 const NEWS_LOCALIZATIONS = {
   en: {
@@ -20,6 +20,82 @@ const NEWS_LOCALIZATIONS = {
 
 const WIDTHS = [360, 390, 768, 1024, 1440] as const
 const VIEWPORT_HEIGHT = 900
+const NEWS_VIEWPORT_DIAGNOSTIC_LIMIT = 20
+const NEWS_VIEWPORT_DIAGNOSTIC_PIXEL_LIMIT = 999_999
+const emittedNewsViewportTuples = new Set<string>()
+
+function boundedNewsViewportPixel(value: number): number | undefined {
+  if (!Number.isFinite(value)) return undefined
+  const rounded = Math.round(value)
+  const bounded = Math.max(
+    -NEWS_VIEWPORT_DIAGNOSTIC_PIXEL_LIMIT,
+    Math.min(NEWS_VIEWPORT_DIAGNOSTIC_PIXEL_LIMIT, rounded)
+  )
+  return Number.isSafeInteger(bounded) ? bounded : undefined
+}
+
+async function reportNewsHeadingViewport(
+  page: Page,
+  heading: Locator,
+  language: keyof typeof NEWS_LOCALIZATIONS,
+  width: (typeof WIDTHS)[number]
+): Promise<void> {
+  try {
+    const project = test.info().project.name
+    if ((project !== "desktop" && project !== "mobile") || !WIDTHS.includes(width)) {
+      return
+    }
+
+    const tuple = project + "/" + language + "/" + width
+    if (
+      emittedNewsViewportTuples.has(tuple) ||
+      emittedNewsViewportTuples.size >= NEWS_VIEWPORT_DIAGNOSTIC_LIMIT
+    ) {
+      return
+    }
+
+    const [bounds, viewport] = await Promise.all([
+      heading.boundingBox(),
+      page.evaluate(() => ({ height: window.innerHeight, scrollY: window.scrollY })),
+    ])
+    if (bounds === null) return
+
+    const values = {
+      viewportHeight: boundedNewsViewportPixel(viewport.height),
+      scrollY: boundedNewsViewportPixel(viewport.scrollY),
+      top: boundedNewsViewportPixel(bounds.y),
+      bottom: boundedNewsViewportPixel(bounds.y + bounds.height),
+      left: boundedNewsViewportPixel(bounds.x),
+      right: boundedNewsViewportPixel(bounds.x + bounds.width),
+    }
+    if (Object.values(values).some((value) => value === undefined)) return
+
+    process.stdout.write(
+      "UE_LIVE_NEWS_VIEWPORT_V1 project=" +
+        project +
+        " language=" +
+        language +
+        " width=" +
+        width +
+        " viewportHeight=" +
+        values.viewportHeight +
+        " scrollY=" +
+        values.scrollY +
+        " top=" +
+        values.top +
+        " bottom=" +
+        values.bottom +
+        " left=" +
+        values.left +
+        " right=" +
+        values.right +
+        "\n"
+    )
+    emittedNewsViewportTuples.add(tuple)
+  } catch {
+    // Diagnostics must never replace the existing viewport assertion.
+  }
+}
 
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
@@ -83,6 +159,7 @@ async function verifyNewsWidths(
     await waitForLayout(page)
     await expect(page.locator("html")).toHaveAttribute("lang", locale.language)
     await expect(heading).toBeVisible()
+    await reportNewsHeadingViewport(page, heading, language, width)
     await expect(heading).toBeInViewport()
     await expect(seededArticle).toBeVisible()
 
