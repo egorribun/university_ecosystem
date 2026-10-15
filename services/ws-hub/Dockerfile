@@ -48,6 +48,6 @@ EXPOSE 8081
 
 # Note: Docker HEALTHCHECK removed in favor of Kubernetes liveness/readiness probes (TD-EXP-02)
 #checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
-USER nonroot:nonroot
+USER 65532:65532
 
 CMD ["/app/ws-hub"]

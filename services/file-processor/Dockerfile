@@ -80,7 +80,7 @@ COPY --from=health-probe /grpc_health_probe /usr/local/bin/grpc_health_probe
 # the gRPC bind and causes the healthcheck to fail.
 COPY --from=builder /app/services/file-processor/schema.graphql ./schema.graphql
 
-USER nonroot:nonroot
+USER 65532:65532
 
 #checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes and compose grpc-health-probe.
 

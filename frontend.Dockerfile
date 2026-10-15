@@ -220,7 +220,7 @@ COPY --chown=node:node frontend/scripts/server-static.mjs ./scripts/server-stati
 COPY --from=builder --chown=node:node /app/dist ./dist
 
 # Drop to non-root `node` user (UID/GID 1000, built into node:alpine images).
-USER node
+USER 1000:1000
 
 ENV NODE_ENV=production
 ENV PORT=3000

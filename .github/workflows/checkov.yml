@@ -195,20 +195,43 @@ jobs:
           IMAGE_EVIDENCE_SHA256: ${{ steps.oci_evidence.outputs.sha256 }}
         run: |
           set -euo pipefail
-          rm -rf -- "$GITHUB_WORKSPACE/.checkov-helm-values"
+          oci_dir="$RUNNER_TEMP/checkov-oci"
+          profile_dir="$RUNNER_TEMP/checkov-helm-values"
+          checkov_image='ghcr.io/bridgecrewio/checkov@sha256:c35f76068fd592d07fe8525b4893c7910489496483215e6c838fb3890496a891'
+          rm -rf -- "$profile_dir" "$GITHUB_WORKSPACE/.checkov-helm-values"
           rm -f -- results.sarif results-helm-*.sarif results-helm-*.json \
             filtered-results.sarif filtered-helm-*.sarif
-          python3 scripts/quality/prepare_checkov_helm_contexts.py \
-            --repository-root "$GITHUB_WORKSPACE" \
-            --backend-values-file "$GITHUB_WORKSPACE/.checkov-backend-values.yaml" \
-            --image-evidence-file "$RUNNER_TEMP/checkov-oci/image-evidence.json" \
+          mkdir -m 700 "$profile_dir"
+          docker run --rm --network none --read-only \
+            --memory 512m --cpus 1 --pids-limit 64 \
+            --user "$(id -u):$(id -g)" \
+            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -v "$oci_dir:/oci:ro" \
+            -v "$profile_dir:/profiles:rw" \
+            --workdir /workspace \
+            --entrypoint python "$checkov_image" \
+            scripts/quality/prepare_checkov_helm_contexts.py \
+            --repository-root /workspace \
+            --backend-values-file /oci/backend.values.yaml \
+            --image-evidence-file /oci/image-evidence.json \
             --image-evidence-sha256 "$IMAGE_EVIDENCE_SHA256" \
             --repository "$SOURCE_REPOSITORY" \
             --source-sha "$SOURCE_SHA" \
             --run-id "$SOURCE_RUN_ID" \
             --run-attempt "$SOURCE_RUN_ATTEMPT" \
-            --archive-dir "$RUNNER_TEMP/checkov-oci" \
-            --output-dir "$GITHUB_WORKSPACE/.checkov-helm-values"
+            --archive-dir /oci \
+            --output-dir /profiles
+          mkdir -m 700 "$GITHUB_WORKSPACE/.checkov-helm-values"
+          for profile in university-ecosystem revocation-store redis-compat; do
+            source="$profile_dir/$profile.json"
+            if [[ ! -f "$source" || -L "$source" ]]; then
+              echo "::error::generated Checkov profile is missing or unsafe: $profile" >&2
+              exit 1
+            fi
+            install -m 600 -- "$source" "$GITHUB_WORKSPACE/.checkov-helm-values/$profile.json"
+          done
 
       - name: Render each chart with the finite Checkov Helm values
         shell: bash
@@ -216,6 +239,7 @@ jobs:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         run: |
           set -euo pipefail
+          profile_dir="$RUNNER_TEMP/checkov-helm-values"
           checkov_image='ghcr.io/bridgecrewio/checkov@sha256:c35f76068fd592d07fe8525b4893c7910489496483215e6c838fb3890496a891'
           render_dir="$(mktemp -d "$RUNNER_TEMP/checkov-helm-render.XXXXXX")"
           trap 'rm -rf -- "$render_dir"' EXIT
@@ -234,6 +258,7 @@ jobs:
               -e HELM_CONFIG_HOME=/tmp/helm-config \
               -e HELM_DATA_HOME=/tmp/helm-data \
               -v "$GITHUB_WORKSPACE:/workspace:ro" \
+              -v "$profile_dir:/profiles:ro" \
               --workdir /workspace \
               --entrypoint helm "$checkov_image" \
               template "$release_name" "$chart_path" \
@@ -259,13 +284,13 @@ jobs:
 
           render_chart university-ecosystem checkov-staging \
             charts/university-ecosystem charts/university-ecosystem/values-staging.yaml \
-            .checkov-helm-values/university-ecosystem.json
+            /profiles/university-ecosystem.json
           render_chart revocation-store checkov-revocation \
             charts/revocation-store charts/revocation-store/values-staging.yaml \
-            .checkov-helm-values/revocation-store.json
+            /profiles/revocation-store.json
           render_chart redis-compat checkov-redis \
             charts/redis-compat charts/redis-compat/values.yaml \
-            .checkov-helm-values/redis-compat.json
+            /profiles/redis-compat.json
 
       - name: Run full-framework Checkov scan
         id: checkov_all
@@ -377,7 +402,7 @@ jobs:
         run: |
           rm -f -- "$GITHUB_WORKSPACE/.checkov-backend-values.yaml"
           rm -rf -- "$GITHUB_WORKSPACE/.checkov-helm-values" \
-            "$RUNNER_TEMP/checkov-oci"
+            "$RUNNER_TEMP/checkov-helm-values" "$RUNNER_TEMP/checkov-oci"
 
       - name: Upload source-bound Checkov evidence
         if: always()

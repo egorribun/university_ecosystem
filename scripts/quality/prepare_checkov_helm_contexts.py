@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import re
@@ -11,6 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import yaml
 from create_checkov_oci_image_evidence import (
     REQUIRED_IMAGES,
     _verified_image_config_labels,
@@ -175,8 +177,69 @@ def _set_path(root: dict[str, Any], path: str, value: Any) -> None:
                 current = current[token]
 
 
-def _profile(overrides: dict[str, Any]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
+def _read_staging_ingress_arrays(repository_root: Path) -> dict[str, Any]:
+    """Copy the staging hosts and TLS arrays before finite host overrides."""
+    root = repository_root.resolve()
+    source = repository_root / "charts/university-ecosystem/values-staging.yaml"
+    resolved = source.resolve()
+    if (
+        source.is_symlink()
+        or not resolved.is_relative_to(root)
+        or not resolved.is_file()
+    ):
+        raise ValueError("staging values file is missing or unsafe")
+    try:
+        document = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
+        raise ValueError("cannot safely parse canonical staging values") from error
+    if not isinstance(document, dict):
+        raise ValueError("canonical staging values must be a mapping")
+    ingress = document.get("ingress")
+    if not isinstance(ingress, dict):
+        raise ValueError("canonical staging values are missing ingress settings")
+    hosts = ingress.get("hosts")
+    tls = ingress.get("tls")
+    if not isinstance(hosts, list) or len(hosts) != 2:
+        raise ValueError("staging ingress must define the two finite host entries")
+    for host in hosts:
+        if (
+            not isinstance(host, dict)
+            or not isinstance(host.get("host"), str)
+            or not host["host"]
+            or not isinstance(host.get("paths"), list)
+            or not host["paths"]
+            or any(
+                not isinstance(path, dict)
+                or not isinstance(path.get("path"), str)
+                or not path["path"]
+                or not isinstance(path.get("pathType"), str)
+                or not path["pathType"]
+                for path in host["paths"]
+            )
+        ):
+            raise ValueError("staging ingress host entries must include complete paths")
+    if not isinstance(tls, list) or len(tls) != 1 or not isinstance(tls[0], dict):
+        raise ValueError("staging ingress must define the finite TLS entry")
+    if (
+        not isinstance(tls[0].get("secretName"), str)
+        or not tls[0]["secretName"]
+        or not isinstance(tls[0].get("hosts"), list)
+        or len(tls[0]["hosts"]) != 2
+        or any(not isinstance(host, str) or not host for host in tls[0]["hosts"])
+    ):
+        raise ValueError("staging ingress TLS entry must include its secret and hosts")
+    arrays = {"hosts": hosts, "tls": tls}
+    try:
+        json.dumps(arrays, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise ValueError("staging ingress arrays are not JSON serializable") from error
+    return copy.deepcopy(arrays)
+
+
+def _profile(
+    overrides: dict[str, Any], initial: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    result = copy.deepcopy(initial) if initial is not None else {}
     for key, value in overrides.items():
         _set_path(result, key, value)
     return result
@@ -492,6 +555,7 @@ def prepare(
     if run_id <= 0 or run_attempt <= 0:
         raise ValueError("GitHub run ID and attempt must be positive integers")
 
+    staging_ingress = _read_staging_ingress_arrays(repository_root)
     staging = dict(STAGING_OVERRIDES)
     staging.update(pinned_chart_images)
     staging.update(
@@ -530,7 +594,7 @@ def prepare(
     }
     redis_compat = {"global.backendImageDigest": backend_digest}
     profiles = {
-        "university-ecosystem.json": _profile(staging),
+        "university-ecosystem.json": _profile(staging, {"ingress": staging_ingress}),
         "revocation-store.json": _profile(revocation),
         "redis-compat.json": _profile(redis_compat),
     }

@@ -745,11 +745,18 @@
         "checkov": {
           "profile": "required-pr-main",
           "check_name_template": "Checkov Scan",
-          "expected_timeout_minutes": 20,
-          "expected_duration_seconds": 1200,
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
           "guard": "workflow trigger",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "checkov-source-bound-image-and-helm-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/checkov-evidence",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,

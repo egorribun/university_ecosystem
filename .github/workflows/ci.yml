@@ -1346,11 +1346,12 @@ jobs:
             redis-0.1.0.tgz nats-2.15.0.tgz
 
       - name: Helm lint — university-ecosystem chart
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           helm lint charts/university-ecosystem/ --strict \
             --set-string global.environment=development \
-            --set redis.enabled=false \
-            --set nats.enabled=false \
+            --set-string global.imageTag="${IMAGE_TAG}" \
             --set applicationSecrets.existingSecret=ci-application-secrets
 
       - name: Helm template — dry-run
@@ -1359,10 +1360,8 @@ jobs:
         run: |
           helm template university-ecosystem charts/university-ecosystem/ \
             --set-string global.environment=development \
-            --set redis.enabled=false \
-            --set nats.enabled=false \
             --set applicationSecrets.existingSecret=ci-application-secrets \
-            --set global.imageTag="test-sha-${IMAGE_TAG}" \
+            --set global.imageTag="${IMAGE_TAG}" \
             > /tmp/backend-manifests.yaml
           echo "Helm template rendered successfully ($(wc -l < /tmp/backend-manifests.yaml) lines)"
 

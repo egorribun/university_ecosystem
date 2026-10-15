@@ -324,11 +324,11 @@ def test_governance_quality_configuration_matches_contract() -> None:
     checkov_step = next(
         step
         for step in checkov["jobs"]["checkov"]["steps"]
-        if step.get("name") == "Run Checkov"
+        if step.get("id") == "checkov_all"
     )
     checkov_with = checkov_step["with"]
     assert checkov_with.get("soft_fail") is not True
-    assert checkov["jobs"]["checkov"]["timeout-minutes"] == 20
+    assert checkov["jobs"]["checkov"]["timeout-minutes"] == 60
 
     mutation_exclusions = json.loads(_read_text("quality/mutation-exclusions.json"))
     assert mutation_exclusions == {"version": 1, "exclusions": []}

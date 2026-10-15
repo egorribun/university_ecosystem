@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.util
 import json
@@ -11,6 +12,8 @@ import unittest
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 CANDIDATE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = Path(
@@ -205,6 +208,33 @@ class CheckovHelmCoverageContracts(unittest.TestCase):
             )
             main_profile = json.loads(
                 paths["university-ecosystem.json"].read_text(encoding="utf-8")
+            )
+            staging_values = yaml.safe_load(
+                (
+                    REPOSITORY_ROOT / "charts/university-ecosystem/values-staging.yaml"
+                ).read_text(encoding="utf-8")
+            )
+            expected_ingress = copy.deepcopy(staging_values["ingress"])
+            expected_hosts = [
+                "university.staging.example.org",
+                "api.university.staging.example.org",
+            ]
+            for host_entry, host in zip(
+                expected_ingress["hosts"], expected_hosts, strict=True
+            ):
+                host_entry["host"] = host
+            expected_ingress["tls"][0]["hosts"] = expected_hosts
+            self.assertEqual(
+                main_profile["ingress"]["hosts"], expected_ingress["hosts"]
+            )
+            self.assertEqual(main_profile["ingress"]["tls"], expected_ingress["tls"])
+            self.assertEqual(
+                main_profile["ingress"]["hosts"][0]["paths"],
+                staging_values["ingress"]["hosts"][0]["paths"],
+            )
+            self.assertEqual(
+                main_profile["ingress"]["tls"][0]["secretName"],
+                staging_values["ingress"]["tls"][0]["secretName"],
             )
             fixture = _fixture_values(_fixture_args("_resolved_staging_args"))
             expected_replacements = {
@@ -501,6 +531,23 @@ class CheckovHelmCoverageContracts(unittest.TestCase):
         self.assertIn('"scripts/quality/prepare_checkov_helm_contexts.py"', workflow)
         self.assertIn('"scripts/quality/verify_checkov_helm_json.py"', workflow)
         self.assertIn('"tests/test_checkov_helm_coverage_contract.py"', workflow)
+        prepare_start = workflow.index(
+            "- name: Prepare finite Checkov Helm values from actual image evidence"
+        )
+        render_start = workflow.index(
+            "- name: Render each chart with the finite Checkov Helm values"
+        )
+        profile_generator = workflow[prepare_start:render_start]
+        self.assertIn("--network none --read-only", profile_generator)
+        self.assertIn("--memory 512m --cpus 1 --pids-limit 64", profile_generator)
+        self.assertIn('--user "$(id -u):$(id -g)"', profile_generator)
+        self.assertIn("--tmpfs /tmp:rw,nosuid,nodev,size=128m", profile_generator)
+        self.assertIn('"$GITHUB_WORKSPACE:/workspace:ro"', profile_generator)
+        self.assertIn('"$oci_dir:/oci:ro"', profile_generator)
+        self.assertIn('"$profile_dir:/profiles:rw"', profile_generator)
+        self.assertIn('--entrypoint python "$checkov_image"', profile_generator)
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1", profile_generator)
+        self.assertNotIn("pip install", profile_generator)
         for chart_root in (
             '"charts/university-ecosystem"',
             '"charts/revocation-store"',

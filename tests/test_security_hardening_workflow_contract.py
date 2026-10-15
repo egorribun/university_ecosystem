@@ -303,19 +303,25 @@ def test_standalone_security_scanners_verify_trusted_base_before_consuming_polic
         assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
         assert 'PR_AUTHOR" != "egorribun"' in run
 
-        scanner_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("name", "").startswith(
-                (
-                    "Run Checkov",
-                    "Initialize CodeQL",
-                    "Dependency Review",
-                    "Run Gitleaks",
-                    "Run zizmor",
+        if workflow_name == "checkov.yml":
+            scanner_index = next(
+                index
+                for index, step in enumerate(steps)
+                if step.get("id") == "checkov_all"
+            )
+        else:
+            scanner_index = next(
+                index
+                for index, step in enumerate(steps)
+                if step.get("name", "").startswith(
+                    (
+                        "Initialize CodeQL",
+                        "Dependency Review",
+                        "Run Gitleaks",
+                        "Run zizmor",
+                    )
                 )
             )
-        )
         assert verify_index < scanner_index, workflow_name
 
 

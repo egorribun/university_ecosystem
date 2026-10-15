@@ -505,6 +505,13 @@ class DependencyCompareFileTests(unittest.TestCase):
             + "?per_page=100"
         )
 
+    def http_error(self, status, retry_after=None):
+        headers = {"Retry-After": retry_after} if retry_after is not None else {}
+        body = BytesIO(b"Bearer test-only-token")
+        return HTTPError(
+            self.initial_url(), status, "temporary response", headers, body
+        ), body
+
     def test_fetch_paginates_all_rows_with_fixed_refs_and_bearer_token(self):
         rows = [action_row(row) for row in sorted(EXPECTED_ROWS)]
         first_url = self.initial_url()
@@ -535,6 +542,135 @@ class DependencyCompareFileTests(unittest.TestCase):
         first_request = open_request.call_args_list[0].args
         self.assertEqual(first_request[0], first_url)
         self.assertEqual(first_request[1]["Authorization"], "Bearer test-only-token")
+
+    def test_transient_502_retries_then_succeeds_and_closes_both_responses(self):
+        error, error_body = self.http_error(502, retry_after="30")
+        response = self.Response(self.initial_url(), [])
+        with (
+            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch("verify_dependency_review_scope.time.sleep") as sleep,
+        ):
+            opener = build_opener.return_value
+            opener.open.side_effect = [error, response]
+            actual = fetch_dependency_comparison(
+                self.repository, self.base_sha, self.head_sha, "test-only-token"
+            )
+
+        self.assertEqual(actual, [])
+        self.assertEqual(opener.open.call_count, 2)
+        sleep.assert_called_once_with(2.0)
+        self.assertTrue(error_body.closed)
+        self.assertTrue(response.closed)
+
+    def test_transient_429_retries_and_retry_after_is_bounded(self):
+        error, error_body = self.http_error(429, retry_after="999999")
+        response = self.Response(self.initial_url(), [])
+        with (
+            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch("verify_dependency_review_scope.time.sleep") as sleep,
+        ):
+            opener = build_opener.return_value
+            opener.open.side_effect = [error, response]
+            actual = fetch_dependency_comparison(
+                self.repository, self.base_sha, self.head_sha, "test-only-token"
+            )
+
+        self.assertEqual(actual, [])
+        self.assertEqual(opener.open.call_count, 2)
+        sleep.assert_called_once_with(2.0)
+        self.assertTrue(error_body.closed)
+        self.assertTrue(response.closed)
+
+    def test_transient_504_retries_with_bounded_backoff(self):
+        error, error_body = self.http_error(504)
+        response = self.Response(self.initial_url(), [])
+        with (
+            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch("verify_dependency_review_scope.time.sleep") as sleep,
+        ):
+            opener = build_opener.return_value
+            opener.open.side_effect = [error, response]
+            actual = fetch_dependency_comparison(
+                self.repository, self.base_sha, self.head_sha, "test-only-token"
+            )
+
+        self.assertEqual(actual, [])
+        self.assertEqual(opener.open.call_count, 2)
+        sleep.assert_called_once_with(0.25)
+        self.assertTrue(error_body.closed)
+        self.assertTrue(response.closed)
+
+    def test_transient_http_exhaustion_fails_closed_without_reusing_responses(self):
+        errors_and_bodies = [self.http_error(503, retry_after="0") for _ in range(4)]
+        with (
+            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch("verify_dependency_review_scope.time.sleep") as sleep,
+        ):
+            opener = build_opener.return_value
+            opener.open.side_effect = [error for error, _ in errors_and_bodies]
+            with self.assertRaisesRegex(ValueError, "returned HTTP 503") as caught:
+                fetch_dependency_comparison(
+                    self.repository, self.base_sha, self.head_sha, "test-only-token"
+                )
+
+        self.assertEqual(opener.open.call_count, 4)
+        self.assertEqual(sleep.call_count, 3)
+        self.assertEqual([call.args for call in sleep.call_args_list], [(0.0,)] * 3)
+        self.assertNotIn("test-only-token", str(caught.exception))
+        self.assertTrue(all(body.closed for _, body in errors_and_bodies))
+
+    def test_forbidden_status_is_not_retried_and_error_is_sanitized(self):
+        error, error_body = self.http_error(403)
+        with (
+            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch("verify_dependency_review_scope.time.sleep") as sleep,
+        ):
+            opener = build_opener.return_value
+            opener.open.side_effect = error
+            with self.assertRaisesRegex(ValueError, "returned HTTP 403") as caught:
+                fetch_dependency_comparison(
+                    self.repository, self.base_sha, self.head_sha, "test-only-token"
+                )
+
+        opener.open.assert_called_once()
+        sleep.assert_not_called()
+        self.assertTrue(error_body.closed)
+        self.assertNotIn("test-only-token", str(caught.exception))
+
+    def test_malformed_success_response_is_not_retried(self):
+        response = self.Response(self.initial_url(), [])
+        response.body = b"{invalid"
+        with (
+            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch("verify_dependency_review_scope.time.sleep") as sleep,
+        ):
+            opener = build_opener.return_value
+            opener.open.return_value = response
+            with self.assertRaisesRegex(ValueError, "returned invalid JSON"):
+                fetch_dependency_comparison(
+                    self.repository, self.base_sha, self.head_sha, "test-only-token"
+                )
+
+        opener.open.assert_called_once()
+        sleep.assert_not_called()
+        self.assertTrue(response.closed)
+
+    def test_explicit_network_timeout_is_retried(self):
+        response = self.Response(self.initial_url(), [])
+        with (
+            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch("verify_dependency_review_scope.time.sleep") as sleep,
+        ):
+            opener = build_opener.return_value
+            opener.open.side_effect = [URLError(TimeoutError("timed out")), response]
+            actual = fetch_dependency_comparison(
+                self.repository, self.base_sha, self.head_sha, "test-only-token"
+            )
+
+        self.assertEqual(actual, [])
+        self.assertEqual(opener.open.call_count, 2)
+        sleep.assert_called_once_with(0.25)
+        self.assertTrue(response.closed)
 
     def test_request_rejects_invalid_path_and_query_before_opening_opener(self):
         valid_url = self.initial_url()
@@ -661,12 +797,18 @@ class DependencyCompareFileTests(unittest.TestCase):
             build_opener.return_value.open.side_effect = URLError(
                 "Bearer test-only-token"
             )
-            with self.assertRaisesRegex(
-                ValueError, "Dependency graph compare request failed"
-            ) as caught:
+            with (
+                patch("verify_dependency_review_scope.time.sleep") as sleep,
+                self.assertRaisesRegex(
+                    ValueError, "Dependency graph compare request failed"
+                ) as caught,
+            ):
                 fetch_dependency_comparison(
                     self.repository, self.base_sha, self.head_sha, "test-only-token"
                 )
+            build_dependency_opener = build_opener.return_value
+            build_dependency_opener.open.assert_called_once()
+            sleep.assert_not_called()
         self.assertNotIn("test-only-token", str(caught.exception))
         self.assertTrue(caught.exception.__suppress_context__)
 

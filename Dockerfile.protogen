@@ -30,7 +30,7 @@ WORKDIR /workspace
 RUN addgroup -S -g 10001 protogen \
     && adduser -S -D -u 10001 -G protogen -h /home/protogen -s /sbin/nologin protogen \
     && chown -R protogen:protogen /workspace
-USER protogen
+USER 10001:10001
 
 # This is a short-lived code-generation tool image, never a deployed service.
 #checkov:skip=CKV_DOCKER_2:the image is not a long-running service.

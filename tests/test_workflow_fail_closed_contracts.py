@@ -79,15 +79,19 @@ _SCRIPT_IMAGE = re.compile(
 )
 _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--add-host",
+    "--cpus",
     "--entrypoint",
     "--env",
     "--env-file",
     "--hostname",
     "--label",
+    "--memory",
     "--name",
     "--network",
+    "--pids-limit",
     "--platform",
     "--publish",
+    "--tmpfs",
     "--user",
     "--volume",
     "--workdir",
@@ -732,6 +736,41 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "docker-security",
             "Upload Trivy revocation-store results",
         ),
+        (
+            "checkov.yml",
+            "checkov",
+            "Run full-framework Checkov scan",
+        ),
+        (
+            "checkov.yml",
+            "checkov",
+            "Run scoped Checkov Helm scan for university chart",
+        ),
+        (
+            "checkov.yml",
+            "checkov",
+            "Run scoped Checkov Helm scan for revocation chart",
+        ),
+        (
+            "checkov.yml",
+            "checkov",
+            "Run scoped Checkov Helm scan for Redis compatibility chart",
+        ),
+        (
+            "checkov.yml",
+            "checkov",
+            "Verify university Helm JSON coverage",
+        ),
+        (
+            "checkov.yml",
+            "checkov",
+            "Verify revocation Helm JSON coverage",
+        ),
+        (
+            "checkov.yml",
+            "checkov",
+            "Verify Redis compatibility Helm JSON coverage",
+        ),
         ("sonar.yml", "sonarcloud", "SonarScan"),
         ("visual-audit.yml", "visual-audit", "Run visual audit script"),
         (
@@ -756,6 +795,53 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
     assert observed_jobs == {
         ("reusable-e2e-tests.yml", "e2e", "${{ inputs.advisory }}"),
     }
+
+
+def test_checkov_aggregate_gate_rejects_non_success_outcomes() -> None:
+    """The final gate must reject failed, skipped, or absent Checkov outcomes."""
+
+    job = _workflow(WORKFLOWS / "checkov.yml")["jobs"]["checkov"]
+    steps = job["steps"]
+    scan_and_guard_ids = {
+        "checkov_all",
+        "checkov_helm_university",
+        "checkov_helm_revocation",
+        "checkov_helm_redis_compat",
+        "verify_helm_university",
+        "verify_helm_revocation",
+        "verify_helm_redis_compat",
+    }
+    by_id = {step.get("id"): step for step in steps if step.get("id")}
+    assert scan_and_guard_ids <= by_id.keys()
+
+    aggregate = next(
+        step
+        for step in steps
+        if step.get("name")
+        == "Require all Checkov scans and Helm coverage guards to pass"
+    )
+    assert aggregate["if"] == "always()"
+    assert aggregate["env"] == {
+        "ALL_SCAN_OUTCOME": "${{ steps.checkov_all.outcome }}",
+        "UNIVERSITY_SCAN_OUTCOME": "${{ steps.checkov_helm_university.outcome }}",
+        "REVOCATION_SCAN_OUTCOME": "${{ steps.checkov_helm_revocation.outcome }}",
+        "REDIS_SCAN_OUTCOME": "${{ steps.checkov_helm_redis_compat.outcome }}",
+        "UNIVERSITY_GUARD_OUTCOME": "${{ steps.verify_helm_university.outcome }}",
+        "REVOCATION_GUARD_OUTCOME": "${{ steps.verify_helm_revocation.outcome }}",
+        "REDIS_GUARD_OUTCOME": "${{ steps.verify_helm_redis_compat.outcome }}",
+    }
+    run = aggregate["run"]
+    assert 'if [[ "$outcome" != "success" ]]; then' in run
+    assert 'if [[ "$failed" -ne 0 ]]; then' in run
+    assert "exit 1" in run
+    assert 'if [[ ! -s "$report" ]]; then' in run
+    for report in (
+        "results.sarif",
+        "results-helm-university-ecosystem.sarif",
+        "results-helm-revocation-store.sarif",
+        "results-helm-redis-compat.sarif",
+    ):
+        assert report in run
 
 
 def test_all_static_external_workflow_images_are_digest_pinned() -> None:

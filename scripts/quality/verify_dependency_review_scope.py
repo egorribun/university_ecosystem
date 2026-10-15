@@ -8,6 +8,7 @@ import shutil
 import ssl
 import stat
 import subprocess
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,11 @@ MAX_DEPENDENCY_COMPARE_BYTES = 8 * 1024 * 1024
 DEPENDENCY_COMPARE_PAGE_SIZE = 100
 DEPENDENCY_COMPARE_OUTPUT_NAME = "dependency-review-changes.json"
 MAX_DEPENDENCY_COMPARE_PAGES = 1000
+DEPENDENCY_COMPARE_RETRY_STATUSES = frozenset({429, 502, 503, 504})
+DEPENDENCY_COMPARE_MAX_ATTEMPTS = 4
+DEPENDENCY_COMPARE_RETRY_BASE_SECONDS = 0.25
+DEPENDENCY_COMPARE_MAX_BACKOFF_SECONDS = 1.0
+DEPENDENCY_COMPARE_MAX_RETRY_AFTER_SECONDS = 2.0
 
 EXPECTED_MODULES = {
     "services/file-processor/go.mod": {
@@ -261,6 +267,13 @@ class _DependencyResponse:
         return self._response.read(limit)
 
 
+class _DependencyHTTPStatusError(ValueError):
+    def __init__(self, status_code: int, retry_after: str | None):
+        self.status_code = status_code
+        self.retry_after = retry_after
+        super().__init__(f"Dependency graph compare returned HTTP {status_code}")
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, msg, headers, newurl):
         return None
@@ -328,9 +341,59 @@ def _open_dependency_request(url: str, headers: dict[str, str]) -> _DependencyRe
         response = opener.open(request_url, timeout=30)
     except HTTPError as error:
         status = error.code
+        retry_after = error.headers.get("Retry-After") if error.headers else None
         error.close()
-        raise ValueError(f"Dependency graph compare returned HTTP {status}") from None
+        raise _DependencyHTTPStatusError(status, retry_after) from None
     return _DependencyResponse(response)
+
+
+def _bounded_retry_after_seconds(value: str | None) -> float | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not re.fullmatch(r"[0-9]{1,6}", normalized):
+        return None
+    return min(float(int(normalized)), DEPENDENCY_COMPARE_MAX_RETRY_AFTER_SECONDS)
+
+
+def _dependency_retry_delay(attempt: int, retry_after: str | None = None) -> float:
+    retry_after_seconds = _bounded_retry_after_seconds(retry_after)
+    if retry_after_seconds is not None:
+        return retry_after_seconds
+    return min(
+        DEPENDENCY_COMPARE_RETRY_BASE_SECONDS * (2 ** (attempt - 1)),
+        DEPENDENCY_COMPARE_MAX_BACKOFF_SECONDS,
+    )
+
+
+def _is_retryable_dependency_transport_error(error: BaseException) -> bool:
+    if isinstance(error, URLError):
+        error = error.reason
+    return isinstance(error, (ConnectionError, TimeoutError))
+
+
+def _open_dependency_request_with_retries(
+    url: str, headers: dict[str, str]
+) -> _DependencyResponse:
+    for attempt in range(1, DEPENDENCY_COMPARE_MAX_ATTEMPTS + 1):
+        try:
+            return _open_dependency_request(url, headers)
+        except _DependencyHTTPStatusError as error:
+            if (
+                error.status_code not in DEPENDENCY_COMPARE_RETRY_STATUSES
+                or attempt == DEPENDENCY_COMPARE_MAX_ATTEMPTS
+            ):
+                raise
+            delay = _dependency_retry_delay(attempt, error.retry_after)
+        except (URLError, OSError) as error:
+            if (
+                not _is_retryable_dependency_transport_error(error)
+                or attempt == DEPENDENCY_COMPARE_MAX_ATTEMPTS
+            ):
+                raise ValueError("Dependency graph compare request failed") from None
+            delay = _dependency_retry_delay(attempt)
+        time.sleep(delay)
+    raise ValueError("Dependency graph compare request failed")
 
 
 def _next_compare_url(
@@ -429,7 +492,7 @@ def fetch_dependency_comparison(
             "User-Agent": "university-ecosystem-dependency-scope-guard",
         }
         try:
-            response = _open_dependency_request(url, headers)
+            response = _open_dependency_request_with_retries(url, headers)
         except (URLError, OSError):
             raise ValueError("Dependency graph compare request failed") from None
 

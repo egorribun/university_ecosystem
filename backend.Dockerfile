@@ -104,7 +104,7 @@ COPY --chown=app:app alembic.ini ./alembic.ini
 # Ensure cache directory exists with correct permissions
 RUN mkdir -p /app/cache && chown -R app:app /app/cache
 
-USER app
+USER 10001:10001
 
 EXPOSE 8000
 

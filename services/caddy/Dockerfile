@@ -52,7 +52,7 @@ RUN apk update \
     && adduser -S -D -H -G caddy caddy \
     && chown -R caddy:caddy /data /config /etc/caddy
 
-USER caddy
+USER 100:101
 
 # Kubernetes supplies liveness/readiness probes for this edge proxy.
 #checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
