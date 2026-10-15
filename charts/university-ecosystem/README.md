@@ -43,6 +43,19 @@ pinning establish the currently implemented artifact identity boundary.
 Independent signature and attestation verification must not be claimed until
 reviewed signer roots and attestation policies are configured.
 
+For any release that adopts the cache Redis UID change, run Redis, exporter, and init
+containers as UID `10001` with GID `1001` and pod `fsGroup: 1001`, while preserving the
+existing Redis claim name, `/data` mount, Service identities, and retention policy. The
+exporter password-file init must reuse the exact resolved backend image and write the
+exporter JSON password file to a memory-backed volume mounted read-only; it uses the
+existing `redis-credentials/redis-password` Secret, adds no Secret key or ExternalSecret
+contract, and leaves existing Redis probes unchanged. Before rollout against retained
+data, require a protected PVC backup with demonstrated restore, RDB/AOF read-write and
+restart checks through `1001:1001 -> 10001:1001 -> 1001:1001`, and a representative
+cluster check that the target StorageClass/CSI driver honors `fsGroup`. A
+Docker/POSIX-volume test does not prove live-PVC or CSI compatibility and must not be
+reported as such.
+
 When backups are enabled, `backup.postgresImage` and
 `backup.s3ClientImage` must also use `repository@sha256:<digest>` and are
 pulled with `Always`. Staging and production deliberately reject arbitrary

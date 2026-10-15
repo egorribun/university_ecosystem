@@ -220,6 +220,11 @@ redis:
       tag: v1.93.0
       digest: REQUIRED_SHA256_DIGEST
       pullPolicy: Always
+    passwordFileInitImage:
+      repository: ghcr.io/REQUIRED_REPOSITORY/backend
+      tag: REQUIRED_GIT_SHA
+      digest: REQUIRED_SHA256_DIGEST
+      pullPolicy: Always
 
 nats:
   replicaCount: 3

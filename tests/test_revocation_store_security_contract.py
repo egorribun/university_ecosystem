@@ -267,11 +267,35 @@ def test_revocation_store_uses_first_party_chart_without_remote_dependencies() -
     ) < deploy_script.index("helm upgrade --install")
 
 
+def _msys_path(path: Path) -> str:
+    if os.name != "nt":
+        return path.resolve().as_posix()
+
+    resolved = str(path.resolve())
+    drive, tail = os.path.splitdrive(resolved)
+    if len(drive) != 2 or drive[1] != ":":
+        raise AssertionError(f"Git Bash path is not drive-qualified: {resolved}")
+    return f"/{drive[0].lower()}{tail.replace(chr(92), '/')}"
+
+
+def _git_bash_path(stub_bin: Path) -> str:
+    if os.name != "nt":
+        return os.pathsep.join((str(stub_bin), os.environ.get("PATH", "")))
+
+    git_root = Path(r"C:\Program Files\Git")
+    return ":".join(
+        _msys_path(path)
+        for path in (stub_bin, git_root / "usr" / "bin", git_root / "bin")
+    )
+
+
 def test_upgrade_preflight_allows_first_install_and_rejects_other_pvc_engines(
     tmp_path: Path,
 ) -> None:
-    if os.name == "nt" or shutil.which("bash") is None:
-        pytest.skip("requires POSIX shell stubs for the no-cluster upgrade preflight")
+    if os.name == "nt":
+        assert Path(r"C:\Program Files\Git\bin\bash.exe").is_file()
+    else:
+        assert Path("/bin/bash").is_file()
 
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()
@@ -334,14 +358,14 @@ exit 2
     env = os.environ.copy()
     env.update(
         {
-            "PATH": f"{stub_bin}{os.pathsep}{env.get('PATH', '')}",
+            "PATH": _git_bash_path(stub_bin),
             "DEPLOY_ENVIRONMENT": "development",
             "K8S_NAMESPACE": "university-ecosystem",
             "HELM_RELEASE_NAME": "university-ecosystem",
             "REVOCATION_REDIS_IMAGE_DIGEST": "sha256:" + ("a" * 64),
             "REVOCATION_REDIS_METRICS_IMAGE_DIGEST": "sha256:" + ("b" * 64),
-            "FAKE_HELM_MARKER": str(marker),
-            "FAKE_EXEC_MARKER": str(exec_marker),
+            "FAKE_HELM_MARKER": _msys_path(marker),
+            "FAKE_EXEC_MARKER": _msys_path(exec_marker),
         }
     )
     statefulset_name = "university-ecosystem-revocation-redis-master"
@@ -491,15 +515,30 @@ exit 2
         env["FAKE_KUBECTL_PVC_ERROR"] = "1" if pvc_error else ""
         env["FAKE_PVC_STATE"] = pvc_state
         env["FAKE_KUBECTL_EXEC_ERROR"] = "1" if exec_error else ""
-        result = subprocess.run(
-            ["/bin/bash", ".github/scripts/deploy-revocation-store.sh", "upgrade"],
-            cwd=ROOT,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
+        if os.name == "nt":
+            result = subprocess.run(
+                [
+                    r"C:\Program Files\Git\bin\bash.exe",
+                    ".github/scripts/deploy-revocation-store.sh",
+                    "upgrade",
+                ],
+                cwd=ROOT,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+        else:
+            result = subprocess.run(
+                ["/bin/bash", ".github/scripts/deploy-revocation-store.sh", "upgrade"],
+                cwd=ROOT,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
         assert (result.returncode == 0) is allowed, result.stderr
         assert marker.exists() is allowed
         assert exec_marker.exists() is expect_exec

@@ -355,6 +355,7 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           scan-type: "fs"
           scan-ref: "."
           format: "sarif"
@@ -373,6 +374,7 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           scan-type: "config"
           scan-ref: "."
           trivy-config: "${{ runner.temp }}/trivy-university-config.yaml"
@@ -442,6 +444,7 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           scan-type: "config"
           scan-ref: "charts/revocation-store"
           trivy-config: "security/trivy-revocation-config.yaml"

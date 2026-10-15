@@ -5,6 +5,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}-configuration
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -16,6 +17,7 @@ data:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}-master
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -24,6 +26,7 @@ automountServiceAccountToken: false
 apiVersion: v1
 kind: Service
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}-headless
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -42,6 +45,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}-master
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -62,6 +66,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}-metrics
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -81,6 +86,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -113,6 +119,7 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}-master
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -126,6 +133,7 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
+  namespace: {{ .Release.Namespace | quote }}
   name: {{ $name }}-master
   labels:
     {{- include "redis.commonLabels" . | nindent 4 }}
@@ -191,6 +199,76 @@ spec:
               readOnly: true
             - name: redis-runtime
               mountPath: /run/redis-runtime
+        - name: redis-exporter-password-file
+          image: {{ include "redis.metricsPasswordFileInitImage" . | quote }}
+          imagePullPolicy: {{ .Values.metrics.passwordFileInitImage.pullPolicy | quote }}
+          command: ["python"]
+          args:
+            - "-I"
+            - "-S"
+            - "-c"
+            - |
+              import json
+              import os
+              import pathlib
+              import sys
+              import tempfile
+
+              def read_password(path):
+                  return path.read_bytes().rstrip(b"\n").decode("utf-8", errors="strict")
+
+              source_path = pathlib.Path("/run/redis-auth-source/password")
+              target_path = pathlib.Path("/run/redis-exporter-auth/passwords.json")
+              temporary_path = None
+              try:
+                  password = read_password(source_path)
+                  if not password:
+                      raise ValueError("empty Redis credential")
+                  descriptor, temporary_name = tempfile.mkstemp(
+                      prefix=".passwords.", suffix=".tmp", dir=target_path.parent
+                  )
+                  temporary_path = pathlib.Path(temporary_name)
+                  with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                      json.dump(
+                          {"redis://127.0.0.1:6379": password},
+                          output,
+                          ensure_ascii=True,
+                          separators=(",", ":"),
+                      )
+                      output.flush()
+                      os.fsync(output.fileno())
+                  os.chmod(temporary_path, 0o440)
+                  os.replace(temporary_path, target_path)
+              except Exception:
+                  if temporary_path is not None:
+                      try:
+                          temporary_path.unlink(missing_ok=True)
+                      except OSError:
+                          pass
+                  try:
+                      target_path.unlink(missing_ok=True)
+                  except OSError:
+                      pass
+                  print("failed to materialize Redis exporter credential file", file=sys.stderr)
+                  raise SystemExit(1)
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml .Values.master.aclInitResources | nindent 12 }}
+          volumeMounts:
+            - name: redis-password
+              mountPath: /run/redis-auth-source
+              readOnly: true
+            - name: redis-exporter-auth
+              mountPath: /run/redis-exporter-auth
       containers:
         - name: redis
           image: {{ include "redis.image" . | quote }}
@@ -250,7 +328,7 @@ spec:
             readOnlyRootFilesystem: true
             runAsGroup: 1001
             runAsNonRoot: true
-            runAsUser: 1001
+            runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
           env:
@@ -258,11 +336,8 @@ spec:
               value: redis://127.0.0.1:6379
             - name: REDIS_USER
               value: default
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | quote }}
-                  key: {{ $passwordKey | quote }}
+            - name: REDIS_PASSWORD_FILE
+              value: /run/redis-exporter-auth/passwords.json
             - name: REDIS_EXPORTER_WEB_LISTEN_ADDRESS
               value: :9121
           ports:
@@ -287,6 +362,9 @@ spec:
           resources:
             {{- toYaml .Values.metrics.resources | nindent 12 }}
           volumeMounts:
+            - name: redis-exporter-auth
+              mountPath: /run/redis-exporter-auth
+              readOnly: true
             - name: empty-dir
               mountPath: /tmp
         {{- end }}
@@ -303,6 +381,10 @@ spec:
                 path: password
         - name: redis-runtime
           emptyDir:
+            sizeLimit: 8Mi
+        - name: redis-exporter-auth
+          emptyDir:
+            medium: Memory
             sizeLimit: 8Mi
         - name: empty-dir
           emptyDir:

@@ -44,3 +44,19 @@ app.kubernetes.io/component: master
 {{- printf "%s/%s:%s" $registry $repo .Values.metrics.image.tag -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "redis.metricsPasswordFileInitImage" -}}
+{{- $global := .Values.global | default dict -}}
+{{- $image := .Values.metrics.passwordFileInitImage -}}
+{{- $registry := $global.imageRegistry | default "" -}}
+{{- $digest := $image.digest | default "" -}}
+{{- if and (not $digest) (eq $image.repository "university-backend") -}}
+{{- $digest = $global.backendImageDigest | default "" -}}
+{{- end -}}
+{{- if $digest -}}
+{{- printf "%s/%s@%s" $registry $image.repository $digest | trimPrefix "/" -}}
+{{- else -}}
+{{- $tag := $image.tag | default $global.imageTag | default "1.0.0" -}}
+{{- printf "%s/%s:%s" $registry $image.repository $tag | trimPrefix "/" -}}
+{{- end -}}
+{{- end -}}

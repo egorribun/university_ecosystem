@@ -3,11 +3,18 @@
   "title": "University Ecosystem revocation-store input contract",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "applicationReleaseName",
-    "redis"
-  ],
+  "required": ["applicationReleaseName", "redis"],
   "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backendImageDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
     "applicationReleaseName": {
       "type": "string",
       "minLength": 1,
@@ -55,10 +62,7 @@
         "auth": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "existingSecret",
-            "existingSecretPasswordKey"
-          ],
+          "required": ["existingSecret", "existingSecretPasswordKey"],
           "properties": {
             "existingSecret": {
               "const": "revocation-redis-credentials"
@@ -71,13 +75,7 @@
         "image": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "registry",
-            "repository",
-            "tag",
-            "digest",
-            "pullPolicy"
-          ],
+          "required": ["registry", "repository", "tag", "digest", "pullPolicy"],
           "properties": {
             "registry": {
               "const": "docker.io"
@@ -124,9 +122,7 @@
             "updateStrategy": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "type"
-              ],
+              "required": ["type"],
               "properties": {
                 "type": {
                   "const": "RollingUpdate"
@@ -136,18 +132,12 @@
             "resources": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "requests",
-                "limits"
-              ],
+              "required": ["requests", "limits"],
               "properties": {
                 "requests": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "cpu",
-                    "memory"
-                  ],
+                  "required": ["cpu", "memory"],
                   "properties": {
                     "cpu": {
                       "const": "100m"
@@ -160,10 +150,7 @@
                 "limits": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "cpu",
-                    "memory"
-                  ],
+                  "required": ["cpu", "memory"],
                   "properties": {
                     "cpu": {
                       "const": "500m"
@@ -178,10 +165,7 @@
             "persistence": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "enabled",
-                "size"
-              ],
+              "required": ["enabled", "size"],
               "properties": {
                 "enabled": {
                   "const": true
@@ -194,11 +178,7 @@
             "persistentVolumeClaimRetentionPolicy": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "enabled",
-                "whenScaled",
-                "whenDeleted"
-              ],
+              "required": ["enabled", "whenScaled", "whenDeleted"],
               "properties": {
                 "enabled": {
                   "const": true
@@ -214,9 +194,7 @@
             "pdb": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "minAvailable"
-              ],
+              "required": ["minAvailable"],
               "properties": {
                 "minAvailable": {
                   "const": 1
@@ -246,10 +224,7 @@
         "networkPolicy": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "enabled",
-            "monitoringNamespace"
-          ],
+          "required": ["enabled", "monitoringNamespace"],
           "properties": {
             "enabled": {
               "const": true
@@ -262,12 +237,7 @@
         "metrics": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "enabled",
-            "image",
-            "port",
-            "resources"
-          ],
+          "required": ["enabled", "image", "port", "resources"],
           "properties": {
             "enabled": {
               "const": true
@@ -307,18 +277,12 @@
             "resources": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "requests",
-                "limits"
-              ],
+              "required": ["requests", "limits"],
               "properties": {
                 "requests": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "cpu",
-                    "memory"
-                  ],
+                  "required": ["cpu", "memory"],
                   "properties": {
                     "cpu": {
                       "const": "25m"
@@ -331,10 +295,7 @@
                 "limits": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "cpu",
-                    "memory"
-                  ],
+                  "required": ["cpu", "memory"],
                   "properties": {
                     "cpu": {
                       "const": "100m"

@@ -19,13 +19,7 @@
     "image": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "registry",
-        "repository",
-        "tag",
-        "digest",
-        "pullPolicy"
-      ],
+      "required": ["registry", "repository", "tag", "digest", "pullPolicy"],
       "properties": {
         "registry": {
           "const": "docker.io"
@@ -48,11 +42,7 @@
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "allowExternal",
-        "allowExternalEgress"
-      ],
+      "required": ["enabled", "allowExternal", "allowExternalEgress"],
       "properties": {
         "enabled": {
           "const": true
@@ -68,11 +58,7 @@
     "auth": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "existingSecret",
-        "existingSecretPasswordKey"
-      ],
+      "required": ["enabled", "existingSecret", "existingSecretPasswordKey"],
       "properties": {
         "enabled": {
           "const": true
@@ -144,14 +130,12 @@
           "const": {
             "allowPrivilegeEscalation": false,
             "capabilities": {
-              "drop": [
-                "ALL"
-              ]
+              "drop": ["ALL"]
             },
             "readOnlyRootFilesystem": true,
             "runAsGroup": 1001,
             "runAsNonRoot": true,
-            "runAsUser": 1001,
+            "runAsUser": 10001,
             "seccompProfile": {
               "type": "RuntimeDefault"
             }
@@ -165,11 +149,7 @@
     "metrics": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "image",
-        "resources"
-      ],
+      "required": ["enabled", "image", "passwordFileInitImage", "resources"],
       "properties": {
         "enabled": {
           "const": true
@@ -177,13 +157,7 @@
         "image": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "registry",
-            "repository",
-            "tag",
-            "digest",
-            "pullPolicy"
-          ],
+          "required": ["registry", "repository", "tag", "digest", "pullPolicy"],
           "properties": {
             "registry": {
               "const": "docker.io"
@@ -201,6 +175,20 @@
             "pullPolicy": {
               "const": "Always"
             }
+          }
+        },
+        "passwordFileInitImage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "tag", "digest", "pullPolicy"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string" },
+            "digest": {
+              "type": "string",
+              "pattern": "^(|REQUIRED_SHA256_DIGEST|sha256:[0-9a-f]{64})$"
+            },
+            "pullPolicy": { "const": "Always" }
           }
         },
         "resources": {
@@ -226,11 +214,7 @@
       "properties": {
         "environment": {
           "type": "string",
-          "enum": [
-            "development",
-            "staging",
-            "production"
-          ]
+          "enum": ["development", "staging", "production"]
         },
         "jwtIssuer": {
           "type": "string",
@@ -241,6 +225,10 @@
         },
         "imageTag": {
           "type": "string"
+        },
+        "backendImageDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "imagePullSecrets": {
           "type": "array",

@@ -36,7 +36,7 @@ master:
     readOnlyRootFilesystem: true
     runAsGroup: 1001
     runAsNonRoot: true
-    runAsUser: 1001
+    runAsUser: 10001
     seccompProfile: {type: RuntimeDefault}
 commonConfiguration: |-
   dir /data
@@ -53,6 +53,11 @@ metrics:
     repository: oliver006/redis_exporter
     tag: v1.93.0
     digest: sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
+    pullPolicy: Always
+  passwordFileInitImage:
+    repository: university-backend
+    tag: ""
+    digest: ""
     pullPolicy: Always
   resources:
     requests: {cpu: 50m, memory: 32Mi}

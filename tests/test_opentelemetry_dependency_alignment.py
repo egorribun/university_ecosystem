@@ -73,6 +73,8 @@ def test_otlp_release_family_is_aligned_and_metadata_compatible() -> None:
 
 
 def test_otlp_exporter_and_application_observability_imports() -> None:
+    from app.core import observability
+
     for module_name in (
         "opentelemetry.exporter.otlp.proto.common._internal",
         "opentelemetry.exporter.otlp.proto.grpc._log_exporter",
@@ -81,4 +83,6 @@ def test_otlp_exporter_and_application_observability_imports() -> None:
         "opentelemetry.exporter.otlp.proto.http._log_exporter",
         "app.core.observability",
     ):
-        import_module(module_name)
+        imported_module = import_module(module_name)
+        if module_name == "app.core.observability":
+            assert imported_module is observability

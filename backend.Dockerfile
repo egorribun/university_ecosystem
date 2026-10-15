@@ -86,8 +86,15 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --create-home app
 
+# Runtime keeps the locked application venv; remove the base image's global pip
+# and the bundled ensurepip wheel that contains the same vulnerable vendored code.
+RUN python -c "import pathlib, sys; p=pathlib.Path(sys.prefix)/'lib'/f'python{sys.version_info.major}.{sys.version_info.minor}'/'ensurepip'; assert sys.version_info[:2] == (3, 14); assert sys.prefix == '/usr/local'; assert p == pathlib.Path('/usr/local/lib/python3.14/ensurepip'); assert p.is_dir() and not p.is_symlink()" \
+    && python -m pip uninstall --yes pip \
+    && rm -rf /usr/local/lib/python3.14/ensurepip \
+    && python -c "import importlib.util, pathlib, sys; p=pathlib.Path(sys.prefix)/'lib'/f'python{sys.version_info.major}.{sys.version_info.minor}'/'ensurepip'; assert sys.version_info[:2] == (3, 14); assert sys.prefix == '/usr/local'; assert not p.exists(); assert importlib.util.find_spec('pip') is None; assert importlib.util.find_spec('ensurepip') is None"
 # Copy virtual environment from builder
 COPY --from=builder --chown=app:app /opt/venv /opt/venv
+RUN /opt/venv/bin/python -c "import fastapi, sqlalchemy, urllib3; assert urllib3.__version__ == '2.8.0'"
 
 # Copy application source
 COPY --chown=app:app app ./app
@@ -106,7 +113,7 @@ EXPOSE 8000
 # `/health/ready` checks database connectivity and honors graceful shutdown;
 # the more expensive `/healthz` endpoint is reserved for diagnostics.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 

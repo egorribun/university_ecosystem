@@ -1,8 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
+import * as prettier from "prettier"
 
 const handlersPath = new URL("../src/tests/mocks/generated/handlers.ts", import.meta.url)
 const nativePath = new URL("../src/tests/mocks/generated/native.ts", import.meta.url)
+const formattingConfigPath = fileURLToPath(handlersPath)
 const targetFactories = [
   "getPurgeNotificationDeadLetters200Response",
   "getRetryNotificationDeadLetters200Response",
@@ -104,14 +106,27 @@ export const normalizeGeneratedResponseBodies = (source) => {
   )
 }
 
-export const normalizeGeneratedMswFile = async (path = handlersPath) => {
+const formatGeneratedSource = async (source, path) => {
+  const config = (await prettier.resolveConfig(formattingConfigPath, { editorconfig: true })) ?? {}
+  return prettier.format(source, { ...config, filepath: fileURLToPath(path) })
+}
+
+export const normalizeGeneratedMswFile = async (
+  path = handlersPath,
+  generatedNativePath = nativePath
+) => {
   const source = await readFile(path, "utf8")
   const normalized = normalizeGeneratedResponseBodies(normalizeNotificationDeadLetterMocks(source))
   if (normalized !== source) await writeFile(path, normalized, "utf8")
 
-  const nativeSource = await readFile(nativePath, "utf8")
-  const normalizedNative = normalizeGeneratedNativeMsw(nativeSource)
-  if (normalizedNative !== nativeSource) await writeFile(nativePath, normalizedNative, "utf8")
+  const nativeSource = await readFile(generatedNativePath, "utf8")
+  const normalizedNative = await formatGeneratedSource(
+    normalizeGeneratedNativeMsw(nativeSource),
+    generatedNativePath
+  )
+  if (normalizedNative !== nativeSource) {
+    await writeFile(generatedNativePath, normalizedNative, "utf8")
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

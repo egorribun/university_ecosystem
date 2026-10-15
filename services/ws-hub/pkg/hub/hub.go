@@ -221,9 +221,13 @@ type Hub struct {
 	UpgradeLimiter     *WSUpgradeRateLimiter
 	webTransportServer *webtransport.Server
 	jwksCache          *jwk.Cache
-	jwksCacheCtx       context.Context
 	jwksCacheCancel    context.CancelFunc
 	jwksURL            string
+	jwksRefreshID      uint64 // guarded by jwksMu
+	// Refresh cleanup releases this lock without taking jwksMu.
+	jwksRefreshMu sync.Mutex
+	// jwksRefreshCancels is guarded by jwksRefreshMu.
+	jwksRefreshCancels map[uint64]context.CancelFunc
 	// maxClients caps the number of concurrently connected WebSocket clients.
 	maxClients int
 	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
@@ -331,6 +335,7 @@ const (
 
 var (
 	newDedupLRUFunc  = lru.New[string, time.Time]
+	newJWKSCacheFunc = jwk.NewCache
 	registerJWKSFunc = func(ctx context.Context, cache *jwk.Cache, url string, options ...jwk.RegisterOption) error {
 		return cache.Register(ctx, url, options...)
 	}
@@ -620,7 +625,7 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 
 	jwksCtx, cancel := context.WithCancel(ctx)
 	jwksHTTPClient := jwk.WrapHTTPClientDefaults(&http.Client{Timeout: jwksRefreshTimeout})
-	cache, err := jwk.NewCache(
+	cache, err := newJWKSCacheFunc(
 		jwksCtx,
 		httprc.NewClient(
 			httprc.WithHTTPClient(jwksHTTPClient),
@@ -633,7 +638,6 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 		return fmt.Errorf("failed to initialise JWKS cache: %w", err)
 	}
 	h.jwksCache = cache
-	h.jwksCacheCtx = jwksCtx
 	h.jwksCacheCancel = cancel
 
 	// Keep registration non-blocking, matching the prior cache behavior. The
@@ -670,31 +674,33 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 }
 
 // refreshJWKS snapshots the cache under jwksMu, then refreshes without holding
-// the lock. The cache lifetime cancels the caller even when its request context
-// has no deadline, and the per-refresh timeout bounds a stalled trusted server.
+// the lock. The caller context bounds this wait, and the hub tracks the derived
+// cancel function so cache shutdown also cancels every active HTTP refresh.
 func (h *Hub) refreshJWKS(ctx context.Context) error {
 	h.jwksMu.Lock()
 	cache := h.jwksCache
-	cacheCtx := h.jwksCacheCtx
 	jwksURL := h.jwksURL
-	h.jwksMu.Unlock()
 	if cache == nil || jwksURL == "" {
+		h.jwksMu.Unlock()
 		return nil
 	}
 
 	refreshCtx, cancel := context.WithTimeout(ctx, jwksRefreshTimeout)
-	var stopCacheCancel func() bool
-	if cacheCtx != nil {
-		stopCacheCancel = context.AfterFunc(cacheCtx, cancel)
-		if cacheCtx.Err() != nil {
-			cancel()
-		}
+	refreshID := h.jwksRefreshID
+	h.jwksRefreshID++
+	h.jwksRefreshMu.Lock()
+	if h.jwksRefreshCancels == nil {
+		h.jwksRefreshCancels = make(map[uint64]context.CancelFunc)
 	}
+	h.jwksRefreshCancels[refreshID] = cancel
+	h.jwksRefreshMu.Unlock()
+	h.jwksMu.Unlock()
+
 	defer func() {
-		if stopCacheCancel != nil {
-			stopCacheCancel()
-		}
 		cancel()
+		h.jwksRefreshMu.Lock()
+		delete(h.jwksRefreshCancels, refreshID)
+		h.jwksRefreshMu.Unlock()
 	}()
 
 	_, err := cache.Refresh(refreshCtx, jwksURL)
@@ -713,11 +719,16 @@ func (h *Hub) jwksURLSnapshot() string {
 // The caller must hold jwksMu. Cancel first so refresh callers and HTTP fetches
 // stop before the bounded worker join begins.
 func (h *Hub) closeJWKSCacheLocked(ctx context.Context) {
+	h.jwksRefreshMu.Lock()
+	for _, cancel := range h.jwksRefreshCancels {
+		cancel()
+	}
+	h.jwksRefreshCancels = nil
+	h.jwksRefreshMu.Unlock()
 	if h.jwksCacheCancel != nil {
 		h.jwksCacheCancel()
 		h.jwksCacheCancel = nil
 	}
-	h.jwksCacheCtx = nil
 	h.jwksURL = ""
 	cache := h.jwksCache
 	h.jwksCache = nil
@@ -725,7 +736,9 @@ func (h *Hub) closeJWKSCacheLocked(ctx context.Context) {
 		return
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), jwksCacheShutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx), jwksCacheShutdownTimeout,
+	)
 	err := shutdownJWKSCacheFunc(shutdownCtx, cache)
 	cancel()
 	if err != nil && h.Logger != nil {
@@ -2183,7 +2196,7 @@ func (h *Hub) stop(ctx context.Context) {
 			h.UpgradeLimiter.Stop()
 		}
 		h.jwksMu.Lock()
-		h.closeJWKSCacheLocked(context.Background())
+		h.closeJWKSCacheLocked(ctx)
 		h.jwksMu.Unlock()
 	})
 }

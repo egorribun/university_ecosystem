@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,8 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
         "outboxWorker.image.digest": digest,
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
+        "redis.metrics.passwordFileInitImage.repository": "ghcr.io/example/university/backend",
+        "redis.metrics.passwordFileInitImage.digest": digest,
         "nats.image.digest": digest,
         "nats.container.image.digest": digest,
         "backend.config.elasticsearchURL": "https://elasticsearch.staging.internal",
@@ -74,6 +77,7 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
         "cwv.exportOIDC.workflowRef": "example/university-ecosystem/.github/workflows/cwv-field-certification.yml@refs/heads/main",
         "cwv.exportOIDC.subject": "repo:example/university-ecosystem:environment:staging",
     }
+    overrides["redis.metrics.passwordFileInitImage.tag"] = overrides["global.imageTag"]
     if gateway_jwks_cidr is not None:
         # Reserved TEST-NET fixture only; never use as a deployment CIDR.
         overrides["networkPolicy.gatewayJWKS.egressCIDRs[0]"] = gateway_jwks_cidr
@@ -430,6 +434,21 @@ def test_default_nats_values_use_official_chart_jetstream_and_persistence_tree()
     assert nats["existingSecret"] == ""
 
 
+def test_default_redis_password_init_tracks_default_backend_reference() -> None:
+    values = _values(CHART / "values.yaml")
+    backend = values["backend"]["image"]
+    helper = values["redis"]["metrics"]["passwordFileInitImage"]
+    app_version = yaml.safe_load((CHART / "Chart.yaml").read_text(encoding="utf-8"))[
+        "appVersion"
+    ]
+    assert backend["repository"] == helper["repository"] == "university-backend"
+    assert backend["digest"] == helper["digest"] == ""
+    assert backend["tag"] == ""
+    assert app_version == "1.0.0"
+    assert helper["tag"] == ""
+    assert helper["pullPolicy"] == "Always"
+
+
 def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     values = _values(STAGING_VALUES)
 
@@ -503,6 +522,12 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     assert redis["metrics"]["image"]["registry"] == "docker.io"
     assert redis["metrics"]["image"]["repository"] == "oliver006/redis_exporter"
     assert redis["metrics"]["image"]["pullPolicy"] == "Always"
+    assert redis["metrics"]["passwordFileInitImage"] == {
+        "repository": "ghcr.io/REQUIRED_REPOSITORY/backend",
+        "tag": "REQUIRED_GIT_SHA",
+        "digest": "REQUIRED_SHA256_DIGEST",
+        "pullPolicy": "Always",
+    }
     assert redis["networkPolicy"] == {
         "enabled": True,
         "allowExternal": False,
@@ -700,6 +725,13 @@ def test_deploy_helm_pins_new_dependency_images_and_backend_s3_endpoint() -> Non
         '--set-string "backend.config.storageS3EndpointURL=https://$MINIO_ENDPOINT"'
         in script
     )
+    for backend_bound_arg in (
+        '--set-string "redis.metrics.passwordFileInitImage.repository=$REGISTRY/$GITHUB_REPOSITORY/backend"',
+        '--set-string "redis.metrics.passwordFileInitImage.tag=$DEPLOY_VERSION"',
+        '--set-string "redis.metrics.passwordFileInitImage.digest=$BACKEND_IMAGE_DIGEST"',
+        '--set-string "redis.metrics.passwordFileInitImage.pullPolicy=Always"',
+    ):
+        assert backend_bound_arg in script
     for reviewed_arg in (
         '--set-string "redis.image.repository=redis"',
         '--set-string "redis.metrics.image.repository=oliver006/redis_exporter"',
@@ -1200,6 +1232,203 @@ def test_non_development_render_rejects_every_inline_secret_value(
         "values don't meet the specifications" in result.stderr
         and "additional propert" in result.stderr.lower()
     )
+
+
+def test_cache_redis_exporter_password_file_and_high_uid_contract() -> None:
+    resources = _render_staging(release_name="cache-security-contract")
+    redis_resources = [
+        resource
+        for resource in resources
+        if resource.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/name")
+        == "redis"
+        and resource.get("metadata", {})
+        .get("labels", {})
+        .get("app.kubernetes.io/instance")
+        == "cache-security-contract"
+    ]
+    assert redis_resources
+    assert {resource["metadata"]["namespace"] for resource in redis_resources} == {
+        "university-ecosystem"
+    }
+
+    statefulset = next(
+        resource
+        for resource in redis_resources
+        if resource.get("kind") == "StatefulSet"
+        and resource["metadata"]["name"] == "cache-security-contract-redis-master"
+    )
+    pod_spec = statefulset["spec"]["template"]["spec"]
+    assert pod_spec["securityContext"]["fsGroup"] == 1001
+    assert pod_spec["securityContext"]["fsGroupChangePolicy"] == "Always"
+    assert statefulset["spec"]["persistentVolumeClaimRetentionPolicy"] == {
+        "whenDeleted": "Retain",
+        "whenScaled": "Retain",
+    }
+    assert (
+        statefulset["spec"]["volumeClaimTemplates"][0]["metadata"]["name"]
+        == "redis-data"
+    )
+    assert any(
+        mount["mountPath"] == "/data"
+        for container in pod_spec["containers"]
+        if container["name"] == "redis"
+        for mount in container["volumeMounts"]
+    )
+
+    all_containers = pod_spec["initContainers"] + pod_spec["containers"]
+    assert {
+        container["securityContext"]["runAsUser"] for container in all_containers
+    } == {10001}
+    assert {
+        container["securityContext"]["runAsGroup"] for container in all_containers
+    } == {1001}
+    password_init = next(
+        container
+        for container in pod_spec["initContainers"]
+        if container["name"] == "redis-exporter-password-file"
+    )
+    backend_deployment = _component_resource(resources, "Deployment", "backend")
+    backend_image = backend_deployment["spec"]["template"]["spec"]["containers"][0][
+        "image"
+    ]
+    assert password_init["image"] == backend_image
+    assert password_init["image"] == "ghcr.io/example/university/backend@sha256:" + (
+        "a" * 64
+    )
+    assert password_init["imagePullPolicy"] == "Always"
+    assert password_init["securityContext"]["readOnlyRootFilesystem"] is True
+    assert password_init["securityContext"]["allowPrivilegeEscalation"] is False
+    assert password_init["securityContext"]["capabilities"]["drop"] == ["ALL"]
+    init_code = password_init["args"][-1]
+    assert '"redis://127.0.0.1:6379"' in init_code
+    assert "def read_password(path):" in init_code
+    assert (
+        'path.read_bytes().rstrip(b"\\n").decode("utf-8", errors="strict")' in init_code
+    )
+    assert "tempfile.mkstemp" in init_code
+    assert "json.dump" in init_code and "os.replace" in init_code
+    assert "os.fsync(output.fileno())" in init_code
+    assert "os.chmod(temporary_path, 0o440)" in init_code
+    assert "target_path.unlink(missing_ok=True)" in init_code
+    assert "file=sys.stderr" in init_code
+    assert all(
+        name not in init_code for name in ("redis-password-value", "REDIS_PASSWORD=")
+    )
+    source_mount = next(
+        mount
+        for mount in password_init["volumeMounts"]
+        if mount["name"] == "redis-password"
+    )
+    assert source_mount["readOnly"] is True
+    assert source_mount["mountPath"] == "/run/redis-auth-source"
+
+    exporter = next(
+        container
+        for container in pod_spec["containers"]
+        if container["name"] == "metrics"
+    )
+    env = {item["name"]: item.get("value") for item in exporter["env"]}
+    assert env["REDIS_PASSWORD_FILE"] == "/run/redis-exporter-auth/passwords.json"
+    assert "REDIS_PASSWORD" not in env
+    output_mount = next(
+        mount
+        for mount in exporter["volumeMounts"]
+        if mount["mountPath"] == "/run/redis-exporter-auth"
+    )
+    assert output_mount["readOnly"] is True
+    output_volume = next(
+        volume
+        for volume in pod_spec["volumes"]
+        if volume["name"] == "redis-exporter-auth"
+    )
+    assert output_volume["emptyDir"] == {"medium": "Memory", "sizeLimit": "8Mi"}
+
+
+def test_redis_exporter_serializer_preserves_acl_trailing_cr_bytes(
+    tmp_path: Path,
+) -> None:
+    template = (ROOT / "charts/redis-compat/templates/redis.yaml").read_text(
+        encoding="utf-8"
+    )
+    lines = template.splitlines()
+    command_index = next(
+        index for index, line in enumerate(lines) if 'command: ["python"]' in line
+    )
+    block_index = next(
+        index
+        for index in range(command_index, len(lines))
+        if lines[index].strip() == "- |"
+    )
+    code_lines: list[str] = []
+    for line in lines[block_index + 1 :]:
+        if not line.strip():
+            code_lines.append("")
+        elif line.startswith("              "):
+            code_lines.append(line[14:])
+        else:
+            break
+    code = "\n".join(code_lines) + "\n"
+    source = tmp_path / "source-password"
+    target = tmp_path / "passwords.json"
+    code = code.replace(
+        '"/run/redis-auth-source/password"', json.dumps(str(source))
+    ).replace('"/run/redis-exporter-auth/passwords.json"', json.dumps(str(target)))
+
+    source.write_bytes(b"synthetic-password\r\n")
+    completed = subprocess.run(  # noqa: S603 - current Python and repository-owned serializer; no shell.
+        [sys.executable, "-I", "-S", "-c", code],
+        check=False,
+        capture_output=True,
+        text=False,
+    )
+    assert completed.returncode == 0
+    assert json.loads(target.read_text(encoding="utf-8")) == {
+        "redis://127.0.0.1:6379": "synthetic-password\r"
+    }
+    assert b"synthetic-password" not in completed.stdout + completed.stderr
+    assert list(tmp_path.glob(".passwords.*.tmp")) == []
+
+    for invalid_bytes in (b"", b"\xff"):
+        if target.exists():
+            target.chmod(0o600)
+            target.unlink()
+        source.write_bytes(invalid_bytes)
+        failed = subprocess.run(  # noqa: S603 - current Python and repository-owned serializer; no shell.
+            [sys.executable, "-I", "-S", "-c", code],
+            check=False,
+            capture_output=True,
+            text=False,
+        )
+        assert failed.returncode == 1
+        assert b"failed to materialize Redis exporter credential file" in failed.stderr
+        assert b"synthetic-password" not in failed.stdout + failed.stderr
+        assert not target.exists()
+        assert list(tmp_path.glob(".passwords.*.tmp")) == []
+
+
+def test_redis_exporter_password_init_rejects_backend_image_identity_drift() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.digest=sha256:" + ("b" * 64),
+            release_name="redis-helper-image-drift-contract",
+        )
+
+    assert (
+        "redis.metrics.passwordfileinitimage must resolve exactly to backend.image"
+        in error.value.stderr.lower()
+    )
+
+
+def test_checkov_namespace_workflow_uses_validated_fallback_and_no_skip() -> None:
+    workflow = (ROOT / ".github/workflows/checkov.yml").read_text(encoding="utf-8")
+    assert "vars.K8S_NAMESPACE || 'university-ecosystem'" in workflow
+    assert '"$K8S_NAMESPACE" == "default"' in workflow
+    assert (
+        "HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}"
+        in workflow
+    )
+    assert "--skip-check" not in workflow
 
 
 def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
@@ -2200,6 +2429,12 @@ def test_release_rejects_permissive_dependency_network_policy(override: str) -> 
         ("--set-string", "redis.image.registry=mirror.invalid"),
         ("--set-string", "redis.image.repository=attacker/redis"),
         ("--set-string", "redis.metrics.image.repository=attacker/exporter"),
+        (
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.repository=attacker/python",
+        ),
+        ("--set-string", "redis.metrics.passwordFileInitImage.digest=not-a-digest"),
+        ("--set-string", "redis.metrics.passwordFileInitImage.pullPolicy=IfNotPresent"),
         ("--set-string", "nats.image.repository=attacker/nats"),
         ("--set-string", "nats.container.image.repository=attacker/nats"),
         ("--set-string", "nats.image.registry=ghcr.io"),
@@ -2227,10 +2462,42 @@ def test_release_rejects_dependency_repository_substitution_or_bypass(
         marker in result.stderr
         for marker in (
             "dependency image repository",
+            "redis.metrics.passwordFileInitImage must resolve exactly to backend.image",
             "allowInsecureImages",
             "metadata must exactly match",
             "values don't meet the specifications",
         )
+    )
+
+
+def test_release_rejects_mutable_password_init_tag_without_digest() -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        _existing_secret_command(
+            "development",
+            "--set-string",
+            "backend.image.repository=university-backend",
+            "--set-string",
+            "backend.image.digest=",
+            "--set-string",
+            "backend.image.tag=",
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.repository=university-backend",
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.digest=",
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.tag=latest",
+            "--set-string",
+            "global.imageTag=contract-sha",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert result.returncode != 0
+    assert (
+        "redis.metrics.passwordFileInitImage must resolve exactly to backend.image"
+        in result.stderr
     )
 
 

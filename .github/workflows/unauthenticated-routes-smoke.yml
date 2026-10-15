@@ -155,6 +155,7 @@ jobs:
         # These routes use compact layout, but parity protects build invariants.
         working-directory: frontend
         env:
+          ROLLDOWN_WORKER_THREADS: "2"
           FRONTEND_BUILD_MAX_RSS_MB: "2048"
           FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
           VITE_BACKEND_ORIGIN: http://localhost

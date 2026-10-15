@@ -9,11 +9,16 @@ Expand the name of the chart.
 {{- define "university-ecosystem.image" -}}
 {{- $root := .root -}}
 {{- $image := .image -}}
-{{- $registry := $root.Values.global.imageRegistry -}}
-{{- if $image.digest -}}
-{{- printf "%s/%s@%s" $registry $image.repository $image.digest | trimPrefix "/" -}}
+{{- $global := $root.Values.global | default dict -}}
+{{- $registry := $global.imageRegistry | default "" -}}
+{{- $digest := $image.digest | default "" -}}
+{{- if and (not $digest) (eq $image.repository "university-backend") -}}
+{{- $digest = $global.backendImageDigest | default "" -}}
+{{- end -}}
+{{- if $digest -}}
+{{- printf "%s/%s@%s" $registry $image.repository $digest | trimPrefix "/" -}}
 {{- else -}}
-{{- $tag := $image.tag | default $root.Values.global.imageTag | default $root.Chart.AppVersion -}}
+{{- $tag := $image.tag | default $global.imageTag | default $root.Chart.AppVersion -}}
 {{- printf "%s/%s:%s" $registry $image.repository $tag | trimPrefix "/" -}}
 {{- end -}}
 {{- end }}

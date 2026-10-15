@@ -48,6 +48,9 @@ jobs:
                   policy_paths=(
                       ".github/workflows"
                       ".github/dependency-review-config.yml"
+                      "go.work"
+                      "scripts/quality/verify_dependency_review_scope.py"
+                      "tests/test_verify_dependency_review_scope.py"
                       "native/rust_ext/deny.toml"
                       "quality/ci-check-catalog.json"
                       "quality/security-false-positive-dispositions.json"
@@ -67,10 +70,40 @@ jobs:
                       printf '::notice::owner-authored policy update accepted for review: %s\n' "${changed[*]}"
                   fi
 
+            - name: Test exact dependency review guard
+              shell: bash
+              run: python3 -m unittest discover -s tests -p 'test_verify_dependency_review_scope.py' -v
+
+            - name: Verify exact dependency license scope
+              shell: bash
+              env:
+                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+              run: python3 scripts/quality/verify_dependency_review_scope.py preflight --root . --base-sha "$BASE_SHA"
+
             # MOD-W17-01 (Wave 17): Switched from deny-list to positive allow-list.
             # A deny-list of 2 licenses misses SSPL, BSL, EUPL, and other
             # copyleft/source-available licenses increasingly common in 2026.
             - name: Dependency Review
+              id: dependency_review
               uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
               with:
                   config-file: .github/dependency-review-config.yml
+
+            - name: Save full Dependency Review comparison in a bounded file
+              if: ${{ always() }}
+              shell: bash
+              env:
+                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                  GITHUB_TOKEN: ${{ github.token }}
+              run: |
+                  set -euo pipefail
+                  python3 scripts/quality/verify_dependency_review_scope.py fetch --root . --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+
+            - name: Verify exact Dependency Review license rows
+              if: ${{ always() }}
+              shell: bash
+              env:
+                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+                  DEPENDENCY_CHANGES_FILE: ${{ runner.temp }}/dependency-review-changes.json
+              run: python3 scripts/quality/verify_dependency_review_scope.py changes --root . --base-sha "$BASE_SHA" --changes-file "$DEPENDENCY_CHANGES_FILE"

@@ -66,6 +66,35 @@ func TestNewHub_RejectsMultipleRevocationRedisClients(t *testing.T) {
 	)
 }
 
+func TestSetupJWKS_PropagatesCacheConstructionFailure(t *testing.T) {
+	old := newJWKSCacheFunc
+	t.Cleanup(func() { newJWKSCacheFunc = old })
+	wantErr := errors.New("synthetic JWKS cache construction failure")
+	var setupContext context.Context
+	newJWKSCacheFunc = func(ctx context.Context, _ *httprc.Client) (*jwk.Cache, error) {
+		setupContext = ctx
+		return nil, wantErr
+	}
+
+	h := &Hub{}
+	err := h.SetupJWKS(context.Background(), "https://auth.test/.well-known/jwks.json")
+
+	require.ErrorIs(t, err, wantErr)
+	require.NotNil(t, setupContext)
+	assert.ErrorIs(t, setupContext.Err(), context.Canceled)
+	require.True(t, h.jwksMu.TryLock(), "SetupJWKS must release jwksMu after constructor failure")
+	assert.Nil(t, h.jwksCache)
+	assert.Nil(t, h.jwksCacheCancel)
+	h.jwksMu.Unlock()
+}
+
+func TestRefreshJWKSWithoutConfiguredCacheIsNoop(t *testing.T) {
+	h := &Hub{}
+
+	require.NoError(t, h.refreshJWKS(context.Background()))
+	assert.False(t, h.HasJWKSCache())
+}
+
 func TestSetupJWKS_PropagatesRegistrationFailure(t *testing.T) {
 	old := registerJWKSFunc
 	t.Cleanup(func() { registerJWKSFunc = old })
@@ -96,7 +125,6 @@ func newTestJWKSCache(t *testing.T, h *Hub, ctx context.Context, configuredURL s
 	require.NoError(t, err)
 	h.jwksMu.Lock()
 	h.jwksCache = cache
-	h.jwksCacheCtx = cacheCtx
 	h.jwksCacheCancel = cancel
 	h.jwksURL = configuredURL
 	h.jwksMu.Unlock()
@@ -104,7 +132,7 @@ func newTestJWKSCache(t *testing.T, h *Hub, ctx context.Context, configuredURL s
 		h.jwksMu.Lock()
 		defer h.jwksMu.Unlock()
 		if h.jwksCache == cache {
-			h.closeJWKSCacheLocked(context.Background())
+			h.closeJWKSCacheLocked(ctx)
 		} else {
 			// Setup or Hub.Stop already removed and shut down this cache.
 			cancel()
@@ -281,7 +309,9 @@ func TestCloseJWKSCacheCancelsInFlightFetch(t *testing.T) {
 		t.Fatal("Hub.Stop did not finish after canceling the JWKS refresh")
 	}
 	assert.Nil(t, h.jwksCache)
-	assert.Nil(t, h.jwksCacheCtx)
 	assert.Nil(t, h.jwksCacheCancel)
+	h.jwksRefreshMu.Lock()
+	assert.Empty(t, h.jwksRefreshCancels)
+	h.jwksRefreshMu.Unlock()
 	assert.NotNil(t, cache)
 }

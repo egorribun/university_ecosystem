@@ -233,6 +233,6 @@ EXPOSE 3000
 # start-period 15s gives Node enough time to import server.js + bind port
 # on cold start; subsequent intervals are 30s.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/healthz || exit 1
+  CMD ["wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/healthz"]
 
 CMD ["node", "scripts/server-prod.mjs"]

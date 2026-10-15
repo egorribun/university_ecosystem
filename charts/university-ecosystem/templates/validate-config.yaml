@@ -378,3 +378,13 @@
     {{- fail "backup.minioEndpoint must use https:// in staging/production" -}}
   {{- end -}}
 {{- end -}}
+{{- if and .Values.redis.enabled .Values.redis.metrics.enabled -}}
+  {{- $backendImageRef := include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) -}}
+  {{- $passwordFileInitImageRef := include "university-ecosystem.image" (dict "root" . "image" .Values.redis.metrics.passwordFileInitImage) -}}
+  {{- if ne $passwordFileInitImageRef $backendImageRef -}}
+    {{- fail "redis.metrics.passwordFileInitImage must resolve exactly to backend.image" -}}
+  {{- end -}}
+  {{- if ne .Values.redis.metrics.passwordFileInitImage.pullPolicy "Always" -}}
+    {{- fail "redis.metrics.passwordFileInitImage.pullPolicy=Always is required" -}}
+  {{- end -}}
+{{- end -}}

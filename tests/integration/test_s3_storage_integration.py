@@ -23,7 +23,7 @@ pytestmark = pytest.mark.integration
 def test_disposable_s3_cell_uses_pinned_seaweedfs() -> None:
     fixture_source = inspect.getsource(minio_container)
     assert re.search(
-        r"ghcr\.io/chrislusf/seaweedfs:4\.47@sha256:[0-9a-f]{64}", fixture_source
+        r"ghcr\.io/chrislusf/seaweedfs:4\.48@sha256:[0-9a-f]{64}", fixture_source
     )
     assert '.with_command("mini -dir=/data -s3.port=9000")' in fixture_source
     assert '.with_env("S3_BUCKET", "quality-tests")' in fixture_source

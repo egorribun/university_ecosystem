@@ -1304,6 +1304,7 @@ jobs:
           # source does not alter severity policy or the fail-closed gate.
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
         with:
+          version: v0.75.0
           image-ref: university-ecosystem/backend:${{ github.sha }}
           format: sarif
           output: trivy-results.sarif

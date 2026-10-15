@@ -34,12 +34,95 @@ def _load_helper() -> ModuleType:
         ("401 Unauthorized", False),
         ("404 Not Found", False),
         ("chart metadata is invalid", False),
+        (
+            "no repository definition for https://nats-io.github.io/k8s/helm/charts/",
+            False,
+        ),
     ],
 )
 def test_helm_failure_classifier_is_narrow(output: str, expected: bool) -> None:
     helper = _load_helper()
 
     assert helper.is_transient_failure(output) is expected
+
+
+def test_helm_helper_registers_only_official_nats_repo_in_isolated_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    (chart / "Chart.yaml").write_text(
+        'dependencies:\n  - name: nats\n    version: "2.15.0"\n'
+        '    repository: "https://nats-io.github.io/k8s/helm/charts/"\n',
+        encoding="utf-8",
+    )
+    (chart / "Chart.lock").write_text(
+        "dependencies:\n- name: nats\n"
+        "  repository: https://nats-io.github.io/k8s/helm/charts/\n"
+        "  version: 2.15.0\n",
+        encoding="utf-8",
+    )
+    charts = chart / "charts"
+    charts.mkdir()
+    for archive in CURRENT_HELM_ARCHIVES:
+        (charts / archive).write_bytes(b"locked dependency archive")
+
+    calls: list[list[str]] = []
+    helm_roots: list[tuple[str, str, str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        roots = tuple(environment[name] for name in helper.HELM_HOME_VARIABLES)
+        assert len(set(roots)) == 3
+        assert all(Path(path).is_dir() for path in roots)
+        helm_roots.append(roots)
+        return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setenv("HELM_CONFIG_HOME", str(tmp_path / "ambient-config"))
+    monkeypatch.setattr(helper.subprocess, "run", run)
+
+    assert helper.main(["--skip-refresh", str(chart), *CURRENT_HELM_ARCHIVES]) == 0
+    assert calls == [
+        [
+            "helm",
+            "repo",
+            "add",
+            "nats",
+            "https://nats-io.github.io/k8s/helm/charts/",
+            "--force-update",
+        ],
+        ["helm", "dependency", "build", "--skip-refresh", str(chart)],
+    ]
+    assert helm_roots[0] == helm_roots[1]
+    assert str(tmp_path / "ambient-config") not in helm_roots[0]
+
+
+def test_helm_helper_does_not_register_unreviewed_remote_repositories(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    (chart / "Chart.yaml").write_text(
+        "dependencies:\n  - name: example\n"
+        "    repository: https://charts.example.invalid/\n",
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        helper.subprocess,
+        "run",
+        lambda command, **kwargs: (
+            calls.append(command)
+            or subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+        ),
+    )
+
+    assert helper.main([str(chart)]) == 0
+    assert calls == [["helm", "dependency", "build", str(chart)]]
 
 
 def test_helm_helper_retries_transient_failure_and_keeps_first_output(
@@ -65,6 +148,54 @@ def test_helm_helper_retries_transient_failure_and_keeps_first_output(
     output = capsys.readouterr().out
     assert "first: i/o timeout" in output
     assert "attempt 2" in output
+
+
+def test_helm_helper_retries_transient_nats_repository_bootstrap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    (chart / "Chart.yaml").write_text(
+        "dependencies:\n  - name: nats\n"
+        "    repository: https://nats-io.github.io/k8s/helm/charts/\n",
+        encoding="utf-8",
+    )
+    charts = chart / "charts"
+    charts.mkdir()
+    for archive in CURRENT_HELM_ARCHIVES:
+        (charts / archive).write_bytes(b"locked dependency archive")
+    outcomes = iter(
+        [
+            subprocess.CompletedProcess(
+                ["helm", "repo", "add"],
+                1,
+                stdout="",
+                stderr="failed to fetch index: i/o timeout\n",
+            ),
+            subprocess.CompletedProcess(
+                ["helm", "repo", "add"], 0, stdout="ok\n", stderr=""
+            ),
+            subprocess.CompletedProcess(
+                ["helm", "dependency", "build"], 0, stdout="ok\n", stderr=""
+            ),
+        ]
+    )
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return next(outcomes)
+
+    monkeypatch.setattr(helper.subprocess, "run", run)
+    monkeypatch.setenv("HELM_RETRY_SLEEP_BASE_SECONDS", "0")
+
+    assert helper.main([str(chart), *CURRENT_HELM_ARCHIVES]) == 0
+    assert calls == [
+        ["helm", "repo", "add", "nats", helper.NATS_REPOSITORY_URL, "--force-update"],
+        ["helm", "repo", "add", "nats", helper.NATS_REPOSITORY_URL, "--force-update"],
+        ["helm", "dependency", "build", str(chart)],
+    ]
 
 
 def test_helm_helper_fails_fast_on_permanent_failure(
