@@ -869,7 +869,7 @@ pub fn is_partition_expired(
     )
 }
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
 #[pyfunction]

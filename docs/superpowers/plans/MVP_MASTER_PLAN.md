@@ -112,6 +112,16 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   сохраняются. Policy integration и final-source validation выполняются
   отдельно; см. ADR-047.
 
+- Owner decision (2026-10-15 UTC): approved exactly 90 additional exact-match
+  detect-secrets dispositions: 54 public_integrity_digest, 27 independent_contract_fingerprint,
+  and 9 external_kubernetes_secret_reference. The 27 v4 fingerprints extend the existing
+  independent_contract_fingerprint category; external_kubernetes_secret_reference is the sole
+  new category, and public_integrity_digest behavior is unchanged. These are exact
+  path/type/finding-digest tuples, reviewed_on 2026-10-15 and expires_on 2027-01-10. The historical Oct 14 135 records remain
+  unchanged, bringing the approved scope to exactly 225. No other identities or cross-category
+  reclassification are approved. Baseline 319, 78 required contexts, blocking CodeQL and hooks
+  remain unchanged. Changed/unmatched identities fail closed; validator integration, tests, hosted
+  checks and final-source validation remain separate gates.
 - Уже готовые security, signing, SBOM/provenance и WASM parity шаги image producer
   сохраняются. Отложена дополнительная сертификация/продвижение в kind, а не
   удаление работающей защиты или публикация произвольного набора образов.
@@ -185,10 +195,10 @@ runtime guard85%/4 GiB неизменен. Build, full E2E и Lighthouse сох�
 ## Дополнительный объём: аудит и зависимости, 2026-10-12
 
 Владелец явно включил в работу закрытие
-[полного аудита](../../audits/AUDIT-2026-10.md) и
-[отчёта о зависимостях](../../audits/dependency-updates-2026-10/README.md).
-Оба отчёта сохраняются как исходные снимки; их OPEN и версии не считать
-текущим результатом проверки. Новую конкурирующую дорожную карту не создавать.
+[полного аудита](../../audits/AUDIT-2026-10.md). Обновления зависимостей
+проверяются отдельными согласованными пакетами по действующим политикам;
+исторический снимок сам по себе не является текущим доказательством. Новую
+конкурирующую дорожную карту не создавать.
 
 1. Перепроверить каждую подтверждённую находку на актуальном source. Сначала
    исправить P1 безопасности, потери данных, миграции и рабочие пользовательские

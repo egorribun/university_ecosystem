@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -17,13 +18,50 @@ NIGHTLY = WORKFLOWS / "nightly-full-gate.yml"
 MANUAL = WORKFLOWS / "manual-mutation-evidence.yml"
 FULL_BACKEND = WORKFLOWS / "reusable-full-backend-mutation.yml"
 HELM = WORKFLOWS / "reusable-helm-dependencies.yml"
-BASELINE = ROOT / "tests" / "fixtures" / "full-backend-reusable-baseline.v3.yaml"
+BASELINE = ROOT / "tests" / "fixtures" / "full-backend-reusable-baseline.v4.yaml"
 REQUIRED_CONTEXTS = {"CI Success", "Coverage & Quality Policy Gate"}
 
 
 def _baseline() -> dict[str, object]:
     value = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
-    assert value["schema"] == "full-backend-reusable-baseline-v3"
+    expected_source_keys = {
+        "nightly",
+        "manual",
+        "reusable_full_backend_mutation",
+    }
+    expected_origin_source_files = {
+        "nightly": "dfdf66bbb99e0f48b9e58e64da7674ae13b9a82a64524b46d73bf7351ea30666",
+        "manual": "63a8c260372e99e4fb674d4f502610066fccc96bb4a04ea0913c2af04d3bb834",
+        "reusable_full_backend_mutation": "dda3b12833f6f0a1e2cd9766c8e04f56bb6cc7a04f4192af56c2c8732b65d053",
+    }
+    assert set(value) == {
+        "schema",
+        "origin_commit",
+        "origin_source_files",
+        "source_files",
+        "nightly_trigger_sha256",
+        "manual_trigger_sha256",
+        "nightly_preserved_jobs",
+        "manual_preserved_jobs",
+        "full_mutation_steps",
+    }
+    assert value["schema"] == "full-backend-reusable-baseline-v4"
+    assert value["origin_commit"] == "cd8daacbf9aa40a7da7398750bcf0d95571edf38"
+    assert set(value["origin_source_files"]) == set(expected_origin_source_files)
+    assert value["origin_source_files"] == expected_origin_source_files
+    assert set(value["source_files"]) == expected_source_keys
+    assert all(
+        re.fullmatch(r"[0-9a-f]{64}", digest)
+        for digest in value["source_files"].values()
+    )
+    actual_source_files = {
+        "nightly": hashlib.sha256(NIGHTLY.read_bytes()).hexdigest(),
+        "manual": hashlib.sha256(MANUAL.read_bytes()).hexdigest(),
+        "reusable_full_backend_mutation": hashlib.sha256(
+            FULL_BACKEND.read_bytes()
+        ).hexdigest(),
+    }
+    assert actual_source_files == value["source_files"]
     return value
 
 

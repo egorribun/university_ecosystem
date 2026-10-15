@@ -31,15 +31,17 @@ public frontend. `backend.config.frontendOrigin` may override the derived value
 in development; staging and production fail rendering unless it is empty or
 equal to the ingress origin.
 
-The dependency trust boundary is deliberately narrow: Redis must render as
-`docker.io/bitnami/redis`, its metrics sidecar as
-`docker.io/bitnami/redis-exporter`, and NATS as `docker.io/bitnami/nats`.
-Staging and production require immutable digests, `imagePullPolicy: Always`,
-and `global.security.allowInsecureImages=false`; registry mirrors and repository
-substitution fail rendering. Digest and repository pinning establish the
-currently implemented artifact identity boundary. Independent signature and
-attestation verification must not be claimed until reviewed signer roots and
-attestation policies are configured.
+The dependency trust boundary is deliberately narrow: the cache-compatible
+Redis image must render as `docker.io/redis:7.4.11-alpine`, its metrics sidecar as
+`docker.io/oliver006/redis_exporter`, and NATS as `docker.io/nats`. The cache is
+packaged by the first-party `redis` wrapper chart at version `0.1.0`, which retains
+the established Redis Service and PVC identities. NATS uses the NATS-maintained
+chart at version `2.15.0`. Staging and production require immutable digests,
+`imagePullPolicy: Always`, and `global.security.allowInsecureImages=false`; registry
+mirrors and repository substitution fail rendering. Digest and repository
+pinning establish the currently implemented artifact identity boundary.
+Independent signature and attestation verification must not be claimed until
+reviewed signer roots and attestation policies are configured.
 
 When backups are enabled, `backup.postgresImage` and
 `backup.s3ClientImage` must also use `repository@sha256:<digest>` and are
@@ -171,7 +173,7 @@ the audience from `gateway.config.jwtAudience` and the canonical issuer from
 issuer, audience, algorithm, or required security claims. Keep the issuer
 stable for an environment (the release script derives it from the HTTPS API
 host) and treat it as non-secret configuration. Revoked token JTIs and
-capability replay nonces use the dedicated persistent revocation Redis/Valkey
+capability replay nonces use the dedicated persistent revocation Redis
 store, not the evictable application cache.
 
 In development, the gateway's `JWKS_ENDPOINT` uses the in-cluster backend HTTP
@@ -189,11 +191,17 @@ last-known-good key set when a refresh fails. `FP_JWKS_REFRESH_INTERVAL` is in
 seconds (default `300`, maximum `86400`), and `FP_JWT_ACTIVE_KID` names the
 static PEM fallback during startup (default `primary`).
 
-`university-nats-config` must contain `nats-server.conf`. That externally
-managed configuration is the canonical NATS authentication contract: it must
-use the same token stored as `nats-auth-token`, enable JetStream, set
-`store_dir: /data/jetstream`, and define the intended cluster routes. The chart
-uses an existing Secret so the token never enters Helm release state.
+`university-nats-config` must contain `nats-server.conf`. The NATS container
+loads that Secret file with `--config /etc/nats-auth/nats-server.conf`.
+The chart-generated ConfigMap is not the runtime configuration. This externally
+managed file is the canonical NATS authentication contract: it must use the same token
+stored as `nats-auth-token`, enable JetStream, set
+`store_dir: /data/jetstream`, and define the intended cluster routes. The official
+NATS chart mounts the existing `data` claim at `/data`; values therefore set
+`config.jetstream.fileStore.dir: /data` and merge
+`config.jetstream.merge.store_dir: /data/jetstream`. This keeps the
+JetStream files at their existing path on the retained PVC. The chart uses an
+existing Secret so the token never enters Helm release state.
 
 The internal gateway-to-file-processor gRPC boundary uses conventional mTLS.
 `university-internal-grpc-gateway-client`,
@@ -252,7 +260,7 @@ helm upgrade --install university charts/university-ecosystem `
   --namespace university-ecosystem `
   --values charts/university-ecosystem/values-staging.yaml `
   --values .staging-resolved-nonsecret-values.yaml `
-  --atomic --wait --timeout 20m --history-max 10
+  --rollback-on-failure --wait=legacy --wait-for-jobs --timeout 15m --history-max 10
 ```
 
 Gate the rollout on migration success, Deployments and StatefulSets becoming
@@ -264,7 +272,7 @@ upgrade. If migrations remain backward compatible, roll back with:
 
 ```powershell
 helm rollback university <revision> --namespace university-ecosystem `
-  --wait --timeout 20m
+  --wait=legacy --timeout 15m
 ```
 
 Helm rollback cannot undo a database migration. For an incompatible schema,

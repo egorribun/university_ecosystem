@@ -4,7 +4,8 @@
   "description": "Root management for University Ecosystem",
   "scripts": {
     "release": "semantic-release",
-    "test:release-toolchain": "npm --prefix tools/npm-cli-shim test && node --test scripts/tests/*.test.mjs && npm --version"
+    "test:release-toolchain": "npm --prefix tools/npm-cli-shim test && node --test scripts/tests/*.test.mjs && npm --version",
+    "test:semantic-release-micromatch-compat": "node --test tools/semantic-release-micromatch-compat/compat.test.cjs"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^7.0.0",
@@ -13,7 +14,8 @@
     "@semantic-release/github": "^12.0.10",
     "@semantic-release/release-notes-generator": "^14.1.1",
     "runner-npm-cli-bridge": "file:tools/npm-cli-shim",
-    "semantic-release": "^25.0.9"
+    "semantic-release": "^25.0.9",
+    "micromatch": "file:tools/semantic-release-micromatch-compat"
   },
   "overrides": {
     "@actions/http-client": {
@@ -21,12 +23,11 @@
     },
     "js-yaml": "^4.3.2",
     "minimatch": "^10.2.4",
-    "micromatch": {
-      "picomatch": "^2.3.2"
-    },
+    "micromatch": "$micromatch",
     "npm": "$runner-npm-cli-bridge",
     "tinyglobby": {
       "picomatch": "^4.0.4"
-    }
+    },
+    "handlebars": "4.7.10"
   }
 }

@@ -11,7 +11,7 @@ RUN apk add --no-cache \
 # Build all Go-based generators from checksum-verified modules with the patched
 # repository toolchain. This avoids importing stale Go runtimes from upstream
 # release binaries into the code-generation image.
-ARG BUF_VERSION="v1.72.0"
+ARG BUF_VERSION="v1.73.0"
 ENV GOTOOLCHAIN=local
 
 RUN --mount=type=cache,target=/go/pkg/mod \

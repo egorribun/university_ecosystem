@@ -156,6 +156,26 @@ def _disposition_document(*records: dict[str, Any]) -> dict[str, Any]:
     return {"schema_version": 1, "records": list(records)}
 
 
+def _reviewed_exact_disposition(
+    path: str,
+    finding_type: str,
+    digest_bytes: tuple[int, ...],
+    category: str,
+) -> dict[str, Any]:
+    record = _reviewed_disposition(
+        path=path,
+        finding_type=finding_type,
+        digest=bytes(digest_bytes).hex(),
+        category=category,
+    )
+    if category == "external_kubernetes_secret_reference":
+        record["evidence"] = (
+            "Kubernetes external Secret object name or key reference; "
+            "not credential material."
+        )
+    return record
+
+
 def _commit_dispositions(repository: Path, records: list[dict[str, Any]]) -> str:
     policy_path = repository / "quality" / "security-false-positive-dispositions.json"
     policy_path.parent.mkdir(parents=True, exist_ok=True)
@@ -635,6 +655,159 @@ def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
     )
 
     assert dispositions == {identity}
+
+
+def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
+    assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 27
+    assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 9
+    assert {
+        path for path, _, _ in verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
+    } == {"tests/fixtures/full-backend-reusable-baseline.v4.yaml"}
+    assert {
+        path for path, _, _ in verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES
+    } == {
+        "charts/redis-compat/values.yaml",
+        "charts/revocation-store/values.yaml",
+        "charts/university-ecosystem/values-staging.yaml",
+        "tests/test_docker_startup_contracts.py",
+        "tests/test_helm_staging_contract.py",
+        "tests/test_mfa_helm_contract.py",
+        "tests/test_revocation_store_security_contract.py",
+    }
+
+
+@pytest.mark.parametrize(
+    ("path", "finding_type", "digest_bytes"),
+    sorted(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES),
+)
+def test_v4_independent_contract_fingerprints_match_exact_identities(
+    path: str, finding_type: str, digest_bytes: tuple[int, ...]
+) -> None:
+    record = _reviewed_exact_disposition(
+        path,
+        finding_type,
+        digest_bytes,
+        "independent_contract_fingerprint",
+    )
+
+    dispositions = verifier.validate_false_positive_dispositions(
+        _disposition_document(record),
+        today=verifier.date(2026, 10, 15),
+    )
+
+    assert dispositions == {
+        verifier.FindingIdentity(path, finding_type, bytes(digest_bytes).hex(), 1)
+    }
+
+
+@pytest.mark.parametrize(
+    ("path", "finding_type", "digest_bytes"),
+    sorted(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES),
+)
+def test_external_kubernetes_secret_references_match_exact_identities(
+    path: str, finding_type: str, digest_bytes: tuple[int, ...]
+) -> None:
+    record = _reviewed_exact_disposition(
+        path,
+        finding_type,
+        digest_bytes,
+        "external_kubernetes_secret_reference",
+    )
+
+    dispositions = verifier.validate_false_positive_dispositions(
+        _disposition_document(record),
+        today=verifier.date(2026, 10, 15),
+    )
+
+    assert dispositions == {
+        verifier.FindingIdentity(path, finding_type, bytes(digest_bytes).hex(), 1)
+    }
+
+
+@pytest.mark.parametrize(
+    ("category", "identity"),
+    [
+        ("independent_contract_fingerprint", identity)
+        for identity in sorted(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES)
+    ]
+    + [
+        ("external_kubernetes_secret_reference", identity)
+        for identity in sorted(
+            verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES
+        )
+    ],
+)
+def test_new_exact_disposition_categories_reject_mutated_identities(
+    category: str,
+    identity: tuple[str, str, tuple[int, ...]],
+) -> None:
+    path, finding_type, digest_bytes = identity
+    mutations = (
+        (path + ".changed", finding_type, digest_bytes),
+        (
+            path,
+            "Secret Keyword"
+            if finding_type == "Hex High Entropy String"
+            else "Basic Auth Credentials",
+            digest_bytes,
+        ),
+        (
+            path,
+            finding_type,
+            ((digest_bytes[0] + 1) % 256, *digest_bytes[1:]),
+        ),
+    )
+
+    for changed_path, changed_type, changed_digest in mutations:
+        record = _reviewed_exact_disposition(
+            changed_path,
+            changed_type,
+            changed_digest,
+            category,
+        )
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(record),
+                today=verifier.date(2026, 10, 15),
+            )
+
+
+def test_external_secret_reference_requires_semantic_evidence_markers() -> None:
+    path, finding_type, digest_bytes = sorted(
+        verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES
+    )[0]
+    record = _reviewed_exact_disposition(
+        path,
+        finding_type,
+        digest_bytes,
+        "external_kubernetes_secret_reference",
+    )
+    record["evidence"] = "Exact detector identity was reviewed."
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 15),
+        )
+
+
+def test_external_secret_reference_still_requires_unexpired_review() -> None:
+    path, finding_type, digest_bytes = sorted(
+        verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES
+    )[0]
+    record = _reviewed_exact_disposition(
+        path,
+        finding_type,
+        digest_bytes,
+        "external_kubernetes_secret_reference",
+    )
+    record["expires_on"] = "2026-10-14"
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 15),
+        )
 
 
 def test_independent_contract_fingerprint_category_remains_exact() -> None:

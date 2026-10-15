@@ -59,12 +59,19 @@ projected configuration; the application exposes only effective diagnostics.
    and `grpcio>=1.81.0,<1.85` (1.82.0 was yanked); the lockfile resolves the
    provider to 0.5.0, the release compatible with the shared protobuf 6 line
    that Authzed and OpenTelemetry require.
-2. Run the SHA-pinned `flagd:v0.16.3` image as a two-replica Kubernetes
+2. Run the SHA-pinned `flagd:v0.17.0` image as a two-replica Kubernetes
    Deployment. Backend pods connect through the `flagd` Service using typed
    `FLAGD_HOST` and `FLAGD_PORT` settings.
    On 2026-10-13, the source image pin moved from v0.16.1 to v0.16.3 for the
-   upstream gRPC 1.83.1 security update ([release notes](https://github.com/open-feature/flagd/releases/tag/flagd/v0.16.3)); Kubernetes
-   deployment acceptance remains pending.
+   upstream gRPC 1.83.1 security update. On 2026-10-14, it moved to v0.17.0
+   ([release notes](https://github.com/open-feature/flagd/releases/tag/flagd/v0.17.0)).
+   That release renames server sync metrics from
+   `feature_flag.flagd.sync.active_streams` and
+   `feature_flag.flagd.sync.stream.duration` to the corresponding
+   `feature_flag.flagd.sync.server.*` names. The repository has no queries,
+   dashboards, alerts, or relabel rules referencing the old metric names; the
+   Prometheus job only scrapes `flagd:8014/metrics`, and the registered flag set
+   remains empty. Kubernetes deployment acceptance remains pending.
 3. Keep the registered boolean flag set synchronized with
    `k8s/flagd/flags.json`; a contract test rejects drift. Register a flag only
    together with the call site that evaluates it. Since 2026-09-28 the set is

@@ -185,6 +185,22 @@ for the MVP release; the current plan is
      baseline remains 319 identities, the 78 required contexts, blocking CodeQL
      rule, and hooks remain unchanged. Approval does not replace policy integration,
      tests, hosted checks, or final-source validation.
+
+     On 2026-10-15 UTC, the owner approved exactly 90 additional exact-match
+     dispositions, extending the historically approved 135 identities to exactly
+     225. The exact repository-path, detector-type, and finding-digest tuples are
+     recorded in quality/security-false-positive-dispositions.json: 54
+     public_integrity_digest, 27 independent_contract_fingerprint, and 9
+     external_kubernetes_secret_reference identities. The 27 v4 fingerprints extend
+     the existing independent_contract_fingerprint category; the external Kubernetes
+     reference is the sole new category. Each carries reviewed_on 2026-10-15 and
+     expires_on 2027-01-10; the previous 135 records remain unchanged. Changed or
+     unmatched identities remain fail-closed. This authorizes no cross-category
+     reclassification, other identity, baseline entry, inline pragma, broad scanner
+     exclusion, bypass, or context change. The baseline stays at 319 identities and
+     78 required contexts; blocking CodeQL and hooks stay unchanged. Validator
+     integration, tests, hosted checks, and final-source validation remain separate
+     requirements.
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).
    - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).
@@ -202,7 +218,7 @@ for the MVP release; the current plan is
 
 - Use the ordinary pull-request flow and required checks for changes to `main`.
 - **Solo-maintainer mode** (owner decision 2026-10-12): the owner is the only collaborator, so the `main` ruleset does not require a CODEOWNERS approval; the required status checks and the CodeQL `code_scanning` rule are the merge control. CODEOWNERS stays for reviewer auto-assignment.
-- **Break-glass bypass**: the Admin bypass in ruleset `8335285` works only through a pull request (`bypass_mode: pull_request`). Use it only when the owner explicitly authorizes it in the conversation for named pull requests, and record every use in [docs/audits/merge-exceptions.md](docs/audits/merge-exceptions.md) (PR, time, unsatisfied checks, reason, approver). Never initiate a bypass on your own. Force-push and general changes to branch protection remain outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
+- **Break-glass bypass**: the Admin bypass in ruleset `8335285` works only through a pull request (`bypass_mode: pull_request`). Use it only when the owner explicitly authorizes it in the conversation for named pull requests. Never initiate a bypass on your own. Force-push and general changes to branch protection remain outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
 - Ruleset `egorribun-protect` forbids force-push and deletion of `egorribun`. Integrate remote work with a merge, or rebase only local commits that were never pushed.
 - On 2026-10-09 the owner explicitly authorized removing the 14 Q1/Q4 required check contexts listed in [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md#authorized-required-context-removals), from main ruleset `8335285`, after the corresponding CI diff is complete, reviewed and checked. The owner subsequently approved removing exactly one additional context, `Security Audit / Semgrep SAST`, after the reviewed scanner de-duplication change passes its checks. CodeQL remains blocking and Semgrep remains in pre-commit. Preserve every other rule and context; this permission does not authorize bypass, further context removals, or early promotion of advisory live smoke. The owner-approved 2026-10-12 ruleset change (two compatibility contexts removed, four security contexts and a CodeQL `code_scanning` rule added) is recorded in ADR-047.
 

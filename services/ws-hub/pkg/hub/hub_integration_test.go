@@ -76,7 +76,7 @@ func startNATSContainer(t *testing.T) *nats.Conn {
 
 	natsContainer, err := tcnats.Run(
 		ctx,
-		"nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6",
+		"nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
 		natsContainerOptions(t, "ws-hub-nats", "ws-hub-core-nats-integration")...,
 	)
 	if natsContainer != nil {

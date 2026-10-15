@@ -31,7 +31,7 @@ REQUIRED_AUDIT_FIELDS = (
     "normal test/vulnerability-gate evidence",
 )
 RENOVATE_PRE_COMMIT_HOOK = """  - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: 43.268.4 # ece9d8611e4e7da8cbcf7ea28039ec7928316032
+    rev: 44.142.1 # 79024b1a7a706341245d73344bf413ee29bf5013
     hooks:
       - id: renovate-config-validator
         args: [--strict]
@@ -92,13 +92,9 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert isinstance(tool, dict)
     uv = tool["uv"]
     assert isinstance(uv, dict)
+    assert uv.get("required-version") == "==0.12.23"
     assert uv.get("exclude-newer") == "7 days"
-    assert uv.get("exclude-newer-package") == {
-        "cryptography": "2026-08-01T00:00:00Z",
-        "h2": "2026-08-04T00:00:00Z",
-        "mcp": "2026-08-04T00:00:00Z",
-        "pyjwt": "2026-09-29T00:00:00Z",
-    }
+    assert uv.get("exclude-newer-package", {}) == {}
 
     renovate = _read_renovate()
     assert renovate["osvVulnerabilityAlerts"] is True
@@ -170,7 +166,7 @@ def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
         for repo in pre_commit_config["repos"]
         if repo["repo"] == "https://github.com/renovatebot/pre-commit-hooks"
     )
-    assert renovate_repo["rev"] == "43.268.4"
+    assert renovate_repo["rev"] == "44.142.1"
     renovate_hook = next(
         hook
         for hook in renovate_repo["hooks"]
@@ -268,6 +264,7 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert isinstance(lock_options, dict)
     assert "exclude-newer" in lock_options
     assert lock_options["exclude-newer-span"] == "P7D"
+    assert "exclude-newer-package" not in lock_options
 
     runbook = _read_text("docs/DEPENDENCY_COOLDOWN_EMERGENCY.md")
     assert TARGETED_EMERGENCY_COMMAND in runbook
@@ -318,3 +315,22 @@ def test_dependency_upper_bound_policy_is_recorded_in_adr_index() -> None:
     index = index_path.read_text(encoding="utf-8")
     assert "ADR-035" in index
     assert "Python Dependency Compatibility Policy" in index
+
+
+def test_sqlalchemy_20_uses_inline_typing_without_removed_mypy_plugin() -> None:
+    pyproject = _read_toml("pyproject.toml")
+    dependencies = pyproject["project"]["dependencies"]
+    assert isinstance(dependencies, list)
+    sqlalchemy = next(
+        Requirement(value)
+        for value in dependencies
+        if isinstance(value, str) and Requirement(value).name == "sqlalchemy"
+    )
+    assert sqlalchemy.specifier.contains("2.0.54")
+    assert not sqlalchemy.specifier.contains("2.1.0")
+
+    mypy = pyproject["tool"]["mypy"]
+    assert isinstance(mypy, dict)
+    plugins = mypy["plugins"]
+    assert isinstance(plugins, list)
+    assert "sqlalchemy.ext.mypy.plugin" not in plugins

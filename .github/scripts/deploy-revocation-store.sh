@@ -7,44 +7,48 @@ set -euo pipefail
 # the first deployment that needs it.
 mode="${1:-}"
 chart="charts/revocation-store"
-vendor_archive="$chart/charts/redis-20.13.4.tgz"
-vendor_checksum="$chart/redis-20.13.4.tgz.sha256"
-vendor_sha256="4c83fd15af8cd755ef8984b8b089413b10dbed16da1a87859ea1a2b086e11e14" # pragma: allowlist secret - public vendored-chart integrity digest
-
-verify_vendored_dependency() {
-  test -s "$chart/Chart.lock" || {
-    echo "Pinned Helm dependency lock is missing or empty: $chart/Chart.lock" >&2
-    return 1
-  }
-  for vendored_file in "$vendor_archive" "$vendor_checksum"; do
-    if [[ ! -f "$vendored_file" || -L "$vendored_file" ]]; then
-      echo "Vendored Redis dependency must be a regular checked-in file: $vendored_file" >&2
+verify_first_party_chart() {
+  local stale_path
+  for stale_path in \
+    "$chart/Chart.lock" \
+    "$chart/charts/redis-20.13.4.tgz" \
+    "$chart/redis-20.13.4.tgz.sha256"; do
+    if [[ -e "$stale_path" || -L "$stale_path" ]]; then
+      echo "Legacy Bitnami dependency artifact must be removed: $stale_path" >&2
       return 1
     fi
   done
-  if [[ "$(sha256sum "$vendor_archive" | awk '{print $1}')" != "$vendor_sha256" ]]; then
-    echo "Vendored Redis archive checksum does not match the reviewed dependency." >&2
-    return 1
-  fi
-  if ! (
-    cd "$chart"
-    sha256sum --status --check "$(basename "$vendor_checksum")"
-  ); then
-    echo "Vendored Redis checksum manifest does not verify the archive." >&2
-    return 1
-  fi
-  dependency_status="$(helm dependency list "$chart")"
-  actual_dependencies="$(awk 'NR > 1 && NF {print $1 "|" $3 "|" $4}' <<< "$dependency_status")"
-  expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok'
-  if [[ "$actual_dependencies" != "$expected_dependencies" ]]; then
-    echo "Revocation-store dependencies do not match the reviewed Chart.lock contract." >&2
+
+  local required_file
+  for required_file in \
+    "$chart/Chart.yaml" \
+    "$chart/values.yaml" \
+    "$chart/values.schema.json" \
+    "$chart/templates/validate-config.yaml" \
+    "$chart/templates/redis-configmap.yaml" \
+    "$chart/templates/redis-networkpolicy.yaml" \
+    "$chart/templates/redis-pdb.yaml" \
+    "$chart/templates/redis-serviceaccount.yaml" \
+    "$chart/templates/redis-services.yaml" \
+    "$chart/templates/redis-statefulset.yaml" \
+    "$chart/templates/deployment-contract.yaml"; do
+    if [[ ! -f "$required_file" || -L "$required_file" || ! -s "$required_file" ]]; then
+      echo "Required first-party revocation chart file is missing or unsafe: $required_file" >&2
+      return 1
+    fi
+  done
+
+  dependency_status="$(helm dependency list "$chart" 2>&1)"
+  actual_dependencies="$(awk 'NF >= 4 && $1 != "NAME" && $1 != "WARNING:" {print $1 "|" $2 "|" $3 "|" $4}' <<< "$dependency_status")"
+  if [[ -n "$actual_dependencies" ]]; then
+    echo "Revocation store must not install remote or vendored chart dependencies." >&2
     printf '%s\n' "$dependency_status" >&2
     return 1
   fi
 }
 
-if [[ "$mode" == "verify-vendor" ]]; then
-  verify_vendored_dependency
+if [[ "$mode" == "verify-vendor" || "$mode" == "verify-chart" ]]; then
+  verify_first_party_chart
   exit 0
 fi
 
@@ -72,6 +76,104 @@ fi
 
 store_release="${HELM_RELEASE_NAME}-revocation-store"
 store_fullname="${HELM_RELEASE_NAME}-revocation-redis"
+
+preflight_existing_datastore_image() {
+  local statefulset_name="${store_fullname}-master"
+  local claim_name="redis-data-${statefulset_name}-0"
+  local statefulset_state
+  if ! command -v timeout >/dev/null 2>&1; then
+    echo "The timeout utility is required to inspect revocation storage safely." >&2
+    return 1
+  fi
+
+  if ! statefulset_state="$(timeout --signal=TERM --kill-after=2s 10s \
+    kubectl get statefulset "$statefulset_name" \
+    --request-timeout=8s \
+    --namespace "$K8S_NAMESPACE" \
+    --ignore-not-found \
+    --output='jsonpath={.metadata.name}|{.spec.template.spec.containers[?(@.name=="redis")].image}' \
+    2>/dev/null)"; then
+    echo "Unable to inspect the existing revocation StatefulSet; refusing to reuse its PVC." >&2
+    return 1
+  fi
+
+  if [[ -z "$statefulset_state" ]]; then
+    local existing_claim
+    if ! existing_claim="$(timeout --signal=TERM --kill-after=2s 10s \
+      kubectl get pvc "$claim_name" \
+      --request-timeout=8s \
+      --namespace "$K8S_NAMESPACE" \
+      --ignore-not-found \
+      --output='jsonpath={.metadata.name}' \
+      2>/dev/null)"; then
+      echo "Unable to inspect the retained revocation PVC; refusing first installation." >&2
+      return 1
+    fi
+    if [[ -n "$existing_claim" ]]; then
+      echo "A retained revocation PVC exists without its StatefulSet; refusing first installation." >&2
+      return 1
+    fi
+    echo "No existing revocation StatefulSet or PVC found; first installation can proceed."
+    return 0
+  fi
+
+  local actual_name="${statefulset_state%%|*}"
+  local image="${statefulset_state#*|}"
+  if [[ "$actual_name" != "$statefulset_name" || "$image" == "$statefulset_state" || -z "$image" ]]; then
+    echo "Existing revocation StatefulSet is missing its expected Redis container identity; refusing to reuse its PVC." >&2
+    return 1
+  fi
+
+  local image_ref="$image"
+  local has_digest=false
+  if [[ "$image" == *@* ]]; then
+    if [[ ! "$image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+      echo "Existing revocation image digest is malformed; refusing to reuse its PVC." >&2
+      return 1
+    fi
+    image_ref="${image%@sha256:*}"
+    has_digest=true
+  fi
+
+  local image_repository="${image_ref%%:*}"
+  if [[ "$image_repository" != "docker.io/bitnami/redis" && \
+        "$image_repository" != "docker.io/redis" ]]; then
+    echo "Existing revocation image is not from an identified Redis repository; refusing to reuse its PVC." >&2
+    return 1
+  fi
+
+  # Keep the non-digest path narrow to stable 7.4 tags and known official
+  # distro variants. Digest references always require verification of the
+  # running binary because a digest, not its accompanying tag, is authoritative.
+  local stable_redis_74_tag=false
+  if [[ "$image_ref" =~ ^docker\.io/(bitnami/redis|redis):7\.4\.[0-9]+(-alpine([0-9]+(\.[0-9]+)?)?|-debian-[0-9]+-r[0-9]+)?$ ]]; then
+    stable_redis_74_tag=true
+  elif [[ "$image_ref" == *:* ]]; then
+    echo "Existing revocation image tag is not a recognized stable Redis 7.4 variant; refusing to reuse its PVC." >&2
+    return 1
+  fi
+
+  if [[ "$has_digest" != true && "$stable_redis_74_tag" == true ]]; then
+    return 0
+  fi
+
+  # The published Bitnami deployment used a digest-only image reference, so
+  # appVersion and the image string cannot prove the engine version. Inspect
+  # the running binary with bounded, read-only access and never log its output.
+  local version_output
+  if ! version_output="$(timeout --signal=TERM --kill-after=2s 10s \
+    kubectl exec --request-timeout=8s \
+    --namespace "$K8S_NAMESPACE" \
+    "${statefulset_name}-0" \
+    --container redis -- redis-server --version 2>/dev/null)"; then
+    echo "Unable to verify the existing Redis binary version; refusing to reuse its PVC." >&2
+    return 1
+  fi
+  if [[ ! "$version_output" =~ ^Redis[[:space:]]server[[:space:]]v=7\.4\.[0-9]+([[:space:]]|$) ]]; then
+    echo "Existing revocation binary is not verified as Redis 7.4; refusing to reuse its PVC." >&2
+    return 1
+  fi
+}
 # The store credential identity is immutable: permitting a caller to point it
 # at redis-credentials would let every cache client authenticate to revocation
 # Redis. ExternalSecrets/Vault own the values, while this fixed target name and
@@ -83,7 +185,7 @@ if [[ -n "${REVOCATION_REDIS_SECRET_NAME:-}" || -n "${REVOCATION_REDIS_SECRET_KE
   exit 1
 fi
 
-verify_vendored_dependency
+verify_first_party_chart
 
 environment_values=()
 if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production" ]]; then
@@ -101,11 +203,12 @@ common_args=(
   --set-string "redis.auth.existingSecret=$redis_secret_name"
   --set-string "redis.auth.existingSecretPasswordKey=$redis_secret_key"
   --set-string "redis.image.registry=docker.io"
-  --set-string "redis.image.repository=bitnami/redis"
+  --set-string "redis.image.repository=redis"
+  --set-string "redis.image.tag=7.4.11-alpine"
   --set-string "redis.image.digest=$REVOCATION_REDIS_IMAGE_DIGEST"
   --set-string "redis.image.pullPolicy=Always"
   --set-string "redis.metrics.image.registry=docker.io"
-  --set-string "redis.metrics.image.repository=bitnami/redis-exporter"
+  --set-string "redis.metrics.image.repository=oliver006/redis_exporter"
   --set-string "redis.metrics.image.digest=$REVOCATION_REDIS_METRICS_IMAGE_DIGEST"
   --set-string "redis.metrics.image.pullPolicy=Always"
 )
@@ -126,16 +229,17 @@ case "$mode" in
     helm lint --strict "$chart" "${common_args[@]}"
     ;;
   upgrade)
+    preflight_existing_datastore_image
     helm upgrade --install "$store_release" "$chart" \
       --namespace "$K8S_NAMESPACE" \
       "${common_args[@]}" \
-      --atomic \
-      --wait \
+      --rollback-on-failure \
+      --wait=legacy \
       --timeout 10m \
       --history-max 10
     ;;
   *)
-    echo "Usage: $0 {verify-vendor|render|render-contract|lint|upgrade}" >&2
+    echo "Usage: $0 {verify-vendor|verify-chart|render|render-contract|lint|upgrade}" >&2
     exit 2
     ;;
 esac

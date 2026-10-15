@@ -44,10 +44,6 @@ def _render(
         "university-ecosystem",
         "--set-string",
         "applicationSecrets.existingSecret=render-contract-existing-secret",
-        "--set",
-        "redis.enabled=false",
-        "--set",
-        "nats.enabled=false",
         "--set-string",
         "global.environment=development",
     ]

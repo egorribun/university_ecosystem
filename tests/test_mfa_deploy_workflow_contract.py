@@ -161,11 +161,13 @@ def test_helm_paths_pin_dependency_repositories_and_validate_chart_lock() -> Non
     for override in (
         "global.security.allowInsecureImages=false",
         "redis.image.registry=docker.io",
-        "redis.image.repository=bitnami/redis",
+        "redis.image.repository=redis",
         "redis.metrics.image.registry=docker.io",
-        "redis.metrics.image.repository=bitnami/redis-exporter",
+        "redis.metrics.image.repository=oliver006/redis_exporter",
         "nats.image.registry=docker.io",
-        "nats.image.repository=bitnami/nats",
+        "nats.image.repository=nats",
+        "nats.container.image.registry=docker.io",
+        "nats.container.image.repository=nats",
     ):
         assert override in script
     assert 'test -s "$chart/Chart.lock"' in script
@@ -187,13 +189,43 @@ def test_helm_paths_pin_dependency_repositories_and_validate_chart_lock() -> Non
     ).read_text(encoding="utf-8")
     for override in (
         "redis.image.registry=docker.io",
-        "redis.image.repository=bitnami/redis",
+        "redis.image.repository=redis",
         "redis.metrics.image.registry=docker.io",
-        "redis.metrics.image.repository=bitnami/redis-exporter",
+        "redis.metrics.image.repository=oliver006/redis_exporter",
     ):
         assert override in bootstrap_script
-    assert 'test -s "$chart/Chart.lock"' in bootstrap_script
-    assert 'helm dependency list "$chart"' in bootstrap_script
+    bootstrap_chart = ROOT / "charts" / "revocation-store"
+    bootstrap_chart_metadata = yaml.safe_load(
+        (bootstrap_chart / "Chart.yaml").read_text(encoding="utf-8")
+    )
+    assert bootstrap_chart_metadata["apiVersion"] == "v2"
+    assert bootstrap_chart_metadata["name"] == "revocation-store"
+    assert "dependencies" not in bootstrap_chart_metadata
+
+    required_first_party_files = (
+        "Chart.yaml",
+        "values.yaml",
+        "values.schema.json",
+        "templates/validate-config.yaml",
+        "templates/redis-configmap.yaml",
+        "templates/redis-networkpolicy.yaml",
+        "templates/redis-pdb.yaml",
+        "templates/redis-serviceaccount.yaml",
+        "templates/redis-services.yaml",
+        "templates/redis-statefulset.yaml",
+        "templates/deployment-contract.yaml",
+    )
+    for relative_path in required_first_party_files:
+        assert (bootstrap_chart / relative_path).is_file()
+        assert f'"$chart/{relative_path}"' in bootstrap_script
+
+    assert "verify_first_party_chart()" in bootstrap_script
+    assert '"$chart/Chart.lock"' in bootstrap_script
+    assert not (bootstrap_chart / "Chart.lock").exists()
+    assert 'dependency_status="$(helm dependency list "$chart" 2>&1)"' in (
+        bootstrap_script
+    )
+    assert 'if [[ -n "$actual_dependencies" ]]; then' in bootstrap_script
 
     bootstrap_verify = _step("Verify vendored revocation-store dependency")
     bootstrap_run = str(bootstrap_verify["run"])
@@ -242,9 +274,9 @@ def test_secret_preflight_covers_connections_redis_and_nats_config() -> None:
     assert 'require_secret_keys "$nats_config_secret_name"' in run
     assert "dependency-images.json" in run
     assert "dependency-chart-versions.json" in run
-    assert "docker.io/bitnami/redis@" in run
-    assert "docker.io/bitnami/redis-exporter@" in run
-    assert "docker.io/bitnami/nats@" in run
+    assert "docker.io/redis@" in run
+    assert "docker.io/oliver006/redis_exporter@" in run
+    assert "docker.io/nats@" in run
     assert "revocation-redis-url-key" in run
     assert "revocation-redis-service-host" in run
     assert "base64 --decode" in run

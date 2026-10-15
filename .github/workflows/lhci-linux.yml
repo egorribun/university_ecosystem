@@ -130,16 +130,16 @@ jobs:
         # wasm-pack; install-action hardcodes old repo. Pinned rustwasm
         # canonical curl URL (HTTPS rustwasm.github.io, official installer).
         # Same fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: wasm-pack@0.13.1
+          tool: wasm-pack@0.15.0
 
       - name: Setup Rust toolchain
         # Reproduce the checked-in WASM bytes independently of runner image
         # updates and keep Lighthouse's build input deterministic.
         uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # pinned action
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
 
       - name: Build WASM modules
@@ -190,7 +190,7 @@ jobs:
 
       - name: Upload Lighthouse reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lighthouse-reports-on-demand
           path: frontend/.lighthouseci

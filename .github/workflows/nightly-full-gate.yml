@@ -102,7 +102,7 @@ jobs:
 
       - name: Upload immutable Stryker preflight
         if: ${{ success() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json
@@ -185,7 +185,7 @@ jobs:
             --attempt-policy current-or-earlier
 
       - name: Download selected Stryker preflight candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
           repository: ${{ github.repository }}
@@ -240,7 +240,7 @@ jobs:
       # current-attempt artifacts and independently verifies their lineage.
       - name: Upload current-attempt shard evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}
           path: |
@@ -306,7 +306,7 @@ jobs:
             --attempt-policy current-or-earlier
 
       - name: Download selected Stryker preflight candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
           repository: ${{ github.repository }}
@@ -331,7 +331,7 @@ jobs:
       # A failed-job retry still needs successful shard evidence from earlier
       # attempts in this run. Embedded lineage is independently verified below.
       - name: Download all nightly frontend mutation shards from same run
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: nightly-frontend-mutation-shard-${{ github.run_id }}-*
           path: frontend/reports/mutation/external
@@ -354,7 +354,7 @@ jobs:
 
       - name: Upload validated nightly frontend mutation evidence
         if: ${{ success() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -419,7 +419,7 @@ jobs:
             --attempt-policy current-or-earlier
 
       - name: Download validated nightly frontend mutation evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ steps.select_stryker_validated.outputs.artifact_id }}
           repository: ${{ github.repository }}
@@ -674,7 +674,7 @@ jobs:
       UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
     services:
       minio:
-        image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+        image: ghcr.io/chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
         command: mini -dir=/data -s3.port=9000
         ports:
           - 9000:9000
@@ -683,7 +683,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: minioadminsecret
           S3_BUCKET: quality-chaos
       toxiproxy:
-        image: ghcr.io/shopify/toxiproxy:2.9.0@sha256:b44c283298cea49e2defaba1b3028783798346f2a926684e3a345fd8441af3b8
+        image: ghcr.io/shopify/toxiproxy:2.12.0@sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e
         ports:
           - 8474:8474
           - 9003:9003

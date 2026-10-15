@@ -97,16 +97,18 @@ const api = axios.create({
   },
 })
 
-export const resolveRequestPath = (config: AxiosRequestConfig): string => {
+const resolveRequestUrl = (config: AxiosRequestConfig): URL => {
   const rawUrl = config.url ?? ""
   const rawBaseUrl = config.baseURL ?? ""
   const isAbsoluteUrl = rawUrl.includes("://") || (rawUrl.startsWith("//") && rawUrl[2] !== "/")
   const combinedUrl = isAbsoluteUrl
     ? rawUrl
-    : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
-  const baseOrigin = window.location.origin
-  return new URL(combinedUrl, baseOrigin).pathname
+    : rawBaseUrl.replace(/\/+$/u, "") + "/" + rawUrl.replace(/^\/+/u, "")
+  return new URL(combinedUrl, window.location.origin)
 }
+
+export const resolveRequestPath = (config: AxiosRequestConfig): string =>
+  resolveRequestUrl(config).pathname
 
 type SsrFingerprintHeaders = {
   userAgent?: string
@@ -131,7 +133,14 @@ if (import.meta.env.VITE_LHCI === "true") {
 
   api.defaults.adapter = async (config) => {
     if (shouldUseE2ENetworkMocks(config)) {
-      return networkAdapter(config)
+      // The allowlist is path-based. Rebase the request onto the jsdom/browser
+      // origin so even protocol-relative or absolute mock URLs cannot escape it.
+      const resolvedUrl = resolveRequestUrl(config)
+      return networkAdapter({
+        ...config,
+        baseURL: window.location.origin,
+        url: resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash,
+      })
     }
     return {
       data: { items: [] }, // Provide a safe default object/array combo

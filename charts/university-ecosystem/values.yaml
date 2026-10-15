@@ -121,7 +121,7 @@ backup:
   postgresImage: "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
   # S3 upload client. MinIO no longer publishes its mc image; rclone speaks
   # the S3 API of SeaweedFS and any other S3-compatible backup target.
-  s3ClientImage: "rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5"
+  s3ClientImage: "rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5"
   minioEndpoint: "http://minio:9000"
   minioBucket: "backups"
 
@@ -516,7 +516,7 @@ networkPolicy:
       "app.kubernetes.io/name": ingress-nginx
 
 # Infrastructure (Dependencies)
-# PERF-W18-03 / Wave 18.1: bitnami subcharts with explicit resource limits.
+# Official Redis and NATS dependencies use bounded workload resources.
 # Run `helm dependency update` after modifying.
 postgres:
   enabled: true  # External — managed by CloudNativePG or external RDS
@@ -529,20 +529,26 @@ postgresql:
   config:
     track_commit_timestamp: true
 
-# bitnami/redis subchart configuration.
-# Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
+# First-party Redis cache and official NATS chart contract.
 redis:
   enabled: true
   networkPolicy:
     enabled: true
     allowExternal: false
     allowExternalEgress: false
-  architecture: standalone  # standalone for dev; replication for prod
+  architecture: standalone
+  image:
+    registry: docker.io
+    repository: redis
+    tag: 7.4.11-alpine
+    digest: sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    pullPolicy: Always
   auth:
     enabled: true
-    existingSecret: "redis-credentials" #checkov:skip=CKV_SECRET_6:references a Kubernetes Secret name, not a credential value
-    existingSecretPasswordKey: "redis-password" #checkov:skip=CKV_SECRET_6:references a Secret key name, not a credential value
+    existingSecret: redis-credentials
+    existingSecretPasswordKey: redis-password
   master:
+    replicas: 1
     resources:
       requests:
         cpu: 250m
@@ -550,11 +556,19 @@ redis:
       limits:
         cpu: "1"
         memory: 2Gi
+    aclInitResources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
     persistence:
       enabled: true
       size: 8Gi
-    # Pod security hardening (matches our Kyverno Enforce policies)
     podSecurityContext:
+      fsGroup: 1001
+      fsGroupChangePolicy: Always
       runAsNonRoot: true
       seccompProfile:
         type: RuntimeDefault
@@ -563,14 +577,27 @@ redis:
       readOnlyRootFilesystem: true
       capabilities:
         drop: ["ALL"]
-  # Redis configuration matching docker-compose.yml valkey settings.
+      runAsGroup: 1001
+      runAsNonRoot: true
+      runAsUser: 1001
+      seccompProfile:
+        type: RuntimeDefault
   commonConfiguration: |-
+    dir /data
     maxmemory 1536mb
     maxmemory-policy volatile-lru
     save ""
     appendonly no
+    rename-command FLUSHDB ""
+    rename-command FLUSHALL ""
   metrics:
     enabled: true
+    image:
+      registry: docker.io
+      repository: oliver006/redis_exporter
+      tag: v1.93.0
+      digest: sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
+      pullPolicy: Always
     resources:
       requests:
         cpu: 50m
@@ -579,8 +606,6 @@ redis:
         cpu: 100m
         memory: 64Mi
 
-# bitnami/nats subchart configuration.
-# Docs: https://github.com/bitnami/charts/tree/main/bitnami/nats
 nats:
   enabled: true
   networkPolicy:
@@ -588,10 +613,7 @@ nats:
     allowExternal: false
     allowExternalEgress: false
   resourceType: statefulset
-  replicaCount: 1  # standalone for dev; 3 for prod cluster
-  # Development runs without client/cluster auth. Staging supplies a complete,
-  # authenticated nats-server.conf through nats.existingSecret so credentials
-  # never enter Helm release state.
+  replicaCount: 1
   existingSecret: ""
   auth:
     enabled: false
@@ -599,33 +621,121 @@ nats:
     auth:
       enabled: false
   image:
+    registry: docker.io
+    repository: nats
+    tag: 2.15.0-alpine
+    digest: sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
     pullPolicy: Always
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  # Bitnami NATS 8.x consumes jetstream and persistence at the subchart root.
-  # Keep these paths aligned with Chart.lock; a nested `nats.jetstream` object is
-  # silently ignored by Helm and starts a non-durable Core NATS server.
   jetstream:
     enabled: true
     maxMemory: 512Mi
   persistence:
     enabled: true
     size: 10Gi
-  # Pod security hardening
-  podSecurityContext:
-    runAsNonRoot: true
-    seccompProfile:
-      type: RuntimeDefault
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
+  container:
+    image:
+      registry: docker.io
+      repository: nats
+      tag: 2.15.0-alpine
+      digest: sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
+      pullPolicy: Always
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env: {}
+    merge:
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        readOnlyRootFilesystem: true
+        runAsGroup: 1001
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+    patch: []
+  config:
+    cluster:
+      enabled: false
+      replicas: 3
+    jetstream:
+      enabled: true
+      fileStore:
+        enabled: true
+        dir: /data
+        pvc:
+          enabled: true
+          name: data
+          size: 10Gi
+      merge:
+        store_dir: /data/jetstream
+      memoryStore:
+        enabled: true
+        maxSize: 512Mi
+    nats:
+      port: 4222
+    monitor:
+      enabled: true
+      port: 8222
+  service:
+    enabled: true
+    ports:
+      cluster:
+        enabled: false
+      monitor:
+        enabled: true
+    patch:
+      - op: remove
+        path: /spec/selector/app.kubernetes.io~1component
+  headlessService:
+    patch:
+      - op: remove
+        path: /spec/selector/app.kubernetes.io~1component
+  serviceAccount:
+    enabled: true
+    merge:
+      automountServiceAccountToken: false
+  statefulSet:
+    patch:
+      - op: remove
+        path: /spec/selector/matchLabels/app.kubernetes.io~1component
+    merge:
+      spec:
+        podManagementPolicy: OrderedReady
+        persistentVolumeClaimRetentionPolicy:
+          whenDeleted: Retain
+          whenScaled: Retain
+  podTemplate:
+    configChecksumAnnotation: true
+    merge:
+      spec:
+        automountServiceAccountToken: false
+        securityContext:
+          fsGroup: 1001
+          fsGroupChangePolicy: Always
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+    patch: []
+  podDisruptionBudget:
+    enabled: true
+    patch:
+      - op: remove
+        path: /spec/selector/matchLabels/app.kubernetes.io~1component
+    merge:
+      spec:
+        maxUnavailable: 1
+  reloader:
+    enabled: false
+  promExporter:
+    enabled: false
+  natsBox:
+    enabled: false
 
 minio:
   enabled: true  # External — managed separately

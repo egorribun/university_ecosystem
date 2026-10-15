@@ -467,7 +467,7 @@ export const handlers = [
       return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
     }
     totpDraft = null
-    return HttpResponse.json(null, { status: 204 })
+    return new HttpResponse(null, { status: 204 })
   }),
   http.delete("*/auth/mfa/totp/:id", ({ request, params }) => {
     // Prevent this route from matching /auth/mfa/totp/pending/...

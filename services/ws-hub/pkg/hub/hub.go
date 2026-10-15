@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,7 +20,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/httprc/v3"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/nats-io/nats.go"
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
@@ -219,6 +221,7 @@ type Hub struct {
 	UpgradeLimiter     *WSUpgradeRateLimiter
 	webTransportServer *webtransport.Server
 	jwksCache          *jwk.Cache
+	jwksCacheCtx       context.Context
 	jwksCacheCancel    context.CancelFunc
 	jwksURL            string
 	// maxClients caps the number of concurrently connected WebSocket clients.
@@ -321,10 +324,18 @@ type resumeTokenClaims struct {
 	ExpiresAt   int64  `json:"exp"`
 }
 
+const (
+	jwksCacheShutdownTimeout = 5 * time.Second
+	jwksRefreshTimeout       = 5 * time.Second
+)
+
 var (
 	newDedupLRUFunc  = lru.New[string, time.Time]
-	registerJWKSFunc = func(cache *jwk.Cache, url string, options ...jwk.RegisterOption) error {
-		return cache.Register(url, options...)
+	registerJWKSFunc = func(ctx context.Context, cache *jwk.Cache, url string, options ...jwk.RegisterOption) error {
+		return cache.Register(ctx, url, options...)
+	}
+	shutdownJWKSCacheFunc = func(ctx context.Context, cache *jwk.Cache) error {
+		return cache.Shutdown(ctx)
 	}
 	jetStreamAckFunc      = func(msg *nats.Msg) error { return msg.Ack() }
 	jetStreamNakFunc      = func(msg *nats.Msg, delay time.Duration) error { return msg.NakWithDelay(delay) }
@@ -605,32 +616,121 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	}
 
 	h.jwksMu.Lock()
-	defer h.jwksMu.Unlock()
+	h.closeJWKSCacheLocked(ctx)
 
+	jwksCtx, cancel := context.WithCancel(ctx)
+	jwksHTTPClient := jwk.WrapHTTPClientDefaults(&http.Client{Timeout: jwksRefreshTimeout})
+	cache, err := jwk.NewCache(
+		jwksCtx,
+		httprc.NewClient(
+			httprc.WithHTTPClient(jwksHTTPClient),
+			httprc.WithWhitelist(jwk.NewMapWhitelist().Add(jwksURL)),
+		),
+	)
+	if err != nil {
+		cancel()
+		h.jwksMu.Unlock()
+		return fmt.Errorf("failed to initialise JWKS cache: %w", err)
+	}
+	h.jwksCache = cache
+	h.jwksCacheCtx = jwksCtx
+	h.jwksCacheCancel = cancel
+
+	// Keep registration non-blocking, matching the prior cache behavior. The
+	// explicit refresh below performs the initial fetch and leaves startup
+	// available if the trusted JWKS endpoint is temporarily unreachable.
+	err = registerJWKSFunc(
+		jwksCtx,
+		h.jwksCache,
+		jwksURL,
+		// Register sets an explicit per-resource HTTP client; otherwise jwk.Cache
+		// overrides httprc's worker client with its package default.
+		jwk.WithHTTPClient(jwksHTTPClient),
+		jwk.WithMinInterval(time.Hour),
+		jwk.WithWaitReady(false),
+	)
+	if err != nil {
+		h.closeJWKSCacheLocked(ctx)
+		h.jwksMu.Unlock()
+		return fmt.Errorf("failed to register JWKS URL %s: %w", jwksURL, err)
+	}
+	h.jwksURL = jwksURL
+	h.jwksMu.Unlock()
+
+	// Refresh outside jwksMu: Stop must be able to cancel this operation before
+	// waiting for the cache workers to finish.
+	if err := h.refreshJWKS(ctx); err != nil && h.Logger != nil {
+		h.Logger.WarnContext(ctx, "Initial JWKS fetch failed; will retry in background", "err", err)
+	}
+
+	if h.Logger != nil {
+		h.Logger.InfoContext(ctx, "JWKS cache initialised", "url", jwksURL)
+	}
+	return nil
+}
+
+// refreshJWKS snapshots the cache under jwksMu, then refreshes without holding
+// the lock. The cache lifetime cancels the caller even when its request context
+// has no deadline, and the per-refresh timeout bounds a stalled trusted server.
+func (h *Hub) refreshJWKS(ctx context.Context) error {
+	h.jwksMu.Lock()
+	cache := h.jwksCache
+	cacheCtx := h.jwksCacheCtx
+	jwksURL := h.jwksURL
+	h.jwksMu.Unlock()
+	if cache == nil || jwksURL == "" {
+		return nil
+	}
+
+	refreshCtx, cancel := context.WithTimeout(ctx, jwksRefreshTimeout)
+	var stopCacheCancel func() bool
+	if cacheCtx != nil {
+		stopCacheCancel = context.AfterFunc(cacheCtx, cancel)
+		if cacheCtx.Err() != nil {
+			cancel()
+		}
+	}
+	defer func() {
+		if stopCacheCancel != nil {
+			stopCacheCancel()
+		}
+		cancel()
+	}()
+
+	_, err := cache.Refresh(refreshCtx, jwksURL)
+	return err
+}
+
+// jwksURLSnapshot returns the configured URL while respecting cache lifecycle
+// updates protected by jwksMu.
+func (h *Hub) jwksURLSnapshot() string {
+	h.jwksMu.Lock()
+	defer h.jwksMu.Unlock()
+	return h.jwksURL
+}
+
+// closeJWKSCacheLocked shuts down the v3 JWKS cache and its httprc workers.
+// The caller must hold jwksMu. Cancel first so refresh callers and HTTP fetches
+// stop before the bounded worker join begins.
+func (h *Hub) closeJWKSCacheLocked(ctx context.Context) {
 	if h.jwksCacheCancel != nil {
 		h.jwksCacheCancel()
 		h.jwksCacheCancel = nil
 	}
-
-	jwksCtx, cancel := context.WithCancel(ctx)
-	h.jwksCacheCancel = cancel
-
-	h.jwksCache = jwk.NewCache(jwksCtx)
-	// Refresh the cache every hour.
-	err := registerJWKSFunc(h.jwksCache, jwksURL, jwk.WithMinRefreshInterval(time.Hour))
-	if err != nil {
-		cancel() // release context on error
-		return fmt.Errorf("failed to register JWKS URL %s: %w", jwksURL, err)
-	}
-	h.jwksURL = jwksURL
-
-	_, err = h.jwksCache.Refresh(jwksCtx, jwksURL)
-	if err != nil {
-		h.Logger.WarnContext(ctx, "Initial JWKS fetch failed; will retry in background", "err", err)
+	h.jwksCacheCtx = nil
+	h.jwksURL = ""
+	cache := h.jwksCache
+	h.jwksCache = nil
+	if cache == nil {
+		return
 	}
 
-	h.Logger.InfoContext(ctx, "JWKS cache initialised", "url", jwksURL)
-	return nil
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), jwksCacheShutdownTimeout)
+	err := shutdownJWKSCacheFunc(shutdownCtx, cache)
+	cancel()
+	if err != nil && h.Logger != nil {
+		h.Logger.WarnContext(ctx, "JWKS cache shutdown error", "err", err)
+	}
 }
 
 // registerClient transfers a newly upgraded client to Run without allowing a
@@ -2083,9 +2183,7 @@ func (h *Hub) stop(ctx context.Context) {
 			h.UpgradeLimiter.Stop()
 		}
 		h.jwksMu.Lock()
-		if h.jwksCacheCancel != nil {
-			h.jwksCacheCancel()
-		}
+		h.closeJWKSCacheLocked(context.Background())
 		h.jwksMu.Unlock()
 	})
 }

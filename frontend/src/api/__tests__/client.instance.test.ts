@@ -392,7 +392,7 @@ describe("api/client — prefix normalization", () => {
   })
 })
 
-describe.sequential("global API cache cleanup", () => {
+describe("global API cache cleanup", { concurrent: false }, () => {
   const cacheKey = "setup-tests:after-each"
 
   it("seeds both API caches before the global afterEach contract runs", () => {

@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.12
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Build stage
 FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS builder
@@ -38,7 +38,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # toolchain as the service. Upstream release binaries can lag behind Go and
 # transitive security patches even when the release itself is current.
 FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS health-probe
-ARG GRPC_HEALTH_PROBE_VERSION=v0.4.51
+ARG GRPC_HEALTH_PROBE_VERSION=v0.4.57
 ENV GOTOOLCHAIN=local
 WORKDIR /probe
 RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROBE_VERSION}" && \
@@ -52,8 +52,8 @@ RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROB
     cp -R "$(go env GOMODCACHE)/${probe_module}/." . && \
     chmod -R u+w . && \
     go get \
-      github.com/spiffe/go-spiffe/v2@v2.7.0 \
-      google.golang.org/grpc@v1.83.2 \
+      github.com/spiffe/go-spiffe/v2@v2.9.0 \
+      google.golang.org/grpc@v1.84.0 \
       golang.org/x/net@v0.60.0 \
       golang.org/x/text@v0.42.0 && \
     go mod tidy && \

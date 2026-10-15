@@ -48,14 +48,29 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
   const environment = env.VITE_ENVIRONMENT ?? (env.PROD ? "production" : "development")
   const release = env.VITE_APP_RELEASE ?? env.VITE_RELEASE ?? env.VITE_SENTRY_RELEASE ?? undefined
   const tracesSampleRate = parseSampleRate(env.VITE_SENTRY_TRACES_SAMPLE_RATE)
-  const profilesSampleRate = parseSampleRate(env.VITE_SENTRY_PROFILES_SAMPLE_RATE)
+  const profileSessionSampleRate = parseSampleRate(env.VITE_SENTRY_PROFILES_SAMPLE_RATE)
 
   const config = {
     dsn,
     environment,
     enabled: true,
     tracesSampleRate,
-    profilesSampleRate,
+    profileSessionSampleRate,
+    profileLifecycle: "trace" as const,
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: {
+        request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+        response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      },
+      httpBodies: [],
+      urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      graphQL: { document: false, variables: false },
+    },
     ...(release ? { release } : {}),
   }
 

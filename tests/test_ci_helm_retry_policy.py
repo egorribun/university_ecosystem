@@ -11,6 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts" / "ci" / "helm_dependency_build.py"
+CURRENT_HELM_ARCHIVES = ("redis-0.1.0.tgz", "nats-2.15.0.tgz")
 
 
 def _load_helper() -> ModuleType:
@@ -103,7 +104,27 @@ def test_helm_helper_requires_declared_archives_after_success(
         ),
     )
 
-    assert helper.main([str(chart), "redis-20.13.4.tgz"]) == 1
+    assert helper.main([str(chart), *CURRENT_HELM_ARCHIVES]) == 1
+
+
+def test_helm_helper_accepts_the_current_archive_pair_when_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    charts = chart / "charts"
+    charts.mkdir(parents=True)
+    for archive in CURRENT_HELM_ARCHIVES:
+        (charts / archive).write_bytes(b"verified chart archive")
+    monkeypatch.setattr(
+        helper.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            ["helm"], 0, stdout="ok\n", stderr=""
+        ),
+    )
+
+    assert helper.main([str(chart), *CURRENT_HELM_ARCHIVES]) == 0
 
 
 DIRECT_HELM_HELPER_WORKFLOWS = (
@@ -141,6 +162,7 @@ def test_helm_workflows_use_the_fail_closed_retry_helper(workflow: str) -> None:
     source = (ROOT / workflow).read_text(encoding="utf-8")
 
     assert "scripts/ci/helm_dependency_build.py" in source
+    assert all(archive in source for archive in CURRENT_HELM_ARCHIVES)
     assert "helm dependency build" not in source
 
 

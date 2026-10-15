@@ -1086,7 +1086,7 @@ def test_language_capture_environments_pin_their_compilers(offline: bool) -> Non
     """Candidate toolchain files cannot select or download a different compiler."""
 
     assert _go_environment(offline=offline)["GOTOOLCHAIN"] == "local"
-    assert _rust_environment(offline=offline)["RUSTUP_TOOLCHAIN"] == "1.94.1"
+    assert _rust_environment(offline=offline)["RUSTUP_TOOLCHAIN"] == "1.99.0"
 
 
 def test_toolchain_query_uses_bounded_logs_and_a_pinned_compiler_environment(
@@ -1394,8 +1394,8 @@ def test_cache_holder_is_non_networked_and_removed_before_its_volume(
         (
             "rust",
             "rustc",
-            "rustc 1.94.1 (e408947bf 2026-03-25)",
-            "RUSTUP_TOOLCHAIN=1.94.1",
+            "rustc 1.99.0 (b940084d7 2026-09-28)",
+            "RUSTUP_TOOLCHAIN=1.99.0",
         ),
     ],
 )
@@ -1743,12 +1743,12 @@ def test_rust_benchmark_image_cannot_copy_candidate_build_context() -> None:
         if line.strip() and not line.lstrip().startswith("#")
     ]
     python_image = (
-        "python:3.14-slim-bookworm@"
-        "sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52"
+        "python:3.14.8-slim-bookworm@"
+        "sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83"
     )
     rust_image = (
-        "rust:1.94.1-slim-bookworm@"
-        "sha256:cf9dd0ec73e75f827fe59123fff9dc65af1a1c8363c3c31ee8d7f8ad0b6a5fb2"
+        "rust:1.99.0-slim-bookworm@"
+        "sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa"
     )
     copy_lines = [
         line for line in instructions if line.split(maxsplit=1)[0].upper() == "COPY"

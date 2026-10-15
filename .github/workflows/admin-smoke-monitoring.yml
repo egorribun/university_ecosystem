@@ -65,7 +65,7 @@ jobs:
       RATE_LIMIT_STORAGE_URI: "redis://127.0.0.1:6379/1"
     services:
       postgres:
-        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test # pragma: allowlist secret
@@ -89,7 +89,7 @@ jobs:
       # NATS required for backend lifespan (NatsTaskBroker can't be skipped via
       # env-flag; Dishka-injected dependency).
       nats:
-        image: nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
+        image: nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
         ports:
           - 4222:4222
         options: >-
@@ -125,16 +125,16 @@ jobs:
       - name: Install wasm-pack
         # Use the rustwasm installer; the alternate installer can resolve to a
         # retired download URL.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: wasm-pack@0.13.1
+          tool: wasm-pack@0.15.0
 
       - name: Setup Rust toolchain
         # Keep generated WASM reproducible when the hosted stable channel
         # advances; checked-in consumers enforce byte-exact provenance.
         uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # pinned action
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
 
       - name: Install frontend dependencies
@@ -452,7 +452,7 @@ jobs:
         # `.screenshots/` is hidden, so include-hidden-files keeps the report
         # and screenshots available in the uploaded artifact.
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: admin-smoke-reports
           path: ${{ steps.smoke.outputs.artifact_dir }}

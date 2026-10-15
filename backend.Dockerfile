@@ -1,18 +1,18 @@
-# syntax=docker/dockerfile:1.12
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Rust toolchain stage — provides a known-good Cargo/rustc for maturin builds.
 # Rust 1.85 is the first stable release supporting edition 2024 and Cargo.lock v4.
-FROM rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec AS rust-toolchain
+FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS rust-toolchain
 
 # Stage 1: Builder
 # MOD-21-08 (Wave 21): Updated to Python 3.14 for free-threading support,
 # deferred annotation evaluation (PEP 649), and improved error messages.
-FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS builder
+FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS builder
 
 # Pin uv to the same exact version enforced by pyproject.toml. The digest is
-# the linux/amd64 manifest for uv 0.11.28, the platform used by CI and release
+# the linux/amd64 manifest for uv 0.12.23, the platform used by CI and release
 # image builds.
-COPY --from=ghcr.io/astral-sh/uv:0.11.28@sha256:5c3ab83183a73c5d319a77009eb425b60d5bb937f339fb7876788ebf567baf48 /uv /uv/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.23@sha256:61d393e44e249f2e4b526b6c7ddcecce245946826e608e11c93ad4f5bba55b21 /uv /uv/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     done
 
 # Stage 2: Runtime
-FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS runtime
+FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

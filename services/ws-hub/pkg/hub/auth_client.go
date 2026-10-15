@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/redis/go-redis/v9"
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
@@ -79,7 +79,7 @@ type InternalAPIAuthClient struct {
 	// timeout); at 10k clients reconnecting simultaneously this saturates
 	// the thread pool.  gobreaker trips after 10 consecutive failures and
 	// stays open for 10 s before probing with up to 5 half-open requests.
-	cb *gobreaker.CircuitBreaker
+	cb *gobreaker.CircuitBreaker[bool]
 }
 
 // authHTTPDoFunc is a narrow seam around net/http for deterministic transport
@@ -111,7 +111,7 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 	// ReadyToTrip: open after 10 consecutive HTTP failures (not cache hits).
 	// Timeout: stay open for 10 s before allowing a probe (half-open).
 	// MaxRequests: allow 5 probes in half-open state before deciding.
-	cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+	cb := gobreaker.NewCircuitBreaker[bool](gobreaker.Settings{
 		Name:        "backend-auth",
 		MaxRequests: 5,
 		Interval:    30 * time.Second,
@@ -309,7 +309,7 @@ func (c *InternalAPIAuthClient) doRequestWithBreakerResult(
 	ctx context.Context,
 	userID, roomID string,
 ) (bool, error) {
-	result, err := c.cb.Execute(func() (interface{}, error) {
+	result, err := c.cb.Execute(func() (bool, error) {
 		// WSH-P1-02: propagate reqErr so that network errors and HTTP 5xx trip
 		// the breaker, while healthy 4xx responses (backend up, access denied)
 		// are returned as success to gobreaker — they measure authorization, not
@@ -323,7 +323,7 @@ func (c *InternalAPIAuthClient) doRequestWithBreakerResult(
 	if err != nil {
 		return false, err
 	}
-	return result.(bool), nil
+	return result, nil
 }
 
 // RefreshRoomAuthorization removes the local and Redis permission entries,

@@ -29,14 +29,16 @@ ACTIONLINT_SOURCE_SHA = (
     "5dc52e8daa4ef51bfd76a648128474bd41d65df0"  #  -- immutable upstream source revision
 )
 ACTIONLINT_ARCHIVE_SHA256 = "908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"  #  -- source archive checksum
-HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret -- release checksum
-SHELLCHECK_SHA256 = "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"  # pragma: allowlist secret -- release checksum
+HADOLINT_SHA256 = "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507"
+SHELLCHECK_SHA256 = "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
 CARGO_BINSTALL_SCRIPT_COMMIT = "5aafaaca52423a22d83a812fa3ca77492e2895db"  # pragma: allowlist secret -- immutable installer commit
 CARGO_BINSTALL_SCRIPT_SHA256 = "d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43add24e0877ef8eae"  # pragma: allowlist secret -- release checksum
-SLSA_VERIFIER_SHA256 = "499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6"  # pragma: allowlist secret -- release checksum
-KUBECONFORM_SHA256 = "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73"  # pragma: allowlist secret -- release checksum
-K6_SHA256 = "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589"  # pragma: allowlist secret -- release checksum
-TRIVY_SHA256 = "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b"  # pragma: allowlist secret -- release checksum
+SLSA_VERIFIER_SHA256 = (
+    "946dbec729094195e88ef78e1734324a27869f03e2c6bd2f61cbc06bd5350339"
+)
+KUBECONFORM_SHA256 = "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+K6_SHA256 = "39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1"
+TRIVY_SHA256 = "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
 
@@ -103,7 +105,7 @@ def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> Non
     assert "--tlsv1.2" in actionlint_run
 
     hadolint_run = _step(jobs["dockerfile-lint"], "Run Hadolint")["run"]
-    assert 'hadolint_version="2.12.0"' in hadolint_run
+    assert 'hadolint_version="2.15.1"' in hadolint_run
     assert HADOLINT_SHA256 in hadolint_run
     assert "sha256sum --check --strict" in hadolint_run
     assert "curl --fail" in hadolint_run
@@ -118,12 +120,12 @@ def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> Non
     shellcheck_install = _step(jobs["shellcheck"], "Install shellcheck")["run"]
     assert "wget -qO-" not in shellcheck_install
     assert "| tar" not in shellcheck_install
-    assert 'shellcheck_version="0.10.0"' in shellcheck_install
+    assert 'shellcheck_version="0.11.0"' in shellcheck_install
     assert SHELLCHECK_SHA256 in shellcheck_install
     assert "sha256sum --check --strict" in shellcheck_install
     assert "curl --fail" in shellcheck_install
     shellcheck_run = _step(jobs["shellcheck"], "Run ShellCheck")["run"]
-    assert "shellcheck-v0.10.0/shellcheck" in shellcheck_run
+    assert "shellcheck-v0.11.0/shellcheck" in shellcheck_run
 
 
 def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked() -> (
@@ -154,7 +156,7 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
         "PyYAML==6.0.3": "c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5",  # pragma: allowlist secret -- wheel checksum
         "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
         "certifi==2026.7.22": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",  # pragma: allowlist secret -- wheel checksum
-        "charset-normalizer==3.5.1": "00668ebb0609751758682eb0b5857e7c35b9f00e84dfdef062e103244ec94d45",  # pragma: allowlist secret -- wheel checksum
+        "charset-normalizer==3.5.2": "34276fd796040bf0993ab33a369aa572e6979c7aab225a88893667ad8eac8f7a",
         "idna==3.20": "a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44",  # pragma: allowlist secret -- wheel checksum
         "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",  # pragma: allowlist secret -- wheel checksum
     }
@@ -324,7 +326,7 @@ def test_security_audit_trivy_bootstrap_is_immutable_and_checksum_verified() -> 
     install = _step(job, "Install checksum-pinned Trivy")
     assert install["name"] == "Install checksum-pinned Trivy"
     assert install["env"] == {
-        "TRIVY_VERSION": "0.73.0",
+        "TRIVY_VERSION": "0.75.0",
         "TRIVY_ARCHIVE_SHA256": TRIVY_SHA256,
     }
 
@@ -385,7 +387,7 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
     jobs = _workflow(CI)["jobs"]
     provenance = _step(jobs["provenance-check"], "Install slsa-verifier")["run"]
-    assert 'slsa_verifier_version="2.7.0"' in provenance
+    assert 'slsa_verifier_version="2.7.1"' in provenance
     assert SLSA_VERIFIER_SHA256 in provenance
     assert "curl --fail" in provenance
     assert "--proto '=https'" in provenance
@@ -395,7 +397,7 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
     k8s = jobs["helm-validate"]
     kubeconform = _step(k8s, "Install kubeconform")["run"]
-    assert 'kubeconform_version="0.6.7"' in kubeconform
+    assert 'kubeconform_version="0.8.0"' in kubeconform
     assert KUBECONFORM_SHA256 in kubeconform
     assert "curl --fail" in kubeconform
     assert "--proto '=https'" in kubeconform
@@ -413,7 +415,7 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
     stress = jobs["ws-stress-test"]
     k6 = _step(stress, "Install k6")["run"]
-    assert 'k6_version="0.54.0"' in k6
+    assert 'k6_version="2.3.0"' in k6
     assert K6_SHA256 in k6
     assert "curl --fail" in k6
     assert "--proto '=https'" in k6

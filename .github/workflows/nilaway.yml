@@ -33,7 +33,7 @@ jobs:
 
       - name: Install Nilaway
         # Exact pseudo-version is content-addressed via Sum DB (sum.golang.org).
-        run: go install go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260808063849-8649a03c818a
+        run: go install go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260918162853-acb8859b9031
 
       - name: Run Nilaway on Go services
         run: |

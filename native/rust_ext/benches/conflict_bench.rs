@@ -1,4 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::hint::black_box;
 use rust_ext::{batch_detect_conflicts, ScheduleItem};
 
 fn make_items(n: usize) -> Vec<ScheduleItem> {

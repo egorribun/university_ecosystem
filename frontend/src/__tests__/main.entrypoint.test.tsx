@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 let requestedIdleOptions: IdleRequestOptions | undefined
+let performanceClockValue = 100
 
 vi.mock("react-dom/client", () => ({
   createRoot: mocks.createRoot,
@@ -107,6 +108,7 @@ beforeEach(() => {
   vi.unstubAllEnvs()
   Object.values(mocks).forEach((mock) => mock.mockReset())
   requestedIdleOptions = undefined
+  performanceClockValue = 100
   vi.useRealTimers()
 
   document.documentElement.innerHTML =
@@ -115,11 +117,14 @@ beforeEach(() => {
   setServiceWorkerSupport(false)
   runIdleImmediately()
 
-  mocks.initWebVitals.mockReturnValue(true)
+  mocks.initWebVitals.mockImplementation(() => {
+    performanceClockValue = 145
+    return true
+  })
   mocks.registerServiceWorker.mockResolvedValue({ scope: "/" })
   mocks.syncPushForConfirmedIdentity.mockResolvedValue(null)
   mocks.createRoot.mockReturnValue({ render: mocks.render })
-  vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(145)
+  vi.spyOn(performance, "now").mockImplementation(() => performanceClockValue)
 })
 
 afterEach(async () => {

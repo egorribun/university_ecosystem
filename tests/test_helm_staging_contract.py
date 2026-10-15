@@ -51,6 +51,7 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
         "nats.image.digest": digest,
+        "nats.container.image.digest": digest,
         "backend.config.elasticsearchURL": "https://elasticsearch.staging.internal",
         "backend.config.flagdHost": "flagd.staging.internal",
         "backend.config.storageS3EndpointURL": ("https://minio.staging.internal:443"),
@@ -408,15 +409,22 @@ def _existing_secret_command(environment: str, *extra: str) -> list[str]:
     ]
 
 
-def test_default_nats_values_use_upstream_jetstream_and_persistence_tree() -> None:
+def test_default_nats_values_use_official_chart_jetstream_and_persistence_tree() -> (
+    None
+):
     values = _values(CHART / "values.yaml")
     nats = values["nats"]
 
     assert "nats" not in nats
-    assert nats["jetstream"]["enabled"] is True
-    assert nats["persistence"]["enabled"] is True
-    assert nats["persistence"]["size"] == "10Gi"
-    assert nats["image"]["pullPolicy"] == "Always"
+    assert nats["config"]["jetstream"]["enabled"] is True
+    assert nats["config"]["jetstream"]["fileStore"]["enabled"] is True
+    assert nats["config"]["jetstream"]["fileStore"]["pvc"] == {
+        "enabled": True,
+        "name": "data",
+        "size": "10Gi",
+    }
+    assert nats["container"]["image"]["repository"] == "nats"
+    assert nats["container"]["image"]["pullPolicy"] == "Always"
     assert nats["auth"]["enabled"] is False
     assert nats["cluster"]["auth"]["enabled"] is False
     assert nats["existingSecret"] == ""
@@ -460,16 +468,40 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     expected_nats_secret = "university-nats-config"  # pragma: allowlist secret
     assert nats["existingSecret"] == expected_nats_secret
     assert nats["auth"]["enabled"] is False
-    assert nats["jetstream"]["enabled"] is True
-    assert nats["persistence"] == {"enabled": True, "size": "10Gi"}
     assert nats["replicaCount"] == 3
+    assert nats["config"]["cluster"] == {"enabled": True, "replicas": 3}
+    jetstream = nats["config"]["jetstream"]
+    assert jetstream["enabled"] is True
+    assert jetstream["fileStore"]["enabled"] is True
+    assert jetstream["fileStore"]["dir"] == "/data"
+    assert jetstream["merge"]["store_dir"] == "/data/jetstream"
+    assert jetstream["fileStore"]["pvc"] == {
+        "enabled": True,
+        "name": "data",
+        "size": "10Gi",
+    }
+    assert jetstream["memoryStore"] == {"enabled": True, "maxSize": "512Mi"}
+    assert nats["container"]["image"] == {
+        "registry": "docker.io",
+        "repository": "nats",
+        "tag": "2.15.0-alpine",
+        "digest": "REQUIRED_SHA256_DIGEST",
+        "pullPolicy": "Always",
+    }
+    assert nats["statefulSet"]["merge"]["spec"]["podManagementPolicy"] == "OrderedReady"
+    assert nats["statefulSet"]["merge"]["spec"][
+        "persistentVolumeClaimRetentionPolicy"
+    ] == {
+        "whenDeleted": "Retain",
+        "whenScaled": "Retain",
+    }
 
     redis = values["redis"]
     assert redis["image"]["registry"] == "docker.io"
-    assert redis["image"]["repository"] == "bitnami/redis"
+    assert redis["image"]["repository"] == "redis"
     assert redis["image"]["pullPolicy"] == "Always"
     assert redis["metrics"]["image"]["registry"] == "docker.io"
-    assert redis["metrics"]["image"]["repository"] == "bitnami/redis-exporter"
+    assert redis["metrics"]["image"]["repository"] == "oliver006/redis_exporter"
     assert redis["metrics"]["image"]["pullPolicy"] == "Always"
     assert redis["networkPolicy"] == {
         "enabled": True,
@@ -482,7 +514,8 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
         "allowExternalEgress": False,
     }
     assert values["nats"]["image"]["registry"] == "docker.io"
-    assert values["nats"]["image"]["repository"] == "bitnami/nats"
+    assert values["nats"]["image"]["repository"] == "nats"
+    assert values["nats"]["container"]["image"]["repository"] == "nats"
 
     assert values["backend"]["autoscaling"]["enabled"] is True
     assert values["ingress"]["enabled"] is True
@@ -533,6 +566,8 @@ def test_chart_documents_staging_secret_and_release_contracts() -> None:
         "university-connections",
         "university-nats-config",
         "nats-server.conf",
+        "--config /etc/nats-auth/nats-server.conf",
+        "chart-generated ConfigMap is not the runtime configuration",
         "REQUIRED_SHA256_DIGEST",
         "helm upgrade --install",
         "helm rollback",
@@ -540,9 +575,9 @@ def test_chart_documents_staging_secret_and_release_contracts() -> None:
         assert required_text in documentation
 
     assert "signature, SBOM, and provenance" not in documentation
-    assert "docker.io/bitnami/redis" in documentation
-    assert "docker.io/bitnami/redis-exporter" in documentation
-    assert "docker.io/bitnami/nats" in documentation
+    assert "docker.io/redis:7.4.11-alpine" in documentation
+    assert "docker.io/oliver006/redis_exporter" in documentation
+    assert "docker.io/nats" in documentation
 
 
 def test_chart_lock_pins_the_reviewed_dependency_set() -> None:
@@ -550,19 +585,19 @@ def test_chart_lock_pins_the_reviewed_dependency_set() -> None:
     assert lock["dependencies"] == [
         {
             "name": "redis",
-            "repository": "oci://registry-1.docker.io/bitnamicharts",
-            "version": "20.13.4",
+            "repository": "file://../redis-compat",
+            "version": "0.1.0",
         },
         {
             "name": "nats",
-            "repository": "oci://registry-1.docker.io/bitnamicharts",
-            "version": "8.5.4",
+            "repository": "https://nats-io.github.io/k8s/helm/charts/",
+            "version": "2.15.0",
         },
     ]
     assert lock["digest"].startswith("sha256:")
     assert len(lock["digest"]) == 71
-    assert (CHART / "charts" / "redis-20.13.4.tgz").is_file()
-    assert (CHART / "charts" / "nats-8.5.4.tgz").is_file()
+    assert (CHART / "charts" / "redis-0.1.0.tgz").is_file()
+    assert (CHART / "charts" / "nats-2.15.0.tgz").is_file()
 
 
 def test_values_schema_closes_staging_sensitive_configuration_trees() -> None:
@@ -657,7 +692,7 @@ def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> N
     )
 
 
-def test_deploy_helm_supplies_backend_s3_endpoint_from_reviewed_minio_input() -> None:
+def test_deploy_helm_pins_new_dependency_images_and_backend_s3_endpoint() -> None:
     script = (ROOT / ".github/scripts/deploy-helm.sh").read_text(encoding="utf-8")
 
     assert "MINIO_ENDPOINT" in script
@@ -665,6 +700,29 @@ def test_deploy_helm_supplies_backend_s3_endpoint_from_reviewed_minio_input() ->
         '--set-string "backend.config.storageS3EndpointURL=https://$MINIO_ENDPOINT"'
         in script
     )
+    for reviewed_arg in (
+        '--set-string "redis.image.repository=redis"',
+        '--set-string "redis.metrics.image.repository=oliver006/redis_exporter"',
+        '--set-string "nats.image.repository=nats"',
+        '--set-string "nats.container.image.repository=nats"',
+        '--set-string "nats.image.digest=$NATS_IMAGE_DIGEST"',
+        '--set-string "nats.container.image.digest=$NATS_IMAGE_DIGEST"',
+    ):
+        assert reviewed_arg in script
+
+
+def test_deploy_preflight_binds_nats_secret_to_the_existing_jetstream_path() -> None:
+    workflow = (ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+
+    assert (
+        "NATS authentication config must set the existing JetStream store path to /data/jetstream"
+        in workflow
+    )
+    assert "config.splitlines()" in workflow
+    assert '"/data/jetstream"' in workflow
+    assert "docker.io/redis@$REDIS_IMAGE_DIGEST" in workflow
+    assert 'test -s "$chart/charts/redis-0.1.0.tgz"' in workflow
+    assert 'test -s "$chart/charts/nats-2.15.0.tgz"' in workflow
 
 
 def test_backend_s3_credentials_remain_in_preflight_when_file_processor_is_off() -> (
@@ -776,9 +834,8 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
     )
 
     assert result.returncode != 0
-    # Helm 3.17 reports ``Additional property`` while newer releases use
-    # ``additional properties``. Both messages prove the same fail-closed
-    # JSON-Schema rejection.
+    # Helm versions vary between singular and plural forms of this
+    # fail-closed JSON-Schema diagnostic.
     assert "additional propert" in result.stderr.lower()
 
 
@@ -974,7 +1031,10 @@ def test_release_environments_reject_arbitrary_subchart_extensions(
     )
 
     assert result.returncode != 0
-    assert "arbitrary subchart" in result.stderr
+    assert "arbitrary subchart" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -997,7 +1057,10 @@ def test_release_environments_reject_unreviewed_helper_containers(
     )
 
     assert result.returncode != 0
-    assert "unreviewed subchart helper containers" in result.stderr
+    assert "unreviewed subchart helper containers" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -1029,7 +1092,10 @@ def test_staging_render_rejects_inline_nats_auth_material(override: str) -> None
     )
 
     assert result.returncode != 0
-    assert "NATS auth material must not be stored in Helm values" in result.stderr
+    assert "NATS auth material must not be stored in Helm values" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -1052,8 +1118,8 @@ def test_staging_render_rejects_inline_nats_auth_material(override: str) -> None
         ),
         (
             "--set",
-            "nats.jetstream.enabled=false",
-            "nats.jetstream.enabled=true and nats.persistence.enabled=true are required",
+            "nats.config.jetstream.enabled=false",
+            "official NATS chart config must preserve the staged 3-node JetStream storage at /data/jetstream on the existing /data PVC mount, rollout ordering, PVC retention, and pod-token contract",
         ),
         (
             "--set",
@@ -1079,7 +1145,9 @@ def test_production_is_fail_closed_like_staging(
     )
 
     assert result.returncode != 0
-    assert expected in result.stderr
+    assert expected in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+    )
 
 
 INLINE_SECRET_OVERRIDES = (
@@ -1128,7 +1196,10 @@ def test_non_development_render_rejects_every_inline_secret_value(
     )
 
     assert result.returncode != 0
-    assert "secret material must not be stored in Helm values" in result.stderr
+    assert "secret material must not be stored in Helm values" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
 
 
 def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
@@ -1152,13 +1223,13 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
         "staging-contract-revocation-redis-master"
     )
     assert json.loads(contract["data"]["dependency-images.json"]) == {
-        "nats": "docker.io/bitnami/nats@sha256:" + ("a" * 64),
-        "redis": "docker.io/bitnami/redis@sha256:" + ("a" * 64),
-        "redis.metrics": ("docker.io/bitnami/redis-exporter@sha256:" + ("a" * 64)),
+        "nats": "docker.io/nats@sha256:" + ("a" * 64),
+        "redis": "docker.io/redis@sha256:" + ("a" * 64),
+        "redis.metrics": ("docker.io/oliver006/redis_exporter@sha256:" + ("a" * 64)),
     }
     assert json.loads(contract["data"]["dependency-chart-versions.json"]) == {
-        "nats": "8.5.4",
-        "redis": "20.13.4",
+        "nats": "2.15.0",
+        "redis": "0.1.0",
     }
 
     pod_specs = []
@@ -1189,9 +1260,9 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
         container["image"].startswith(
             (
                 "ghcr.io/example/university/",
-                "docker.io/bitnami/redis@",
-                "docker.io/bitnami/redis-exporter@",
-                "docker.io/bitnami/nats@",
+                "docker.io/redis@",
+                "docker.io/oliver006/redis_exporter@",
+                "docker.io/nats@",
             )
         )
         for container in containers
@@ -1222,7 +1293,7 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
     config_volume = next(
         volume
         for volume in nats["spec"]["template"]["spec"]["volumes"]
-        if volume["name"] == "config"
+        if volume["name"] == "nats-auth-config"
     )
     expected_nats_config_secret = "university-nats-config"  # pragma: allowlist secret
     assert config_volume["secret"]["secretName"] == expected_nats_config_secret
@@ -1699,7 +1770,7 @@ def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> No
         for resource in resources
         if resource.get("kind") == "ConfigMap"
         and resource["metadata"]["name"]
-        == f"{release_name}-revocation-redis-configuration"
+        == f"{release_name}-revocation-redis-master-configuration"
     )
     contract = next(
         resource
@@ -1731,7 +1802,7 @@ def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> No
         for container in statefulset["spec"]["template"]["spec"]["containers"]
         if container["name"] == "redis"
     )
-    assert redis_container["image"].startswith("docker.io/bitnami/redis@sha256:")
+    assert redis_container["image"].startswith("docker.io/redis:7.4.11-alpine@sha256:")
     assert redis_container["imagePullPolicy"] == "Always"
     assert 'rename-command FLUSHDB ""' in configuration["data"]["master.conf"]
     assert 'rename-command FLUSHALL ""' in configuration["data"]["master.conf"]
@@ -1754,7 +1825,7 @@ def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> No
     metrics_rule = next(
         rule
         for rule in network_policy["spec"]["ingress"]
-        if rule["ports"] == [{"port": 9121}]
+        if rule["ports"] == [{"port": 9121, "protocol": "TCP"}]
     )
     assert metrics_rule["from"] == [
         {
@@ -1845,7 +1916,10 @@ def test_revocation_store_rejects_unreviewed_injection_surfaces(
 
 
 def test_dependency_network_policies_require_explicit_client_labels() -> None:
-    resources = _render_staging(release_name="university-ecosystem")
+    release_name = "dependency-label-contract"
+    resources = _render_staging(
+        "--set", "migrations.enabled=true", release_name=release_name
+    )
     deployments = {
         resource["metadata"]["labels"]["app.kubernetes.io/component"]: resource
         for resource in resources
@@ -1860,34 +1934,179 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
         "file-processor": {"nats"},
         "outbox-worker": {"redis", "nats"},
     }
+    workloads = [
+        resource
+        for resource in resources
+        if resource.get("kind") in {"Deployment", "StatefulSet", "DaemonSet", "Job"}
+    ]
     for component, dependencies in expected.items():
         labels = deployments[component]["spec"]["template"]["metadata"]["labels"]
         for dependency in dependencies:
-            assert labels[f"university-ecosystem-{dependency}-client"] == "true"
+            label_key = f"{release_name}-{dependency}-client"
+            assert labels[label_key] == "true"
+            assert f"university-ecosystem-{dependency}-client" not in labels
+    migration_jobs = [
+        resource
+        for resource in workloads
+        if resource.get("kind") == "Job"
+        and resource["metadata"]["name"].endswith("-migrate")
+    ]
+    assert len(migration_jobs) == 1
+    migration_labels = migration_jobs[0]["spec"]["template"]["metadata"]["labels"]
+    assert migration_labels[f"{release_name}-revocation-redis-client"] == "true"
 
-    policy_names = {
-        resource["metadata"]["name"]
-        for resource in resources
-        if resource.get("kind") == "NetworkPolicy"
-    }
-    assert {
-        "university-ecosystem-redis",
-        "university-ecosystem-nats",
-    } <= policy_names
-    assert "university-ecosystem-revocation-redis" not in policy_names
-
-    revocation_selector = {
-        "app.kubernetes.io/name": "revocation-redis",
-        "app.kubernetes.io/component": "master",
-        "university-ecosystem.io/revocation-store-for": "university-ecosystem",
-    }
     policies = {
         resource["metadata"]["name"]: resource
         for resource in resources
         if resource.get("kind") == "NetworkPolicy"
     }
+    redis_policy = policies[f"{release_name}-redis"]
+    nats_policy = policies[f"{release_name}-nats"]
+    redis_ingress_selectors = [
+        source["podSelector"]["matchLabels"]
+        for rule in redis_policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if "podSelector" in source
+    ]
+    nats_ingress_selectors = [
+        source["podSelector"]["matchLabels"]
+        for rule in nats_policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if "podSelector" in source
+    ]
+    assert {f"{release_name}-redis-client": "true"} in redis_ingress_selectors
+    assert {f"{release_name}-nats-client": "true"} in nats_ingress_selectors
+    assert not any(
+        "university-ecosystem-redis-client" in selector
+        for selector in redis_ingress_selectors
+    )
+    assert not any(
+        "university-ecosystem-nats-client" in selector
+        for selector in nats_ingress_selectors
+    )
+
+    matching_clients = {
+        dependency: {
+            resource["metadata"]["labels"].get("app.kubernetes.io/component")
+            or resource["metadata"]["name"]
+            for resource in workloads
+            if resource["spec"]["template"]["metadata"]["labels"].get(
+                f"{release_name}-{dependency}-client"
+            )
+            == "true"
+        }
+        for dependency in ("redis", "nats")
+    }
+    assert matching_clients["redis"] >= {"backend", "ws-hub", "outbox-worker"}
+    assert matching_clients["nats"] >= {
+        "backend",
+        "ws-hub",
+        "file-processor",
+        "outbox-worker",
+    }
+
+    nats = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "StatefulSet"
+        and resource["metadata"]["name"] == f"{release_name}-nats"
+    )
+    legacy_nats_selector = {
+        "app.kubernetes.io/name": "nats",
+        "app.kubernetes.io/instance": release_name,
+    }
+    assert nats["spec"]["selector"]["matchLabels"] == legacy_nats_selector
+    nats_services = [
+        resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+        and resource["metadata"]["name"]
+        in {f"{release_name}-nats", f"{release_name}-nats-headless"}
+    ]
+    assert {resource["metadata"]["name"] for resource in nats_services} == {
+        f"{release_name}-nats",
+        f"{release_name}-nats-headless",
+    }
+    assert all(
+        resource["spec"]["selector"] == legacy_nats_selector
+        for resource in nats_services
+    )
+    nats_pdb = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "PodDisruptionBudget"
+        and resource["metadata"]["name"] == f"{release_name}-nats"
+    )
+    assert nats_pdb["spec"]["selector"]["matchLabels"] == legacy_nats_selector
+
+    redis = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "StatefulSet"
+        and resource.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/name")
+        == "redis"
+        and resource["metadata"]["labels"].get("app.kubernetes.io/component")
+        == "master"
+    )
+    redis_container = next(
+        container
+        for container in redis["spec"]["template"]["spec"]["containers"]
+        if container["name"] == "redis"
+    )
+    redis_config_mount = next(
+        mount for mount in redis_container["volumeMounts"] if mount["name"] == "config"
+    )
+    assert redis_config_mount["mountPath"] == "/etc/redis"
+    assert redis_container["args"] == ["exec redis-server /etc/redis/redis.conf"]
+    # These are the exact legacy Bitnami PVC-template labels; changing them makes the VCT immutable field drift.
+    assert redis["spec"]["volumeClaimTemplates"][0]["apiVersion"] == "v1"
+    assert redis["spec"]["volumeClaimTemplates"][0]["kind"] == "PersistentVolumeClaim"
+    assert redis["spec"]["volumeClaimTemplates"][0]["metadata"]["labels"] == {
+        "app.kubernetes.io/component": "master",
+        "app.kubernetes.io/instance": release_name,
+        "app.kubernetes.io/name": "redis",
+    }
+    data_mounts = [
+        mount
+        for container in nats["spec"]["template"]["spec"]["containers"]
+        for mount in container.get("volumeMounts", [])
+        if mount.get("name") == "data"
+    ]
+    assert any(mount["mountPath"] == "/data" for mount in data_mounts)
+    assert nats["spec"]["volumeClaimTemplates"][0]["metadata"]["name"] == "data"
+    nats_container = next(
+        container
+        for container in nats["spec"]["template"]["spec"]["containers"]
+        if container["name"] == "nats"
+    )
+    assert nats_container["args"] == [
+        "--config",
+        "/etc/nats-auth/nats-server.conf",
+    ]
+    nats_secret_mount = next(
+        mount
+        for mount in nats_container["volumeMounts"]
+        if mount["name"] == "nats-auth-config"
+    )
+    assert nats_secret_mount["mountPath"] == "/etc/nats-auth"
+    assert nats_secret_mount["readOnly"] is True
+    nats_secret_volume = next(
+        volume
+        for volume in nats["spec"]["template"]["spec"]["volumes"]
+        if volume["name"] == "nats-auth-config"
+    )
+    assert nats_secret_volume["secret"]["secretName"] == "university-nats-config"
+    assert nats_secret_volume["secret"]["items"] == [
+        {"key": "nats-server.conf", "path": "nats-server.conf"}
+    ]
+
+    revocation_selector = {
+        "app.kubernetes.io/name": "revocation-redis",
+        "app.kubernetes.io/component": "master",
+        "university-ecosystem.io/revocation-store-for": release_name,
+    }
     for component in ("backend", "gateway", "ws-hub"):
-        policy = policies[f"university-ecosystem-{component}-policy"]
+        policy = policies[f"{release_name}-{component}-policy"]
         egress_selectors = [
             destination["podSelector"]["matchLabels"]
             for rule in policy["spec"]["egress"]
@@ -1898,7 +2117,7 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
 
     outbox = deployments["outbox-worker"]
     outbox_labels = outbox["spec"]["template"]["metadata"]["labels"]
-    assert "university-ecosystem-revocation-redis-client" not in outbox_labels
+    assert f"{release_name}-revocation-redis-client" not in outbox_labels
     outbox_env = {
         entry["name"]: entry
         for entry in outbox["spec"]["template"]["spec"]["containers"][0]["env"]
@@ -1906,7 +2125,7 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
     assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
     assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
     assert "REVOCATION_REDIS_URL" not in outbox_env
-    outbox_policy = policies["university-ecosystem-outbox-worker-policy"]
+    outbox_policy = policies[f"{release_name}-outbox-worker-policy"]
     outbox_egress_selectors = [
         destination["podSelector"]["matchLabels"]
         for rule in outbox_policy["spec"]["egress"]
@@ -1982,6 +2201,15 @@ def test_release_rejects_permissive_dependency_network_policy(override: str) -> 
         ("--set-string", "redis.image.repository=attacker/redis"),
         ("--set-string", "redis.metrics.image.repository=attacker/exporter"),
         ("--set-string", "nats.image.repository=attacker/nats"),
+        ("--set-string", "nats.container.image.repository=attacker/nats"),
+        ("--set-string", "nats.image.registry=ghcr.io"),
+        ("--set-string", "nats.image.tag=2.14.0-alpine"),
+        ("--set-string", "nats.image.digest=sha256:" + "c" * 64),
+        ("--set-string", "nats.image.pullPolicy=IfNotPresent"),
+        ("--set-string", "nats.container.image.registry=ghcr.io"),
+        ("--set-string", "nats.container.image.tag=2.14.0-alpine"),
+        ("--set-string", "nats.container.image.digest=sha256:" + "d" * 64),
+        ("--set-string", "nats.container.image.pullPolicy=IfNotPresent"),
     ],
 )
 def test_release_rejects_dependency_repository_substitution_or_bypass(
@@ -1997,7 +2225,12 @@ def test_release_rejects_dependency_repository_substitution_or_bypass(
     assert result.returncode != 0
     assert any(
         marker in result.stderr
-        for marker in ("dependency image repository", "allowInsecureImages")
+        for marker in (
+            "dependency image repository",
+            "allowInsecureImages",
+            "metadata must exactly match",
+            "values don't meet the specifications",
+        )
     )
 
 

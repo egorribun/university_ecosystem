@@ -422,11 +422,36 @@ def _validated_in_place_state_root(raw_path: str | Path, *, create: bool) -> Pat
     return normalized
 
 
+def _windows_system32_executable(name: str, *, error_message: str) -> str:
+    """Resolve a native ACL utility from the absolute Windows system directory."""
+    if name not in {"whoami.exe", "icacls.exe"}:
+        raise StandError(error_message)
+    system_root = os.environ.get("SystemRoot")
+    if not system_root:
+        raise StandError(error_message)
+    root = Path(system_root)
+    executable = root / "System32" / name
+    try:
+        if (
+            not root.is_absolute()
+            or not executable.is_absolute()
+            or not executable.is_file()
+        ):
+            raise StandError(error_message)
+        resolved = executable.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise StandError(error_message) from None
+    if not resolved.is_absolute() or not resolved.is_file():
+        raise StandError(error_message)
+    return str(resolved)
+
+
 def _windows_user_sid() -> str:
     """Return the current Windows user SID without exposing command output."""
-    whoami = shutil.which("whoami.exe") or shutil.which("whoami")
-    if whoami is None:
-        raise StandError("cannot verify the current Windows user for live state ACLs")
+    whoami = _windows_system32_executable(
+        "whoami.exe",
+        error_message="cannot verify the current Windows user for live state ACLs",
+    )
     try:
         result = subprocess.run(  # noqa: S603 - fixed Windows identity query, no shell
             [whoami, "/user", "/fo", "csv", "/nh"],
@@ -448,9 +473,10 @@ def _windows_user_sid() -> str:
 
 def _restrict_new_windows_state_directory(path: Path) -> None:
     """Protect a newly created run root with only current-user and SYSTEM ACLs."""
-    icacls = shutil.which("icacls.exe") or shutil.which("icacls")
-    if icacls is None:
-        raise StandError("cannot enforce private Windows permissions for live state")
+    icacls = _windows_system32_executable(
+        "icacls.exe",
+        error_message="cannot enforce private Windows permissions for live state",
+    )
     user_sid = _windows_user_sid()
     try:
         subprocess.run(  # noqa: S603 - fixed Windows ACL tool, path is owned run root
@@ -506,9 +532,10 @@ def _restrict_in_place_windows_state_file(path: Path) -> None:
     if not stat.S_ISREG(metadata.st_mode):
         raise StandError("generated live stand path is not a regular file")
 
-    icacls = shutil.which("icacls.exe") or shutil.which("icacls")
-    if icacls is None:
-        raise StandError("cannot enforce private Windows permissions for live state")
+    icacls = _windows_system32_executable(
+        "icacls.exe",
+        error_message="cannot enforce private Windows permissions for live state",
+    )
     user_sid = _windows_user_sid()
     try:
         subprocess.run(  # noqa: S603 - fixed ACL tool, path is confined to owned state

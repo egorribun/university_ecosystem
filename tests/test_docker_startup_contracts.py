@@ -1519,8 +1519,8 @@ def test_full_nats_credentials_use_literal_safe_config_rendering() -> None:
     assert "--pass" not in renderer
 
     assert nats["image"] == (
-        "nats:2.12.15-alpine@sha256:"
-        "b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6"
+        "nats:2.15.0-alpine@sha256:"
+        "ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
     )
     assert nats["environment"] == [
         "NATS_USER=" + "$" + "{NATS_USER:?NATS_USER is required - set in .env file}",
@@ -1714,12 +1714,9 @@ def test_production_pgbouncer_uses_a_supported_image_and_file_secret() -> None:
     pgbouncer = services["pgbouncer"]
     postgres = services["postgres"]
 
-    assert (
-        pgbouncer["image"]
-        == (
-            "edoburu/pgbouncer:v1.25.2-p0@sha256:"
-            "7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340"  # pragma: allowlist secret
-        )
+    assert pgbouncer["image"] == (
+        "edoburu/pgbouncer:v1.26.0-p0@sha256:"
+        "b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711"
     )
     assert "postgres_password" in compose["secrets"]
     assert compose["secrets"]["postgres_password"]["file"].startswith(
@@ -1863,10 +1860,6 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "--set-string",
         "global.environment=development",
         "--set",
-        "redis.enabled=false",
-        "--set",
-        "nats.enabled=false",
-        "--set",
         "global.imageTag=contract-sha",
         "--set",
         "gateway.config.jwtSecret=ci-placeholder",
@@ -1956,6 +1949,11 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         for item in resources
         if item.get("kind") == "Deployment"
     }
+    pod_workloads = [
+        item
+        for item in resources
+        if item.get("kind") in {"Deployment", "StatefulSet", "DaemonSet"}
+    ]
     ingress = next(item for item in resources if item.get("kind") == "Ingress")
     api_rule = next(
         rule
@@ -2122,8 +2120,8 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         ).get("app.kubernetes.io/component"):
             assert any(
                 selector.items()
-                <= deployment["spec"]["template"]["metadata"]["labels"].items()
-                for deployment in deployments.values()
+                <= workload["spec"]["template"]["metadata"]["labels"].items()
+                for workload in pod_workloads
             ), item["metadata"]["name"]
         if item.get("kind") == "ScaledObject":
             target = item["spec"]["scaleTargetRef"]
@@ -2141,21 +2139,19 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     if helm is None:
         pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
 
+    release_name = "external"
+    existing_application_secret = "managed-application-secrets"
     rendered = subprocess.run(  # noqa: S603 - fixed Helm contract command
         [
             helm,
             "template",
-            "external",
+            release_name,
             str(ROOT / "charts" / "university-ecosystem"),
             *_helm_skip_dep_flag(helm),
             "--set-string",
             "global.environment=development",
             "--set",
-            "redis.enabled=false",
-            "--set",
-            "nats.enabled=false",
-            "--set",
-            "applicationSecrets.existingSecret=managed-application-secrets",
+            f"applicationSecrets.existingSecret={existing_application_secret}",
             "--set",
             "backup.enabled=true",
         ],
@@ -2165,7 +2161,29 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
         encoding="utf-8",
     ).stdout
     resources = [item for item in yaml.safe_load_all(rendered) if item]
-    assert not any(item.get("kind") == "Secret" for item in resources)
+    application_secret_helper = (
+        ROOT / "charts" / "university-ecosystem" / "templates" / "_helpers.tpl"
+    ).read_text(encoding="utf-8")
+    assert (
+        'default (printf "%s-secrets" .Release.Name) '
+        ".Values.applicationSecrets.existingSecret"
+    ) in application_secret_helper
+    application_secret_names = {
+        f"{release_name}-secrets",
+        existing_application_secret,
+    }
+    secret_resources = [item for item in resources if item.get("kind") == "Secret"]
+    assert not any(
+        item.get("metadata", {}).get("name") in application_secret_names
+        for item in secret_resources
+    )
+    chart_values = yaml.safe_load(
+        (ROOT / "charts" / "university-ecosystem" / "values.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert chart_values["nats"]["natsBox"]["enabled"] is False
+    assert not secret_resources
     assert not any(
         item.get("kind") == "ConfigMap"
         and item["metadata"]["name"].endswith("-backup-scripts")
@@ -2386,12 +2404,9 @@ def test_caddy_configs_expose_an_edge_local_health_endpoint() -> None:
 def test_pyroscope_image_matches_the_supported_project_version() -> None:
     for relative_path in ("docker-compose.yml", "docker-compose.observability.yml"):
         service = _compose(relative_path)["services"]["pyroscope"]
-        assert (
-            service["image"]
-            == (
-                "grafana/pyroscope:1.19.1@sha256:"
-                "d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d"  # pragma: allowlist secret
-            )
+        assert service["image"] == (
+            "grafana/pyroscope:2.3.1@sha256:"
+            "86a9ee7448487409ead8ada78789de7b78b739711b92b5d7224a1a54abf3eeb2"
         )
 
 
@@ -2403,8 +2418,8 @@ def test_base_and_full_compose_pin_the_same_valkey_minor() -> None:
         base["image"]
         == full["image"]
         == (
-            "valkey/valkey:8.1-alpine@sha256:"
-            "a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec"  # pragma: allowlist secret
+            "valkey/valkey:9.1.2-alpine@sha256:"
+            "48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11"
         )
     )
 
@@ -2414,12 +2429,9 @@ def test_observability_stack_uses_alloy_instead_of_eol_promtail() -> None:
     alloy_config = _read("infrastructure/observability/alloy/config.alloy")
 
     assert "promtail" not in services
-    assert (
-        services["alloy"]["image"]
-        == (
-            "grafana/alloy:v1.18.0@sha256:"
-            "491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308"  # pragma: allowlist secret
-        )
+    assert services["alloy"]["image"] == (
+        "grafana/alloy:v1.20.1@sha256:"
+        "2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f"
     )
     assert services["alloy"]["read_only"] is True
     assert services["alloy"]["cap_drop"] == ["ALL"]
@@ -2447,12 +2459,9 @@ def test_distroless_telemetry_services_use_external_health_probes() -> None:
         assert "healthcheck" not in services["tempo"]
         probe = services["tempo-healthprobe"]
         assert probe["network_mode"] == "service:tempo"
-        assert (
-            probe["image"]
-            == (
-                "curlimages/curl:8.10.1@sha256:"
-                "d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b"  # pragma: allowlist secret
-            )
+        assert probe["image"] == (
+            "curlimages/curl:8.22.0@sha256:"
+            "58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"
         )
         assert "http://localhost:3200/ready" in " ".join(probe["healthcheck"]["test"])
 
@@ -2577,7 +2586,7 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
         "golang:1.26.9-alpine3.24@sha256:"
         "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"
     ) in dockerfile
-    assert 'ARG BUF_VERSION="v1.72.0"' in dockerfile
+    assert 'ARG BUF_VERSION="v1.73.0"' in dockerfile
     assert dockerfile.count("GOBIN=/usr/local/bin go install") == 3
     assert '"github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}"' in dockerfile
     assert "google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12" in dockerfile
@@ -2619,10 +2628,10 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
         dockerfile.index("AS health-probe") : dockerfile.index("# Runtime stage")
     ]
 
-    assert "GRPC_HEALTH_PROBE_VERSION=v0.4.51" in health_probe
+    assert "GRPC_HEALTH_PROBE_VERSION=v0.4.57" in health_probe
     for dependency in (
-        "github.com/spiffe/go-spiffe/v2@v2.7.0",
-        "google.golang.org/grpc@v1.83.2",
+        "github.com/spiffe/go-spiffe/v2@v2.9.0",
+        "google.golang.org/grpc@v1.84.0",
         "golang.org/x/net@v0.60.0",
         "golang.org/x/text@v0.42.0",
     ):

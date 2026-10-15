@@ -157,7 +157,7 @@ services:
           memory: 512M
 
   postgres:
-    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
     profiles: ["prod"]
     deploy:
       resources:
@@ -179,7 +179,7 @@ services:
   # startup. The wrapper reads the database password from the mounted secret so
   # it never appears in Compose environment metadata.
   pgbouncer:
-    image: edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
     profiles: ["prod"]
     restart: unless-stopped
     secrets:

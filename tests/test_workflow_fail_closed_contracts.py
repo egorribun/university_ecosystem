@@ -20,39 +20,39 @@ PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
 LOCKED_PRE_COMMIT_VERSION = "4.6.2"
-HELM_3_22_0_LINUX_AMD64_SHA256 = "1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb"  # public Helm release checksum
+HELM_4_2_4_LINUX_AMD64_SHA256 = "c306b46f719b0a4da32d0f78ee21bf90ce8d602f15b22ab753f0674d1670a7f3"  # public Helm release checksum
 DEPLOY_SMOKE_REQUIREMENTS = {
-    "requests==2.33.1": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a",  # pragma: allowlist secret -- public PyPI wheel checksum
-    "certifi==2026.4.22": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a",  # pragma: allowlist secret -- public PyPI wheel checksum
-    "charset-normalizer==3.4.7": "bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e",  # pragma: allowlist secret -- public PyPI wheel checksum
-    "idna==3.18": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+    "certifi==2026.7.22": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+    "charset-normalizer==3.5.2": "34276fd796040bf0993ab33a369aa572e6979c7aab225a88893667ad8eac8f7a",
+    "idna==3.20": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
     "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
 }
 
 EXPECTED_EXTERNAL_IMAGES = {
     "pgvector/pgvector:pg17": (
         "pgvector/pgvector:pg17@sha256:"
-        "cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"  # pragma: allowlist secret
+        "ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
     ),
     "redis:7-alpine": (
         "redis:7-alpine@sha256:"
         "e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"  # pragma: allowlist secret
     ),
-    "nats:2.12.15-alpine": (
-        "nats:2.12.15-alpine@sha256:"
-        "b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6"
+    "nats:2.15.0-alpine": (
+        "nats:2.15.0-alpine@sha256:"
+        "ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
     ),
-    "ghcr.io/chrislusf/seaweedfs:4.47": (
-        "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"
-        "ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"  # pragma: allowlist secret
+    "ghcr.io/chrislusf/seaweedfs:4.48": (
+        "ghcr.io/chrislusf/seaweedfs:4.48@sha256:"
+        "4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
     ),
-    "ghcr.io/shopify/toxiproxy:2.9.0": (
-        "ghcr.io/shopify/toxiproxy:2.9.0@sha256:"
-        "b44c283298cea49e2defaba1b3028783798346f2a926684e3a345fd8441af3b8"  # pragma: allowlist secret
+    "ghcr.io/shopify/toxiproxy:2.12.0": (
+        "ghcr.io/shopify/toxiproxy:2.12.0@sha256:"
+        "9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e"
     ),
-    "stoplight/spectral:6.15.0": (
-        "stoplight/spectral:6.15.0@sha256:"
-        "b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab"  # pragma: allowlist secret
+    "stoplight/spectral:6.17.0": (
+        "stoplight/spectral:6.17.0@sha256:"
+        "c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239"
     ),
     "alpine/socat:1.8.0.3": (
         "alpine/socat:1.8.0.3@sha256:"
@@ -65,8 +65,8 @@ EXPECTED_EXTERNAL_IMAGES = {
 }
 
 PRECOMMIT_SEMGREP_IMAGE = (
-    "semgrep/semgrep:1.113.0@sha256:"
-    "136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22"
+    "semgrep/semgrep:1.179.0@sha256:"
+    "93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b"
 )
 
 _DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
@@ -819,8 +819,8 @@ def test_precommit_semgrep_image_remains_immutable() -> None:
 
 def test_go_and_compose_s3_cells_use_the_audited_seaweedfs_image() -> None:
     image = (
-        "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"
-        "ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"  # pragma: allowlist secret
+        "ghcr.io/chrislusf/seaweedfs:4.48@sha256:"
+        "4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
     )
     for path in (
         ROOT / "services/file-processor/internal/workflow/workflow_integration_test.go",
@@ -906,7 +906,7 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
         encoding="utf-8"
     )
     assert "helm upgrade --install" in helm_script
-    for flag in ("--atomic", "--wait", "--wait-for-jobs"):
+    for flag in ("--rollback-on-failure", "--wait=legacy", "--wait-for-jobs"):
         assert flag in helm_script
 
     assert not any(step.get("name") == "Deploy WS Hub image" for step in steps)
@@ -962,8 +962,8 @@ def test_deploy_bootstraps_checksum_bound_tools_before_oidc() -> None:
     assert tooling["env"] == {
         "KUBECTL_VERSION": "${{ vars.KUBECTL_VERSION }}",
         "KUBECTL_SHA256": "${{ vars.KUBECTL_SHA256 }}",
-        "HELM_VERSION": "v3.22.0",
-        "HELM_ARCHIVE_SHA256": HELM_3_22_0_LINUX_AMD64_SHA256,
+        "HELM_VERSION": "v4.2.4",
+        "HELM_ARCHIVE_SHA256": HELM_4_2_4_LINUX_AMD64_SHA256,
     }
 
     run = str(tooling["run"])
@@ -1023,7 +1023,7 @@ def test_deploy_smoke_dependencies_are_hash_locked_before_oidc() -> None:
     assert 'pip install "requests==' not in run
     for requirement, digest in DEPLOY_SMOKE_REQUIREMENTS.items():
         assert f"{requirement} --hash=sha256:{digest}" in run
-    assert 'requests.__version__ == "2.33.1"' in run
+    assert 'requests.__version__ == "2.34.2"' in run
 
 
 def test_deploy_rejects_unsupported_kubectl_server_version_skew() -> None:
@@ -1093,9 +1093,14 @@ def test_workflow_tool_installers_do_not_use_latest_selectors() -> None:
         path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))
     )
     assert not re.search(r"\bgo install\s+\S+@(?:latest|main|master)\b", combined)
-    assert "go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260808063849-8649a03c818a" in (
+    assert "go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260918162853-acb8859b9031" in (
         WORKFLOWS / "nilaway.yml"
     ).read_text(encoding="utf-8")
+    reusable_go = (WORKFLOWS / "reusable-go-tests.yml").read_text(encoding="utf-8")
+    assert (
+        "github.com/avito-tech/go-mutesting/cmd/go-mutesting@v0.0.0-20261002081621-9ce5f731e321"
+        in reusable_go
+    )
     assert "uv pip install atheris" not in combined
 
 

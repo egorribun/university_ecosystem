@@ -415,6 +415,10 @@ func (h *Hub) validateUpgradeTicketIdentity(ctx context.Context, ticket string) 
 // found in the cached key set (key rotation scenario).  Rate-limited to once
 // per _jwksForceRefreshCooldown to prevent amplification under burst traffic.
 func (h *Hub) tryForceRefreshJWKS(ctx context.Context) {
+	jwksURL := h.jwksURLSnapshot()
+	if jwksURL == "" {
+		return
+	}
 	now := time.Now().Unix()
 	last := _lastJWKSForceRefreshUnix.Load()
 	if now-last < int64(_jwksForceRefreshCooldown.Seconds()) {
@@ -423,8 +427,8 @@ func (h *Hub) tryForceRefreshJWKS(ctx context.Context) {
 	if !jwksForceRefreshCASFunc(last, now) {
 		return // another goroutine won the CAS race
 	}
-	h.Logger.InfoContext(ctx, "JWKS: unknown kid — forcing cache refresh", "url", h.jwksURL)
-	if _, err := h.jwksCache.Refresh(ctx, h.jwksURL); err != nil {
+	h.Logger.InfoContext(ctx, "JWKS: unknown kid — forcing cache refresh", "url", jwksURL)
+	if err := h.refreshJWKS(ctx); err != nil {
 		h.Logger.ErrorContext(ctx, "JWKS force-refresh failed", "err", err)
 	}
 }

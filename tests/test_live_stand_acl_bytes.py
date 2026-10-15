@@ -25,11 +25,14 @@ _USER_SID = "S-1-5-21-111111111-222222222-333333333-1001"
 
 
 def _configure_icacls(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        live_stand.shutil,
-        "which",
-        lambda name: _ICACLS if name == "icacls.exe" else None,
-    )
+    def resolve_native_tool(name: str, *, error_message: str) -> str:
+        assert name == "icacls.exe"
+        assert error_message == (
+            "cannot enforce private Windows permissions for live state"
+        )
+        return _ICACLS
+
+    monkeypatch.setattr(live_stand, "_windows_system32_executable", resolve_native_tool)
     monkeypatch.setattr(live_stand, "_windows_user_sid", lambda: _USER_SID)
 
 

@@ -138,14 +138,14 @@ jobs:
             - name: Build pinned Helm dependencies
               uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
               with:
-                  version: v3.22.0
+                  version: v4.2.4
 
             - name: Resolve Helm chart dependencies
               shell: bash
               run: |
                 python3 scripts/ci/helm_dependency_build.py \
                   charts/university-ecosystem \
-                  redis-20.13.4.tgz nats-8.5.4.tgz
+                  redis-0.1.0.tgz nats-2.15.0.tgz
 
             - name: Run pytest
               shell: pwsh
@@ -251,7 +251,7 @@ jobs:
                 uv run diff-cover coverage.xml --compare-branch=origin/$compareBranch --fail-under=100
 
             - name: Upload coverage artifact
-              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: backend-coverage-${{ inputs.test-group-name }}
                   path: |
@@ -310,7 +310,7 @@ jobs:
 
             - name: Upload raw coverage data for aggregation
               if: ${{ inputs.num-shards > 1 }}
-              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: backend-coverage-data-${{ inputs.test-group-name }}-attempt-${{ github.run_attempt }}
                   path: |
@@ -321,7 +321,7 @@ jobs:
                   if-no-files-found: error
 
             - name: Upload pytest report
-              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: backend-pytest-report-${{ inputs.test-group-name }}
                   path: pytest-report.xml
@@ -358,7 +358,7 @@ jobs:
             RUN_INTEGRATION_TESTS: "1"
         services:
             postgres:
-                image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+                image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
                 env:
                     POSTGRES_USER: test
                     POSTGRES_PASSWORD: test
@@ -391,7 +391,7 @@ jobs:
             mailpit:
                 # Official GHCR mirror, immutable v1.31.1 manifest-list digest.
                 # Both unauthenticated endpoints stay bound to the runner loopback.
-                image: ghcr.io/axllent/mailpit:v1.31.1@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
+                image: ghcr.io/axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
                 ports:
                     - "127.0.0.1:8025:8025"
                     - "127.0.0.1:1025:1025"
@@ -503,10 +503,10 @@ jobs:
                   # Docker Hub token/registry timeout must not turn a healthy
                   # integration suite into a false-negative CI failure.
                   $images = @(
-                    "nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6",
+                    "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
                     "postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b",
                     "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2",
-                    "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+                    "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
                   )
                   $maxAttempts = 5
 
@@ -575,7 +575,7 @@ jobs:
                   uv run pytest @pytestArgs
 
             - name: Upload test results
-              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               if: failure()
               with:
                   name: postgres-test-failures-${{ inputs.test-group-name }}

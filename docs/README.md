@@ -51,8 +51,9 @@ handoffs are intentionally not part of the canonical index.
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
 - [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
-  open-finding register
-- [Dependency update report, October 2026](audits/dependency-updates-2026-10/README.md)
+  open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
+  records current validation evidence, the owner-approved 225 exact disposition scope,
+  the completed direct RustSec and individual applicable local-hook checks, with hosted CI for the new source still pending.
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 

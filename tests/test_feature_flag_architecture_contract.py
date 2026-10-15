@@ -36,17 +36,17 @@ if ROOT is None:
     )
 
 FLAGD_K8S_IMAGE = (
-    "ghcr.io/open-feature/flagd:v0.16.3@"
-    "sha256:a11ae82ec6e40e89edae4327392a1e4ffc03e211f1b724879bb35b2e4f271bb3"
+    "ghcr.io/open-feature/flagd:v0.17.0@"
+    "sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df"
 )
 FLAGD_COMPOSE_IMAGE = (
-    "ghcr.io/open-feature/flagd:v0.16.3@"
-    "sha256:a11ae82ec6e40e89edae4327392a1e4ffc03e211f1b724879bb35b2e4f271bb3"
+    "ghcr.io/open-feature/flagd:v0.17.0@"
+    "sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df"
 )
 
 CURL_IMAGE = (
-    "curlimages/curl:8.21.0@"
-    "sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13"
+    "curlimages/curl:8.22.0@"
+    "sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"
 )
 
 

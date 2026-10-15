@@ -23,7 +23,7 @@ def test_postgres_integration_lane_has_pinned_loopback_mailpit_sink() -> None:
     assert job["if"] == "${{ inputs.run-integration-tests }}"
     mailpit = job["services"]["mailpit"]
     assert re.fullmatch(
-        r"ghcr\.io/axllent/mailpit:v1\.31\.1@sha256:[0-9a-f]{64}",
+        r"ghcr\.io/axllent/mailpit:v1\.31\.4@sha256:[0-9a-f]{64}",
         mailpit["image"],
     )
     assert mailpit["ports"] == ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]

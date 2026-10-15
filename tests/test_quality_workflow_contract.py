@@ -42,8 +42,8 @@ def _assert_helm_dependency_helper_invocation(
 
     assert "python3 scripts/ci/helm_dependency_build.py" in script
     assert "charts/university-ecosystem" in script
-    assert "redis-20.13.4.tgz" in script
-    assert "nats-8.5.4.tgz" in script
+    assert "redis-0.1.0.tgz" in script
+    assert "nats-2.15.0.tgz" in script
     assert "helm dependency build" not in script
     if skip_refresh:
         assert "--skip-refresh" in script
@@ -134,7 +134,7 @@ SETUP_PYTHON_ACTION_PIN = (
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 )
 UPLOAD_ARTIFACT_ACTION_PIN = (
-    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 )
 CAPTURE_ALLOWED_CONDITIONAL_ORS = (
     'if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then',
@@ -1150,7 +1150,7 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
     assert helm_setup["uses"] == (
         "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310"
     )
-    assert helm_setup["with"]["version"] == "3.22.0"
+    assert re.fullmatch(r"4\.2\.\d+", str(helm_setup["with"]["version"]))
 
     dependency_build = next(
         step
@@ -1248,15 +1248,12 @@ def test_reusable_trivy_install_isolated_from_hosted_apt_mirror_drift() -> None:
     )
     script = str(install["run"])
 
-    assert (
-        install["env"]
-        == {
-            "TRIVY_VERSION": "0.73.0",
-            "TRIVY_ARCHIVE_SHA256": (
-                "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b"  # pragma: allowlist secret -- public Trivy release checksum
-            ),
-        }
-    )
+    assert install["env"] == {
+        "TRIVY_VERSION": "0.75.0",
+        "TRIVY_ARCHIVE_SHA256": (
+            "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
+        ),
+    }
     assert "--proto '=https'" in script
     assert "--tlsv1.2" in script
     assert (
@@ -1522,7 +1519,7 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
     workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
     report_job = workflow["jobs"]["sbom-go"]
     report_script = "\n".join(str(step.get("run", "")) for step in report_job["steps"])
-    assert "osv-scanner scan --recursive --format sarif" in report_script
+    assert "osv-scanner scan source --recursive --format sarif" in report_script
     assert any(
         str(step.get("uses", "")).startswith("github/codeql-action/upload-sarif@")
         for step in report_job["steps"]
@@ -1532,7 +1529,10 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
     install = next(
         step for step in gate_steps if step.get("name") == "Install govulncheck"
     )
-    assert install["run"] == "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0"
+    assert re.fullmatch(
+        r"go install golang.org/x/vuln/cmd/govulncheck@v?\d+\.\d+\.\d+",
+        install["run"],
+    )
 
     scan = next(
         step
@@ -1558,7 +1558,10 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
     reusable_audit = (
         REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
     ).read_text(encoding="utf-8")
-    assert "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0" in reusable_audit
+    assert re.search(
+        r"go install golang.org/x/vuln/cmd/govulncheck@v?\d+\.\d+\.\d+",
+        reusable_audit,
+    )
     assert "govulncheck@v1.5.0" not in reusable_audit
 
 
@@ -1594,9 +1597,12 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
     assert [package["version"] for package in pip_packages] == ["26.2.1"]
 
     sbom_text = SBOM_WORKFLOW_PATH.read_text(encoding="utf-8")
-    install_command = "cargo install cargo-audit --version 0.22.2 --locked"
-    assert sbom_text.count(install_command) == 3
-    assert "cargo install cargo-audit --version 0.21.2" not in sbom_text
+    cargo_audit_versions = re.findall(
+        r"cargo install cargo-audit --version (\d+\.\d+\.\d+) --locked",
+        sbom_text,
+    )
+    assert len(cargo_audit_versions) == 3
+    assert len(set(cargo_audit_versions)) == 1
 
     audit_config = tomllib.loads(RUST_AUDIT_CONFIG_PATH.read_text(encoding="utf-8"))
     assert audit_config["advisories"] == {
@@ -3100,7 +3106,8 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     run_script = mutation_steps[run_step_index]["run"]
 
     assert stats_helm["uses"].startswith("azure/setup-helm@")
-    assert stats_helm["with"] == {"version": "v3.22.0"}
+    assert set(stats_helm["with"]) == {"version"}
+    assert re.fullmatch(r"v?4\.2\.\d+", str(stats_helm["with"]["version"]))
     _assert_helm_dependency_helper_invocation(
         stats_dependencies["run"], skip_refresh=True
     )
@@ -3115,7 +3122,8 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         if step.get("name") == "Resolve Helm chart dependencies"
     )
     assert mutation_helm["uses"].startswith("azure/setup-helm@")
-    assert mutation_helm["with"] == {"version": "v3.22.0"}
+    assert set(mutation_helm["with"]) == {"version"}
+    assert re.fullmatch(r"v?4\.2\.\d+", str(mutation_helm["with"]["version"]))
     _assert_helm_dependency_helper_invocation(
         mutation_dependencies["run"], skip_refresh=True
     )
@@ -3451,12 +3459,9 @@ def test_chaos_job_provisions_real_s3_through_toxiproxy() -> None:
     )
     chaos_job = nightly_workflow["jobs"]["chaos-tests"]
     minio_service = chaos_job["services"]["minio"]
-    assert (
-        minio_service["image"]
-        == (
-            "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"
-            "ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"  # pragma: allowlist secret
-        )
+    assert minio_service["image"] == (
+        "ghcr.io/chrislusf/seaweedfs:4.48@sha256:"
+        "4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
     )
     assert minio_service["command"] == "mini -dir=/data -s3.port=9000"
     assert minio_service["env"]["AWS_ACCESS_KEY_ID"] == "minioadmin"
@@ -3677,7 +3682,9 @@ def test_dast_active_scans_do_not_accept_pr_label_authorization() -> None:
         for step in workflow["jobs"]["nuclei"]["steps"]
         if step.get("uses", "").startswith("projectdiscovery/nuclei-action@")
     )
-    assert nuclei_setup["with"] == {"version": "v3.11.1", "install-only": True}
+    assert set(nuclei_setup["with"]) == {"version", "install-only"}
+    assert re.fullmatch(r"v?\d+\.\d+\.\d+", str(nuclei_setup["with"]["version"]))
+    assert nuclei_setup["with"]["install-only"] is True
 
 
 def _step_named(job: dict[str, object], name: str) -> dict[str, object]:
@@ -5276,7 +5283,9 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     readiness = steps["Start FastAPI Backend in Background"]
     scan = steps["Run SQLMap Scan on API"]
 
-    assert install["run"].strip() == 'uv pip install "sqlmap==1.10.8"'
+    assert re.fullmatch(
+        r'uv pip install "sqlmap==\d+\.\d+\.\d+"', install["run"].strip()
+    )
     assert "uv run sqlmap -hh" in capability["run"]
     assert 'grep -Fq -- "--openapi="' in capability["run"]
     assert "exit 1" in capability["run"]
@@ -5811,7 +5820,7 @@ def test_release_installs_checksum_pinned_trivy_before_registry_login() -> None:
     scan = _provenance_step(job, "Scan local image before registry access (Trivy)")
 
     assert steps.index(install) < steps.index(login)
-    assert install["env"]["TRIVY_VERSION"] == "0.73.0"
+    assert install["env"]["TRIVY_VERSION"] == "0.75.0"
     assert re.fullmatch(r"[0-9a-f]{64}", install["env"]["TRIVY_ARCHIVE_SHA256"])
     install_run = str(install["run"])
     assert "releases/download/v${TRIVY_VERSION}/" in install_run

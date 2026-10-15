@@ -116,10 +116,10 @@ jobs:
 
       - name: Install checksum-pinned Trivy
         env:
-          TRIVY_VERSION: 0.73.0
+          TRIVY_VERSION: 0.75.0
           # Official immutable GitHub release asset digest for
-          # trivy_0.73.0_Linux-64bit.tar.gz.
-          TRIVY_ARCHIVE_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b # pragma: allowlist secret -- official public release checksum
+          # trivy_0.75.0_Linux-64bit.tar.gz.
+          TRIVY_ARCHIVE_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
         run: |
           set -euo pipefail
           [[ "$TRIVY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate SBOM (CycloneDX)
         # CI-01 (audit Wave 10): SHA-pinned; mutable @v0 tag replaced.
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ${{ steps.references.outputs.local_ref }}
           format: cyclonedx-json
@@ -333,7 +333,7 @@ jobs:
                   "artifact_name": artifact_name,
               },
               "verification": {
-                  "trivy_version": "0.73.0",
+                  "trivy_version": "0.75.0",
                   "sbom_format": "cyclonedx-json",
                   "signature": "cosign-keyless",
                   "attestation": "github-build-provenance",
@@ -348,7 +348,7 @@ jobs:
           PY
 
       - name: Upload verified image digest evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: image-digest-evidence-${{ inputs.image_name }}-${{ inputs.source-sha }}-attempt-${{ github.run_attempt }}
           path: artifacts/image-evidence/${{ inputs.image_name }}.json

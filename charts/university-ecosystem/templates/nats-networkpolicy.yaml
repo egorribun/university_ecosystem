@@ -1,0 +1,54 @@
+{{- if and .Values.nats.enabled .Values.nats.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-nats
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: nats
+    helm.sh/chart: {{ printf "nats-%s" .Subcharts.nats.Chart.Version | quote }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: nats
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 4222
+        - protocol: TCP
+          port: 6222
+        - protocol: TCP
+          port: 8222
+      from:
+        - podSelector:
+            matchLabels:
+              {{ printf "%s-nats-client" .Release.Name }}: "true"
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/name: nats
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - ports:
+        - protocol: TCP
+          port: 4222
+        - protocol: TCP
+          port: 6222
+        - protocol: TCP
+          port: 8222
+      to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/name: nats
+{{- end }}

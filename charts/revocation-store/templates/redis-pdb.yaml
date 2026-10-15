@@ -1,0 +1,14 @@
+{{- include "revocation-store.validate" . -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "revocation-store.redis.masterName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "revocation-store.redis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  minAvailable: {{ .Values.redis.master.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "revocation-store.redis.selectorLabels" . | nindent 6 }}

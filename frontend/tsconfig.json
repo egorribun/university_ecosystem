@@ -20,14 +20,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": [
-      "vite/client",
-      "vite-plugin-pwa/client",
-      "vitest",
-      "vitest/globals",
-      "jsdom",
-      "@testing-library/jest-dom/vitest"
-    ]
+    "types": ["vite/client", "vite-plugin-pwa/client", "vitest", "vitest/globals", "jsdom"]
   },
   "include": [
     "src",

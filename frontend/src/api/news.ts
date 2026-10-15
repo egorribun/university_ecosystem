@@ -1,4 +1,5 @@
 import * as v from "valibot"
+import "@/api/client"
 
 import {
   createNewsApiV1NewsPost,

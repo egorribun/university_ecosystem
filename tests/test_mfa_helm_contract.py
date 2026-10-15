@@ -14,6 +14,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
+MFA_HELM_RELEASE_NAME = "mfa-contract"
+MFA_EXTERNAL_APPLICATION_SECRET = "eso-application-secret"
 
 MFA_SECRET_KEYS = {
     "MFA_EMAIL_OTP_HMAC_KEYS": "otp-ring-custom",
@@ -74,13 +76,9 @@ def _base_args() -> list[str]:
     return [
         _helm(),
         "template",
-        "mfa-contract",
+        MFA_HELM_RELEASE_NAME,
         str(CHART),
         "--dependency-update=false",
-        "--set",
-        "redis.enabled=false",
-        "--set",
-        "nats.enabled=false",
         "--set",
         "fileProcessor.enabled=false",
         "--set",
@@ -122,7 +120,7 @@ def _deployment_env(
 def test_external_application_secret_maps_all_mfa_keys_to_both_workloads() -> None:
     overrides = [
         "--set",
-        "applicationSecrets.existingSecret=eso-application-secret",
+        f"applicationSecrets.existingSecret={MFA_EXTERNAL_APPLICATION_SECRET}",
         "--set-string",
         "backend.env.MFA_EMAIL_OTP_HMAC_KEYS=inline-bypass",
         "--set-string",
@@ -138,18 +136,38 @@ def test_external_application_secret_maps_all_mfa_keys_to_both_workloads() -> No
 
     resources = _render(*overrides)
 
-    assert not any(resource.get("kind") == "Secret" for resource in resources)
+    application_secret_helper = (CHART / "templates" / "_helpers.tpl").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        'default (printf "%s-secrets" .Release.Name) '
+        ".Values.applicationSecrets.existingSecret"
+    ) in application_secret_helper
+    application_secret_names = {
+        f"{MFA_HELM_RELEASE_NAME}-secrets",
+        MFA_EXTERNAL_APPLICATION_SECRET,
+    }
+    secret_resources = [
+        resource for resource in resources if resource.get("kind") == "Secret"
+    ]
+    assert not any(
+        resource.get("metadata", {}).get("name") in application_secret_names
+        for resource in secret_resources
+    )
+    chart_values = yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
+    assert chart_values["nats"]["natsBox"]["enabled"] is False
+    assert not secret_resources
     backend_env = _deployment_env(resources, "backend")
     for variable, secret_key in MFA_SECRET_KEYS.items():
         assert backend_env[variable]["valueFrom"]["secretKeyRef"] == {
-            "name": "eso-application-secret",
+            "name": MFA_EXTERNAL_APPLICATION_SECRET,
             "key": secret_key,
         }
         assert "value" not in backend_env[variable]
 
     outbox_env = _deployment_env(resources, "outbox-worker")
     assert outbox_env["MFA_EMAIL_DELIVERY_KEKS"]["valueFrom"]["secretKeyRef"] == {
-        "name": "eso-application-secret",
+        "name": MFA_EXTERNAL_APPLICATION_SECRET,
         "key": MFA_SECRET_KEYS["MFA_EMAIL_DELIVERY_KEKS"],
     }
     assert set(MFA_SECRET_KEYS) - {"MFA_EMAIL_DELIVERY_KEKS"} <= (
@@ -362,7 +380,8 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
 
 def test_chart_patch_version_documents_the_mfa_secret_contract_upgrade() -> None:
     chart = yaml.safe_load((CHART / "Chart.yaml").read_text(encoding="utf-8"))
-    assert chart["version"] == "0.2.1"
+    # 0.2.1 introduced the parameterized MFA Secret contract; later patches retain it.
+    assert tuple(int(part) for part in chart["version"].split(".")) >= (0, 2, 1)
 
 
 def test_deploy_renderer_clears_values_registry_without_rewriting_dependencies(
@@ -423,8 +442,12 @@ def test_deploy_renderer_clears_values_registry_without_rewriting_dependencies(
     assert expected_first_party <= images
     assert not any(image.startswith("mirror.invalid/") for image in images)
     dependency_images = images - expected_first_party
-    assert any("bitnami/redis" in image for image in dependency_images)
-    assert any("nats" in image for image in dependency_images)
+    assert any(image.startswith("docker.io/redis@") for image in dependency_images)
+    assert any(
+        image.startswith("docker.io/oliver006/redis_exporter@")
+        for image in dependency_images
+    )
+    assert any(image.startswith("docker.io/nats@") for image in dependency_images)
     assert not any(
         image.startswith("ghcr.io/example/university/") for image in dependency_images
     )

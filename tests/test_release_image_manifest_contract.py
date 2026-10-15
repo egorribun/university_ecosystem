@@ -188,7 +188,7 @@ def _write_evidence(
                 "attestation_verified": True,
                 "producer": _producer(artifact_name=artifact_name, attempt=attempt),
                 "verification": {
-                    "trivy_version": "0.73.0",
+                    "trivy_version": "0.75.0",
                     "sbom_format": "cyclonedx-json",
                     "signature": "cosign-keyless",
                     "attestation": "github-build-provenance",

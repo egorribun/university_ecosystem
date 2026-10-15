@@ -7,7 +7,7 @@ This document defines the architectural invariants, framework constraints, secur
 ## 1. Runtime & Environment Standards
 
 - **Python Runtime**: Development and canonical CI are standardized on **Python 3.14** (`target-version = "py314"`). Package metadata and the lock currently advertise `requires-python = ">=3.12,<3.15"`; do not confuse this compatibility range with interpreter selection or claim all supported versions verified without their own evidence.
-- **Type Checking**: Strict `mypy` enforcement (`python_version = "3.14"`, `strict = true`) with plugins for `pydantic.mypy`, `sqlalchemy.ext.mypy.plugin`, and `strawberry.ext.mypy_plugin`. Code must also be compatible with `pyright` standard mode.
+- **Type Checking**: Strict `mypy` enforcement (`python_version = "3.14"`, `strict = true`) with plugins for `pydantic.mypy` and `strawberry.ext.mypy_plugin`. SQLAlchemy 2.0 uses its inline `Mapped` typing; the legacy `sqlalchemy.ext.mypy.plugin` is not configured. Code must also be compatible with `pyright` standard mode.
 - **Linting & Formatting**:
   - `python -m ruff check app/`
   - `python -m ruff format app/`

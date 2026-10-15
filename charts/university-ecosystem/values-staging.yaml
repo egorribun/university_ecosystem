@@ -209,13 +209,15 @@ redis:
     allowExternalEgress: false
   image:
     registry: docker.io
-    repository: bitnami/redis
+    repository: redis
+    tag: 7.4.11-alpine
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   metrics:
     image:
       registry: docker.io
-      repository: bitnami/redis-exporter
+      repository: oliver006/redis_exporter
+      tag: v1.93.0
       digest: REQUIRED_SHA256_DIGEST
       pullPolicy: Always
 
@@ -233,12 +235,88 @@ nats:
       enabled: false
   image:
     registry: docker.io
-    repository: bitnami/nats
+    repository: nats
+    tag: 2.15.0-alpine
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
-  jetstream:
-    enabled: true
-    maxMemory: 512Mi
-  persistence:
-    enabled: true
-    size: 10Gi
+  container:
+    image:
+      registry: docker.io
+      repository: nats
+      tag: 2.15.0-alpine
+      digest: REQUIRED_SHA256_DIGEST
+      pullPolicy: Always
+    env:
+      NATS_SERVER_NAME:
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.name
+    patch:
+      - op: replace
+        path: /args
+        value:
+          - --config
+          - /etc/nats-auth/nats-server.conf
+      - op: add
+        path: /volumeMounts/-
+        value:
+          name: nats-auth-config
+          mountPath: /etc/nats-auth
+          readOnly: true
+  config:
+    cluster:
+      enabled: true
+      replicas: 3
+    jetstream:
+      enabled: true
+      fileStore:
+        enabled: true
+        dir: /data
+        pvc:
+          enabled: true
+          name: data
+          size: 10Gi
+      merge:
+        store_dir: /data/jetstream
+      memoryStore:
+        enabled: true
+        maxSize: 512Mi
+    nats:
+      port: 4222
+    monitor:
+      enabled: true
+      port: 8222
+  service:
+    ports:
+      cluster:
+        enabled: true
+      monitor:
+        enabled: true
+    patch:
+      - op: remove
+        path: /spec/selector/app.kubernetes.io~1component
+  headlessService:
+    patch:
+      - op: remove
+        path: /spec/selector/app.kubernetes.io~1component
+  statefulSet:
+    patch:
+      - op: remove
+        path: /spec/selector/matchLabels/app.kubernetes.io~1component
+    merge:
+      spec:
+        podManagementPolicy: OrderedReady
+        persistentVolumeClaimRetentionPolicy:
+          whenDeleted: Retain
+          whenScaled: Retain
+  podTemplate:
+    patch:
+      - op: add
+        path: /spec/volumes/-
+        value:
+          name: nats-auth-config
+          secret:
+            secretName: university-nats-config
+            items:
+              - key: nats-server.conf
+                path: nats-server.conf

@@ -16,23 +16,20 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 base64ct = { version = "=1.8.3", default-features = false, features = ["alloc"] }
-wasm-bindgen = "0.2"
-sha2 = "0.10"
-hmac = "0.12"
-pbkdf2 = "0.12"
-scrypt = "0.11"
+wasm-bindgen = "0.2.129"
+sha2 = "0.11"
+hmac = "0.13"
+pbkdf2 = "0.13"
+scrypt = "0.12"
 hex = "0.4"
-getrandom = { version = "0.2", features = ["js"] }
-zeroize = "=1.8.1"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+zeroize = "=1.9.1"
 
 
 [dev-dependencies]
-# Exact pair for the locked wasm-bindgen 0.2.114 (TD-22-02 pin style). Drives
+getrandom = { version = "0.4", features = ["wasm_js"] }
+# Exact pair for the locked wasm-bindgen 0.2.129 (TD-22-02 pin style). Drives
 # the browser-parity KATs in tests/wasm.rs under `wasm-pack test`.
-wasm-bindgen-test = "=0.3.64"
+wasm-bindgen-test = "=0.3.79"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 proptest = "1"

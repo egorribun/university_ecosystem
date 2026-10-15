@@ -270,7 +270,7 @@ if os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1":
 
         # Start a lightweight Postgres container with pgvector support per worker process
         _container = PostgresContainer(
-            "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+            "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
         )
         _container.start()
         atexit.register(_container.stop)
@@ -393,7 +393,7 @@ def minio_container() -> dict[str, str]:
 
     container = (
         DockerContainer(
-            "ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"
+            "ghcr.io/chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
         )
         .with_env("AWS_ACCESS_KEY_ID", "minioadmin")
         .with_env(

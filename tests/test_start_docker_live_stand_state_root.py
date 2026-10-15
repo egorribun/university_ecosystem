@@ -128,9 +128,18 @@ def _owner_marker(
     return {**payload, "signature": signature}
 
 
+def _windows_system32_executable(name: str) -> str:
+    system_root = os.environ.get("SystemRoot")
+    assert system_root, "Windows system root is unavailable"
+    root = Path(system_root)
+    executable = root / "System32" / name
+    assert root.is_absolute()
+    assert executable.is_absolute() and executable.is_file()
+    return str(executable.resolve(strict=True))
+
+
 def _windows_user_sid() -> str:
-    whoami = shutil.which("whoami.exe") or shutil.which("whoami")
-    assert whoami is not None
+    whoami = _windows_system32_executable("whoami.exe")
     identity = subprocess.run(  # noqa: S603 - fixed Windows identity query
         [whoami, "/user", "/fo", "csv", "/nh"],
         capture_output=True,
@@ -149,8 +158,7 @@ def _windows_user_sid() -> str:
 
 def _secure_state_tree(state_root: Path) -> None:
     if os.name == "nt":
-        icacls = shutil.which("icacls.exe") or shutil.which("icacls")
-        assert icacls is not None
+        icacls = _windows_system32_executable("icacls.exe")
         sid = _windows_user_sid()
         # Native icacls output is localized and unused; keep it as bytes rather
         # than assuming PowerShell's UTF-8 stream encoding.
@@ -342,6 +350,80 @@ def _assert_windows_private_acl(path: Path) -> None:
     allow_rules = [rule for rule in rules if rule["Type"] == "Allow"]
     assert {rule["Sid"] for rule in allow_rules} == {user_sid, "S-1-5-18"}
     assert all("FullControl" in rule["Rights"] for rule in allow_rules)
+
+
+@pytest.mark.skipif(
+    os.name != "nt", reason="requires native Windows SID and ACL utilities"
+)
+def test_live_stand_uses_system32_acl_tools_when_git_usr_bin_precedes_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    git_executable = shutil.which("git.exe") or shutil.which("git")
+    assert git_executable is not None
+    git_path = Path(git_executable).resolve()
+    git_usr_bin = next(
+        (
+            ancestor / "usr" / "bin"
+            for ancestor in (git_path.parent, *git_path.parents)
+            if (ancestor / "usr" / "bin" / "whoami.exe").is_file()
+        ),
+        None,
+    )
+    assert git_usr_bin is not None
+    git_whoami = git_usr_bin / "whoami.exe"
+    assert git_whoami.is_absolute() and git_whoami.is_file()
+
+    system_whoami = Path(_windows_system32_executable("whoami.exe"))
+    system_icacls = Path(_windows_system32_executable("icacls.exe"))
+    assert system_whoami != git_whoami.resolve()
+    assert system_icacls.is_file()
+
+    prior_path = os.environ.get("PATH", "")
+    monkeypatch.setenv("PATH", os.pathsep.join((str(git_usr_bin), prior_path)))
+    path_whoami = shutil.which("whoami.exe")
+    assert path_whoami is not None
+    assert Path(path_whoami).resolve() == git_whoami.resolve()
+
+    spec = importlib.util.spec_from_file_location(
+        "live_stand_windows_acl_path_regression",
+        ROOT / "scripts" / "live_stand.py",
+    )
+    assert spec is not None and spec.loader is not None
+    live_stand = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = live_stand
+    spec.loader.exec_module(live_stand)
+
+    assert (
+        Path(
+            live_stand._windows_system32_executable(
+                "whoami.exe",
+                error_message="cannot verify the current Windows user for live state ACLs",
+            )
+        )
+        == system_whoami
+    )
+    assert (
+        Path(
+            live_stand._windows_system32_executable(
+                "icacls.exe",
+                error_message="cannot enforce private Windows permissions for live state",
+            )
+        )
+        == system_icacls
+    )
+    assert re.fullmatch(r"S-1-\d+(?:-\d+)+", live_stand._windows_user_sid())
+
+    state_root = tmp_path / "native-acl-state"
+    live_stand._ensure_private_state_directory(state_root, protect_new_windows=True)
+    assert state_root.is_dir()
+    _assert_windows_private_acl(state_root)
+
+    live_stand.IN_PLACE_MODE = True
+    live_stand.WORKTREE = state_root
+    state_file = state_root / "acl-path-check.txt"
+    state_file.write_text("owned state\n", encoding="utf-8")
+    live_stand._restrict_in_place_windows_state_file(state_file)
+    _assert_windows_private_acl(state_file)
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")

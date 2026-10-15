@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -191,7 +190,7 @@ func TestTryForceRefreshJWKS_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h.jwksCache = jwk.NewCache(ctx)
+	newTestJWKSCache(t, h, ctx, "http://127.0.0.1:1/invalid")
 	h.jwksURL = "http://127.0.0.1:1/invalid" // definitely fails
 
 	_lastJWKSForceRefreshUnix.Store(0) // reset cooldown

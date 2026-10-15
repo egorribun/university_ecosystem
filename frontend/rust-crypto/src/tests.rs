@@ -9,7 +9,7 @@ use super::{
 // fixtures exercise private error paths that integration tests cannot access.
 fn fixture_bytes(length: usize) -> Vec<u8> {
     let mut bytes = vec![0; length];
-    getrandom::getrandom(&mut bytes).expect("test CSPRNG must be available");
+    getrandom::fill(&mut bytes).expect("test CSPRNG must be available");
     bytes
 }
 
@@ -83,7 +83,7 @@ fn scrypt_derives_valid_output_in_unit_coverage() {
 
 #[test]
 fn scrypt_maps_output_length_error() {
-    let params = ScryptParams::recommended();
+    let params = ScryptParams::RECOMMENDED;
     let password = fixture_bytes(8);
     let salt = fixture_bytes(4);
     let mut empty_output = [];
@@ -101,7 +101,7 @@ fn fail_scrypt_output(
 
 #[test]
 fn scrypt_propagates_output_error() {
-    let params = ScryptParams::new(4, 1, 1, 16).expect("test params must be valid");
+    let params = ScryptParams::new(4, 1, 1).expect("test params must be valid");
     let password = fixture_bytes(8);
     let salt = fixture_bytes(4);
 

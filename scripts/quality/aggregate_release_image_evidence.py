@@ -21,7 +21,7 @@ _WORKFLOW_PATH = ".github/workflows/build-release-images.yml"
 _SOURCE_REF = "refs/heads/main"
 _EVENT = "workflow_dispatch"
 _VERIFICATION = {
-    "trivy_version": "0.73.0",
+    "trivy_version": "0.75.0",
     "sbom_format": "cyclonedx-json",
     "signature": "cosign-keyless",
     "attestation": "github-build-provenance",

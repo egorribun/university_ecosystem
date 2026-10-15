@@ -13,7 +13,7 @@
  * GET *also* errors when `navigator.onLine === false`, mirroring a real offline
  * refetch (React Query keeps the last/optimistic data instead of reverting).
  *
- * MSW v2 intercepts the raw axios instance (`@/api/client`) on relative `/news/...`
+ * MSW v3 intercepts the raw axios instance (`@/api/client`) on relative `/news/...`
  * paths (NOT `/api/...` → setupTests' contract validator skips them). useAuth is
  * mocked via a hoisted holder so `user` is controllable without a provider.
  * Offline = `navigator.onLine = false`; the SW-sync block is skipped (jsdom has no

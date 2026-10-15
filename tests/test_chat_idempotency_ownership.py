@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 import pytest
-from fakeredis import _basefakesocket
+from fakeredis._socket import _base
 from fastapi import HTTPException
 
 from app.deps import cache as cache_module
@@ -95,9 +95,7 @@ async def redis(monkeypatch):
 def redis_clock(monkeypatch):
     clock = SimpleNamespace(now=1_000_000.0)
     # Scope the clock to FakeRedis commands, leaving asyncio deadlines unchanged.
-    monkeypatch.setattr(
-        _basefakesocket, "time", SimpleNamespace(time=lambda: clock.now)
-    )
+    monkeypatch.setattr(_base, "time", SimpleNamespace(time=lambda: clock.now))
     return clock
 
 

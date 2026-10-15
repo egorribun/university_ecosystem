@@ -13,7 +13,7 @@
 # (ADR-042).
 services:
   postgres:
-    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
     command: ["postgres", "-c", "max_connections=500"]
     environment:
       POSTGRES_USER: test
@@ -34,7 +34,7 @@ services:
           memory: 768M
 
   redis:
-    image: redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    image: redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
     # 16379 (not 56379) — the 55000-57000 range is frequently reserved by
     # Windows WinNAT/Hyper-V (`netsh int ipv4 show excludedportrange tcp`).
     ports:
@@ -51,7 +51,7 @@ services:
           memory: 128M
 
   nats:
-    image: nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
+    image: nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
     # JetStream (-js) enabled + HTTP monitoring on 8222 for the healthcheck.
     # No auth: test-only, isolated, ephemeral.
     command: ["-js", "-m", "8222"]
@@ -69,7 +69,7 @@ services:
           memory: 128M
 
   minio:
-    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    image: ghcr.io/chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     command: ["mini", "-dir=/data", "-s3.port=9000"]
     environment:
       AWS_ACCESS_KEY_ID: minioadmin

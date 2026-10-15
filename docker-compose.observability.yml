@@ -14,7 +14,7 @@ services:
 
   # Grafana Tempo - Distributed tracing backend
   tempo:
-    image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
+    image: grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     # Replace the base Tempo binding instead of merging a second host binding.
     ports: !override
@@ -38,7 +38,7 @@ services:
   # override self-contained by probing /ready from a tiny shared-namespace
   # sidecar; the base/full compose files define the same service.
   tempo-healthprobe:
-    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     network_mode: "service:tempo"
     depends_on:
       - tempo
@@ -58,7 +58,7 @@ services:
 
   # Grafana Loki - Log aggregation
   loki:
-    image: grafana/loki:3.7.1@sha256:73e905b51a7f917f7a1075e4be68759df30226e03dcb3cd2213b989cc0dc8eb4
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     command: ["-config.file=/etc/loki/loki.yaml"]
     ports:
       - "127.0.0.1:3100:3100"
@@ -77,7 +77,7 @@ services:
 
   # Loki is also distroless, so its readiness check runs from a sidecar.
   loki-healthprobe:
-    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     network_mode: "service:loki"
     depends_on:
       - loki
@@ -98,7 +98,7 @@ services:
   # Grafana Alloy - supported Docker log collector for Loki. Promtail reached
   # end-of-life on 2026-03-02 and receives no further fixes.
   alloy:
-    image: grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308
+    image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -138,7 +138,8 @@ services:
 
   # Pyroscope - Continuous profiling
   pyroscope:
-    image: grafana/pyroscope:1.19.1@sha256:d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d
+    image: grafana/pyroscope:2.3.1@sha256:86a9ee7448487409ead8ada78789de7b78b739711b92b5d7224a1a54abf3eeb2
+    command: ["-architecture.storage=v1", "-write-path=ingester", "-pyroscopedb.data-path=/data"]
     # Replace the base localhost binding instead of publishing it twice.
     ports: !override
       - "127.0.0.1:4040:4040"
@@ -156,7 +157,7 @@ services:
 
   # Grafana - Unified dashboards
   grafana:
-    image: grafana/grafana:12.3.6@sha256:ee4573c0ff6b558d1690c2f453b440183df32392d9619e6216c504795e4458e8
+    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
     ports:
       - "127.0.0.1:3000:3000"
     environment:
@@ -242,7 +243,7 @@ services:
     restart: unless-stopped
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.88.0@sha256:2c8c55c63ce4d915389f03d337b8acef56aaaca9fab8728291287e612d4d6398
+    image: oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
     environment:
       REDIS_ADDR: redis://valkey:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}

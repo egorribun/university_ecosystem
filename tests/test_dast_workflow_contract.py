@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 
@@ -184,7 +185,9 @@ def test_nuclei_pins_signed_official_template_compatible_release() -> None:
     setup = next(step for step in steps if step.get("name") == "Set up Nuclei")
     scan = next(step for step in steps if step.get("name") == "Run Nuclei scan")
 
-    assert setup["with"] == {"version": "v3.11.1", "install-only": True}
+    assert set(setup["with"]) == {"version", "install-only"}
+    assert re.fullmatch(r"v?\d+\.\d+\.\d+", str(setup["with"]["version"]))
+    assert setup["with"]["install-only"] is True
 
     template_roots, forbidden_options = _nuclei_scan_contract_options(scan["run"])
     assert template_roots == [

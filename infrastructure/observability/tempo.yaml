@@ -1,6 +1,6 @@
-# Grafana Tempo Configuration
-# https://grafana.com/docs/tempo/latest/configuration/
-
+# Tempo 3.1 monolithic mode: preserve the existing local block/WAL store.
+# The 3.x monolithic migration removes ingester and compactor; no Kafka or
+# parallel backend is required. Retention remains 72 hours in both new paths.
 stream_over_http_enabled: true
 
 server:
@@ -16,13 +16,6 @@ distributor:
         http:
           endpoint: "0.0.0.0:4318"
 
-ingester:
-  max_block_duration: 5m
-
-compactor:
-  compaction:
-    block_retention: 72h
-
 storage:
   trace:
     backend: local
@@ -30,6 +23,16 @@ storage:
       path: /var/tempo/traces
     wal:
       path: /var/tempo/wal
+
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: 72h
+
+backend_worker:
+  compaction:
+    block_retention: 72h
 
 querier:
   frontend_worker:

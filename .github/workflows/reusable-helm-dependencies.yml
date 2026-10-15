@@ -129,14 +129,14 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.22.0
+          version: v4.2.4
 
       - name: Resolve Helm chart dependencies
         shell: bash
         run: |
           python3 scripts/ci/helm_dependency_build.py \
             charts/university-ecosystem \
-            redis-20.13.4.tgz nats-8.5.4.tgz
+            redis-0.1.0.tgz nats-2.15.0.tgz
 
       - name: Stage verified Helm dependency artifact
         shell: bash
@@ -149,7 +149,7 @@ jobs:
           set -euo pipefail
           rm -rf helm-dependencies
           mkdir -p helm-dependencies/charts
-          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+          for archive in redis-0.1.0.tgz nats-2.15.0.tgz; do
             test -s "charts/university-ecosystem/charts/$archive"
             cp --no-preserve=mode,ownership "charts/university-ecosystem/charts/$archive" \
               "helm-dependencies/charts/$archive"
@@ -162,7 +162,7 @@ jobs:
             --workflow "$WORKFLOW"
 
       - name: Upload verified Helm dependency artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.verify.outputs.artifact_name }}
           path: helm-dependencies/

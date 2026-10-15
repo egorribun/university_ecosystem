@@ -149,13 +149,323 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
         "docs/superpowers/plans/MVP_MASTER_PLAN.md:37",
         "external operational status remains unverified",
     ),
+    "external_kubernetes_secret_reference": (
+        "Kubernetes external Secret object name or key reference",
+        "not credential material",
+    ),
 }
-_FALSE_POSITIVE_CATEGORIES = _FALSE_POSITIVE_HEX_CATEGORIES | frozenset(
-    _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES
+_FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
+    {"external_kubernetes_secret_reference"}
+)
+_FALSE_POSITIVE_CATEGORIES = (
+    _FALSE_POSITIVE_HEX_CATEGORIES
+    | frozenset(_FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES)
+    | _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES
 )
 _INDEPENDENT_CONTRACT_FINGERPRINT_PATH = (
     "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
 )
+_V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = frozenset(
+    {
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(1, 40, 216, 231, 186, 168, 79, 45, 125, 132),
+                *(127, 168, 5, 28, 100, 153, 174, 234, 240, 125),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(3, 6, 12, 132, 101, 74, 239, 234, 228, 202),
+                *(159, 37, 40, 123, 95, 71, 56, 196, 220, 132),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(5, 191, 28, 206, 205, 239, 145, 213, 59, 134),
+                *(193, 227, 48, 175, 150, 65, 120, 18, 200, 232),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(9, 108, 222, 83, 104, 106, 221, 81, 160, 219),
+                *(50, 26, 239, 180, 179, 171, 151, 235, 111, 27),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(12, 251, 232, 137, 68, 1, 141, 98, 52, 149),
+                *(161, 24, 104, 138, 2, 122, 220, 235, 41, 101),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(20, 250, 45, 5, 62, 157, 142, 242, 201, 143),
+                *(116, 148, 212, 168, 68, 58, 144, 147, 163, 134),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(35, 213, 182, 113, 232, 209, 222, 172, 133, 28),
+                *(134, 11, 66, 204, 140, 16, 73, 102, 122, 161),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(41, 121, 3, 166, 39, 210, 112, 61, 71, 188),
+                *(65, 217, 178, 203, 150, 251, 245, 47, 98, 40),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(63, 139, 180, 44, 161, 216, 96, 230, 103, 86),
+                *(57, 145, 230, 47, 43, 217, 165, 220, 9, 96),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(65, 216, 252, 230, 125, 210, 45, 81, 252, 175),
+                *(221, 101, 4, 191, 77, 5, 150, 160, 247, 190),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(89, 177, 135, 249, 17, 202, 27, 56, 229, 110),
+                *(173, 73, 93, 107, 166, 134, 249, 178, 171, 206),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(93, 11, 139, 187, 250, 105, 106, 185, 198, 172),
+                *(140, 49, 200, 63, 87, 3, 177, 94, 22, 192),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(117, 178, 143, 89, 125, 38, 90, 83, 185, 36),
+                *(217, 212, 183, 31, 59, 30, 105, 173, 130, 83),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(135, 208, 134, 129, 28, 82, 159, 105, 36, 63),
+                *(184, 135, 8, 199, 53, 188, 85, 58, 0, 104),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(153, 222, 61, 254, 149, 254, 154, 225, 10, 207),
+                *(194, 254, 233, 45, 153, 211, 60, 76, 96, 21),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(173, 28, 216, 212, 47, 98, 183, 251, 61, 52),
+                *(51, 240, 112, 24, 36, 59, 168, 159, 144, 33),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(183, 180, 84, 90, 60, 190, 83, 232, 231, 18),
+                *(129, 14, 19, 10, 138, 80, 189, 2, 65, 100),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(186, 158, 26, 65, 231, 126, 6, 219, 100, 35),
+                *(248, 91, 82, 105, 155, 37, 12, 228, 251, 252),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(186, 204, 138, 143, 127, 191, 176, 115, 155, 12),
+                *(75, 118, 149, 218, 93, 175, 71, 198, 65, 59),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(192, 69, 156, 120, 33, 227, 244, 212, 10, 179),
+                *(65, 156, 81, 133, 11, 236, 169, 122, 247, 135),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(205, 28, 18, 150, 249, 138, 165, 177, 161, 148),
+                *(203, 0, 31, 223, 240, 164, 141, 97, 51, 213),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(215, 253, 127, 30, 142, 220, 35, 245, 116, 191),
+                *(41, 93, 80, 3, 111, 68, 40, 157, 38, 241),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(217, 207, 45, 166, 207, 159, 78, 30, 205, 7),
+                *(120, 234, 142, 92, 13, 250, 201, 43, 63, 130),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(218, 173, 4, 103, 108, 233, 146, 226, 249, 242),
+                *(43, 78, 158, 238, 35, 190, 233, 208, 195, 187),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(230, 148, 135, 74, 18, 68, 221, 38, 138, 210),
+                *(117, 207, 84, 55, 156, 45, 86, 114, 3, 141),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(243, 225, 251, 63, 214, 118, 188, 212, 177, 171),
+                *(7, 138, 236, 152, 163, 46, 221, 86, 11, 7),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                *(248, 237, 176, 97, 148, 41, 246, 135, 86, 11),
+                *(12, 80, 246, 227, 80, 183, 82, 39, 146, 12),
+            ),
+        ),
+    }
+)
+
+_EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES = frozenset(
+    {
+        (
+            "charts/redis-compat/values.yaml",
+            "Secret Keyword",
+            (
+                *(60, 145, 239, 110, 133, 210, 207, 97, 165, 191),
+                *(119, 46, 40, 189, 29, 120, 234, 215, 186, 20),
+            ),
+        ),
+        (
+            "charts/redis-compat/values.yaml",
+            "Secret Keyword",
+            (
+                *(230, 213, 95, 3, 24, 191, 137, 217, 55, 160),
+                *(41, 107, 128, 143, 213, 245, 245, 238, 106, 7),
+            ),
+        ),
+        (
+            "charts/revocation-store/values.yaml",
+            "Secret Keyword",
+            (
+                *(145, 79, 6, 243, 53, 160, 184, 10, 45, 6),
+                *(149, 97, 154, 41, 139, 248, 40, 231, 216, 200),
+            ),
+        ),
+        (
+            "charts/revocation-store/values.yaml",
+            "Secret Keyword",
+            (
+                *(176, 224, 33, 74, 155, 8, 223, 225, 252, 220),
+                *(163, 143, 85, 240, 84, 244, 80, 236, 147, 249),
+            ),
+        ),
+        (
+            "charts/university-ecosystem/values-staging.yaml",
+            "Secret Keyword",
+            (
+                *(243, 88, 195, 235, 27, 225, 239, 237, 144, 91),
+                *(190, 23, 92, 20, 144, 235, 142, 255, 107, 8),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(83, 98, 194, 42, 247, 205, 142, 240, 15, 107),
+                *(255, 91, 154, 24, 53, 136, 58, 143, 160, 152),
+            ),
+        ),
+        (
+            "tests/test_helm_staging_contract.py",
+            "Secret Keyword",
+            (
+                *(243, 88, 195, 235, 27, 225, 239, 237, 144, 91),
+                *(190, 23, 92, 20, 144, 235, 142, 255, 107, 8),
+            ),
+        ),
+        (
+            "tests/test_mfa_helm_contract.py",
+            "Secret Keyword",
+            (
+                *(40, 1, 220, 132, 98, 247, 193, 134, 149, 131),
+                *(209, 110, 28, 147, 90, 88, 196, 55, 233, 232),
+            ),
+        ),
+        (
+            "tests/test_revocation_store_security_contract.py",
+            "Secret Keyword",
+            (
+                *(176, 224, 33, 74, 155, 8, 223, 225, 252, 220),
+                *(163, 143, 85, 240, 84, 244, 80, 236, 147, 249),
+            ),
+        ),
+    }
+)
+
+_FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
+    "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
+}
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
     {
@@ -646,9 +956,23 @@ def validate_false_positive_dispositions(
         if category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
             if category == "independent_contract_fingerprint":
-                category_matches = category_matches and path == (
-                    _INDEPENDENT_CONTRACT_FINGERPRINT_PATH
+                exact_v4_identity = (
+                    path,
+                    finding_type,
+                    tuple(raw_digest_bytes),
+                ) in _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
+                category_matches = category_matches and (
+                    path == _INDEPENDENT_CONTRACT_FINGERPRINT_PATH or exact_v4_identity
                 )
+        elif category in _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES:
+            exact_identities = _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES.get(
+                category, frozenset()
+            )
+            category_matches = (
+                path,
+                finding_type,
+                tuple(raw_digest_bytes),
+            ) in exact_identities
         else:
             allowed_pairs = _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES.get(
                 category, frozenset()

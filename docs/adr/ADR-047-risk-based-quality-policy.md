@@ -284,6 +284,31 @@ remain unchanged, CodeQL remains blocking, and hooks are unchanged. Approval
 does not itself change the policy file or certify a source SHA; integration,
 tests, hosted checks, and final-source validation remain separate.
 
+## Owner-approved exact 90 detect-secrets dispositions (2026-10-15 UTC)
+
+On 2026-10-15 UTC, the owner approved exactly 90 additional exact-match
+disposition identities, extending the historically approved 135 to exactly 225.
+They are the exact repository-path, detector-type, and finding-digest tuples in
+quality/security-false-positive-dispositions.json: 54 public_integrity_digest,
+27 independent_contract_fingerprint, and 9 external_kubernetes_secret_reference
+identities. Each new record has reviewed_on 2026-10-15 and expires_on 2027-01-10.
+The previous 135 records remain unchanged; no raw finding digests are duplicated
+here. The public-integrity category retains its existing behavior.
+`independent_contract_fingerprint` extends the existing v3 category only for these
+finite v4 identities; its prior v3 behavior remains unchanged.
+`external_kubernetes_secret_reference` is the sole new category and requires exact
+identity matching plus reviewed semantic evidence. No cross-category reclassification
+is authorized.
+This decision does not reclassify existing findings across categories. Changed or
+unmatched identities remain fail-closed.
+
+The approval covers only these 90 identities. It authorizes no additional finding,
+wildcard, baseline entry, inline pragma, broad scanner exclusion, bypass, or
+context change. The baseline remains at 319 identities, all 78 required contexts
+remain unchanged, CodeQL remains blocking, and hooks are unchanged. Validator
+integration, final-source scan, tests, and hosted checks remain separate; no
+release readiness is implied.
+
 ## Owner-approved finite legacy migration baseline (2026-10-14 UTC)
 
 On 2026-10-14 UTC, the owner approved a finite no-decrease baseline for exactly

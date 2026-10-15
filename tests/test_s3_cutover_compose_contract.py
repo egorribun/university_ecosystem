@@ -23,7 +23,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 BASE_FILES = ("docker-compose.yml", "docker-compose.full.yml")
 SEAWEEDFS_IMAGE = re.compile(
-    r"^ghcr\.io/chrislusf/seaweedfs:4\.47@sha256:[0-9a-f]{64}$"
+    r"^ghcr\.io/chrislusf/seaweedfs:4\.48@sha256:[0-9a-f]{64}$"
 )
 STORAGE_VOLUME = "university_ecosystem_seaweedfs_data"
 LEGACY_VOLUME_KEYS = {"minio_data", "minio-data"}

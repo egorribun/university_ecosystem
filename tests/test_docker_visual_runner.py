@@ -86,6 +86,7 @@ def test_visual_wrapper_preserves_docker_exit_and_arguments(
         env=environment,
         capture_output=True,
         text=True,
+        errors="replace",
         check=False,
         timeout=30,
     )

@@ -199,7 +199,7 @@ def test_full_migration_hook_uses_the_dedicated_revocation_store() -> None:
     assert migration["networks"] == ["internal", "revocation_net"]
 
 
-def test_helm_declares_isolated_durable_revocation_dependency() -> None:
+def test_helm_declares_isolated_first_party_durable_revocation_chart() -> None:
     app_chart = yaml.safe_load(
         (REPO_ROOT / "charts/university-ecosystem/Chart.yaml").read_text(
             encoding="utf-8"
@@ -219,15 +219,18 @@ def test_helm_declares_isolated_durable_revocation_dependency() -> None:
     assert app_values["connections"]["redisRevocationURLKey"] == (
         "redis-revocation-url"
     )
-    assert store_chart["dependencies"] == [
-        {
-            "name": "redis",
-            "version": "20.13.4",
-            "repository": "oci://registry-1.docker.io/bitnamicharts",
-        }
-    ]
+    assert store_chart.get("dependencies", []) == []
+    assert store_chart["version"] == "0.2.0"
     revocation = store_values["redis"]
-    assert revocation["nameOverride"] == "revocation-redis"
+    assert revocation["fullnameOverride"] == ""
+    assert revocation["master"]["count"] == 1
+    assert revocation["master"]["persistentVolumeClaimRetentionPolicy"] == {
+        "enabled": True,
+        "whenScaled": "Retain",
+        "whenDeleted": "Retain",
+    }
+    assert "maxmemory-policy noeviction" in revocation["commonConfiguration"]
+    assert "appendonly yes" in revocation["commonConfiguration"]
     assert (
         revocation["auth"]["existingSecret"]
         == "revocation-redis-credentials"  # pragma: allowlist secret
@@ -266,8 +269,8 @@ def test_bootstrap_script_uses_a_separate_atomic_release_before_the_app_hook() -
     assert 'store_fullname="${HELM_RELEASE_NAME}-revocation-redis"' in script
     assert '"redis.fullnameOverride=$store_fullname"' in script
     assert (
-        '"redis.commonLabels.university-ecosystem\\\\.io/revocation-store-for=$HELM_RELEASE_NAME"'
-        in script
+        '"redis.commonLabels.university-ecosystem\\\\.io/'
+        'revocation-store-for=$HELM_RELEASE_NAME"' in script
     )
     assert (
         '"redis.commonLabels.app\\\\.kubernetes\\\\.io/instance=$HELM_RELEASE_NAME"'
@@ -286,6 +289,7 @@ def test_bootstrap_script_uses_a_separate_atomic_release_before_the_app_hook() -
         in script
     )  # pragma: allowlist secret
     assert 'helm upgrade --install "$store_release"' in script
-    for required_flag in ("--atomic", "--wait", "--history-max 10"):
+    for required_flag in ("--rollback-on-failure", "--wait=legacy", "--history-max 10"):
         assert required_flag in script
+    assert "--atomic" not in script
     assert "CACHE_REDIS_URL" not in script

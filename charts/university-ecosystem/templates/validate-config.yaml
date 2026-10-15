@@ -71,6 +71,24 @@
     {{- fail "Application secret material must not be stored in Helm values when applicationSecrets.existingSecret is configured" -}}
   {{- end -}}
 {{- end -}}
+{{- if .Values.nats.enabled -}}
+  {{- if or
+    (ne .Values.nats.image.registry .Values.nats.container.image.registry)
+    (ne .Values.nats.image.repository .Values.nats.container.image.repository)
+    (ne .Values.nats.image.tag .Values.nats.container.image.tag)
+    (ne .Values.nats.image.digest .Values.nats.container.image.digest)
+    (ne .Values.nats.image.pullPolicy .Values.nats.container.image.pullPolicy)
+  -}}
+    {{- fail "nats.image metadata must exactly match nats.container.image because the official chart renders nats.container.image" -}}
+  {{- end -}}
+  {{- $expectedNATSStatefulSetPatch := list (dict "op" "remove" "path" "/spec/selector/matchLabels/app.kubernetes.io~1component") -}}
+  {{- if not (deepEqual .Values.nats.statefulSet.patch $expectedNATSStatefulSetPatch) -}}
+    {{- fail "NATS StatefulSet selector patch must remove only the chart-added component label and preserve the old name and instance selector" -}}
+  {{- end -}}
+  {{- if or .Values.nats.reloader.enabled .Values.nats.natsBox.enabled .Values.nats.promExporter.enabled -}}
+    {{- fail "NATS reloader, natsBox, and Prometheus exporter helper containers must remain disabled until their images are explicitly pinned and reviewed" -}}
+  {{- end -}}
+{{- end -}}
 {{- if and .Values.nats.existingSecret (or .Values.nats.auth.token .Values.nats.auth.password .Values.nats.auth.usersCredentials .Values.nats.cluster.auth.password) -}}
   {{- fail "NATS auth material must not be stored in Helm values when nats.existingSecret is configured; inline secret material must not be stored in Helm values" -}}
 {{- end -}}
@@ -205,7 +223,7 @@
   {{- if .Values.global.security.allowInsecureImages -}}
     {{- fail "global.security.allowInsecureImages=true is forbidden in staging/production" -}}
   {{- end -}}
-  {{- $expectedDependencyRepositories := dict "redis" "docker.io/bitnami/redis" "redis.metrics" "docker.io/bitnami/redis-exporter" "nats" "docker.io/bitnami/nats" -}}
+  {{- $expectedDependencyRepositories := dict "redis" "docker.io/redis" "redis.metrics" "docker.io/oliver006/redis_exporter" "nats" "docker.io/nats" -}}
   {{- range $component, $image := $dependencyImages -}}
     {{- $registry := default $image.registry $.Values.global.imageRegistry -}}
     {{- $repository := printf "%s/%s" $registry $image.repository -}}
@@ -233,6 +251,43 @@
     {{- end -}}
     {{- if lt (int .Values.nats.replicaCount) 3 -}}
       {{- fail "nats.replicaCount must be at least 3 in staging/production" -}}
+    {{- end -}}
+    {{- if or
+      (not .Values.nats.config.cluster.enabled)
+      (ne (int .Values.nats.config.cluster.replicas) (int .Values.nats.replicaCount))
+      (not .Values.nats.config.jetstream.enabled)
+      (not .Values.nats.config.jetstream.fileStore.enabled)
+      (not .Values.nats.config.jetstream.fileStore.pvc.enabled)
+      (ne .Values.nats.config.jetstream.fileStore.pvc.name "data")
+      (ne .Values.nats.config.jetstream.fileStore.pvc.size .Values.nats.persistence.size)
+      (ne .Values.nats.config.jetstream.fileStore.dir "/data")
+      (ne .Values.nats.config.jetstream.merge.store_dir "/data/jetstream")
+      (not .Values.nats.config.jetstream.memoryStore.enabled)
+      (ne (toString .Values.nats.config.jetstream.memoryStore.maxSize) (toString .Values.nats.jetstream.maxMemory))
+      (ne .Values.nats.statefulSet.merge.spec.podManagementPolicy "OrderedReady")
+      (ne .Values.nats.statefulSet.merge.spec.persistentVolumeClaimRetentionPolicy.whenDeleted "Retain")
+      (ne .Values.nats.statefulSet.merge.spec.persistentVolumeClaimRetentionPolicy.whenScaled "Retain")
+      (.Values.nats.podTemplate.merge.spec.automountServiceAccountToken)
+    }}
+      {{- fail "official NATS chart config must preserve the staged 3-node JetStream storage at /data/jetstream on the existing /data PVC mount, rollout ordering, PVC retention, and pod-token contract" -}}
+    {{- end -}}
+    {{- if ne .Values.nats.container.image.pullPolicy "Always" -}}
+      {{- fail "nats.container.image.pullPolicy=Always is required in staging/production" -}}
+    {{- end -}}
+    {{- $expectedNATSContainerPatches := list
+      (dict "op" "replace" "path" "/args" "value" (list "--config" "/etc/nats-auth/nats-server.conf"))
+      (dict "op" "add" "path" "/volumeMounts/-" "value" (dict "name" "nats-auth-config" "mountPath" "/etc/nats-auth" "readOnly" true))
+    -}}
+    {{- if not (deepEqual .Values.nats.container.patch $expectedNATSContainerPatches) -}}
+      {{- fail "staging NATS container.patch must only load the externally managed nats-server.conf and must not alter its pinned image, resources, probes, or security context" -}}
+    {{- end -}}
+    {{- $expectedNATSSecretVolume := dict "name" "nats-auth-config" "secret" (dict "secretName" .Values.nats.existingSecret "items" (list (dict "key" "nats-server.conf" "path" "nats-server.conf"))) -}}
+    {{- if or
+      (ne (len .Values.nats.podTemplate.patch) 1)
+      (not (deepEqual (index .Values.nats.podTemplate.patch 0) (dict "op" "add" "path" "/spec/volumes/-" "value" $expectedNATSSecretVolume)))
+      (ne .Values.nats.container.env.NATS_SERVER_NAME.valueFrom.fieldRef.fieldPath "metadata.name")
+    -}}
+      {{- fail "staging NATS pod patch must only mount the existing config Secret and bind NATS_SERVER_NAME from the pod name" -}}
     {{- end -}}
   {{- end -}}
   {{- if and .Values.backend.autoscaling.enabled (lt (int .Values.backend.autoscaling.maxReplicas) (int .Values.backend.autoscaling.minReplicas)) -}}

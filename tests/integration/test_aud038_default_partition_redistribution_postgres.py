@@ -45,7 +45,7 @@ def postgres_engine():
     """Use the same digest-pinned PostgreSQL 17 image as migration integration tests."""
     run_id = uuid4().hex
     with PostgresContainer(
-        "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f",
+        "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d",
         name=f"ue-aud038-pg17-{run_id}",
         labels={
             "university-ecosystem.dev/test-owner": f"aud038-{run_id}",

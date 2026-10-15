@@ -8,7 +8,7 @@ import path from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import yaml from "js-yaml"
+import { load as yamlLoad } from "js-yaml"
 import {
   PRESENTATION_IGNORER,
   canonicalInstrumenterConfig,
@@ -5232,7 +5232,7 @@ test("historical Stryker costs are bound to the exact source SHA, config, and vi
 })
 
 test("nightly Stryker preflight selection binds SHA, run attempt, and immutable selector output", async () => {
-  const workflow = yaml.load(
+  const workflow = yamlLoad(
     await readFile(
       new URL("../../.github/workflows/nightly-full-gate.yml", import.meta.url),
       "utf8"

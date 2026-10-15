@@ -20,20 +20,18 @@ release claims require fresh evidence under the master plan.
   register for `e9a6bd18c` (AUD-001…AUD-163 revalidated, AUD-164+ new),
   including security, live-stand, migration and full test-run results. It
   supersedes the interim `7818284` checkpoint report kept outside the repository.
-- [Dependency update report, October 2026](dependency-updates-2026-10/README.md)
-  — read-only snapshot of patch/minor/major updates and security fixes for
-  `04fdd84c2`; current applied changes and verification are tracked in STATUS.
-- Targeted rclone disposition (2026-10-13): opt-in backup CronJob pins
-  `rclone/rclone:1.75.1` and runs only S3-client `mkdir` and `copyto`
+  Its [dependency closure checkpoint (2026-10-15)](AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
+  records the unchanged version-selection freeze, current validation receipts, the
+  owner-approved 225 exact disposition scope, completed direct RustSec and individual applicable local-hook checks,
+  with hosted CI for the new source still pending.
+- Targeted rclone disposition (2026-10-14): opt-in backup CronJob pins
+  `rclone/rclone:1.75.2` under the [finite owner-approved cooldown exception](../DEPENDENCY_COOLDOWN_EMERGENCY.md#owner-approved-rclone-exception-2026-10-14), and runs only S3-client `mkdir` and `copyto`
   ([image pin](../../charts/university-ecosystem/values.yaml#L124), [CronJob](../../charts/university-ecosystem/templates/backup-cronjob.yaml#L76-L104)); it uses neither `--rc-serve` nor
   global `--header`. Version-wide status remains unresolved: [GHSA-xqmq-v4wj-rw5m](https://github.com/rclone/rclone/security/advisories/GHSA-xqmq-v4wj-rw5m)
   metadata lists affected through 1.74.1 but its body reports a 1.75.1
   reproduction; see the [official advisory index](https://github.com/rclone/rclone/security/advisories). Independent image/security
-  gates remain binding; keep 1.75.2 behind cooldown through 2026-10-16
-  10:31:57 UTC and recheck registry timestamp/digest before pinning; no
-  deployment/runtime claim is made.
-- [Merge exceptions](merge-exceptions.md) — break-glass log of every Admin
-  bypass merge into `main` (AGENTS.md §5).
+  gates remain binding. The exception expires on 2026-10-16 at 11:03:19 UTC;
+  no deployment/runtime claim is made.
 - [Codebase consolidation decisions](../adr/ADR-046-codebase-consolidation-audit.md)
   — outcome of the 2026-10 dead-code, duplication and contract-drift audit:
   what was fixed, retired and deliberately kept, with the evidence rules used.

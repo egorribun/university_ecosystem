@@ -347,19 +347,19 @@ def test_bandit_scope_is_explicitly_production_code_only() -> None:
 def test_uv_version_is_pinned_for_reproducible_ci_bootstrap() -> None:
     uv_config = _read_pyproject()["tool"]["uv"]
 
-    assert uv_config["required-version"] == "==0.11.28"
+    assert uv_config["required-version"] == "==0.12.23"
 
 
 def test_backend_dockerfile_uses_the_required_uv_version() -> None:
     dockerfile = (ROOT / "backend.Dockerfile").read_text(encoding="utf-8")
 
-    assert "ghcr.io/astral-sh/uv:0.11.28@sha256:" in dockerfile
+    assert "ghcr.io/astral-sh/uv:0.12.23@sha256:" in dockerfile
 
 
 def test_test_dockerfile_uses_the_required_uv_version() -> None:
     dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
 
-    assert "ghcr.io/astral-sh/uv:0.11.28@sha256:" in dockerfile
+    assert "ghcr.io/astral-sh/uv:0.12.23@sha256:" in dockerfile
 
 
 def test_test_image_installs_atheris_toolchain() -> None:

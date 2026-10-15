@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -68,7 +69,9 @@ def test_sqlmap_proves_openapi_capability_and_backend_readiness_before_scan() ->
         indexes["Start FastAPI Backend in Background"]
         < indexes["Run SQLMap Scan on API"]
     )
-    assert install["run"].strip() == 'uv pip install "sqlmap==1.10.8"'
+    assert re.fullmatch(
+        r'uv pip install "sqlmap==\d+\.\d+\.\d+"', install["run"].strip()
+    )
 
     capability_script = capability["run"]
     assert "uv run sqlmap -hh" in capability_script

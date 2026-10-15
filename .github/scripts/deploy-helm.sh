@@ -10,7 +10,7 @@ test -s "$chart/Chart.lock" || {
 }
 dependency_status="$(helm dependency list "$chart")"
 actual_dependencies="$(awk 'NR > 1 && NF {print $1 "|" $3 "|" $4}' <<< "$dependency_status")"
-expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
+expected_dependencies=$'redis|file://../redis-compat|ok\nnats|https://nats-io.github.io/k8s/helm/charts/|ok'
 if [[ "$actual_dependencies" != "$expected_dependencies" ]]; then
   echo "Helm dependencies do not match the reviewed Chart.lock contract." >&2
   printf '%s\n' "$dependency_status" >&2
@@ -53,11 +53,14 @@ if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production
   release_args=(
     --set "global.security.allowInsecureImages=false"
     --set-string "redis.image.registry=docker.io"
-    --set-string "redis.image.repository=bitnami/redis"
+    --set-string "redis.image.repository=redis"
+    --set-string "redis.image.tag=7.4.11-alpine"
     --set-string "redis.metrics.image.registry=docker.io"
-    --set-string "redis.metrics.image.repository=bitnami/redis-exporter"
+    --set-string "redis.metrics.image.repository=oliver006/redis_exporter"
     --set-string "nats.image.registry=docker.io"
-    --set-string "nats.image.repository=bitnami/nats"
+    --set-string "nats.image.repository=nats"
+    --set-string "nats.container.image.registry=docker.io"
+    --set-string "nats.container.image.repository=nats"
     --set-string "backend.config.elasticsearchURL=$ELASTICSEARCH_URL"
     --set-string "backend.config.flagdHost=$FLAGD_HOST"
     --set-string "backend.config.storageS3EndpointURL=https://$MINIO_ENDPOINT"
@@ -78,6 +81,7 @@ if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production
     --set-string "redis.image.digest=$REDIS_IMAGE_DIGEST"
     --set-string "redis.metrics.image.digest=$REDIS_METRICS_IMAGE_DIGEST"
     --set-string "nats.image.digest=$NATS_IMAGE_DIGEST"
+    --set-string "nats.container.image.digest=$NATS_IMAGE_DIGEST"
   )
 fi
 if [[ "$DEPLOY_ENVIRONMENT" == "staging" ]]; then
@@ -152,8 +156,8 @@ case "$mode" in
     helm upgrade --install "$HELM_RELEASE_NAME" "$chart" \
       --namespace "$K8S_NAMESPACE" \
       "${common_args[@]}" \
-      --atomic \
-      --wait \
+      --rollback-on-failure \
+      --wait=legacy \
       --wait-for-jobs \
       --timeout 15m \
       --history-max 10

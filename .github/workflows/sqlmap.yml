@@ -57,7 +57,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Install SQLMap
-        run: uv pip install "sqlmap==1.10.8"
+        run: uv pip install "sqlmap==1.10.10"
 
       - name: Verify SQLMap OpenAPI support
         run: |

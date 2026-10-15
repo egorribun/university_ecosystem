@@ -8,6 +8,14 @@
 import { HttpResponse, http } from "msw";
 import { faker } from "@faker-js/faker";
 
+function respondWithGeneratedStatus(body, init) {
+  if (init.status === 204 || init.status === 205 || init.status === 304) {
+    return new HttpResponse(null, init);
+  }
+
+  return HttpResponse.json(body, init);
+}
+
 faker.seed(1);
 
 const baseURL = "";
@@ -57,7 +65,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/auth/mfa/email/enable`, async ({ request }) => {
@@ -87,7 +95,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/email/resend`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -120,7 +128,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/totp/confirm`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -153,7 +161,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/totp/start`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -186,7 +194,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/notifications/admin/dead-letter/purge`,
@@ -218,7 +226,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -251,7 +259,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/users/me/email/confirm`, async ({ request }) => {
@@ -284,7 +292,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/auth/mfa/email`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -311,7 +319,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/users/me/avatar`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -337,7 +345,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/users/me/cover`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -363,7 +371,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/admin/audit/time-travel`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -395,7 +403,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/auth/mfa/totp`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -422,7 +430,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(
     `${baseURL}/api/v1/auth/session/signing-key`,
@@ -453,7 +461,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(`${baseURL}/api/v1/events/search/semantic`, async ({ request }) => {
@@ -486,7 +494,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news/search/semantic`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -518,7 +526,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(
     `${baseURL}/api/v1/notifications/admin/dead-letter`,
@@ -549,7 +557,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(`${baseURL}/api/v1/users/audit/export`, async ({ request }) => {
@@ -580,7 +588,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/push/subscribe/topics`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -612,7 +620,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/login/json`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -637,7 +645,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/auth/mfa/recovery-codes`,
@@ -668,7 +676,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/auth/mfa/step-up`, async ({ request }) => {
@@ -696,7 +704,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/verify`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -727,7 +735,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/auth/sessions/revoke-others`,
@@ -761,7 +769,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -796,7 +804,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/push/admin/releases`, async ({ request }) => {
@@ -829,7 +837,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/avatar`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -859,7 +867,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/cover`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -883,7 +891,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/delete`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -913,7 +921,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/email`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -937,7 +945,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/export`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -963,7 +971,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/password`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -993,7 +1001,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/events/attendance`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1025,7 +1033,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/admin/audit`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1049,7 +1057,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/admin/feature-flags`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1075,7 +1083,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/auth/csrf-cookie`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1102,7 +1110,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/auth/sessions`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1126,7 +1134,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/campus/config`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1152,7 +1160,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events/my`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1176,7 +1184,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/push/topics`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1199,7 +1207,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/push/vapid-public-key`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1227,7 +1235,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/schedule/ics`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1254,7 +1262,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/auth-url`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1280,7 +1288,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/callback`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1312,7 +1320,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/now-playing`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1338,7 +1346,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/playlists`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1364,7 +1372,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/attendance`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1394,7 +1402,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/grades`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1418,7 +1426,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/participation`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1448,7 +1456,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/summary`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1472,7 +1480,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/users/me`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1495,7 +1503,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/login`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1520,7 +1528,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/logout`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1544,7 +1552,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/register`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1569,7 +1577,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats/groups`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1593,7 +1601,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/cwv/envelope`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1623,7 +1631,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/cwv/observations`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1653,7 +1661,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/events/attendance`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1677,7 +1685,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/events/upload_image`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1709,7 +1717,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/news/upload_image`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1739,7 +1747,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/notifications/check-schedule`,
@@ -1773,7 +1781,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/notifications/read-all`, async ({ request }) => {
@@ -1802,7 +1810,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/password/forgot`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1832,7 +1840,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/password/reset`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1862,7 +1870,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/broadcast`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1886,7 +1894,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/subscribe`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1910,7 +1918,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/test`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1934,7 +1942,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/unsubscribe`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1964,7 +1972,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/spotify/disconnect`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1990,7 +1998,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/stories/upload_cover`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2022,7 +2030,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.put(`${baseURL}/api/v1/users/me`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2046,7 +2054,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/notifications`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2072,7 +2080,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/admin/audit/time-travel`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2102,7 +2110,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/chats`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2126,7 +2134,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2150,7 +2158,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/groups`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2173,7 +2181,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2197,7 +2205,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/notifications`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2227,7 +2235,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/search`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2251,7 +2259,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stories`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2275,7 +2283,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/users`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2299,7 +2307,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2323,7 +2331,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/csp-report`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2347,7 +2355,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/events`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2371,7 +2379,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/grades`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2395,7 +2403,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/news`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2419,7 +2427,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/schedule`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2443,7 +2451,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/stories`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2467,7 +2475,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2491,7 +2499,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/admin/audit`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2515,7 +2523,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/admin/feature-flags`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2541,7 +2549,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/health/live`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2564,7 +2572,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/health/ready`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2587,7 +2595,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/ws/ticket`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2610,7 +2618,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/healthz`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2633,7 +2641,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/ready`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2655,7 +2663,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2677,7 +2685,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/auth/mfa/totp/pending/:enrollmentId`,
@@ -2713,7 +2721,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -2753,7 +2761,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -2788,7 +2796,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.put(
@@ -2823,7 +2831,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -2861,7 +2869,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(`${baseURL}/api/v1/events/file/:fileId`, async ({ request }) => {
@@ -2894,7 +2902,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/news/comments/:commentId`,
@@ -2931,7 +2939,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(`${baseURL}/api/v1/chats/:chatId/messages`, async ({ request }) => {
@@ -2964,7 +2972,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events/:eventId/files`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2996,7 +3004,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news/:id/interactions`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3028,7 +3036,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(
     `${baseURL}/api/v1/news/comments/:commentId`,
@@ -3062,7 +3070,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.patch(
@@ -3097,7 +3105,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/chats/:chatId/clear`, async ({ request }) => {
@@ -3130,7 +3138,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats/:chatId/messages`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3162,7 +3170,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/chats/:chatId/participants`,
@@ -3196,7 +3204,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/chats/:chatId/read`, async ({ request }) => {
@@ -3221,7 +3229,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats/:chatId/typing`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3253,7 +3261,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/chats/:destChatId/forward`,
@@ -3287,7 +3295,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -3322,7 +3330,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/news/:id/comment`, async ({ request }) => {
@@ -3353,7 +3361,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/news/:id/like`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3377,7 +3385,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/chats/:chatId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3401,7 +3409,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/events/:eventId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3431,7 +3439,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/news/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3455,7 +3463,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/notifications/:notifId`,
@@ -3492,7 +3500,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(`${baseURL}/api/v1/schedule/:id`, async ({ request }) => {
@@ -3523,7 +3531,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/stories/:storyId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3553,7 +3561,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/users/:userId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3583,7 +3591,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/chats/:chatId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3607,7 +3615,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events/:eventId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3631,7 +3639,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/img/:path`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3655,7 +3663,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3679,7 +3687,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/schedule/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3703,7 +3711,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/chats/:chatId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3727,7 +3735,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/events/:eventId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3757,7 +3765,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/grades/:gradeId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3787,7 +3795,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/news/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3811,7 +3819,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/schedule/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3841,7 +3849,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/stories/:storyId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3871,7 +3879,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/users/:userId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3901,7 +3909,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/chats/:chatId/messages/:messageId/reactions`,
@@ -3939,7 +3947,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -3975,7 +3983,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -4011,7 +4019,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -4050,7 +4058,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -4089,7 +4097,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -4125,7 +4133,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -4161,7 +4169,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.patch(
@@ -4197,7 +4205,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
 ];

@@ -310,14 +310,14 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: "3.22.0"
+          version: "4.2.4"
 
       - name: Build Helm dependencies for Trivy
         shell: bash
         run: |
           python3 scripts/ci/helm_dependency_build.py \
             charts/university-ecosystem \
-            redis-20.13.4.tgz nats-8.5.4.tgz
+            redis-0.1.0.tgz nats-2.15.0.tgz
 
       - name: Prepare development Helm input for Trivy
         shell: bash
@@ -330,10 +330,10 @@ jobs:
 
       - name: Install checksum-pinned Trivy
         env:
-          TRIVY_VERSION: 0.73.0
+          TRIVY_VERSION: 0.75.0
           # Official immutable GitHub release asset digest for
-          # trivy_0.73.0_Linux-64bit.tar.gz.
-          TRIVY_ARCHIVE_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b # pragma: allowlist secret -- official public release checksum
+          # trivy_0.75.0_Linux-64bit.tar.gz.
+          TRIVY_ARCHIVE_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
         run: |
           set -euo pipefail
           [[ "$TRIVY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -454,7 +454,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload Trivy filesystem scan results
-        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         if: always()
         continue-on-error: true
         with:
@@ -465,7 +465,7 @@ jobs:
           category: ".github/workflows/ci.yml:docker-security"
 
       - name: Upload Trivy config scan results
-        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         if: always()
         continue-on-error: true
         with:
@@ -473,7 +473,7 @@ jobs:
           category: "trivy-config"
 
       - name: Upload Trivy revocation-store results
-        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         if: always()
         continue-on-error: true
         with:
@@ -525,7 +525,7 @@ jobs:
       - name: Install govulncheck
         # The version resolves to an immutable Go module (content-addressed via sum DB).
         # Scorecard goCommand: version tag is equivalent to commit pinning for Go modules.  # nosec
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Run govulncheck on all Go modules
         # Audit all workspace modules. govulncheck fails if a directory has no packages,
@@ -553,7 +553,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
 
       - name: Generate SPDX-JSON SBOM
         # Scans the full repository (all languages/ecosystems Syft detects).
@@ -562,7 +562,7 @@ jobs:
           syft . --output spdx-json=sbom.spdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-spdx-json
           path: sbom.spdx.json

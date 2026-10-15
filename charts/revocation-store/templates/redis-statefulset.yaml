@@ -1,0 +1,210 @@
+{{- include "revocation-store.validate" . -}}
+{{- $masterName := include "revocation-store.redis.masterName" . -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $masterName }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "revocation-store.redis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  replicas: {{ .Values.redis.master.count }}
+  revisionHistoryLimit: {{ .Values.redis.master.revisionHistoryLimit }}
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      {{- include "revocation-store.redis.selectorLabels" . | nindent 6 }}
+  serviceName: {{ include "revocation-store.redis.headlessName" . }}
+  updateStrategy:
+    type: {{ .Values.redis.master.updateStrategy.type }}
+  {{- if .Values.redis.master.persistentVolumeClaimRetentionPolicy.enabled }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: {{ .Values.redis.master.persistentVolumeClaimRetentionPolicy.whenDeleted }}
+    whenScaled: {{ .Values.redis.master.persistentVolumeClaimRetentionPolicy.whenScaled }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "revocation-store.redis.labels" . | nindent 8 }}
+        app.kubernetes.io/component: master
+      annotations:
+        checksum/config: {{ printf "%s|%s" .Values.redis.commonConfiguration (toJson .Values.redis.master.disableCommands) | sha256sum | quote }}
+        prometheus.io/port: "9121"
+        prometheus.io/scrape: "true"
+    spec:
+      serviceAccountName: {{ $masterName }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "revocation-store.redis.podSecurityContext" . | nindent 8 }}
+      enableServiceLinks: false
+      shareProcessNamespace: false
+      terminationGracePeriodSeconds: {{ .Values.redis.master.terminationGracePeriodSeconds }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "revocation-store.redis.selectorLabels" . | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: redis-auth-acl
+          image: {{ include "revocation-store.redis.image" . | quote }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy | quote }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              password="$(cat /run/redis-auth-source/password)"
+              test -n "$password"
+              password_sha256="$(printf '%s' "$password" | sha256sum | cut -d ' ' -f 1)"
+              test -n "$password_sha256"
+              printf 'user default on #%s ~* &* +@all\n' "$password_sha256" > /run/redis-runtime/users.acl
+              chmod 0440 /run/redis-runtime/users.acl
+          securityContext:
+            {{- include "revocation-store.redis.containerSecurityContext" . | nindent 12 }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          volumeMounts:
+            - name: redis-password
+              mountPath: /run/redis-auth-source
+              readOnly: true
+            - name: redis-runtime
+              mountPath: /run/redis-runtime
+      containers:
+        - name: redis
+          image: {{ include "revocation-store.redis.image" . | quote }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy | quote }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - exec redis-server /etc/redis/master.conf
+          securityContext:
+            {{- include "revocation-store.redis.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - export REDISCLI_AUTH="$(cat /run/redis-auth-source/password)"; redis-cli --no-auth-warning ping | grep -qx PONG
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - export REDISCLI_AUTH="$(cat /run/redis-auth-source/password)"; redis-cli --no-auth-warning ping | grep -qx PONG
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.redis.master.resources | nindent 12 }}
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/redis
+              readOnly: true
+            - name: redis-password
+              mountPath: /run/redis-auth-source
+              readOnly: true
+            - name: redis-runtime
+              mountPath: /run/redis-runtime
+            - name: tmp
+              mountPath: /tmp
+        - name: metrics
+          image: {{ include "revocation-store.redis.exporterImage" . | quote }}
+          imagePullPolicy: {{ .Values.redis.metrics.image.pullPolicy | quote }}
+          securityContext:
+            {{- include "revocation-store.redis.containerSecurityContext" . | nindent 12 }}
+          env:
+            - name: REDIS_ADDR
+              value: redis://127.0.0.1:6379
+            - name: REDIS_USER
+              value: default
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.auth.existingSecret | quote }}
+                  key: {{ .Values.redis.auth.existingSecretPasswordKey | quote }}
+          ports:
+            - name: metrics
+              containerPort: 9121
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: metrics
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.redis.metrics.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ printf "%s-configuration" $masterName }}
+            items:
+              - key: master.conf
+                path: master.conf
+        - name: redis-password
+          secret:
+            secretName: {{ .Values.redis.auth.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.redis.auth.existingSecretPasswordKey | quote }}
+                path: password
+        - name: redis-runtime
+          emptyDir:
+            sizeLimit: 8Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: redis-data
+        labels:
+          app.kubernetes.io/instance: {{ .Values.applicationReleaseName | quote }}
+          app.kubernetes.io/name: revocation-redis
+          app.kubernetes.io/component: master
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.redis.master.persistence.size | quote }}

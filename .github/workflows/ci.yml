@@ -409,13 +409,13 @@ jobs:
       - name: Run Hadolint
         run: |
           set -euo pipefail
-          hadolint_version="2.12.0"
-          hadolint_sha256="56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret
+          hadolint_version="2.15.1"
+          hadolint_sha256="c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507"
           hadolint_path="$RUNNER_TEMP/hadolint"
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
             --output "$hadolint_path" \
-            "https://github.com/hadolint/hadolint/releases/download/v${hadolint_version}/hadolint-Linux-x86_64"
+            "https://github.com/hadolint/hadolint/releases/download/v${hadolint_version}/hadolint-linux-x86_64"
           printf '%s  %s\n' "$hadolint_sha256" "$hadolint_path" \
             | sha256sum --check --strict
           chmod +x "$hadolint_path"
@@ -431,8 +431,8 @@ jobs:
       - name: Install shellcheck
         run: |
           set -euo pipefail
-          shellcheck_version="0.10.0"
-          shellcheck_sha256="6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"  # pragma: allowlist secret
+          shellcheck_version="0.11.0"
+          shellcheck_sha256="8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
           shellcheck_archive="$RUNNER_TEMP/shellcheck-v${shellcheck_version}.linux.x86_64.tar.xz"
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
@@ -445,7 +445,7 @@ jobs:
       - name: Run ShellCheck
         run: |
           set -euo pipefail
-          shellcheck_bin="$RUNNER_TEMP/shellcheck-v0.10.0/shellcheck"
+          shellcheck_bin="$RUNNER_TEMP/shellcheck-v0.11.0/shellcheck"
           test -x "$shellcheck_bin"
           find scripts/ -type f -name "*.sh" -exec "$shellcheck_bin" -e SC2086 -e SC2001 -e SC2030 -e SC2031 {} +
 
@@ -533,12 +533,12 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
-      - name: Set up Rust (canonical 1.97.1)
+      - name: Set up Rust (canonical 1.99.0)
         # Same compiler as the WASM producer (reusable-e2e-wasm-build.yml);
         # a floating channel would lint and measure different code paths.
         uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.0
           components: rustfmt, clippy
       - name: Cache Cargo registry + target dirs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -761,7 +761,7 @@ jobs:
           go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=20s -parallel=1 -timeout=3m
 
       - name: Upload fuzz corpus on failure
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: fuzz-crash-corpus
@@ -844,14 +844,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Generate SBOM with Syft
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.0 — RZ-22-03
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           output-file: sbom.spdx.json
           format: spdx-json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom
           path: sbom.spdx.json
@@ -874,9 +874,9 @@ jobs:
       - name: Install slsa-verifier
         run: |
           set -euo pipefail
-          slsa_verifier_version="2.7.0"
+          slsa_verifier_version="2.7.1"
           slsa_verifier_url="https://github.com/slsa-framework/slsa-verifier/releases/download/v${slsa_verifier_version}/slsa-verifier-linux-amd64"
-          slsa_verifier_sha256="499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6" #  -- release checksum
+          slsa_verifier_sha256="946dbec729094195e88ef78e1734324a27869f03e2c6bd2f61cbc06bd5350339" #  -- release checksum
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 \
             --output /tmp/slsa-verifier "$slsa_verifier_url"
@@ -904,7 +904,7 @@ jobs:
     needs: pre-commit-check
     services:
       postgres:
-        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -931,7 +931,7 @@ jobs:
         uses: jaxxstorm/action-install-gh-release@25e24d2d23ae098373794ef1d6faecb48ee52da8 # v3.0.0
         with:
           repo: sbdchd/squawk
-          tag: v2.44.0 # MOD-008: update to latest release v2.44.0
+          tag: v2.67.0
           asset-name: squawk-linux-x64 # Specify explicit binary name
           cache: enable
           extension-matching: disable
@@ -1335,14 +1335,14 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: "3.22.0"
+          version: "4.2.4"
 
       - name: Helm dependency build
         shell: bash
         run: |
           python3 scripts/ci/helm_dependency_build.py \
             charts/university-ecosystem \
-            redis-20.13.4.tgz nats-8.5.4.tgz
+            redis-0.1.0.tgz nats-2.15.0.tgz
 
       - name: Helm lint — university-ecosystem chart
         run: |
@@ -1368,9 +1368,9 @@ jobs:
       - name: Install kubeconform
         run: |
           set -euo pipefail
-          kubeconform_version="0.6.7"
+          kubeconform_version="0.8.0"
           kubeconform_url="https://github.com/yannh/kubeconform/releases/download/v${kubeconform_version}/kubeconform-linux-amd64.tar.gz"
-          kubeconform_sha256="95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73" #  -- release checksum
+          kubeconform_sha256="9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883" #  -- release checksum
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 \
             --output /tmp/kubeconform.tar.gz "$kubeconform_url"
@@ -1407,13 +1407,13 @@ jobs:
             k8s/spire/spire-server.yaml \
             | docker run --rm -i \
                 --entrypoint /opt/spire/bin/spire-server \
-                ghcr.io/spiffe/spire-server:1.15.2@sha256:aa74ef1be86bc8e0684007d84a4d9859d294384d842c30425048d73429f3216e \
+                ghcr.io/spiffe/spire-server:1.15.3@sha256:4082f30d3e0ddc4000a171392c4ea174345ee44d161ee917c70b97b2ecfba141 \
                 validate -config /dev/stdin
           awk '/agent.conf: \|/{found=1; next} /^---/{found=0} found {sub(/^    /, ""); print}' \
             k8s/spire/spire-agent.yaml \
             | docker run --rm -i \
                 --entrypoint /opt/spire/bin/spire-agent \
-                ghcr.io/spiffe/spire-agent:1.15.2@sha256:1d042e4040466686e0ee46f74981ff2167c86adfadca19b3835946f4d6047536 \
+                ghcr.io/spiffe/spire-agent:1.15.3@sha256:41b0dcd8b258a69db9e2768292a060766fb76fd866e4bc925849981ea1b825ff \
                 validate -config /dev/stdin
 
 
@@ -1431,7 +1431,7 @@ jobs:
       UV_PYTHON: "3.14"
     services:
       postgres:
-        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
         env:
           POSTGRES_USER: test
           # Passwordless auth is limited to this disposable job service.
@@ -1568,7 +1568,7 @@ jobs:
               "python-shard|coverage-py-data|$staged_report|artifacts/coverage/python/shards/.coverage.migration"
 
       - name: Upload migration coverage data for aggregation
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: python-migration-coverage-attempt-${{ github.run_attempt }}
           path: |
@@ -1766,7 +1766,7 @@ jobs:
 
       - name: Upload ASan report on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: asan-report
           path: "asan-report.*"
@@ -1853,10 +1853,10 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Set up Rust (canonical 1.97.1 + wasm32 target + llvm-tools)
+      - name: Set up Rust (canonical 1.99.0 + wasm32 target + llvm-tools)
         uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
           components: llvm-tools-preview
 
@@ -1880,7 +1880,7 @@ jobs:
             ${{ runner.os }}-cargo-rust-tests-v2-
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # cargo-llvm-cov
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           # 0.9.1 understands Cargo's build-dir v2 layout used by current
           # nightly Rust, while remaining immutable and reproducible here.
@@ -2007,7 +2007,7 @@ jobs:
             --report "rust-crypto|llvm-cov-branch-json|artifacts/coverage/rust/rust-crypto/branch-llvm.json|artifacts/coverage/rust/rust-crypto/branch-llvm.json"
 
       - name: Upload Rust coverage artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rust-coverage-attempt-${{ github.run_attempt }}
           path: |
@@ -2021,7 +2021,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Rust Codecov diagnostic artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rust-codecov-reports-attempt-${{ github.run_attempt }}
           path: |
@@ -2033,9 +2033,9 @@ jobs:
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
         # taiki-e/install-action hardcodes the old drager/wasm-pack repo → 404).
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: wasm-pack@0.13.1
+          tool: wasm-pack@0.15.0
 
       - name: rust-crypto — browser-parity KATs (wasm-pack, headless Chrome)
         # ubuntu-24.04 preinstalls Chrome + sets CHROMEWEBDRIVER; fall back to
@@ -2062,7 +2062,7 @@ jobs:
       SECRET_KEY: "dummy-secret-key-for-migrations-integration-test-12345678" # pragma: allowlist secret
     services:
       postgres:
-        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
         env:
           POSTGRES_DB: migtest
           POSTGRES_USER: postgres
@@ -2119,9 +2119,9 @@ jobs:
       - name: Install k6
         run: |
           set -euo pipefail
-          k6_version="0.54.0"
+          k6_version="2.3.0"
           k6_url="https://github.com/grafana/k6/releases/download/v${k6_version}/k6-v${k6_version}-linux-amd64.tar.gz"
-          k6_sha256="c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589" # pragma: allowlist secret -- release checksum
+          k6_sha256="39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1"
           curl --fail --silent --show-error --location \
             --proto '=https' --tlsv1.2 \
             --output /tmp/k6.tar.gz "$k6_url"
@@ -2201,7 +2201,7 @@ jobs:
             --workflow-path ".github/workflows/ci.yml"
 
       - name: Download Python shard coverage data
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_0.artifact_id }}
           repository: ${{ github.repository }}
@@ -2211,7 +2211,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Python shard coverage data (shard 1)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_1.artifact_id }}
           repository: ${{ github.repository }}
@@ -2221,7 +2221,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Python shard coverage data (shard 2)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_2.artifact_id }}
           repository: ${{ github.repository }}
@@ -2231,7 +2231,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Python shard coverage data (shard 3)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_3.artifact_id }}
           repository: ${{ github.repository }}
@@ -2241,7 +2241,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Python migration coverage data
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).python_migration.artifact_id }}
           repository: ${{ github.repository }}
@@ -2257,7 +2257,7 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Download Frontend coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).frontend.artifact_id }}
           repository: ${{ github.repository }}
@@ -2267,7 +2267,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Go gateway coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_gateway.artifact_id }}
           repository: ${{ github.repository }}
@@ -2277,7 +2277,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Go ws-hub coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_ws_hub.artifact_id }}
           repository: ${{ github.repository }}
@@ -2287,7 +2287,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Go file-processor coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_file_processor.artifact_id }}
           repository: ${{ github.repository }}
@@ -2297,7 +2297,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Go uni-cli coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_uni_cli.artifact_id }}
           repository: ${{ github.repository }}
@@ -2307,7 +2307,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Go SPIFFE coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_spiffe.artifact_id }}
           repository: ${{ github.repository }}
@@ -2317,7 +2317,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Go shared logging coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_logging.artifact_id }}
           repository: ${{ github.repository }}
@@ -2327,7 +2327,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Go SpiceDB coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_spicedb.artifact_id }}
           repository: ${{ github.repository }}
@@ -2337,7 +2337,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Rust coverage artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).rust_coverage.artifact_id }}
           repository: ${{ github.repository }}
@@ -2347,7 +2347,7 @@ jobs:
           merge-multiple: false
 
       - name: Download Rust Codecov diagnostics
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).rust_codecov.artifact_id }}
           repository: ${{ github.repository }}
@@ -2856,14 +2856,14 @@ jobs:
           cp artifacts/coverage/rust/rust-crypto/codecov.json artifacts/coverage/codecov/rust-crypto.json
 
       - name: Upload trusted Codecov reports artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-codecov-inputs
           path: artifacts/coverage/codecov/
           if-no-files-found: error
 
       - name: Upload canonical quality evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: |
@@ -2912,7 +2912,7 @@ jobs:
       id-token: write
     steps:
       - name: Download staged coverage reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: coverage-codecov-inputs
           path: artifacts/coverage/codecov
@@ -3059,7 +3059,7 @@ jobs:
 
       - name: Upload model-default inventory
         if: success()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: model-default-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: artifacts/quality/model-default-inventory.json
@@ -3353,7 +3353,7 @@ jobs:
 
       - name: Upload current-run CI health report
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-health-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/quality/ci-health-report.*
