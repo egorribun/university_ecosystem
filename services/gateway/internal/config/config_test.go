@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func randomStrongTestValue(t *testing.T) string {
@@ -141,7 +142,8 @@ func TestGetEnvInt_ParsesZero(t *testing.T) {
 func TestLoadFromEnvironment_TrustedProxiesDefaultToEmpty(t *testing.T) {
 	t.Setenv("GATEWAY_TRUSTED_PROXIES", "")
 
-	cfg := loadFromEnvironment()
+	cfg, err := loadFromEnvironmentChecked()
+	require.NoError(t, err)
 
 	assert.Empty(t, cfg.TrustedProxies)
 }
@@ -149,7 +151,8 @@ func TestLoadFromEnvironment_TrustedProxiesDefaultToEmpty(t *testing.T) {
 func TestLoadFromEnvironment_ParsesExplicitTrustedProxies(t *testing.T) {
 	t.Setenv("GATEWAY_TRUSTED_PROXIES", " 172.28.4.0/28,10.30.0.12 ")
 
-	cfg := loadFromEnvironment()
+	cfg, err := loadFromEnvironmentChecked()
+	require.NoError(t, err)
 
 	assert.Equal(t, []string{"172.28.4.0/28", "10.30.0.12"}, cfg.TrustedProxies)
 }

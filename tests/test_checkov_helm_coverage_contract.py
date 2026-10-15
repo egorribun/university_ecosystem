@@ -24,18 +24,18 @@ CANONICAL_SCRIPTS = REPOSITORY_ROOT / "scripts" / "quality"
 sys.path.insert(0, str(QUALITY_SCRIPTS))
 sys.path.insert(1, str(CANONICAL_SCRIPTS))
 
-from create_checkov_oci_image_evidence import (
+from scripts.quality.create_checkov_oci_image_evidence import (
     REQUIRED_IMAGES,
     create_evidence,
 )
-from prepare_checkov_helm_contexts import (
+from scripts.quality.prepare_checkov_helm_contexts import (
     _extract_yaml_digest_paths,
     _path_tokens,
     prepare,
     read_pinned_chart_images,
 )
-from resolve_oci_platform_digest import render_checkov_values
-from verify_checkov_helm_json import CoverageError, verify_document
+from scripts.quality.resolve_oci_platform_digest import render_checkov_values
+from scripts.quality.verify_checkov_helm_json import CoverageError, verify_document
 
 WORKFLOW_ROOT = Path(
     os.environ.get("CHECKOV_HELM_WORKFLOW_ROOT", str(CANDIDATE_ROOT))
@@ -239,6 +239,7 @@ class CheckovHelmCoverageContracts(unittest.TestCase):
             fixture = _fixture_values(_fixture_args("_resolved_staging_args"))
             expected_replacements = {
                 "global.imageTag": "f" * 40,
+                "global.backendImageDigest": digests["backend"],
                 "backend.image.repository": "ghcr.io/example/university-ecosystem/backend",
                 "backend.image.digest": digests["backend"],
                 "frontend.image.repository": "ghcr.io/example/university-ecosystem/frontend",
@@ -298,9 +299,33 @@ class CheckovHelmCoverageContracts(unittest.TestCase):
                     expected = pinned_chart_images[key]
                 elif key == "redis.metrics.image.digest":
                     expected = pinned_chart_images[key]
+                elif key in (
+                    "global.backendImageDigest",
+                    "redis.metrics.passwordFileInitImage.digest",
+                ):
+                    expected = digests["backend"]
                 self.assertEqual(_get_path(revocation, key), expected, key)
             self.assertEqual(
                 _get_path(revocation, "global.backendImageDigest"), digests["backend"]
+            )
+            self.assertEqual(
+                _get_path(revocation, "global.backendImageRepository"),
+                "ghcr.io/example/university-ecosystem/backend",
+            )
+            self.assertEqual(
+                _get_path(revocation, "redis.metrics.passwordFileInitImage.repository"),
+                "ghcr.io/example/university-ecosystem/backend",
+            )
+            self.assertEqual(
+                _get_path(revocation, "redis.metrics.passwordFileInitImage.digest"),
+                digests["backend"],
+            )
+            self.assertEqual(
+                _get_path(revocation, "redis.metrics.passwordFileInitImage.tag"), ""
+            )
+            self.assertEqual(
+                _get_path(revocation, "redis.metrics.passwordFileInitImage.pullPolicy"),
+                "Always",
             )
             self.assertNotIn("auth", revocation.get("redis", {}))
 

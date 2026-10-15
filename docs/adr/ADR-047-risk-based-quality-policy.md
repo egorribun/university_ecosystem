@@ -324,6 +324,58 @@ blocking validator remain unchanged. Q3 and its coverage ratchet remain v1.1;
 this approval does not advance Q3. Policy integration and final-source
 verification are separate from the owner decision.
 
+## Owner-approved exact 18 detect-secrets dispositions (2026-10-16 Europe/Istanbul; 2026-10-15 UTC)
+
+On 2026-10-16 Europe/Istanbul (2026-10-15 UTC), the owner approved exactly 18
+additional exact-match disposition identities, extending the historically
+approved 225 to exactly 243. The approval covers only the exact path, detector
+type, and finding-digest tuples recorded in
+`quality/security-false-positive-dispositions.json` by this owner-reviewed update.
+Raw digests and private paths are not duplicated here. The 18 identities comprise 9
+in the existing `external_kubernetes_secret_reference` category; 3 in the
+existing `ci_test_contract_sentinel` category across two new finite path/type
+pairs; and 6 in the new `source_contract_identifier` category across five finite
+path/type pairs and requiring both fixed semantic evidence markers.
+
+Every new identity requires its own exact per-record digest match. The new
+category is not a wildcard or category-wide approval; no identity is approved
+automatically. Each record has `reviewed_on` 2026-10-15 and `expires_on`
+2027-01-10 and remains subject to the existing approval-status and expiry
+validation. The previous 225 records remain unchanged. Changed or unmatched
+identities remain fail-closed.
+
+This decision authorizes only these 18 identities. It grants no cross-category
+reclassification, baseline entry, inline pragma, broad scanner exclusion,
+bypass, expiry bypass, other identity, or context change. The finite 131-file
+migration baseline is untouched. The baseline remains at 319 identities, all
+78 required contexts remain unchanged, CodeQL remains blocking, and hooks are
+unchanged. Authorization does not establish integration, validator test,
+final-source scan, or hosted-check results; each requires independent evidence.
+No release readiness is implied.
+
+## Owner-approved exact seven follow-up dispositions (2026-10-16 Europe/Istanbul; 2026-10-15 UTC)
+
+On 2026-10-16 Europe/Istanbul (2026-10-15 UTC), the owner approved exactly
+seven additional exact-match identities in the existing
+`external_kubernetes_secret_reference` category. This extends the historically
+approved 243 identities to 250 and preserves every prior record. Each addition
+requires its exact path/type/finding-digest match and carries `reviewed_on`
+2026-10-15 and `expires_on` 2027-01-10. No raw digests or private paths are
+repeated here. No category-wide match, automatic approval, cross-category
+reclassification, baseline entry, pragma, broad exclusion, bypass, or context
+change is authorized.
+
+The 4,408-file / 483-finding / 0-unmatched result predates removal of 21 inline
+detect-secrets pragma comments and is historical. The post-removal unfiltered scan
+covered 4,408 files / 490 findings, with 7 unmatched against the then-current
+243-record overlay. A root-controlled private conditional 250-overlay run reported
+0 unmatched on the pre-integration candidate overlay; it is not a post-integration
+final-source result or a hosted check. The approved 250-record policy support is now
+integrated in source. Its canonical policy tests passed 250 tests in 36.16 seconds
+and Ruff check/format passed before this documentation update; final-source
+validation and hosted checks remain required for each published source. The 319-identity baseline, 78 required
+contexts, blocking CodeQL, hooks, and migration exception remain unchanged.
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt

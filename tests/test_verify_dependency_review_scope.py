@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts" / "quality"))
 
-from verify_dependency_review_scope import (
+from scripts.quality.verify_dependency_review_scope import (
     CONFIG_PATH,
     EXPECTED_MODULES,
     EXPECTED_ROWS,
@@ -531,7 +531,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             self.Response(next_url, rows[4:]),
         ]
         with patch(
-            "verify_dependency_review_scope._open_dependency_request",
+            "scripts.quality.verify_dependency_review_scope._open_dependency_request",
             side_effect=responses,
         ) as open_request:
             actual = fetch_dependency_comparison(
@@ -547,8 +547,10 @@ class DependencyCompareFileTests(unittest.TestCase):
         error, error_body = self.http_error(502, retry_after="30")
         response = self.Response(self.initial_url(), [])
         with (
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
-            patch("verify_dependency_review_scope.time.sleep") as sleep,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
+            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error, response]
@@ -566,8 +568,10 @@ class DependencyCompareFileTests(unittest.TestCase):
         error, error_body = self.http_error(429, retry_after="999999")
         response = self.Response(self.initial_url(), [])
         with (
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
-            patch("verify_dependency_review_scope.time.sleep") as sleep,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
+            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error, response]
@@ -585,8 +589,10 @@ class DependencyCompareFileTests(unittest.TestCase):
         error, error_body = self.http_error(504)
         response = self.Response(self.initial_url(), [])
         with (
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
-            patch("verify_dependency_review_scope.time.sleep") as sleep,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
+            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error, response]
@@ -603,8 +609,10 @@ class DependencyCompareFileTests(unittest.TestCase):
     def test_transient_http_exhaustion_fails_closed_without_reusing_responses(self):
         errors_and_bodies = [self.http_error(503, retry_after="0") for _ in range(4)]
         with (
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
-            patch("verify_dependency_review_scope.time.sleep") as sleep,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
+            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error for error, _ in errors_and_bodies]
@@ -622,8 +630,10 @@ class DependencyCompareFileTests(unittest.TestCase):
     def test_forbidden_status_is_not_retried_and_error_is_sanitized(self):
         error, error_body = self.http_error(403)
         with (
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
-            patch("verify_dependency_review_scope.time.sleep") as sleep,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
+            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = error
@@ -641,8 +651,10 @@ class DependencyCompareFileTests(unittest.TestCase):
         response = self.Response(self.initial_url(), [])
         response.body = b"{invalid"
         with (
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
-            patch("verify_dependency_review_scope.time.sleep") as sleep,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
+            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
         ):
             opener = build_opener.return_value
             opener.open.return_value = response
@@ -658,8 +670,10 @@ class DependencyCompareFileTests(unittest.TestCase):
     def test_explicit_network_timeout_is_retried(self):
         response = self.Response(self.initial_url(), [])
         with (
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
-            patch("verify_dependency_review_scope.time.sleep") as sleep,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
+            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [URLError(TimeoutError("timed out")), response]
@@ -686,7 +700,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             with (
                 self.subTest(url=url),
                 patch(
-                    "verify_dependency_review_scope._build_dependency_opener"
+                    "scripts.quality.verify_dependency_review_scope._build_dependency_opener"
                 ) as build_opener,
             ):
                 with self.assertRaisesRegex(ValueError, message):
@@ -721,10 +735,12 @@ class DependencyCompareFileTests(unittest.TestCase):
         tls_context = RecordingSSLContext(ssl.create_default_context())
         with (
             patch(
-                "verify_dependency_review_scope.ssl.create_default_context",
+                "scripts.quality.verify_dependency_review_scope.ssl.create_default_context",
                 return_value=tls_context,
             ),
-            patch("verify_dependency_review_scope.build_opener") as build_opener,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.build_opener"
+            ) as build_opener,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = http_error
@@ -766,7 +782,9 @@ class DependencyCompareFileTests(unittest.TestCase):
     def test_fixed_host_response_reads_with_the_global_byte_bound(self):
         response = self.Response(self.initial_url(), [])
         response.read = Mock(return_value=b"[]")
-        with patch("verify_dependency_review_scope.build_opener") as build_opener:
+        with patch(
+            "scripts.quality.verify_dependency_review_scope.build_opener"
+        ) as build_opener:
             opener = build_opener.return_value
             opener.open.return_value = response
             actual = fetch_dependency_comparison(
@@ -780,7 +798,7 @@ class DependencyCompareFileTests(unittest.TestCase):
 
     def test_request_rejects_other_origin_and_sanitizes_transport_errors(self):
         with patch(
-            "verify_dependency_review_scope._build_dependency_opener"
+            "scripts.quality.verify_dependency_review_scope._build_dependency_opener"
         ) as build_opener:
             with self.assertRaisesRegex(ValueError, "fixed GitHub API host"):
                 _open_dependency_request(
@@ -793,12 +811,16 @@ class DependencyCompareFileTests(unittest.TestCase):
                 )
             build_opener.assert_not_called()
 
-        with patch("verify_dependency_review_scope.build_opener") as build_opener:
+        with patch(
+            "scripts.quality.verify_dependency_review_scope.build_opener"
+        ) as build_opener:
             build_opener.return_value.open.side_effect = URLError(
                 "Bearer test-only-token"
             )
             with (
-                patch("verify_dependency_review_scope.time.sleep") as sleep,
+                patch(
+                    "scripts.quality.verify_dependency_review_scope.time.sleep"
+                ) as sleep,
                 self.assertRaisesRegex(
                     ValueError, "Dependency graph compare request failed"
                 ) as caught,
@@ -824,7 +846,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             + "?per_page=5&page=2>; rel=next",
         )
         with patch(
-            "verify_dependency_review_scope._open_dependency_request",
+            "scripts.quality.verify_dependency_review_scope._open_dependency_request",
             return_value=response,
         ) as open_request:
             with self.assertRaisesRegex(ValueError, "unexpected pagination query"):
@@ -845,7 +867,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             + "?per_page=100&page=2>; rel=next",
         )
         with patch(
-            "verify_dependency_review_scope._open_dependency_request",
+            "scripts.quality.verify_dependency_review_scope._open_dependency_request",
             return_value=response,
         ) as open_request:
             with self.assertRaisesRegex(ValueError, "unexpected pagination URL"):
@@ -857,7 +879,7 @@ class DependencyCompareFileTests(unittest.TestCase):
     def test_non_array_compare_response_fails_closed(self):
         response = self.Response(self.initial_url(), {"changes": []})
         with patch(
-            "verify_dependency_review_scope._open_dependency_request",
+            "scripts.quality.verify_dependency_review_scope._open_dependency_request",
             return_value=response,
         ):
             with self.assertRaisesRegex(ValueError, "JSON array"):
@@ -893,7 +915,8 @@ class DependencyCompareFileTests(unittest.TestCase):
             path = Path(tmp) / "changes.json"
             path.write_text("[]", encoding="utf-8")
             with patch(
-                "verify_dependency_review_scope.MAX_DEPENDENCY_COMPARE_BYTES", 1
+                "scripts.quality.verify_dependency_review_scope.MAX_DEPENDENCY_COMPARE_BYTES",
+                1,
             ):
                 with self.assertRaisesRegex(ValueError, "bounded regular file"):
                     read_dependency_changes_file(path)
@@ -907,7 +930,9 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
         for ref in ("a" * 39, "g" * 40, "A" * 40):
             with (
                 self.subTest(ref=ref),
-                patch("verify_dependency_review_scope.subprocess.run") as run,
+                patch(
+                    "scripts.quality.verify_dependency_review_scope.subprocess.run"
+                ) as run,
             ):
                 with self.assertRaisesRegex(ValueError, "immutable SHA"):
                     _git_show(self.root, ref, CONFIG_PATH)
@@ -917,7 +942,9 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
         for path in ("../.secrets.baseline", ".git/config", "services/../.git/config"):
             with (
                 self.subTest(path=path),
-                patch("verify_dependency_review_scope.subprocess.run") as run,
+                patch(
+                    "scripts.quality.verify_dependency_review_scope.subprocess.run"
+                ) as run,
             ):
                 with self.assertRaisesRegex(ValueError, "known manifest"):
                     _git_show(self.root, self.valid_sha, path)
@@ -925,8 +952,13 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
 
     def test_missing_git_executable_fails_closed(self):
         with (
-            patch("verify_dependency_review_scope.shutil.which", return_value=None),
-            patch("verify_dependency_review_scope.subprocess.run") as run,
+            patch(
+                "scripts.quality.verify_dependency_review_scope.shutil.which",
+                return_value=None,
+            ),
+            patch(
+                "scripts.quality.verify_dependency_review_scope.subprocess.run"
+            ) as run,
         ):
             with self.assertRaisesRegex(ValueError, "Git executable is unavailable"):
                 _git_show(self.root, self.valid_sha, CONFIG_PATH)
@@ -936,11 +968,11 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
         expected_text = "license-check: true\n"
         with (
             patch(
-                "verify_dependency_review_scope.shutil.which",
+                "scripts.quality.verify_dependency_review_scope.shutil.which",
                 return_value="C:/Git/cmd/git.exe",
             ),
             patch(
-                "verify_dependency_review_scope.subprocess.run",
+                "scripts.quality.verify_dependency_review_scope.subprocess.run",
                 return_value=SimpleNamespace(
                     returncode=0, stdout=expected_text.encode("utf-8")
                 ),
@@ -961,9 +993,12 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
 
     def test_nonzero_git_exit_fails_without_echoing_command_output(self):
         with (
-            patch("verify_dependency_review_scope.shutil.which", return_value="git"),
             patch(
-                "verify_dependency_review_scope.subprocess.run",
+                "scripts.quality.verify_dependency_review_scope.shutil.which",
+                return_value="git",
+            ),
+            patch(
+                "scripts.quality.verify_dependency_review_scope.subprocess.run",
                 return_value=SimpleNamespace(
                     returncode=128, stdout=b"", stderr=b"private error detail"
                 ),
@@ -984,10 +1019,11 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
             with (
                 self.subTest(failure=type(failure).__name__),
                 patch(
-                    "verify_dependency_review_scope.shutil.which", return_value="git"
+                    "scripts.quality.verify_dependency_review_scope.shutil.which",
+                    return_value="git",
                 ),
                 patch(
-                    "verify_dependency_review_scope.subprocess.run",
+                    "scripts.quality.verify_dependency_review_scope.subprocess.run",
                     side_effect=failure,
                 ) as run,
             ):
@@ -997,9 +1033,12 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
 
     def test_invalid_utf8_git_output_fails_closed(self):
         with (
-            patch("verify_dependency_review_scope.shutil.which", return_value="git"),
             patch(
-                "verify_dependency_review_scope.subprocess.run",
+                "scripts.quality.verify_dependency_review_scope.shutil.which",
+                return_value="git",
+            ),
+            patch(
+                "scripts.quality.verify_dependency_review_scope.subprocess.run",
                 return_value=SimpleNamespace(returncode=0, stdout=b"\xff"),
             ),
         ):

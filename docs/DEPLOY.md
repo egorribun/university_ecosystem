@@ -27,6 +27,20 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
 - Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
 
+В Kubernetes chart передаёт значения Secret backend, outbox worker, migration Job,
+gateway, ws-hub и file-processor как projected files. Каждый workload получает
+только используемые им ключи в `items`; файлы доступны по пути
+`/run/secrets/<secret-name>/<key>` через read-only mount с режимом `0440`.
+Переменные `*_FILE` указывают на эти пути; `JWT_PRIVATE_KEY_PATH` backend также указывает на файл ключа в этом mount. Приложения читают настроенные файлы
+при старте; отсутствующий или некорректный настроенный файл завершает запуск
+ошибкой, без перехода к plain environment fallback. Существующие plain env
+настройки остаются поддержаны в Compose. После обновления Secret используйте
+контролируемый restart/rollout, чтобы процессы загрузили новые значения.
+
+Для PostgreSQL scaler KEDA `TriggerAuthentication` берёт параметр `connection`
+из Secret, заданного `connections.existingSecret`, по ключу
+`connections.kedaPostgresqlURLKey`.
+
 ## Локальный Docker: режимы ресурсов
 
 Обычный `.\start-docker.ps1` (и `-Build`/`-Rebuild`) остаётся полным production-like
@@ -64,8 +78,8 @@ GitHub Environment `APPLICATION_EXTERNAL_SECRET_NAME`. Указанный
 Наблюдение за Deployment дополнительно требует `get/list/watch/patch`.
 Workflow проверяет эти права до мутаций и принудительно запускает reconciliation,
 ждёт condition `Ready`, новое `status.refreshTime` и изменение
-`resourceVersion` целевого Secret, после чего сверяет каждый фактически
-отрендеренный Helm `secretKeyRef` до upgrade.
+`resourceVersion` целевого Secret. До upgrade он проверяет имена Secret и
+необходимые наборы ключей из отрендеренного `deploymentContract`.
 
 Порядок безопасной ротации:
 

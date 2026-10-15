@@ -659,7 +659,7 @@ def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
 
 def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
     assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 27
-    assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 9
+    assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 25
     assert {
         path for path, _, _ in verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
     } == {"tests/fixtures/full-backend-reusable-baseline.v4.yaml"}
@@ -674,6 +674,49 @@ def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
         "tests/test_mfa_helm_contract.py",
         "tests/test_revocation_store_security_contract.py",
     }
+
+
+def test_source_contract_identifier_category_is_finite_and_evidence_bound() -> None:
+    category = "source_contract_identifier"
+    allowed = verifier._FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES[category]
+    assert len(allowed) == 5
+    evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
+
+    for path, finding_type in allowed:
+        record = _reviewed_disposition(
+            path=path,
+            finding_type=finding_type,
+            category=category,
+        )
+        record["evidence"] = evidence
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 15),
+        )
+
+    path, finding_type = sorted(allowed)[0]
+    changed_path = _reviewed_disposition(
+        path=path + ".changed",
+        finding_type=finding_type,
+        category=category,
+    )
+    changed_path["evidence"] = evidence
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed_path),
+            today=verifier.date(2026, 10, 15),
+        )
+
+    missing_evidence = _reviewed_disposition(
+        path=path,
+        finding_type=finding_type,
+        category=category,
+    )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(missing_evidence),
+            today=verifier.date(2026, 10, 15),
+        )
 
 
 @pytest.mark.parametrize(

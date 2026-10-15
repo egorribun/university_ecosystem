@@ -163,6 +163,21 @@ contract.
 `redis-gateway-url`, `redis-revocation-url`, `nats-url`, and
 `nats-auth-token`. `redis-credentials` must contain `redis-password`.
 
+The backend, outbox worker, migration Job, gateway, ws-hub, and file-processor
+consume their existing Kubernetes Secret values through projected files. Each
+workload projects only the exact keys it consumes under
+`/run/secrets/<secret-name>/<key>`; the volume mount is read-only and its file
+mode is `0440`. The workload's `*_FILE` settings point to these paths. The
+backend's `JWT_PRIVATE_KEY_PATH` points to its private-key file under the same
+mount. A configured file that is missing or invalid causes startup to fail; the service
+does not fall back to a plain environment value. Existing plain environment
+settings remain supported by Compose. Processes load file values at startup, so
+secret rotation uses the deployment workflow's controlled restart and rollout.
+
+When the KEDA PostgreSQL scaler is enabled, its `TriggerAuthentication` reads
+the key configured by `connections.kedaPostgresqlURLKey` from
+`connections.existingSecret` with the scaler parameter `connection`.
+
 The backend upload path is explicitly S3-compatible in staging and production:
 `backend.config.storageBackend` must be `s3` or `minio`, the bucket must be
 non-empty, the endpoint must use HTTPS, and `storageS3BaseURL` must be the
@@ -237,8 +252,8 @@ file-processor before retiring the old CA. Never set `InsecureSkipVerify` or
 `-tls-no-verify`.
 
 Render `deploymentContract.enabled=true` separately to obtain the machine-
-readable Secret names and required key sets. Keep it false in the installed
-release.
+readable Secret names and required key sets; deployment validation checks that
+contract against the existing Secrets. Keep it false in the installed release.
 
 ## Safe render and release sequence
 

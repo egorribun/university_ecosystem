@@ -8,7 +8,12 @@
     "global": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["backendImageRepository", "backendImageDigest"],
       "properties": {
+        "backendImageRepository": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[a-z0-9_.-]+/[a-z0-9_.-]+/backend$"
+        },
         "backendImageDigest": {
           "type": "string",
           "pattern": "^sha256:[0-9a-f]{64}$"
@@ -237,10 +242,21 @@
         "metrics": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "image", "port", "resources"],
+          "required": ["enabled", "image", "passwordFileInitImage", "port", "resources"],
           "properties": {
             "enabled": {
               "const": true
+            },
+            "passwordFileInitImage": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["repository", "tag", "digest", "pullPolicy"],
+              "properties": {
+                "repository": { "type": "string", "minLength": 1 },
+                "tag": { "type": "string" },
+                "digest": { "type": "string", "pattern": "^(REQUIRED_SHA256_DIGEST|sha256:[0-9a-f]{64})$" },
+                "pullPolicy": { "const": "Always" }
+              }
             },
             "image": {
               "type": "object",

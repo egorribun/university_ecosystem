@@ -51,6 +51,7 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
         "outboxWorker.image.digest": digest,
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
+        "global.backendImageDigest": digest,
         "redis.metrics.passwordFileInitImage.repository": "ghcr.io/example/university/backend",
         "redis.metrics.passwordFileInitImage.digest": digest,
         "nats.image.digest": digest,
@@ -356,6 +357,12 @@ def _resolved_revocation_store_args(release_name: str) -> list[str]:
         "redis.auth.existingSecretPasswordKey": "revocation-redis-password",  # pragma: allowlist secret
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
+        "global.backendImageRepository": "ghcr.io/example/university-ecosystem/backend",
+        "global.backendImageDigest": digest,
+        "redis.metrics.passwordFileInitImage.repository": "ghcr.io/example/university-ecosystem/backend",
+        "redis.metrics.passwordFileInitImage.digest": digest,
+        "redis.metrics.passwordFileInitImage.tag": "",
+        "redis.metrics.passwordFileInitImage.pullPolicy": "Always",
     }
     args: list[str] = []
     for key, value in overrides.items():
@@ -386,6 +393,60 @@ def _render_revocation_store(
         encoding="utf-8",
     )
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
+
+
+def _assert_projected_secret_file(
+    container: dict[str, Any],
+    pod_spec: dict[str, Any],
+    *,
+    variable: str,
+    secret_name: str,
+    key: str,
+    volume_name: str,
+    expected_keys: set[str] | None = None,
+) -> None:
+    """Assert a secret is consumed through one least-privilege read-only file mount."""
+
+    assert variable.endswith("_FILE")
+    env_entries = {item["name"]: item for item in container["env"]}
+    assert variable[:-5] not in env_entries
+    entry = env_entries[variable]
+    assert entry == {
+        "name": variable,
+        "value": f"/run/secrets/{secret_name}/{key}",
+    }
+
+    mounts = [
+        mount
+        for mount in container.get("volumeMounts", [])
+        if mount.get("name") == volume_name
+    ]
+    assert len(mounts) == 1
+    assert mounts[0] == {
+        "name": volume_name,
+        "mountPath": f"/run/secrets/{secret_name}",
+        "readOnly": True,
+    }
+
+    volumes = [
+        volume
+        for volume in pod_spec.get("volumes", [])
+        if volume.get("name") == volume_name
+    ]
+    assert len(volumes) == 1
+    projected = volumes[0]["secret"]
+    assert projected["secretName"] == secret_name
+    assert type(projected["defaultMode"]) is int
+    assert projected["defaultMode"] == 0o440
+    items = projected["items"]
+    assert isinstance(items, list) and items
+    assert all(set(item) == {"key", "path"} for item in items)
+    assert all(item["path"] == item["key"] for item in items)
+    keys = [item["key"] for item in items]
+    assert len(keys) == len(set(keys))
+    assert key in keys
+    if expected_keys is not None:
+        assert set(keys) == expected_keys
 
 
 def _existing_secret_command(environment: str, *extra: str) -> list[str]:
@@ -691,7 +752,8 @@ def test_values_schema_closes_staging_sensitive_configuration_trees() -> None:
 def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> None:
     resources = _render_staging(release_name="university-ecosystem")
     backend = _component_resource(resources, "Deployment", "backend")
-    container = backend["spec"]["template"]["spec"]["containers"][0]
+    pod_spec = backend["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
     env = {entry["name"]: entry for entry in container["env"]}
 
     assert container["securityContext"]["readOnlyRootFilesystem"] is True
@@ -701,14 +763,22 @@ def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> N
         "https://minio.staging.internal:443"
     )
     assert env["STORAGE_S3_BASE_URL"]["value"] == "/api/v1/img"
-    assert env["STORAGE_S3_ACCESS_KEY_ID"]["valueFrom"]["secretKeyRef"] == {
-        "name": "university-application",
-        "key": "minio-access-key",
-    }
-    assert env["STORAGE_S3_SECRET_ACCESS_KEY"]["valueFrom"]["secretKeyRef"] == {
-        "name": "university-application",
-        "key": "minio-secret-key",
-    }
+    _assert_projected_secret_file(
+        container,
+        pod_spec,
+        variable="STORAGE_S3_ACCESS_KEY_ID_FILE",
+        secret_name="university-application",
+        key="minio-access-key",
+        volume_name="secret-application",
+    )
+    _assert_projected_secret_file(
+        container,
+        pod_spec,
+        variable="STORAGE_S3_SECRET_ACCESS_KEY_FILE",
+        secret_name="university-application",
+        key="minio-secret-key",
+        volume_name="secret-application",
+    )
     assert env["JWT_AUDIENCE"]["value"] == "university-ecosystem-api"
     assert env["JWT_ISSUER"]["value"] == "https://api.university.staging.example.org"
     assert not any(
@@ -1612,10 +1682,10 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
         and resource["metadata"]["name"].endswith("-file-processor")
     )
 
-    gateway_container = gateway["spec"]["template"]["spec"]["containers"][0]
-    processor_container = processor["spec"]["template"]["spec"]["containers"][0]
-    gateway_env_entries = {item["name"]: item for item in gateway_container["env"]}
-    processor_env_entries = {item["name"]: item for item in processor_container["env"]}
+    gateway_spec = gateway["spec"]["template"]["spec"]
+    processor_spec = processor["spec"]["template"]["spec"]
+    gateway_container = gateway_spec["containers"][0]
+    processor_container = processor_spec["containers"][0]
     gateway_env = {item["name"]: item.get("value") for item in gateway_container["env"]}
     processor_env = {
         item["name"]: item.get("value") for item in processor_container["env"]
@@ -1631,21 +1701,49 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
         f"{processor_service['metadata']['name']}."
         f"{processor_service['metadata']['namespace']}.svc"
     )
-    assert gateway_env["GRPC_CA_FILE"].endswith("/ca.crt")
-    assert gateway_env["GRPC_CLIENT_CERT_FILE"].endswith("/tls.crt")
-    assert gateway_env["GRPC_CLIENT_KEY_FILE"].endswith("/tls.key")
-    assert gateway_env_entries["FILE_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
-        "secretKeyRef"
-    ] == {"name": "university-application", "key": "internal-hmac-secret"}
-    assert processor_env["FP_GRPC_TLS_CERT_FILE"].endswith("/tls.crt")
-    assert processor_env["FP_GRPC_TLS_KEY_FILE"].endswith("/tls.key")
-    assert processor_env["FP_GRPC_CLIENT_CA_FILE"].endswith("/ca.crt")
+    assert gateway_env["GRPC_CA_FILE"] == "/run/secrets/internal-grpc-mtls/ca.crt"
+    assert gateway_env["GRPC_CLIENT_CERT_FILE"] == (
+        "/run/secrets/internal-grpc-mtls/tls.crt"
+    )
+    assert gateway_env["GRPC_CLIENT_KEY_FILE"] == (
+        "/run/secrets/internal-grpc-mtls/tls.key"
+    )
+    _assert_projected_secret_file(
+        gateway_container,
+        gateway_spec,
+        variable="FILE_PROCESSING_CAPABILITY_SECRET_FILE",
+        secret_name="university-application",
+        key="internal-hmac-secret",
+        volume_name="secret-application",
+        expected_keys={"jwt-secret", "internal-hmac-secret"},
+    )
+    assert processor_env["FP_GRPC_TLS_CERT_FILE"] == (
+        "/run/secrets/internal-grpc-mtls-server/tls.crt"
+    )
+    assert processor_env["FP_GRPC_TLS_KEY_FILE"] == (
+        "/run/secrets/internal-grpc-mtls-server/tls.key"
+    )
+    assert processor_env["FP_GRPC_CLIENT_CA_FILE"] == (
+        "/run/secrets/internal-grpc-mtls-server/ca.crt"
+    )
+    _assert_projected_secret_file(
+        processor_container,
+        processor_spec,
+        variable="FP_PROCESSING_CAPABILITY_SECRET_FILE",
+        secret_name="university-application",
+        key="internal-hmac-secret",
+        volume_name="secret-application",
+        expected_keys={
+            "minio-access-key",
+            "minio-secret-key",
+            "internal-hmac-secret",
+            "jwt-rsa-public-key",
+            "temporal-api-key",
+        },
+    )
     assert processor_env["FP_GRPC_ALLOWED_CLIENT_URIS"] == (
         "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
     )
-    assert processor_env_entries["FP_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
-        "secretKeyRef"
-    ] == {"name": "university-application", "key": "internal-hmac-secret"}
     assert processor_env["FP_JWKS_URL"].endswith("-backend:8000/.well-known/jwks.json")
     assert processor_env["FP_JWKS_REFRESH_INTERVAL"] == "300"
     assert processor_env["FP_JWT_ACTIVE_KID"] == "primary"
@@ -1663,15 +1761,35 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
         assert "exec" not in probe
         assert probe["tcpSocket"]["port"] == "grpc"
 
-    volumes = {
+    gateway_volumes = {
         volume["name"]: volume["secret"]
-        for volume in processor["spec"]["template"]["spec"]["volumes"]
+        for volume in gateway_spec["volumes"]
         if "secret" in volume
     }
-    assert volumes["internal-grpc-mtls-server"]["secretName"] == (
+    processor_volumes = {
+        volume["name"]: volume["secret"]
+        for volume in processor_spec["volumes"]
+        if "secret" in volume
+    }
+    gateway_tls = gateway_volumes["internal-grpc-mtls"]
+    assert gateway_tls["secretName"] == "university-internal-grpc-gateway-client"
+    assert gateway_tls["defaultMode"] == 0o440
+    assert {(item["key"], item["path"]) for item in gateway_tls["items"]} == {
+        ("tls.crt", "tls.crt"),
+        ("tls.key", "tls.key"),
+        ("ca.crt", "ca.crt"),
+    }
+    processor_tls = processor_volumes["internal-grpc-mtls-server"]
+    assert processor_tls["secretName"] == (
         "university-internal-grpc-file-processor-server"
     )
-    assert "internal-grpc-mtls-probe" not in volumes
+    assert processor_tls["defaultMode"] == 0o440
+    assert {(item["key"], item["path"]) for item in processor_tls["items"]} == {
+        ("tls.crt", "tls.crt"),
+        ("tls.key", "tls.key"),
+        ("ca.crt", "ca.crt"),
+    }
+    assert "internal-grpc-mtls-probe" not in processor_volumes
     assert not any(
         mount["name"] == "internal-grpc-mtls-probe"
         for mount in processor_container["volumeMounts"]
@@ -1694,36 +1812,45 @@ def _component_resource(
 
 def test_auth_token_hmac_secret_is_wired_from_application_secret() -> None:
     resources = _render_staging(release_name="university-ecosystem")
-    expected_ref = {
-        "name": "university-application",
-        "key": "token-hmac-secret",
-    }
 
     for component in ("backend", "outbox-worker"):
         deployment = _component_resource(resources, "Deployment", component)
-        env = {
-            item["name"]: item
-            for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
-        }
-        assert env["TOKEN_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == expected_ref
+        pod_spec = deployment["spec"]["template"]["spec"]
+        container = next(
+            item for item in pod_spec["containers"] if item["name"] == component
+        )
+        _assert_projected_secret_file(
+            container,
+            pod_spec,
+            variable="TOKEN_HMAC_SECRET_FILE",
+            secret_name="university-application",
+            key="token-hmac-secret",
+            volume_name="secret-application",
+        )
 
 
 def test_internal_chat_auth_token_is_shared_by_backend_and_ws_hub() -> None:
     resources = _render_staging(release_name="university-ecosystem")
-    expected_ref = {
-        "name": "university-application",
-        "key": "ws-hub-internal-secret",
-    }
 
     for component in ("backend", "ws-hub"):
         deployment = _component_resource(resources, "Deployment", component)
+        pod_spec = deployment["spec"]["template"]["spec"]
         container = next(
-            item
-            for item in deployment["spec"]["template"]["spec"]["containers"]
-            if item["name"] == component
+            item for item in pod_spec["containers"] if item["name"] == component
         )
-        env = {item["name"]: item for item in container["env"]}
-        assert env["INTERNAL_AUTH_TOKEN"]["valueFrom"]["secretKeyRef"] == expected_ref
+        expected_keys = (
+            {"jwt-secret", "ws-hub-internal-secret"} if component == "ws-hub" else None
+        )
+        for variable in ("INTERNAL_AUTH_TOKEN_FILE", "WS_HUB_INTERNAL_SECRET_FILE"):
+            _assert_projected_secret_file(
+                container,
+                pod_spec,
+                variable=variable,
+                secret_name="university-application",
+                key="ws-hub-internal-secret",
+                volume_name="secret-application",
+                expected_keys=expected_keys,
+            )
 
 
 def test_ws_hub_is_a_restricted_helm_managed_atomic_workload() -> None:
@@ -1788,32 +1915,52 @@ def test_first_party_deployments_are_bound_to_exact_source_sha() -> None:
         )
 
 
-def test_ws_hub_env_uses_only_explicit_values_and_secret_refs() -> None:
+def test_ws_hub_env_uses_only_explicit_values_and_secret_files() -> None:
     resources = _render_staging(release_name="university-ecosystem")
     deployment = _component_resource(resources, "Deployment", "ws-hub")
-    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    pod_spec = deployment["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
     env = {item["name"]: item for item in container["env"]}
 
     application_secret = "university-application"  # pragma: allowlist secret
     connection_secret = "university-connections"  # pragma: allowlist secret
-    assert env["JWT_SECRET"]["valueFrom"]["secretKeyRef"] == {
-        "name": application_secret,
-        "key": "jwt-secret",
-    }
-    assert env["WS_HUB_INTERNAL_SECRET"]["valueFrom"]["secretKeyRef"] == {
-        "name": application_secret,
-        "key": "ws-hub-internal-secret",
+    application_keys = {"jwt-secret", "ws-hub-internal-secret"}
+    for variable, key in {
+        "JWT_SECRET_FILE": "jwt-secret",
+        "WS_HUB_INTERNAL_SECRET_FILE": "ws-hub-internal-secret",
+        "INTERNAL_AUTH_TOKEN_FILE": "ws-hub-internal-secret",
+    }.items():
+        _assert_projected_secret_file(
+            container,
+            pod_spec,
+            variable=variable,
+            secret_name=application_secret,
+            key=key,
+            volume_name="secret-application",
+            expected_keys=application_keys,
+        )
+
+    connection_keys = {
+        "nats-url",
+        "nats-auth-token",
+        "redis-backend-url",
+        "redis-revocation-url",
     }
     for variable, key in {
-        "NATS_URL": "nats-url",
-        "NATS_AUTH_TOKEN": "nats-auth-token",
-        "REDIS_URL": "redis-backend-url",
-        "REVOCATION_REDIS_URL": "redis-revocation-url",
+        "NATS_URL_FILE": "nats-url",
+        "NATS_AUTH_TOKEN_FILE": "nats-auth-token",
+        "REDIS_URL_FILE": "redis-backend-url",
+        "REVOCATION_REDIS_URL_FILE": "redis-revocation-url",
     }.items():
-        assert env[variable]["valueFrom"]["secretKeyRef"] == {
-            "name": connection_secret,
-            "key": key,
-        }
+        _assert_projected_secret_file(
+            container,
+            pod_spec,
+            variable=variable,
+            secret_name=connection_secret,
+            key=key,
+            volume_name="secret-connections",
+            expected_keys=connection_keys,
+        )
     assert env["BACKEND_INTERNAL_URL"]["value"].endswith("-backend:8000")
     assert env["JWKS_URL"]["value"].endswith("-backend:8000/.well-known/jwks.json")
     for required in (
@@ -2470,24 +2617,29 @@ def test_release_rejects_dependency_repository_substitution_or_bypass(
     )
 
 
-def test_release_rejects_mutable_password_init_tag_without_digest() -> None:
+def test_release_rejects_mutable_password_init_image_without_backend_binding() -> None:
+    # The schema requires a valid global digest. Use a distinct repository so
+    # the backend-only digest fallback cannot make this latest tag immutable.
+    immutable_digest = "sha256:" + "a" * 64
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         _existing_secret_command(
             "development",
             "--set-string",
             "backend.image.repository=university-backend",
             "--set-string",
-            "backend.image.digest=",
+            f"backend.image.digest={immutable_digest}",
             "--set-string",
-            "backend.image.tag=",
+            "backend.image.tag=contract-sha",
             "--set-string",
-            "redis.metrics.passwordFileInitImage.repository=university-backend",
+            "redis.metrics.passwordFileInitImage.repository=university-backend-mutable",
             "--set-string",
             "redis.metrics.passwordFileInitImage.digest=",
             "--set-string",
             "redis.metrics.passwordFileInitImage.tag=latest",
             "--set-string",
             "global.imageTag=contract-sha",
+            "--set-string",
+            f"global.backendImageDigest={immutable_digest}",
         ),
         check=False,
         capture_output=True,

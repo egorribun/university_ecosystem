@@ -1763,7 +1763,7 @@ def test_rust_benchmark_image_cannot_copy_candidate_build_context() -> None:
         f"COPY --from={rust_image} /usr/local/rustup /usr/local/rustup",
         f"COPY --from={rust_image} /usr/local/cargo /usr/local/cargo",
     ]
-    assert "USER benchmark" in lines
+    assert "USER 10001:10001" in lines
 
 
 def test_disposable_test_runner_provides_the_pinned_benchmark_compiler() -> None:

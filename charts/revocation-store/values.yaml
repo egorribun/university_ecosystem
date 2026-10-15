@@ -59,6 +59,11 @@ redis:
     monitoringNamespace: monitoring
   metrics:
     enabled: true
+    passwordFileInitImage:
+      repository: university-backend
+      tag: ""
+      digest: REQUIRED_SHA256_DIGEST
+      pullPolicy: Always
     image:
       registry: docker.io
       repository: oliver006/redis_exporter

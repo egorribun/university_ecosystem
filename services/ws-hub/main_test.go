@@ -24,7 +24,8 @@ func TestLoadConfig_ReturnsDefaultValues(t *testing.T) {
 	t.Setenv("JWT_SECRET", "")
 	t.Setenv("JWT_SECRETS", "")
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	require.NoError(t, err)
 
 	assert.Equal(t, "8081", cfg.Port)
 	assert.Equal(t, "nats://nats:4222", cfg.NatsURL)
@@ -37,7 +38,8 @@ func TestLoadConfig_ReadsLegacyJWTSecret(t *testing.T) {
 	t.Setenv("JWT_SECRETS", "")
 	t.Setenv("JWT_SECRET", "super-secret")
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	require.NoError(t, err)
 
 	assert.Equal(t, "9999", cfg.Port)
 	assert.Equal(t, "nats://custom:4222", cfg.NatsURL)
@@ -48,7 +50,8 @@ func TestLoadConfig_ReadsMultipleJWTSecrets(t *testing.T) {
 	t.Setenv("JWT_SECRETS", "new-key, old-key")
 	t.Setenv("JWT_SECRET", "")
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	require.NoError(t, err)
 
 	// JWT_SECRETS takes precedence; both secrets loaded for rotation support.
 	assert.Equal(t, []string{"new-key", "old-key"}, cfg.JWTSecrets)

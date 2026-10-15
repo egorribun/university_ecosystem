@@ -33,7 +33,8 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	}
 
 	// 1. Test defaults
-	cfg := LoadConfig()
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
 	require.Equal(t, "8081", cfg.Port)
 	require.Equal(t, "nats://nats:4222", cfg.NatsURL)
 	require.Equal(t, "", cfg.NatsUser)
@@ -87,7 +88,8 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("REDIS_PASSWORD", "redissecret")
 	t.Setenv("REDIS_DB", "2")
 
-	cfg = LoadConfig()
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
 	require.Equal(t, "9090", cfg.Port)
 	require.Equal(t, "nats://localhost:4222", cfg.NatsURL)
 	require.Equal(t, "testuser", cfg.NatsUser)
@@ -119,7 +121,8 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	// 3. Test legacy single JWT_SECRET fallback
 	require.NoError(t, os.Unsetenv("JWT_SECRETS"))
 	t.Setenv("JWT_SECRET", "single-secret")
-	cfg = LoadConfig()
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
 	require.Equal(t, []string{"single-secret"}, cfg.JWTSecrets)
 
 	// 4. Test invalid float, int, and bool inputs to verify fallback to default
@@ -133,7 +136,8 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("REDIS_DB", "invalid-int")
 	t.Setenv("ENABLE_JETSTREAM", "invalid-bool")
 
-	cfg = LoadConfig()
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
 	require.Equal(t, 256, cfg.SendBufferSize)
 	require.Equal(t, 4096, cfg.BroadcastBufferSize)
 	require.Equal(t, 10000, cfg.MaxClients)
@@ -144,6 +148,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.True(t, cfg.EnableJetStream)
 
 	t.Setenv("ENABLE_JETSTREAM", "false")
-	cfg = LoadConfig()
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
 	require.False(t, cfg.EnableJetStream)
 }

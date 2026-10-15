@@ -544,6 +544,11 @@ async def _wait_for_signals(stop_event: asyncio.Event) -> None:
 
 
 async def main() -> None:
+    runtime_dir = Path(
+        os.environ.get("OUTBOX_WORKER_RUNTIME_DIR") or tempfile.gettempdir()
+    )
+    pid_path, heartbeat_path = _clear_runtime_markers(runtime_dir)
+
     from app.core.config import settings
     from app.core.database import init_database, wait_db
     from app.core.events import register_event_listeners
@@ -557,12 +562,6 @@ async def main() -> None:
     configure_event_handlers()
     await nats_broker.connect()
 
-    runtime_dir = Path(
-        os.environ.get("OUTBOX_WORKER_RUNTIME_DIR") or tempfile.gettempdir()
-    )
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    pid_path = runtime_dir / "worker.pid"
-    heartbeat_path = runtime_dir / "worker.heartbeat"
     pid_path.write_text(str(os.getpid()), encoding="ascii")
 
     worker = OutboxWorker(
@@ -588,6 +587,16 @@ async def main() -> None:
         heartbeat_path.unlink(missing_ok=True)
 
     logger.info("Outbox worker stopped")
+
+
+def _clear_runtime_markers(runtime_dir: Path) -> tuple[Path, Path]:
+    """Remove only this worker's prior-run health markers before startup."""
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    pid_path = runtime_dir / "worker.pid"
+    heartbeat_path = runtime_dir / "worker.heartbeat"
+    pid_path.unlink(missing_ok=True)
+    heartbeat_path.unlink(missing_ok=True)
+    return pid_path, heartbeat_path
 
 
 if __name__ == "__main__":

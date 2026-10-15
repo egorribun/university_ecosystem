@@ -658,9 +658,9 @@ nats:
         capabilities:
           drop: ["ALL"]
         readOnlyRootFilesystem: true
-        runAsGroup: 1001
+        runAsGroup: 10001
         runAsNonRoot: true
-        runAsUser: 1001
+        runAsUser: 10001
         seccompProfile:
           type: RuntimeDefault
     patch: []
@@ -721,7 +721,7 @@ nats:
       spec:
         automountServiceAccountToken: false
         securityContext:
-          fsGroup: 1001
+          fsGroup: 10001
           fsGroupChangePolicy: Always
           runAsNonRoot: true
           seccompProfile:

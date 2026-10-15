@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "revocation-store"
 VALUES = CHART / "values-staging.yaml"
 DEPLOY_SCRIPT = ROOT / ".github" / "scripts" / "deploy-revocation-store.sh"
+C2_BACKEND_DIGEST = (
+    "sha256:38d6b346ff695004f8445e2ec92cfb0d80c044a1a0c776ca71a5b24e078c70f2"
+)
 DISABLED_REDIS_COMMANDS = [
     "ACL",
     "CONFIG",
@@ -82,6 +85,18 @@ SECURITY_BYPASSES = (
     ("--set-string", "redis.metrics.image.pullPolicy=IfNotPresent"),
     ("--set", "redis.metrics.port=9122"),
     ("--set-string", "redis.metrics.resources.limits.cpu=10m"),
+    (
+        "--set-string",
+        "redis.metrics.passwordFileInitImage.repository=attacker.invalid/owner/repo/backend",
+    ),
+    (
+        "--set-string",
+        "redis.metrics.passwordFileInitImage.digest=sha256:" + ("d" * 64),
+    ),
+    (
+        "--set-string",
+        "global.backendImageRepository=attacker.invalid/owner/repo/backend",
+    ),
 )
 
 
@@ -96,6 +111,7 @@ def _resolved_args(release_name: str) -> list[str]:
     """Mirror only the immutable arguments passed by the deployment wrapper."""
 
     digest = "sha256:" + ("b" * 64)
+    backend_digest = C2_BACKEND_DIGEST
     overrides = {
         "applicationReleaseName": release_name,
         "redis.fullnameOverride": f"{release_name}-revocation-redis",
@@ -107,6 +123,15 @@ def _resolved_args(release_name: str) -> list[str]:
         "redis.auth.existingSecretPasswordKey": ("revocation-redis-password"),
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
+        "global.backendImageRepository": (
+            "ghcr.io/egorribun/university_ecosystem/backend"
+        ),
+        "global.backendImageDigest": backend_digest,
+        "redis.metrics.passwordFileInitImage.repository": (
+            "ghcr.io/egorribun/university_ecosystem/backend"
+        ),
+        "redis.metrics.passwordFileInitImage.digest": backend_digest,
+        "redis.metrics.passwordFileInitImage.pullPolicy": "Always",
     }
     args: list[str] = []
     for key, value in overrides.items():
@@ -179,6 +204,7 @@ def test_values_and_schema_lock_durability_and_metrics_ingress() -> None:
     master_schema = redis_schema["properties"]["master"]
     policy_schema = redis_schema["properties"]["networkPolicy"]
     metrics_schema = redis_schema["properties"]["metrics"]
+    password_file_image_schema = metrics_schema["properties"]["passwordFileInitImage"]
     assert master_schema["properties"]["disableCommands"] == {
         "const": DISABLED_REDIS_COMMANDS
     }
@@ -200,6 +226,18 @@ def test_values_and_schema_lock_durability_and_metrics_ingress() -> None:
     assert policy_schema["properties"]["monitoringNamespace"] == {"const": "monitoring"}
     assert metrics_schema["properties"]["enabled"] == {"const": True}
     assert metrics_schema["properties"]["port"] == {"const": 9121}
+    assert password_file_image_schema["required"] == [
+        "repository",
+        "tag",
+        "digest",
+        "pullPolicy",
+    ]
+    assert password_file_image_schema["properties"]["digest"]["pattern"] == (
+        "^(REQUIRED_SHA256_DIGEST|sha256:[0-9a-f]{64})$"
+    )
+    global_schema = schema["properties"]["global"]
+    assert global_schema["required"] == ["backendImageRepository", "backendImageDigest"]
+    assert "backendImageRepository" in global_schema["properties"]
     assert redis_schema["properties"]["commonLabels"]["additionalProperties"] is False
     assert auth_schema["properties"]["existingSecret"] == {
         "const": "revocation-redis-credentials"
@@ -364,6 +402,9 @@ exit 2
             "HELM_RELEASE_NAME": "university-ecosystem",
             "REVOCATION_REDIS_IMAGE_DIGEST": "sha256:" + ("a" * 64),
             "REVOCATION_REDIS_METRICS_IMAGE_DIGEST": "sha256:" + ("b" * 64),
+            "REGISTRY": "ghcr.io",
+            "GITHUB_REPOSITORY": "egorribun/university_ecosystem",
+            "BACKEND_IMAGE_DIGEST": C2_BACKEND_DIGEST,
             "FAKE_HELM_MARKER": _msys_path(marker),
             "FAKE_EXEC_MARKER": _msys_path(exec_marker),
         }
@@ -556,12 +597,48 @@ def test_revocation_store_render_preserves_durability_and_monitoring_only_metric
     statefulset = next(
         resource for resource in resources if resource.get("kind") == "StatefulSet"
     )
-    init_container = statefulset["spec"]["template"]["spec"]["initContainers"][0]
-    assert init_container["name"] == "redis-auth-acl"
+    pod_spec = statefulset["spec"]["template"]["spec"]
+    init_containers = {
+        container["name"]: container for container in pod_spec["initContainers"]
+    }
+    init_container = init_containers["redis-auth-acl"]
     assert init_container["resources"] == {
         "requests": {"cpu": "50m", "memory": "32Mi"},
         "limits": {"cpu": "250m", "memory": "128Mi"},
     }
+    password_init = init_containers["redis-exporter-password-file"]
+    assert password_init["image"] == (
+        "ghcr.io/egorribun/university_ecosystem/backend@" + C2_BACKEND_DIGEST
+    )
+    assert password_init["securityContext"]["runAsUser"] == 10001
+    assert password_init["securityContext"]["runAsGroup"] == 10001
+    password_script = password_init["args"][password_init["args"].index("-c") + 1]
+    compile(password_script, "<redis-exporter-password-file-init>", "exec")
+    assert pod_spec["securityContext"]["fsGroup"] == 10001
+    exporter = next(
+        container
+        for container in pod_spec["containers"]
+        if container["name"] == "metrics"
+    )
+    assert exporter["env"] == [
+        {"name": "REDIS_ADDR", "value": "redis://127.0.0.1:6379"},
+        {"name": "REDIS_USER", "value": "default"},
+        {
+            "name": "REDIS_PASSWORD_FILE",
+            "value": "/run/redis-exporter-auth/passwords.json",
+        },
+    ]
+    assert not any(item.get("name") == "REDIS_PASSWORD" for item in exporter["env"])
+    volumes = {volume["name"]: volume for volume in pod_spec["volumes"]}
+    assert volumes["redis-exporter-auth"]["emptyDir"] == {
+        "medium": "Memory",
+        "sizeLimit": "8Mi",
+    }
+    assert {
+        "name": "redis-exporter-auth",
+        "mountPath": "/run/redis-exporter-auth",
+        "readOnly": True,
+    } in exporter["volumeMounts"]
     configuration = next(
         resource
         for resource in resources
@@ -663,6 +740,13 @@ def test_revocation_store_rejects_durability_and_metrics_bypasses(
     if override.startswith(("redis.fullnameOverride=", "redis.commonLabels.")):
         assert (
             "revocation-store release identity and labels are immutable"
+            in result.stderr
+        )
+    elif override.startswith(
+        ("redis.metrics.passwordFileInitImage.", "global.backendImageRepository=")
+    ):
+        assert (
+            "revocation exporter password-file init image must be the exact source-pinned backend image"
             in result.stderr
         )
     else:

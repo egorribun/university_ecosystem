@@ -175,19 +175,21 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
 
 WORKDIR /app
+RUN addgroup -S -g 10001 app \
+ && adduser -S -D -u 10001 -G app -h /home/app app
 
 # package.json is needed at runtime so Node resolves "type": "module"
 # correctly and so the wasm-sanitizer / rust-crypto file:// references
 # (declared as runtime dependencies) match the node_modules layout.
-COPY --from=prod-deps --chown=node:node /app/package.json ./package.json
+COPY --from=prod-deps --chown=10001:10001 /app/package.json ./package.json
 
 # Production-only node_modules — no devDependencies. ~150 MB → ~80 MB
 # vs full deps (saves Storybook/Playwright/Vitest/etc.).
-COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 
 # Copy built WASM packages to runtime so Node resolves the file: dependencies at runtime
-COPY --from=wasm-builder --chown=node:node /wasm/rust-crypto/pkg ./rust-crypto/pkg
-COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+COPY --from=wasm-builder --chown=10001:10001 /wasm/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-builder --chown=10001:10001 /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 
 # server-prod.mjs Node wrapper (W131 SW1) — imports dist/server/server.js
 # default export, adapts Web Standards Request <-> Node IncomingMessage,
@@ -202,25 +204,25 @@ COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanit
 # available" 503 cascade (caught via user Docker rebuild test).
 # The `.d.mts` TypeScript declarations are NOT copied — runtime-only Node
 # doesn't need them.
-COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
-COPY --chown=node:node frontend/scripts/server-csp.mjs ./scripts/server-csp.mjs
-COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
-COPY --chown=node:node frontend/scripts/not-found-response.mjs ./scripts/not-found-response.mjs
-COPY --chown=node:node frontend/scripts/lhci-ssr-response.mjs ./scripts/lhci-ssr-response.mjs
-COPY --chown=node:node frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-preview-mode.mjs
-COPY --chown=node:node frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
-COPY --chown=node:node frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
-COPY --chown=node:node frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
-COPY --chown=node:node frontend/scripts/server-static.mjs ./scripts/server-static.mjs
+COPY --chown=10001:10001 frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
+COPY --chown=10001:10001 frontend/scripts/server-csp.mjs ./scripts/server-csp.mjs
+COPY --chown=10001:10001 frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
+COPY --chown=10001:10001 frontend/scripts/not-found-response.mjs ./scripts/not-found-response.mjs
+COPY --chown=10001:10001 frontend/scripts/lhci-ssr-response.mjs ./scripts/lhci-ssr-response.mjs
+COPY --chown=10001:10001 frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-preview-mode.mjs
+COPY --chown=10001:10001 frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
+COPY --chown=10001:10001 frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
+COPY --chown=10001:10001 frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
+COPY --chown=10001:10001 frontend/scripts/server-static.mjs ./scripts/server-static.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/
 #   dist/server/server.js (tanstackStart server entry — what wrapper imports)
 #   dist/sw.js + dist/sw.js.map (PWA service worker)
-COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=10001:10001 /app/dist ./dist
 
-# Drop to non-root `node` user (UID/GID 1000, built into node:alpine images).
-USER 1000:1000
+# Drop to the dedicated non-root app account (UID/GID 10001).
+USER 10001:10001
 
 ENV NODE_ENV=production
 ENV PORT=3000

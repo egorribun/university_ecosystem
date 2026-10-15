@@ -1142,6 +1142,7 @@ jobs:
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
           REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
         run: |
           set -euo pipefail
           rendered="$(mktemp "$RUNNER_TEMP/rendered-revocation-store.XXXXXX.yaml")"
@@ -1175,6 +1176,7 @@ jobs:
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
           REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
         run: |
           set -euo pipefail
           bash .github/scripts/deploy-revocation-store.sh lint
@@ -1188,6 +1190,7 @@ jobs:
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
           REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
         run: |
           set -euo pipefail
           contract="$(bash .github/scripts/deploy-revocation-store.sh render-contract)"

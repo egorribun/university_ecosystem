@@ -590,7 +590,14 @@ def prepare(
         **REVOCATION_OVERRIDES,
         "redis.image.digest": pinned_chart_images["redis.image.digest"],
         "redis.metrics.image.digest": pinned_chart_images["redis.metrics.image.digest"],
+        "global.backendImageRepository": images["backend"]["repository"],
         "global.backendImageDigest": backend_digest,
+        "redis.metrics.passwordFileInitImage.repository": images["backend"][
+            "repository"
+        ],
+        "redis.metrics.passwordFileInitImage.digest": backend_digest,
+        "redis.metrics.passwordFileInitImage.tag": "",
+        "redis.metrics.passwordFileInitImage.pullPolicy": "Always",
     }
     redis_compat = {"global.backendImageDigest": backend_digest}
     profiles = {

@@ -77,7 +77,11 @@ func run() error {
 	// third-party diagnostics on the same PII/credential-safe boundary.
 	slog.SetDefault(logger)
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.ErrorContext(context.Background(), "Failed to load configuration", "err", err)
+		return err
+	}
 	if cfg.InternalSecret == "" {
 		logger.ErrorContext(context.Background(), "WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
 		return errors.New("WS_HUB_INTERNAL_SECRET is not set")

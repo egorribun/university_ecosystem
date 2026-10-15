@@ -1758,7 +1758,9 @@ def test_helm_outbox_scaler_targets_a_real_database_backed_worker() -> None:
     assert "path: /health/live" in backend
     assert "path: /healthz" not in backend
     assert "type: postgresql" in keda
-    assert "connectionFromEnv: KEDA_POSTGRESQL_CONNECTION" in keda
+    assert "connectionFromEnv: KEDA_POSTGRESQL_CONNECTION" not in keda
+    keda_auth = _read("charts/university-ecosystem/templates/keda-trigger-auth.yaml")
+    assert "secretTargetRef:" in keda_auth
     assert "stored_events" in keda
     assert "OUTBOX_EVENTS" not in keda
     assert (
@@ -1829,8 +1831,8 @@ def test_helm_frontend_matches_the_node_ssr_runtime_contract() -> None:
     network_policy = _read("charts/university-ecosystem/templates/network-policy.yaml")
 
     assert values["frontend"]["service"]["port"] == 3000
-    assert "runAsUser: 1000" in deployment
-    assert "runAsGroup: 1000" in deployment
+    assert "runAsUser: 10001" in deployment
+    assert "runAsGroup: 10001" in deployment
     assert "path: /healthz" in deployment
     assert "nginx-cache" not in deployment
     assert "name: BACKEND_ORIGIN" in deployment
@@ -1844,6 +1846,161 @@ def test_helm_frontend_matches_the_node_ssr_runtime_contract() -> None:
     for compose_name in ("docker-compose.yml", "docker-compose.full.yml"):
         frontend = _compose(compose_name)["services"]["frontend"]
         assert frontend["environment"]["BACKEND_ORIGIN"] == "http://backend:8000"
+
+
+def _assert_secret_file_values(
+    env: dict, secret_name: str, key_by_variable: dict
+) -> None:
+    for variable, key in key_by_variable.items():
+        file_variable = f"{variable}_FILE"
+        assert env[file_variable]["value"] == f"/run/secrets/{secret_name}/{key}"
+        assert "valueFrom" not in env[file_variable]
+        assert variable not in env
+
+
+BACKEND_CONNECTION_SECRET_KEYS = {
+    "database-url",
+    "redis-backend-url",
+    "redis-revocation-url",
+    "nats-url",
+    "nats-auth-token",
+}
+BACKEND_APPLICATION_SECRET_KEYS = {
+    "jwt-secret",
+    "jwt-rsa-private-key",
+    "internal-hmac-secret",
+    "ws-hub-internal-secret",
+    "csrf-hmac-secret",
+    "spotify-token-secret",
+    "elasticsearch-password",
+    "spicedb-preshared-key",
+    "audit-log-secret",
+    "token-hmac-secret",
+    "idempotency-hmac-secret",
+    "mfa-email-otp-hmac-keys",
+    "mfa-email-otp-active-hmac-key-id",
+    "mfa-email-delivery-keks",
+    "mfa-email-delivery-active-kek-id",
+    "mfa-trusted-device-hmac-keys",
+    "mfa-trusted-device-active-hmac-key-id",
+}
+MIGRATION_CONNECTION_SECRET_KEYS = {
+    "database-url",
+    "redis-revocation-url",
+    "redis-backend-url",
+    "nats-auth-token",
+}
+MIGRATION_APPLICATION_SECRET_KEYS = {
+    "jwt-secret",
+    "audit-log-secret",
+    "elasticsearch-password",
+    "ws-hub-internal-secret",
+    "internal-hmac-secret",
+    "spicedb-preshared-key",
+    "spotify-token-secret",
+    "token-hmac-secret",
+}
+OUTBOX_CONNECTION_SECRET_KEYS = {
+    "database-url",
+    "redis-backend-url",
+    "nats-url",
+    "nats-auth-token",
+}
+OUTBOX_APPLICATION_SECRET_KEYS = {
+    "jwt-secret",
+    "jwt-rsa-private-key",
+    "internal-hmac-secret",
+    "ws-hub-internal-secret",
+    "csrf-hmac-secret",
+    "spotify-token-secret",
+    "elasticsearch-password",
+    "spicedb-preshared-key",
+    "audit-log-secret",
+    "token-hmac-secret",
+    "idempotency-hmac-secret",
+    "mfa-email-delivery-keks",
+}
+GATEWAY_CONNECTION_SECRET_KEYS = {"redis-gateway-url", "redis-revocation-url"}
+GATEWAY_APPLICATION_SECRET_KEYS = {"jwt-secret", "internal-hmac-secret"}
+FILE_PROCESSOR_CONNECTION_SECRET_KEYS = {"redis-revocation-url", "nats-url"}
+FILE_PROCESSOR_APPLICATION_SECRET_KEYS = {
+    "minio-access-key",
+    "minio-secret-key",
+    "internal-hmac-secret",
+    "jwt-rsa-public-key",
+    "temporal-api-key",
+}
+WS_HUB_CONNECTION_SECRET_KEYS = {
+    "nats-url",
+    "nats-auth-token",
+    "redis-backend-url",
+    "redis-revocation-url",
+}
+WS_HUB_APPLICATION_SECRET_KEYS = {"jwt-secret", "ws-hub-internal-secret"}
+
+
+def _assert_readonly_secret_mounts(
+    pod_spec: dict,
+    container: dict,
+    connection_secret: str,
+    application_secret: str,
+    connection_keys: set[str],
+    application_keys: set[str],
+) -> None:
+    volumes = {volume["name"]: volume for volume in pod_spec.get("volumes", [])}
+    mounts = {mount["name"]: mount for mount in container.get("volumeMounts", [])}
+    expected = {
+        "secret-connections": (connection_secret, connection_keys),
+        "secret-application": (application_secret, application_keys),
+    }
+    if connection_secret == application_secret:
+        union_keys = connection_keys | application_keys
+        secret_volume = volumes["secret-connections"]
+        assert "secret-application" not in volumes
+        assert "secret-application" not in mounts
+        secret = secret_volume["secret"]
+        assert secret["secretName"] == connection_secret
+        assert secret["defaultMode"] == 0o440
+        items = secret["items"]
+        assert isinstance(items, list)
+        assert len(items) == len(union_keys)
+        assert all(isinstance(item, dict) for item in items)
+        assert {(item.get("key"), item.get("path")) for item in items} == {
+            (key, key) for key in union_keys
+        }
+        matching_volumes = [
+            volume
+            for volume in volumes.values()
+            if volume.get("secret", {}).get("secretName") == connection_secret
+        ]
+        assert matching_volumes == [secret_volume]
+        mount = mounts["secret-connections"]
+        assert mount["mountPath"] == f"/run/secrets/{connection_secret}"
+        assert mount["readOnly"] is True
+        assert "subPath" not in mount
+        matching_mounts = [
+            item
+            for item in container.get("volumeMounts", [])
+            if item.get("mountPath") == f"/run/secrets/{connection_secret}"
+        ]
+        assert matching_mounts == [mount]
+        return
+    for volume_name, (secret_name, expected_keys) in expected.items():
+        volume = volumes[volume_name]
+        secret = volume["secret"]
+        assert secret["secretName"] == secret_name
+        assert secret["defaultMode"] == 0o440
+        items = secret["items"]
+        assert isinstance(items, list)
+        assert len(items) == len(expected_keys)
+        assert all(isinstance(item, dict) for item in items)
+        assert {(item.get("key"), item.get("path")) for item in items} == {
+            (key, key) for key in expected_keys
+        }
+        mount = mounts[volume_name]
+        assert mount["mountPath"] == f"/run/secrets/{secret_name}"
+        assert mount["readOnly"] is True
+        assert "subPath" not in mount
 
 
 def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
@@ -1918,6 +2075,38 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         encoding="utf-8",
     ).stdout
     resources = [item for item in yaml.safe_load_all(rendered) if item]
+    connections_secret = "university-connections"
+    application_secret = "contract-secrets"
+    trigger_auth = next(
+        item
+        for item in resources
+        if item.get("kind") == "TriggerAuthentication"
+        and item["metadata"]["name"]
+        == "contract-university-ecosystem-trigger-auth-postgresql"
+    )
+    assert trigger_auth["metadata"]["namespace"] == "default"
+    assert trigger_auth["spec"]["secretTargetRef"] == [
+        {
+            "parameter": "connection",
+            "name": connections_secret,
+            "key": "keda-postgresql-url",
+        }
+    ]
+    outbox_scaler = next(
+        item
+        for item in resources
+        if item.get("kind") == "ScaledObject"
+        and item["metadata"]["name"] == "contract-university-ecosystem-outbox-worker"
+    )
+    postgresql_trigger = next(
+        trigger
+        for trigger in outbox_scaler["spec"]["triggers"]
+        if trigger["type"] == "postgresql"
+    )
+    assert postgresql_trigger["authenticationRef"] == {
+        "name": trigger_auth["metadata"]["name"]
+    }
+    assert "connectionFromEnv" not in postgresql_trigger["metadata"]
     assert not any(item.get("kind") == "CronJob" for item in resources)
     migration = next(
         item
@@ -1934,14 +2123,37 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert migration_container["command"] == ["alembic", "upgrade", "head"]
     assert migration_container["image"].endswith(":contract-sha")
     migration_env = {entry["name"]: entry for entry in migration_container["env"]}
-    assert migration_env["DATABASE_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": "university-connections",
-        "key": "database-url",
-    }
-    assert migration_env["REVOCATION_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": "university-connections",
-        "key": "redis-revocation-url",
-    }
+    _assert_secret_file_values(
+        migration_env,
+        connections_secret,
+        {
+            "DATABASE_URL": "database-url",
+            "REVOCATION_REDIS_URL": "redis-revocation-url",
+        },
+    )
+    _assert_secret_file_values(
+        migration_env,
+        application_secret,
+        {
+            "SECRET_KEY": "jwt-secret",
+            "AUDIT_LOG_SECRET": "audit-log-secret",
+            "ELASTICSEARCH_PASSWORD": "elasticsearch-password",
+            "INTERNAL_AUTH_TOKEN": "ws-hub-internal-secret",
+            "INTERNAL_HMAC_SECRET": "internal-hmac-secret",
+            "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
+            "SPOTIFY_TOKEN_SECRET": "spotify-token-secret",
+            "TOKEN_HMAC_SECRET": "token-hmac-secret",
+            "WS_HUB_INTERNAL_SECRET": "ws-hub-internal-secret",
+        },
+    )
+    _assert_readonly_secret_mounts(
+        migration_spec,
+        migration_container,
+        connections_secret,
+        application_secret,
+        MIGRATION_CONNECTION_SECRET_KEYS,
+        MIGRATION_APPLICATION_SECRET_KEYS,
+    )
     assert migration_env["ENVIRONMENT"]["value"] == "development"
     assert migration_container["securityContext"]["readOnlyRootFilesystem"] is True
     deployments = {
@@ -1965,62 +2177,58 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert api_service["port"]["number"] == 8080
 
     backend = deployments["contract-university-ecosystem-backend"]
-    backend_env = {
-        entry["name"]: entry
-        for entry in backend["spec"]["template"]["spec"]["containers"][0]["env"]
-    }
-    connections_secret = "university-connections"  # pragma: allowlist secret
-    assert backend_env["DATABASE_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "database-url",
-    }
-    assert backend_env["CACHE_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "redis-backend-url",
-    }
-    assert backend_env["REVOCATION_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "redis-revocation-url",
-    }
-    assert backend_env["NATS_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "nats-url",
-    }
-    assert backend_env["NATS_AUTH_TOKEN"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "nats-auth-token",
-    }
-    assert backend_env["ENVIRONMENT"]["value"] == "development"
-    assert backend_env["SECRET_KEY"]["valueFrom"]["secretKeyRef"] == {
-        "name": "contract-secrets",
-        "key": "jwt-secret",
-    }
-    assert backend_env["ALGORITHM"]["value"] == "RS256"
-    assert backend_env["JWT_PRIVATE_KEY_PATH"]["value"] == (
-        "/run/secrets/jwt-rsa-private-key.pem"
+    backend_pod_spec = backend["spec"]["template"]["spec"]
+    backend_container = backend_pod_spec["containers"][0]
+    backend_env = {entry["name"]: entry for entry in backend_container["env"]}
+    _assert_secret_file_values(
+        backend_env,
+        connections_secret,
+        {
+            "DATABASE_URL": "database-url",
+            "CACHE_REDIS_URL": "redis-backend-url",
+            "REVOCATION_REDIS_URL": "redis-revocation-url",
+            "NATS_URL": "nats-url",
+            "NATS_AUTH_TOKEN": "nats-auth-token",
+        },
     )
-    for variable, key in {
-        "INTERNAL_HMAC_SECRET": "internal-hmac-secret",  # pragma: allowlist secret
-        "WS_HUB_INTERNAL_SECRET": "ws-hub-internal-secret",  # pragma: allowlist secret
-        "CSRF_HMAC_SECRET": "csrf-hmac-secret",  # pragma: allowlist secret
-        "SPOTIFY_TOKEN_SECRET": "spotify-token-secret",  # pragma: allowlist secret
-        "ELASTICSEARCH_PASSWORD": "elasticsearch-password",  # pragma: allowlist secret
-        "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
-        "AUDIT_LOG_SECRET": "audit-log-secret",  # pragma: allowlist secret
-        "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",  # pragma: allowlist secret
-        "MFA_EMAIL_OTP_HMAC_KEYS": "mfa-email-otp-hmac-keys",
-        "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID": "mfa-email-otp-active-hmac-key-id",
-        "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
-        "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID": "mfa-email-delivery-active-kek-id",
-        "MFA_TRUSTED_DEVICE_HMAC_KEYS": "mfa-trusted-device-hmac-keys",
-        "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID": (
-            "mfa-trusted-device-active-hmac-key-id"
-        ),
-    }.items():
-        assert backend_env[variable]["valueFrom"]["secretKeyRef"] == {
-            "name": "contract-secrets",
-            "key": key,
-        }
+    _assert_readonly_secret_mounts(
+        backend_pod_spec,
+        backend_container,
+        connections_secret,
+        application_secret,
+        BACKEND_CONNECTION_SECRET_KEYS,
+        BACKEND_APPLICATION_SECRET_KEYS,
+    )
+    assert backend_env["ENVIRONMENT"]["value"] == "development"
+    _assert_secret_file_values(
+        backend_env, application_secret, {"SECRET_KEY": "jwt-secret"}
+    )
+    assert backend_env["JWT_PRIVATE_KEY_PATH"]["value"] == (
+        f"/run/secrets/{application_secret}/jwt-rsa-private-key"
+    )
+    assert backend_env["ALGORITHM"]["value"] == "RS256"
+    _assert_secret_file_values(
+        backend_env,
+        application_secret,
+        {
+            "INTERNAL_HMAC_SECRET": "internal-hmac-secret",
+            "WS_HUB_INTERNAL_SECRET": "ws-hub-internal-secret",
+            "INTERNAL_AUTH_TOKEN": "ws-hub-internal-secret",
+            "CSRF_HMAC_SECRET": "csrf-hmac-secret",
+            "SPOTIFY_TOKEN_SECRET": "spotify-token-secret",
+            "ELASTICSEARCH_PASSWORD": "elasticsearch-password",
+            "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
+            "AUDIT_LOG_SECRET": "audit-log-secret",
+            "TOKEN_HMAC_SECRET": "token-hmac-secret",
+            "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",
+            "MFA_EMAIL_OTP_HMAC_KEYS": "mfa-email-otp-hmac-keys",
+            "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID": "mfa-email-otp-active-hmac-key-id",
+            "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
+            "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID": "mfa-email-delivery-active-kek-id",
+            "MFA_TRUSTED_DEVICE_HMAC_KEYS": "mfa-trusted-device-hmac-keys",
+            "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID": "mfa-trusted-device-active-hmac-key-id",
+        },
+    )
     assert backend_env["MINIO_SECURE"]["value"] == "false"
     assert backend_env["ELASTICSEARCH_URL"]["value"] == ""
     backend_volumes = backend["spec"]["template"]["spec"]["volumes"]
@@ -2029,18 +2237,34 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         for volume in backend_volumes
     )
     gateway = deployments["contract-university-ecosystem-gateway"]
-    gateway_env = {
-        entry["name"]: entry
-        for entry in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
-    }
-    assert gateway_env["REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "redis-gateway-url",
-    }
-    assert gateway_env["REVOCATION_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "redis-revocation-url",
-    }
+    gateway_pod_spec = gateway["spec"]["template"]["spec"]
+    gateway_container = gateway_pod_spec["containers"][0]
+    gateway_env = {entry["name"]: entry for entry in gateway_container["env"]}
+    _assert_readonly_secret_mounts(
+        gateway_pod_spec,
+        gateway_container,
+        connections_secret,
+        application_secret,
+        GATEWAY_CONNECTION_SECRET_KEYS,
+        GATEWAY_APPLICATION_SECRET_KEYS,
+    )
+    _assert_secret_file_values(
+        gateway_env,
+        connections_secret,
+        {
+            "REDIS_URL": "redis-gateway-url",
+            "REVOCATION_REDIS_URL": "redis-revocation-url",
+        },
+    )
+    _assert_secret_file_values(
+        gateway_env,
+        application_secret,
+        {
+            "JWT_SECRET": "jwt-secret",
+            "INTERNAL_HMAC_SECRET": "internal-hmac-secret",
+            "FILE_PROCESSING_CAPABILITY_SECRET": "internal-hmac-secret",
+        },
+    )
     assert gateway_env["JWT_AUDIENCE"]["value"] == "university-ecosystem-api"
     assert gateway_env["VITE_ENVIRONMENT"]["value"] == "development"
     assert gateway_env["GRPC_USE_TLS"]["value"] == "false"
@@ -2050,69 +2274,129 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert gateway_env["JWKS_ENDPOINT"]["value"] == (
         "http://contract-university-ecosystem-backend:8000/.well-known/jwks.json"
     )
-    assert gateway_env["INTERNAL_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == {
-        "name": "contract-secrets",
-        "key": "internal-hmac-secret",
-    }
-    assert gateway_env["FILE_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
-        "secretKeyRef"
-    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
+    ws_hub = deployments["contract-university-ecosystem-ws-hub"]
+    ws_hub_pod_spec = ws_hub["spec"]["template"]["spec"]
+    ws_hub_container = ws_hub_pod_spec["containers"][0]
+    ws_hub_env = {entry["name"]: entry for entry in ws_hub_container["env"]}
+    _assert_readonly_secret_mounts(
+        ws_hub_pod_spec,
+        ws_hub_container,
+        connections_secret,
+        application_secret,
+        WS_HUB_CONNECTION_SECRET_KEYS,
+        WS_HUB_APPLICATION_SECRET_KEYS,
+    )
+    _assert_secret_file_values(
+        ws_hub_env,
+        connections_secret,
+        {
+            "NATS_URL": "nats-url",
+            "NATS_AUTH_TOKEN": "nats-auth-token",
+            "REDIS_URL": "redis-backend-url",
+            "REVOCATION_REDIS_URL": "redis-revocation-url",
+        },
+    )
+    _assert_secret_file_values(
+        ws_hub_env,
+        application_secret,
+        {
+            "JWT_SECRET": "jwt-secret",
+            "WS_HUB_INTERNAL_SECRET": "ws-hub-internal-secret",
+            "INTERNAL_AUTH_TOKEN": "ws-hub-internal-secret",
+        },
+    )
+    assert ws_hub_env["ENABLE_JETSTREAM"]["value"] == "true"
     outbox = deployments["contract-university-ecosystem-outbox-worker"]
-    outbox_env = {
-        entry["name"]: entry
-        for entry in outbox["spec"]["template"]["spec"]["containers"][0]["env"]
-    }
-    for variable, key in {
-        "DATABASE_URL": "database-url",
-        "CACHE_REDIS_URL": "redis-backend-url",
-        "NATS_URL": "nats-url",
-        "NATS_AUTH_TOKEN": "nats-auth-token",
-        "KEDA_POSTGRESQL_CONNECTION": "keda-postgresql-url",
-    }.items():
-        assert outbox_env[variable]["valueFrom"]["secretKeyRef"] == {
-            "name": connections_secret,
-            "key": key,
-        }
+    outbox_pod_spec = outbox["spec"]["template"]["spec"]
+    outbox_container = outbox_pod_spec["containers"][0]
+    outbox_env = {entry["name"]: entry for entry in outbox_container["env"]}
+    _assert_readonly_secret_mounts(
+        outbox_pod_spec,
+        outbox_container,
+        connections_secret,
+        application_secret,
+        OUTBOX_CONNECTION_SECRET_KEYS,
+        OUTBOX_APPLICATION_SECRET_KEYS,
+    )
+    _assert_secret_file_values(
+        outbox_env,
+        connections_secret,
+        {
+            "DATABASE_URL": "database-url",
+            "CACHE_REDIS_URL": "redis-backend-url",
+            "NATS_URL": "nats-url",
+            "NATS_AUTH_TOKEN": "nats-auth-token",
+        },
+    )
+    assert "KEDA_POSTGRESQL_CONNECTION" not in outbox_env
     assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
     assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
     assert "REVOCATION_REDIS_URL" not in outbox_env
     assert outbox_env["ENVIRONMENT"]["value"] == "development"
-    assert outbox_env["SECRET_KEY"]["valueFrom"]["secretKeyRef"] == {
-        "name": "contract-secrets",
-        "key": "jwt-secret",
-    }
-    for variable, key in {
-        "INTERNAL_HMAC_SECRET": "internal-hmac-secret",  # pragma: allowlist secret
-        "WS_HUB_INTERNAL_SECRET": "ws-hub-internal-secret",  # pragma: allowlist secret
-        "CSRF_HMAC_SECRET": "csrf-hmac-secret",  # pragma: allowlist secret
-        "SPOTIFY_TOKEN_SECRET": "spotify-token-secret",  # pragma: allowlist secret
-        "ELASTICSEARCH_PASSWORD": "elasticsearch-password",  # pragma: allowlist secret
-        "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
-        "AUDIT_LOG_SECRET": "audit-log-secret",  # pragma: allowlist secret
-        "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",  # pragma: allowlist secret
-        "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
-    }.items():
-        assert outbox_env[variable]["valueFrom"]["secretKeyRef"] == {
-            "name": "contract-secrets",
-            "key": key,
-        }
+    _assert_secret_file_values(
+        outbox_env, application_secret, {"SECRET_KEY": "jwt-secret"}
+    )
+    assert outbox_env["JWT_PRIVATE_KEY_PATH"]["value"] == (
+        f"/run/secrets/{application_secret}/jwt-rsa-private-key"
+    )
+    _assert_secret_file_values(
+        outbox_env,
+        application_secret,
+        {
+            "INTERNAL_HMAC_SECRET": "internal-hmac-secret",
+            "WS_HUB_INTERNAL_SECRET": "ws-hub-internal-secret",
+            "CSRF_HMAC_SECRET": "csrf-hmac-secret",
+            "SPOTIFY_TOKEN_SECRET": "spotify-token-secret",
+            "ELASTICSEARCH_PASSWORD": "elasticsearch-password",
+            "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
+            "AUDIT_LOG_SECRET": "audit-log-secret",
+            "TOKEN_HMAC_SECRET": "token-hmac-secret",
+            "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",
+            "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
+        },
+    )
     file_processor = deployments["contract-university-ecosystem-file-processor"]
+    file_processor_pod_spec = file_processor["spec"]["template"]["spec"]
+    file_processor_container = file_processor_pod_spec["containers"][0]
     file_processor_env = {
-        entry["name"]: entry
-        for entry in file_processor["spec"]["template"]["spec"]["containers"][0]["env"]
+        entry["name"]: entry for entry in file_processor_container["env"]
     }
-    assert file_processor_env["FP_NATS_URL"]["valueFrom"]["secretKeyRef"] == {
-        "name": connections_secret,
-        "key": "nats-url",
-    }
+    _assert_readonly_secret_mounts(
+        file_processor_pod_spec,
+        file_processor_container,
+        connections_secret,
+        application_secret,
+        FILE_PROCESSOR_CONNECTION_SECRET_KEYS,
+        FILE_PROCESSOR_APPLICATION_SECRET_KEYS,
+    )
+    _assert_secret_file_values(
+        file_processor_env,
+        connections_secret,
+        {
+            "FP_NATS_URL": "nats-url",
+            "FP_REVOCATION_REDIS_URL": "redis-revocation-url",
+        },
+    )
+    _assert_secret_file_values(
+        file_processor_env,
+        application_secret,
+        {
+            "FP_MINIO_ACCESS_KEY": "minio-access-key",
+            "FP_MINIO_SECRET_KEY": "minio-secret-key",
+            "FP_PROCESSING_CAPABILITY_SECRET": "internal-hmac-secret",
+        },
+    )
+    assert file_processor_env["FP_TEMPORAL_API_KEY_FILE"]["value"] == (
+        f"/run/secrets/{application_secret}/temporal-api-key"
+    )
+    assert file_processor_env["FP_RSA_PUBLIC_KEY_FILE"]["value"] == (
+        f"/run/secrets/{application_secret}/jwt-rsa-public-key"
+    )
     assert file_processor_env["FP_ENVIRONMENT"]["value"] == "development"
     assert file_processor_env["FP_OTLP_ENDPOINT"]["value"] == ("otel-collector:4317")
     assert file_processor_env["FP_OTLP_INSECURE"]["value"] == "true"
     assert file_processor_env["FP_TEMPORAL_TLS_DISABLED"]["value"] == "true"
     assert file_processor_env["FP_MINIO_SECURE"]["value"] == "false"
-    assert file_processor_env["FP_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
-        "secretKeyRef"
-    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
 
     for item in resources:
         if item.get("kind") == "Service" and (
@@ -2132,6 +2416,52 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         for container in deployment["spec"]["template"]["spec"]["containers"]:
             assert not container["image"].startswith("/"), container["image"]
             assert container["image"].endswith(":contract-sha"), container["image"]
+
+    merged_secret_command = [
+        helm,
+        "template",
+        "contract",
+        str(ROOT / "charts" / "university-ecosystem"),
+        *_helm_skip_dep_flag(helm),
+        "--set-string",
+        "global.environment=development",
+        "--set",
+        "global.imageTag=contract-sha",
+        "--set",
+        "keda.enabled=true",
+        "--set",
+        "hibernation.enabled=true",
+        "--set",
+        "ingress.enabled=true",
+        "--set",
+        f"connections.existingSecret={connections_secret}",
+        "--set",
+        f"applicationSecrets.existingSecret={connections_secret}",
+    ]
+    merged_secret_rendered = subprocess.run(  # noqa: S603 - fixed Helm contract command
+        merged_secret_command,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout
+    merged_secret_resources = [
+        item for item in yaml.safe_load_all(merged_secret_rendered) if item
+    ]
+    merged_backend = next(
+        item
+        for item in merged_secret_resources
+        if item.get("kind") == "Deployment"
+        and item["metadata"]["name"] == "contract-university-ecosystem-backend"
+    )
+    _assert_readonly_secret_mounts(
+        merged_backend["spec"]["template"]["spec"],
+        merged_backend["spec"]["template"]["spec"]["containers"][0],
+        connections_secret,
+        connections_secret,
+        BACKEND_CONNECTION_SECRET_KEYS,
+        BACKEND_APPLICATION_SECRET_KEYS,
+    )
 
 
 def test_helm_supports_an_externally_managed_application_secret() -> None:
@@ -2232,14 +2562,27 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     assert {53, 443, 5432, 9000} <= allowed_ports
 
     deployments = [item for item in resources if item.get("kind") == "Deployment"]
-    secret_refs = [
-        entry["valueFrom"]["secretKeyRef"]["name"]
+    mounted_secret_names = [
+        volume["secret"]["secretName"]
         for deployment in deployments
-        for container in deployment["spec"]["template"]["spec"]["containers"]
-        for entry in container.get("env", [])
-        if "valueFrom" in entry and "secretKeyRef" in entry["valueFrom"]
+        for volume in deployment["spec"]["template"]["spec"].get("volumes", [])
+        if "secret" in volume
     ]
-    assert "managed-application-secrets" in secret_refs
+    assert existing_application_secret in mounted_secret_names
+    external_backend = next(
+        deployment
+        for deployment in deployments
+        if deployment["metadata"]["name"] == "external-university-ecosystem-backend"
+    )
+    external_pod_spec = external_backend["spec"]["template"]["spec"]
+    _assert_readonly_secret_mounts(
+        external_pod_spec,
+        external_pod_spec["containers"][0],
+        "university-connections",
+        existing_application_secret,
+        BACKEND_CONNECTION_SECRET_KEYS,
+        BACKEND_APPLICATION_SECRET_KEYS,
+    )
 
 
 def _production_render_command(helm: str) -> list[str]:

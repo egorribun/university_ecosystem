@@ -229,6 +229,23 @@ def test_helm_declares_isolated_first_party_durable_revocation_chart() -> None:
         "whenScaled": "Retain",
         "whenDeleted": "Retain",
     }
+    init_image = revocation["metrics"]["passwordFileInitImage"]
+    assert init_image["repository"] == "university-backend"
+    assert init_image["tag"] == ""
+    assert init_image["digest"] == "REQUIRED_SHA256_DIGEST"
+    assert init_image["pullPolicy"] == "Always"
+    helpers = (REPO_ROOT / "charts/revocation-store/templates/_helpers.tpl").read_text(
+        encoding="utf-8"
+    )
+    assert "runAsUser: 10001" in helpers
+    assert "runAsGroup: 10001" in helpers
+    assert "fsGroup: 10001" in helpers
+    statefulset = (
+        REPO_ROOT / "charts/revocation-store/templates/redis-statefulset.yaml"
+    ).read_text(encoding="utf-8")
+    assert "name: redis-exporter-password-file" in statefulset
+    assert "name: REDIS_PASSWORD_FILE" in statefulset
+    assert "name: REDIS_PASSWORD\n" not in statefulset
     assert "maxmemory-policy noeviction" in revocation["commonConfiguration"]
     assert "appendonly yes" in revocation["commonConfiguration"]
     assert (
@@ -280,6 +297,19 @@ def test_bootstrap_script_uses_a_separate_atomic_release_before_the_app_hook() -
     assert (
         '"redis.metrics.image.digest=$REVOCATION_REDIS_METRICS_IMAGE_DIGEST"' in script
     )
+    assert "REGISTRY GITHUB_REPOSITORY BACKEND_IMAGE_DIGEST" in script
+    assert '"global.backendImageDigest=$BACKEND_IMAGE_DIGEST"' in script
+    assert (
+        '"global.backendImageRepository=$REGISTRY/$GITHUB_REPOSITORY/backend"' in script
+    )
+    assert (
+        '"redis.metrics.passwordFileInitImage.repository=$REGISTRY/$GITHUB_REPOSITORY/backend"'
+        in script
+    )
+    assert (
+        '"redis.metrics.passwordFileInitImage.digest=$BACKEND_IMAGE_DIGEST"' in script
+    )
+    assert '"redis.metrics.passwordFileInitImage.pullPolicy=Always"' in script
     assert (
         'redis_secret_name="revocation-redis-credentials"'  # pragma: allowlist secret
         in script

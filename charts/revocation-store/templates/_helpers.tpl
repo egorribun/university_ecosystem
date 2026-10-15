@@ -46,6 +46,11 @@ rename-command {{ . }} ""
 {{- printf "%s/%s:%s@%s" .Values.redis.image.registry .Values.redis.image.repository .Values.redis.image.tag .Values.redis.image.digest -}}
 {{- end -}}
 
+{{- define "revocation-store.redis.passwordFileInitImage" -}}
+{{- $image := .Values.redis.metrics.passwordFileInitImage -}}
+{{- printf "%s@%s" $image.repository $image.digest -}}
+{{- end -}}
+
 {{- define "revocation-store.redis.exporterImage" -}}
 {{- printf "%s/%s:%s@%s" .Values.redis.metrics.image.registry .Values.redis.metrics.image.repository .Values.redis.metrics.image.tag .Values.redis.metrics.image.digest -}}
 {{- end -}}
@@ -59,24 +64,25 @@ capabilities:
 privileged: false
 procMount: Default
 readOnlyRootFilesystem: true
-runAsGroup: 1001
+runAsGroup: 10001
 runAsNonRoot: true
-runAsUser: 1001
+runAsUser: 10001
 seccompProfile:
   type: RuntimeDefault
 {{- end -}}
 
 {{- define "revocation-store.redis.podSecurityContext" -}}
-fsGroup: 1001
+fsGroup: 10001
 fsGroupChangePolicy: OnRootMismatch
-runAsGroup: 1001
+runAsGroup: 10001
 runAsNonRoot: true
-runAsUser: 1001
+runAsUser: 10001
 seccompProfile:
   type: RuntimeDefault
 {{- end -}}
 
 {{- define "revocation-store.validate" -}}
+{{- $global := .Values.global | default dict -}}
 {{- $expectedFullname := printf "%s-revocation-redis" .Values.applicationReleaseName -}}
 {{- $expectedCommands := list "ACL" "CONFIG" "FLUSHDB" "FLUSHALL" "FUNCTION" "MIGRATE" "MODULE" "MONITOR" "REPLICAOF" "SLAVEOF" "SHUTDOWN" -}}
 {{- $expectedMasterResources := dict "requests" (dict "cpu" "100m" "memory" "128Mi") "limits" (dict "cpu" "500m" "memory" "512Mi") -}}
@@ -112,6 +118,15 @@ seccompProfile:
   (not (regexMatch "^sha256:[0-9a-f]{64}$" .Values.redis.metrics.image.digest))
 -}}
 {{- fail "revocation-store requires exact immutable image digests before rendering" -}}
+{{- end -}}
+{{- if or
+  (not (regexMatch "^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[a-z0-9_.-]+/[a-z0-9_.-]+/backend$" .Values.redis.metrics.passwordFileInitImage.repository))
+  (ne .Values.redis.metrics.passwordFileInitImage.repository ($global.backendImageRepository | default ""))
+  (not (regexMatch "^sha256:[0-9a-f]{64}$" .Values.redis.metrics.passwordFileInitImage.digest))
+  (ne .Values.redis.metrics.passwordFileInitImage.digest ($global.backendImageDigest | default ""))
+  (ne .Values.redis.metrics.passwordFileInitImage.pullPolicy "Always")
+-}}
+{{- fail "revocation exporter password-file init image must be the exact source-pinned backend image" -}}
 {{- end -}}
 {{- if or
   (ne (toJson .Values.redis.master.disableCommands) (toJson $expectedCommands))

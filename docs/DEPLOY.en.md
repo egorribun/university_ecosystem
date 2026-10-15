@@ -29,6 +29,21 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
 - The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, S3 credentials (the `minio-access-key`/`minio-secret-key` keys), and Temporal API key. Production rendering rejects plaintext S3, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
 
+In Kubernetes, the chart delivers Secret values to the backend, outbox worker,
+migration Job, gateway, ws-hub, and file-processor as projected files. Each
+workload's `items` list exposes only the keys it consumes under
+`/run/secrets/<secret-name>/<key>`; mounts are read-only and files use mode
+`0440`. The workloads' `*_FILE` settings point to those paths. The backend's
+`JWT_PRIVATE_KEY_PATH` also points to its key file under the same mount.
+Applications load configured files at startup; a missing or invalid configured file causes
+startup failure without falling back to a plain environment value. Existing
+plain environment settings remain supported by Compose. After a Secret changes,
+use the controlled restart/rollout so processes load the new contents.
+
+For the KEDA PostgreSQL scaler, `TriggerAuthentication` reads parameter
+`connection` from the Secret named by `connections.existingSecret`, using the
+key configured by `connections.kedaPostgresqlURLKey`.
+
 ## Local Docker resource modes
 
 The ordinary `./start-docker.ps1` (and `-Build`/`-Rebuild`) remains the full
@@ -65,8 +80,8 @@ selected values needs `get/list/watch/create/update/patch/delete`. Deployment ob
 also needs `get/list/watch/patch`. The workflow checks these permissions before
 mutation, forces reconciliation, waits for `Ready`, a new
 `status.refreshTime`, and a changed target Secret
-`resourceVersion`, then validates every effective Helm-rendered `secretKeyRef`
-before upgrade.
+`resourceVersion`. Before upgrade, it validates the Secret names and required
+key sets from the rendered `deploymentContract` against the existing Secrets.
 
 Use this rotation order:
 

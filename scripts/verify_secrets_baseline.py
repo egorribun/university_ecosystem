@@ -83,6 +83,38 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
                 "tests/test_start_docker_orphan_ownership.py",
                 "Base64 High Entropy String",
             ),
+            (
+                "services/gateway/internal/config/secret_files_test.go",
+                "Secret Keyword",
+            ),
+            (
+                "services/ws-hub/pkg/config/secret_files_test.go",
+                "Secret Keyword",
+            ),
+        }
+    ),
+    "source_contract_identifier": frozenset(
+        {
+            (
+                "charts/university-ecosystem/templates/backend-deployment.yaml",
+                "Secret Keyword",
+            ),
+            (
+                "services/file-processor/internal/config/secret_files.go",
+                "Secret Keyword",
+            ),
+            (
+                "services/file-processor/internal/config/secret_files_test.go",
+                "Secret Keyword",
+            ),
+            (
+                "services/ws-hub/pkg/config/coverage_fail_closed_test.go",
+                "Secret Keyword",
+            ),
+            (
+                "services/ws-hub/pkg/config/secret_files_close_test.go",
+                "Secret Keyword",
+            ),
         }
     ),
     "public_package_integrity_metadata": frozenset(
@@ -151,6 +183,10 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
     ),
     "external_kubernetes_secret_reference": (
         "Kubernetes external Secret object name or key reference",
+        "not credential material",
+    ),
+    "source_contract_identifier": (
+        "secret-related source identifier or required key-list expression",
         "not credential material",
     ),
 }
@@ -458,6 +494,134 @@ _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES = frozenset(
             (
                 *(176, 224, 33, 74, 155, 8, 223, 225, 252, 220),
                 *(163, 143, 85, 240, 84, 244, 80, 236, 147, 249),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(215, 128, 41, 160, 160, 238, 139, 18, 149, 143),
+                *(57, 250, 33, 249, 44, 57, 197, 39, 22, 76),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(184, 62, 251, 137, 16, 10, 95, 17, 181, 203),
+                *(68, 24, 71, 19, 38, 246, 197, 182, 105, 199),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(52, 251, 196, 127, 53, 92, 254, 52, 217, 163),
+                *(55, 207, 111, 219, 105, 124, 63, 251, 88, 207),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(131, 225, 127, 34, 88, 130, 141, 189, 127, 37),
+                *(151, 10, 205, 130, 50, 6, 156, 134, 123, 63),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(151, 43, 250, 167, 88, 210, 244, 121, 193, 208),
+                *(14, 9, 250, 28, 65, 144, 175, 230, 64, 33),
+            ),
+        ),
+        (
+            "tests/test_helm_staging_contract.py",
+            "Secret Keyword",
+            (
+                *(228, 120, 5, 127, 253, 132, 74, 75, 130, 206),
+                *(24, 51, 247, 43, 169, 169, 236, 9, 171, 180),
+            ),
+        ),
+        (
+            "tests/test_helm_staging_contract.py",
+            "Secret Keyword",
+            (
+                *(166, 136, 165, 50, 139, 178, 237, 65, 213, 213),
+                *(244, 211, 213, 54, 181, 41, 221, 204, 57, 247),
+            ),
+        ),
+        (
+            "tests/test_helm_staging_contract.py",
+            "Secret Keyword",
+            (
+                *(184, 62, 251, 137, 16, 10, 95, 17, 181, 203),
+                *(68, 24, 71, 19, 38, 246, 197, 182, 105, 199),
+            ),
+        ),
+        (
+            "tests/test_helm_staging_contract.py",
+            "Secret Keyword",
+            (
+                *(131, 225, 127, 34, 88, 130, 141, 189, 127, 37),
+                *(151, 10, 205, 130, 50, 6, 156, 134, 123, 63),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(123, 77, 125, 47, 161, 133, 114, 12, 211, 156),
+                *(161, 83, 218, 176, 239, 161, 33, 63, 175, 3),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(179, 134, 199, 26, 164, 113, 251, 90, 112, 89),
+                *(155, 236, 25, 205, 45, 178, 36, 177, 213, 230),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(190, 202, 178, 95, 233, 61, 128, 186, 2, 122),
+                *(157, 38, 242, 0, 238, 51, 108, 85, 192, 25),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(34, 246, 11, 80, 146, 202, 185, 32, 115, 107),
+                *(90, 153, 87, 25, 88, 125, 93, 83, 53, 37),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(242, 129, 184, 11, 173, 250, 216, 254, 140, 8),
+                *(84, 199, 2, 71, 104, 6, 86, 104, 233, 209),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(192, 242, 88, 136, 166, 69, 203, 190, 182, 43),
+                *(194, 32, 239, 105, 71, 214, 101, 100, 77, 71),
+            ),
+        ),
+        (
+            "tests/test_docker_startup_contracts.py",
+            "Secret Keyword",
+            (
+                *(84, 89, 170, 160, 12, 140, 117, 55, 2, 255),
+                *(120, 225, 28, 28, 241, 101, 210, 110, 232, 156),
             ),
         ),
     }

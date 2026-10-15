@@ -21,7 +21,8 @@ func TestJetStreamConfigOptions(t *testing.T) {
 	t.Setenv("NATS_DURABLE_NOTIFICATIONS", "custom-durable-notif")
 	t.Setenv("ENABLE_JETSTREAM", "true")
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	require.NoError(t, err)
 	assert.Equal(t, "CUSTOM_CHAT", cfg.NatsStreamChat)
 	assert.Equal(t, "CUSTOM_NOTIF", cfg.NatsStreamNotifications)
 	assert.Equal(t, "custom-durable-chat", cfg.NatsDurableChat)

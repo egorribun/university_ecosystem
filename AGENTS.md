@@ -201,6 +201,43 @@ for the MVP release; the current plan is
      78 required contexts; blocking CodeQL and hooks stay unchanged. Validator
      integration, tests, hosted checks, and final-source validation remain separate
      requirements.
+
+     On 2026-10-16 Europe/Istanbul (2026-10-15 UTC), the owner approved
+     exactly 18 additional exact-match dispositions, extending the historically
+     approved 225 identities to 243. The approved scope is limited to exact
+     repository-path, detector-type, and finding-digest tuples: 9 identities in
+     the existing external_kubernetes_secret_reference category, 3 in the
+     existing ci_test_contract_sentinel category across two new path/type pairs,
+     and 6 in the new source_contract_identifier category across five finite
+     path/type pairs and requiring both fixed semantic evidence markers. Each
+     record carries reviewed_on 2026-10-15 and expires_on 2027-01-10; the prior
+     225 records remain unchanged. No raw finding digests are repeated here.
+     Changed or unmatched identities remain fail-closed. This approval authorizes
+     no category-wide match, automatic identity approval, expiry bypass,
+     cross-category reclassification, other identity, baseline entry, inline
+     pragma, broad scanner exclusion, bypass, or context change. The finite
+     131-file migration baseline is untouched. The baseline remains at 319
+     identities, 78 required contexts, blocking CodeQL, and unchanged hooks.
+     Authorization does not establish integration, test, scan, or hosted-check
+     results; each remains an independent verification requirement.
+
+     On 2026-10-16 Europe/Istanbul (2026-10-15 UTC), the owner separately
+     approved exactly seven additional exact-match identities in the existing
+     `external_kubernetes_secret_reference` category, extending the approved
+     scope from 243 to 250 while preserving the prior 243 records. Each is an
+     exact path/type/finding-digest identity with `reviewed_on` 2026-10-15 and
+     `expires_on` 2027-01-10; no raw digests are repeated here. This decision
+     authorizes no other identity, category-wide match, reclassification, baseline
+     entry, inline pragma, exclusion, bypass, or context change. The 21 inline
+     detect-secrets pragma comments were removed; the pre-removal 4,408/483/0
+     scan is historical and superseded by the unfiltered 4,408/490/7 scan against
+     the then-current 243-record overlay. A private conditional 250-overlay scan
+     reported 0 unmatched against the candidate overlay. The owner-approved
+     250-record policy support is now integrated in source; final-source validation
+     and hosted checks remain required for each published source. The baseline remains 319 identities and all 78
+     required contexts, blocking CodeQL, and hooks remain unchanged. See the
+     [dated audit supplement](docs/audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16).
+
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).
    - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).

@@ -28,12 +28,12 @@ spec:
       # TD-05 (audit Wave 12): dedicated ServiceAccount.
       serviceAccountName: {{ .Release.Name }}-frontend
       automountServiceAccountToken: false
-      # The runtime image uses the non-root `node` account (UID/GID 1000).
+      # The runtime image's dedicated non-root app account uses UID/GID 10001.
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       containers:

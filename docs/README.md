@@ -52,8 +52,13 @@ handoffs are intentionally not part of the canonical index.
 - [Canonical audit index and retention policy](audits/INDEX.md)
 - [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
   open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
-  records current validation evidence, the owner-approved 225 exact disposition scope,
-  the completed direct RustSec and individual applicable local-hook checks, with hosted CI for the new source still pending.
+  records frozen dependency selection and source-bound local evidence. The
+  [2026-10-16 owner update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
+  records the owner-approved scope of 250 exact dispositions, preserving the
+  319-identity baseline and 78 required contexts. The [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
+  distinguishes the 243-policy unfiltered scan from the private conditional 250-overlay
+  result. Policy support is integrated in source; final-source validation and hosted
+  checks remain required for each published source. Git and PR #1306 determine published source and hosted status.
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 

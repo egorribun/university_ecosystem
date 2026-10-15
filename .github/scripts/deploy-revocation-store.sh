@@ -55,6 +55,7 @@ fi
 required=(
   DEPLOY_ENVIRONMENT K8S_NAMESPACE HELM_RELEASE_NAME
   REVOCATION_REDIS_IMAGE_DIGEST REVOCATION_REDIS_METRICS_IMAGE_DIGEST
+  REGISTRY GITHUB_REPOSITORY BACKEND_IMAGE_DIGEST
 )
 for name in "${required[@]}"; do
   if [[ -z "${!name:-}" ]]; then
@@ -69,8 +70,14 @@ if [[ ! "$HELM_RELEASE_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ || \
   exit 1
 fi
 if [[ ! "$REVOCATION_REDIS_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || \
-      ! "$REVOCATION_REDIS_METRICS_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-  echo "Revocation-store images must use immutable sha256 digests." >&2
+      ! "$REVOCATION_REDIS_METRICS_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || \
+      ! "$BACKEND_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "Revocation-store and backend images must use immutable sha256 digests." >&2
+  exit 1
+fi
+if [[ ! "$REGISTRY" =~ ^[a-z0-9.-]+(:[0-9]+)?$ || \
+      ! "$GITHUB_REPOSITORY" =~ ^[a-z0-9_.-]+/[a-z0-9_.-]+$ ]]; then
+  echo "Registry and repository must be valid image-reference components." >&2
   exit 1
 fi
 
@@ -211,6 +218,11 @@ common_args=(
   --set-string "redis.metrics.image.repository=oliver006/redis_exporter"
   --set-string "redis.metrics.image.digest=$REVOCATION_REDIS_METRICS_IMAGE_DIGEST"
   --set-string "redis.metrics.image.pullPolicy=Always"
+  --set-string "global.backendImageRepository=$REGISTRY/$GITHUB_REPOSITORY/backend"
+  --set-string "global.backendImageDigest=$BACKEND_IMAGE_DIGEST"
+  --set-string "redis.metrics.passwordFileInitImage.repository=$REGISTRY/$GITHUB_REPOSITORY/backend"
+  --set-string "redis.metrics.passwordFileInitImage.digest=$BACKEND_IMAGE_DIGEST"
+  --set-string "redis.metrics.passwordFileInitImage.pullPolicy=Always"
 )
 
 case "$mode" in

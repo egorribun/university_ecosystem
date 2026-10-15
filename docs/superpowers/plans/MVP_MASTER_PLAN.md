@@ -122,6 +122,19 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   reclassification are approved. Baseline 319, 78 required contexts, blocking CodeQL and hooks
   remain unchanged. Changed/unmatched identities fail closed; validator integration, tests, hosted
   checks and final-source validation remain separate gates.
+- Owner decision (2026-10-16 Europe/Istanbul; 2026-10-15 UTC): approved exactly
+  18 additional path/type/finding-digest identities and the reviewed validator support,
+  preserving all prior 225 records and bringing the approved scope at that decision to 243:
+  9 existing external Kubernetes references, 3 synthetic CI test values across two
+  new path/type pairs, and 6 source-contract identifiers across five finite pairs.
+  Every disposition requires its exact digest; the new source category requires
+  both fixed evidence markers. Each new record is reviewed_on 2026-10-15 and
+  expires_on 2027-01-10. No other identity, reclassification, baseline entry,
+  inline pragma, broad exclusion, bypass, hook change or context change is approved.
+  Baseline319, 78 required contexts, blocking CodeQL and the finite131 migration
+  exception are unchanged. Authorization and validation results are independent;
+  current-source tests, scans, ordinary hooks and hosted checks remain required.
+- Follow-up secret-scan owner decision (2026-10-16 Europe/Istanbul; 2026-10-15 UTC): the owner approved exactly seven additional identities in the existing `external_kubernetes_secret_reference` category, extending the owner-approved scope from 243 to 250 while preserving all prior records. The earlier 4,408/483/0 scan predates removal of 21 inline detect-secrets pragma comments and is historical; the post-removal unfiltered scan was 4,408 files / 490 findings / 7 unmatched against the then-current 243-record overlay. A root-controlled private conditional 250-overlay run reported 0 unmatched. The approved 250-record policy support is now integrated in source; canonical policy tests passed 250 tests in 36.16 seconds and Ruff check/format passed before this documentation update. Final-source validation and hosted checks remain required for each published source. Three Go projected-Secret symlink fixtures fail rather than skip on setup failure. The baseline remains 319, the 78 required contexts and blocking CodeQL remain unchanged, and the full MVP/platform audit remains paused. See [the audit update](../../audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16).
 - Уже готовые security, signing, SBOM/provenance и WASM parity шаги image producer
   сохраняются. Отложена дополнительная сертификация/продвижение в kind, а не
   удаление работающей защиты или публикация произвольного набора образов.
