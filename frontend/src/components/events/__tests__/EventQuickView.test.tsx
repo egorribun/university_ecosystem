@@ -35,15 +35,22 @@ const { reducedMotion, mediaQueryMock } = vi.hoisted(() => ({
   reducedMotion: vi.fn(() => false),
   mediaQueryMock: vi.fn(),
 }))
-const { useTranslationMock, translationMock, formatDateMock } = vi.hoisted(() => {
+const { useTranslationMock, translationMock, formatDateMock, language } = vi.hoisted(() => {
   const translationMock = vi.fn((key: string) => key)
+  const language = { current: "en" }
   return {
     useTranslationMock: vi.fn(() => ({
       t: translationMock,
-      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+      i18n: {
+        get language() {
+          return language.current
+        },
+        changeLanguage: () => Promise.resolve(),
+      },
     })),
     translationMock,
     formatDateMock: vi.fn((value: string) => `date:${value}`),
+    language,
   }
 })
 
@@ -75,6 +82,7 @@ const baseProps = {
 describe("EventQuickView", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    language.current = "en"
   })
 
   afterEach(() => {
@@ -248,5 +256,14 @@ describe("EventQuickView", () => {
     const calendar = container.querySelector("svg.lucide-calendar")
     expect(calendar?.parentElement?.textContent).toBe("")
     expect(screen.queryByText(`date:${baseProps.startsAt}`)).not.toBeInTheDocument()
+  })
+
+  it("formats the quick-view date with the Russian locale when selected", () => {
+    language.current = "ru"
+    formatDateMock.mockClear()
+
+    render(<EventQuickView {...baseProps} />)
+
+    expect(formatDateMock).toHaveBeenCalledWith(baseProps.startsAt, expect.any(Object), "ru-RU")
   })
 })

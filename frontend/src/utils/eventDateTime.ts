@@ -219,7 +219,7 @@ export function formatEventDateInput(
 }
 
 function resolveField(
-  value: string,
+  value: string | null | undefined,
   timeZone: string,
   original: string | null | undefined
 ): { instant: string; epochMilliseconds: number } | { error: EventDateFieldError } {
@@ -252,8 +252,8 @@ function resolveField(
  * instants that could not be safely reconstructed from wall time alone.
  */
 export function resolveCampusEventDateRange(
-  startsAt: string,
-  endsAt: string,
+  startsAt: string | null | undefined,
+  endsAt: string | null | undefined,
   timeZone: string | null,
   originals: OriginalEventTimes = {}
 ): EventDateRangeResolution {

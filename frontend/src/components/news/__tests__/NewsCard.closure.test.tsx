@@ -463,6 +463,68 @@ describe("NewsCard — state orchestration", () => {
     expect(mocks.viewRender.mock.calls.at(-1)?.[0].editData.title).toBe(baseProps.title)
   })
 
+  it("keeps a replacement source request active when an aborted request rejects late", async () => {
+    mocks.user = { role: "admin" }
+    let rejectFirst!: (reason: unknown) => void
+    let resolveSecond!: (value: { status: number; data: Record<string, unknown> }) => void
+    mocks.fetchNewsItem.mockReset()
+    mocks.fetchNewsItem
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve
+          })
+      )
+    const view = render(<NewsCard {...baseProps} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    await waitFor(() => expect(mocks.fetchNewsItem).toHaveBeenCalledTimes(1))
+    const firstOptions = mocks.fetchNewsItem.mock.calls[0]?.[1] as { signal: AbortSignal }
+
+    mocks.language = "ru"
+    view.rerender(<NewsCard {...baseProps} onChange={() => undefined} />)
+    expect(firstOptions.signal.aborted).toBe(true)
+    mocks.language = "en"
+    view.rerender(<NewsCard {...baseProps} onChange={() => undefined} />)
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    await waitFor(() => expect(mocks.fetchNewsItem).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      rejectFirst(new Error("superseded source request"))
+      await Promise.resolve()
+    })
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    expect(mocks.viewRender.mock.calls.at(-1)?.[0].loading).toBe(true)
+
+    await act(async () => {
+      resolveSecond({
+        status: 200,
+        data: {
+          id: "news-1",
+          title: "Источник",
+          content: "Исходный текст",
+          title_en: null,
+          content_en: null,
+          image_url: null,
+        },
+      })
+    })
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    expect(mocks.viewRender.mock.calls.at(-1)?.[0].editData).toEqual({
+      title: "Источник",
+      content: "Исходный текст",
+      title_en: "",
+      content_en: "",
+      image_url: "",
+    })
+  })
+
   it("does not open the English editor when the Russian source request fails", async () => {
     mocks.user = { role: "admin" }
     mocks.fetchNewsItem.mockRejectedValueOnce(new Error("source unavailable"))

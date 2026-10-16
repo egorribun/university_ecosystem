@@ -39,6 +39,32 @@ describe("fetchCampusTimezone", () => {
     await expect(fetchCampusTimezone()).resolves.toBeNull()
   })
 
+  it("uses the runtime backend origin during SSR and returns null for HTTP failures", async () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+    vi.stubEnv("BACKEND_ORIGIN", "https://backend.example/edge/")
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ campus_timezone: "Europe/Istanbul" }),
+      })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ campus_timezone: "UTC" }) })
+    vi.stubGlobal("fetch", fetchMock)
+
+    try {
+      await expect(fetchCampusTimezone()).resolves.toBe("Europe/Istanbul")
+      await expect(fetchCampusTimezone()).resolves.toBeNull()
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "https://backend.example/edge/api/v1/campus/config",
+        "https://backend.example/edge/api/v1/campus/config",
+      ])
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("aborts at the standard API deadline and stays unavailable on timeout", async () => {
     const timeoutController = new AbortController()
     const timeoutSignal = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal)

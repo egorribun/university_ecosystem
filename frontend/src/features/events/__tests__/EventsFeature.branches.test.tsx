@@ -41,8 +41,9 @@ const auth = vi.hoisted(() => ({
 }))
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: auth.user }) }))
 vi.mock("@/contexts/LanguageContext", () => ({ useLanguage: () => ({ language: "en" }) }))
+const campusTimezone = vi.hoisted(() => ({ current: "Europe/Istanbul" as string | null }))
 vi.mock("@/contexts/CampusTimezoneContext", () => ({
-  useCampusTimezone: () => "Europe/Istanbul",
+  useCampusTimezone: () => campusTimezone.current,
 }))
 const online = vi.hoisted(() => ({ value: true }))
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => online.value }))
@@ -203,6 +204,7 @@ function evt(over: Partial<Record<string, unknown>> = {}) {
 }
 
 beforeEach(() => {
+  campusTimezone.current = "Europe/Istanbul"
   search.params = {}
   navigateSpy.fn = vi.fn((..._a: unknown[]) => undefined)
   listQuery.events = []
@@ -632,5 +634,16 @@ describe("EventsFeature — list height hold across filter changes", () => {
     stableHeight.value = undefined
     render(<EventsFeature />)
     expect(screen.getByTestId("list").parentElement?.style.minHeight).toBe("")
+  })
+
+  it("clears supported date-filter results when campus timezone is unavailable", () => {
+    campusTimezone.current = null
+    search.params = { dr: "today" }
+    listQuery.events = [evt({ id: "unfiltered" })]
+
+    render(<EventsFeature />)
+
+    expect(screen.getByTestId("list-count")).toHaveTextContent("0")
+    expect(screen.getByTestId("events-count")).toHaveTextContent("0")
   })
 })

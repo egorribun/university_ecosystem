@@ -351,6 +351,20 @@ export const rememberToastId = (seenIds: Set<string>, id: string): boolean => {
   return true
 }
 
+/** @internal Stable callback factory for account-bound toast enqueues. */
+export function createToastEnqueueCallback(
+  seenIdsRef: { current: Set<string> },
+  append: (entry: { toast: ActiveToast; ownerId: string; ownerRevision: number }) => void
+): (toast: ActiveToast, ownerId: string, ownerRevision: number) => void {
+  return (toast, ownerId, ownerRevision) => {
+    const currentIdentity = getCurrentPushIdentitySnapshot()
+    if (currentIdentity.userId !== ownerId || currentIdentity.revision !== ownerRevision) return
+    const seenIds = seenIdsRef.current
+    if (!rememberToastId(seenIds, toast.id)) return
+    append({ toast, ownerId, ownerRevision })
+  }
+}
+
 export default function LivePushToasts() {
   const { t } = useTranslation(Array.of("notifications", "common"))
   const identitySnapshot = useSyncExternalStore(
@@ -371,13 +385,10 @@ export default function LivePushToasts() {
   // during render (which the React Compiler correctly rejects).  The callbacks
   // still close over the instance-owned refs/setters and are initialized once.
   const [enqueue] = useState<(toast: ActiveToast, ownerId: string, ownerRevision: number) => void>(
-    () => (toast: ActiveToast, ownerId: string, ownerRevision: number) => {
-      const currentIdentity = getCurrentPushIdentitySnapshot()
-      if (currentIdentity.userId !== ownerId || currentIdentity.revision !== ownerRevision) return
-      const seenIds = seenToastIdsRef.current
-      if (!rememberToastId(seenIds, toast.id)) return
-      setQueue((prev) => [...prev, { toast, ownerId, ownerRevision }])
-    }
+    () =>
+      createToastEnqueueCallback(seenToastIdsRef, (entry) => {
+        setQueue((prev) => [...prev, entry])
+      })
   )
 
   const [flushBufferedToasts] = useState<() => void>(() => () => {
@@ -387,7 +398,6 @@ export default function LivePushToasts() {
     // Restored messages keep the same account stamp as live bus deliveries.
     // This prevents a visibility flush from crossing an account transition.
     const ownerId = identity.userId
-    if (ownerId === null) return
     buffered.forEach((toast) => enqueue(toast, ownerId, identity.revision))
   })
 

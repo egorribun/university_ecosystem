@@ -13,6 +13,20 @@ type FakeServiceWorker = ServiceWorkerContainer & {
 const TEST_USER_A_ID = "push-bus-user-a"
 const TEST_USER_B_ID = "push-bus-user-b"
 
+const createUserState = (id: string): NonNullable<UserState> => ({
+  id,
+  email: `${id}@example.test`,
+  is_active: true,
+})
+
+const createRuntimeUserWithId = (id: unknown): NonNullable<UserState> => {
+  const user = createUserState("runtime-user")
+  Object.defineProperty(user, "id", { value: id })
+  return user
+}
+
+const createRuntimeNumericIdUser = (): NonNullable<UserState> => createRuntimeUserWithId(42)
+
 const createServiceWorker = (): FakeServiceWorker => {
   const listeners = new Set<ServiceWorkerListener>()
   const addEventListener = vi.fn((type: string, listener: EventListenerOrEventListenerObject) => {
@@ -49,12 +63,14 @@ const createServiceWorker = (): FakeServiceWorker => {
 describe("push message bus", () => {
   let bus: typeof import("../pushMessageBus")
   let auth: typeof import("@/stores/useAuthStore")
+  let sessionEpoch: typeof import("@/stores/sessionEpoch")
 
   beforeEach(async () => {
     vi.resetModules()
     auth = await import("@/stores/useAuthStore")
+    sessionEpoch = await import("@/stores/sessionEpoch")
     auth.useAuthStore.setState({
-      user: { id: TEST_USER_A_ID } as UserState,
+      user: createUserState(TEST_USER_A_ID),
       loading: false,
     })
     bus = await import("../pushMessageBus")
@@ -181,7 +197,7 @@ describe("push message bus", () => {
     worker.emit({ type: "PUSH_NOTIFICATION", id: "private-a" })
 
     auth.useAuthStore.setState({
-      user: { id: TEST_USER_B_ID } as UserState,
+      user: createUserState(TEST_USER_B_ID),
       loading: false,
     })
     expect(removeItem).toHaveBeenCalledWith(
@@ -218,7 +234,7 @@ describe("push message bus", () => {
     worker.emit({ type: "PUSH_NOTIFICATION", id: "same-account-refresh" })
 
     auth.useAuthStore.setState({
-      user: { id: TEST_USER_A_ID } as UserState,
+      user: createUserState(TEST_USER_A_ID),
       loading: true,
     })
 
@@ -249,7 +265,7 @@ describe("push message bus", () => {
     expect(subscriber).toHaveBeenCalledOnce()
     expect(subscriber.mock.calls[0]?.[1]).toBe(TEST_USER_A_ID)
 
-    auth.useAuthStore.setState({ user: { id: TEST_USER_B_ID } as UserState, loading: false })
+    auth.useAuthStore.setState({ user: createUserState(TEST_USER_B_ID), loading: false })
     worker.emit({ type: "PUSH_NOTIFICATION", id: "missing-recipient", recipientUserId: undefined })
     worker.emit({ type: "PUSH_NOTIFICATION", id: "unknown-recipient", recipientUserId: "unknown" })
     worker.emit({
@@ -280,14 +296,14 @@ describe("push message bus", () => {
     worker.emit({ type: "PUSH_NOTIFICATION", id: "pending-before-transition" })
 
     auth.useAuthStore.setState({
-      user: { id: TEST_USER_B_ID } as UserState,
+      user: createUserState(TEST_USER_B_ID),
       loading: true,
     })
     worker.emit({ type: "PUSH_NOTIFICATION", id: "unconfirmed-new-account" })
     auth.useAuthStore.setState({ user: null, loading: true })
     worker.emit({ type: "PUSH_NOTIFICATION", id: "unresolved" })
     for (const id of ["ssr-stub", "-1", "lhci-audit-user"]) {
-      auth.useAuthStore.setState({ user: { id } as UserState, loading: false })
+      auth.useAuthStore.setState({ user: createUserState(id), loading: false })
       worker.emit({ type: "PUSH_NOTIFICATION", id })
     }
 
@@ -295,5 +311,128 @@ describe("push message bus", () => {
     const unsubscribe = bus.subscribeToPushMessages(subscriber)
     expect(subscriber).not.toHaveBeenCalled()
     unsubscribe()
+  })
+
+  it("normalizes a runtime numeric account id before allowing push delivery", () => {
+    const numericUser = createRuntimeNumericIdUser()
+    auth.useAuthStore.setState({ user: numericUser, loading: false })
+    expect(bus.resolvePushUserId({ user: numericUser, loading: false }, null)).toBe("42")
+  })
+
+  it("rejects an unsupported runtime account id while auth is loading", () => {
+    const invalidUser = createRuntimeUserWithId({ malformed: true })
+
+    expect(bus.resolvePushUserId({ user: invalidUser, loading: true }, TEST_USER_A_ID)).toBeNull()
+  })
+
+  it("does not retain an account during loading after its browser session rotates", () => {
+    const generationKey = "ecosystem.session.generation.v1"
+    window.localStorage.setItem(
+      generationKey,
+      JSON.stringify({ nonce: "session-before", hash: null })
+    )
+    sessionEpoch.acceptBrowserSessionGeneration()
+    window.localStorage.setItem(
+      generationKey,
+      JSON.stringify({ nonce: "session-after", hash: null })
+    )
+
+    expect(
+      bus.resolvePushUserId(
+        { user: createUserState(TEST_USER_A_ID), loading: true },
+        TEST_USER_A_ID
+      )
+    ).toBeNull()
+  })
+
+  it("stops replaying a buffered batch after a subscriber changes account", () => {
+    const worker = createServiceWorker()
+    vi.stubGlobal("navigator", { serviceWorker: worker })
+    bus.ensurePushMessageBridge()
+    worker.emit({ type: "SYNC_COMPLETE", id: "before-transition-1" })
+    worker.emit({ type: "SYNC_COMPLETE", id: "before-transition-2" })
+
+    const delivered: string[] = []
+    const unsubscribe = bus.subscribeToPushMessages((event) => {
+      const data = event.data as { id?: string }
+      delivered.push(data.id ?? "missing")
+      if (data.id === "before-transition-1") {
+        auth.useAuthStore.setState({ user: createUserState(TEST_USER_B_ID), loading: false })
+      }
+    })
+
+    expect(delivered).toEqual(["before-transition-1"])
+    unsubscribe()
+  })
+
+  it("stops replaying a buffered batch after a synchronous A-to-B-to-A transition", () => {
+    const worker = createServiceWorker()
+    vi.stubGlobal("navigator", { serviceWorker: worker })
+    bus.ensurePushMessageBridge()
+    worker.emit({ type: "SYNC_COMPLETE", id: "before-round-trip-1" })
+    worker.emit({ type: "SYNC_COMPLETE", id: "before-round-trip-2" })
+
+    const delivered: string[] = []
+    const unsubscribe = bus.subscribeToPushMessages((event) => {
+      const data = event.data as { id?: string }
+      delivered.push(data.id ?? "missing")
+      if (data.id === "before-round-trip-1") {
+        auth.useAuthStore.setState({ user: createUserState(TEST_USER_B_ID), loading: false })
+        auth.useAuthStore.setState({ user: createUserState(TEST_USER_A_ID), loading: false })
+      }
+    })
+
+    expect(delivered).toEqual(["before-round-trip-1"])
+    unsubscribe()
+  })
+
+  it("handles storage generation events and ignores unrelated storage keys", () => {
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const unsubscribe = bus.subscribeToPushIdentity(vi.fn())
+    const storageRegistration = addEventListener.mock.calls.find(
+      ([type]) => String(type) === "storage"
+    ) as
+      | [
+          type: "storage",
+          listener: EventListenerOrEventListenerObject,
+          options?: boolean | AddEventListenerOptions,
+        ]
+      | undefined
+    const handler = storageRegistration?.[1]
+    expect(handler).toBeDefined()
+    if (typeof handler !== "function") {
+      throw new Error("storage listener was not registered as a function")
+    }
+
+    expect(() =>
+      handler(new StorageEvent("storage", { key: "unrelated-storage-key" }))
+    ).not.toThrow()
+    expect(() => handler(new StorageEvent("storage", { key: null }))).not.toThrow()
+    unsubscribe()
+  })
+
+  it("does not require a window to resolve the current identity", () => {
+    vi.stubGlobal("window", undefined)
+    expect(() => bus.getCurrentPushIdentitySnapshot()).not.toThrow()
+  })
+
+  it("skips account-buffer removal when an identity transition has no window", () => {
+    expect(bus.getCurrentPushUserId()).toBe(TEST_USER_A_ID)
+    vi.stubGlobal("window", undefined)
+
+    expect(() => auth.useAuthStore.setState({ user: null, loading: false })).not.toThrow()
+    expect(bus.getCurrentPushUserId()).toBeNull()
+  })
+
+  it("skips account-buffer removal when storage has no callable remove method", () => {
+    vi.stubGlobal("window", {
+      localStorage: { removeItem: null },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+    expect(bus.getCurrentPushUserId()).toBe(TEST_USER_A_ID)
+    expect(() =>
+      auth.useAuthStore.setState({ user: createUserState(TEST_USER_B_ID), loading: false })
+    ).not.toThrow()
   })
 })

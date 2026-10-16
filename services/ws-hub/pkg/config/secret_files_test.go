@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,4 +169,118 @@ func clearEnvForSecretFileTest(t *testing.T, name string) {
 			_ = os.Unsetenv(name)
 		}
 	})
+}
+
+func TestOpenSecretFilePortableReadsRegularFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "portable-credential")
+	const expected = "portable-file-test-data"
+	if err := os.WriteFile(path, []byte(expected), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := openSecretFilePortable(path)
+	if err != nil {
+		t.Fatalf("open portable file: %v", err)
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			t.Errorf("close portable file: %v", closeErr)
+		}
+	}()
+
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatalf("read portable file: %v", err)
+	}
+	if string(contents) != expected {
+		t.Fatalf("portable file contents = %q, want %q", contents, expected)
+	}
+}
+
+func TestOpenSecretFilePortablePreservesSymlinkAndParentTraversalSemantics(t *testing.T) {
+	root := t.TempDir()
+	targetDir := filepath.Join(root, "actual")
+	childDir := filepath.Join(targetDir, "child")
+	if err := os.MkdirAll(childDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	linkPath := filepath.Join(root, "link")
+	if err := os.Symlink(filepath.Join("actual", "child"), linkPath); err != nil {
+		t.Fatalf("create directory symlink: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "credential"), []byte("resolved-target"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "credential"), []byte("lexically-cleaned-target"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	path := linkPath + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "credential"
+	file, err := openSecretFilePortable(path)
+	if err != nil {
+		t.Fatalf("open symlink/parent path: %v", err)
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			t.Errorf("close symlink/parent path: %v", closeErr)
+		}
+	}()
+
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatalf("read symlink/parent path: %v", err)
+	}
+	if string(contents) != "resolved-target" {
+		t.Fatalf("symlink/parent path contents = %q, want filesystem-resolved target", contents)
+	}
+}
+
+func TestOpenSecretFilePortableRejectsMissingPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-credential")
+	file, err := openSecretFilePortable(path)
+	if err == nil {
+		if file != nil {
+			if closeErr := file.Close(); closeErr != nil {
+				t.Errorf("close unexpected portable file: %v", closeErr)
+			}
+		}
+		t.Fatal("opening a missing portable file unexpectedly succeeded")
+	}
+	if file != nil {
+		t.Fatalf("missing portable file returned a descriptor: %v", file)
+	}
+}
+
+func TestOpenSecretFileForReadUsesPlatformOpenerAtCallTime(t *testing.T) {
+	capturedOpen := openSecretFileForRead
+	original := openSecretFilePlatform
+	t.Cleanup(func() { openSecretFilePlatform = original })
+
+	openedPath := filepath.Join(t.TempDir(), "opened-secret")
+	if err := os.WriteFile(openedPath, []byte("synthetic-file-content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	openSecretFilePlatform = func(path string) (*os.File, error) {
+		called = true
+		if path != "synthetic-secret-path" {
+			t.Errorf("platform opener path = %q, want synthetic path", path)
+		}
+		return os.Open(openedPath)
+	}
+
+	file, err := capturedOpen("synthetic-secret-path")
+	if err != nil {
+		t.Fatalf("captured open callback: %v", err)
+	}
+	if file == nil {
+		t.Fatal("captured open callback returned no file")
+	}
+	if closeErr := file.Close(); closeErr != nil {
+		t.Errorf("close captured file: %v", closeErr)
+	}
+	if !called {
+		t.Fatal("captured open callback did not use the current platform opener")
+	}
 }

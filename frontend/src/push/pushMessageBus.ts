@@ -141,7 +141,12 @@ const detachBridge = () => {
   bridgeListener = null
 }
 
-const isPushMessage = (event: MessageEvent<unknown>): boolean => {
+type PushMessageData = {
+  type: "PUSH_NOTIFICATION" | "SYNC_COMPLETE"
+  recipientUserId?: unknown
+}
+
+const isPushMessage = (event: MessageEvent<unknown>): event is MessageEvent<PushMessageData> => {
   if (!event.data || typeof event.data !== "object") return false
   const type = (event.data as { type?: unknown }).type
   return type === "PUSH_NOTIFICATION" || type === "SYNC_COMPLETE"
@@ -163,16 +168,14 @@ const attachBridge = () => {
     if (!isPushMessage(event)) return
     const ownerId = getCurrentPushUserId()
     if (ownerId === null) return
-    if (event.data && typeof event.data === "object") {
-      const message = event.data as { type?: unknown; recipientUserId?: unknown }
-      if (message.type === "PUSH_NOTIFICATION") {
-        if (
-          typeof message.recipientUserId !== "string" ||
-          message.recipientUserId.length === 0 ||
-          message.recipientUserId !== ownerId
-        ) {
-          return
-        }
+    const message = event.data
+    if (message.type === "PUSH_NOTIFICATION") {
+      if (
+        typeof message.recipientUserId !== "string" ||
+        message.recipientUserId.length === 0 ||
+        message.recipientUserId !== ownerId
+      ) {
+        return
       }
     }
     if (subscribers.size === 0) {
@@ -196,11 +199,12 @@ export const ensurePushMessageBridge = (): void => {
 export const subscribeToPushMessages = (subscriber: PushMessageSubscriber): (() => void) => {
   attachBridge()
   subscribers.add(subscriber)
-  const ownerId = getCurrentPushUserId()
+  const identity = getCurrentPushIdentitySnapshot()
   const buffered = pendingMessages.splice(0)
-  if (ownerId !== null) {
+  if (identity.userId !== null) {
     for (const item of buffered) {
-      if (item.ownerId === ownerId) subscriber(item.event, item.ownerId)
+      if (getCurrentPushIdentitySnapshot().revision !== identity.revision) break
+      subscriber(item.event, item.ownerId)
     }
   }
   return () => {

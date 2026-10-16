@@ -395,6 +395,12 @@ and the finite 131-file migration exception remains unchanged. The policy record
 establish passing tests, final-source validation, or hosted checks; no release readiness
 is implied.
 
+## Owner-approved exact nine Go source-contract identifiers (2026-10-16)
+
+On 2026-10-16, the owner approved exactly nine additional exact-match `Secret Keyword` identities in the existing `source_contract_identifier` category, extending the approved scope from 252 to 261 and preserving all prior 252 records. The finite additions cover three function-binding/restoration patterns across the gateway, file-processor, and ws-hub Go configuration packages: portable opener selection, Unix opener selection, and test cleanup restoration. The exact path/type/finding-digest tuples are recorded in `quality/security-false-positive-dispositions.json`; raw digests are not repeated here. Each record has `reviewed_on` 2026-10-16 and `expires_on` 2027-01-10. See the [dated audit supplement](../audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
+
+This decision authorizes only those nine exact identities. It does not permit category-wide matching, automatic approval, baseline entries, inline pragmas, broad scanner exclusions, bypasses, reclassification, or context changes. The baseline remains at 319 identities, all 78 required contexts remain unchanged, CodeQL remains blocking, hooks remain unchanged, and the finite 131-file migration exception is untouched. These policy records do not establish current-source scan, final-source validation, or hosted-check results. No release readiness is implied.
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt

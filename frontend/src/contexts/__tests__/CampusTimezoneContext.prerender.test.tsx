@@ -71,6 +71,32 @@ describe("CampusTimezoneProvider prerender recovery", () => {
     )
   })
 
+  it("does not expose a prior loader zone while refreshing a newly unavailable value", async () => {
+    const pending = deferred<Response>()
+    const fetchMock = vi.fn().mockReturnValue(pending.promise)
+    vi.stubGlobal("fetch", fetchMock)
+    const view = render(
+      <CampusTimezoneProvider timeZone="Europe/Istanbul">
+        <CampusTimezoneProbe />
+      </CampusTimezoneProvider>
+    )
+    expect(screen.getByTestId("campus-timezone")).toHaveTextContent("Europe/Istanbul")
+
+    view.rerender(
+      <CampusTimezoneProvider timeZone={null}>
+        <CampusTimezoneProbe />
+      </CampusTimezoneProvider>
+    )
+    expect(screen.getByTestId("campus-timezone")).toHaveTextContent("unavailable")
+    expect(fetchMock).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      pending.resolve(response({ campus_timezone: "America/Los_Angeles" }))
+      await pending.promise
+    })
+    expect(screen.getByTestId("campus-timezone")).toHaveTextContent("America/Los_Angeles")
+  })
+
   it("does not refetch when the root loader already supplied the campus zone", () => {
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)

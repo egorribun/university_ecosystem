@@ -252,6 +252,21 @@ for the MVP release; the current plan is
      exception remain unchanged. See the [two-identity audit
      update](docs/audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
 
+     On 2026-10-16, the owner separately approved exactly nine additional exact-match
+     `Secret Keyword` identities in the existing `source_contract_identifier` category,
+     extending the approved scope from 252 to 261 and preserving the prior 252 records.
+     These finite function-binding/restoration identities cover portable opener selection,
+     Unix opener selection, and test cleanup restoration across the gateway, file-processor,
+     and ws-hub Go configuration packages. Exact path/type/finding-digest tuples are
+     recorded in `quality/security-false-positive-dispositions.json`; raw digests are
+     omitted. Each record has `reviewed_on` 2026-10-16 and expires on 2027-01-10.
+     This decision authorizes only those nine identities; no category-wide match,
+     automatic approval, baseline entry, inline pragma, broad exclusion, bypass,
+     reclassification, or context change is permitted. The 319-entry baseline, 78
+     required contexts, blocking CodeQL, hooks, and finite 131-file migration exception
+     remain unchanged. The policy records do not establish current-source validation or
+     hosted-check results.
+
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).
    - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).

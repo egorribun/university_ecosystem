@@ -48,6 +48,7 @@ import {
   EventDetailEditDialog,
   normalizeLocalizedEditValue,
 } from "@/components/events/EventDetailEditDialog"
+import * as eventDateTime from "@/utils/eventDateTime"
 import type { Event } from "@/types/Event"
 
 const baseEvent: Event = {
@@ -548,5 +549,35 @@ describe("EventDetailEditDialog", () => {
       createObjectUrl.mockRestore()
       revokeObjectUrl.mockRestore()
     }
+  })
+
+  it("revalidates the campus timezone inside the save handler", () => {
+    const onClose = vi.fn()
+    const onSuccess = vi.fn()
+    const onError = vi.fn()
+    renderDialog({ ...baseProps, onClose, onSuccess, onError })
+
+    const saveButton = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(saveButton).toBeEnabled()
+    const unavailableTimezone = eventDateTime.resolveCampusEventDateRange(
+      "2026-06-15T10:00",
+      "2026-06-15T12:00",
+      null,
+      { startsAt: baseEvent.starts_at, endsAt: baseEvent.ends_at }
+    )
+    const resolveRange = vi
+      .spyOn(eventDateTime, "resolveCampusEventDateRange")
+      .mockReturnValueOnce(unavailableTimezone)
+    try {
+      fireEvent.click(saveButton)
+      expect(resolveRange).toHaveBeenCalledTimes(1)
+    } finally {
+      resolveRange.mockRestore()
+    }
+
+    expect(mocks.patch).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

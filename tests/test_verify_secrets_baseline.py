@@ -679,45 +679,117 @@ def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
 
 def test_source_contract_identifier_category_is_finite_and_evidence_bound() -> None:
     category = "source_contract_identifier"
-    allowed = verifier._FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES[category]
-    assert len(allowed) == 5
+    assert len(verifier._C6_CODE_FRAGMENT_IDENTITIES) == 9
+    assert len(verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES) == 15
     evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
+    paths = {path for path, _, _ in verifier._C6_CODE_FRAGMENT_IDENTITIES}
+    assert paths == {
+        "services/file-processor/internal/config/secret_files_test.go",
+        "services/file-processor/internal/config/secret_open_portable.go",
+        "services/file-processor/internal/config/secret_open_unix.go",
+        "services/gateway/internal/config/secret_files_test.go",
+        "services/gateway/internal/config/secret_open_portable.go",
+        "services/gateway/internal/config/secret_open_unix.go",
+        "services/ws-hub/pkg/config/secret_files_test.go",
+        "services/ws-hub/pkg/config/secret_open_portable.go",
+        "services/ws-hub/pkg/config/secret_open_unix.go",
+    }
 
-    for path, finding_type in allowed:
-        record = _reviewed_disposition(
-            path=path,
-            finding_type=finding_type,
-            category=category,
-        )
+    for path, finding_type, digest_bytes in sorted(
+        verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
+    ):
+        record = _reviewed_exact_disposition(path, finding_type, digest_bytes, category)
         record["evidence"] = evidence
         assert verifier.validate_false_positive_dispositions(
             _disposition_document(record),
-            today=verifier.date(2026, 10, 15),
-        )
+            today=verifier.date(2026, 10, 16),
+        ) == {
+            verifier.FindingIdentity(path, finding_type, bytes(digest_bytes).hex(), 1)
+        }
 
-    path, finding_type = sorted(allowed)[0]
-    changed_path = _reviewed_disposition(
-        path=path + ".changed",
-        finding_type=finding_type,
-        category=category,
-    )
-    changed_path["evidence"] = evidence
-    with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
-            _disposition_document(changed_path),
-            today=verifier.date(2026, 10, 15),
-        )
 
-    missing_evidence = _reviewed_disposition(
-        path=path,
-        finding_type=finding_type,
-        category=category,
+def test_c6_source_contract_records_require_explicit_approval() -> None:
+    repository = Path(__file__).resolve().parents[1]
+    assert Path(verifier.__file__).resolve() == (
+        repository / "scripts/verify_secrets_baseline.py"
     )
-    with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
-            _disposition_document(missing_evidence),
-            today=verifier.date(2026, 10, 15),
+    policy = json.loads(
+        (repository / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
         )
+    )
+    records = [
+        record
+        for record in policy["records"]
+        if record["category"] == "source_contract_identifier"
+        and record["reviewed_on"] == "2026-10-16"
+    ]
+    identities = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in records
+    }
+    assert len(records) == 9
+    assert identities == verifier._C6_CODE_FRAGMENT_IDENTITIES
+
+    for record in records:
+        assert record["owner"] == "egorribun"
+        assert record["expires_on"] == "2027-01-10"
+        assert "function-symbol hook" in record["evidence"]
+        pending = {**record, "approval_status": "pending"}
+        with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(pending),
+                today=verifier.date(2026, 10, 16),
+            )
+        approved = {**record, "approval_status": "approved"}
+        identity = approved["identity"]
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(approved),
+            today=verifier.date(2026, 10, 16),
+        ) == {
+            verifier.FindingIdentity(
+                identity["path"],
+                identity["type"],
+                bytes(identity["hashed_secret_bytes"]).hex(),
+                1,
+            )
+        }
+
+
+def test_c6_source_contract_records_reject_mutated_identity_or_category() -> None:
+    category = "source_contract_identifier"
+    evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
+    for path, finding_type, digest_bytes in sorted(
+        verifier._C6_CODE_FRAGMENT_IDENTITIES
+    ):
+        record = _reviewed_exact_disposition(path, finding_type, digest_bytes, category)
+        record["evidence"] = evidence
+        changes = (
+            {"identity": {**record["identity"], "path": path + ".changed"}},
+            {"identity": {**record["identity"], "type": "Basic Auth Credentials"}},
+            {
+                "identity": {
+                    **record["identity"],
+                    "hashed_secret_bytes": [
+                        (digest_bytes[0] + 1) % 256,
+                        *digest_bytes[1:],
+                    ],
+                }
+            },
+            {"category": "public_code_fragment"},
+            {"category": "ci_test_contract_sentinel"},
+        )
+        for change in changes:
+            changed = {**record, **change}
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed),
+                    today=verifier.date(2026, 10, 16),
+                )
 
 
 @pytest.mark.parametrize(

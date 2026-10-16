@@ -8,9 +8,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// openSecretFile opens regular files without blocking if the path changes to a
+// init selects the strict Unix opener while keeping openSecretFile itself a
+// stable wrapper for callbacks captured during package variable initialization.
+func init() {
+	openSecretFilePlatform = openSecretFileUnix
+}
+
+// openSecretFileUnix opens regular files without blocking if the path changes to a
 // FIFO after readSecretFile's initial regular-file check.
-func openSecretFile(path string) (*os.File, error) {
+func openSecretFileUnix(path string) (*os.File, error) {
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, err

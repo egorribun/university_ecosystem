@@ -1,5 +1,15 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
+
+vi.mock("@/utils/eventDateTime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/eventDateTime")>()
+  return {
+    ...actual,
+    resolveCampusEventDateRange: vi.fn(actual.resolveCampusEventDateRange),
+  }
+})
+
+import * as eventDateTime from "@/utils/eventDateTime"
 import { useEventCardLogic } from "../useEventCardLogic"
 
 const { language } = vi.hoisted(() => ({ language: { current: "ru" } }))
@@ -505,5 +515,59 @@ describe("useEventCardLogic (branches)", () => {
       result.current.onCardClick({ target: plainTarget } as unknown as React.MouseEvent)
     })
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it("rejects nullable date drafts with a start-field message", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    act(() => {
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: null,
+        ends_at: null,
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.snackbar).toBe("events:form.errors.startRequired")
+  })
+
+  it("reports a missing end date when the start value remains valid", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    act(() => {
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: "2026-12-01T10:00",
+        ends_at: null,
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.snackbar).toBe("events:form.errors.endRequired")
+  })
+
+  it("fails closed with a generic message if date resolution returns no field error", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    vi.mocked(eventDateTime.resolveCampusEventDateRange).mockReturnValueOnce({
+      startsAt: null,
+      endsAt: null,
+      startError: null,
+      endError: null,
+      valid: false,
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.snackbar).toBe("events:form.errors.invalidDateTime")
   })
 })

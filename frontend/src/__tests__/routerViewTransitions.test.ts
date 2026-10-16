@@ -261,8 +261,8 @@ describe("router-owned native view transitions", () => {
 
   it("runs the update safely in a server runtime without a document", async () => {
     const { start } = nativeTransitions()
-    const router = getRouter()
     vi.stubGlobal("document", undefined)
+    const router = getRouter()
     const update = vi.fn(async () => undefined)
     await router.startViewTransition(update)
     expect(start).not.toHaveBeenCalled()

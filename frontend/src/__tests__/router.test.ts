@@ -44,6 +44,44 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 },
     browserQueryClient.clear()
   })
 
+  it("uses the hydrated CSP nonce for client-created routers", () => {
+    vi.stubEnv("SSR", false)
+    const nonceMeta = document.createElement("meta")
+    nonceMeta.setAttribute("property", "csp-nonce")
+    nonceMeta.setAttribute("content", "request-nonce")
+    document.head.append(nonceMeta)
+
+    try {
+      expect(getRouter().options.ssr).toEqual({ nonce: "request-nonce" })
+    } finally {
+      nonceMeta.remove()
+    }
+  })
+
+  it("keeps the module-level server router request-independent", async () => {
+    vi.stubEnv("SSR", true)
+    const globals = globalThis as typeof globalThis & {
+      __ssrNonceGetter__?: () => string | undefined
+    }
+    const previousNonceGetter = globals.__ssrNonceGetter__
+    const nonceGetter = vi.fn(() => "request-scoped-nonce")
+    globals.__ssrNonceGetter__ = nonceGetter
+
+    try {
+      vi.resetModules()
+      const freshRouterModule = await import("../router")
+      expect(nonceGetter).not.toHaveBeenCalled()
+      expect(freshRouterModule.router.options.ssr).toBeUndefined()
+      expect(freshRouterModule.getRouter().options.ssr).toEqual({
+        nonce: "request-scoped-nonce",
+      })
+      expect(nonceGetter).toHaveBeenCalledOnce()
+    } finally {
+      globals.__ssrNonceGetter__ = previousNonceGetter
+      vi.resetModules()
+    }
+  })
+
   it("falls back to DEFAULT_AUTH (loading:false, isAuth:false) when getter is undefined", () => {
     globalThis.__ssrAuthGetter__ = undefined
     const router = getRouter()

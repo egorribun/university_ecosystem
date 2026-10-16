@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
+  eventDateErrorTranslationKey,
   formatEventDateInput,
   formatInstantForCampusInput,
   resolveCampusEventDateRange,
@@ -106,5 +107,71 @@ describe("campus event wall-time conversion", () => {
     expect(resolveCampusWallTime("2026-01-15T10:00", "Not/AZone")).toEqual({
       status: "invalid",
     })
+  })
+
+  it("maps invalid event dates to a user-facing translation key", () => {
+    expect(eventDateErrorTranslationKey("invalid", "start")).toBe(
+      "events:form.errors.invalidDateTime"
+    )
+  })
+
+  it("formats Date instances and fails closed for unsupported instant inputs", () => {
+    expect(formatInstantForCampusInput("2026-06-15T10:00", "America/New_York")).toBe("")
+    expect(
+      formatInstantForCampusInput(new Date("2026-06-15T14:00:00.000Z"), "America/New_York")
+    ).toBe("2026-06-15T10:00")
+    expect(formatInstantForCampusInput("2026-01-15T99:00:00Z", "America/New_York")).toBe("")
+    expect(formatInstantForCampusInput("2026-06-15T14:00:00Z", "Not/AZone")).toBe("")
+    expect(formatEventDateInput("2026-02-30T10:00", "America/New_York")).toBe("")
+    expect(
+      resolveCampusEventDateRange("2026-06-15T10:00", "2026-06-15T11:00", "Not/AZone").startError
+    ).toBe("timezoneUnavailable")
+  })
+
+  it("treats nullable and empty draft fields as the same required inputs", () => {
+    const nullable = resolveCampusEventDateRange(null, undefined, "America/New_York")
+    const empty = resolveCampusEventDateRange("", "", "America/New_York")
+
+    expect(nullable).toEqual(empty)
+    expect(nullable).toMatchObject({
+      startError: "required",
+      endError: "required",
+      valid: false,
+    })
+  })
+
+  it("re-resolves an unchanged wall-time original and rejects malformed explicit instants", () => {
+    const changed = resolveCampusEventDateRange(
+      "2026-06-15T11:00",
+      "2026-06-15T12:00",
+      "America/New_York",
+      { startsAt: "2026-06-15T10:00", endsAt: "2026-06-15T13:00" }
+    )
+    expect(changed).toMatchObject({
+      startsAt: "2026-06-15T15:00:00.000Z",
+      endsAt: "2026-06-15T16:00:00.000Z",
+      valid: true,
+    })
+
+    const invalid = resolveCampusEventDateRange(
+      "2026-01-15T99:00:00Z",
+      "2026-01-15T12:00",
+      "America/New_York"
+    )
+    expect(invalid.startError).toBe("invalid")
+    expect(invalid.valid).toBe(false)
+  })
+
+  it("ignores malformed formatter parts instead of accepting an invalid offset", () => {
+    const formatToParts = vi
+      .spyOn(Intl.DateTimeFormat.prototype, "formatToParts")
+      .mockReturnValue([])
+    try {
+      expect(resolveCampusWallTime("2026-01-15T10:00", "UTC")).toEqual({
+        status: "nonexistent",
+      })
+    } finally {
+      formatToParts.mockRestore()
+    }
   })
 })

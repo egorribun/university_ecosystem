@@ -42,4 +42,16 @@ describe("campus timezone calendar behavior", () => {
     expect(getCampusDateRangeKeys("today", springForwardDay, null)).toBeNull()
     expect(shiftCampusDateKey("2026-03-08", 1)).toBe("2026-03-09")
   })
+
+  it("starts a Sunday campus week on the preceding Monday", () => {
+    expect(
+      getCampusDateRangeKeys("week", new Date("2026-10-11T12:00:00.000Z"), "Europe/Istanbul")
+    ).toEqual(["2026-10-05", "2026-10-12"])
+  })
+
+  it("starts a non-Sunday campus week on the preceding Monday", () => {
+    expect(
+      getCampusDateRangeKeys("week", new Date("2026-10-15T12:00:00.000Z"), "Europe/Istanbul")
+    ).toEqual(["2026-10-12", "2026-10-19"])
+  })
 })

@@ -21,7 +21,7 @@
   tests/test_mfa_helm_contract.py. The exact path/type/finding-digest tuples are
   recorded in quality/security-false-positive-dispositions.json; raw digests are
   omitted. Each has reviewed_on 2026-10-16 and expires_on 2027-01-10. The prior 250
-  records remain unchanged, bringing the owner-approved scope to 252. The policy records
+  records remain unchanged, bringing the owner-approved scope to 252. The owner later approved exactly nine additional identities in the existing `source_contract_identifier` category, bringing scope to 261; see the [nine-identity audit update](../../audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16). The policy records
   do not establish passing tests, final-source validation, or hosted checks; see [the
   audit
   update](../../audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
@@ -30,6 +30,7 @@
 ## Источник и hosted CI
 
 - Local source-bound receipts do not establish the current published SHA or hosted result; Git and [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) determine that state. Hosted and final-source checks remain release prerequisites.
+- Dependency follow-up on `d1580b2e`: Trivy passed in [matrix run 38848992718](https://github.com/egorribun/university_ecosystem/actions/runs/38848992718); separate [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/38848992703) and [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/38848992666) runs also passed on that source. The matrix run failed coverage normalization; its final Tier 0 validator did not run. The local follow-up passed 9,012 frontend tests across 742 files, with all 569 policy sources present in both JSON and LCOV and exactly 100% statements, branches, functions, and lines. Linux Go 1.26.9 race tests and GolangCI-Lint 2.14.0 passed for all three services, with no uncovered blocks, including the portable Secret openers. Final-source validation, ordinary hooks, and fresh hosted checks are still required for publication; broader MVP and audit work remain paused.
 
 ### HISTORICAL retained MVP checkpoint (not current dependency CI)
 
@@ -54,14 +55,15 @@
 - Core остановлен штатным owner-checked `stop`: все 23 container IDs и 6 volumes сохранены, работающих контейнеров этого Core — 0. Core C1, C21, 532 и failed Core 81, их state/backups и volumes сохранены.
 - Для устранения исчерпания Docker subnet pool удалены только 23 проверенных остановленных контейнера и 3 сети устаревшего source `7167b218`. Все его 6 volumes и state bytes, остальные container/network IDs и все volume identities сохранены. Global prune не применялся.
 - Последний записанный ресурсный checkpoint: три точно идентифицированных старых процесса этой работы завершены по PID/birth/command hash (superseded validation shell/child и зацикленная одноразовая проверка пути); runtime guards завершились без оставшихся recorded owned processes.
-- Действуют 252 owner-approved exact secret dispositions: прежние 250 сохранены без
-  изменений плюс ровно 2 Secret Keyword public Kubernetes object-reference identities at
-  security/trivy-university-values.yaml and tests/test_mfa_helm_contract.py, одобренных
-  2026-10-16; baseline — 319 identities, 78 required contexts, blocking CodeQL и hooks
-  не менялись. Сканирование после этого документа и hosted checks остаются
-  обязательными. Finite131 unchanged: только неизменённые migration blobs из base
-  `ac74e915` до 2026-11-13; touched/new/unmatched migrations и весь прочий Tier 0
-  сохраняют 100%. Новых migration exceptions нет.
+- Действуют 261 owner-approved exact secret disposition: прежние 252 сохранены без
+  изменений плюс ровно 9 Secret Keyword function-binding/restoration identities в
+  existing `source_contract_identifier` category across gateway, file-processor, and
+  ws-hub Go configuration packages; approved on 2026-10-16 and expiring 2027-01-10.
+  Exact path/type/finding-digest tuples are in the policy JSON; raw digests are omitted. See the [audit update](../../audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
+  Baseline — 319 identities, 78 required contexts, blocking CodeQL и hooks не менялись.
+  Current-source validation and hosted checks remain required. Finite131 unchanged:
+  только неизменённые migration blobs из base `ac74e915` до 2026-11-13; touched/new/
+  unmatched migrations и весь прочий Tier 0 сохраняют 100%. Новых migration exceptions нет.
 - Admission RAM ≤75% / free ≥8 GiB, stop ≥85% / free <4 GiB. Linux screenshots: утверждённое ограниченное исключение ≤80% / ≥6 GiB, cap 1 GiB / 2 CPU; Lighthouse — 75% / 8 GiB, cap 2 GiB / 2 CPU. Чужие процессы, env, volumes, Git history и private rescue bundle сохраняются.
 
 ## Приёмка MVP после аудита

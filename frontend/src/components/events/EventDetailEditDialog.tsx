@@ -69,12 +69,10 @@ export function EventDetailEditDialog({
   const [imageLoading, setImageLoading] = useState(false)
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const dateRange = resolveCampusEventDateRange(
-    draft.starts_at ?? "",
-    draft.ends_at ?? "",
-    campusTimezone,
-    { startsAt: event.starts_at, endsAt: event.ends_at }
-  )
+  const dateRange = resolveCampusEventDateRange(draft.starts_at, draft.ends_at, campusTimezone, {
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+  })
 
   // Create/revoke ObjectURL preview when user picks a new image
   useEffect(() => {
@@ -87,12 +85,10 @@ export function EventDetailEditDialog({
   }, [newImage])
 
   const handleSave = useCallback(async () => {
-    const dateRange = resolveCampusEventDateRange(
-      draft.starts_at ?? "",
-      draft.ends_at ?? "",
-      campusTimezone,
-      { startsAt: event.starts_at, endsAt: event.ends_at }
-    )
+    const dateRange = resolveCampusEventDateRange(draft.starts_at, draft.ends_at, campusTimezone, {
+      startsAt: event.starts_at,
+      endsAt: event.ends_at,
+    })
     if (!dateRange.valid || !dateRange.startsAt || !dateRange.endsAt) return
 
     setLoading(true)

@@ -93,30 +93,6 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
             ),
         }
     ),
-    "source_contract_identifier": frozenset(
-        {
-            (
-                "charts/university-ecosystem/templates/backend-deployment.yaml",
-                "Secret Keyword",
-            ),
-            (
-                "services/file-processor/internal/config/secret_files.go",
-                "Secret Keyword",
-            ),
-            (
-                "services/file-processor/internal/config/secret_files_test.go",
-                "Secret Keyword",
-            ),
-            (
-                "services/ws-hub/pkg/config/coverage_fail_closed_test.go",
-                "Secret Keyword",
-            ),
-            (
-                "services/ws-hub/pkg/config/secret_files_close_test.go",
-                "Secret Keyword",
-            ),
-        }
-    ),
     "public_package_integrity_metadata": frozenset(
         {
             (
@@ -191,7 +167,7 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
     ),
 }
 _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
-    {"external_kubernetes_secret_reference"}
+    {"external_kubernetes_secret_reference", "source_contract_identifier"}
 )
 _FALSE_POSITIVE_CATEGORIES = (
     _FALSE_POSITIVE_HEX_CATEGORIES
@@ -643,8 +619,139 @@ _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES = frozenset(
     }
 )
 
+_C6_CODE_FRAGMENT_IDENTITIES = frozenset(
+    {
+        (
+            "services/file-processor/internal/config/secret_files_test.go",
+            "Secret Keyword",
+            (
+                *(131, 100, 141, 215, 225, 114, 137, 18, 24, 198),
+                *(68, 217, 118, 34, 134, 248, 239, 30, 232, 54),
+            ),
+        ),
+        (
+            "services/file-processor/internal/config/secret_open_portable.go",
+            "Secret Keyword",
+            (
+                *(41, 227, 142, 152, 109, 115, 112, 221, 165, 52),
+                *(197, 157, 192, 180, 13, 154, 187, 19, 33, 128),
+            ),
+        ),
+        (
+            "services/file-processor/internal/config/secret_open_unix.go",
+            "Secret Keyword",
+            (
+                *(208, 64, 95, 145, 172, 71, 37, 69, 44, 96),
+                *(175, 238, 205, 43, 187, 88, 238, 101, 164, 79),
+            ),
+        ),
+        (
+            "services/gateway/internal/config/secret_files_test.go",
+            "Secret Keyword",
+            (
+                *(131, 100, 141, 215, 225, 114, 137, 18, 24, 198),
+                *(68, 217, 118, 34, 134, 248, 239, 30, 232, 54),
+            ),
+        ),
+        (
+            "services/gateway/internal/config/secret_open_portable.go",
+            "Secret Keyword",
+            (
+                *(41, 227, 142, 152, 109, 115, 112, 221, 165, 52),
+                *(197, 157, 192, 180, 13, 154, 187, 19, 33, 128),
+            ),
+        ),
+        (
+            "services/gateway/internal/config/secret_open_unix.go",
+            "Secret Keyword",
+            (
+                *(208, 64, 95, 145, 172, 71, 37, 69, 44, 96),
+                *(175, 238, 205, 43, 187, 88, 238, 101, 164, 79),
+            ),
+        ),
+        (
+            "services/ws-hub/pkg/config/secret_files_test.go",
+            "Secret Keyword",
+            (
+                *(131, 100, 141, 215, 225, 114, 137, 18, 24, 198),
+                *(68, 217, 118, 34, 134, 248, 239, 30, 232, 54),
+            ),
+        ),
+        (
+            "services/ws-hub/pkg/config/secret_open_portable.go",
+            "Secret Keyword",
+            (
+                *(41, 227, 142, 152, 109, 115, 112, 221, 165, 52),
+                *(197, 157, 192, 180, 13, 154, 187, 19, 33, 128),
+            ),
+        ),
+        (
+            "services/ws-hub/pkg/config/secret_open_unix.go",
+            "Secret Keyword",
+            (
+                *(208, 64, 95, 145, 172, 71, 37, 69, 44, 96),
+                *(175, 238, 205, 43, 187, 88, 238, 101, 164, 79),
+            ),
+        ),
+    }
+)
+_SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
+    {
+        (
+            "charts/university-ecosystem/templates/backend-deployment.yaml",
+            "Secret Keyword",
+            (
+                *(30, 194, 182, 128, 159, 103, 156, 203, 183, 26),
+                *(23, 40, 90, 62, 43, 252, 176, 15, 18, 186),
+            ),
+        ),
+        (
+            "charts/university-ecosystem/templates/backend-deployment.yaml",
+            "Secret Keyword",
+            (
+                *(161, 100, 27, 75, 156, 55, 15, 154, 164, 170),
+                *(53, 172, 62, 240, 50, 199, 46, 203, 197, 40),
+            ),
+        ),
+        (
+            "services/file-processor/internal/config/secret_files.go",
+            "Secret Keyword",
+            (
+                *(40, 248, 41, 221, 11, 70, 108, 16, 156, 35),
+                *(203, 246, 53, 249, 173, 170, 93, 83, 33, 10),
+            ),
+        ),
+        (
+            "services/file-processor/internal/config/secret_files_test.go",
+            "Secret Keyword",
+            (
+                *(108, 70, 216, 212, 158, 167, 6, 198, 215, 191),
+                *(27, 58, 194, 136, 17, 163, 55, 62, 155, 132),
+            ),
+        ),
+        (
+            "services/ws-hub/pkg/config/coverage_fail_closed_test.go",
+            "Secret Keyword",
+            (
+                *(127, 111, 104, 190, 234, 156, 19, 213, 38, 190),
+                *(1, 35, 147, 42, 52, 191, 220, 9, 48, 66),
+            ),
+        ),
+        (
+            "services/ws-hub/pkg/config/secret_files_close_test.go",
+            "Secret Keyword",
+            (
+                *(127, 111, 104, 190, 234, 156, 19, 213, 38, 190),
+                *(1, 35, 147, 42, 52, 191, 220, 9, 48, 66),
+            ),
+        ),
+        *_C6_CODE_FRAGMENT_IDENTITIES,
+    }
+)
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
+    "source_contract_identifier": _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES,
 }
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
@@ -1133,6 +1240,18 @@ def validate_false_positive_dispositions(
         category = record.get("category")
         if not isinstance(category, str) or category not in _FALSE_POSITIVE_CATEGORIES:
             raise BaselineArtifactError(f"{artifact}: category is invalid")
+        exact_source_identity = (
+            path,
+            finding_type,
+            tuple(raw_digest_bytes),
+        )
+        if (
+            exact_source_identity in _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
+            and category != "source_contract_identifier"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: exact source-contract identity changed category"
+            )
         if category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
             if category == "independent_contract_fingerprint":

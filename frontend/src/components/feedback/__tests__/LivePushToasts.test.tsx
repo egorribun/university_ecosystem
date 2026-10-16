@@ -1,8 +1,10 @@
 import { act, render, screen, fireEvent } from "@testing-library/react"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { UserState } from "@/types/Auth"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
+import { getCurrentPushIdentitySnapshot } from "@/push/pushMessageBus"
 
 type CapturedMotionProps = Record<string, unknown> & { children?: unknown }
 
@@ -80,6 +82,7 @@ import LivePushToasts, {
   shouldFlushBufferedToasts,
   shouldRenderToast,
   clearCloseTimer,
+  createToastEnqueueCallback,
   getToastProgressTransition,
   toActiveToast,
   writeBuffer,
@@ -201,6 +204,44 @@ describe("LivePushToasts", () => {
     expect(getToastWindowFeatures(true)).toBeUndefined()
     expect(getToastWindowFeatures(false)).toBe("noopener,noreferrer")
     expect(getToastStorage()).toBe(window.localStorage)
+  })
+
+  it("rejects enqueue callbacks stamped with an earlier auth revision", () => {
+    const previousIdentity = getCurrentPushIdentitySnapshot()
+    expect(previousIdentity.userId).toBe(TEST_USER_A_ID)
+
+    const seenIds = new Set<string>()
+    const appended: Array<{ toast: ActiveToast; ownerId: string; ownerRevision: number }> = []
+    const enqueue = createToastEnqueueCallback({ current: seenIds }, (entry) => {
+      appended.push(entry)
+    })
+
+    act(() => {
+      useAuthStore.setState({ user: null, loading: false })
+      useAuthStore.setState({
+        user: {
+          id: TEST_USER_A_ID,
+          email: "toast-user-a@example.test",
+          is_active: true,
+        },
+        loading: false,
+      })
+    })
+
+    const currentIdentity = getCurrentPushIdentitySnapshot()
+    expect(currentIdentity.userId).toBe(TEST_USER_A_ID)
+    expect(currentIdentity.revision).not.toBe(previousIdentity.revision)
+
+    const toast: ActiveToast = { id: "stale-revision", title: "Current session", body: "Toast" }
+    enqueue(toast, TEST_USER_A_ID, previousIdentity.revision)
+    expect(seenIds.has(toast.id)).toBe(false)
+    expect(appended).toEqual([])
+
+    enqueue(toast, TEST_USER_A_ID, currentIdentity.revision)
+    expect(seenIds.has(toast.id)).toBe(true)
+    expect(appended).toEqual([
+      { toast, ownerId: TEST_USER_A_ID, ownerRevision: currentIdentity.revision },
+    ])
   })
 
   it("ignores an action callback after the active toast has been cleared", () => {
@@ -370,6 +411,7 @@ describe("LivePushToasts", () => {
 
     try {
       expect(getToastStorage()).toBeNull()
+      render(<LivePushToasts />)
     } finally {
       if (descriptor) Object.defineProperty(window, "localStorage", descriptor)
       else delete (window as unknown as { localStorage?: Storage }).localStorage
@@ -380,18 +422,54 @@ describe("LivePushToasts", () => {
     const storage = window.localStorage
     const getDescriptor = Object.getOwnPropertyDescriptor(storage, "getItem")
     const setDescriptor = Object.getOwnPropertyDescriptor(storage, "setItem")
+    const removeDescriptor = Object.getOwnPropertyDescriptor(storage, "removeItem")
     Object.defineProperty(storage, "getItem", { configurable: true, value: null })
     Object.defineProperty(storage, "setItem", { configurable: true, value: null })
+    Object.defineProperty(storage, "removeItem", { configurable: true, value: null })
     try {
       expect(readBuffer()).toEqual([])
       expect(() =>
         writeBuffer([{ id: "non-callable", title: "Safe", body: "Storage" }])
       ).not.toThrow()
+      expect(() => render(<LivePushToasts />)).not.toThrow()
     } finally {
       if (getDescriptor) Object.defineProperty(storage, "getItem", getDescriptor)
       else Reflect.deleteProperty(storage, "getItem")
       if (setDescriptor) Object.defineProperty(storage, "setItem", setDescriptor)
       else Reflect.deleteProperty(storage, "setItem")
+      if (removeDescriptor) Object.defineProperty(storage, "removeItem", removeDescriptor)
+      else Reflect.deleteProperty(storage, "removeItem")
+    }
+  })
+
+  it("leaves the legacy buffer untouched when storage removal is unavailable", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
+    const backingStorage = window.localStorage
+    backingStorage.setItem("livePushToastBuffer", "legacy-buffer-retained")
+    const storageFacade = {
+      clear: backingStorage.clear.bind(backingStorage),
+      getItem: backingStorage.getItem.bind(backingStorage),
+      key: backingStorage.key.bind(backingStorage),
+      get length() {
+        return backingStorage.length
+      },
+      removeItem: null,
+      setItem: backingStorage.setItem.bind(backingStorage),
+    } as unknown as Storage
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: storageFacade,
+    })
+
+    try {
+      const storage = getToastStorage()
+      expect(storage).toBe(storageFacade)
+      expect((storage as unknown as { removeItem: unknown }).removeItem).toBeNull()
+      expect(() => render(<LivePushToasts />)).not.toThrow()
+      expect(backingStorage.getItem("livePushToastBuffer")).toBe("legacy-buffer-retained")
+    } finally {
+      if (descriptor) Object.defineProperty(window, "localStorage", descriptor)
+      else delete (window as unknown as { localStorage?: Storage }).localStorage
     }
   })
 
@@ -1515,6 +1593,79 @@ describe("LivePushToasts", () => {
     expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
   })
 
+  it("keeps a new account buffer when its push arrives before prior identity cleanup", async () => {
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+
+    try {
+      render(<LivePushToasts />)
+      await dispatchSwMessage({
+        type: "PUSH_NOTIFICATION",
+        toast: { id: "prior-hidden", title: "Prior account", body: "Private prior" },
+      })
+      expect(window.localStorage.getItem(TEST_USER_A_BUFFER_KEY)).toContain("prior-hidden")
+
+      act(() => {
+        useAuthStore.setState({
+          user: {
+            id: TEST_USER_B_ID,
+            email: "toast-user-b@example.test",
+            is_active: true,
+          },
+          loading: false,
+        })
+        messageHandler?.({
+          data: {
+            type: "PUSH_NOTIFICATION",
+            recipientUserId: TEST_USER_B_ID,
+            toast: {
+              id: "next-hidden",
+              title: "Next account",
+              body: "Private next",
+            },
+          },
+        } as MessageEvent)
+      })
+
+      expect(JSON.parse(window.localStorage.getItem(TEST_USER_B_BUFFER_KEY) ?? "[]")).toMatchObject(
+        [{ id: "next-hidden", title: "Next account", body: "Private next" }]
+      )
+      expect(window.localStorage.getItem(TEST_USER_A_BUFFER_KEY)).toBeNull()
+    } finally {
+      visibilitySpy.mockRestore()
+    }
+  })
+
+  it("flushes an account buffer after anonymous-to-authenticated transition", () => {
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    useAuthStore.setState({ user: null, loading: false })
+
+    try {
+      render(<LivePushToasts />)
+      window.localStorage.setItem(
+        TEST_USER_A_BUFFER_KEY,
+        JSON.stringify([
+          { id: "login-buffer", title: "Login buffer", body: "Current account only" },
+        ])
+      )
+
+      act(() => {
+        useAuthStore.setState({
+          user: {
+            id: TEST_USER_A_ID,
+            email: "toast-user-a@example.test",
+            is_active: true,
+          },
+          loading: false,
+        })
+      })
+      act(() => vi.advanceTimersByTime(0))
+
+      expect(screen.getByText("Login buffer")).toBeInTheDocument()
+      expect(window.localStorage.getItem(TEST_USER_A_BUFFER_KEY)).toBe("[]")
+    } finally {
+      visibilitySpy.mockRestore()
+    }
+  })
   it("keeps persisted hidden pushes bound to the confirmed account during an account switch", async () => {
     const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
 
@@ -1782,5 +1933,68 @@ describe("LivePushToasts", () => {
       }
       acceptBrowserSessionGeneration()
     }
+  })
+
+  it("uses the anonymous server identity snapshot during SSR", () => {
+    expect(renderToString(<LivePushToasts />)).not.toContain('role="status"')
+  })
+
+  it("does not read, write, or buffer a toast without a confirmed account", () => {
+    useAuthStore.setState({ user: null, loading: false })
+    const anonymousToast: ActiveToast = {
+      id: "anonymous-helper",
+      title: "Anonymous",
+      body: "No owner",
+    }
+
+    expect(readBuffer()).toEqual([])
+    writeBuffer([anonymousToast])
+    bufferToast(anonymousToast)
+
+    expect(window.localStorage.getItem(TEST_USER_A_BUFFER_KEY)).toBeNull()
+    expect(window.localStorage.getItem(TEST_USER_B_BUFFER_KEY)).toBeNull()
+  })
+
+  it("drops queued notifications before React commits an account transition", async () => {
+    render(<LivePushToasts />)
+    act(() => {
+      messageHandler?.({
+        data: {
+          type: "PUSH_NOTIFICATION",
+          recipientUserId: TEST_USER_A_ID,
+          toast: { id: "transition-active", title: "A active", body: "Current account" },
+        },
+      } as MessageEvent)
+      messageHandler?.({
+        data: {
+          type: "PUSH_NOTIFICATION",
+          recipientUserId: TEST_USER_A_ID,
+          toast: { id: "transition-stale-queued", title: "A queued", body: "Stale account" },
+        },
+      } as MessageEvent)
+      useAuthStore.setState({ user: { id: TEST_USER_B_ID } as UserState, loading: false })
+    })
+    act(() => vi.advanceTimersByTime(0))
+
+    expect(screen.queryByText("A active")).not.toBeInTheDocument()
+    expect(screen.queryByText("A queued")).not.toBeInTheDocument()
+  })
+
+  it("rejects a message when an earlier bus subscriber switches accounts", async () => {
+    const { subscribeToPushMessages } = await import("@/push/pushMessageBus")
+    const changeAccount = subscribeToPushMessages((_event, ownerId) => {
+      if (ownerId === TEST_USER_A_ID) {
+        useAuthStore.setState({ user: { id: TEST_USER_B_ID } as UserState, loading: false })
+      }
+    })
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "reentrant-stale", title: "Stale delivery", body: "Account changed" },
+    })
+
+    expect(screen.queryByText("Stale delivery")).not.toBeInTheDocument()
+    changeAccount()
   })
 })

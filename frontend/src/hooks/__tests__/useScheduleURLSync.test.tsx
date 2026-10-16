@@ -176,4 +176,29 @@ describe("useScheduleURLSync", () => {
 
     expect(mockSetParam).toHaveBeenCalledWith("w", "")
   })
+
+  it("resets the store when a malformed URL week arrives after mount", () => {
+    let currentWeekOffset = 1
+    vi.mocked(useURLState).mockReturnValue({
+      params: { w: "1" },
+      setParam: mockSetParam,
+      setParams: vi.fn(),
+    })
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) =>
+      selector({ weekOffset: currentWeekOffset, setWeekOffset: mockSetWeekOffset } as never)
+    )
+
+    const { rerender } = renderHook(() => useScheduleURLSync())
+    expect(mockSetWeekOffset).not.toHaveBeenCalled()
+
+    currentWeekOffset = 1
+    vi.mocked(useURLState).mockReturnValue({
+      params: { w: "not-a-number" },
+      setParam: mockSetParam,
+      setParams: vi.fn(),
+    })
+    act(() => rerender())
+
+    expect(mockSetWeekOffset).toHaveBeenCalledWith(0)
+  })
 })

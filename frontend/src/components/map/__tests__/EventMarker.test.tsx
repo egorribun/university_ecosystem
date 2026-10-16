@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     language: "en",
+    timeZone: "Europe/Istanbul" as string | null,
     popupOnClose: undefined as (() => void) | undefined,
     popupProps: [] as Array<Record<string, unknown>>,
     linkProps: undefined as { to?: unknown; params?: unknown } | undefined,
@@ -65,7 +66,7 @@ vi.mock("react-i18next", () => ({
 }))
 vi.mock("@/app/logger", () => ({ logError: mocks.logError }))
 vi.mock("@/contexts/CampusTimezoneContext", () => ({
-  useCampusTimezone: () => "Europe/Istanbul",
+  useCampusTimezone: () => mocks.timeZone,
 }))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
@@ -109,6 +110,7 @@ const formatExpectedDate = (isoString: string, locale: string) =>
 describe("EventMarker", () => {
   beforeEach(() => {
     mocks.language = "en"
+    mocks.timeZone = "Europe/Istanbul"
     mocks.popupOnClose = undefined
     mocks.popupProps.length = 0
     mocks.linkProps = undefined
@@ -265,5 +267,18 @@ describe("EventMarker maplibre integration", () => {
     expect(fireEvent.keyDown(pin, { key: "Enter" })).toBe(false)
     expect(fireEvent.keyDown(pin, { key: " " })).toBe(false)
     expect(fireEvent.keyDown(pin, { key: "Tab" })).toBe(true)
+  })
+
+  it("keeps the marker label valid when campus timezone is unavailable", () => {
+    mocks.timeZone = null
+
+    render(<EventMarker {...baseProps} />)
+
+    expect(mocks.translationCalls.find(({ key }) => key === "events.markerLabel")?.options).toEqual(
+      {
+        title: EVENT.title,
+        date: "",
+      }
+    )
   })
 })

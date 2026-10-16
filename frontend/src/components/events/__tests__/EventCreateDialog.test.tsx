@@ -38,6 +38,7 @@ import {
   invalidateUploadGeneration,
   normalizeLocalizedValue,
 } from "@/components/events/EventCreateDialog"
+import * as eventDateTime from "@/utils/eventDateTime"
 
 const baseProps = {
   open: true,
@@ -895,5 +896,98 @@ describe("EventCreateDialog", () => {
       createObjectUrl.mockRestore()
       revokeObjectUrl.mockRestore()
     }
+  })
+
+  it("does not show a stale upload error over a replacement upload", async () => {
+    let rejectStaleUpload!: (reason: unknown) => void
+    let resolveReplacementUpload!: (url: string) => void
+    const staleUpload = new Promise<string>((_resolve, reject) => {
+      rejectStaleUpload = reject
+    })
+    const replacementUpload = new Promise<string>((resolve) => {
+      resolveReplacementUpload = resolve
+    })
+    uploadEventImage
+      .mockImplementationOnce(() => staleUpload)
+      .mockImplementationOnce(() => replacementUpload)
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (object: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    const createObjectURL = vi
+      .fn<(object: unknown) => string>()
+      .mockReturnValueOnce("blob:stale-failure")
+      .mockReturnValueOnce("blob:replacement")
+    const revokeObjectURL = vi.fn()
+    urlCtor.createObjectURL = createObjectURL
+    urlCtor.revokeObjectURL = revokeObjectURL
+
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+
+      await user.upload(fileInput, new File(["old"], "old.png", { type: "image/png" }))
+      expect(await screen.findByText("common:statuses.uploading")).toBeInTheDocument()
+      await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      await user.upload(
+        document.querySelector<HTMLInputElement>('input[type="file"]')!,
+        new File(["new"], "new.png", { type: "image/png" })
+      )
+      await waitFor(() => expect(uploadEventImage).toHaveBeenCalledTimes(2))
+
+      await act(async () => {
+        rejectStaleUpload(new Error("stale upload failed"))
+        await Promise.resolve()
+      })
+
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:stale-failure")
+
+      await act(async () => {
+        resolveReplacementUpload("https://cdn.example.com/replacement.png")
+        await replacementUpload
+      })
+      expect(await screen.findByText("events:form.imageSelected")).toBeInTheDocument()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("revalidates the campus timezone inside the submit handler", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    const onClose = vi.fn()
+    render(<EventCreateDialog {...baseProps} onCreated={onCreated} onClose={onClose} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Timezone race")
+    await user.type(fieldByLabel("events:form.location"), "Hall K")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+    const createButton = screen.getByRole("button", { name: "common:buttons.create" })
+    expect(createButton).toBeEnabled()
+
+    const unavailableTimezone = eventDateTime.resolveCampusEventDateRange(
+      "2026-01-15T10:00",
+      "2026-01-15T11:00",
+      null
+    )
+    const resolveRange = vi
+      .spyOn(eventDateTime, "resolveCampusEventDateRange")
+      .mockReturnValueOnce(unavailableTimezone)
+    try {
+      fireEvent.click(createButton)
+      expect(resolveRange).toHaveBeenCalledTimes(1)
+    } finally {
+      resolveRange.mockRestore()
+    }
+
+    expect(onCreated).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
