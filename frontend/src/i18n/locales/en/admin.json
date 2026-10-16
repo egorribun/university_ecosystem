@@ -33,6 +33,10 @@
       "fetch": "Failed to load the dead-letter queue.",
       "action": "Unable to update the queue."
     },
+    "confirmPurge": {
+      "title": "Delete dead-letter jobs?",
+      "message": "Delete the selected dead-letter jobs? This action cannot be undone."
+    },
     "topics": {
       "title": "User topics",
       "description": "Load a user and adjust their push notification topics.",

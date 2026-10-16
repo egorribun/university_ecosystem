@@ -92,18 +92,11 @@ const ensurePaginatedResponse = (
   payload: PaginatedResponse<Event> | null | undefined,
   fallbackLimit: number
 ): PaginatedResponse<Event> => {
-  if (!payload) {
-    return {
-      items: [],
-      total: 0,
-      limit: fallbackLimit,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    }
+  if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
+    throw new Error("Invalid events list response")
   }
 
-  const items = Array.isArray(payload.items) ? payload.items : []
+  const items = payload.items
   const total = typeof payload.total === "number" ? payload.total : items.length
   const limit = typeof payload.limit === "number" ? payload.limit : fallbackLimit
 
@@ -117,8 +110,18 @@ const ensurePaginatedResponse = (
   }
 }
 
-const mergeEventPages = (pages: PaginatedResponse<Event>[] | undefined): Event[] => {
-  if (!pages?.length) {
+const ensureNumericResponseStatus = (status: unknown, errorMessage: string): number => {
+  if (typeof status !== "number" || !Number.isFinite(status)) {
+    throw new Error(errorMessage)
+  }
+  return status
+}
+
+const acceptsEventsResponseStatus = (status: number): boolean =>
+  (status >= 200 && status < 300) || status === 304
+
+const mergeEventPages = (pages: unknown): Event[] => {
+  if (!Array.isArray(pages) || pages.length === 0) {
     return []
   }
 
@@ -126,7 +129,23 @@ const mergeEventPages = (pages: PaginatedResponse<Event>[] | undefined): Event[]
   const merged: Event[] = []
 
   for (const page of pages) {
+    if (
+      typeof page !== "object" ||
+      page === null ||
+      Array.isArray(page) ||
+      !Array.isArray(page.items)
+    ) {
+      continue
+    }
     for (const item of page.items) {
+      if (
+        typeof item !== "object" ||
+        item === null ||
+        Array.isArray(item) ||
+        typeof item.id !== "string"
+      ) {
+        continue
+      }
       const existingIndex = positions.get(item.id)
       if (existingIndex != null) {
         merged[existingIndex] = item
@@ -169,7 +188,7 @@ const createEventsListQueryFn =
     const requestConfig = {
       query: params,
       signal,
-      validateStatus: (status: number) => status >= 200 && status < 400,
+      validateStatus: acceptsEventsResponseStatus,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 
@@ -178,13 +197,27 @@ const createEventsListQueryFn =
     )
 
     if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
+    const status = ensureNumericResponseStatus(
+      response.status,
+      "Unexpected events list response status"
+    )
 
-    if (response.status === 304) {
-      const cached =
-        queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>, string | null>>(queryKey)
-      return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
+    if (status === 304) {
+      const cached = queryClient.getQueryData<unknown>(queryKey)
+      if (
+        typeof cached !== "object" ||
+        cached === null ||
+        !("pages" in cached) ||
+        !Array.isArray(cached.pages) ||
+        cached.pages.length === 0
+      ) {
+        throw new Error("304 response has no cached events page")
+      }
+      return ensurePaginatedResponse(cached.pages[0], normalized.limit)
     }
-
+    if (status < 200 || status >= 300) {
+      throw new Error("Unexpected events list response status")
+    }
     return ensurePaginatedResponse(response.data, normalized.limit)
   }
 
@@ -375,19 +408,33 @@ export const useMyEventsQuery = (
       const etagKey = createMyEventsEtagKey(normalized)
       const config = {
         signal,
-        validateStatus: (status: number) => status >= 200 && status < 400,
+        validateStatus: acceptsEventsResponseStatus,
         etagCacheKey: etagKey,
       }
 
       const response = await myEventsApiV1EventsMyGet(
         config as Parameters<typeof myEventsApiV1EventsMyGet>[0]
       )
+      const status = ensureNumericResponseStatus(
+        response.status,
+        "Unexpected my-events response status"
+      )
 
-      if (response.status === 304) {
-        return queryClient.getQueryData<Event[]>(queryKey) ?? []
+      if (status === 304) {
+        const cached = queryClient.getQueryData<unknown>(queryKey)
+        if (!Array.isArray(cached)) {
+          throw new Error("304 response has no cached my-events data")
+        }
+        return cached as Event[]
+      }
+      if (status < 200 || status >= 300) {
+        throw new Error("Unexpected my-events response status")
+      }
+      if (!Array.isArray(response.data)) {
+        throw new Error("Invalid my-events response")
       }
 
-      return Array.isArray(response.data) ? (response.data as Event[]) : []
+      return response.data as Event[]
     },
     ...rest,
   })
@@ -431,19 +478,33 @@ export const useSuspenseMyEventsQuery = (
       const etagKey = createMyEventsEtagKey(normalized)
       const config = {
         signal,
-        validateStatus: (status: number) => status >= 200 && status < 400,
+        validateStatus: acceptsEventsResponseStatus,
         etagCacheKey: etagKey,
       }
 
       const response = await myEventsApiV1EventsMyGet(
         config as Parameters<typeof myEventsApiV1EventsMyGet>[0]
       )
+      const status = ensureNumericResponseStatus(
+        response.status,
+        "Unexpected my-events response status"
+      )
 
-      if (response.status === 304) {
-        return queryClient.getQueryData<Event[]>(queryKey) ?? []
+      if (status === 304) {
+        const cached = queryClient.getQueryData<unknown>(queryKey)
+        if (!Array.isArray(cached)) {
+          throw new Error("304 response has no cached my-events data")
+        }
+        return cached as Event[]
+      }
+      if (status < 200 || status >= 300) {
+        throw new Error("Unexpected my-events response status")
+      }
+      if (!Array.isArray(response.data)) {
+        throw new Error("Invalid my-events response")
       }
 
-      return Array.isArray(response.data) ? (response.data as Event[]) : []
+      return response.data as Event[]
     },
   })
 

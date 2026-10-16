@@ -627,6 +627,22 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Группа не найдена",
         "en": "Group not found",
     },
+    "errors.endpoint.not_found": {
+        "ru": "Эндпоинт не найден",
+        "en": "Endpoint not found",
+    },
+    "errors.group.not_found": {
+        "ru": "Группа не найдена",
+        "en": "Group not found",
+    },
+    "errors.image.not_found": {
+        "ru": "Изображение не найдено",
+        "en": "Image not found",
+    },
+    "errors.message.not_found": {
+        "ru": "Сообщение не найдено",
+        "en": "Message not found",
+    },
     "errors.spotify.reconnect_required": {
         "ru": "Требуется переподключить Spotify",
         "en": "Spotify connection needs to be re-authorized",
@@ -818,6 +834,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "schedule.lesson.type.consultation": {
         "ru": "Консультация",
         "en": "Consultation",
+    },
+    "schedule.lesson.type.project": {
+        "ru": "Проектная работа",
+        "en": "Project work",
     },
     "schedule.lesson.default_type": {
         "ru": "Лекция",

@@ -12,6 +12,7 @@ const idb = vi.hoisted(() => ({
   beforeDelete: undefined as undefined | ((key: IDBValidKey) => Promise<void>),
 }))
 vi.mock("idb-keyval", () => ({
+  keys: async () => [...idb.values.keys()],
   set: async (key: IDBValidKey, value: PersistedClient) => {
     await idb.beforeSet?.()
     idb.values.set(key, structuredClone(value))
@@ -35,7 +36,11 @@ function account(id: string | null) {
 }
 function client(owner: string): PersistedClient {
   const queryClient = createQueryClient()
-  queryClient.setQueryData(["users", "me"], { ...testUser, id: owner })
+  queryClient.setQueryData(["users", "me"], {
+    ...testUser,
+    id: owner,
+    email: "session-profile-pii-sentinel@example.invalid",
+  })
   queryClient.setQueryData(["chats"], [{ content: `private ${owner}` }])
   queryClient.getMutationCache().build(
     queryClient,
@@ -82,13 +87,23 @@ describe("application query persistence isolation", () => {
     expect(idb.values.size).toBe(0)
   })
 
-  it("restores same-account offline queries and mutations but never gives them to B", async () => {
+  it("restores offline queries and paused changes without the profile payload", async () => {
     account("A")
     await idbPersister.persistClient(client("A"))
+    const saved = idb.values.get("reactQuery:v2:A")
+    expect(saved).toBeDefined()
+    expect(JSON.stringify(saved)).not.toContain("session-profile-pii-sentinel@example.invalid")
+    expect(
+      saved!.clientState.queries.some(
+        (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
+      )
+    ).toBe(false)
+
     const same = await idbPersister.restoreClient()
     const restored = createQueryClient()
     expect(same).toBeDefined()
     hydrate(restored, same!.clientState)
+    expect(restored.getQueryData(["users", "me"])).toBeUndefined()
     expect(restored.getQueryData(["chats"])).toEqual([{ content: "private A" }])
     expect(restored.getMutationCache().getAll()[0]?.state.variables).toEqual({
       content: "pending A",

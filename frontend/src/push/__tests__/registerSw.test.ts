@@ -361,7 +361,7 @@ describe("registerServiceWorker", () => {
     expect(window.location.reload).toHaveBeenCalledTimes(1)
   })
 
-  it("does not reload the current page when the service worker claims it for the first time", async () => {
+  it("ignores the first controller claim but reloads after a later worker update", async () => {
     const swListeners: Record<string, any> = {}
     const mockRegistration: any = {
       active: { postMessage: vi.fn() },
@@ -385,6 +385,11 @@ describe("registerServiceWorker", () => {
     swListeners["controllerchange"]()
 
     expect(window.location.reload).not.toHaveBeenCalled()
+
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    swListeners["controllerchange"]()
+
+    expect(window.location.reload).toHaveBeenCalledOnce()
   })
 
   it("returns null and logs when register throws an error", async () => {

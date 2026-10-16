@@ -85,6 +85,14 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
     args: list[str] = []
     for key, value in overrides.items():
         args.extend(("--set-string", f"{key}={value}"))
+    # These reserved TEST-NET/documentation peers are complete synthetic lists,
+    # not partial indexed overrides of deployment values.
+    for key, peers in (
+        ("gateway.config.trustedProxies", ["192.0.2.11/32", "2001:db8::11"]),
+        ("wsHub.config.trustedProxies", ["198.51.100.12/32", "2001:db8::12"]),
+    ):
+        encoded_peers = json.dumps(peers, separators=(",", ":"))
+        args.extend(("--set-json", f"{key}={encoded_peers}"))
     args.extend(("--set", "cwv.deploymentRunID=123"))
     args.extend(("--set", "cwv.deploymentRunAttempt=1"))
     return args
@@ -2821,7 +2829,7 @@ def test_documented_go_overlay_pairs_local_grpc_transports() -> None:
 
 
 def test_staging_ws_hub_trust_does_not_use_a_broad_private_range() -> None:
-    """Staging uses the chart's loopback-only trust until peers are configured."""
+    """The committed staging values do not invent deployment proxy peers."""
     staging = _values(STAGING_VALUES)
     trusted_proxies = (
         staging.get("wsHub", {}).get("config", {}).get("trustedProxies", [])
@@ -2834,7 +2842,9 @@ def test_staging_ws_hub_trust_does_not_use_a_broad_private_range() -> None:
         item["name"]: item.get("value")
         for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
     }
-    assert env["TRUSTED_PROXIES"] == "127.0.0.1,::1"
+    # Render fixtures supply only reserved documentation peers; the committed
+    # staging defaults remain loopback-only until operators provide real peers.
+    assert env["TRUSTED_PROXIES"] == "198.51.100.12/32,2001:db8::12"
 
 
 def test_file_processor_default_jwks_uses_release_backend_port_and_preserves_dependencies() -> (

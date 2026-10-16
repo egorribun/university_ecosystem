@@ -80,6 +80,53 @@ describe("API client 429 retry loop", () => {
     expect(adapter).toHaveBeenCalledTimes(2)
   })
 
+  it("reuses one idempotency key when a logical chat send retries after a 429", async () => {
+    const { default: api } = await import("@/api/client")
+    const { chatApi } = await import("@/api/chat")
+    const operationKey = "logical-chat-send-operation"
+    const sentKeys: Array<string | undefined> = []
+    let calls = 0
+
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => {
+      calls += 1
+      sentKeys.push(AxiosHeaders.from(config.headers).get("Idempotency-Key") as string | undefined)
+      if (calls === 1) {
+        throw make429(config, { "retry-after": "1" })
+      }
+      return {
+        config,
+        data: { id: "server-message" },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      } as AxiosResponse
+    })
+    api.defaults.adapter = adapter
+
+    const sendMessageWithOperationKey = chatApi.sendMessage as unknown as (
+      chatId: string,
+      content: string,
+      files: File[] | undefined,
+      replyToMessageId: string | undefined,
+      operationId: string
+    ) => Promise<unknown>
+    const pending = sendMessageWithOperationKey(
+      "chat-1",
+      "hello",
+      undefined,
+      undefined,
+      operationKey
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(0)
+
+    await expect(pending).resolves.toMatchObject({ id: "server-message" })
+    expect(adapter).toHaveBeenCalledTimes(2)
+    expect(sentKeys).toEqual([operationKey, operationKey])
+  })
+
   it("cancels a 429 retry when another tab rotates the browser session", async () => {
     localStorage.setItem(
       SESSION_GENERATION_KEY,

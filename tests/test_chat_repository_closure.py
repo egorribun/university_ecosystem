@@ -120,11 +120,12 @@ async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() ->
     )
     chat_a = SimpleNamespace(id=CHAT_ID, updated_at=NOW)
     chat_b = SimpleNamespace(id=OTHER_ID, updated_at=NOW)
+    projected_last_message_at = datetime(2026, 7, 22, 9, 0, tzinfo=UTC)
     db.execute.return_value = _result(
         rows=[
-            (chat_a, 1, None),
-            (chat_b, 2, uuid.UUID(int=4)),
-            (chat_a, 3, uuid.UUID(int=5)),
+            (chat_a, 1, None, None),
+            (chat_b, 2, uuid.UUID(int=4), projected_last_message_at),
+            (chat_a, 3, uuid.UUID(int=5), NOW),
         ]
     )
 
@@ -139,7 +140,7 @@ async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() ->
     ]
     assert has_more is True
     assert next_cursor == "next"
-    encode.assert_called_once_with(NOW, OTHER_ID)
+    encode.assert_called_once_with(projected_last_message_at, str(OTHER_ID))
     statement = db.execute.await_args.args[0]
     assert "message_rank = 1" in str(
         statement.compile(compile_kwargs={"literal_binds": True})

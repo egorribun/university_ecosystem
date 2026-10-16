@@ -46,8 +46,8 @@ export const queueSyncTags = {
 async function bootstrap() {
   try {
     // 1. Core Workbox setup
+    // Keep updates waiting until the user chooses the existing update action.
     clientsClaim()
-    self.skipWaiting()
 
     // 2. Initialize modules
     initPrecaching()

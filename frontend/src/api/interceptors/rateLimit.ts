@@ -261,12 +261,21 @@ export const waitForRateLimitWindow = async (signal?: AbortSignal) => {
   }
 
   await new Promise<void>((resolve, reject) => {
-    const onAbort = () => reject(new DOMException("Aborted", "AbortError"))
-    if (signal) signal.addEventListener("abort", onAbort, { once: true })
-    rateLimitWaiters.push(() => {
-      if (signal) signal.removeEventListener("abort", onAbort)
+    const cleanup = () => {
+      signal?.removeEventListener("abort", onAbort)
+      const waiterIndex = rateLimitWaiters.indexOf(waiter)
+      if (waiterIndex !== -1) rateLimitWaiters.splice(waiterIndex, 1)
+    }
+    const onAbort = () => {
+      cleanup()
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    const waiter = () => {
+      cleanup()
       resolve()
-    })
+    }
+    rateLimitWaiters.push(waiter)
+    signal?.addEventListener("abort", onAbort, { once: true })
   })
 }
 

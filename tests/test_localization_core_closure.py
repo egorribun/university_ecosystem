@@ -3,7 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
+from app.api.validation import raise_not_found
 from app.core.localization import core
 
 
@@ -114,3 +116,36 @@ def test_resolve_locale_header_error_and_default_fallback():
     request = SimpleNamespace(query_params=None, headers=_BrokenHeaders())
     assert core.resolve_locale(request=request, default="ru") == "ru"
     assert core.resolve_locale(default="de") == "en"
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("en;Q=0.1,ru;q=0.9", "ru"),
+        ("ru; q=0.1,en;Q=0.9", "en"),
+    ],
+)
+def test_accept_language_quality_parameter_name_is_case_insensitive(
+    header: str, expected: str
+) -> None:
+    assert core._locale_from_accept_language(header) == expected
+
+
+@pytest.mark.parametrize(
+    ("resource", "expected_by_locale"),
+    [
+        ("Group", {"en": "Group not found", "ru": "Группа не найдена"}),
+        ("image", {"en": "Image not found", "ru": "Изображение не найдено"}),
+        ("endpoint", {"en": "Endpoint not found", "ru": "Эндпоинт не найден"}),
+        ("message", {"en": "Message not found", "ru": "Сообщение не найдено"}),
+    ],
+)
+@pytest.mark.parametrize("locale", ["en", "ru"])
+def test_missing_resource_not_found_keys_return_localized_404_details(
+    resource: str, expected_by_locale: dict[str, str], locale: str
+) -> None:
+    with pytest.raises(HTTPException) as error:
+        raise_not_found(resource, locale)
+
+    assert error.value.status_code == 404
+    assert error.value.detail == expected_by_locale[locale]

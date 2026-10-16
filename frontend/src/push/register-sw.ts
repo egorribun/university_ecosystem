@@ -118,8 +118,13 @@ export async function registerServiceWorker(path = "/sw.js") {
     // reloading here can discard a form the user started while precaching ran.
     // Reload only when an existing controller is replaced by an update.
     let reloaded = false
+    let hasObservedController = hadController
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (reloaded || !hadController) return
+      if (reloaded) return
+      if (!hasObservedController) {
+        hasObservedController = true
+        return
+      }
       reloaded = true
       window.location.reload()
     })

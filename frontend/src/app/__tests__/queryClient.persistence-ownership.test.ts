@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { dehydrate, hydrate, type QueryKey } from "@tanstack/react-query"
 import type { PersistedClient } from "@tanstack/react-query-persist-client"
-import { clear, get, keys, set } from "idb-keyval"
+import { clear, del, get, keys, set } from "idb-keyval"
 import {
   acceptBrowserSessionGeneration,
   captureSessionEpoch,
@@ -14,6 +14,7 @@ import { testUser } from "@/tests/mocks/handlers"
 // an operation's result is held, so account transitions can occur while the
 // application is still awaiting the browser's response.
 const io = vi.hoisted(() => ({
+  afterKeys: undefined as undefined | (() => Promise<void>),
   afterRead: undefined as undefined | ((key: IDBValidKey) => Promise<void>),
   afterWrite: undefined as undefined | ((key: IDBValidKey) => Promise<void>),
   beforeDelete: undefined as undefined | ((key: IDBValidKey) => Promise<void>),
@@ -24,6 +25,11 @@ vi.mock("idb-keyval", async (importOriginal) => {
   const actual = await importOriginal<typeof import("idb-keyval")>()
   return {
     ...actual,
+    keys: async () => {
+      const result = await actual.keys()
+      await io.afterKeys?.()
+      return result
+    },
     get: async (key: IDBValidKey) => {
       if (io.readError) throw io.readError
       const result = await actual.get(key)
@@ -72,6 +78,72 @@ function snapshot(owner: string, profileKey: QueryKey = ["users", "me"]): Persis
   return saved
 }
 
+function withDuplicateProfileWitnesses(
+  saved: PersistedClient,
+  witnessIds: readonly (string | null)[]
+): PersistedClient {
+  const profile = saved.clientState.queries.find(
+    (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
+  )
+  if (!profile) throw new Error("Expected a current-user profile query")
+
+  const profileData = profile.state.data as Record<string, unknown>
+  const duplicates = witnessIds.map((id) => ({
+    ...profile,
+    state: {
+      ...profile.state,
+      data: id === null ? null : { ...profileData, id },
+    },
+  }))
+
+  return {
+    ...saved,
+    clientState: {
+      ...saved.clientState,
+      queries: [...duplicates, ...saved.clientState.queries.filter((query) => query !== profile)],
+    },
+  }
+}
+
+const duplicateProfileWitnessCases = [
+  {
+    label: "A-owned cache with A before B",
+    activeOwner: "A",
+    dataOwner: "B",
+    witnessIds: ["A", "B"],
+  },
+  {
+    label: "B-owned cache with B before A",
+    activeOwner: "B",
+    dataOwner: "A",
+    witnessIds: ["B", "A"],
+  },
+  {
+    label: "duplicate witnesses for the same owner",
+    activeOwner: "A",
+    dataOwner: "A",
+    witnessIds: ["A", "A"],
+  },
+  {
+    label: "malformed second witness",
+    activeOwner: "A",
+    dataOwner: "B",
+    witnessIds: ["A", null],
+  },
+] as const
+
+function withoutCurrentUserProfile(saved: PersistedClient): PersistedClient {
+  return {
+    ...saved,
+    clientState: {
+      ...saved.clientState,
+      queries: saved.clientState.queries.filter(
+        (query) => !(query.queryKey[0] === "users" && query.queryKey[1] === "me")
+      ),
+    },
+  }
+}
+
 function pause() {
   let release!: () => void
   const pending = new Promise<void>((resolve) => {
@@ -89,6 +161,7 @@ function pause() {
 }
 
 beforeEach(async () => {
+  io.afterKeys = undefined
   io.afterRead = undefined
   io.afterWrite = undefined
   io.beforeDelete = undefined
@@ -100,6 +173,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  io.afterKeys = undefined
   io.afterRead = undefined
   io.afterWrite = undefined
   io.beforeDelete = undefined
@@ -109,29 +183,53 @@ afterEach(async () => {
   await clear()
 })
 
-describe("confirmed profile persistence", () => {
-  it.each([
-    ["settings", "me"],
-    ["users", "other"],
-    ["settings", "other"],
-  ])("rejects an id attached to the unrelated %s/%s query", async (root, leaf) => {
+describe("profile persistence boundaries", () => {
+  it("rejects a profile whose owner conflicts with the confirmed cache identity", async () => {
     publishAccount("A")
-    const unrelated = snapshot("A", [root, leaf])
+    const otherOwnersProfile = snapshot("B")
 
-    await idbPersister.persistClient(unrelated)
+    await idbPersister.persistClient(otherOwnersProfile)
     expect(await keys()).toEqual([])
 
-    await set(accountKey("A"), unrelated)
-    expect(await idbPersister.restoreClient()).toBeUndefined()
+    await set(accountKey("A"), otherOwnersProfile)
+    await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
   })
 
-  it("does not infer an owner from an unresolved profile query", async () => {
-    publishAccount("A")
+  it.each(duplicateProfileWitnessCases)(
+    "rejects ambiguous duplicate profile witnesses during persistence ($label)",
+    async ({ activeOwner, dataOwner, witnessIds }) => {
+      publishAccount(activeOwner)
+      setQueryCacheIdentity(activeOwner)
+      acceptBrowserSessionGeneration()
+
+      const ambiguousSnapshot = withDuplicateProfileWitnesses(snapshot(dataOwner), witnessIds)
+      await idbPersister.persistClient(ambiguousSnapshot)
+
+      expect(await keys()).toEqual([])
+    }
+  )
+
+  it.each(duplicateProfileWitnessCases)(
+    "purges ambiguous duplicate profile witnesses during legacy restore ($label)",
+    async ({ activeOwner, dataOwner, witnessIds }) => {
+      publishAccount(activeOwner)
+      setQueryCacheIdentity(activeOwner)
+      acceptBrowserSessionGeneration()
+
+      const ambiguousSnapshot = withDuplicateProfileWitnesses(snapshot(dataOwner), witnessIds)
+      await set(accountKey(activeOwner), ambiguousSnapshot)
+
+      await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
+      expect(await get<PersistedClient>(accountKey(activeOwner))).toBeUndefined()
+      expect(await keys()).toEqual([])
+    }
+  )
+
+  it("does not infer a browser owner from profile data alone", async () => {
+    publishAccount(null)
     const source = createQueryClient()
-    source.getQueryCache().build(source, { queryKey: ["users", "me"] })
+    source.setQueryData(["users", "me"], { ...testUser, id: "A" })
     source.setQueryData(["schedule"], ["unconfirmed schedule"])
-    // Exercise the public persister's defensive boundary. The application's
-    // configured provider itself dehydrates only successful queries.
     const saved = {
       timestamp: Date.now(),
       buster: "1.0.0",
@@ -258,14 +356,15 @@ describe("confirmed profile persistence", () => {
     expect(restored?.clientState.mutations).toEqual([optionalFieldsOmitted, optionalFieldsPresent])
   })
 
-  it("excludes non-persisted bootstrap profiles from account snapshots", async () => {
+  it("omits full profiles from durable snapshots while retaining memory and offline state", async () => {
     publishAccount("A")
     setQueryCacheIdentity("A")
     acceptBrowserSessionGeneration()
 
     const source = createQueryClient()
     const bootstrapKey = ["auth", "bootstrap", "current-user", "scope", 2, 7] as const
-    const ownedProfile = { ...testUser, id: "A" }
+    const profileEmail = "profile-pii-sentinel@example.invalid"
+    const ownedProfile = { ...testUser, id: "A", email: profileEmail }
     const stagedProfile = {
       ...testUser,
       id: "staged-bootstrap-profile-id",
@@ -274,28 +373,38 @@ describe("confirmed profile persistence", () => {
     source.setQueryDefaults(bootstrapKey, { meta: { persist: false } })
     source.setQueryData(["users", "me"], ownedProfile)
     source.setQueryData(bootstrapKey, stagedProfile)
+    source.setQueryData(["schedule"], ["offline schedule A"])
+    source.getMutationCache().build(
+      source,
+      { mutationKey: ["schedule", "create"], meta: { persist: true } },
+      {
+        context: undefined,
+        data: undefined,
+        error: null,
+        failureCount: 0,
+        failureReason: null,
+        isPaused: true,
+        status: "pending",
+        variables: { scheduleId: "offline-schedule-A" },
+        submittedAt: Date.now(),
+      }
+    )
 
     const configuredSnapshot = dehydrate(source, persistOptions.dehydrateOptions)
     expect(configuredSnapshot.queries.some((query) => query.queryKey[0] === "auth")).toBe(false)
     expect(
       configuredSnapshot.queries.some(
-        (query) =>
-          query.queryKey[0] === "users" &&
-          query.queryKey[1] === "me" &&
-          query.state.data === ownedProfile
+        (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
       )
-    ).toBe(true)
-
-    // Exercise the persister boundary even if an upstream caller accidentally
-    // dehydrates every successful query instead of using persistOptions.
-    const inclusiveSnapshot = dehydrate(source, {
-      shouldDehydrateQuery: () => true,
-    })
+    ).toBe(false)
+    expect(source.getQueryData(["users", "me"])).toEqual(ownedProfile)
     expect(
-      inclusiveSnapshot.queries.some(
-        (query) => query.queryKey[0] === "auth" && query.state.data === stagedProfile
-      )
-    ).toBe(true)
+      configuredSnapshot.queries.find((query) => query.queryKey[0] === "schedule")?.state.data
+    ).toEqual(["offline schedule A"])
+
+    // Exercise the defensive boundary even if a caller dehydrates every query.
+    const inclusiveSnapshot = dehydrate(source, { shouldDehydrateQuery: () => true })
+    expect(inclusiveSnapshot.queries.some((query) => query.queryKey[0] === "auth")).toBe(true)
     await idbPersister.persistClient({
       timestamp: Date.now(),
       buster: "1.0.0",
@@ -305,15 +414,96 @@ describe("confirmed profile persistence", () => {
     const saved = await get<PersistedClient>(accountKey("A"))
     expect(saved).toBeDefined()
     expect(saved!.clientState.queries.some((query) => query.queryKey[0] === "auth")).toBe(false)
-    expect(JSON.stringify(saved)).not.toContain(stagedProfile.id)
+    expect(
+      saved!.clientState.queries.some(
+        (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
+      )
+    ).toBe(false)
+    expect(JSON.stringify(saved)).not.toContain(profileEmail)
     expect(JSON.stringify(saved)).not.toContain(stagedProfile.email)
     expect(
-      saved!.clientState.queries.find(
-        (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
-      )?.state.data
-    ).toEqual(ownedProfile)
+      saved!.clientState.queries.find((query) => query.queryKey[0] === "schedule")?.state.data
+    ).toEqual(["offline schedule A"])
+    expect(saved!.clientState.mutations[0]?.state.variables).toEqual({
+      scheduleId: "offline-schedule-A",
+    })
     source.clear()
   })
+
+  it("sanitizes a dormant legacy v2 profile before restoring offline state", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+
+    const legacy = snapshot("B")
+    const profileEmail = "legacy-profile-pii-sentinel@example.invalid"
+    const profile = legacy.clientState.queries.find(
+      (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
+    )
+    if (!profile) throw new Error("Expected a legacy full-profile query")
+    profile.state.data = { ...testUser, id: "B", email: profileEmail }
+    const pausedMutation = {
+      mutationKey: ["schedule", "create"],
+      meta: { persist: true },
+      state: {
+        context: undefined,
+        data: undefined,
+        error: null,
+        failureCount: 0,
+        failureReason: null,
+        isPaused: true,
+        status: "pending" as const,
+        variables: { scheduleId: "offline-schedule-B" },
+        submittedAt: Date.now(),
+      },
+    } satisfies PersistedClient["clientState"]["mutations"][number]
+    legacy.clientState.mutations.push(pausedMutation)
+    await set(accountKey("B"), legacy)
+
+    // A restore attempt for A also sanitizes dormant snapshots before any
+    // account snapshot can later be returned for hydration.
+    await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
+    const sanitizedDormant = await get<PersistedClient>(accountKey("B"))
+    expect(sanitizedDormant).toEqual(withoutCurrentUserProfile(legacy))
+    expect(JSON.stringify(sanitizedDormant)).not.toContain(profileEmail)
+    expect(
+      sanitizedDormant!.clientState.queries.find((query) => query.queryKey[0] === "schedule")?.state
+        .data
+    ).toEqual(["schedule for B"])
+    expect(sanitizedDormant!.clientState.mutations[0]?.state.variables).toEqual({
+      scheduleId: "offline-schedule-B",
+    })
+
+    publishAccount("B")
+    setQueryCacheIdentity("B")
+    const restored = await idbPersister.restoreClient()
+    expect(restored).toBeDefined()
+    expect(
+      restored!.clientState.queries.some(
+        (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
+      )
+    ).toBe(false)
+    expect(JSON.stringify(restored)).not.toContain(profileEmail)
+    expect(
+      restored!.clientState.queries.find((query) => query.queryKey[0] === "schedule")?.state.data
+    ).toEqual(["schedule for B"])
+    expect(restored!.clientState.mutations[0]?.state.variables).toEqual({
+      scheduleId: "offline-schedule-B",
+    })
+
+    const migrated = await get<PersistedClient>(accountKey("B"))
+    expect(migrated).toBeDefined()
+    expect(
+      migrated!.clientState.queries.some(
+        (query) => query.queryKey[0] === "users" && query.queryKey[1] === "me"
+      )
+    ).toBe(false)
+    expect(JSON.stringify(migrated)).not.toContain(profileEmail)
+    expect(migrated!.clientState.mutations[0]?.state.variables).toEqual({
+      scheduleId: "offline-schedule-B",
+    })
+  })
+
   it("keeps account namespaces distinct when an id contains reserved URL characters", async () => {
     publishAccount("A/B:C")
     await idbPersister.persistClient(snapshot("A/B:C"))
@@ -322,6 +512,144 @@ describe("confirmed profile persistence", () => {
     const target = createQueryClient()
     hydrate(target, restored!.clientState)
     expect(target.getQueryData(["schedule"])).toEqual(["schedule for A/B:C"])
+  })
+
+  it("deletes malformed owner keys without touching unrelated IndexedDB keys", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+
+    const malformedKeys = ["reactQuery:v2:", "reactQuery:v2:%ZZ", "reactQuery:v2:A%2fB"]
+    const saved = snapshot("A")
+    for (const key of malformedKeys) await set(key, saved)
+    await set(7, saved)
+
+    await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
+
+    for (const key of malformedKeys) {
+      await expect(get<PersistedClient>(key)).resolves.toBeUndefined()
+    }
+    expect(await get<PersistedClient>(7)).toEqual(saved)
+    expect(await keys()).toEqual([7])
+  })
+
+  it("stops dormant-key migration when cache ownership changes during enumeration", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const dormant = snapshot("B")
+    await set(accountKey("B"), dormant)
+
+    io.afterKeys = async () => {
+      io.afterKeys = undefined
+      publishAccount("B")
+    }
+
+    await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
+    expect(await get<PersistedClient>(accountKey("B"))).toEqual(dormant)
+  })
+
+  it("skips a persisted key deleted after enumeration", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const key = accountKey("A")
+    await set(key, snapshot("A"))
+
+    io.afterKeys = async () => {
+      io.afterKeys = undefined
+      await del(key)
+    }
+
+    await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
+    expect(await get<PersistedClient>(key)).toBeUndefined()
+  })
+
+  it("sanitizes a current snapshot added after legacy enumeration", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const key = accountKey("A")
+    const lateLegacySnapshot = snapshot("A")
+
+    io.afterKeys = async () => {
+      io.afterKeys = undefined
+      await set(key, lateLegacySnapshot)
+    }
+
+    const restored = await idbPersister.restoreClient()
+    expect(restored).toEqual(withoutCurrentUserProfile(lateLegacySnapshot))
+    expect(await get<PersistedClient>(key)).toEqual(withoutCurrentUserProfile(lateLegacySnapshot))
+  })
+
+  it("fails restore on a sanitation write error and recovers its persistence queue", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const key = accountKey("A")
+    const legacySnapshot = snapshot("A")
+    const writeError = new Error("IndexedDB write unavailable")
+
+    io.afterKeys = async () => {
+      io.afterKeys = undefined
+      await set(key, legacySnapshot)
+      io.writeError = writeError
+    }
+
+    await expect(idbPersister.restoreClient()).rejects.toBe(writeError)
+    io.writeError = undefined
+    await expect(get<PersistedClient>(key)).resolves.toEqual(legacySnapshot)
+
+    const restored = await idbPersister.restoreClient()
+    const sanitized = withoutCurrentUserProfile(legacySnapshot)
+    expect(restored).toEqual(sanitized)
+    expect(await get<PersistedClient>(key)).toEqual(sanitized)
+  })
+
+  it("does not write a restore-time sanitized snapshot after its owner changes", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const key = accountKey("A")
+    const lateLegacySnapshot = snapshot("A")
+    const heldWrite = pause()
+    let queuedWrite: Promise<void> | undefined
+    let interceptedRead = false
+    let interceptedWrite = false
+    let allowWritePause = false
+
+    io.afterKeys = async () => {
+      io.afterKeys = undefined
+      await set(key, lateLegacySnapshot)
+      allowWritePause = true
+    }
+    io.afterRead = async (readKey) => {
+      if (interceptedRead || readKey !== key) return
+      interceptedRead = true
+      queuedWrite = Promise.resolve(idbPersister.persistClient(snapshot("A")))
+    }
+    io.afterWrite = async (writeKey) => {
+      if (!allowWritePause || interceptedWrite || writeKey !== key) return
+      interceptedWrite = true
+      await heldWrite.hold()
+    }
+
+    const restoring = idbPersister.restoreClient()
+    try {
+      await vi.waitFor(() => expect(heldWrite.entered()).toBe(true))
+      publishAccount("B")
+      heldWrite.release()
+      await expect(restoring).resolves.toBeUndefined()
+      if (!queuedWrite) throw new Error("Expected the queued account write")
+      await expect(queuedWrite).resolves.toBeUndefined()
+      expect(await get<PersistedClient>(key)).toBeUndefined()
+    } finally {
+      heldWrite.release()
+      io.afterKeys = undefined
+      io.afterRead = undefined
+      io.afterWrite = undefined
+      await Promise.allSettled([restoring, ...(queuedWrite ? [queuedWrite] : [])])
+    }
   })
 
   it("keeps confirmed in-memory data during an ordinary same-account refresh", async () => {
@@ -391,7 +719,8 @@ describe("confirmed profile persistence", () => {
       await vi.waitFor(() => expect(legacyDeletion.entered()).toBe(true))
       legacyDeletion.release()
       publishAccount("A")
-      expect(await restoring).toEqual(saved)
+      expect(await restoring).toEqual(withoutCurrentUserProfile(saved))
+      expect(await get(accountKey("A"))).toEqual(withoutCurrentUserProfile(saved))
     } finally {
       legacyDeletion.release()
       publishAccount(null)
@@ -464,7 +793,7 @@ describe("asynchronous persistence ownership", () => {
       successor = idbPersister.persistClient(saved)
       write.release()
       await Promise.all([outgoing, successor])
-      expect(await get(accountKey("A"))).toEqual(saved)
+      expect(await get(accountKey("A"))).toEqual(withoutCurrentUserProfile(saved))
     } finally {
       write.release()
       await Promise.allSettled([outgoing, successor])

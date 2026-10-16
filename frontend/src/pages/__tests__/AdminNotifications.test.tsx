@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react"
+import { act, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import { HttpResponse, http } from "msw"
@@ -152,6 +152,11 @@ describe("AdminNotifications page", () => {
 
     const purgeButton = screen.getByRole("button", { name: /Delete selected/i })
     await userEvent.click(purgeButton)
+    const confirmation = within(screen.getByRole("alertdialog"))
+    expect(
+      confirmation.getByText("Delete the selected dead-letter jobs? This action cannot be undone.")
+    ).toBeInTheDocument()
+    await userEvent.click(confirmation.getByRole("button", { name: "Delete" }))
     await settleQueue(queryClient)
 
     expect(screen.queryByText("Webhook failed")).not.toBeInTheDocument()
@@ -259,6 +264,11 @@ describe("AdminNotifications page", () => {
     expect(screen.getByText("Timeout")).toBeInTheDocument()
     const purgeButtons = screen.getAllByRole("button", { name: "Delete" })
     await userEvent.click(purgeButtons[0]!)
+    const confirmation = within(screen.getByRole("alertdialog"))
+    expect(
+      confirmation.getByText("Delete the selected dead-letter jobs? This action cannot be undone.")
+    ).toBeInTheDocument()
+    await userEvent.click(confirmation.getByRole("button", { name: "Delete" }))
     await settleQueue(queryClient)
 
     expect(screen.queryByText("Timeout")).not.toBeInTheDocument()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from opentelemetry import trace
@@ -37,6 +37,9 @@ from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 # SQL CTE aliases are case-insensitive across supported dialects; a case-only
 # mutation of this literal is therefore equivalent by construction.
 _RANKED_MSG_CTE_NAME = "ranked_msg"  # pragma: no mutate
+
+# Reserved cursor timestamp representing the NULLS LAST chat-list tail.
+_CHAT_NULL_LAST_MESSAGE_CURSOR = datetime.min.replace(tzinfo=UTC)
 
 # P-02 (audit 2026-03-08): Module-level tracer for chat repository spans.
 # SQLAlchemyInstrumentor (observability.py) already adds DB-level spans;
@@ -239,6 +242,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                     else_=func.coalesce(msg_stats_cte.c.unread_count, 0),
                 ).label("unread_count"),
                 last_msg_cte.c.last_message_id.label("last_message_id"),
+                msg_stats_cte.c.last_message_at.label("last_message_at"),
             )
             .join(chat_participants, Chat.id == chat_participants.c.chat_id)
             .outerjoin(msg_stats_cte, Chat.id == msg_stats_cte.c.chat_id)
@@ -251,15 +255,22 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         cursor_info = decode_datetime_cursor(cursor)
         if cursor_info:
             cursor_dt, cursor_id = cursor_info
-            query = query.where(
-                or_(
-                    Chat.updated_at < cursor_dt,
-                    and_(Chat.updated_at == cursor_dt, Chat.id < cursor_id),
+            last_message_at = msg_stats_cte.c.last_message_at
+            if cursor_dt == _CHAT_NULL_LAST_MESSAGE_CURSOR:
+                query = query.where(
+                    and_(last_message_at.is_(None), Chat.id < cursor_id)
                 )
-            )
+            else:
+                query = query.where(
+                    or_(
+                        last_message_at < cursor_dt,
+                        and_(last_message_at == cursor_dt, Chat.id < cursor_id),
+                        last_message_at.is_(None),
+                    )
+                )
 
         query = query.order_by(
-            msg_stats_cte.c.last_message_at.desc().nulls_last()
+            msg_stats_cte.c.last_message_at.desc().nulls_last(), Chat.id.desc()
         ).limit(limit + 1)
         result = await self.db.execute(query)
         rows = result.all()
@@ -270,7 +281,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         next_cursor = None
         if has_more and chat_items:
             last_chat = chat_items[-1][0]
-            next_cursor = encode_datetime_cursor(last_chat.updated_at, last_chat.id)
+            last_message_at = chat_items[-1][3]
+            cursor_time = (
+                last_message_at
+                if last_message_at is not None
+                else _CHAT_NULL_LAST_MESSAGE_CURSOR
+            )
+            next_cursor = encode_datetime_cursor(cursor_time, str(last_chat.id))
 
         projected_rows = [(self._to_dto(row[0]), row[1], row[2]) for row in chat_items]
         participant_ids = {
@@ -514,7 +531,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         query = (
             select(Message)
             .where(Message.chat_id == chat_id)
-            .order_by(Message.created_at.desc())
+            .order_by(Message.created_at.desc(), Message.id.desc())
             .limit(1)
             .options(selectinload(Message.sender), selectinload(Message.attachments))
         )
@@ -565,7 +582,9 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 )
             )
 
-        query = query.order_by(Message.created_at.desc()).limit(limit + 1)
+        query = query.order_by(Message.created_at.desc(), Message.id.desc()).limit(
+            limit + 1
+        )
         result = await self.db.execute(query)
         rows = list(result.scalars().all())
 

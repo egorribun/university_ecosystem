@@ -58,7 +58,7 @@ def raise_not_found(
         resource_id: Optional ID for logging (unused in detail)
         exact_key: Optional override for the translation key
     """
-    key = exact_key or f"errors.{resource_key}.not_found"
+    key = exact_key or f"errors.{resource_key.lower()}.not_found"
     raise_http_error(status.HTTP_404_NOT_FOUND, key, locale)
 
 

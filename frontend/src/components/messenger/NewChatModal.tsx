@@ -194,7 +194,7 @@ export function NewChatModal({
     isError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ["users", debouncedSearch],
+    queryKey: ["users", "search", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
         `/users?limit=${USERS_PAGE_LIMIT}&full_name=${encodeURIComponent(debouncedSearch)}`

@@ -1,10 +1,11 @@
-import { renderHook, act, waitFor } from "@testing-library/react"
+import { render, renderHook, act, waitFor, screen } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { AxiosError } from "axios"
 
 import { resolveAuthErrorMessage, useLoginForm, useMfaFlow } from "./useLoginFlow"
 import { ChallengeLockedError } from "@/types/Auth"
 import type { PendingMfaState } from "@/types/Auth"
+import { MfaChallengeView } from "@/components/auth/MfaChallengeView"
 
 // ---------------------------------------------------------------------------
 // Module mocks — auth API + router. No real network.
@@ -543,6 +544,39 @@ describe("useMfaFlow.handleRecoveryVerify", () => {
 
     expect(result.current.mfaError).toBe("Recovery locked")
     expect(result.current.mfaErrorSource).toBe("general")
+  })
+
+  it("keeps an oversized recovery-code validation response render-safe", async () => {
+    mocks.pendingMfa = mfaLogin()
+    const validationError = new AxiosError("Request failed")
+    validationError.response = {
+      status: 422,
+      headers: {},
+      data: {
+        detail: [
+          {
+            loc: ["body", "code"],
+            msg: "String should have at most 19 characters",
+            type: "string_too_long",
+          },
+        ],
+      },
+      statusText: "Unprocessable Entity",
+      config: {} as never,
+    }
+    mocks.submitMfaChallenge.mockRejectedValue(validationError)
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      result.current.setShowRecoveryInput(true)
+      await result.current.handleRecoveryVerify("x".repeat(20))
+    })
+
+    render(<MfaChallengeView activeEmail="student@example.invalid" mfa={result.current} />)
+    expect(screen.getByRole("alert")).toHaveTextContent("auth:mfa.errors.generic")
+    expect(mocks.submitMfaChallenge).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "recovery_code", code: "x".repeat(20) })
+    )
   })
 
   it("keeps a generic recovery error in the general banner", async () => {

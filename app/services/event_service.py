@@ -148,6 +148,9 @@ class EventService:
             cursor
         ) or decode_datetime_cursor(cursor)
 
+        # Keep list and total filters on the same time snapshot.
+        filter_time = datetime.now(UTC)
+
         # Get limit+1 to determine has_more
         results = await self.repo.search_events(
             user_id=user_id,
@@ -158,6 +161,7 @@ class EventService:
             limit=limit + 1,
             cursor=decoded_cursor,
             query_embedding=query_embedding,
+            now=filter_time,
         )
 
         has_more = len(results) > limit
@@ -166,10 +170,13 @@ class EventService:
         # Calculate total only on first page
         total = None
         if not cursor:
-            total = (
-                await self.repo.count_upcoming()
-                if is_active is True
-                else await self.repo.count()
+            total = await self.repo.count_search_events(
+                search_query=search,
+                event_type=type,
+                location=location,
+                is_active=is_active,
+                query_embedding=query_embedding,
+                now=filter_time,
             )
 
         output: list[schemas.EventOut] = []

@@ -135,7 +135,7 @@ describe("service-worker entrypoint", () => {
     const module = await loadServiceWorker()
 
     expect(mocks.clientsClaim).toHaveBeenCalledOnce()
-    expect(scope.skipWaiting).toHaveBeenCalledOnce()
+    expect(scope.skipWaiting).not.toHaveBeenCalled()
     expect(mocks.initPrecaching).toHaveBeenCalledOnce()
     expect(mocks.initApiCaching).toHaveBeenCalledOnce()
     expect(mocks.initMediaCaching).toHaveBeenCalledOnce()
@@ -181,7 +181,7 @@ describe("service-worker entrypoint", () => {
     listener?.(message({ source: null }))
     listener?.(message({ source: {} }))
 
-    expect(scope.skipWaiting).toHaveBeenCalledOnce()
+    expect(scope.skipWaiting).not.toHaveBeenCalled()
     expect(mocks.setSessionHash).not.toHaveBeenCalled()
   })
 
@@ -191,8 +191,18 @@ describe("service-worker entrypoint", () => {
     await loadServiceWorker()
     const listener = listeners.get("message")
 
-    listener?.(message({ origin: "" }))
-    listener?.(message({ origin: "https://attacker.example" }))
+    listener?.(
+      message({
+        data: { type: SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING },
+        origin: "",
+      })
+    )
+    listener?.(
+      message({
+        data: { type: SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING },
+        origin: "https://attacker.example",
+      })
+    )
 
     expect(warn).toHaveBeenCalledTimes(2)
     expect(warn).toHaveBeenCalledWith(
@@ -205,9 +215,15 @@ describe("service-worker entrypoint", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
     await loadServiceWorker()
 
-    listeners.get("message")?.(message({ origin: "https://attacker.example" }))
+    listeners.get("message")?.(
+      message({
+        data: { type: SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING },
+        origin: "https://attacker.example",
+      })
+    )
 
     expect(warn).not.toHaveBeenCalled()
+    expect(scope.skipWaiting).not.toHaveBeenCalled()
   })
 
   it("dispatches supported messages and validates session hashes", async () => {
@@ -263,7 +279,7 @@ describe("service-worker entrypoint", () => {
     )
     listener?.(message())
 
-    expect(scope.skipWaiting).toHaveBeenCalledTimes(2)
+    expect(scope.skipWaiting).toHaveBeenCalledOnce()
     expect(mocks.setSessionHash).toHaveBeenCalledOnce()
     expect(mocks.setSessionHash).toHaveBeenCalledWith("session-a", undefined)
     expect(waitUntil).toHaveBeenCalledTimes(3)

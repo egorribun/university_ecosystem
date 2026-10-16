@@ -7,6 +7,7 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -16,6 +17,8 @@ from alembic.operations import Operations
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 from testcontainers.community.postgres import PostgresContainer
+
+from tests.integration.owned_postgres import _LoopbackMigrationPostgres
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION_PATH = (
@@ -42,9 +45,49 @@ def _load_migration():
 
 @pytest.fixture(scope="module")
 def postgres_engine():
-    """Use the same digest-pinned PostgreSQL 17 image as migration integration tests."""
+    """Use a strict operator endpoint or one owned, bounded PostgreSQL 17 container."""
+    operator_url = os.environ.get("MIGRATION_ROUNDTRIP_DATABASE_URL")
+    if operator_url:
+        # The root operator owns the server; this fixture owns only its module DB.
+        operator = _LoopbackMigrationPostgres(operator_url)
+        run_id = uuid4().hex[:20]
+        database_name = f"test_{run_id}"
+        admin_url = operator.get_maintenance_connection_url(driver="psycopg")
+        target_url = operator.get_test_connection_url(database_name, driver="psycopg")
+        admin_engine = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
+        database_created = False
+        engine: sa.Engine | None = None
+        try:
+            quoted_database = admin_engine.dialect.identifier_preparer.quote(
+                database_name
+            )
+            with admin_engine.connect() as admin:
+                collision = admin.execute(
+                    sa.text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                    {"name": database_name},
+                ).scalar_one_or_none()
+                if collision is not None:
+                    raise RuntimeError("Generated AUD038 database name already exists.")
+                admin.exec_driver_sql(f"CREATE DATABASE {quoted_database}")
+                database_created = True
+
+            engine = sa.create_engine(target_url)
+            yield engine
+        finally:
+            try:
+                if engine is not None:
+                    engine.dispose()
+            finally:
+                try:
+                    if database_created:
+                        with admin_engine.connect() as admin:
+                            admin.exec_driver_sql(f"DROP DATABASE {quoted_database}")
+                finally:
+                    admin_engine.dispose()
+        return
+
     run_id = uuid4().hex
-    with PostgresContainer(
+    postgres = PostgresContainer(
         "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d",
         name=f"ue-aud038-pg17-{run_id}",
         labels={
@@ -54,7 +97,11 @@ def postgres_engine():
         mem_limit=1024**3,
         memswap_limit=1024**3,
         nano_cpus=2_000_000_000,
-    ) as postgres:
+        pids_limit=256,
+    )
+    # Bind only loopback and let Docker allocate the host-side port.
+    cast(Any, postgres.ports)[str(postgres.port)] = ("127.0.0.1", None)
+    with postgres:
         engine = sa.create_engine(postgres.get_connection_url(driver="psycopg"))
         try:
             yield engine

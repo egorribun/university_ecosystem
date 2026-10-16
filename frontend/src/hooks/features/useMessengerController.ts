@@ -481,14 +481,16 @@ export const useMessengerController = () => {
       content,
       files,
       replyToMessageId,
+      idempotencyKey,
       optimisticBlobUrls: _optimisticBlobUrls,
     }: {
       chatId: string
       content: string
       files?: File[]
       replyToMessageId?: string
+      idempotencyKey: string
       optimisticBlobUrls: string[]
-    }) => chatApi.sendMessage(chatId, content, files, replyToMessageId),
+    }) => chatApi.sendMessage(chatId, content, files, replyToMessageId, idempotencyKey),
     onSuccess: (newMessage, variables) => {
       queryClient.setQueryData<MessagesListResponse | undefined>(
         ["messages", variables.chatId],
@@ -947,6 +949,7 @@ export const useMessengerController = () => {
           content: text,
           files,
           replyToMessageId: replyingTo?.id,
+          idempotencyKey: tempId,
           optimisticBlobUrls,
         })
       } catch {

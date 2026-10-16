@@ -24,6 +24,7 @@ def mock_repo():
     repo.db.commit = AsyncMock()
     repo.db.refresh = AsyncMock()
     repo.db.rollback = AsyncMock()
+    repo.count_search_events.return_value = 0
     repo.db.add = MagicMock()
     return repo
 
@@ -145,7 +146,7 @@ async def test_get_events_issue_token_fails(
             event=mock_dto, participant_count=10, user_attendance=mock_attendance_dto
         )
     ]
-    mock_repo.count_upcoming.return_value = 1
+    mock_repo.count_search_events.return_value = 1
 
     with patch(
         "app.services.event_service.attendance_tokens.issue_token",

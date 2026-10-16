@@ -166,3 +166,56 @@ async def test_comment_service_commits_create_and_edit_across_sessions(
         )
         assert persisted is not None
         assert persisted.content == "Committed edit"
+
+
+@pytest.mark.asyncio
+async def test_comment_delete_commits_across_sessions_and_preserves_creation_outbox(
+    db_session: AsyncSession,
+    user_factory,
+):
+    await register_event_listeners()
+    user = await user_factory()
+    news = await _add_news(db_session, title="Durable comment deletion")
+    user_id = user.id
+    news_id = news.id
+    await db_session.commit()
+
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    async with sessions() as writer:
+        service = NewsService(uow_from_session(writer), AsyncMock())
+        created = await service.create_comment(
+            news_id, user_id, "Committed before deletion", locale="en"
+        )
+        comment_id = created.id
+
+    event_query = select(StoredEvent).where(
+        StoredEvent.aggregate_type == "NewsComment",
+        StoredEvent.aggregate_id == str(comment_id),
+    )
+    async with sessions() as reader:
+        persisted = await reader.get(models.NewsComment, comment_id)
+        events = list((await reader.scalars(event_query)).all())
+
+    assert persisted is not None
+    assert persisted.content == "Committed before deletion"
+    assert len(events) == 1
+    assert events[0].event_type == "news.comment_created"
+    assert events[0].status == "pending"
+    assert events[0].payload == {
+        "_schema_version": 1,
+        "comment_id": str(comment_id),
+        "locale": "en",
+    }
+
+    async with sessions() as writer:
+        service = NewsService(uow_from_session(writer), AsyncMock())
+        await service.delete_comment(comment_id, user_id)
+
+    async with sessions() as reader:
+        assert await reader.get(models.NewsComment, comment_id) is None
+        events_after_delete = list((await reader.scalars(event_query)).all())
+
+    assert len(events_after_delete) == 1
+    assert events_after_delete[0].id == events[0].id
+    assert events_after_delete[0].event_type == "news.comment_created"
+    assert events_after_delete[0].status == "pending"

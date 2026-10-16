@@ -126,23 +126,16 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
-    async def search_events(
+    def _build_search_conditions(
         self,
         *,
-        user_id: uuid.UUID | int | str | None = None,
-        search_query: str = "",
-        event_type: str | None = None,
-        location: str | None = None,
-        is_active: bool | None = True,
-        limit: int = 20,
-        cursor: tuple[datetime, uuid.UUID | int | str]
-        | tuple[datetime, str, float | None]
-        | None = None,
-        query_embedding: list[float] | None = None,
-    ) -> Sequence[EventSearchResultDTO]:
-        now = datetime.now(UTC)
-
-        # Build conditions
+        search_query: str,
+        event_type: str | None,
+        location: str | None,
+        is_active: bool | None,
+        query_embedding: list[float] | None,
+        now: datetime,
+    ) -> tuple[list[Any], ColumnElement[float] | None]:
         conditions: list[Any] = []
         rank_expr: ColumnElement[float] | None = None
 
@@ -190,6 +183,60 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             conditions.append(Event.ends_at >= now)
         elif is_active is False:
             conditions.append(Event.ends_at < now)
+
+        return conditions, rank_expr
+
+    async def count_search_events(
+        self,
+        *,
+        search_query: str = "",
+        event_type: str | None = None,
+        location: str | None = None,
+        is_active: bool | None = True,
+        query_embedding: list[float] | None = None,
+        now: datetime | None = None,
+    ) -> int:
+        """Count the same filtered event set used by the list query."""
+        current_time = now or datetime.now(UTC)
+        conditions, _ = self._build_search_conditions(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=is_active,
+            query_embedding=query_embedding,
+            now=current_time,
+        )
+        stmt = select(func.count(Event.id))
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+        result = await self.db.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    async def search_events(
+        self,
+        *,
+        user_id: uuid.UUID | int | str | None = None,
+        search_query: str = "",
+        event_type: str | None = None,
+        location: str | None = None,
+        is_active: bool | None = True,
+        limit: int = 20,
+        cursor: tuple[datetime, uuid.UUID | int | str]
+        | tuple[datetime, str, float | None]
+        | None = None,
+        query_embedding: list[float] | None = None,
+        now: datetime | None = None,
+    ) -> Sequence[EventSearchResultDTO]:
+        now = now or datetime.now(UTC)
+
+        conditions, rank_expr = self._build_search_conditions(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=is_active,
+            query_embedding=query_embedding,
+            now=now,
+        )
 
         if cursor:
             last_starts_at, raw_id = cursor[:2]

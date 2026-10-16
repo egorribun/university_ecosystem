@@ -173,6 +173,25 @@
   {{- if and .Values.ingress.enabled (or (not .Values.ingress.className) (not .Values.ingress.tls)) -}}
     {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
   {{- end -}}
+  {{- if .Values.ingress.enabled -}}
+    {{- $routesToGateway := false -}}
+    {{- $routesToEnabledWsHub := false -}}
+    {{- range $host := .Values.ingress.hosts -}}
+      {{- range $path := $host.paths -}}
+        {{- if eq $path.service "gateway" -}}
+          {{- $routesToGateway = true -}}
+        {{- else if and (eq $path.service "ws-hub") $.Values.wsHub.enabled -}}
+          {{- $routesToEnabledWsHub = true -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $routesToGateway -}}
+      {{- $_ := include "university-ecosystem.requireIngressProxyPeers" (dict "fieldPath" "gateway.config.trustedProxies" "proxies" .Values.gateway.config.trustedProxies) -}}
+    {{- end -}}
+    {{- if $routesToEnabledWsHub -}}
+      {{- $_ := include "university-ecosystem.requireIngressProxyPeers" (dict "fieldPath" "wsHub.config.trustedProxies" "proxies" .Values.wsHub.config.trustedProxies) -}}
+    {{- end -}}
+  {{- end -}}
   {{- $frontendOrigin := printf "https://%s" (index .Values.ingress.hosts 0).host -}}
   {{- if or (ne (len .Values.wsHub.config.allowedOrigins) 1) (ne (index .Values.wsHub.config.allowedOrigins 0) $frontendOrigin) -}}
     {{- fail "wsHub.config.allowedOrigins must exactly equal the frontend ingress origin" -}}

@@ -90,4 +90,45 @@ describe("API client rate limit queue", () => {
     expect(adapter).toHaveBeenCalledTimes(5)
     await Promise.all(requests)
   })
+
+  it("releases its GET slot and abort listener when a 429 preflight wait is canceled", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    vi.resetModules()
+
+    const { default: api } = await import("@/api/client")
+    const { scheduleRateLimitWindow } = await import("@/api/interceptors/rateLimit")
+    const adapter = vi.fn(async (config): Promise<AxiosResponse<{ ok: boolean }>> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      request: {},
+    }))
+    api.defaults.adapter = adapter
+    scheduleRateLimitWindow(1_000)
+
+    const controller = new AbortController()
+    const removeAbortListener = vi.spyOn(controller.signal, "removeEventListener")
+    try {
+      const abortedRequest = api
+        .get("/events", { signal: controller.signal })
+        .catch((error) => error)
+      await vi.advanceTimersByTimeAsync(0)
+      controller.abort()
+      await vi.advanceTimersByTimeAsync(0)
+      await expect(abortedRequest).resolves.toMatchObject({ name: "AbortError" })
+      expect(removeAbortListener).toHaveBeenCalledWith("abort", expect.any(Function))
+
+      const nextRequest = api.get("/events")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(adapter).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1_000)
+      await expect(nextRequest).resolves.toMatchObject({ status: 200, data: { ok: true } })
+      expect(adapter).toHaveBeenCalledOnce()
+    } finally {
+      removeAbortListener.mockRestore()
+    }
+  })
 })

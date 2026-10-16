@@ -68,12 +68,19 @@ type ChallengeWithAttempts = ChallengeMethod &
  *   wrapped by ``handleSubmit``.
  */
 /**
- * The message to show for a failed auth request: the API `detail` of an Axios
- * response first, then a non-empty `Error.message`, else the fallback.
+ * The message to show for a failed auth request: a string API `detail` first.
+ * A present but non-string detail uses the translated fallback; without a
+ * detail, a non-empty `Error.message` is preferred over that fallback.
  */
 export function resolveAuthErrorMessage(error: unknown, fallback: string): string {
-  if (isAxiosError(error) && error.response?.data?.detail) {
-    return error.response.data.detail
+  if (isAxiosError(error)) {
+    const responseData: unknown = error.response?.data
+    if (responseData !== null && typeof responseData === "object" && "detail" in responseData) {
+      const detail = (responseData as { detail?: unknown }).detail
+      if (detail !== undefined) {
+        return typeof detail === "string" && detail.length > 0 ? detail : fallback
+      }
+    }
   }
   return error instanceof Error && error.message ? error.message : fallback
 }

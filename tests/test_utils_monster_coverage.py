@@ -43,6 +43,7 @@ async def test_monster_coverage_run():
 
     e_repo = MagicMock(spec=EventRepository)
     e_repo.search_events = AsyncMock(return_value=[])
+    e_repo.count_search_events = AsyncMock(return_value=0)
     e_repo.get_events = AsyncMock(return_value=MagicMock(items=[]))
     mock_vector = MagicMock()
     mock_vector.get_embedding = AsyncMock(return_value=[0.1])

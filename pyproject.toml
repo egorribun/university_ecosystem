@@ -232,7 +232,6 @@ module = [
   "bcrypt",
   "aioboto3.*",
   "botocore.*",
-  "boto3.*",
   "pydantic_settings.*",
   "maxminddb.*",
   "authzed.*",

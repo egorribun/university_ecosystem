@@ -383,8 +383,28 @@ For Helm, set gateway.config.trustedProxies and wsHub.config.trustedProxies to
 the real ingress source IPs/CIDRs. Set backend.env.TRUSTED_PROXIES to the
 Gateway and any upstream hops remaining in the sanitized chain. NetworkPolicy
 selectors restrict reachability but do not configure application header trust.
-Never use guessed addresses or a cluster-wide/private CIDR. Staging inherits
-the loopback-only ws-hub default until its deployment supplies actual peers.
+Never use guessed addresses or a cluster-wide/private CIDR. Staging values
+intentionally omit external peer guesses. For each enabled Ingress route to
+Gateway or ws-hub, staging/production Helm rendering validates that service's
+`trustedProxies` values. CIDR prefix lengths are normalized before validation,
+including leading-zero spellings. Rendering fails if the normalized list is empty
+or loopback-only, contains a universal `/0` route, either IPv6 `/1` half-space,
+a complete RFC1918 block or supernet covering `10.0.0.0/8`, `172.16.0.0/12`, or
+`192.168.0.0/16`, the complete IPv6 Unique-Local block `fc00::/7` or a supernet
+covering it, the complete IPv6 Global-Unicast block `2000::/3` or a supernet
+covering it (see the [IANA IPv6 Address Space Registry](https://www.iana.org/assignments/ipv6-address-space/)),
+an IPv4-mapped range covering all IPv4 addresses, or a non-loopback IPv4-mapped
+IPv6 peer. For mapped non-loopback peers, configure
+native IPv4 addresses or CIDRs. IPv4-mapped `127.0.0.0/8` is treated as loopback:
+by itself it does not satisfy the non-loopback-peer requirement, but it can
+coexist with a separate valid non-loopback address. Narrower private IPv4 and
+IPv6 CIDRs remain valid; there is no arbitrary minimum subnet size.
+
+This fail-closed check validates input values; it does not discover or attest the
+current topology or actual ingress source IPs. Operators must obtain the real
+peers from deployment configuration. TEST-NET addresses and IPv6 documentation
+prefixes in contract tests are fixtures only and are not deployment values.
+Development and direct-mode renders do not require ingress proxy ranges.
 
 ## Backend system dependencies
 

@@ -223,7 +223,9 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
     assert result.mfa_challenge_count == 1
     assert result.mfa_enrollments[0]["label"] == "phone"
     assert result.access_logs[0]["resource_type"] == "profile"
-    repo.get_user_access_logs.assert_awaited_once_with(user_id, limit=2000)
+    repo.get_user_access_logs.assert_awaited_once_with(
+        user_id, limit=200, before_dt=None, after_id=None
+    )
     log.assert_awaited_once()
 
 
@@ -512,3 +514,140 @@ async def test_admin_delete_user_rejects_self_delete():
         await service.admin_delete_user(
             user_id, _request(), SimpleNamespace(id=user_id, role="admin")
         )
+
+
+@pytest.mark.asyncio
+async def test_export_user_data_includes_all_owner_sessions_and_notifications(
+    user_factory, db_session
+) -> None:
+    owner = await user_factory()
+    unrelated = await user_factory()
+    owner_id = owner.id
+    unrelated_id = unrelated.id
+    now = datetime.now(UTC)
+
+    owner_sessions = [
+        models.ActiveSession(
+            id=uuid4(),
+            user_id=owner_id,
+            jti=str(uuid4()),
+            created_at=now - timedelta(seconds=index),
+            expires_at=now + timedelta(days=30),
+        )
+        for index in range(51)
+    ]
+    unrelated_sessions = [
+        models.ActiveSession(
+            id=uuid4(),
+            user_id=unrelated_id,
+            jti=str(uuid4()),
+            created_at=now + timedelta(seconds=index + 1),
+            expires_at=now + timedelta(days=30),
+        )
+        for index in range(2)
+    ]
+    owner_notifications = [
+        models.Notification(
+            id=uuid4(),
+            user_id=owner_id,
+            title=f"Owner export notice {index}",
+            body=f"Owner body {index}",
+            type="info",
+            created_at=now - timedelta(seconds=index),
+        )
+        for index in range(101)
+    ]
+    unrelated_notifications = [
+        models.Notification(
+            id=uuid4(),
+            user_id=unrelated_id,
+            title=f"Unrelated export notice {index}",
+            body=f"Unrelated body {index}",
+            type="info",
+            created_at=now + timedelta(seconds=index + 1),
+        )
+        for index in range(2)
+    ]
+    db_session.add_all(
+        [
+            *owner_sessions,
+            *unrelated_sessions,
+            *owner_notifications,
+            *unrelated_notifications,
+        ]
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users/me/export", "headers": []}
+    )
+
+    result = await service.export_user_data(SimpleNamespace(id=owner_id), request)
+
+    exported_session_ids = [item["id"] for item in result.sessions]
+    expected_session_ids = [item.id for item in owner_sessions]
+    assert exported_session_ids == expected_session_ids
+    assert len(set(exported_session_ids)) == len(expected_session_ids)
+
+    exported_notification_ids = [item["id"] for item in result.notifications]
+    expected_notification_ids = [item.id for item in owner_notifications]
+    assert exported_notification_ids == expected_notification_ids
+    assert len(set(exported_notification_ids)) == len(expected_notification_ids)
+
+
+@pytest.mark.asyncio
+async def test_export_user_data_includes_all_owner_access_logs_over_page_limit(
+    user_factory, db_session
+):
+    owner = await user_factory()
+    unrelated = await user_factory()
+    owner_id = owner.id
+    unrelated_id = unrelated.id
+    shared_timestamp = datetime.now(UTC)
+
+    owner_logs = [
+        models.DataAccessLog(
+            id=uuid4(),
+            actor_user_id=owner_id,
+            subject_user_id=owner_id,
+            resource_type="profile",
+            resource_id=f"owner-access-log-{index:04d}",
+            action="read",
+            created_at=shared_timestamp,
+        )
+        for index in range(2001)
+    ]
+    unrelated_logs = [
+        models.DataAccessLog(
+            id=uuid4(),
+            actor_user_id=unrelated_id,
+            subject_user_id=unrelated_id,
+            resource_type="profile",
+            resource_id=f"unrelated-access-log-{index}",
+            action="read",
+            created_at=shared_timestamp + timedelta(seconds=index + 1),
+        )
+        for index in range(3)
+    ]
+    db_session.add_all([*owner_logs, *unrelated_logs])
+    await db_session.commit()
+    db_session.expunge_all()
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    request = Request(
+        {"type": "http", "method": "GET", "path": "/users/me/export", "headers": []}
+    )
+
+    result = await service.export_user_data(SimpleNamespace(id=owner_id), request)
+
+    expected_resource_ids = [
+        item.resource_id
+        for item in sorted(owner_logs, key=lambda item: item.id, reverse=True)
+    ]
+    exported_resource_ids = [item["resource_id"] for item in result.access_logs]
+    assert exported_resource_ids == expected_resource_ids
+    assert len(exported_resource_ids) == 2001
+    assert len(set(exported_resource_ids)) == 2001
+    assert not any(item.startswith("unrelated-") for item in exported_resource_ids)

@@ -40,6 +40,7 @@ from app.models.news import News
 from app.models.notifications import Notification
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
+from tests.integration.owned_postgres import _LoopbackMigrationPostgres
 
 _RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS") == "1"
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -86,6 +87,12 @@ def clean_database() -> Iterator[None]:
 def postgres_server():
     assert _RUN_INTEGRATION_TESTS, "Owned PostgreSQL integration was not enabled"
 
+    operator_url = os.environ.get("MIGRATION_ROUNDTRIP_DATABASE_URL")
+    if operator_url:
+        # The root operator owns the server; each test owns its child database.
+        yield _LoopbackMigrationPostgres(operator_url)
+        return
+
     run_id = uuid.uuid4().hex
     postgres = PostgresContainer(
         _POSTGRES_IMAGE,
@@ -97,6 +104,7 @@ def postgres_server():
         mem_limit=1024**3,
         memswap_limit=1024**3,
         nano_cpus=2_000_000_000,
+        pids_limit=256,
     )
     # Docker SDK accepts a host-IP/host-port tuple; None requests a random host port.
     cast(Any, postgres.ports)[str(postgres.port)] = ("127.0.0.1", None)
@@ -322,6 +330,107 @@ async def test_content_created_outbox_replay_is_idempotent(
         dedupe_key=f"events.created:{event_dto.id}",
         expected_users={author.id, administrator.id},
     )
+    await _assert_one_notification_and_request(
+        dedupe_key=f"news.comment:{comment.id}",
+        expected_users={administrator.id},
+    )
+
+
+async def test_comment_outbox_process_batch_retries_and_acknowledges_durable_delivery(
+    db_session, user_factory, monkeypatch
+):
+    """Process a committed comment through the outbox, then replay safely."""
+    _require_postgres()
+    author = await user_factory(role="student")
+    administrator = await user_factory(role="admin")
+    news_dto = await NewsRepository(db_session).create(
+        {"title": "Comment outbox", "content": "News body", "author_id": author.id},
+        locale="en",
+    )
+    comment = await NewsRepository(db_session).create_comment(
+        news_dto.id, author.id, "Comment body", locale="en"
+    )
+    await db_session.commit()
+    comment_event = await _source_event(db_session, "news.comment_created", comment.id)
+
+    original_notify_about_comment = event_handlers.notify_about_comment
+    failures_remaining = 1
+
+    async def fail_once_before_notification_commit(
+        db, news, comment_record, comment_author, *, locale=None
+    ):
+        nonlocal failures_remaining
+        count = await original_notify_about_comment(
+            db, news, comment_record, comment_author, locale=locale
+        )
+        if failures_remaining:
+            failures_remaining -= 1
+            raise RuntimeError("injected failure before comment notification commit")
+        return count
+
+    bus = EventBus()
+
+    async def acknowledge(_event):
+        return None
+
+    bus.subscribe("user.created", acknowledge)
+    bus.subscribe("news.created", acknowledge)
+    bus.subscribe("notification.delivery_requested", acknowledge)
+    bus.subscribe(
+        "news.comment_created",
+        event_handlers.handle_news_comment_created_notification,
+    )
+    monkeypatch.setattr(
+        event_handlers, "notify_about_comment", fail_once_before_notification_commit
+    )
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    monkeypatch.setattr(
+        "app.services.notifications.delivery.send_web_push",
+        AsyncMock(
+            side_effect=AssertionError("push must remain behind its outbox event")
+        ),
+    )
+    worker = outbox_module.OutboxWorker(batch_size=100)
+
+    await worker.process_batch()
+
+    async with database.async_session() as verification_session:
+        failed_event = await verification_session.get(StoredEvent, comment_event.id)
+        assert failed_event is not None
+        assert failed_event.processed_at is None
+        assert failed_event.error_count == 1
+        failed_notifications = await verification_session.scalars(
+            select(Notification).where(
+                Notification.dedupe_key == f"news.comment:{comment.id}"
+            )
+        )
+        assert list(failed_notifications.all()) == []
+        failed_requests = await verification_session.scalars(
+            select(StoredEvent).where(
+                StoredEvent.event_type == "notification.delivery_requested"
+            )
+        )
+        assert list(failed_requests.all()) == []
+
+    await worker.process_batch()
+
+    async with database.async_session() as verification_session:
+        processed_event = await verification_session.get(StoredEvent, comment_event.id)
+        assert processed_event is not None
+        assert processed_event.processed_at is not None
+        assert processed_event.error_count == 1
+
+    await _assert_one_notification_and_request(
+        dedupe_key=f"news.comment:{comment.id}",
+        expected_users={administrator.id},
+    )
+
+    async with database.async_session() as replay_session:
+        replay_event = await replay_session.get(StoredEvent, comment_event.id)
+        assert replay_event is not None
+        assert replay_event.processed_at is not None
+        await _dispatch_replay(worker, replay_event)
+
     await _assert_one_notification_and_request(
         dedupe_key=f"news.comment:{comment.id}",
         expected_users={administrator.id},

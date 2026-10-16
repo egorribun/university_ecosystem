@@ -578,7 +578,9 @@ describe("NewChatModal motion/layout mutation contract", () => {
     fireEvent.change(input, { target: { value: "ab" } })
     await waitFor(() => expect(state.get).toHaveBeenCalledTimes(1))
     expect(state.get).toHaveBeenCalledWith("/users?limit=10&full_name=ab")
-    await waitFor(() => expect(latestQueryClient?.getQueryData(["users", "ab"])).toEqual([]))
+    await waitFor(() =>
+      expect(latestQueryClient?.getQueryData(["users", "search", "ab"])).toEqual([])
+    )
     expect(latestQueryClient?.getQueryData(["", "ab"])).toBeUndefined()
     expect(state.focusTrap).toHaveBeenLastCalledWith(
       expect.objectContaining({ active: true, initialFocus: false, returnFocus: true })

@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
+import { currentUserQueryKey } from "@/api/hooks/users"
 import { AppShellProvider } from "@/contexts/AppShellContext"
 
 /**
@@ -378,6 +379,40 @@ describe("NewChatModal", () => {
         target: { value: "missing" },
       })
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("keeps the current-user cache separate when searching for the text me", async () => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      const currentUser = { id: "current-user", full_name: "Current User" }
+      queryClient.setQueryData(currentUserQueryKey, currentUser)
+      mocks.apiGet.mockResolvedValue({
+        data: [
+          { id: "search-result", full_name: "Search Result", email: "result@example.invalid" },
+        ],
+      })
+
+      const { unmount } = render(
+        <AppShellProvider>
+          <QueryClientProvider client={queryClient}>
+            <NewChatModal open onClose={() => {}} onSelect={() => {}} />
+          </QueryClientProvider>
+        </AppShellProvider>
+      )
+
+      try {
+        fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+          target: { value: "me" },
+        })
+
+        expect(await screen.findByRole("option", { name: /Search Result/ })).toBeInTheDocument()
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=me")
+        expect(queryClient.getQueryData(currentUserQueryKey)).toBe(currentUser)
+      } finally {
+        unmount()
+        queryClient.clear()
+      }
     })
 
     it("does not query or show empty state for a one-character search", async () => {

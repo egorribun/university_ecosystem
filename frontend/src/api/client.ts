@@ -362,7 +362,7 @@ const isFailedRotationAuthRecoveryRequest = (config: InternalAxiosRequestConfig)
 }
 
 api.interceptors.request.use(async (config) => {
-  const candidate = config as ApiRequestConfig
+  const candidate = config as InternalAxiosRequestConfig & ApiRequestConfig
 
   // Bind every browser request before its first asynchronous preflight. The
   // closure reads the shared generation so an old tab cannot dispatch with a
@@ -436,12 +436,18 @@ api.interceptors.request.use(async (config) => {
   // The queue is process-global. Applying it during SSR combines requests
   // from independent visitors and can delay the HTML response past its timeout.
   if (!isSsrRuntime && !candidate.skipRateLimitQueue) {
-    // @ts-expect-error - axios config bridge
     await waitForClientQueueSlot(candidate)
   }
 
   if (!isSsrRuntime && isRateLimited()) {
-    await waitForRateLimitWindow(config.signal as AbortSignal | undefined)
+    try {
+      await waitForRateLimitWindow(config.signal as AbortSignal | undefined)
+    } catch (error) {
+      // A request-interceptor rejection has no response config for the response
+      // interceptor to release, so give back the slot acquired above here.
+      releaseClientQueueSlot(candidate)
+      throw error
+    }
   }
 
   applyLanguageHeader(config)
@@ -504,13 +510,12 @@ const _cleanupIdempotencyKey = (config: ApiRequestConfig | undefined) => {
 
 api.interceptors.response.use(
   async (response) => {
-    const config = response.config as ApiRequestConfig | undefined
+    const config = response.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
     _cleanupIdempotencyKey(config)
     if (config?.etagCacheKey) {
       await handleEtagResponse(response, config.etagCacheKey)
     }
     updateTraceContext(response.headers as AxiosHeaders)
-    // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
     return response
   },

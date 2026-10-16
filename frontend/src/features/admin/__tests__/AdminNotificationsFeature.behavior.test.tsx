@@ -112,6 +112,14 @@ async function settleQueue(queryClient: QueryClient) {
   })
 }
 
+async function clickQueueAction(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(screen.getByRole("button", { name: label }))
+  if (label === "Delete selected") {
+    const confirmation = within(screen.getByRole("alertdialog"))
+    await user.click(confirmation.getByRole("button", { name: /delete|удалить/i }))
+  }
+}
+
 async function loadTopics(user: ReturnType<typeof userEvent.setup>) {
   const input = screen.getByRole("textbox", { name: "User ID" })
   await user.click(input)
@@ -337,6 +345,45 @@ describe("Admin notification topic changes", () => {
 })
 
 describe("Admin dead-letter queue actions", () => {
+  it.each(["bulk", "row"] as const)(
+    "requires an accessible confirmation before the %s purge action",
+    async (mode) => {
+      const { user, queryClient } = renderFeature()
+      await settleQueue(queryClient)
+      const jobId = queue.items[0]!.id
+      const table = within(screen.getByRole("table", { name: "Dead-letter queue" }))
+      const row = table.getByRole("row", {
+        name: (name) => name.includes(queue.items[0]!.record_id),
+      })
+      const openPurge = async () => {
+        if (mode === "bulk") {
+          const selection = screen.getByRole("checkbox", {
+            name: `Select job ${jobId}`,
+          }) as HTMLInputElement
+          if (!selection.checked) {
+            await user.click(selection)
+          }
+          await user.click(screen.getByRole("button", { name: "Delete selected" }))
+        } else {
+          await user.click(within(row).getByRole("button", { name: "Delete" }))
+        }
+      }
+
+      await openPurge()
+      expect(purgeDeadLetterJobs).not.toHaveBeenCalled()
+      let confirmation = screen.getByRole("alertdialog")
+      await user.click(within(confirmation).getByRole("button", { name: /cancel/i }))
+      expect(purgeDeadLetterJobs).not.toHaveBeenCalled()
+      if (mode === "bulk") {
+        expect(screen.getByRole("checkbox", { name: `Select job ${jobId}` })).toBeChecked()
+      }
+
+      await openPurge()
+      confirmation = screen.getByRole("alertdialog")
+      await user.click(within(confirmation).getByRole("button", { name: /delete|purge/i }))
+      await waitFor(() => expect(purgeDeadLetterJobs).toHaveBeenCalledExactlyOnceWith([jobId]))
+    }
+  )
   it("selects the refreshed rows when equally many previously selected jobs disappeared", async () => {
     const { user, queryClient } = renderFeature()
     await settleQueue(queryClient)
@@ -415,7 +462,7 @@ describe("Admin dead-letter queue actions", () => {
         screen.getByRole("checkbox", { name: `Select job ${newlyArrived.id}` })
       ).not.toBeChecked()
 
-      await user.click(screen.getByRole("button", { name: label }))
+      await clickQueueAction(user, label)
       try {
         expect(action).toHaveBeenCalledExactlyOnceWith([queue.items[0]!.id])
       } finally {
@@ -452,7 +499,7 @@ describe("Admin dead-letter queue actions", () => {
       expect(fetchUser).not.toHaveBeenCalled()
       await user.click(screen.getByRole("checkbox", { name: `Select job ${queue.items[0]!.id}` }))
       vi.mocked(fetchDeadLetterQueue).mockResolvedValue({ items: [queue.items[1]!], total: 1 })
-      await user.click(screen.getByRole("button", { name: label }))
+      await clickQueueAction(user, label)
       await settleQueue(queryClient)
 
       expect(action).toHaveBeenCalledExactlyOnceWith([queue.items[0]!.id])
@@ -535,7 +582,7 @@ describe("Admin dead-letter queue actions", () => {
       const { user, queryClient } = renderFeature()
       await settleQueue(queryClient)
       await user.click(screen.getByRole("checkbox", { name: "Select all jobs" }))
-      await user.click(screen.getByRole("button", { name: label }))
+      await clickQueueAction(user, label)
       const ids = queue.items.map((job) => job.id)
       expect(action).toHaveBeenCalledExactlyOnceWith(ids)
       for (const button of screen.getAllByRole("button", {
@@ -610,14 +657,14 @@ describe("Admin dead-letter queue actions", () => {
       const row = screen.getByRole("checkbox", { name: `Select job ${queue.items[1]!.id}` })
       await user.click(row)
       const button = screen.getByRole("button", { name: label })
-      await user.click(button)
+      await clickQueueAction(user, label)
       await act(async () => failed.reject(new Error("Queue action failed")))
       await settleQueue(queryClient)
       expect(screen.getByRole("alert")).toHaveTextContent("Queue action failed")
       expect(row).toBeChecked()
       expect(button).toBeEnabled()
       expect(fetchDeadLetterQueue).toHaveBeenCalledTimes(1)
-      await user.click(button)
+      await clickQueueAction(user, label)
       expect(screen.queryByRole("alert")).not.toBeInTheDocument()
       expect(action).toHaveBeenNthCalledWith(2, [queue.items[1]!.id])
       vi.mocked(fetchDeadLetterQueue).mockResolvedValue({ items: [queue.items[0]!], total: 1 })

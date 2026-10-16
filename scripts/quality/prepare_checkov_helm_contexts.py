@@ -56,7 +56,7 @@ PINNED_IMAGE_VALUE_PATHS = {
 # Finite synthetic staging inputs mirror tests/test_helm_staging_contract.py.
 # Image repositories and digests, release SHA, and run identity are filled from
 # current-source local OCI evidence and GitHub's immutable run metadata below.
-STAGING_OVERRIDES: dict[str, str | int] = {
+STAGING_OVERRIDES: dict[str, Any] = {
     "global.imageTag": "",
     "global.jwtIssuer": "https://api.university.staging.example.org",
     "backend.image.repository": "",
@@ -79,6 +79,9 @@ STAGING_OVERRIDES: dict[str, str | int] = {
     "fileProcessor.config.minioEndpoint": "minio.staging.internal:443",
     "fileProcessor.config.temporalHost": "temporal.staging.internal:7233",
     "fileProcessor.config.otlpEndpoint": "otel-collector.staging.internal:4317",
+    # TEST-NET/IPv6 documentation peers exist only in the generated scanner profile.
+    "gateway.config.trustedProxies": ["192.0.2.11/32", "2001:db8::11"],
+    "wsHub.config.trustedProxies": ["198.51.100.12/32", "2001:db8::12"],
     "ingress.hosts[0].host": "university.staging.example.org",
     "ingress.hosts[1].host": "api.university.staging.example.org",
     "ingress.tls[0].hosts[0]": "university.staging.example.org",

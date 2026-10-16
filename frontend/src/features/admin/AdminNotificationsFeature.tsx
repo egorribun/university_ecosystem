@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { RotateCcw, Trash2, Loader2 } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { Alert, Button, TextField, SectionCard, CircularProgress } from "@/components/settings"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 
 import {
   fetchAdminUserTopics,
@@ -72,6 +73,8 @@ export function AdminNotificationsFeature() {
   const { formatDate } = useLocaleFormatters()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [purgeConfirmationIds, setPurgeConfirmationIds] = useState<string[] | null>(null)
+  const purgeConfirmationLock = useRef(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [topicsUserIdInput, setTopicsUserIdInput] = useState("")
   const [topicsData, setTopicsData] = useState<Awaited<
@@ -136,6 +139,10 @@ export function AdminNotificationsFeature() {
       void queryClient.invalidateQueries({ queryKey: adminDeadLetterQueueQueryKey })
     },
     onError: onActionError,
+    onSettled: () => {
+      setPurgeConfirmationIds(null)
+      purgeConfirmationLock.current = false
+    },
   })
 
   const toggleSelect = (jobId: string) => {
@@ -226,8 +233,28 @@ export function AdminNotificationsFeature() {
     retryMutation.mutate(selectedIds)
   }
 
+  const disablePurgeRequest = () =>
+    retryMutation.isPending || purgeMutation.isPending || purgeConfirmationLock.current
+
   const handlePurgeSelected = () => {
-    purgeMutation.mutate(selectedIds)
+    setPurgeConfirmationIds(selectedIds)
+  }
+
+  const handlePurgeRow = (jobId: string) => {
+    setPurgeConfirmationIds([jobId])
+  }
+
+  const handleConfirmPurge = () => {
+    if (!purgeConfirmationIds?.length || disablePurgeRequest()) return
+
+    const idsToPurge = purgeConfirmationIds.filter((id) => currentJobIds.has(id))
+    if (idsToPurge.length === 0) {
+      setPurgeConfirmationIds(null)
+      return
+    }
+
+    purgeConfirmationLock.current = true
+    purgeMutation.mutate(idsToPurge)
   }
 
   const isLoading = listQuery.isLoading
@@ -235,7 +262,10 @@ export function AdminNotificationsFeature() {
   const total = listQuery.data?.total ?? 0
 
   const disableActions =
-    selectedIds.length === 0 || retryMutation.isPending || purgeMutation.isPending
+    selectedIds.length === 0 ||
+    retryMutation.isPending ||
+    purgeMutation.isPending ||
+    purgeConfirmationIds !== null
 
   const renderContent = () => {
     if (isLoading) {
@@ -377,7 +407,11 @@ export function AdminNotificationsFeature() {
                         <button
                           type="button"
                           onClick={() => retryMutation.mutate([job.id])}
-                          disabled={retryMutation.isPending || purgeMutation.isPending}
+                          disabled={
+                            retryMutation.isPending ||
+                            purgeMutation.isPending ||
+                            purgeConfirmationIds !== null
+                          }
                           className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-brand hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.retry")}
                           aria-label={t("admin:notifications.actions.retry")}
@@ -386,8 +420,12 @@ export function AdminNotificationsFeature() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => purgeMutation.mutate([job.id])}
-                          disabled={retryMutation.isPending || purgeMutation.isPending}
+                          onClick={() => handlePurgeRow(job.id)}
+                          disabled={
+                            retryMutation.isPending ||
+                            purgeMutation.isPending ||
+                            purgeConfirmationIds !== null
+                          }
                           className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-error hover:bg-error/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.purge")}
                           aria-label={t("admin:notifications.actions.purge")}
@@ -577,6 +615,17 @@ export function AdminNotificationsFeature() {
           </SectionCard>
         </div>
       </PageFadeIn>
+      <ConfirmDialog
+        open={purgeConfirmationIds !== null}
+        title={t("admin:notifications.confirmPurge.title")}
+        message={t("admin:notifications.confirmPurge.message")}
+        confirmText={t("admin:notifications.actions.purge")}
+        cancelText={t("common:buttons.cancel")}
+        variant="danger"
+        onConfirm={handleConfirmPurge}
+        onCancel={() => setPurgeConfirmationIds(null)}
+        isLoading={purgeMutation.isPending}
+      />
     </div>
   )
 }

@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from sqlalchemy import delete, exists, func, or_, select, update
+from sqlalchemy import and_, delete, exists, func, or_, select, update
 from sqlalchemy.orm import contains_eager, selectinload
 
 import app.models as models
@@ -275,23 +275,44 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         return [self._to_dto(obj) for obj in objs]
 
     async def get_user_sessions(
-        self, user_id: uuid.UUID | str, limit: int = 50
+        self,
+        user_id: uuid.UUID | str,
+        limit: int = 50,
+        before_dt: datetime | None = None,
+        after_id: uuid.UUID | None = None,
     ) -> list[models.ActiveSession]:
-        """Get user sessions with limit."""
+        """Get a page of active user sessions in stable descending order."""
         if isinstance(user_id, str):
             try:
                 user_id = uuid.UUID(user_id)
             except ValueError:
                 return []
 
+        condition = models.ActiveSession.user_id == user_id
+        if before_dt is not None and after_id is not None:
+            condition = and_(
+                condition,
+                or_(
+                    models.ActiveSession.created_at < before_dt,
+                    and_(
+                        models.ActiveSession.created_at == before_dt,
+                        models.ActiveSession.id < after_id,
+                    ),
+                ),
+            )
+        elif before_dt is not None:
+            condition = and_(condition, models.ActiveSession.created_at < before_dt)
+
         stmt = (
             select(models.ActiveSession)
-            .where(models.ActiveSession.user_id == user_id)
+            .where(condition)
             .where(
                 models.ActiveSession.revoked_at.is_(None)
             )  # MED-W19: exclude revoked sessions
+            .order_by(
+                models.ActiveSession.created_at.desc(), models.ActiveSession.id.desc()
+            )
             .limit(limit)
-            .order_by(models.ActiveSession.created_at.desc())
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
@@ -341,21 +362,42 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
     _NOTIFICATIONS_MAX_LIMIT: int = 100
 
     async def get_user_notifications(
-        self, user_id: uuid.UUID | str, limit: int = 100
+        self,
+        user_id: uuid.UUID | str,
+        limit: int = 100,
+        before_dt: datetime | None = None,
+        after_id: uuid.UUID | None = None,
     ) -> list[models.Notification]:
-        """Get user notifications with limit."""
+        """Get a bounded page of user notifications in stable descending order."""
         if isinstance(user_id, str):
             try:
                 user_id = uuid.UUID(user_id)
             except ValueError:
                 return []
 
+        condition = models.Notification.user_id == user_id
+        if before_dt is not None and after_id is not None:
+            condition = and_(
+                condition,
+                or_(
+                    models.Notification.created_at < before_dt,
+                    and_(
+                        models.Notification.created_at == before_dt,
+                        models.Notification.id < after_id,
+                    ),
+                ),
+            )
+        elif before_dt is not None:
+            condition = and_(condition, models.Notification.created_at < before_dt)
+
         capped = min(limit, self._NOTIFICATIONS_MAX_LIMIT)
         stmt = (
             select(models.Notification)
-            .where(models.Notification.user_id == user_id)
+            .where(condition)
+            .order_by(
+                models.Notification.created_at.desc(), models.Notification.id.desc()
+            )
             .limit(capped)
-            .order_by(models.Notification.created_at.desc())
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
@@ -684,8 +726,6 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             models.DataAccessLog.actor_user_id == user_id,
             models.DataAccessLog.subject_user_id == user_id,
         )
-
-        from sqlalchemy import and_
 
         if before_dt and after_id:
             condition = condition & or_(

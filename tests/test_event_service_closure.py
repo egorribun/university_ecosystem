@@ -53,6 +53,7 @@ def event_service_closure():
     uow.__aexit__ = AsyncMock(return_value=False)
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()
+    repo.count_search_events.return_value = 0
     return EventService(uow, AsyncMock()), uow, repo
 
 
@@ -124,6 +125,7 @@ async def test_get_events_cursor_page_builds_next_cursor_without_total(
     assert result.total is None
     assert result.has_more is True
     assert result.next_cursor is not None
+    repo.count_search_events.assert_not_awaited()
     repo.count_upcoming.assert_not_awaited()
     repo.count.assert_not_awaited()
 
@@ -132,12 +134,20 @@ async def test_get_events_cursor_page_builds_next_cursor_without_total(
 async def test_get_events_non_active_first_page_uses_total_count(event_service_closure):
     service, _, repo = event_service_closure
     repo.search_events.return_value = []
-    repo.count.return_value = 4
+    repo.count_search_events.return_value = 4
 
     result = await service.get_events(is_active=False, locale="en")
 
     assert result.total == 4
-    repo.count.assert_awaited_once_with()
+    repo.count_search_events.assert_awaited_once()
+    kwargs = repo.count_search_events.await_args.kwargs
+    assert kwargs["search_query"] == ""
+    assert kwargs["event_type"] == ""
+    assert kwargs["location"] == ""
+    assert kwargs["is_active"] is False
+    assert kwargs["query_embedding"] is None
+    repo.count_upcoming.assert_not_awaited()
+    repo.count.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -139,6 +139,8 @@ def _fixture_values(args: list[str]) -> dict[str, Any]:
         key, raw = assignment.split("=", 1)
         if flag == "--set":
             value: Any = int(raw)
+        elif flag == "--set-json":
+            value = json.loads(raw)
         else:
             value = raw
         values[key] = value
@@ -262,6 +264,14 @@ class CheckovHelmCoverageContracts(unittest.TestCase):
                 "nats.image.digest": pinned_chart_images["nats.image.digest"],
                 "nats.container.image.digest": pinned_chart_images[
                     "nats.container.image.digest"
+                ],
+                "gateway.config.trustedProxies": [
+                    "192.0.2.11/32",
+                    "2001:db8::11",
+                ],
+                "wsHub.config.trustedProxies": [
+                    "198.51.100.12/32",
+                    "2001:db8::12",
                 ],
                 "cwv.releaseSHA": "f" * 40,
                 "cwv.frontendImageDigest": digests["frontend"],

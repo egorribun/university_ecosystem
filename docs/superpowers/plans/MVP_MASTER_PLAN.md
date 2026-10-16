@@ -1,6 +1,6 @@
 # University Ecosystem: полный цикл приёмки и выпуска MVP v1.0.0
 
-Редакция 9 от 2026-10-14 (Europe/Istanbul). Единственный действующий план,
+Редакция 10 от 2026-10-16 (Europe/Istanbul). Единственный действующий план,
 объединяющий прежний мастер-план и решение коммита
 `60a886529c6e89176e2d53395268ca6279805cb4` с уточнениями владельца в этой беседе.
 Основание качества — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
@@ -8,10 +8,10 @@
 короткий оперативный срез. Отдельный план выпуска объединён с этим
 документом; новую конкурирующую дорожную карту не создавать.
 
-**Пауза по поручению владельца от 2026-10-14:** текущая работа по выпуску
-останавливается на сохранённой контрольной точке в [STATUS.md](STATUS.md).
-Начинать следующий этап только после явного сигнала владельца. При возобновлении
-первый приоритет — полное закрытие всех находок октябрьского аудита: P1, P2, P3
+**Возобновление по поручению владельца от 2026-10-16:** dependency checkpoint C8
+принят; текущие evidence и активный пакет находятся в [STATUS.md](STATUS.md).
+Работа продолжается автономно. Первый приоритет — полное закрытие всех находок
+[октябрьского аудита](../../audits/AUDIT-2026-10.md): P1, P2, P3
 и наблюдений ниже P3. Ранее отложенные audit-пункты также перепроверить;
 автоматический перенос в v1.1 больше не закрывает этот объём. Каждую находку
 сверить с текущим source и закрывать исправлением с доказательством либо
@@ -134,7 +134,7 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   Baseline319, 78 required contexts, blocking CodeQL and the finite131 migration
   exception are unchanged. Authorization and validation results are independent;
   current-source tests, scans, ordinary hooks and hosted checks remain required.
-- Follow-up secret-scan owner decision (2026-10-16 Europe/Istanbul; 2026-10-15 UTC): the owner approved exactly seven additional identities in the existing `external_kubernetes_secret_reference` category, extending the owner-approved scope from 243 to 250 while preserving all prior records. The earlier 4,408/483/0 scan predates removal of 21 inline detect-secrets pragma comments and is historical; the post-removal unfiltered scan was 4,408 files / 490 findings / 7 unmatched against the then-current 243-record overlay. A root-controlled private conditional 250-overlay run reported 0 unmatched. The approved 250-record policy support is now integrated in source; canonical policy tests passed 250 tests in 36.16 seconds and Ruff check/format passed before this documentation update. Final-source validation and hosted checks remain required for each published source. Three Go projected-Secret symlink fixtures fail rather than skip on setup failure. The baseline remains 319, the 78 required contexts and blocking CodeQL remain unchanged, and the full MVP/platform audit remains paused. See [the audit update](../../audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16).
+- Follow-up secret-scan owner decision (2026-10-16 Europe/Istanbul; 2026-10-15 UTC): the owner approved exactly seven additional identities in the existing `external_kubernetes_secret_reference` category, extending the owner-approved scope from 243 to 250 while preserving all prior records. The earlier 4,408/483/0 scan predates removal of 21 inline detect-secrets pragma comments and is historical; the post-removal unfiltered scan was 4,408 files / 490 findings / 7 unmatched against the then-current 243-record overlay. A root-controlled private conditional 250-overlay run reported 0 unmatched. The approved 250-record policy support is now integrated in source; canonical policy tests passed 250 tests in 36.16 seconds and Ruff check/format passed before this documentation update. Final-source validation and hosted checks remain required for each published source. Three Go projected-Secret symlink fixtures fail rather than skip on setup failure. The baseline remains 319, the 78 required contexts and blocking CodeQL remain unchanged, and the full MVP/platform audit remained paused at that historical decision. See [the audit update](../../audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16).
 - Owner decision (2026-10-16): the owner approved exactly two additional exact-match
   detect-secrets identities in the existing external_kubernetes_secret_reference
   category, for Secret Keyword public Kubernetes object references at
@@ -145,7 +145,7 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   remain unchanged, bringing the approved scope to 252. This changes no baseline,
   required context, blocking CodeQL, hook, migration exception, or other policy
   boundary. The policy records do not establish passing tests, final-source validation,
-  or hosted checks; the full MVP/platform audit remains paused. See [the dated audit
+  or hosted checks; the full MVP/platform audit remained paused at that historical decision. See [the dated audit
   update](../../audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
 - Уже готовые security, signing, SBOM/provenance и WASM parity шаги image producer
   сохраняются. Отложена дополнительная сертификация/продвижение в kind, а не

@@ -1,5 +1,7 @@
 import uuid
-from typing import Any
+from collections.abc import Awaitable, Callable
+from datetime import datetime
+from typing import Any, Protocol
 
 from fastapi import Request
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +25,31 @@ from app.services.data_access import log_data_access
 from app.services.user.logic import anonymize_user_data
 
 logger = get_logger(__name__)
+
+
+class _ExportPageItem(Protocol):
+    id: uuid.UUID
+    created_at: datetime
+
+
+async def _collect_export_pages[ExportPageT: _ExportPageItem](
+    fetch_page: Callable[
+        [datetime | None, uuid.UUID | None], Awaitable[list[ExportPageT]]
+    ],
+    page_size: int,
+) -> list[ExportPageT]:
+    """Collect bounded keyset pages without changing repository page limits."""
+    collected: list[ExportPageT] = []
+    before_dt: datetime | None = None
+    after_id: uuid.UUID | None = None
+
+    while True:
+        page = await fetch_page(before_dt, after_id)
+        collected.extend(page)
+        if len(page) < page_size:
+            return collected
+        before_dt = page[-1].created_at
+        after_id = page[-1].id
 
 
 class UserComplianceService:
@@ -110,9 +137,27 @@ class UserComplianceService:
         )
 
         # These reads share one AsyncSession, which cannot be used concurrently.
-        sessions_list = await self.repo.get_user_sessions(user_identity)
-        notifications_list = await self.repo.get_user_notifications(user_identity)
-        access_logs = await self.repo.get_user_access_logs(user_identity, limit=2000)
+        sessions_list = await _collect_export_pages(
+            lambda before_dt, after_id: self.repo.get_user_sessions(
+                user_identity, limit=50, before_dt=before_dt, after_id=after_id
+            ),
+            page_size=50,
+        )
+        notifications_list = await _collect_export_pages(
+            lambda before_dt, after_id: self.repo.get_user_notifications(
+                user_identity, limit=100, before_dt=before_dt, after_id=after_id
+            ),
+            page_size=100,
+        )
+        access_logs = await _collect_export_pages(
+            lambda before_dt, after_id: self.repo.get_user_access_logs(
+                user_identity,
+                limit=200,
+                before_dt=before_dt,
+                after_id=after_id,
+            ),
+            page_size=200,
+        )
 
         sessions = [
             {
