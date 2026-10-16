@@ -94,11 +94,14 @@ class TestJwtSettingsMixin:
         assert s.secret_key == expected
 
     def test_secret_key_file_nonreadable_raises(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SECRET_KEY_FILE", str(tmp_path / "does-not-exist"))
+        secret_path = tmp_path / "does-not-exist"
+        monkeypatch.setenv("SECRET_KEY_FILE", str(secret_path))
         with pytest.raises(ValidationError) as exc:
             SecuritySettings()
-        assert "SECRET_KEY_FILE" in str(exc.value)
-        assert "non-readable file" in str(exc.value)
+        message = str(exc.value)
+        assert "unable to read configured secret file for SECRET_KEY_FILE" in message
+        assert str(secret_path) not in message
+        assert "No such file or directory" not in message
 
     # ── secret_key entropy (J2, J3, J4) ───────────────────────────────────
     def test_secret_key_empty_raises(self, monkeypatch):

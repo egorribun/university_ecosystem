@@ -211,25 +211,56 @@ def test_global_backend_digest_is_optional_and_schema_bounded() -> None:
             archive.extractfile("redis/templates/_helpers.tpl").read().decode("utf-8")
         )
 
-    schemas = (
+    optional_digest_schemas = (
         parent["properties"]["global"],
         parent["properties"]["nats"]["properties"]["global"],
         child["properties"]["global"],
-        revocation["properties"]["global"],
     )
-    for schema in schemas:
+    for schema in optional_digest_schemas:
         prop = schema["properties"]["backendImageDigest"]
         assert prop == {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
         assert "backendImageDigest" not in schema.get("required", [])
+
+    revocation_global = revocation["properties"]["global"]
+    assert set(revocation_global["required"]) == {
+        "backendImageRepository",
+        "backendImageDigest",
+    }
+    assert revocation_global["properties"]["backendImageRepository"] == {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[a-z0-9_.-]+/[a-z0-9_.-]+/backend$",
+    }
+    assert revocation_global["properties"]["backendImageDigest"] == {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$",
+    }
     assert 'eq $image.repository "university-backend"' in child_helper
     assert "$global.backendImageDigest" in child_helper
 
 
-def _rendered_backend_and_init_images(*extra: str) -> tuple[int, str, str]:
+def _rendered_backend_and_init_images(
+    *extra: str, clear_global_backend_digest: bool = False
+) -> tuple[int, str, str]:
     from tests.test_helm_staging_contract import _existing_secret_command
 
+    command = _existing_secret_command("development", *extra)
+    if clear_global_backend_digest:
+        filtered_command: list[str] = []
+        index = 0
+        while index < len(command):
+            if (
+                command[index] in {"--set", "--set-string"}
+                and index + 1 < len(command)
+                and command[index + 1].startswith("global.backendImageDigest=")
+            ):
+                index += 2
+                continue
+            filtered_command.append(command[index])
+            index += 1
+        command = filtered_command
+
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
-        _existing_secret_command("development", *extra),
+        command,
         check=False,
         capture_output=True,
         text=True,
@@ -273,13 +304,19 @@ _BACKEND_IMAGE_CLEAR = (
 
 def test_rendered_backend_and_child_keep_default_and_global_tag_precedence() -> None:
     code, backend, init = _rendered_backend_and_init_images(
-        *_BACKEND_IMAGE_CLEAR, "--set-string", "global.imageTag="
+        *_BACKEND_IMAGE_CLEAR,
+        "--set-string",
+        "global.imageTag=",
+        clear_global_backend_digest=True,
     )
     assert code == 0, backend
     assert backend == init == "university-backend:1.0.0"
 
     code, backend, init = _rendered_backend_and_init_images(
-        *_BACKEND_IMAGE_CLEAR, "--set-string", "global.imageTag=contract-sha"
+        *_BACKEND_IMAGE_CLEAR,
+        "--set-string",
+        "global.imageTag=contract-sha",
+        clear_global_backend_digest=True,
     )
     assert code == 0, backend
     assert backend == init == "university-backend:contract-sha"

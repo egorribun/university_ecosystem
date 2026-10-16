@@ -6953,6 +6953,74 @@
       "reviewed_on": "2026-10-15",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "security/trivy-university-values.yaml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          227,
+          206,
+          244,
+          201,
+          253,
+          191,
+          204,
+          143,
+          195,
+          74,
+          35,
+          39,
+          210,
+          43,
+          64,
+          145,
+          65,
+          224,
+          73,
+          206
+        ]
+      },
+      "category": "external_kubernetes_secret_reference",
+      "evidence": "Kubernetes external Secret object name or key reference; not credential material. The referenced value is the public synthetic CI Secret name trivy-scan-application.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-16",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_helm_contract.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          123,
+          77,
+          125,
+          47,
+          161,
+          133,
+          114,
+          12,
+          211,
+          156,
+          161,
+          83,
+          218,
+          176,
+          239,
+          161,
+          33,
+          63,
+          175,
+          3
+        ]
+      },
+      "category": "external_kubernetes_secret_reference",
+      "evidence": "Kubernetes external Secret object name or key reference; not credential material. The referenced value is a public synthetic object name in an MFA Helm contract test.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-16",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

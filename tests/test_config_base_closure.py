@@ -257,9 +257,14 @@ def test_load_file_secret_raises_for_unreadable_file(
     monkeypatch.setenv("SECRET_KEY_FILE", str(path))
 
     with pytest.raises(
-        ValueError, match="SECRET_KEY_FILE points to a non-readable file"
-    ):
+        ValueError,
+        match="unable to read configured secret file for SECRET_KEY_FILE",
+    ) as exc_info:
         base._load_file_secret("SECRET_KEY_FILE", "fallback")
+
+    message = str(exc_info.value)
+    assert str(path) not in message
+    assert "No such file or directory" not in message
 
 
 def test_development_defaults_are_blocked_when_env_file_exists(

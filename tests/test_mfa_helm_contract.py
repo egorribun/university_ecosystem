@@ -99,9 +99,9 @@ def _render(*extra: str) -> list[dict[str, Any]]:
     return [document for document in yaml.safe_load_all(result.stdout) if document]
 
 
-def _deployment_env(
+def _deployment_pod_and_container(
     resources: list[dict[str, Any]], component: str
-) -> dict[str, dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     deployment = next(
         resource
         for resource in resources
@@ -111,10 +111,78 @@ def _deployment_env(
         .get("app.kubernetes.io/component")
         == component
     )
-    items = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
-    names = [item["name"] for item in items]
+    pod_spec = deployment["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
+    names = [item["name"] for item in container["env"]]
     assert len(names) == len(set(names)), f"duplicate env variables in {component}"
-    return {item["name"]: item for item in items}
+    return pod_spec, container
+
+
+def _deployment_env(
+    resources: list[dict[str, Any]], component: str
+) -> dict[str, dict[str, Any]]:
+    _, container = _deployment_pod_and_container(resources, component)
+    return {item["name"]: item for item in container["env"]}
+
+
+def _secret_volume_names(pod_spec: dict[str, Any]) -> set[str]:
+    return {
+        volume["name"] for volume in pod_spec.get("volumes", []) if "secret" in volume
+    }
+
+
+def _projected_secret_items(
+    pod_spec: dict[str, Any],
+    container: dict[str, Any],
+    *,
+    volume_name: str,
+    secret_name: str,
+) -> dict[str, str]:
+    volumes = [
+        volume
+        for volume in pod_spec.get("volumes", [])
+        if volume["name"] == volume_name
+    ]
+    assert len(volumes) == 1
+    secret_volume = volumes[0]["secret"]
+    assert secret_volume["secretName"] == secret_name
+    assert secret_volume.get("optional", False) is False
+    assert secret_volume["defaultMode"] == 0o440
+    items = secret_volume["items"]
+    assert len(items) == len({item["key"] for item in items})
+    item_paths = {item["key"]: item["path"] for item in items}
+    assert item_paths == {key: key for key in item_paths}
+
+    mounts = [
+        mount
+        for mount in container.get("volumeMounts", [])
+        if mount["name"] == volume_name
+    ]
+    assert len(mounts) == 1
+    mount = mounts[0]
+    assert mount["mountPath"] == f"/run/secrets/{secret_name}"
+    assert mount["readOnly"] is True
+    assert "subPath" not in mount
+    return item_paths
+
+
+def _assert_file_secret_environment(
+    container: dict[str, Any], expected_paths: set[str]
+) -> None:
+    env_items = container["env"]
+    env = {item["name"]: item for item in env_items}
+    file_paths = {
+        item.get("value")
+        for item in env_items
+        if item["name"].endswith("_FILE") or item["name"] == "JWT_PRIVATE_KEY_PATH"
+    }
+    assert file_paths == expected_paths
+    for name in env:
+        if name.endswith("_FILE"):
+            assert name[:-5] not in env
+    if "JWT_PRIVATE_KEY_PATH" in env:
+        assert "JWT_PRIVATE_KEY" not in env
+    assert not any("secretKeyRef" in item.get("valueFrom", {}) for item in env_items)
 
 
 def test_external_application_secret_maps_all_mfa_keys_to_both_workloads() -> None:
@@ -157,21 +225,72 @@ def test_external_application_secret_maps_all_mfa_keys_to_both_workloads() -> No
     chart_values = yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
     assert chart_values["nats"]["natsBox"]["enabled"] is False
     assert not secret_resources
-    backend_env = _deployment_env(resources, "backend")
+    backend_spec, backend_container = _deployment_pod_and_container(
+        resources, "backend"
+    )
+    backend_env = {item["name"]: item for item in backend_container["env"]}
     for variable, secret_key in MFA_SECRET_KEYS.items():
-        assert backend_env[variable]["valueFrom"]["secretKeyRef"] == {
-            "name": MFA_EXTERNAL_APPLICATION_SECRET,
-            "key": secret_key,
-        }
-        assert "value" not in backend_env[variable]
+        file_variable = f"{variable}_FILE"
+        assert backend_env[file_variable]["value"] == (
+            f"/run/secrets/{MFA_EXTERNAL_APPLICATION_SECRET}/{secret_key}"
+        )
+        assert "valueFrom" not in backend_env[file_variable]
+        assert variable not in backend_env
 
-    outbox_env = _deployment_env(resources, "outbox-worker")
-    assert outbox_env["MFA_EMAIL_DELIVERY_KEKS"]["valueFrom"]["secretKeyRef"] == {
-        "name": MFA_EXTERNAL_APPLICATION_SECRET,
-        "key": MFA_SECRET_KEYS["MFA_EMAIL_DELIVERY_KEKS"],
+    connection_secret = "university-connections"
+    assert _secret_volume_names(backend_spec) == {
+        "secret-application",
+        "secret-connections",
     }
-    assert set(MFA_SECRET_KEYS) - {"MFA_EMAIL_DELIVERY_KEKS"} <= (
-        set(MFA_SECRET_KEYS) - set(outbox_env)
+    backend_application_items = _projected_secret_items(
+        backend_spec,
+        backend_container,
+        volume_name="secret-application",
+        secret_name=MFA_EXTERNAL_APPLICATION_SECRET,
+    )
+    assert set(MFA_SECRET_KEYS.values()) <= set(backend_application_items)
+    _projected_secret_items(
+        backend_spec,
+        backend_container,
+        volume_name="secret-connections",
+        secret_name=connection_secret,
+    )
+
+    outbox_spec, outbox_container = _deployment_pod_and_container(
+        resources, "outbox-worker"
+    )
+    outbox_env = {item["name"]: item for item in outbox_container["env"]}
+    delivery_variable = "MFA_EMAIL_DELIVERY_KEKS"
+    delivery_file_variable = f"{delivery_variable}_FILE"
+    assert outbox_env[delivery_file_variable]["value"] == (
+        f"/run/secrets/{MFA_EXTERNAL_APPLICATION_SECRET}/"
+        f"{MFA_SECRET_KEYS[delivery_variable]}"
+    )
+    assert "valueFrom" not in outbox_env[delivery_file_variable]
+    assert delivery_variable not in outbox_env
+    for variable in set(MFA_SECRET_KEYS) - {delivery_variable}:
+        assert variable not in outbox_env
+        assert f"{variable}_FILE" not in outbox_env
+
+    assert _secret_volume_names(outbox_spec) == {
+        "secret-application",
+        "secret-connections",
+    }
+    outbox_application_items = _projected_secret_items(
+        outbox_spec,
+        outbox_container,
+        volume_name="secret-application",
+        secret_name=MFA_EXTERNAL_APPLICATION_SECRET,
+    )
+    assert MFA_SECRET_KEYS[delivery_variable] in outbox_application_items
+    assert (
+        set(MFA_SECRET_KEYS.values()) - {MFA_SECRET_KEYS[delivery_variable]}
+    ).isdisjoint(outbox_application_items)
+    _projected_secret_items(
+        outbox_spec,
+        outbox_container,
+        volume_name="secret-connections",
+        secret_name=connection_secret,
     )
 
 
@@ -342,40 +461,57 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
             json.loads(contract["data"]["outbox-worker-secret-keys.json"])
         ),
     }
-    deployments = {
-        resource["metadata"]["labels"]["app.kubernetes.io/component"]: resource
-        for resource in resources
-        if resource.get("kind") == "Deployment"
+    chart_values = yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
+    connections = chart_values["connections"]
+    connection_workload_contracts = {
+        "backend": {
+            connections["databaseURLKey"],
+            connections["redisBackendURLKey"],
+            connections["redisRevocationURLKey"],
+            connections["natsURLKey"],
+            connections["natsAuthTokenKey"],
+        },
+        "outbox-worker": {
+            connections["databaseURLKey"],
+            connections["redisBackendURLKey"],
+            connections["natsURLKey"],
+            connections["natsAuthTokenKey"],
+        },
     }
-    for component, expected_keys in workload_contracts.items():
-        pod_spec = deployments[component]["spec"]["template"]["spec"]
-        refs = {
-            ref["key"]
-            for env in pod_spec["containers"][0]["env"]
-            if (ref := env.get("valueFrom", {}).get("secretKeyRef"))
-            and ref["name"] == "eso-application-secret"
+    application_secret = contract["data"]["application-secret-name"]
+    connection_secret = contract["data"]["connection-secret-name"]
+    for component, expected_application_keys in workload_contracts.items():
+        pod_spec, container = _deployment_pod_and_container(resources, component)
+        assert _secret_volume_names(pod_spec) == {
+            "secret-application",
+            "secret-connections",
         }
-        refs.update(
-            item["key"]
-            for volume in pod_spec.get("volumes", [])
-            if volume.get("secret", {}).get("secretName") == "eso-application-secret"
-            for item in volume["secret"].get("items", [])
+        application_items = _projected_secret_items(
+            pod_spec,
+            container,
+            volume_name="secret-application",
+            secret_name=application_secret,
         )
-        assert refs == expected_keys
-        connection_refs = {
-            ref["key"]
-            for env in pod_spec["containers"][0]["env"]
-            if (ref := env.get("valueFrom", {}).get("secretKeyRef"))
-            and ref["name"] == "university-connections"
+        assert application_items == {key: key for key in expected_application_keys}
+
+        expected_connection_keys = connection_workload_contracts[component]
+        assert expected_connection_keys <= connection_keys
+        connection_items = _projected_secret_items(
+            pod_spec,
+            container,
+            volume_name="secret-connections",
+            secret_name=connection_secret,
+        )
+        assert connection_items == {key: key for key in expected_connection_keys}
+
+        expected_secret_paths = {
+            f"/run/secrets/{application_secret}/{key}"
+            for key in expected_application_keys
+        } | {
+            f"/run/secrets/{connection_secret}/{key}"
+            for key in expected_connection_keys
         }
-        assert connection_refs
-        assert connection_refs <= connection_keys
-        secret_names = {
-            env["valueFrom"]["secretKeyRef"]["name"]
-            for env in pod_spec["containers"][0]["env"]
-            if "secretKeyRef" in env.get("valueFrom", {})
-        }
-        assert secret_names <= {"eso-application-secret", "university-connections"}
+        _assert_file_secret_environment(container, expected_secret_paths)
 
 
 def test_chart_patch_version_documents_the_mfa_secret_contract_upgrade() -> None:

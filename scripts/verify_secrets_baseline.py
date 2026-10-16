@@ -624,6 +624,22 @@ _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES = frozenset(
                 *(120, 225, 28, 28, 241, 101, 210, 110, 232, 156),
             ),
         ),
+        (
+            "security/trivy-university-values.yaml",
+            "Secret Keyword",
+            (
+                *(227, 206, 244, 201, 253, 191, 204, 143, 195, 74),
+                *(35, 39, 210, 43, 64, 145, 65, 224, 73, 206),
+            ),
+        ),
+        (
+            "tests/test_mfa_helm_contract.py",
+            "Secret Keyword",
+            (
+                *(123, 77, 125, 47, 161, 133, 114, 12, 211, 156),
+                *(161, 83, 218, 176, 239, 161, 33, 63, 175, 3),
+            ),
+        ),
     }
 )
 

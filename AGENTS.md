@@ -237,6 +237,20 @@ for the MVP release; the current plan is
      and hosted checks remain required for each published source. The baseline remains 319 identities and all 78
      required contexts, blocking CodeQL, and hooks remain unchanged. See the
      [dated audit supplement](docs/audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16).
+     On 2026-10-16, the owner approved exactly two additional exact-match identities in
+     the existing external_kubernetes_secret_reference category: Secret Keyword public
+     Kubernetes object references at security/trivy-university-values.yaml and
+     tests/test_mfa_helm_contract.py. The exact path/type/finding-digest tuples are
+     recorded in quality/security-false-positive-dispositions.json; no raw digests are
+     duplicated here. Each record has reviewed_on 2026-10-16 and expires_on 2027-01-10.
+     The previous 250 records remain unchanged, bringing the approved scope to exactly
+     252. Changed or unmatched identities remain fail-closed. This approval authorizes
+     no other identity, category-wide matching, baseline entry, pragma, broad exclusion,
+     bypass, reclassification, or context change. The policy records do not establish
+     passing tests, final-source validation, or hosted checks. The 319-entry baseline,
+     all 78 required contexts, blocking CodeQL, hooks, and the finite 131-file migration
+     exception remain unchanged. See the [two-identity audit
+     update](docs/audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
 
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).

@@ -376,6 +376,25 @@ and Ruff check/format passed before this documentation update; final-source
 validation and hosted checks remain required for each published source. The 319-identity baseline, 78 required
 contexts, blocking CodeQL, hooks, and migration exception remain unchanged.
 
+## Owner-approved exact two follow-up dispositions (2026-10-16)
+
+On 2026-10-16, the owner approved exactly two additional exact-match disposition
+identities in the existing external_kubernetes_secret_reference category: Secret Keyword
+public Kubernetes object references at security/trivy-university-values.yaml and
+tests/test_mfa_helm_contract.py. The exact path/type/finding-digest tuples are recorded
+in quality/security-false-positive-dispositions.json; raw digests are not repeated here.
+Each record has reviewed_on 2026-10-16 and expires_on 2027-01-10. The prior 250 records
+remain unchanged, extending the approved scope to exactly 252. Changed or unmatched
+identities remain fail-closed.
+
+This decision authorizes only these two exact identities. It does not authorize
+category-wide matching, baseline entries, inline pragmas, broad scanner exclusions,
+bypasses, reclassification, or context changes. The baseline remains at 319 identities,
+all 78 required contexts remain unchanged, CodeQL remains blocking, hooks are unchanged,
+and the finite 131-file migration exception remains unchanged. The policy records do not
+establish passing tests, final-source validation, or hosted checks; no release readiness
+is implied.
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt

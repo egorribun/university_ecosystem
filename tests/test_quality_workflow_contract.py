@@ -1101,6 +1101,8 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
         "trivy-fs.sarif": ".github/workflows/ci.yml:docker-security",
         "trivy-config.sarif": "trivy-config",
         "trivy-revocation-config.sarif": "trivy-revocation-config",
+        "trivy-university-config.sarif": "trivy-university-config",
+        "trivy-redis-compat-config.sarif": "trivy-redis-compat-config",
     }
 
     trivy_steps = [
@@ -1145,6 +1147,7 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
         SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
     steps = security_workflow["jobs"]["docker-security"]["steps"]
+    steps_by_id = {step.get("id"): step for step in steps if step.get("id")}
 
     helm_setup = next(step for step in steps if step.get("name") == "Set up Helm")
     assert helm_setup["uses"] == (
@@ -1160,79 +1163,163 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
     dependency_script = dependency_build["run"]
     _assert_helm_dependency_helper_invocation(dependency_script)
 
+    build = next(
+        step
+        for step in steps
+        if step.get("name") == "Build source-bound backend OCI archive"
+    )
+    assert build["uses"] == (
+        "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
+    )
+    profiles = next(
+        step
+        for step in steps
+        if step.get("name") == "Export backend OCI and prepare isolated Helm profiles"
+    )
+    assert profiles["env"] == {
+        "SOURCE_SHA": "${{ github.sha }}",
+        "SOURCE_REPOSITORY": "${{ github.repository }}",
+    }
+    profile_script = profiles["run"]
+    assert '[[ "$(git rev-parse --verify HEAD)" == "$SOURCE_SHA" ]]' in profile_script
+    assert "docker buildx build" in profile_script
+    assert "--platform linux/amd64" in profile_script
+    assert "--provenance=false" in profile_script
+    assert "--sbom=false" in profile_script
+    assert (
+        '--label "org.opencontainers.image.source=https://github.com/${SOURCE_REPOSITORY}"'
+        in profile_script
+    )
+    assert '--label "org.opencontainers.image.revision=${SOURCE_SHA}"' in profile_script
+    assert '--tag "ghcr.io/${image_repository}/backend:${SOURCE_SHA}"' in profile_script
+    assert '--output "type=oci,dest=${archive}"' in profile_script
+    assert "--push" not in profile_script
+    assert "prepare_trivy_backend_values.py" in profile_script
+    assert '--archive "$archive"' in profile_script
+    assert '--repository "$SOURCE_REPOSITORY"' in profile_script
+    assert '--source-sha "$SOURCE_SHA"' in profile_script
+    assert '--repository-root "$GITHUB_WORKSPACE"' in profile_script
+
     preflight = next(
         step
         for step in steps
-        if step.get("name") == "Validate Helm charts before Trivy configuration scan"
+        if step.get("name") == "Validate isolated Helm profiles before Trivy scans"
     )
     preflight_script = preflight["run"]
     assert "charts/revocation-store" in preflight_script
     assert "charts/university-ecosystem" in preflight_script
-    assert "--helm-values security/trivy-revocation-values.yaml" in preflight_script
-    assert "Skipping chart" in preflight_script
+    assert "charts/redis-compat" in preflight_script
+    assert "--values security/trivy-revocation-values.yaml" in preflight_script
+    assert "--values security/trivy-university-values.yaml" in preflight_script
+    assert "--values security/trivy-redis-compat-values.yaml" in preflight_script
+    assert (
+        'trivy config --config "$config" --misconfig-scanners helm' in preflight_script
+    )
+    assert (
+        'type == "object" and (.Results | type == "array" and length > 0)'
+        in preflight_script
+    )
+    assert 'grep -Fqi "Skipping chart"' in preflight_script
+    assert 'grep -Fqi "missing in charts/"' in preflight_script
+    assert 'grep -Fqi "Failed to render Chart files"' in preflight_script
     assert "pipefail" in preflight_script
-    assert '--helm-set "global.environment=development"' in preflight_script
-    assert "ingress.issuer.kind=Issuer" not in preflight_script
 
     configuration = next(
         step
         for step in steps
         if step.get("name") == "Run Trivy configuration scanner (IaC)"
     )
-    prepare_config = next(
-        step
-        for step in steps
-        if step.get("name") == "Prepare development Helm input for Trivy"
-    )
-    assert "security/trivy-university-config.yaml" in prepare_config["run"]
-    assert "$RUNNER_TEMP/trivy-university-config.yaml" in prepare_config["run"]
-    assert "global.environment=development" in prepare_config["run"]
-    assert steps.index(prepare_config) < steps.index(configuration)
+    assert configuration["id"] == "trivy_config"
     assert configuration["with"]["trivy-config"] == (
-        "${{ runner.temp }}/trivy-university-config.yaml"
+        "security/trivy-university-config.yaml"
     )
-    assert configuration["with"]["skip-dirs"] == "charts/revocation-store"
+    assert configuration["with"]["skip-dirs"] == (
+        "charts/revocation-store,charts/university-ecosystem,charts/redis-compat"
+    )
+    assert configuration["continue-on-error"] is True
+    assert configuration["with"]["exit-code"] == "1"
 
-    revocation = next(
-        step
-        for step in steps
-        if step.get("name") == "Run Trivy revocation-store configuration scanner"
-    )
-    assert revocation["id"] == "trivy_revocation"
-    assert revocation["continue-on-error"] is True
-    assert revocation["with"]["scan-ref"] == "charts/revocation-store"
-    assert revocation["with"]["trivy-config"] == (
-        "security/trivy-revocation-config.yaml"
-    )
-    assert revocation["with"]["exit-code"] == "1"
+    chart_scans = {
+        "trivy_revocation": (
+            "charts/revocation-store",
+            "${{ runner.temp }}/trivy-inputs/trivy-revocation-config.json",
+            "trivy-revocation-config.sarif",
+        ),
+        "trivy_university": (
+            "charts/university-ecosystem",
+            "${{ runner.temp }}/trivy-inputs/trivy-university-config.json",
+            "trivy-university-config.sarif",
+        ),
+        "trivy_redis_compat": (
+            "charts/redis-compat",
+            "${{ runner.temp }}/trivy-inputs/trivy-redis-compat-config.json",
+            "trivy-redis-compat-config.sarif",
+        ),
+    }
+    for scan_id, (chart, config_path, output) in chart_scans.items():
+        scan = steps_by_id[scan_id]
+        assert scan["continue-on-error"] is True
+        assert scan["with"]["scan-ref"] == chart
+        assert scan["with"]["trivy-config"] == config_path
+        assert scan["with"]["output"] == output
+        assert scan["with"]["exit-code"] == "1"
 
     assert yaml.safe_load(
         (REPOSITORY_ROOT / "security" / "trivy-revocation-config.yaml").read_text(
             encoding="utf-8"
         )
     )["misconfiguration"]["helm"]["values"] == ["security/trivy-revocation-values.yaml"]
-    scan_values = yaml.safe_load(
+    revocation_base = yaml.safe_load(
         (REPOSITORY_ROOT / "security" / "trivy-revocation-values.yaml").read_text(
             encoding="utf-8"
         )
     )
-    assert scan_values["applicationReleaseName"] == "trivy-scan"
-    assert scan_values["redis"]["fullnameOverride"] == "trivy-scan-revocation-redis"
-    assert scan_values["redis"]["image"]["digest"].startswith("sha256:")
-    assert scan_values["redis"]["metrics"]["image"]["digest"].startswith("sha256:")
-    assert all(
-        not isinstance(value, str) or "password" not in value.lower()
-        for value in scan_values["redis"].values()
-        if not isinstance(value, dict)
+    assert revocation_base["applicationReleaseName"] == "trivy-scan"
+    assert revocation_base["redis"]["fullnameOverride"] == "trivy-scan-revocation-redis"
+    assert "image" not in revocation_base["redis"]
+
+    profile_inputs = {
+        "revocation": (
+            "trivy-revocation-config.yaml",
+            "trivy-revocation-values.yaml",
+        ),
+        "university": (
+            "trivy-university-chart-config.yaml",
+            "trivy-university-values.yaml",
+        ),
+        "redis-compat": (
+            "trivy-redis-compat-config.yaml",
+            "trivy-redis-compat-values.yaml",
+        ),
+    }
+    for config_name, values_name in profile_inputs.values():
+        config = yaml.safe_load(
+            (REPOSITORY_ROOT / "security" / config_name).read_text(encoding="utf-8")
+        )
+        assert config["misconfiguration"]["scanners"] == ["helm"]
+        assert config["misconfiguration"]["helm"]["values"] == [
+            f"security/{values_name}"
+        ]
+
+    university_base = yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-university-values.yaml").read_text(
+            encoding="utf-8"
+        )
     )
-    university_config = yaml.safe_load(
+    assert university_base["global"]["environment"] == "development"
+    redis_compat_base = yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-redis-compat-values.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert redis_compat_base == {}
+
+    broad_config = yaml.safe_load(
         (REPOSITORY_ROOT / "security" / "trivy-university-config.yaml").read_text(
             encoding="utf-8"
         )
     )
-    assert university_config["misconfiguration"]["helm"]["set"] == [
-        "applicationSecrets.existingSecret=trivy-scan-application"
-    ]
+    assert broad_config["misconfiguration"]["helm"]["values"] == []
 
 
 def test_reusable_trivy_install_isolated_from_hosted_apt_mirror_drift() -> None:

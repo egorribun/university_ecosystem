@@ -135,6 +135,18 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   exception are unchanged. Authorization and validation results are independent;
   current-source tests, scans, ordinary hooks and hosted checks remain required.
 - Follow-up secret-scan owner decision (2026-10-16 Europe/Istanbul; 2026-10-15 UTC): the owner approved exactly seven additional identities in the existing `external_kubernetes_secret_reference` category, extending the owner-approved scope from 243 to 250 while preserving all prior records. The earlier 4,408/483/0 scan predates removal of 21 inline detect-secrets pragma comments and is historical; the post-removal unfiltered scan was 4,408 files / 490 findings / 7 unmatched against the then-current 243-record overlay. A root-controlled private conditional 250-overlay run reported 0 unmatched. The approved 250-record policy support is now integrated in source; canonical policy tests passed 250 tests in 36.16 seconds and Ruff check/format passed before this documentation update. Final-source validation and hosted checks remain required for each published source. Three Go projected-Secret symlink fixtures fail rather than skip on setup failure. The baseline remains 319, the 78 required contexts and blocking CodeQL remain unchanged, and the full MVP/platform audit remains paused. See [the audit update](../../audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16).
+- Owner decision (2026-10-16): the owner approved exactly two additional exact-match
+  detect-secrets identities in the existing external_kubernetes_secret_reference
+  category, for Secret Keyword public Kubernetes object references at
+  security/trivy-university-values.yaml and tests/test_mfa_helm_contract.py. The exact
+  path/type/finding-digest tuples are recorded in
+  quality/security-false-positive-dispositions.json; raw digests are omitted. Each
+  record has reviewed_on 2026-10-16 and expires_on 2027-01-10. The prior 250 records
+  remain unchanged, bringing the approved scope to 252. This changes no baseline,
+  required context, blocking CodeQL, hook, migration exception, or other policy
+  boundary. The policy records do not establish passing tests, final-source validation,
+  or hosted checks; the full MVP/platform audit remains paused. See [the dated audit
+  update](../../audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
 - Уже готовые security, signing, SBOM/provenance и WASM parity шаги image producer
   сохраняются. Отложена дополнительная сертификация/продвижение в kind, а не
   удаление работающей защиты или публикация произвольного набора образов.

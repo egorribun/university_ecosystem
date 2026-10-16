@@ -36,34 +36,69 @@ def release_resources() -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
     )
 
 
-def _job_environment(resources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _migration_pod_and_container(
+    resources: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     job = next(
         resource
         for resource in resources
         if resource.get("kind") == "Job"
         and resource["metadata"]["name"].endswith("-migrate")
     )
+    pod_spec = job["spec"]["template"]["spec"]
     container = next(
-        item
-        for item in job["spec"]["template"]["spec"]["containers"]
-        if item["name"] == "migrate"
+        item for item in pod_spec["containers"] if item["name"] == "migrate"
     )
+    return pod_spec, container
+
+
+def _job_environment(resources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    _, container = _migration_pod_and_container(resources)
     return {item["name"]: item for item in container["env"]}
 
 
-def _secret_ref(environment: dict[str, dict[str, Any]], name: str) -> dict[str, Any]:
-    item = environment[name]
-    assert "valueFrom" in item
-    reference = item["valueFrom"]["secretKeyRef"]
-    assert reference.get("optional", False) is False
-    return reference
+def _assert_projected_secret(
+    pod_spec: dict[str, Any],
+    container: dict[str, Any],
+    *,
+    volume_name: str,
+    secret_name: str,
+    expected_keys: set[str],
+) -> None:
+    volumes = [
+        volume
+        for volume in pod_spec.get("volumes", [])
+        if volume["name"] == volume_name
+    ]
+    assert len(volumes) == 1
+    secret_volume = volumes[0]["secret"]
+    assert secret_volume["secretName"] == secret_name
+    assert secret_volume.get("optional", False) is False
+    assert secret_volume["defaultMode"] == 0o440
+    items = secret_volume["items"]
+    assert len(items) == len(expected_keys)
+    assert {item["key"]: item["path"] for item in items} == {
+        key: key for key in expected_keys
+    }
+
+    mounts = [
+        mount
+        for mount in container.get("volumeMounts", [])
+        if mount["name"] == volume_name
+    ]
+    assert len(mounts) == 1
+    mount = mounts[0]
+    assert mount["mountPath"] == f"/run/secrets/{secret_name}"
+    assert mount["readOnly"] is True
+    assert "subPath" not in mount
 
 
 def test_migration_settings_use_release_environment_and_required_secrets(
     release_resources: tuple[str, dict[str, Any], list[dict[str, Any]]],
 ) -> None:
     release_name, values, resources = release_resources
-    environment = _job_environment(resources)
+    pod_spec, container = _migration_pod_and_container(resources)
+    environment = {item["name"]: item for item in container["env"]}
     application_secret = values["applicationSecrets"]["existingSecret"] or (
         f"{release_name}-secrets"
     )
@@ -99,11 +134,12 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         ("TOKEN_HMAC_SECRET", "token-hmac-secret"),
         ("WS_HUB_INTERNAL_SECRET", "ws-hub-internal-secret"),
     )
+    expected_application_keys = {key for _, key in application_key_references}
     for environment_name, expected_key in application_key_references:
-        assert _secret_ref(environment, environment_name) == {
-            "name": application_secret,
-            "key": expected_key,
-        }
+        file_env = environment[f"{environment_name}_FILE"]
+        assert file_env["value"] == f"/run/secrets/{application_secret}/{expected_key}"
+        assert "valueFrom" not in file_env
+        assert environment_name not in environment
 
     connection_secret_keys = {
         "DATABASE_URL": values["connections"]["databaseURLKey"],
@@ -112,10 +148,49 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         "NATS_AUTH_TOKEN": values["connections"]["natsAuthTokenKey"],
     }
     for environment_name, secret_key in connection_secret_keys.items():
-        assert _secret_ref(environment, environment_name) == {
-            "name": connection_secret,
-            "key": secret_key,
-        }
+        file_env = environment[f"{environment_name}_FILE"]
+        assert file_env["value"] == f"/run/secrets/{connection_secret}/{secret_key}"
+        assert "valueFrom" not in file_env
+        assert environment_name not in environment
+
+    expected_secret_volumes = {"secret-application", "secret-connections"}
+    assert {
+        volume["name"] for volume in pod_spec.get("volumes", []) if "secret" in volume
+    } == expected_secret_volumes
+    assert {
+        mount["name"]
+        for mount in container.get("volumeMounts", [])
+        if mount["name"] in expected_secret_volumes
+    } == expected_secret_volumes
+    _assert_projected_secret(
+        pod_spec,
+        container,
+        volume_name="secret-application",
+        secret_name=application_secret,
+        expected_keys=expected_application_keys,
+    )
+    _assert_projected_secret(
+        pod_spec,
+        container,
+        volume_name="secret-connections",
+        secret_name=connection_secret,
+        expected_keys=set(connection_secret_keys.values()),
+    )
+    assert not any(
+        "secretKeyRef" in item.get("valueFrom", {}) for item in container["env"]
+    )
+    expected_file_paths = {
+        f"/run/secrets/{application_secret}/{key}" for key in expected_application_keys
+    } | {
+        f"/run/secrets/{connection_secret}/{key}"
+        for key in connection_secret_keys.values()
+    }
+    actual_file_paths = {
+        item.get("value")
+        for item in container["env"]
+        if item["name"].endswith("_FILE") or item["name"] == "JWT_PRIVATE_KEY_PATH"
+    }
+    assert actual_file_paths == expected_file_paths
 
 
 def _egress_signature(rule: dict[str, Any]) -> tuple[Any, ...]:

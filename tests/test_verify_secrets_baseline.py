@@ -659,7 +659,7 @@ def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
 
 def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
     assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 27
-    assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 25
+    assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 27
     assert {
         path for path, _, _ in verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
     } == {"tests/fixtures/full-backend-reusable-baseline.v4.yaml"}
@@ -673,6 +673,7 @@ def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
         "tests/test_helm_staging_contract.py",
         "tests/test_mfa_helm_contract.py",
         "tests/test_revocation_store_security_contract.py",
+        "security/trivy-university-values.yaml",
     }
 
 
@@ -767,6 +768,55 @@ def test_external_kubernetes_secret_references_match_exact_identities(
     }
 
 
+def test_trivy_university_secret_reference_is_exact_and_requires_approval() -> None:
+    path = "security/trivy-university-values.yaml"
+    finding_type = "Secret Keyword"
+    digest_bytes = bytes(
+        (
+            227,
+            206,
+            244,
+            201,
+            253,
+            191,
+            204,
+            143,
+            195,
+            74,
+            35,
+            39,
+            210,
+            43,
+            64,
+            145,
+            65,
+            224,
+            73,
+            206,
+        )
+    )
+    record = _reviewed_exact_disposition(
+        path,
+        finding_type,
+        tuple(digest_bytes),
+        "external_kubernetes_secret_reference",
+    )
+    record["reviewed_on"] = "2026-10-16"
+    expected = verifier.FindingIdentity(path, finding_type, digest_bytes.hex(), 1)
+
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record),
+        today=verifier.date(2026, 10, 16),
+    ) == {expected}
+
+    record["approval_status"] = "pending"
+    with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 16),
+        )
+
+
 @pytest.mark.parametrize(
     ("category", "identity"),
     [
@@ -813,6 +863,59 @@ def test_new_exact_disposition_categories_reject_mutated_identities(
                 _disposition_document(record),
                 today=verifier.date(2026, 10, 15),
             )
+
+
+def test_mfa_helm_secret_reference_is_exact_and_requires_approval() -> None:
+    path = "tests/test_mfa_helm_contract.py"
+    finding_type = "Secret Keyword"
+    digest_bytes = bytes(
+        (
+            123,
+            77,
+            125,
+            47,
+            161,
+            133,
+            114,
+            12,
+            211,
+            156,
+            161,
+            83,
+            218,
+            176,
+            239,
+            161,
+            33,
+            63,
+            175,
+            3,
+        )
+    )
+    record = _reviewed_exact_disposition(
+        path,
+        finding_type,
+        tuple(digest_bytes),
+        "external_kubernetes_secret_reference",
+    )
+    record["reviewed_on"] = "2026-10-16"
+    record["evidence"] = (
+        "Kubernetes external Secret object name or key reference; not credential material. "
+        "The referenced value is a public synthetic object name in an MFA Helm contract test."
+    )
+    expected = verifier.FindingIdentity(path, finding_type, digest_bytes.hex(), 1)
+
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record),
+        today=verifier.date(2026, 10, 16),
+    ) == {expected}
+
+    record["approval_status"] = "pending"
+    with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 16),
+        )
 
 
 def test_external_secret_reference_requires_semantic_evidence_markers() -> None:

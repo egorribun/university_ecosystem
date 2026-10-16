@@ -3937,13 +3937,20 @@
         "docker-security": {
           "profile": "internal",
           "check_name_template": "Container Security Scan",
-          "expected_timeout_minutes": 30,
-          "expected_duration_seconds": 1800,
+          "expected_timeout_minutes": 40,
+          "expected_duration_seconds": 2400,
           "guard": "workflow trigger",
           "needs": [
             "policy-integrity"
           ],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "trivy-source-bound-helm-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/trivy-inputs/backend-evidence.json\n${{ runner.temp }}/trivy-inputs/*-values.json\n${{ runner.temp }}/trivy-inputs/trivy-*-config.json\n/tmp/trivy-*-preflight.json\n/tmp/trivy-*-preflight.log\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,

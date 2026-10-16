@@ -724,6 +724,16 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
         (
             "reusable-security-audit.yml",
             "docker-security",
+            "Run Trivy university-ecosystem configuration scanner",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
+            "Run Trivy redis-compat configuration scanner",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
             "Upload Trivy filesystem scan results",
         ),
         (
@@ -735,6 +745,16 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "reusable-security-audit.yml",
             "docker-security",
             "Upload Trivy revocation-store results",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
+            "Upload Trivy university-ecosystem results",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
+            "Upload Trivy redis-compat results",
         ),
         (
             "checkov.yml",
@@ -1152,26 +1172,119 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
     job = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"][
         "docker-security"
     ]
-    filesystem = _step(job, "Run Trivy vulnerability scanner (filesystem)")
-    configuration = _step(job, "Run Trivy configuration scanner (IaC)")
-    revocation = _step(job, "Run Trivy revocation-store configuration scanner")
-    reassert = _step(job, "Re-assert Trivy filesystem and configuration gates")
+    steps = {step.get("id"): step for step in job["steps"] if step.get("id")}
+    scan_ids = (
+        "trivy_fs",
+        "trivy_config",
+        "trivy_revocation",
+        "trivy_university",
+        "trivy_redis_compat",
+    )
+    scans = {scan_id: steps[scan_id] for scan_id in scan_ids}
 
-    for scan, scan_id in (
-        (filesystem, "trivy_fs"),
-        (configuration, "trivy_config"),
-        (revocation, "trivy_revocation"),
-    ):
-        assert scan["id"] == scan_id
+    assert scans["trivy_fs"]["with"]["scan-type"] == "fs"
+    assert scans["trivy_fs"]["with"]["scan-ref"] == "."
+    assert scans["trivy_config"]["with"]["scan-type"] == "config"
+    assert scans["trivy_config"]["with"]["scan-ref"] == "."
+    assert scans["trivy_config"]["with"]["trivy-config"] == (
+        "security/trivy-university-config.yaml"
+    )
+    assert scans["trivy_config"]["with"]["skip-dirs"] == (
+        "charts/revocation-store,charts/university-ecosystem,charts/redis-compat"
+    )
+
+    chart_scans = {
+        "trivy_revocation": (
+            "charts/revocation-store",
+            "${{ runner.temp }}/trivy-inputs/trivy-revocation-config.json",
+            "trivy-revocation-config.sarif",
+        ),
+        "trivy_university": (
+            "charts/university-ecosystem",
+            "${{ runner.temp }}/trivy-inputs/trivy-university-config.json",
+            "trivy-university-config.sarif",
+        ),
+        "trivy_redis_compat": (
+            "charts/redis-compat",
+            "${{ runner.temp }}/trivy-inputs/trivy-redis-compat-config.json",
+            "trivy-redis-compat-config.sarif",
+        ),
+    }
+    chart_outputs: set[str] = set()
+    for scan_id, (chart, config, output) in chart_scans.items():
+        scan = scans[scan_id]
+        assert scan["with"]["scan-type"] == "config"
+        assert scan["with"]["scan-ref"] == chart
+        assert scan["with"]["trivy-config"] == config
+        assert scan["with"]["output"] == output
+        chart_outputs.add(scan["with"]["output"])
+    assert chart_outputs == {details[2] for details in chart_scans.values()}
+
+    uploads = {
+        "trivy_fs": (
+            "Upload Trivy filesystem scan results",
+            "trivy-fs.sarif",
+            ".github/workflows/ci.yml:docker-security",
+        ),
+        "trivy_config": (
+            "Upload Trivy config scan results",
+            "trivy-config.sarif",
+            "trivy-config",
+        ),
+        "trivy_revocation": (
+            "Upload Trivy revocation-store results",
+            "trivy-revocation-config.sarif",
+            "trivy-revocation-config",
+        ),
+        "trivy_university": (
+            "Upload Trivy university-ecosystem results",
+            "trivy-university-config.sarif",
+            "trivy-university-config",
+        ),
+        "trivy_redis_compat": (
+            "Upload Trivy redis-compat results",
+            "trivy-redis-compat-config.sarif",
+            "trivy-redis-compat-config",
+        ),
+    }
+    for _, (name, sarif_file, category) in uploads.items():
+        upload = _step(job, name)
+        assert upload["if"] == "always()"
+        assert upload["continue-on-error"] is True
+        assert upload["with"]["sarif_file"] == sarif_file
+        assert upload["with"]["category"] == category
+
+    for scan_id, scan in scans.items():
         assert scan["continue-on-error"] is True
         assert scan["with"]["exit-code"] == "1"
+        assert scan["with"]["severity"] == "CRITICAL,HIGH"
+        assert scan["with"]["limit-severities-for-sarif"] is True
+        if scan_id != "trivy_fs":
+            assert scan["with"]["trivyignores"] == ".trivyignore.yaml"
+
+    preflight = _step(job, "Validate isolated Helm profiles before Trivy scans")
+    assert (
+        'if ! jq -e \'type == "object" and (.Results | type == "array" and length > 0)\''
+        in preflight["run"]
+    )
+    assert 'grep -Fqi "Skipping chart"' in preflight["run"]
+    assert 'grep -Fqi "missing in charts/"' in preflight["run"]
+    assert 'grep -Fqi "Failed to render Chart files"' in preflight["run"]
+    assert (
+        'trivy config --config "$config" --misconfig-scanners helm' in preflight["run"]
+    )
+
+    reassert = _step(job, "Re-assert Trivy filesystem and configuration gates")
     assert reassert["if"] == "always()"
     assert reassert["env"] == {
         "FILESYSTEM_OUTCOME": "${{ steps.trivy_fs.outcome }}",
         "CONFIGURATION_OUTCOME": "${{ steps.trivy_config.outcome }}",
         "REVOCATION_OUTCOME": "${{ steps.trivy_revocation.outcome }}",
+        "UNIVERSITY_OUTCOME": "${{ steps.trivy_university.outcome }}",
+        "REDIS_COMPAT_OUTCOME": "${{ steps.trivy_redis_compat.outcome }}",
     }
     assert 'exit "$failed"' in reassert["run"]
+    assert 'if [[ "$outcome" != "success" ]]' in reassert["run"]
 
 
 def test_workflow_tool_installers_do_not_use_latest_selectors() -> None:

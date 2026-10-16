@@ -53,12 +53,16 @@ handoffs are intentionally not part of the canonical index.
 - [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
   open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
   records frozen dependency selection and source-bound local evidence. The
-  [2026-10-16 owner update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
-  records the owner-approved scope of 250 exact dispositions, preserving the
-  319-identity baseline and 78 required contexts. The [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
-  distinguishes the 243-policy unfiltered scan from the private conditional 250-overlay
-  result. Policy support is integrated in source; final-source validation and hosted
-  checks remain required for each published source. Git and PR #1306 determine published source and hosted status.
+  [2026-10-16 owner update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
+  records the current owner-approved scope of 252 exact dispositions after the
+  2026-10-16 approvals of 18, 7, and 2 identities, preserving the prior 250.
+  The 319-identity baseline and 78 required contexts remain unchanged. The
+  [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
+  distinguishes the historical 243-policy unfiltered scan from the private
+  conditional 250-overlay result. The separate two-identity approval brings the
+  owner-approved scope to 252; the policy records do not establish passing tests,
+  final-source validation, or hosted-check results. Git and PR #1306 determine published source
+  and hosted status. See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
