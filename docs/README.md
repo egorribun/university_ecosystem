@@ -54,15 +54,17 @@ handoffs are intentionally not part of the canonical index.
   open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
   records frozen dependency selection and source-bound local evidence. The
   [2026-10-16 owner update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
-  records the current owner-approved scope of 252 exact dispositions after the
-  2026-10-16 approvals of 18, 7, and 2 identities, preserving the prior 250.
+  records the intermediate owner-approved scope of 252 after the 18-, 7-, and
+  2-identity approvals, preserving the prior 250 records. The later nine-identity
+  Go source-contract approval extends the current scope to 261; see the
+  [nine-identity audit update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
   The 319-identity baseline and 78 required contexts remain unchanged. The
   [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
   distinguishes the historical 243-policy unfiltered scan from the private
-  conditional 250-overlay result. The separate two-identity approval brings the
-  owner-approved scope to 252; the policy records do not establish passing tests,
-  final-source validation, or hosted-check results. Git and PR #1306 determine published source
-  and hosted status. See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
+  conditional 250-overlay result. The policy approvals do not establish passing
+  tests, final-source validation, or hosted-check results. Git and PR #1306 determine published source
+  and hosted status. See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
+  and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
@@ -74,16 +76,16 @@ implementation guidance.
 
 ## Documentation ownership
 
-| Subject | Canonical source |
-| --- | --- |
-| Product requirements | [MVP requirements](superpowers/plans/University_Ecosystem_MVP.md) |
-| Priorities, acceptance and v1.1 backlog | [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) |
-| Current checkpoint and next actions | [STATUS](superpowers/plans/STATUS.md) |
-| Architecture and policy decisions | [ADRs](adr/README.md) |
-| Enforced quality and check inventory | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
-| Operator procedures | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/) |
-| Finding traceability and historical retention | [Audit index](audits/INDEX.md) |
-| Current open findings | [Platform audit, October 2026](audits/AUDIT-2026-10.md) |
+| Subject                                       | Canonical source                                                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Product requirements                          | [MVP requirements](superpowers/plans/University_Ecosystem_MVP.md)                                                                       |
+| Priorities, acceptance and v1.1 backlog       | [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md)                                                                                 |
+| Current checkpoint and next actions           | [STATUS](superpowers/plans/STATUS.md)                                                                                                   |
+| Architecture and policy decisions             | [ADRs](adr/README.md)                                                                                                                   |
+| Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
+| Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
+| Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
+| Current open findings                         | [Platform audit, October 2026](audits/AUDIT-2026-10.md)                                                                                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable
