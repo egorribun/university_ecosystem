@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import subprocess
 import tomllib
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
+from shutil import which
 from typing import Any
 
 import yaml
@@ -1285,6 +1287,83 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
     }
     assert 'exit "$failed"' in reassert["run"]
     assert 'if [[ "$outcome" != "success" ]]' in reassert["run"]
+
+
+def test_trivy_oci_export_precedes_helm_dependency_mutation_and_preflight(
+    tmp_path: Path,
+) -> None:
+    job = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"][
+        "docker-security"
+    ]
+    steps = job["steps"]
+    source_guard = _step(job, "Verify source revision for backend OCI evidence")
+    export = _step(job, "Export backend OCI and prepare isolated Helm profiles")
+    dependencies = _step(job, "Build Helm dependencies for Trivy")
+    preflight = _step(job, "Validate isolated Helm profiles before Trivy scans")
+
+    assert "git status --porcelain=v1 --untracked-files=all" in source_guard["run"]
+    assert "git diff --quiet HEAD --" in export["run"]
+    assert "set -euo pipefail" in export["run"]
+    assert export["run"].index("git diff --quiet HEAD --") < export["run"].index(
+        "docker buildx build"
+    )
+    assert "python3 scripts/ci/helm_dependency_build.py" in dependencies["run"]
+    assert steps.index(source_guard) < steps.index(export) < steps.index(dependencies)
+    assert steps.index(dependencies) < steps.index(preflight)
+
+    steps_by_id = {step.get("id"): step for step in steps if step.get("id")}
+    for scan_id in ("trivy_revocation", "trivy_university", "trivy_redis_compat"):
+        assert steps.index(dependencies) < steps.index(steps_by_id[scan_id])
+
+    # Verify the tracked-worktree condition the export guard relies on using a
+    # disposable Git checkout. Dependency generation after the guard may dirty
+    # tracked chart inputs; OCI export must already have completed by then.
+    git = which("git")
+    assert git is not None, "Git is required for the isolated source-guard test"
+    repository = tmp_path / "checkout"
+    repository.mkdir()
+    tracked_file = repository / "tracked.txt"
+    tracked_file.write_text("source snapshot\n", encoding="utf-8")
+
+    def run_git(*args: str) -> str:
+        completed = subprocess.run(  # noqa: S603 - fixed Git command and fixture args
+            [git, *args],
+            cwd=repository,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        return completed.stdout.strip()
+
+    run_git("init", "--quiet")
+    run_git("add", "tracked.txt")
+    run_git(
+        "-c",
+        "user.name=Workflow contract fixture",
+        "-c",
+        "user.email=workflow-contract@example.invalid",
+        "commit",
+        "-m",
+        "fixture source",
+    )
+    clean_diff = subprocess.run(  # noqa: S603 - resolved Git and fixture-owned arguments
+        [git, "diff", "--quiet", "HEAD", "--"],
+        cwd=repository,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert clean_diff.returncode == 0
+
+    tracked_file.write_text("dependency-generated mutation\n", encoding="utf-8")
+    dirty_diff = subprocess.run(  # noqa: S603 - resolved Git and fixture-owned arguments
+        [git, "diff", "--quiet", "HEAD", "--"],
+        cwd=repository,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert dirty_diff.returncode == 1
 
 
 def test_workflow_tool_installers_do_not_use_latest_selectors() -> None:

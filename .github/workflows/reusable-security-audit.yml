@@ -339,14 +339,6 @@ jobs:
         with:
           version: "4.2.4"
 
-      - name: Build Helm dependencies for Trivy
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/ci/helm_dependency_build.py \
-            charts/university-ecosystem \
-            redis-0.1.0.tgz nats-2.15.0.tgz
-
       - name: Install checksum-pinned Trivy
         env:
           TRIVY_VERSION: 0.75.0
@@ -409,6 +401,14 @@ jobs:
           test -s "$profiles/trivy-revocation-config.json"
           test -s "$profiles/trivy-university-config.json"
           test -s "$profiles/trivy-redis-compat-config.json"
+
+      - name: Build Helm dependencies for Trivy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-0.1.0.tgz nats-2.15.0.tgz
 
       - name: Run Trivy vulnerability scanner (filesystem)
         id: trivy_fs
