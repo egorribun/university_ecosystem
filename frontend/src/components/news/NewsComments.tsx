@@ -18,7 +18,7 @@ interface NewsCommentsProps {
   comments: NewsComment[]
   user?: Pick<User, "id" | "role"> | null
   isCommenting: boolean
-  addComment: (content: string) => void
+  addComment: (content: string) => void | Promise<unknown>
   updateComment: (id: string, content: string) => void
   deleteComment: (id: string) => void
   t: (key: string, options?: Record<string, unknown>) => string
@@ -43,8 +43,17 @@ export function NewsComments({
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null)
 
   const handlePostComment = () => {
-    addComment(commentText)
-    setCommentText("")
+    const submittedText = commentText
+    const result = addComment(submittedText)
+    const clearSubmittedDraft = () =>
+      setCommentText((current) => (current === submittedText ? "" : current))
+
+    if (result && typeof result.then === "function") {
+      void result.then(clearSubmittedDraft, () => undefined)
+      return
+    }
+
+    clearSubmittedDraft()
   }
 
   const handleUpdateComment = (id: string) => {

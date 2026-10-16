@@ -68,6 +68,25 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+type MutationSettlement<T> =
+  { status: "fulfilled"; value: T } | { status: "rejected"; reason: unknown }
+
+function observeMutation<T>(promise: Promise<T>): Promise<MutationSettlement<T>> {
+  return promise.then(
+    (value) => ({ status: "fulfilled", value }),
+    (reason: unknown) => ({ status: "rejected", reason })
+  )
+}
+
+async function startMutation<T>(start: () => Promise<T>) {
+  let settlement!: Promise<MutationSettlement<T>>
+  await act(async () => {
+    settlement = observeMutation(start())
+    await Promise.resolve()
+  })
+  return { settlement }
+}
+
 function holdInteractionResponses(action: "like" | "comment", initial: NewsInteractions) {
   const mutation = deferred<Response>()
   const refetch = deferred<NewsInteractions>()
@@ -593,7 +612,9 @@ describe("useNewsInteraction — addComment", () => {
     try {
       await waitFor(() => expect(result.current.interactions).toEqual(initial))
       const startedAt = Date.now()
-      act(() => result.current.addComment("hello"))
+      const { settlement: commentResult } = await startMutation(() =>
+        result.current.addComment("hello")
+      )
       await waitForMutationAttempt(qc, request)
       expect(result.current.isCommenting).toBe(true)
       expect(result.current.interactions?.comments).toHaveLength(2)
@@ -610,7 +631,11 @@ describe("useNewsInteraction — addComment", () => {
       expect(Date.parse(pending.created_at)).toBeGreaterThanOrEqual(startedAt)
       expect(Date.parse(pending.created_at)).toBeLessThanOrEqual(Date.now())
 
-      mutation.resolve(HttpResponse.json(confirmed))
+      await act(async () => {
+        mutation.resolve(HttpResponse.json(confirmed))
+        await commentResult
+      })
+      expect(await commentResult).toEqual({ status: "fulfilled", value: confirmed })
       await waitFor(() => expect(result.current.isCommenting).toBe(false))
       expect(qc.isFetching()).toBe(1)
       expect(result.current.interactions?.comments).toEqual([...initial.comments, pending])
@@ -634,14 +659,23 @@ describe("useNewsInteraction — addComment", () => {
 
     try {
       await waitFor(() => expect(result.current.interactions).toEqual(initial))
-      act(() => result.current.addComment("nope"))
+      const { settlement: commentResult } = await startMutation(() =>
+        result.current.addComment("nope")
+      )
       await waitForMutationAttempt(qc, request)
       expect(result.current.isCommenting).toBe(true)
       expect(result.current.interactions?.comments).toHaveLength(2)
       expect(result.current.interactions?.comments[1]?.content).toBe("nope")
       expect(result.current.interactions?.comments_count).toBe(21)
 
-      mutation.resolve(new HttpResponse(null, { status: 500 }))
+      await act(async () => {
+        mutation.resolve(new HttpResponse(null, { status: 500 }))
+        await commentResult
+      })
+      expect(await commentResult).toMatchObject({
+        status: "rejected",
+        reason: { response: { status: 500 } },
+      })
       await waitFor(() => expect(result.current.isCommenting).toBe(false))
       expect(qc.isFetching()).toBe(1)
       expect(result.current.interactions).toEqual(initial)
@@ -674,7 +708,9 @@ describe("useNewsInteraction — addComment", () => {
     try {
       await waitFor(() => expect(result.current.current.interactions).toEqual(initial))
       expect(result.current.other.isLoading).toBe(true)
-      act(() => result.current.current.addComment("hello"))
+      const { settlement: commentResult } = await startMutation(() =>
+        result.current.current.addComment("hello")
+      )
 
       await waitForMutationAttempt(qc, request)
       expect(result.current.current.isCommenting).toBe(true)
@@ -684,7 +720,14 @@ describe("useNewsInteraction — addComment", () => {
       await waitFor(() => expect(result.current.other.isLoading).toBe(false))
       expect(result.current.other.interactions).toEqual(baseInteractions)
 
-      mutation.resolve(new HttpResponse(null, { status: 500 }))
+      await act(async () => {
+        mutation.resolve(new HttpResponse(null, { status: 500 }))
+        await commentResult
+      })
+      expect(await commentResult).toMatchObject({
+        status: "rejected",
+        reason: { response: { status: 500 } },
+      })
       await waitFor(() => expect(result.current.current.isCommenting).toBe(false))
       expect(result.current.current.interactions).toEqual(initial)
       expect(result.current.other.interactions).toEqual(baseInteractions)
@@ -730,9 +773,12 @@ describe("useNewsInteraction — addComment", () => {
     try {
       expect(result.current.isLoading).toBe(true)
       expect(result.current.interactions).toBeUndefined()
-      act(() => result.current.addComment("before load"))
+      const { settlement: commentResult } = await startMutation(() =>
+        result.current.addComment("before load")
+      )
       await waitForMutationAttempt(qc, request)
       await waitFor(() => expect(result.current.isCommenting).toBe(false))
+      expect(await commentResult).toEqual({ status: "fulfilled", value: saved })
 
       queryGate.resolve()
       await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -754,8 +800,14 @@ describe("useNewsInteraction — addComment", () => {
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
     setOnline(false)
-    act(() => result.current.addComment("offline comment"))
+    const { settlement: commentResult } = await startMutation(() =>
+      result.current.addComment("offline comment")
+    )
     await waitFor(() => expect(result.current.isCommenting).toBe(false))
+    expect(await commentResult).toEqual({
+      status: "fulfilled",
+      value: { isOfflineStore: true },
+    })
     const q = await readQueue()
     expect(q).toHaveLength(1)
     expect(q[0]!.url).toBe(`/api/v1/news/${NEWS_ID}/comment`)
@@ -968,11 +1020,13 @@ describe("useNewsInteraction — mutations before the query cache resolves", () 
     const { qc, wrapper } = makeWrapper()
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
 
-    act(() => {
+    let commentResult!: Promise<MutationSettlement<unknown>>
+    await act(async () => {
       result.current.toggleLike()
-      result.current.addComment("before-cache")
+      commentResult = observeMutation(result.current.addComment("before-cache"))
       result.current.updateComment("missing", "before-cache")
       result.current.deleteComment("missing")
+      await Promise.resolve()
     })
 
     await waitFor(() => {
@@ -980,6 +1034,10 @@ describe("useNewsInteraction — mutations before the query cache resolves", () 
       expect(result.current.isCommenting).toBe(false)
       expect(result.current.isUpdatingComment).toBe(false)
       expect(result.current.isDeletingComment).toBe(false)
+    })
+    expect(await commentResult).toMatchObject({
+      status: "rejected",
+      reason: { response: { status: 500 } },
     })
     expect(qc.getQueryData(["news", NEWS_ID, "interactions"])).toBeUndefined()
 

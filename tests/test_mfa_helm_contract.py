@@ -604,6 +604,15 @@ def test_deploy_renderer_executes_canonical_staging_without_required_markers(
     assert isinstance(gateway_jwks, dict)
     # Reserved TEST-NET only, provided through the existing values-file input.
     gateway_jwks["egressCIDRs"] = ["192.0.2.0/24"]
+    # Reserved TEST-NET/documentation proxy peers are fixture-only.
+    staging_values["gateway"]["config"]["trustedProxies"] = [
+        "192.0.2.11/32",
+        "2001:db8::11",
+    ]
+    staging_values["wsHub"]["config"]["trustedProxies"] = [
+        "198.51.100.12/32",
+        "2001:db8::12",
+    ]
     staging_values_path = tmp_path / "values-staging-render-contract.yaml"
     staging_values_path.write_text(
         yaml.safe_dump(staging_values, sort_keys=False), encoding="utf-8"

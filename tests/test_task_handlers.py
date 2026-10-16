@@ -248,40 +248,52 @@ class TestCleanupDeadLetterJobsTask:
 
 
 class TestSendAuthEmail:
-    def test_calls_send_reset_email(self):
+    @pytest.mark.asyncio
+    async def test_builds_and_delivers_reset_message(self):
         from app.tasks import email as email_tasks
 
-        with patch("app.tasks.email.send_reset_email") as mock_send:
-            inner = getattr(
+        with patch(
+            "app.tasks.email._deliver_email_message", new_callable=AsyncMock
+        ) as mock_send:
+            await getattr(
                 email_tasks.send_auth_email, "__wrapped__", email_tasks.send_auth_email
+            )(
+                "user@example.com",
+                "https://example.com/reset",
+                "John Doe",
+                locale="en",
             )
-            if callable(inner):
-                inner(
-                    "user@example.com",
-                    "https://example.com/reset",
-                    "John Doe",
-                    locale="en",
-                )
-            mock_send.assert_called_once_with(
-                "user@example.com", "https://example.com/reset", "John Doe", locale="en"
-            )
+
+        mock_send.assert_awaited_once()
+        assert mock_send.call_args.kwargs["to_email"] == "user@example.com"
+        assert mock_send.call_args.kwargs["insecure_event"] == (
+            "password.reset_email.insecure_smtp"
+        )
+        message = mock_send.call_args.kwargs["message"]
+        assert message["To"] == "user@example.com"
 
 
 class TestSendLockoutAlert:
-    def test_calls_send_lockout_email(self):
+    @pytest.mark.asyncio
+    async def test_builds_and_delivers_lockout_message(self):
         from app.tasks import email as email_tasks
 
-        with patch("app.utils.email.send_lockout_email") as mock_send:
-            inner = getattr(
+        with patch(
+            "app.tasks.email._deliver_email_message", new_callable=AsyncMock
+        ) as mock_send:
+            await getattr(
                 email_tasks.send_lockout_alert,
                 "__wrapped__",
                 email_tasks.send_lockout_alert,
-            )
-            if callable(inner):
-                inner("user@example.com", "Jane Doe", locale="ru")
-            mock_send.assert_called_once_with(
-                "user@example.com", "Jane Doe", locale="ru"
-            )
+            )("user@example.com", "Jane Doe", locale="ru")
+
+        mock_send.assert_awaited_once()
+        assert mock_send.call_args.kwargs["to_email"] == "user@example.com"
+        assert mock_send.call_args.kwargs["insecure_event"] == (
+            "auth.lockout_email.insecure_smtp"
+        )
+        message = mock_send.call_args.kwargs["message"]
+        assert message["To"] == "user@example.com"
 
 
 # ---------------------------------------------------------------------------

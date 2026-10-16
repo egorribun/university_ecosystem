@@ -34,6 +34,7 @@ export const NewsFeature = () => {
   const {
     news: rawNewsList,
     isLoading: isInitialLoading,
+    isError: isNewsQueryError = false,
     isFetching,
     isFetchingNextPage,
     hasNextPage,
@@ -149,6 +150,7 @@ export const NewsFeature = () => {
         <NewsList
           newsList={filteredNews}
           isInitialLoading={isInitialLoading}
+          isError={isNewsQueryError}
           isFetching={isFetching}
           isFetchingNextPage={isFetchingNextPage}
           hasNextPage={Boolean(hasNextPage)}

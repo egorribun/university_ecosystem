@@ -340,7 +340,14 @@ export function AdminAuditFeature() {
   const { t } = useTranslation("admin")
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
-  const { data, isPending: loading } = useAdminAuditLogsQuery(filters, { page, rowsPerPage })
+  const {
+    data,
+    isPending: loading,
+    isError,
+  } = useAdminAuditLogsQuery(filters, {
+    page,
+    rowsPerPage,
+  })
   const logs: AuditLog[] = data?.items ?? []
   const total = data?.total ?? 0
 
@@ -382,8 +389,17 @@ export function AdminAuditFeature() {
             <div className="flex justify-center p-20">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
             </div>
+          ) : isError && data === undefined ? (
+            <div role="alert" className="p-6 text-center text-sm text-(--error-text)">
+              {t("common:statuses.error")}
+            </div>
           ) : (
             <>
+              {isError && (
+                <div role="alert" className="p-4 text-center text-sm text-(--error-text)">
+                  {t("common:statuses.error")}
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table
                   className="w-full text-left border-collapse"

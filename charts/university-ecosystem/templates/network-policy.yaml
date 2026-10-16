@@ -275,7 +275,18 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -321,7 +332,18 @@ spec:
     - ports:
         - protocol: TCP
           port: 443
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -373,7 +395,18 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -525,7 +558,18 @@ spec:
         - protocol: TCP
           port: 443
     # DNS.
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -618,7 +662,18 @@ spec:
     - ports:
         - protocol: TCP
           port: 443
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -683,7 +738,18 @@ spec:
         - protocol: TCP
           port: {{ .Values.backend.service.port }}
     # DNS for in-cluster backend service discovery.
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -746,7 +812,18 @@ spec:
     - ports:
         - protocol: TCP
           port: 443
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP

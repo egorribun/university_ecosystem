@@ -263,7 +263,7 @@ def test_file_processor_revocation_egress_is_release_scoped(
         ((backend_selector,), (), (("TCP", 8000),)),
         (((("app.kubernetes.io/name", "otel-collector"),),), (), (("TCP", 4317),)),
         ((), (), (("TCP", 443),)),
-        ((), (), (("TCP", 53), ("UDP", 53))),
+        (((("k8s-app", "kube-dns"),),), (), (("TCP", 53), ("UDP", 53))),
     }
 
 

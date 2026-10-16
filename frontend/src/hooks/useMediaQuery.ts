@@ -66,6 +66,15 @@ export default function useMediaQuery(
         mediaQueryList.addListener(handleChange)
       }
 
+      // useSyncExternalStore checks the snapshot again after subscribe returns.
+      // Refresh the shadow snapshot here so a change between render and listener
+      // registration is visible even though no listener could observe that event.
+      const currentMatches = mediaQueryList.matches
+      if (currentMatches !== store.getSnapshot()) {
+        store.update(currentMatches)
+        onStoreChange()
+      }
+
       return () => {
         if (typeof mediaQueryList.removeEventListener === "function") {
           mediaQueryList.removeEventListener("change", handleChange)

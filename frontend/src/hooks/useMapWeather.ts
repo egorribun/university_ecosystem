@@ -33,19 +33,35 @@ export interface MapWeatherData {
   hourlyForecast: HourlyPoint[]
 }
 
-const CACHE_KEY = "map.weather.cache"
+const LEGACY_CACHE_KEY = "map.weather.cache"
+const CACHE_KEY = "map.weather.cache.v2"
+const CACHE_VERSION = 2
+const CACHE_WIND_SPEED_UNIT = "ms" as const
 const CACHE_TTL = 30 * 60 * 1000
 
 interface CachedWeather {
+  version: number
+  windSpeedUnit: typeof CACHE_WIND_SPEED_UNIT
   timestamp: number
   data: MapWeatherData
 }
 
 function readCache(): MapWeatherData | null {
   try {
+    localStorage.removeItem(LEGACY_CACHE_KEY)
     const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return null
     const cached = JSON.parse(raw) as CachedWeather
+    if (
+      !cached ||
+      cached.version !== CACHE_VERSION ||
+      cached.windSpeedUnit !== CACHE_WIND_SPEED_UNIT ||
+      !Number.isFinite(cached.timestamp) ||
+      !cached.data
+    ) {
+      localStorage.removeItem(CACHE_KEY)
+      return null
+    }
     if (Date.now() - cached.timestamp > CACHE_TTL) {
       localStorage.removeItem(CACHE_KEY)
       return null
@@ -58,7 +74,15 @@ function readCache(): MapWeatherData | null {
 
 function writeCache(data: MapWeatherData): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }))
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        version: CACHE_VERSION,
+        windSpeedUnit: CACHE_WIND_SPEED_UNIT,
+        timestamp: Date.now(),
+        data,
+      })
+    )
   } catch {
     // Safari private browsing — localStorage may throw (RZ-31-03)
   }
@@ -71,6 +95,7 @@ const API_URL = [
   `&current=temperature_2m,weather_code,is_day,apparent_temperature,wind_speed_10m,relative_humidity_2m,uv_index`,
   `&hourly=temperature_2m,weather_code`,
   `&forecast_hours=12`,
+  `&wind_speed_unit=ms`,
   `&timezone=Europe/Moscow`,
 ].join("")
 

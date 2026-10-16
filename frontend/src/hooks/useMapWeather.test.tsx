@@ -14,7 +14,9 @@ import { useMapWeather, type MapWeatherData } from "./useMapWeather"
  *  - localStorage write failure (Safari private mode) is swallowed.
  */
 
-const CACHE_KEY = "map.weather.cache"
+const LEGACY_CACHE_KEY = "map.weather.cache"
+const CACHE_KEY = "map.weather.cache.v2"
+const CACHE_VERSION = 2
 const CACHE_TTL = 30 * 60 * 1000
 
 const FIXTURE_API_RESPONSE = {
@@ -44,6 +46,14 @@ const FIXTURE_CACHED_DATA: MapWeatherData = {
   humidity: 50,
   uvIndex: 2,
   hourlyForecast: [],
+}
+
+function serializedCache(
+  data: MapWeatherData,
+  timestamp = Date.now(),
+  windSpeedUnit = "ms"
+): string {
+  return JSON.stringify({ version: CACHE_VERSION, windSpeedUnit, timestamp, data })
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -102,12 +112,54 @@ describe("useMapWeather — Lighthouse preview", () => {
   })
 })
 
+describe("useMapWeather — unit-aware cache migration", () => {
+  it("evicts the legacy km/h payload without touching unrelated local data", async () => {
+    const unrelatedKey = "profile.preferences"
+    const unrelatedValue = JSON.stringify({ theme: "dark" })
+    localStorage.setItem(
+      LEGACY_CACHE_KEY,
+      JSON.stringify({
+        timestamp: Date.now(),
+        data: { ...FIXTURE_CACHED_DATA, windSpeed: 36 },
+      })
+    )
+    localStorage.setItem(unrelatedKey, unrelatedValue)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(result.current.data?.windSpeed).toBe(4.2)
+    expect(localStorage.getItem(LEGACY_CACHE_KEY)).toBeNull()
+    expect(localStorage.getItem(unrelatedKey)).toBe(unrelatedValue)
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null")).toMatchObject({
+      version: CACHE_VERSION,
+      windSpeedUnit: "ms",
+      data: { windSpeed: 4.2 },
+    })
+  })
+
+  it("rejects and replaces a versioned entry that declares km/h", async () => {
+    localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA, Date.now(), "kmh"))
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(result.current.data?.windSpeed).toBe(4.2)
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null")).toMatchObject({
+      version: CACHE_VERSION,
+      windSpeedUnit: "ms",
+      data: { windSpeed: 4.2 },
+    })
+  })
+})
+
 describe("useMapWeather — cache hit", () => {
   it("returns cached data without a network call when cache is fresh", async () => {
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ timestamp: Date.now(), data: FIXTURE_CACHED_DATA })
-    )
+    localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA))
 
     const client = newClient()
     const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
@@ -126,6 +178,7 @@ describe("useMapWeather — cache miss → fetch", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("&wind_speed_unit=ms"))
     const data = result.current.data!
     expect(data.temperature).toBe(12) // rounded from 12.4
     expect(data.feelsLike).toBe(11)
@@ -139,16 +192,14 @@ describe("useMapWeather — cache miss → fetch", () => {
     // Persistence — next fresh hook would read from cache.
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null")
     expect(cached?.data?.temperature).toBe(12)
+    expect(cached).toMatchObject({ version: CACHE_VERSION, windSpeedUnit: "ms" })
   })
 })
 
 describe("useMapWeather — expired cache", () => {
   it("evicts the entry and re-fetches when older than TTL", async () => {
     const oldTimestamp = Date.now() - (CACHE_TTL + 60_000)
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ timestamp: oldTimestamp, data: FIXTURE_CACHED_DATA })
-    )
+    localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA, oldTimestamp))
 
     const client = newClient()
     const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })

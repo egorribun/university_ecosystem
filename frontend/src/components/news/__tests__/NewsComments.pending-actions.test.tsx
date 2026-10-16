@@ -135,13 +135,16 @@ function renderComments(role: User["role"] = "student") {
       await user.type(screen.getByRole("textbox", { name: "news:form.commentAriaLabel" }), CONTENT)
       await user.click(screen.getByRole("button", { name: "news:actions.postComment" }))
       await waitFor(() => expect(posted).toEqual([{ content: CONTENT }]))
-      await screen.findByText(CONTENT)
+      await screen.findByText(CONTENT, { selector: "p" })
     },
     async finishPost() {
       state = { ...INITIAL, comments: [PERSISTED, CREATED], comments_count: 2 }
       await act(async () => post.resolve(HttpResponse.json(CREATED)))
       await waitFor(() => expect(getCount).toBeGreaterThan(1))
       await waitFor(() => expect(client.isMutating()).toBe(0))
+      await waitFor(() =>
+        expect(screen.getByRole("textbox", { name: "news:form.commentAriaLabel" })).toHaveValue("")
+      )
     },
     async dispose() {
       view.unmount()
@@ -156,7 +159,7 @@ function renderComments(role: User["role"] = "student") {
 }
 
 function row(content: string) {
-  return within(screen.getByText(content).parentElement!)
+  return within(screen.getByText(content, { selector: "p" }).parentElement!)
 }
 
 describe("NewsComments pending actions", () => {
@@ -279,7 +282,12 @@ describe("NewsComments pending actions", () => {
     try {
       await fixture.submit()
       await act(async () => fixture.post.resolve(new HttpResponse(null, { status: 500 })))
-      await waitFor(() => expect(screen.queryByText(CONTENT)).not.toBeInTheDocument())
+      await waitFor(() =>
+        expect(screen.queryByText(CONTENT, { selector: "p" })).not.toBeInTheDocument()
+      )
+      expect(screen.getByRole("textbox", { name: "news:form.commentAriaLabel" })).toHaveValue(
+        CONTENT
+      )
       expect(fixture.client.isFetching()).toBe(1)
       expect(
         row(PERSISTED.content).getByRole("button", { name: "news:actions.editComment" })

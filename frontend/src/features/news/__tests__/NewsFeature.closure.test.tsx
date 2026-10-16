@@ -15,6 +15,7 @@ const { state, mockResetEtagCache } = vi.hoisted(() => ({
       current: {
         news: [] as NewsItem[],
         isLoading: false,
+        isError: false,
         isFetching: false,
         isFetchingNextPage: false,
         hasNextPage: true,
@@ -101,6 +102,7 @@ vi.mock("@/features/news/components/NewsHeader", () => ({
 vi.mock("@/features/news/components/NewsList", () => ({
   NewsList: (props: {
     newsList: Array<{ id: string; title: string }>
+    isError?: boolean
     hasNextPage: boolean
     fetchNextPage: () => void
     refreshNews: () => void
@@ -109,6 +111,7 @@ vi.mock("@/features/news/components/NewsList", () => ({
     <div
       data-testid="news-list"
       data-count={String(props.newsList.length)}
+      data-error={String(Boolean(props.isError))}
       data-next={String(props.hasNextPage)}
     >
       {props.newsList.map((item) => (
@@ -180,6 +183,7 @@ describe("NewsFeature closure", () => {
     state.query.current = {
       news: NEWS,
       isLoading: false,
+      isError: false,
       isFetching: false,
       isFetchingNextPage: false,
       hasNextPage: true,
@@ -221,6 +225,14 @@ describe("NewsFeature closure", () => {
     expect(screen.getByTestId("news-form")).toHaveAttribute("data-parent-refresh", "false")
     expect(mockResetEtagCache).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId("news-shortcuts")).toBeInTheDocument()
+  })
+
+  it("forwards query failure state to the news list", () => {
+    state.query.current = { ...state.query.current, isError: true }
+
+    renderFeature()
+
+    expect(screen.getByTestId("news-list")).toHaveAttribute("data-error", "true")
   })
 
   it("applies saved/popular filters, translated search fields, and offline state", () => {

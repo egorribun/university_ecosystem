@@ -81,6 +81,23 @@ describe("NewsList", () => {
     expect(screen.getByText(/no news yet/i)).toBeInTheDocument()
   })
 
+  it("shows a retriable load error instead of the empty state", () => {
+    const refreshNews = vi.fn()
+    render(<NewsList {...defaultProps} newsList={[]} isError refreshNews={refreshNews} />)
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Failed to load the news.")
+    expect(screen.queryByText(/no news yet/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+    expect(refreshNews).toHaveBeenCalledOnce()
+  })
+
+  it("keeps cached news visible while reporting a failed refresh", () => {
+    render(<NewsList {...defaultProps} isError />)
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Failed to load the news.")
+    expect(screen.getAllByTestId("news-card")).toHaveLength(2)
+  })
+
   it("continues pagination when the current filtered page has no matches", () => {
     const fetchNextPage = vi.fn()
     render(<NewsList {...defaultProps} newsList={[]} hasNextPage fetchNextPage={fetchNextPage} />)
@@ -98,6 +115,25 @@ describe("NewsList", () => {
     render(<NewsList {...defaultProps} newsList={[]} isOnline={false} refreshNews={refreshNews} />)
     // OfflineFallback renders the offline text/icon
     expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+    expect(refreshNews).toHaveBeenCalledOnce()
+  })
+
+  it("retries an offline initial-load error through the offline fallback", () => {
+    const refreshNews = vi.fn()
+    render(
+      <NewsList
+        {...defaultProps}
+        newsList={[]}
+        isError
+        isOnline={false}
+        refreshNews={refreshNews}
+      />
+    )
+
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    expect(screen.queryByText("Failed to load the news.")).not.toBeInTheDocument()
+    expect(screen.queryByText(/no news yet/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /try again/i }))
     expect(refreshNews).toHaveBeenCalledOnce()
   })

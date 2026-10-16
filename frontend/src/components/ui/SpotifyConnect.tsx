@@ -26,7 +26,7 @@ export default function SpotifyConnect() {
     key: SpotifyFeedbackKey
     disconnected?: boolean
   } | null>(null)
-  const { t } = useTranslation(["settings", "common"])
+  const { t } = useTranslation(["settings", "common", "profile"])
 
   const spotifyEnabled = Boolean(user?.spotify_connected || user?.spotify_is_connected)
   const { data: now, isFetching: refreshing, refetch } = useNowPlaying(spotifyEnabled)
@@ -202,6 +202,11 @@ export default function SpotifyConnect() {
                   </div>
                   {now.track_url && (
                     <a
+                      aria-label={
+                        now.track_name?.trim()
+                          ? t("profile:nowPlaying.openSpotifyWithTrack", { track: now.track_name })
+                          : t("profile:nowPlaying.openSpotify")
+                      }
                       href={now.track_url}
                       target="_blank"
                       rel="noreferrer"

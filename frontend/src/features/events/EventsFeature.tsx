@@ -114,13 +114,17 @@ export const EventsFeature = () => {
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
+    isError: eventsListError,
   } = eventsListQuery
 
   const {
     data: myEventsData,
     isLoading: myEventsLoading,
     isFetching: myEventsFetching,
+    isError: myEventsError,
   } = myEventsQuery
+
+  const queryError = tab === "my" ? myEventsError : eventsListError
 
   const rawEvents = useMemo(() => {
     return tab === "my" ? (myEventsData ?? []) : rawEventsList
@@ -238,6 +242,7 @@ export const EventsFeature = () => {
           <EventsList
             eventsList={filteredEvents}
             isInitialLoading={isInitialLoading}
+            queryError={queryError}
             isFetching={isFetching}
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={canFetchMore}

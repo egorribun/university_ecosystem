@@ -160,7 +160,7 @@ describe("SpotifyConnect", () => {
   it("shows the connect button when Spotify is not connected", () => {
     mockState.user = { id: "user-1", spotify_connected: false }
     render(<SpotifyConnect />)
-    expect(mockState.translationArgs).toEqual([["settings", "common"]])
+    expect(mockState.translationArgs).toEqual([["settings", "common", "profile"]])
     expect(screen.getByText("settings:integrations.spotify.title")).toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "settings:integrations.spotify.connect" })
@@ -336,7 +336,9 @@ describe("SpotifyConnect", () => {
     expect(screen.getByText("Track One")).toBeInTheDocument()
     expect(screen.getByText("Artist A, Artist B")).toBeInTheDocument()
     expect(screen.getByText("Album X")).toBeInTheDocument()
-    const link = screen.getByRole("link")
+    const link = screen.getByRole("link", {
+      name: "profile:nowPlaying.openSpotifyWithTrack",
+    })
     expect(link).toHaveAttribute("href", "https://open.spotify.com/track/1")
   })
 

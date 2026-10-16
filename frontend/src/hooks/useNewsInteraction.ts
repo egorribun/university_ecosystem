@@ -268,7 +268,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   })
 
   const likeMutate = likeMutation.mutate
-  const commentMutate = commentMutation.mutate
+  const commentMutateAsync = commentMutation.mutateAsync
   const updateCommentMutate = updateCommentMutation.mutate
   const deleteCommentMutate = deleteCommentMutation.mutate
 
@@ -276,7 +276,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     interactions,
     isLoading,
     toggleLike: useCallback(() => likeMutate(), [likeMutate]),
-    addComment: useCallback((content: string) => commentMutate(content), [commentMutate]),
+    addComment: useCallback((content: string) => commentMutateAsync(content), [commentMutateAsync]),
     updateComment: useCallback(
       (commentId: string, content: string) => updateCommentMutate({ commentId, content }),
       [updateCommentMutate]
