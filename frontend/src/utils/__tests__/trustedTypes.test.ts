@@ -255,6 +255,23 @@ describe("trustedTypes util", () => {
     )
   })
 
+  it("uses the page origin when no backend origin is configured", async () => {
+    vi.resetModules()
+    vi.stubEnv("VITE_BACKEND_ORIGIN", undefined)
+    const { createTrustedScriptURL: createScriptURL } = await import("../trustedTypes")
+    const factory = {
+      createPolicy: vi.fn(
+        (_name: string, rules: Record<string, (value: string) => string>) => rules
+      ),
+    }
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = factory
+
+    const sameOriginScript = `${window.location.origin}/assets/app.js`
+    expect(createScriptURL("/assets/app.js")).toBe(sameOriginScript)
+    expect(createScriptURL(sameOriginScript)).toBe(sameOriginScript)
+    expect(() => createScriptURL("https://evil.example/malice.js")).toThrow("Blocked script origin")
+  })
+
   it("ignores a malformed backend origin instead of widening the allowlist", async () => {
     vi.resetModules()
     vi.stubEnv("VITE_BACKEND_ORIGIN", "http://[")

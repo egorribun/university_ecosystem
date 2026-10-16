@@ -381,14 +381,14 @@ export default function LivePushToasts() {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const seenToastIdsRef = useRef(new Set<string>())
 
-  // State initializers provide stable callback identities without reading refs
-  // during render (which the React Compiler correctly rejects).  The callbacks
-  // still close over the instance-owned refs/setters and are initialized once.
+  // Keep a stable callback identity, but construct the ref-reading enqueue
+  // helper only when that callback runs after render.
   const [enqueue] = useState<(toast: ActiveToast, ownerId: string, ownerRevision: number) => void>(
-    () =>
+    () => (toast: ActiveToast, ownerId: string, ownerRevision: number) => {
       createToastEnqueueCallback(seenToastIdsRef, (entry) => {
         setQueue((prev) => [...prev, entry])
-      })
+      })(toast, ownerId, ownerRevision)
+    }
   )
 
   const [flushBufferedToasts] = useState<() => void>(() => () => {
