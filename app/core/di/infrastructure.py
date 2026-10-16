@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, cast
 
+import nats.errors
 import redis.asyncio as aioredis
 from dishka import Provider, Scope, provide
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -45,23 +46,25 @@ class InfrastructureProvider(Provider):
 
     @provide(scope=Scope.APP)
     async def nats_broker(self) -> AsyncIterator[NatsTaskBroker]:
-        import asyncio
-
         from app.core.config import settings
         from app.core.nats_broker import broker as global_broker
 
         if settings.environment != "testing":
             try:
-                await asyncio.wait_for(global_broker.connect(), timeout=5.0)
+                # NatsTaskBroker.connect owns its deadline and cancellation cleanup.
+                await global_broker.connect()
                 _logger.info("Dishka: NatsTaskBroker connected (Scope.APP)")
             except (
                 OSError,
                 ConnectionError,
+                nats.errors.NoServersError,
                 TimeoutError,
             ) as exc:  # RZ-22-01: narrowed — NATS connection errors
                 _logger.warning("Dishka: NATS connection failed (%s).", exc)
-        yield global_broker
-        await global_broker.close()
+        try:
+            yield global_broker
+        finally:
+            await global_broker.close()
 
     @provide(scope=Scope.REQUEST)
     async def db(

@@ -102,6 +102,21 @@ class UserMediaService:
             # The database reference is already durable; a stale object can be swept later.
             logger.warning("profile_media_post_commit_cleanup_failed")
 
+    async def cleanup_anonymized_profile_media(
+        self,
+        owner_id: UUID,
+        *,
+        avatar_url: str | None,
+        cover_url: str | None,
+    ) -> None:
+        """Clean old profile objects after anonymization has committed."""
+        await self._cleanup_after_commit(
+            avatar_url, owner_id=owner_id, media_kind="avatar"
+        )
+        await self._cleanup_after_commit(
+            cover_url, owner_id=owner_id, media_kind="cover"
+        )
+
     async def _commit_profile_media_change(
         self,
         db_user: models.User,

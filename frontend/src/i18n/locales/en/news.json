@@ -48,14 +48,18 @@
     "image": "Cover Image",
     "commentPlaceholder": "Write something...",
     "commentAriaLabel": "Write a new comment",
-    "editCommentAriaLabel": "Edit comment"
+    "editCommentAriaLabel": "Edit comment",
+    "errors": {
+      "uploadFailed": "The image could not be uploaded. Your changes are still here; try again."
+    }
   },
   "dialogs": {
     "create": {
       "title": "Add news"
     },
     "edit": {
-      "title": "Edit news"
+      "title": "Edit news",
+      "description": "Edit the article content and image."
     },
     "delete": {
       "title": "Delete news?",

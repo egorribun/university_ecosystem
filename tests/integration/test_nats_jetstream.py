@@ -152,9 +152,7 @@ async def test_nats_jetstream_six_file_backed_streams_with_seven_day_retention()
     mock_nc.jetstream = MagicMock(return_value=mock_js)
     mock_nc.is_connected = True
 
-    with patch(
-        "app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)
-    ):
+    with patch("app.core.nats_broker.NATS", return_value=mock_nc):
         await broker.connect()
 
     assert mock_js.add_stream.await_count == 6

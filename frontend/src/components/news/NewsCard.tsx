@@ -14,6 +14,20 @@ import { useAuth } from "@/contexts/AuthContext"
 
 const NewsCardView = lazy(() => import("./NewsCardView").then((m) => ({ default: m.NewsCardView })))
 
+type NewsEditData = {
+  title: string
+  content: string
+  title_en: string
+  content_en: string
+  image_url: string
+}
+
+type NewsEditSession = {
+  id: string
+  locale: string
+  initialData: NewsEditData
+}
+
 export type NewsCardProps = {
   id: string
   title: string
@@ -45,17 +59,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   priority,
 }) => {
   const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
 
-  const [editOpen, setEditOpen] = useState(false)
+  const [editSession, setEditSession] = useState<NewsEditSession | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [openEditContext, setOpenEditContext] = useState<string | null>(null)
   const editSourceRequestRef = useRef<AbortController | null>(null)
   const isMountedRef = useRef(false)
-  const currentEditContext = JSON.stringify([id, language])
 
   const editData = useMemo(
     () => ({
@@ -67,7 +80,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }),
     [title, content, title_en, content_en, image_url]
   )
-  const [editDialogData, setEditDialogData] = useState(editData)
 
   useEffect(() => {
     isMountedRef.current = true
@@ -83,6 +95,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     },
     [id, language]
   )
+
+  useEffect(() => {
+    if (!isAdmin && editSession) setEditSession(null)
+  }, [editSession, isAdmin])
 
   const { interactions, toggleLike } = useNewsInteraction(id, {
     initialData: {
@@ -142,10 +158,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const openEdit = useCallback(async () => {
     setError("")
+    if (!isAdmin || editSession) return
     if (language !== "en") {
-      setEditDialogData(editData)
-      setOpenEditContext(currentEditContext)
-      setEditOpen(true)
+      setEditSession({ id, locale: language, initialData: { ...editData } })
       return
     }
 
@@ -163,15 +178,17 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         return
       }
       if (response.status === 304) throw new Error("Russian source was not returned")
-      setEditDialogData({
-        title: response.data.title,
-        content: response.data.content,
-        title_en: response.data.title_en ?? "",
-        content_en: response.data.content_en ?? "",
-        image_url: response.data.image_url ?? "",
+      setEditSession({
+        id,
+        locale: language,
+        initialData: {
+          title: response.data.title,
+          content: response.data.content,
+          title_en: response.data.title_en ?? "",
+          content_en: response.data.content_en ?? "",
+          image_url: response.data.image_url ?? "",
+        },
       })
-      setOpenEditContext(currentEditContext)
-      setEditOpen(true)
     } catch {
       if (!controller.signal.aborted && editSourceRequestRef.current === controller) {
         setError(t("common:errors.generic"))
@@ -182,11 +199,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         if (isMountedRef.current) setLoading(false)
       }
     }
-  }, [currentEditContext, editData, id, language, t])
-  const closeEdit = useCallback(() => {
-    setEditOpen(false)
-    setOpenEditContext(null)
-  }, [])
+  }, [editData, editSession, id, isAdmin, language, t])
+  const closeEdit = useCallback(() => setEditSession(null), [])
+  const activeEditSession = isAdmin ? editSession : null
 
   const openDeletePrompt = useCallback(() => setConfirmDeleteOpen(true), [])
   const closeDeletePrompt = useCallback(() => setConfirmDeleteOpen(false), [])
@@ -207,15 +222,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       likesCount={likesCount}
       commentsCount={commentsCount}
       isBookmarked={isBookmarked(id)}
-      isAdmin={user?.role === "admin"}
+      isAdmin={isAdmin}
       loading={loading}
       error={error}
-      hoveringDisabled={editOpen && openEditContext === currentEditContext}
+      hoveringDisabled={Boolean(activeEditSession)}
       readingTime={readingTime}
       category={category}
-      editOpen={editOpen && openEditContext === currentEditContext}
+      editOpen={Boolean(activeEditSession)}
+      editTargetId={activeEditSession?.id}
       confirmDeleteOpen={confirmDeleteOpen}
-      editData={editDialogData}
+      editData={activeEditSession?.initialData ?? editData}
       spotlight={spotlight}
       onToggleLike={toggleLike}
       onToggleBookmark={handleToggleBookmark}

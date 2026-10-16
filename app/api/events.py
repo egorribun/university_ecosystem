@@ -46,7 +46,7 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO
-from app.services.content_media import delete_owned_event_image
+from app.services.content_media import delete_unreferenced_owned_event_image
 from app.services.event_service import EventService
 from app.services.file_scanner import scan_for_malware
 from app.services.private_attachments import (
@@ -513,7 +513,9 @@ async def update_event(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if old_image_url and event_dto.image_url != old_image_url:
-        await delete_owned_event_image(str(old_image_url), event_id=event_id)
+        await delete_unreferenced_owned_event_image(
+            str(old_image_url), event_id=event_id, db_session=db
+        )
 
     files_result = await db.execute(
         select(models.EventFile).where(models.EventFile.event_id == event_dto.id)

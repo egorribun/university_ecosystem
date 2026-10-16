@@ -67,7 +67,7 @@ export function getInitialSheetReadyState(): boolean {
 }
 
 export function getSheetResetHeight(isMobile: boolean, snapHalf: number): number | undefined {
-  return isMobile ? snapHalf : undefined
+  return isMobile ? clampSheetHeight(snapHalf, getViewportHeight()) : undefined
 }
 
 export function shouldApplySheetResetHeight(
@@ -95,7 +95,37 @@ export function getScrollKey(building: CampusBuilding | undefined): string {
  * for consumers that render the sheet outside the browser.
  */
 export function getInitialSheetHeight(): number {
-  return getViewportHeight() * 0.5
+  const viewportHeight = getViewportHeight()
+  return clampSheetHeight(viewportHeight * 0.5, viewportHeight)
+}
+
+interface SheetSnapPoints {
+  peek: number
+  half: number
+  full: number
+  ordered: number[]
+}
+
+function getSheetHeightBounds(viewportHeight: number): { min: number; max: number } {
+  const max = Math.max(0, viewportHeight * 0.9)
+  return { min: Math.min(100, max), max }
+}
+
+function clampSheetHeight(height: number, viewportHeight: number): number {
+  const bounds = getSheetHeightBounds(viewportHeight)
+  return Math.max(bounds.min, Math.min(height, bounds.max))
+}
+
+function getSheetSnapPoints(viewportHeight: number): SheetSnapPoints {
+  const peek = clampSheetHeight(160, viewportHeight)
+  const half = clampSheetHeight(viewportHeight * 0.5, viewportHeight)
+  const full = clampSheetHeight(viewportHeight * 0.85, viewportHeight)
+  return {
+    peek,
+    half,
+    full,
+    ordered: [...new Set([peek, half, full])].sort((left, right) => left - right),
+  }
 }
 
 /**
@@ -122,17 +152,54 @@ export function MapSidebar({
 
   /* ── Bottom sheet drag state (mobile only) ── */
   const [sheetHeight, setSheetHeight] = useState(getInitialSheetHeight)
+  const [viewportHeight, setViewportHeight] = useState(getViewportHeight)
   /** Scroll locked during entrance animation — prevents focus-trap auto-scroll */
   const [sheetReady, setSheetReady] = useState(getInitialSheetReadyState)
   const dragStartY = useRef(0)
   const dragStartH = useRef(0)
   const isDragging = useRef(false)
+  const previousViewportHeight = useRef(viewportHeight)
+  const snapPoints = useMemo(() => getSheetSnapPoints(viewportHeight), [viewportHeight])
+  const sheetBounds = getSheetHeightBounds(viewportHeight)
 
-  // Stabilize snap points — prevents snapToNearest recreation every render (CQ-110-01)
-  const [{ SNAP_PEEK, SNAP_HALF, SNAP_FULL }] = useState(() => {
-    const vh = getViewportHeight()
-    return { SNAP_PEEK: 160, SNAP_HALF: vh * 0.5, SNAP_FULL: vh * 0.85 }
-  })
+  useEffect(() => {
+    const updateViewportHeight = () => setViewportHeight(getViewportHeight())
+    window.addEventListener("resize", updateViewportHeight)
+    return () => window.removeEventListener("resize", updateViewportHeight)
+  }, [])
+
+  useEffect(() => {
+    const previous = previousViewportHeight.current
+    previousViewportHeight.current = viewportHeight
+    if (previous === viewportHeight) return
+    if (viewportHeight <= 0) {
+      setSheetHeight(0)
+      return
+    }
+    if (previous <= 0) {
+      setSheetHeight(getSheetSnapPoints(viewportHeight).half)
+      return
+    }
+
+    const oldSnapPoints = getSheetSnapPoints(previous)
+    setSheetHeight((currentHeight) => {
+      const closestSnap = (
+        [
+          { name: "peek", height: oldSnapPoints.peek },
+          { name: "half", height: oldSnapPoints.half },
+          { name: "full", height: oldSnapPoints.full },
+        ] as const
+      ).reduce((best, current) =>
+        Math.abs(current.height - currentHeight) < Math.abs(best.height - currentHeight)
+          ? current
+          : best
+      )
+      if (Math.abs(closestSnap.height - currentHeight) <= 1) {
+        return snapPoints[closestSnap.name]
+      }
+      return clampSheetHeight((currentHeight / previous) * viewportHeight, viewportHeight)
+    })
+  }, [snapPoints, viewportHeight])
 
   /* ── Body scroll lock for mobile sheet ── */
   useEffect(() => {
@@ -152,13 +219,11 @@ export function MapSidebar({
   })
 
   const snapToNearest = useCallback(() => {
-    const h = sheetHeight
-    const snaps = [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
-    const closest = snaps.reduce((prev, curr) =>
-      Math.abs(curr - h) < Math.abs(prev - h) ? curr : prev
+    const closest = snapPoints.ordered.reduce((prev, curr) =>
+      Math.abs(curr - sheetHeight) < Math.abs(prev - sheetHeight) ? curr : prev
     )
     setSheetHeight(closest)
-  }, [SNAP_PEEK, SNAP_HALF, SNAP_FULL, sheetHeight])
+  }, [sheetHeight, snapPoints])
 
   /** setPointerCapture ensures reliable tracking even when pointer escapes the handle (CQ-110-02) */
   const handleDragStart = useCallback(
@@ -174,7 +239,7 @@ export function MapSidebar({
   /** Keyboard equivalent of the touch drag handle for WCAG 2.2 Target Size/Keyboard access. */
   const handleResizeKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const snaps = [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
+      const snaps = snapPoints.ordered
       const nearestIndex = snaps.reduce(
         (best, current, index) =>
           Math.abs(current - sheetHeight) < Math.abs(snaps[best]! - sheetHeight) ? index : best,
@@ -196,7 +261,7 @@ export function MapSidebar({
       e.preventDefault()
       setSheetHeight(snaps[nextIndex]!)
     },
-    [SNAP_FULL, SNAP_HALF, SNAP_PEEK, sheetHeight]
+    [sheetHeight, snapPoints]
   )
 
   const handleDragMove = useCallback(
@@ -204,7 +269,7 @@ export function MapSidebar({
       if (!isMobile || !isDragging.current) return
       const dy = dragStartY.current - clientY
       const viewH = getViewportHeight()
-      const newH = Math.max(100, Math.min(dragStartH.current + dy, viewH * 0.9))
+      const newH = clampSheetHeight(dragStartH.current + dy, viewH)
       setSheetHeight(newH)
     },
     [isMobile]
@@ -234,7 +299,7 @@ export function MapSidebar({
       setSheetReady(getInitialSheetReadyState())
       return
     }
-    const resetHeight = getSheetResetHeight(isMobile, SNAP_HALF)
+    const resetHeight = getSheetResetHeight(isMobile, getViewportHeight() * 0.5)
     applySheetResetHeight(resetHeight, setSheetHeight)
     setSheetReady(getInitialSheetReadyState())
     // Enable scroll AFTER CSS @keyframes entrance (350ms)
@@ -247,7 +312,7 @@ export function MapSidebar({
       clearTimeout(id)
     }
     return cancelSheetEntranceTimer
-  }, [building, isMobile, SNAP_HALF])
+  }, [building, isMobile])
 
   const selectedRoomData: CampusRoom | undefined = floor?.rooms.find((r) => r.id === selectedRoom)
 
@@ -518,8 +583,8 @@ export function MapSidebar({
           role="slider"
           tabIndex={0}
           aria-orientation="vertical"
-          aria-valuemin={100}
-          aria-valuemax={Math.round(getViewportHeight() * 0.9)}
+          aria-valuemin={Math.round(sheetBounds.min)}
+          aria-valuemax={Math.round(sheetBounds.max)}
           aria-valuenow={Math.round(sheetHeight)}
           className="flex min-h-[44px] justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={handleDragStart}

@@ -160,7 +160,11 @@ export default function Dashboard() {
     }
     if (sessionStorage.getItem(CASCADE_KEY)) return
 
-    sessionStorage.setItem(CASCADE_KEY, "1")
+    try {
+      sessionStorage.setItem(CASCADE_KEY, "1")
+    } catch {
+      // The cascade marker is decorative; storage quota must not block the dashboard.
+    }
 
     let cancelled = false
     let completed = false

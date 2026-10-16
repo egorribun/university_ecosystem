@@ -20,6 +20,8 @@ const NewsCardEditDialog = lazy(() =>
 
 export interface NewsCardViewProps {
   id: string
+  /** Immutable article target for an open edit session; defaults to this card. */
+  editTargetId?: string
   title: string
   created_at: string
   image_url?: string
@@ -69,6 +71,7 @@ export interface NewsCardViewProps {
 
 export const NewsCardView: FC<NewsCardViewProps> = ({
   id,
+  editTargetId,
   title,
   created_at,
   image_url,
@@ -208,7 +211,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
       {/* Dialogs */}
       <Suspense fallback={null}>
         <NewsCardEditDialog
-          id={id}
+          id={editTargetId ?? id}
           open={editOpen}
           onClose={onEditClose}
           initialData={editData}

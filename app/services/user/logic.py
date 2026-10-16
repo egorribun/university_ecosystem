@@ -150,15 +150,6 @@ async def anonymize_user_data(user: models.User) -> str:
 
     # Profile fields handling
     if user.profile:
-        if user.profile.avatar_url:
-            await delete_owned_profile_media(
-                user.profile.avatar_url, owner_id=user.id, media_kind="avatar"
-            )
-        if user.profile.cover_url:
-            await delete_owned_profile_media(
-                user.profile.cover_url, owner_id=user.id, media_kind="cover"
-            )
-
         # We want to keep the profile to store "deleted" status,
         # but clear all other PII.
         user.profile.full_name = "Deleted User"

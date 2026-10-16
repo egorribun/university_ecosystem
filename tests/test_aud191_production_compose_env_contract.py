@@ -8,6 +8,10 @@ from typing import Any
 import pytest
 import yaml
 
+ROOT = Path(__file__).resolve().parents[1]
+_BASE_COMPOSE_PATH = ROOT / "docker-compose.yml"
+_PRODUCTION_COMPOSE_PATH = ROOT / "docker-compose.prod.yml"
+
 
 class _ComposeReset:
     """Keep Compose's !reset tag so sequence merge semantics stay explicit."""
@@ -40,10 +44,15 @@ def _repo_root() -> Path:
     raise AssertionError("could not locate the repository Compose files")
 
 
-def _compose(relative_path: str) -> dict[str, Any]:
-    # Parse the checked-in YAML only. Do not load .env or evaluate shell
+def _compose(relative_path: str | Path) -> dict[str, Any]:
+    # Parse checked-in YAML only. Do not load .env or evaluate shell
     # interpolation; those sources can contain real deployment credentials.
-    loader = _ComposeLoader((_repo_root() / relative_path).read_text(encoding="utf-8"))
+    compose_path = (
+        relative_path
+        if isinstance(relative_path, Path)
+        else _repo_root() / relative_path
+    )
+    loader = _ComposeLoader(compose_path.read_text(encoding="utf-8"))
     try:
         return loader.get_single_data()
     finally:
@@ -114,8 +123,8 @@ _PRODUCTION_FILE_SECRETS = {
 def test_production_secret_services_do_not_inherit_plaintext_environment(
     service_name: str,
 ) -> None:
-    base = _compose("docker-compose.yml")["services"][service_name]
-    production = _compose("docker-compose.prod.yml")["services"][service_name]
+    base = _compose(_BASE_COMPOSE_PATH)["services"][service_name]
+    production = _compose(_PRODUCTION_COMPOSE_PATH)["services"][service_name]
     assert "prod" in production.get("profiles", [])
 
     violations: list[str] = []
@@ -138,8 +147,8 @@ def test_production_secret_services_do_not_inherit_plaintext_environment(
 def test_production_spicedb_does_not_inherit_development_insecure_mode(
     service_name: str,
 ) -> None:
-    base = _compose("docker-compose.yml")["services"][service_name]
-    production = _compose("docker-compose.prod.yml")["services"][service_name]
+    base = _compose(_BASE_COMPOSE_PATH)["services"][service_name]
+    production = _compose(_PRODUCTION_COMPOSE_PATH)["services"][service_name]
     value = _merged_environment(base, production).get("SPICEDB_INSECURE")
     assert value is None or str(value).strip().lower() in {"", "false", "0", "no"}
 
@@ -148,7 +157,7 @@ def test_production_spicedb_does_not_inherit_development_insecure_mode(
 def test_development_compose_retains_explicit_local_environment(
     service_name: str,
 ) -> None:
-    base = _compose("docker-compose.yml")["services"][service_name]
+    base = _compose(_BASE_COMPOSE_PATH)["services"][service_name]
     environment = base.get("environment") or {}
 
     # Positive control: local Compose intentionally keeps its development

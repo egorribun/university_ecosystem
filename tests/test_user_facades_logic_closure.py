@@ -166,7 +166,7 @@ def test_update_user_attributes_reuses_existing_nested_relations():
 
 
 @pytest.mark.asyncio
-async def test_anonymize_user_data_cleans_existing_relations_and_files():
+async def test_anonymize_user_data_clears_relations_without_storage_io():
     user_id = uuid4()
     user = SimpleNamespace(
         id=user_id,
@@ -203,7 +203,7 @@ async def test_anonymize_user_data_cleans_existing_relations_and_files():
         anonymized = await anonymize_user_data(user)
 
     assert anonymized == f"deleted+{user.id}@deleted.example.com"
-    assert delete.await_count == 2
+    delete.assert_not_awaited()
     assert user.profile.status == "deleted"
     assert user.education_path is None
     assert user.preferences.dnd_enabled is False

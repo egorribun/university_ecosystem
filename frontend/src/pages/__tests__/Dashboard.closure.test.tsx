@@ -531,4 +531,50 @@ describe("Dashboard closure behavior", () => {
     expect(window.sessionStorage.getItem("dash-cascade-done")).toBeNull()
     unmount()
   })
+
+  it("keeps the dashboard mounted when session storage cannot save the cascade marker", async () => {
+    vi.stubEnv("VITE_E2E_MODE", "0")
+    vi.stubEnv("VITE_LHCI", "false")
+    state.narrow = false
+    state.reduced = false
+    state.storiesInHero = true
+    vi.resetModules()
+
+    const quotaStorage = globalThis.sessionStorage
+    quotaStorage.clear()
+    expect(quotaStorage.getItem("dash-cascade-done")).toBeNull()
+    vi.spyOn(window, "matchMedia").mockImplementation((media) => ({
+      matches: false,
+      media,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    const originalSetItem = Storage.prototype.setItem
+    const quotaStorageWrite = vi.fn()
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (this === quotaStorage && key === "dash-cascade-done") {
+        quotaStorageWrite()
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+      }
+      return originalSetItem.call(this, key, value)
+    })
+    const { default: QuotaDashboard } = await import("../Dashboard")
+
+    expect(() => render(<QuotaDashboard />)).not.toThrow()
+    expect(setItem).toHaveBeenCalledWith("dash-cascade-done", "1")
+    expect(quotaStorageWrite).toHaveBeenCalledOnce()
+    expect(screen.getAllByTestId("motion-card").at(0)).toHaveAttribute("data-cascade", "active")
+    expect(quotaStorage.getItem("dash-cascade-done")).toBeNull()
+    expect(screen.getByTestId("schedule-card")).toBeInTheDocument()
+    expect(screen.getByTestId("news-card")).toBeInTheDocument()
+    expect(screen.getByTestId("events-card")).toBeInTheDocument()
+  })
 })

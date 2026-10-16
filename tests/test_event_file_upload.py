@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import event as sa_event
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
@@ -721,6 +722,188 @@ async def test_update_event_replaces_image_removes_old_file(
 
     assert result.image_url == "/static/event_images/new.png"
     assert not old_path.exists()
+
+
+@pytest.mark.parametrize("owner_action", ["update", "delete"])
+@pytest.mark.parametrize(
+    "reference_kind",
+    ["canonical", "repeated-separator-alias", "unsupported-host-alias"],
+)
+@pytest.mark.asyncio
+async def test_event_image_cleanup_preserves_another_authors_shared_reference(
+    owner_action,
+    reference_kind,
+    tmp_path,
+    monkeypatch,
+    db_session,
+    user_factory,
+    event_service,
+    mock_checker,
+):
+    image_owner = await user_factory(role="admin")
+    other_author = await user_factory(role="admin")
+    owner_event = await _create_event(db_session, image_owner)
+    referencing_event = await _create_event(db_session, other_author)
+
+    filename = f"event_{owner_event.id}_{'d' * 32}.png"
+    image_path = tmp_path / "tmp" / "event_images" / filename
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(b"shared event artwork")
+    owner_image_url = f"/static/tmp/event_images/{filename}"
+    if reference_kind == "canonical":
+        reference_url = owner_image_url
+    elif reference_kind == "repeated-separator-alias":
+        reference_url = f"/static/tmp//event_images/{filename}"
+    else:
+        reference_url = f"https://cdn.example.test/static/tmp/event_images/{filename}"
+    owner_event.image_url = owner_image_url
+    await db_session.commit()
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    # EventUpdate currently permits another author's owner-shaped URL. This
+    # creates the shared DB reference through the real API/service path.
+    accepted = await call_injected(
+        events.update_event,
+        referencing_event.id,
+        schemas.EventUpdate(image_url=reference_url),
+        request=None,
+        user=other_author,
+        checker=mock_checker,
+        provides={"AsyncDatabaseSession": db_session, "EventService": event_service},
+    )
+    assert accepted.image_url == reference_url
+
+    if owner_action == "update":
+        result = await call_injected(
+            events.update_event,
+            owner_event.id,
+            schemas.EventUpdate(image_url="/static/event_images/replacement.png"),
+            request=None,
+            user=image_owner,
+            checker=mock_checker,
+            provides={
+                "AsyncDatabaseSession": db_session,
+                "EventService": event_service,
+            },
+        )
+        assert result.image_url == "/static/event_images/replacement.png"
+    else:
+        from app.services import search_indexer
+
+        monkeypatch.setattr(search_indexer, "remove_document", AsyncMock())
+        assert await event_service.delete_event(owner_event.id) is True
+
+    await db_session.refresh(referencing_event)
+    assert referencing_event.image_url == reference_url
+    assert image_path.exists()
+
+
+@pytest.mark.parametrize("owner_action", ["update", "delete"])
+@pytest.mark.asyncio
+async def test_event_image_cleanup_retains_file_when_reference_query_fails(
+    owner_action,
+    tmp_path,
+    monkeypatch,
+    db_session,
+    user_factory,
+    event_service,
+    mock_checker,
+):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+    filename = f"event_{event.id}_{'e' * 32}.png"
+    image_path = tmp_path / "tmp" / "event_images" / filename
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(b"retained while reference state is unavailable")
+    image_url = f"/static/tmp/event_images/{filename}"
+    event.image_url = image_url
+    await db_session.commit()
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    failed_reference_queries = 0
+
+    def fail_reference_lookup(_conn, _cursor, statement, _params, _ctx, _many):
+        nonlocal failed_reference_queries
+        normalized_statement = " ".join(statement.lower().replace('"', "").split())
+        if (
+            "lower(events.image_url)" in normalized_statement
+            and " like " in normalized_statement
+        ):
+            failed_reference_queries += 1
+            raise SQLAlchemyError("injected event-image reference-query failure")
+
+    sync_engine = db_session.get_bind()
+    sa_event.listen(sync_engine, "before_cursor_execute", fail_reference_lookup)
+    try:
+        if owner_action == "update":
+            result = await call_injected(
+                events.update_event,
+                event.id,
+                schemas.EventUpdate(image_url="/static/event_images/replacement.png"),
+                request=None,
+                user=admin,
+                checker=mock_checker,
+                provides={
+                    "AsyncDatabaseSession": db_session,
+                    "EventService": event_service,
+                },
+            )
+            assert result.image_url == "/static/event_images/replacement.png"
+        else:
+            from app.services import search_indexer
+
+            monkeypatch.setattr(search_indexer, "remove_document", AsyncMock())
+            assert await event_service.delete_event(event.id) is True
+    finally:
+        sa_event.remove(sync_engine, "before_cursor_execute", fail_reference_lookup)
+
+    assert failed_reference_queries == 1
+    assert image_path.exists()
+
+
+@pytest.mark.parametrize("reference_form", ["cdn-url", "s3-uri", "raw-key"])
+@pytest.mark.asyncio
+async def test_s3_event_image_cleanup_preserves_supported_key_aliases(
+    reference_form, db_session, user_factory, monkeypatch
+):
+    from app.services import content_media
+    from app.services.storage import S3Storage
+
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="test-bucket",
+        client=client,
+        base_url="https://cdn.example.test/uploads",
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+
+    image_owner = await user_factory(role="admin")
+    other_author = await user_factory(role="admin")
+    owner_event = await _create_event(db_session, image_owner)
+    referencing_event = await _create_event(db_session, other_author)
+    filename = f"event_{owner_event.id}_{'f' * 32}.png"
+    storage_key = f"tmp/event_images/{filename}"
+    owner_url = f"{storage.base_url}/{storage_key}"
+    if reference_form == "cdn-url":
+        reference_url = owner_url
+    elif reference_form == "s3-uri":
+        reference_url = f"s3://test-bucket/{storage_key}"
+    else:
+        reference_url = storage_key
+    owner_event.image_url = owner_url
+    referencing_event.image_url = reference_url
+    await db_session.commit()
+
+    from app.services.content_media import delete_unreferenced_owned_event_image
+
+    removed = await delete_unreferenced_owned_event_image(
+        owner_url, event_id=owner_event.id, db_session=db_session
+    )
+
+    assert removed is False
+    client.delete_object.assert_not_awaited()
 
 
 @pytest.mark.asyncio

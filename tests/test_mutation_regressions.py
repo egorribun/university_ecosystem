@@ -282,15 +282,14 @@ async def test_nats_connect_preserves_unlimited_reconnect_policy() -> None:
     broker = NatsTaskBroker()
     mock_js = AsyncMock()
     mock_nc = MagicMock()
+    mock_nc.connect = AsyncMock()
     mock_nc.jetstream.return_value = mock_js
+    mock_nc.is_connected = True
 
-    with patch(
-        "app.core.nats_broker.nats.connect",
-        new=AsyncMock(return_value=mock_nc),
-    ) as connect:
+    with patch("app.core.nats_broker.NATS", return_value=mock_nc):
         await broker.connect()
 
-    kwargs = connect.await_args.kwargs
+    kwargs = mock_nc.connect.await_args.kwargs
     assert kwargs["max_reconnect_attempts"] == -1
     assert kwargs["connect_timeout"] == 2
 

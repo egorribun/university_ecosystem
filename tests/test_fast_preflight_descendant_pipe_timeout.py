@@ -21,7 +21,7 @@ def test_run_check_deadline_when_descendant_inherits_output_pipes(
     marker = tmp_path / "descendant-finished.txt"
     descendant_code = (
         "import pathlib, sys, time; "
-        "time.sleep(2.5); "
+        "time.sleep(2.5); "  # Bounded: child delay 2.5 s; parent deadline 0.75 s.
         "pathlib.Path(sys.argv[1]).write_text('finished', encoding='ascii')"
     )
     parent_code = (
@@ -52,7 +52,7 @@ def test_run_check_deadline_when_descendant_inherits_output_pipes(
 
     deadline = time.monotonic() + 4.0
     while not marker.exists() and time.monotonic() < deadline:
-        time.sleep(0.01)
+        time.sleep(0.01)  # 10 ms poll cadence; the loop is bounded by its 4 s deadline.
     assert marker.exists()
     assert marker.read_text(encoding="ascii") == "finished"
 

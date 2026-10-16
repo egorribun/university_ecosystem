@@ -183,14 +183,14 @@ async def test_anonymize_user_data_clears_avatar_and_cover(
     assert email == f"deleted+{user.id}@deleted.example.com"
     assert profile.avatar_url is None
     assert profile.cover_url is None
-    assert len(deleted) == 2
+    assert deleted == []
     assert user.profile.full_name == "Deleted User"
     assert user.profile.status == "deleted"
     assert user.is_active is False
 
 
 @pytest.mark.asyncio
-async def test_anonymize_deletes_owned_avatar_but_preserves_legacy_foreign_cover(
+async def test_anonymize_clears_media_references_without_storage_io(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import app.utils.files as file_utils
@@ -235,7 +235,7 @@ async def test_anonymize_deletes_owned_avatar_but_preserves_legacy_foreign_cover
 
     await anonymize_user_data(user)  # type: ignore[arg-type]
 
-    assert not avatar_path.exists()
+    assert avatar_path.read_bytes() == b"owner avatar"
     assert legacy_cover_path.read_bytes() == b"foreign cover"
     assert user.profile.avatar_url is None
     assert user.profile.cover_url is None

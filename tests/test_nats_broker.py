@@ -1,5 +1,6 @@
 import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,29 +16,46 @@ async def test_nats_broker_connection_success():
     mock_js = AsyncMock()
     mock_nc.jetstream = MagicMock(return_value=mock_js)
 
-    with patch("nats.connect", new_callable=AsyncMock) as mock_connect:
-        mock_connect.return_value = mock_nc
+    legacy_connect = AsyncMock(return_value=mock_nc)
+    with (
+        patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+        patch("app.core.nats_broker.NATS", return_value=mock_nc) as client_factory,
+    ):
         await broker.connect()
 
-        # Should configure connect params
-        mock_connect.assert_called_once()
+        # Both source versions use the same controlled client.
+        assert client_factory.call_count + legacy_connect.await_count == 1
+        assert mock_nc.connect.await_count + legacy_connect.await_count == 1
         assert broker._nc is mock_nc
         assert broker._js is mock_js
         assert broker.is_connected is True
 
-        # Idempotence: calling connect again should be a no-op
+        # Idempotence: a second call is a no-op.
         await broker.connect()
-        mock_connect.assert_called_once()
+        assert client_factory.call_count + legacy_connect.await_count == 1
 
 
 @pytest.mark.anyio
 async def test_nats_broker_connection_failure():
     broker = NatsTaskBroker()
 
-    with patch("nats.connect", side_effect=Exception("NATS connect error")):
+    mock_nc = AsyncMock()
+    mock_nc.connect.side_effect = Exception("NATS connect error")
+
+    async def legacy_connect_impl(*args: object, **kwargs: object) -> AsyncMock:
+        await mock_nc.connect(*args, **kwargs)
+        return mock_nc
+
+    legacy_connect = AsyncMock(side_effect=legacy_connect_impl)
+    with (
+        patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+        patch("app.core.nats_broker.NATS", return_value=mock_nc) as client_factory,
+    ):
         with pytest.raises(Exception, match="NATS connect error"):
             await broker.connect()
 
+        assert client_factory.call_count + legacy_connect.await_count == 1
+        mock_nc.close.assert_awaited_once()
         assert broker._nc is None
         assert broker._js is None
         assert broker.is_connected is False
@@ -52,7 +70,7 @@ async def test_nats_broker_close():
     broker._js = AsyncMock()
 
     await broker.close()
-    mock_nc.close.assert_called_once()
+    mock_nc.close.assert_awaited_once()
     assert broker._nc is None
     assert broker._js is None
 
@@ -157,6 +175,7 @@ async def test_nats_broker_run_worker():
 
     # Message 2: valid payload with non-existing task
     msg2 = AsyncMock()
+    msg2.metadata = SimpleNamespace(num_delivered=1)
     msg2.data = json.dumps(
         {
             "id": "123",
@@ -211,8 +230,9 @@ async def test_nats_broker_run_worker():
         # Verification:
         # msg1 should have been acked (invalid json)
         msg1.ack.assert_called_once()
-        # msg2 should have term() called (no handler registered)
-        msg2.term.assert_called_once()
+        # An unknown task stays recoverable for mixed-version deployments.
+        msg2.nak.assert_awaited_once_with(delay=5.0)
+        msg2.term.assert_not_awaited()
         # msg3 should have been executed and acked
         assert task_called_with == 100
         msg3.ack.assert_called_once()

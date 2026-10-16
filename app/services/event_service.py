@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.cache_versioning import events_cache_version
 from app.core.exceptions.domain import EntityNotFound
@@ -15,7 +15,7 @@ from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
 from app.services import attendance_tokens, stats_cache
-from app.services.content_media import delete_owned_event_image
+from app.services.content_media import delete_unreferenced_owned_event_image
 from app.services.vector_service import (
     SemanticSearchUnavailableError,
     VectorService,
@@ -299,10 +299,15 @@ class EventService:
 
         if image_url:
             try:
-                await delete_owned_event_image(str(image_url), event_id=event_id)
-            except (FileNotFoundError, OSError):
-                # RZ-20-04: Narrowed — file deletion is best-effort.
-                logger.warning("Failed to delete event image: %s", image_url)
+                async with self.uow:
+                    await delete_unreferenced_owned_event_image(
+                        str(image_url),
+                        event_id=event_id,
+                        db_session=self.uow.session,
+                    )
+            except (OSError, SQLAlchemyError):
+                # RZ-20-04: Retain the object if post-commit cleanup cannot proceed.
+                logger.warning("Failed to safely clean event image: %s", image_url)
 
         for url in file_urls:
             try:

@@ -154,16 +154,18 @@ async def test_outbox_heartbeat_optional_paths(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_nats_broker_preserves_primary_error_when_cleanup_fails() -> None:
     broker = NatsTaskBroker()
-    broker.close = AsyncMock(side_effect=OSError("cleanup failed"))
+    client = MagicMock()
+    client.connect = AsyncMock(side_effect=ConnectionError("connect failed"))
+    client.close = AsyncMock(side_effect=OSError("cleanup failed"))
     with (
-        patch(
-            "app.core.nats_broker.nats.connect",
-            new=AsyncMock(side_effect=ConnectionError("connect failed")),
-        ),
+        patch("app.core.nats_broker.NATS", return_value=client),
         pytest.raises(ConnectionError, match="connect failed"),
     ):
         await broker.connect()
-    broker.close.assert_awaited_once_with()
+    client.connect.assert_awaited_once()
+    client.close.assert_awaited_once_with()
+    assert broker._nc is None
+    assert broker._js is None
 
 
 @pytest.mark.asyncio

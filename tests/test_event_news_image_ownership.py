@@ -1,14 +1,32 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
+import app.models as models
 from app.services import content_media
 from app.services.content_media import delete_owned_event_image
 from app.services.storage import S3Storage, StaticFSStorage
+
+
+async def _persist_event(db_session, user: models.User) -> models.Event:
+    event = models.Event(
+        title="Reference cleanup test",
+        description="image ownership fixture",
+        location="",
+        event_type="workshop",
+        starts_at=datetime.now(UTC),
+        ends_at=datetime.now(UTC) + timedelta(hours=1),
+        created_by=user.id,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+    return event
 
 
 @pytest.mark.asyncio
@@ -142,3 +160,187 @@ async def test_local_event_image_rejects_unresolvable_traversal_before_delete(
     assert not await delete_owned_event_image(invalid_url, event_id=event_id)
     delete_file.assert_not_awaited()
     assert outside_base.read_bytes() == b"must remain outside static root"
+
+
+@pytest.mark.asyncio
+async def test_reference_aware_cleanup_rejects_unowned_inputs_before_query(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app.services.content_media import delete_unreferenced_owned_event_image
+
+    db_session = SimpleNamespace(execute=AsyncMock())
+    event_id = uuid4()
+    owned_url = f"/static/tmp/event_images/event_{event_id}_{'a' * 32}.png"
+    resolve_backend = MagicMock(return_value=object())
+    monkeypatch.setattr(content_media, "_get_storage_backend", resolve_backend)
+
+    assert not await delete_unreferenced_owned_event_image(
+        owned_url, event_id=123, db_session=db_session
+    )
+    resolve_backend.assert_not_called()
+
+    assert not await delete_unreferenced_owned_event_image(
+        owned_url, event_id=event_id, db_session=db_session
+    )
+    resolve_backend.assert_called_once_with()
+
+    local_backend = StaticFSStorage(tmp_path, base_url="/static")
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: local_backend)
+    malformed_url = "/static/tmp/event_images/legacy.png"
+    assert not await delete_unreferenced_owned_event_image(
+        malformed_url, event_id=event_id, db_session=db_session
+    )
+    db_session.execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "reference_kind", ["unsupported-host", "different-key-same-leaf"]
+)
+@pytest.mark.asyncio
+async def test_reference_aware_s3_cleanup_retains_unparseable_or_same_leaf_reference(
+    reference_kind, db_session, user_factory, monkeypatch
+):
+    from app.services.content_media import delete_unreferenced_owned_event_image
+    from app.services.storage import S3Storage
+
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="test-bucket",
+        client=client,
+        base_url="https://cdn.example.test/uploads",
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    image_owner = await user_factory(role="admin")
+    other_author = await user_factory(role="admin")
+    owner_event = await _persist_event(db_session, image_owner)
+    referencing_event = await _persist_event(db_session, other_author)
+    filename = f"event_{owner_event.id}_{'b' * 32}.png"
+    storage_key = f"tmp/event_images/{filename}"
+    owner_url = f"{storage.base_url}/{storage_key}"
+    if reference_kind == "unsupported-host":
+        reference_url = f"https://unconfigured.example.test/uploads/{filename}"
+    else:
+        reference_url = f"s3://test-bucket/legacy/event_images/{filename}"
+
+    owner_event.image_url = owner_url
+    referencing_event.image_url = reference_url
+    await db_session.commit()
+    replacement_key = "tmp/event_images/replacement.png"
+    owner_event.image_url = f"{storage.base_url}/{replacement_key}"
+    await db_session.commit()
+
+    removed = await delete_unreferenced_owned_event_image(
+        owner_url, event_id=owner_event.id, db_session=db_session
+    )
+
+    assert removed is False
+    client.delete_object.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_s3_cleanup_ignores_filename_substring_in_different_leaf(
+    db_session, user_factory, monkeypatch
+):
+    from app.services.content_media import delete_unreferenced_owned_event_image
+    from app.services.storage import S3Storage
+
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="test-bucket",
+        client=client,
+        base_url="https://cdn.example.test/uploads",
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    owner = await user_factory(role="admin")
+    other_author = await user_factory(role="admin")
+    owner_event = await _persist_event(db_session, owner)
+    reference_event = await _persist_event(db_session, other_author)
+    filename = f"event_{owner_event.id}_{'e' * 32}.png"
+    target_key = f"tmp/event_images/{filename}"
+    target_url = f"{storage.base_url}/{target_key}"
+    owner_event.image_url = target_url
+    reference_event.image_url = f"{storage.base_url}/archive/{filename}.backup"
+    await db_session.commit()
+
+    replacement_key = "tmp/event_images/replacement.png"
+    owner_event.image_url = f"{storage.base_url}/{replacement_key}"
+    await db_session.commit()
+
+    removed = await delete_unreferenced_owned_event_image(
+        target_url, event_id=owner_event.id, db_session=db_session
+    )
+
+    assert removed is True
+    client.delete_object.assert_awaited_once_with(Bucket="test-bucket", Key=target_key)
+
+
+@pytest.mark.asyncio
+async def test_reference_aware_s3_cleanup_deletes_committed_unreferenced_object(
+    db_session, user_factory, monkeypatch
+):
+    from app.services.content_media import delete_unreferenced_owned_event_image
+    from app.services.storage import S3Storage
+
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="test-bucket",
+        client=client,
+        base_url="https://cdn.example.test/uploads",
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    owner = await user_factory(role="admin")
+    event = await _persist_event(db_session, owner)
+    filename = f"event_{event.id}_{'c' * 32}.png"
+    storage_key = f"tmp/event_images/{filename}"
+    owner_url = f"{storage.base_url}/{storage_key}"
+    event.image_url = owner_url
+    await db_session.commit()
+    replacement_key = "tmp/event_images/replacement.png"
+    event.image_url = f"{storage.base_url}/{replacement_key}"
+    await db_session.commit()
+
+    removed = await delete_unreferenced_owned_event_image(
+        owner_url, event_id=event.id, db_session=db_session
+    )
+
+    assert removed is True
+    client.delete_object.assert_awaited_once_with(Bucket="test-bucket", Key=storage_key)
+
+
+@pytest.mark.asyncio
+async def test_reference_aware_cleanup_retains_on_non_string_query_result(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from app.services.content_media import delete_unreferenced_owned_event_image
+    from app.services.storage import S3Storage
+
+    class _ResultWithInvalidImageValue:
+        def scalars(self):
+            return iter([None])
+
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="test-bucket",
+        client=client,
+        base_url="https://cdn.example.test/uploads",
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    db_session = SimpleNamespace(
+        execute=AsyncMock(return_value=_ResultWithInvalidImageValue())
+    )
+    event_id = uuid4()
+    filename = f"event_{event_id}_{'d' * 32}.png"
+    storage_key = f"tmp/event_images/{filename}"
+    owner_url = f"{storage.base_url}/{storage_key}"
+
+    removed = await delete_unreferenced_owned_event_image(
+        owner_url, event_id=event_id, db_session=db_session
+    )
+
+    assert removed is False
+    db_session.execute.assert_awaited_once()
+    client.delete_object.assert_not_awaited()

@@ -49,6 +49,7 @@ export type EventSubmitState = {
   endsAt: string
   normalizedLocation: string
   imageUploading: boolean
+  imageUploadFailed: boolean
   dateError: boolean
 }
 
@@ -59,6 +60,7 @@ export function canSubmitEventDraft(state: EventSubmitState): boolean {
     Boolean(state.endsAt) &&
     Boolean(state.normalizedLocation) &&
     !state.imageUploading &&
+    !state.imageUploadFailed &&
     !state.dateError
   )
 }
@@ -103,7 +105,7 @@ const INITIAL_DRAFT: EventDraft = {
 type EventCreateDialogProps = {
   open: boolean
   onClose: () => void
-  onCreated: (data: EventDraft) => void
+  onCreated: (data: EventDraft) => void | Promise<void>
   language: "ru" | "en"
 }
 
@@ -114,8 +116,19 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
   const [draft, setDraft] = useState<EventDraft>(INITIAL_DRAFT)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageUploadFailed, setImageUploadFailed] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [creationFailed, setCreationFailed] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
+  const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false)
+  const [dialogTrapVersion, setDialogTrapVersion] = useState(0)
   const uploadGenerationRef = useRef(0)
+  const imageUploadingRef = useRef(false)
+  const hasUploadedImageRef = useRef(false)
+  const createButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (creationFailed) createButtonRef.current?.focus()
+  }, [creationFailed])
 
   const getLocalizedValue = (
     field: "title" | "description" | "event_type" | "location" | "about"
@@ -134,25 +147,30 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
 
   const handleImageUpload = async (file: File) => {
     const uploadGeneration = ++uploadGenerationRef.current
+    imageUploadingRef.current = true
     setImageUploading(true)
-    setImageUploadFailed(false)
     try {
       const localUrl = URL.createObjectURL(file)
       setPreview(localUrl)
       const imageUrl = await uploadEventImage(file)
       if (uploadGeneration !== uploadGenerationRef.current) return
+      const normalizedImageUrl = imageUrl.trim()
+      if (!normalizedImageUrl) throw new Error("Image upload returned an empty URL")
 
-      setDraft((previous) => ({ ...previous, image_url: imageUrl }))
+      setDraft((previous) => ({ ...previous, image_url: normalizedImageUrl }))
+      hasUploadedImageRef.current = true
+      setImageUploadFailed(false)
       // The server URL is canonical after upload; releasing the temporary Blob
       // also keeps the rendered preview aligned with the value that is submitted.
       setPreview(null)
     } catch {
       if (uploadGeneration === uploadGenerationRef.current) {
         setPreview(null)
-        setImageUploadFailed(true)
+        if (!hasUploadedImageRef.current) setImageUploadFailed(true)
       }
     } finally {
       if (uploadGeneration === uploadGenerationRef.current) {
+        imageUploadingRef.current = false
         setImageUploading(false)
       }
     }
@@ -171,27 +189,62 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
   useEffect(
     () =>
       createUploadGenerationCleanup(uploadGenerationRef, () => {
+        if (imageUploadingRef.current && !hasUploadedImageRef.current) {
+          setImageUploadFailed(true)
+        }
+        imageUploadingRef.current = false
         setImageUploading(false)
         setPreview(null)
-        setImageUploadFailed(false)
       }),
     [open]
   )
 
   const handleClose = () => {
     invalidateUploadGeneration(uploadGenerationRef)
+    imageUploadingRef.current = false
+    hasUploadedImageRef.current = false
     setDraft(INITIAL_DRAFT)
     setImageUploading(false)
     setPreview(null)
     setImageUploadFailed(false)
+    setCreationFailed(false)
     onClose()
   }
 
-  const handleSubmit = () => {
+  const requestClose = () => {
+    if (isCreating) {
+      // Escape deactivates the focus trap. Remounting the visible dialog restores
+      // keyboard containment without changing the draft or pending request.
+      setDialogTrapVersion((current) => current + 1)
+      return
+    }
+    if (Object.values(draft).some(Boolean) || preview || imageUploading || imageUploadFailed) {
+      setDiscardConfirmationOpen(true)
+      return
+    }
+    handleClose()
+  }
+
+  const keepEditing = () => setDiscardConfirmationOpen(false)
+
+  const discardAndClose = () => {
+    setDiscardConfirmationOpen(false)
+    handleClose()
+  }
+
+  const handleSubmit = async () => {
     const dateRange = resolveCampusEventDateRange(draft.starts_at, draft.ends_at, campusTimezone)
     if (!dateRange.valid || !dateRange.startsAt || !dateRange.endsAt) return
-    onCreated({ ...draft, starts_at: dateRange.startsAt, ends_at: dateRange.endsAt })
-    handleClose()
+    setIsCreating(true)
+    setCreationFailed(false)
+    try {
+      await onCreated({ ...draft, starts_at: dateRange.startsAt, ends_at: dateRange.endsAt })
+      setIsCreating(false)
+      handleClose()
+    } catch {
+      setCreationFailed(true)
+      setIsCreating(false)
+    }
   }
 
   const normalizedTitle = normalizeLocalizedValue(draft.title, draft.title_en)
@@ -213,135 +266,203 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
     endsAt: draft.ends_at,
     normalizedLocation,
     imageUploading,
+    imageUploadFailed: imageUploadFailed && !draft.image_url,
     dateError,
   })
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
-      <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
-      <DialogContent className="space-y-6 pt-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Left column — localized fields */}
-          <div className="space-y-4">
-            <TextField
-              label={language === "en" ? t("events:form.title_en") : t("events:form.title")}
-              value={getLocalizedValue("title")}
-              onChange={(event) => updateLocalizedValue("title", event.target.value)}
-              fullWidth
-            />
-            <TextField
-              label={
-                language === "en" ? t("events:form.description_en") : t("events:form.description")
-              }
-              value={getLocalizedValue("description")}
-              onChange={(event) => updateLocalizedValue("description", event.target.value)}
-              multiline
-              rows={3}
-              fullWidth
-            />
-            <TextField
-              label={language === "en" ? t("events:form.type_en") : t("events:form.type")}
-              value={getLocalizedValue("event_type")}
-              onChange={(event) => updateLocalizedValue("event_type", event.target.value)}
-              fullWidth
-            />
-            <TextField
-              label={language === "en" ? t("events:form.location_en") : t("events:form.location")}
-              value={getLocalizedValue("location")}
-              onChange={(event) => updateLocalizedValue("location", event.target.value)}
-              fullWidth
-            />
-          </div>
-
-          {/* Right column — speaker, image, dates */}
-          <div className="space-y-4">
-            <TextField
-              label={t("events:form.speaker")}
-              value={draft.speaker}
-              onChange={(event) => setDraft({ ...draft, speaker: event.target.value })}
-              fullWidth
-            />
-            <div className="space-y-3">
-              <label className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)">
-                {t("events:form.image")}
-              </label>
-              <Button
-                as="label"
-                variant="outline"
-                disabled={imageUploading}
-                className="w-full justify-start gap-2 bg-(--bg-surface)/(--opacity-dim)"
-              >
-                {imageUploading ? (
-                  t("common:statuses.uploading")
-                ) : (
-                  <>
-                    <SearchIcon className="h-4 w-4" />
-                    {draft.image_url
-                      ? t("events:form.imageSelected")
-                      : t("events:form.uploadImage")}
-                  </>
-                )}
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  onChange={(event) => {
-                    const file = firstSelectedFile(event.currentTarget.files)
-                    if (file) void handleImageUpload(file)
-                  }}
+    <Dialog
+      key={`${discardConfirmationOpen ? "discard-confirmation" : "event-create"}-${dialogTrapVersion}`}
+      open={open}
+      onClose={discardConfirmationOpen ? keepEditing : requestClose}
+      maxWidth="lg"
+      fullWidth
+      ariaLabelledBy="event-create-dialog-title"
+      ariaDescribedBy={
+        discardConfirmationOpen
+          ? "event-discard-confirmation-description"
+          : "event-create-dialog-description"
+      }
+    >
+      {discardConfirmationOpen ? (
+        <>
+          <DialogTitle id="event-create-dialog-title">
+            {t("common:dialogs.unsavedChanges.title")}
+          </DialogTitle>
+          <DialogContent id="event-discard-confirmation-description">
+            {t("common:dialogs.unsavedChanges.description")}
+          </DialogContent>
+          <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
+            <Button variant="ghost" onClick={keepEditing} className="w-full sm:w-auto">
+              {t("common:buttons.keepEditing")}
+            </Button>
+            <Button variant="solid" onClick={discardAndClose} className="w-full sm:w-auto">
+              {t("common:buttons.discardChanges")}
+            </Button>
+          </DialogActions>
+        </>
+      ) : (
+        <>
+          <DialogTitle id="event-create-dialog-title">
+            {t("events:dialogs.create.title")}
+          </DialogTitle>
+          <DialogContent className="space-y-6 pt-4">
+            <p id="event-create-dialog-description" className="sr-only">
+              {t("events:dialogs.create.description")}
+            </p>
+            {creationFailed && (
+              <p role="alert" className="text-error-text">
+                {t("common:errors.generic")}
+              </p>
+            )}
+            {isCreating && (
+              <p role="status" className="sr-only">
+                {t("common:statuses.saving")}
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left column — localized fields */}
+              <div className="space-y-4">
+                <TextField
+                  label={language === "en" ? t("events:form.title_en") : t("events:form.title")}
+                  value={getLocalizedValue("title")}
+                  onChange={(event) => updateLocalizedValue("title", event.target.value)}
+                  disabled={isCreating}
+                  fullWidth
                 />
-              </Button>
-              {imageUploadFailed && (
-                <p role="alert" className="mt-2 text-xs text-error-text">
-                  {t("events:detail.upload.errors.failed")}
-                </p>
-              )}
-              {(preview || draft.image_url) && (
-                <div className="mt-3 overflow-hidden rounded-md border border-glass-border shadow-glass">
-                  <SmartImage
-                    srcRaw={preview || draft.image_url}
-                    alt={t("events:alt.preview")}
-                    className="aspect-video w-full object-cover"
+                <TextField
+                  label={
+                    language === "en"
+                      ? t("events:form.description_en")
+                      : t("events:form.description")
+                  }
+                  value={getLocalizedValue("description")}
+                  onChange={(event) => updateLocalizedValue("description", event.target.value)}
+                  disabled={isCreating}
+                  multiline
+                  rows={3}
+                  fullWidth
+                />
+                <TextField
+                  label={language === "en" ? t("events:form.type_en") : t("events:form.type")}
+                  value={getLocalizedValue("event_type")}
+                  onChange={(event) => updateLocalizedValue("event_type", event.target.value)}
+                  disabled={isCreating}
+                  fullWidth
+                />
+                <TextField
+                  label={
+                    language === "en" ? t("events:form.location_en") : t("events:form.location")
+                  }
+                  value={getLocalizedValue("location")}
+                  onChange={(event) => updateLocalizedValue("location", event.target.value)}
+                  disabled={isCreating}
+                  fullWidth
+                />
+              </div>
+
+              {/* Right column — speaker, image, dates */}
+              <div className="space-y-4">
+                <TextField
+                  label={t("events:form.speaker")}
+                  value={draft.speaker}
+                  onChange={(event) => setDraft({ ...draft, speaker: event.target.value })}
+                  disabled={isCreating}
+                  fullWidth
+                />
+                <div className="space-y-3">
+                  <label className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)">
+                    {t("events:form.image")}
+                  </label>
+                  <Button
+                    as="label"
+                    variant="outline"
+                    disabled={imageUploading || isCreating}
+                    className="w-full justify-start gap-2 bg-(--bg-surface)/(--opacity-dim)"
+                  >
+                    {imageUploading ? (
+                      t("common:statuses.uploading")
+                    ) : (
+                      <>
+                        <SearchIcon className="h-4 w-4" />
+                        {draft.image_url
+                          ? t("events:form.imageSelected")
+                          : t("events:form.uploadImage")}
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      disabled={imageUploading || isCreating}
+                      onChange={(event) => {
+                        const file = firstSelectedFile(event.currentTarget.files)
+                        if (file) void handleImageUpload(file)
+                      }}
+                    />
+                  </Button>
+                  {imageUploadFailed && (
+                    <p role="alert" className="mt-2 text-xs text-error-text">
+                      {t("events:detail.upload.errors.failed")}
+                    </p>
+                  )}
+                  {(preview || draft.image_url) && (
+                    <div className="mt-3 overflow-hidden rounded-md border border-glass-border shadow-glass">
+                      <SmartImage
+                        srcRaw={preview || draft.image_url}
+                        alt={t("events:alt.preview")}
+                        className="aspect-video w-full object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <TextField
+                    label={t("events:form.start")}
+                    type="datetime-local"
+                    value={draft.starts_at}
+                    onChange={(event) => setDraft({ ...draft, starts_at: event.target.value })}
+                    disabled={isCreating}
+                    error={Boolean(startDateErrorText)}
+                    helperText={startDateErrorText}
+                    fullWidth
+                  />
+                  <TextField
+                    label={t("events:form.end")}
+                    type="datetime-local"
+                    value={draft.ends_at}
+                    onChange={(event) => setDraft({ ...draft, ends_at: event.target.value })}
+                    disabled={isCreating}
+                    error={Boolean(endDateErrorText)}
+                    helperText={endDateErrorText}
+                    fullWidth
                   />
                 </div>
-              )}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <TextField
-                label={t("events:form.start")}
-                type="datetime-local"
-                value={draft.starts_at}
-                onChange={(event) => setDraft({ ...draft, starts_at: event.target.value })}
-                error={Boolean(startDateErrorText)}
-                helperText={startDateErrorText}
-                fullWidth
-              />
-              <TextField
-                label={t("events:form.end")}
-                type="datetime-local"
-                value={draft.ends_at}
-                onChange={(event) => setDraft({ ...draft, ends_at: event.target.value })}
-                error={Boolean(endDateErrorText)}
-                helperText={endDateErrorText}
-                fullWidth
-              />
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-      <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
-        <Button variant="ghost" onClick={handleClose} className="w-full sm:w-auto">
-          {t("common:buttons.cancel")}
-        </Button>
-        <Button
-          variant="solid"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className="w-full sm:w-auto min-w-(--min-w-btn)"
-        >
-          {t("common:buttons.create")}
-        </Button>
-      </DialogActions>
+          </DialogContent>
+          <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
+            <Button
+              variant="ghost"
+              onClick={requestClose}
+              disabled={isCreating}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              ref={createButtonRef}
+              variant="solid"
+              onClick={handleSubmit}
+              disabled={!canSubmit || isCreating}
+              loading={isCreating}
+              className="w-full sm:w-auto min-w-(--min-w-btn)"
+            >
+              {t("common:buttons.create")}
+            </Button>
+          </DialogActions>
+        </>
+      )}
     </Dialog>
   )
 }

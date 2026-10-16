@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from tests.test_helm_staging_contract import _render_staging
+from tests.test_helm_staging_contract import (
+    CHART as _STAGING_CONTRACT_CHART,
+)
+from tests.test_helm_staging_contract import (
+    _render_staging,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+_NETWORK_POLICY_TEMPLATE = (
+    ROOT / "charts" / "university-ecosystem" / "templates" / "network-policy.yaml"
+)
 
 _COMPONENT_POLICY_SUFFIXES = (
     "gateway-policy",
@@ -47,6 +58,12 @@ def _dns_egress_rules(policy: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def test_release_workload_dns_egress_uses_customized_resolver_selectors() -> None:
+    # The shared renderer must target the chart template whose egress is under test.
+    assert _STAGING_CONTRACT_CHART / "templates" / "network-policy.yaml" == (
+        _NETWORK_POLICY_TEMPLATE
+    )
+    assert _NETWORK_POLICY_TEMPLATE.is_file()
+
     release_name = "dns-egress-scope-contract"
     resources = _render_staging(
         "--set",

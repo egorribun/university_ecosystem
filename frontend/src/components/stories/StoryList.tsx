@@ -102,7 +102,7 @@ export const StoryList = memo(function StoryList({
     const ro = new ResizeObserver(updateScrollEdge)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [updateScrollEdge])
+  }, [updateScrollEdge, loading, hasStories])
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLUListElement>) => {
     // Wave 54: drag-to-scroll only for mouse — touch uses native overflow-x scroll (FIX-54-09)

@@ -21,6 +21,15 @@ from nats.js.errors import BadRequestError
 from app.core.nats_broker import NatsTaskBroker
 
 
+def _mock_nats_client(mock_js: MagicMock) -> MagicMock:
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.jetstream = MagicMock(return_value=mock_js)
+    client.is_connected = True
+    client.close = AsyncMock()
+    return client
+
+
 @pytest.mark.asyncio
 async def test_connect_creates_required_streams() -> None:
     """NatsTaskBroker.connect() provisions all 6 file streams with 7-day retention."""
@@ -29,13 +38,9 @@ async def test_connect_creates_required_streams() -> None:
     mock_js = MagicMock()
     mock_js.add_stream = AsyncMock()
 
-    mock_nc = MagicMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-    mock_nc.is_connected = True
+    mock_nc = _mock_nats_client(mock_js)
 
-    with patch(
-        "app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)
-    ):
+    with patch("app.core.nats_broker.NATS", return_value=mock_nc):
         await broker.connect()
 
     assert mock_js.add_stream.await_count == 6, (
@@ -69,22 +74,17 @@ async def test_connect_passes_file_loaded_auth_token_separately_from_url() -> No
     broker = NatsTaskBroker()
     mock_js = MagicMock()
     mock_js.add_stream = AsyncMock()
-    mock_nc = MagicMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-    mock_nc.is_connected = True
+    mock_nc = _mock_nats_client(mock_js)
 
     with (
         patch("app.core.nats_broker.settings.nats_url", "nats://nats:4222"),
         patch("app.core.nats_broker.settings.nats_auth_token", "file-token"),
-        patch(
-            "app.core.nats_broker.nats.connect",
-            new=AsyncMock(return_value=mock_nc),
-        ) as connect,
+        patch("app.core.nats_broker.NATS", return_value=mock_nc),
     ):
         await broker.connect()
 
-    assert connect.await_args.args == ("nats://nats:4222",)
-    assert connect.await_args.kwargs["token"] == "file-token"
+    assert mock_nc.connect.await_args.args == ("nats://nats:4222",)
+    assert mock_nc.connect.await_args.kwargs["token"] == "file-token"
 
 
 @pytest.mark.asyncio
@@ -100,13 +100,9 @@ async def test_connect_idempotent_when_streams_exist() -> None:
     mock_js = MagicMock()
     mock_js.add_stream = AsyncMock()
 
-    mock_nc = MagicMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-    mock_nc.is_connected = True
+    mock_nc = _mock_nats_client(mock_js)
 
-    with patch(
-        "app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)
-    ):
+    with patch("app.core.nats_broker.NATS", return_value=mock_nc):
         await broker.connect()
         # Second connect() call is short-circuited (line 102 guard); add_stream
         # not invoked again.
@@ -133,13 +129,10 @@ async def test_connect_reconciles_existing_stream_configuration_drift() -> None:
     )
     mock_js.update_stream = AsyncMock()
 
-    mock_nc = MagicMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-    mock_nc.is_connected = True
-    mock_nc.close = AsyncMock()
+    mock_nc = _mock_nats_client(mock_js)
 
     with (
-        patch("app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)),
+        patch("app.core.nats_broker.NATS", return_value=mock_nc),
         patch("app.core.nats_broker._logger.info") as info,
     ):
         await broker.connect()
@@ -172,13 +165,10 @@ async def test_connect_cleans_up_partial_connection_for_unrelated_stream_error()
     mock_js.add_stream = AsyncMock(side_effect=api_error)
     mock_js.update_stream = AsyncMock()
 
-    mock_nc = MagicMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-    mock_nc.is_connected = True
-    mock_nc.close = AsyncMock()
+    mock_nc = _mock_nats_client(mock_js)
 
     with (
-        patch("app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)),
+        patch("app.core.nats_broker.NATS", return_value=mock_nc),
         pytest.raises(BadRequestError, match="invalid stream configuration"),
     ):
         await broker.connect()

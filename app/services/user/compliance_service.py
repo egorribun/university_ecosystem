@@ -23,6 +23,7 @@ from app.schemas.dtos import UserDTO
 from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.data_access import log_data_access
 from app.services.user.logic import anonymize_user_data
+from app.services.user.media_service import UserMediaService
 
 logger = get_logger(__name__)
 
@@ -110,6 +111,8 @@ class UserComplianceService:
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
         # Perform anonymization
+        old_avatar_url = db_user.profile.avatar_url if db_user.profile else None
+        old_cover_url = db_user.profile.cover_url if db_user.profile else None
         await anonymize_user_data(db_user)
         # W136 SW2: revoke active sessions through Redis pub/sub BEFORE
         # delete_sensitive_data DROPs the rows so gateway picks up revocation.
@@ -118,6 +121,9 @@ class UserComplianceService:
 
         async with self.uow:
             await self.uow.commit()
+        await UserMediaService(self.uow).cleanup_anonymized_profile_media(
+            db_user.id, avatar_url=old_avatar_url, cover_url=old_cover_url
+        )
         return {"deleted": True, "user_id": user_id}
 
     @auditable("users.data_export", user_id_param="user")
@@ -234,6 +240,8 @@ class UserComplianceService:
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
+        old_avatar_url = db_user.profile.avatar_url if db_user.profile else None
+        old_cover_url = db_user.profile.cover_url if db_user.profile else None
         await anonymize_user_data(db_user)
         # W136 SW2: revoke active sessions through Redis pub/sub BEFORE
         # delete_sensitive_data DROPs the rows so gateway picks up revocation.
@@ -252,6 +260,9 @@ class UserComplianceService:
 
         async with self.uow:
             await self.uow.commit()
+        await UserMediaService(self.uow).cleanup_anonymized_profile_media(
+            db_user.id, avatar_url=old_avatar_url, cover_url=old_cover_url
+        )
         # Refresh to get anonymized email
         updated_user = await self.repo.get(user_identity)
         assert updated_user is not None  # noqa: S101
@@ -354,7 +365,13 @@ class UserComplianceService:
         hashed = await get_password_hash(data.password)
 
         user_data = data.model_dump(
-            exclude={"invite_code", "password", "spotify_connected"}
+            exclude={
+                "invite_code",
+                "password",
+                "spotify_connected",
+                "avatar_url",
+                "cover_url",
+            }
         )
         user_data["hashed_password"] = hashed
 

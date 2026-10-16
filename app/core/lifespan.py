@@ -284,10 +284,11 @@ async def _startup_background_workers(app: FastAPI) -> None:
             )
 
         nats_broker = await app.state.dishka_container.get(NatsTaskBroker)
-        if nats_broker.is_connected:
-            app.state.background_tasks.add(
-                asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
-            )
+        # The worker owns bounded connection retries so an outage during startup
+        # does not permanently suppress task consumption until the pod restarts.
+        app.state.background_tasks.add(
+            asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
+        )
 
         # Handler failures of non-durable events were logged and dropped because
         # the bus had no dead-letter sink; record them so /admin/dlq can replay.

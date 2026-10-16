@@ -64,9 +64,17 @@
   "select": {
     "placeholder": "Выберите..."
   },
+  "dialogs": {
+    "unsavedChanges": {
+      "title": "Отменить изменения?",
+      "description": "Есть несохранённые изменения. Отменить их?"
+    }
+  },
   "buttons": {
     "save": "Сохранить",
     "cancel": "Отмена",
+    "keepEditing": "Продолжить редактирование",
+    "discardChanges": "Отменить изменения",
     "confirm": "Подтвердить",
     "clear": "Очистить",
     "delete": "Удалить",
@@ -87,6 +95,7 @@
   },
   "statuses": {
     "loading": "Загрузка…",
+    "saving": "Сохранение…",
     "uploading": "Выгрузка…",
     "publishing": "Публикация…",
     "error": "Что-то пошло не так",

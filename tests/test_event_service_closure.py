@@ -262,7 +262,8 @@ async def test_delete_event_keeps_committed_deletion_when_image_storage_fails(
     async def commit():
         order.append("commit")
 
-    async def fail_image_delete(_url, *, event_id):
+    async def fail_image_delete(_url, *, event_id, db_session):
+        assert db_session is uow.session
         order.append(f"image:{event_id}")
         raise OSError("private storage detail")
 
@@ -271,7 +272,7 @@ async def test_delete_event_keeps_committed_deletion_when_image_storage_fails(
     with (
         patch("app.services.search_indexer.remove_document", new=AsyncMock()),
         patch(
-            "app.services.event_service.delete_owned_event_image",
+            "app.services.event_service.delete_unreferenced_owned_event_image",
             side_effect=fail_image_delete,
         ),
     ):
@@ -280,5 +281,5 @@ async def test_delete_event_keeps_committed_deletion_when_image_storage_fails(
     assert deleted is True
     assert order == ["commit", f"image:{event.id}"]
     repo.delete.assert_awaited_once_with(event.id)
-    assert "Failed to delete event image" in caplog.text
+    assert "Failed to safely clean event image" in caplog.text
     assert "private storage detail" not in caplog.text

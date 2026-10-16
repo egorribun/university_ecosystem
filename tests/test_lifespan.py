@@ -682,7 +682,7 @@ async def test_startup_background_workers_production() -> None:
         task_names = {t.get_name() for t in app2.state.background_tasks}
         assert "periodic_scheduler" in task_names
         assert "outbox_worker" in task_names
-        assert "nats_worker" not in task_names
+        assert "nats_worker" in task_names
 
         # Clean up tasks
         for t in app2.state.background_tasks:
@@ -1414,6 +1414,26 @@ async def test_startup_background_workers_partition_enabled_testing_env() -> Non
 
 
 @pytest.mark.asyncio
+async def test_lifespan_rejects_unsupported_cdc_before_startup_resources() -> None:
+    app = FastAPI()
+    with (
+        patch("app.core.lifespan.settings") as settings,
+        patch("app.core.lifespan._SCHEDULER_STOP") as scheduler_stop,
+        patch("app.core.lifespan._reset_closed_dishka_container") as reset,
+        patch("app.core.lifespan._startup_database_and_di", new=AsyncMock()) as startup,
+    ):
+        settings.embedded_cdc_outbox_worker_enabled = True
+
+        with pytest.raises(RuntimeError, match="CDC outbox transport is unsupported"):
+            async with lifespan(app):
+                pytest.fail("unsupported CDC must not enter the lifespan")
+
+        scheduler_stop.clear.assert_not_called()
+        reset.assert_not_called()
+        startup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_cdc_outbox_worker_replaces_the_polling_worker_when_enabled() -> None:
     """BE-08: CDC and polling deliver the same events, so only one may run.
 
@@ -1643,3 +1663,254 @@ async def test_startup_attaches_dead_letter_queue_to_event_bus() -> None:
             await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
     finally:
         event_bus._dlq = previous
+
+
+@pytest.mark.asyncio
+async def test_di_connect_timeout_yields_broker_and_lifespan_worker_reconnects() -> (
+    None
+):
+    """A startup timeout must leave the lifespan worker able to reconnect."""
+    from types import SimpleNamespace
+
+    from app.core.di.infrastructure import InfrastructureProvider
+    from app.core.events import event_bus
+    from app.core.nats_broker import NatsTaskBroker
+
+    broker = NatsTaskBroker()
+    jetstream = AsyncMock()
+    subscription = AsyncMock()
+    subscription.fetch.side_effect = asyncio.CancelledError()
+    subscribed = asyncio.Event()
+    scheduler_release = asyncio.Event()
+
+    async def pull_subscribe(*, subject: str, durable: str) -> AsyncMock:
+        assert broker._js is jetstream
+        subscribed.set()
+        return subscription
+
+    jetstream.pull_subscribe.side_effect = pull_subscribe
+    first_client = AsyncMock()
+    second_client = AsyncMock()
+    second_client.jetstream = MagicMock(return_value=jetstream)
+    first_client.connect.side_effect = TimeoutError("controlled startup timeout")
+    attempts = 0
+
+    async def legacy_connect_impl(*args: object, **kwargs: object) -> AsyncMock:
+        nonlocal attempts
+        attempts += 1
+        client = first_client if attempts == 1 else second_client
+        await client.connect(*args, **kwargs)
+        return client
+
+    legacy_connect = AsyncMock(side_effect=legacy_connect_impl)
+    previous_dlq = event_bus._dlq
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    provider_generator = InfrastructureProvider().nats_broker()
+
+    async def idle_scheduler() -> None:
+        await asyncio.wait_for(scheduler_release.wait(), timeout=1)
+
+    try:
+        with (
+            patch("app.core.nats_broker.broker", broker),
+            patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+            patch(
+                "app.core.nats_broker.NATS",
+                side_effect=[first_client, second_client],
+            ) as nats_factory,
+            patch("app.core.nats_broker._CONNECT_TIMEOUT_S", 0.01, create=True),
+            patch(
+                "app.core.nats_broker.settings",
+                SimpleNamespace(
+                    nats_url="nats://example.invalid",
+                    nats_auth_token="synthetic-token",
+                ),
+            ),
+            patch(
+                "app.core.config.settings",
+                SimpleNamespace(environment="production"),
+            ),
+        ):
+            provided_broker = await asyncio.wait_for(
+                provider_generator.__anext__(), timeout=1
+            )
+            assert provided_broker is broker
+            assert broker._nc is None
+            assert broker._js is None
+            first_client.close.assert_awaited_once()
+
+            app.state.dishka_container.get.return_value = provided_broker
+            with (
+                patch("app.core.lifespan.settings") as startup_settings,
+                patch("app.core.lifespan._periodic_scheduler_loop", idle_scheduler),
+            ):
+                startup_settings.environment = "production"
+                startup_settings.app_process_role = "worker"
+                startup_settings.partition_management_enabled = False
+                startup_settings.embedded_outbox_worker_enabled = False
+                startup_settings.embedded_cdc_outbox_worker_enabled = False
+                await asyncio.wait_for(_startup_background_workers(app), timeout=1)
+
+            worker_tasks = [
+                task
+                for task in app.state.background_tasks
+                if task.get_name() == "nats_worker"
+            ]
+            assert len(worker_tasks) == 1
+            await asyncio.wait_for(subscribed.wait(), timeout=1)
+            assert nats_factory.call_count + legacy_connect.await_count == 2
+            assert first_client.connect.await_count == 1
+            assert second_client.connect.await_count == 1
+            jetstream.pull_subscribe.assert_awaited_once_with(
+                subject="tasks.>", durable="python-worker"
+            )
+    finally:
+        scheduler_release.set()
+        tasks = list(getattr(app.state, "background_tasks", set()))
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        try:
+            if tasks:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=1
+                )
+        finally:
+            try:
+                await asyncio.wait_for(provider_generator.aclose(), timeout=1)
+            finally:
+                event_bus._dlq = previous_dlq
+
+    second_client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_di_no_servers_error_yields_broker_for_worker_retry() -> None:
+    """A concrete NATS outage must not abort DI before the worker can retry."""
+    from types import SimpleNamespace
+
+    from nats.errors import NoServersError
+
+    from app.core.di.infrastructure import InfrastructureProvider
+    from app.core.nats_broker import NatsTaskBroker
+
+    broker = NatsTaskBroker()
+    client = AsyncMock()
+    client.connect.side_effect = NoServersError()
+
+    async def legacy_connect_impl(*args: object, **kwargs: object) -> AsyncMock:
+        await client.connect(*args, **kwargs)
+        return client
+
+    legacy_connect = AsyncMock(side_effect=legacy_connect_impl)
+    provider = InfrastructureProvider().nats_broker()
+
+    try:
+        with (
+            patch("app.core.nats_broker.broker", broker),
+            patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+            patch("app.core.nats_broker.NATS", return_value=client) as nats_factory,
+            patch("app.core.nats_broker._CONNECT_TIMEOUT_S", 0.1, create=True),
+            patch(
+                "app.core.nats_broker.settings",
+                SimpleNamespace(
+                    nats_url="nats://example.invalid",
+                    nats_auth_token=None,
+                ),
+            ),
+            patch(
+                "app.core.config.settings",
+                SimpleNamespace(environment="production"),
+            ),
+        ):
+            provided = await asyncio.wait_for(provider.__anext__(), timeout=1)
+            assert provided is broker
+            assert nats_factory.call_count + legacy_connect.await_count == 1
+            client.close.assert_awaited_once()
+    finally:
+        await asyncio.wait_for(provider.aclose(), timeout=1)
+
+
+@pytest.mark.parametrize("shutdown", ["aclose", "cancel"])
+@pytest.mark.asyncio
+async def test_infrastructure_provider_closes_broker_on_generator_shutdown(
+    shutdown: str,
+) -> None:
+    from types import SimpleNamespace
+
+    from app.core.di.infrastructure import InfrastructureProvider
+
+    broker = AsyncMock()
+    provider = InfrastructureProvider().nats_broker()
+
+    with (
+        patch("app.core.nats_broker.broker", broker),
+        patch(
+            "app.core.config.settings",
+            SimpleNamespace(environment="testing"),
+        ),
+    ):
+        assert await provider.__anext__() is broker
+        if shutdown == "aclose":
+            await provider.aclose()
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await provider.athrow(asyncio.CancelledError)
+
+    broker.close.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize(
+    "error_kind",
+    ["invalid_url", "authorization", "invalid_credentials", "bad_subject"],
+)
+async def test_di_propagates_permanent_nats_errors_before_yield(
+    error_kind: str,
+) -> None:
+    """Configuration/auth/API errors must not be treated as an outage."""
+    from types import SimpleNamespace
+
+    import nats.errors
+    from nats.aio.client import Client
+
+    from app.core.di.infrastructure import InfrastructureProvider
+    from app.core.nats_broker import NatsTaskBroker
+
+    if error_kind == "invalid_url":
+        # The pinned NATS client maps malformed URL ports to its generic Error.
+        with pytest.raises(nats.errors.Error) as parsed_error:
+            Client._parse_server_uri("nats://example.invalid:not-a-port")
+        assert type(parsed_error.value) is nats.errors.Error
+        error = parsed_error.value
+    else:
+        error_type = {
+            "authorization": nats.errors.AuthorizationError,
+            "invalid_credentials": nats.errors.InvalidUserCredentialsError,
+            "bad_subject": nats.errors.BadSubjectError,
+        }[error_kind]
+        error = error_type()
+
+    broker = NatsTaskBroker()
+    connect = AsyncMock(side_effect=error)
+    close = AsyncMock()
+    provider = InfrastructureProvider().nats_broker()
+
+    with (
+        patch("app.core.nats_broker.broker", broker),
+        patch.object(broker, "connect", new=connect),
+        patch.object(broker, "close", new=close),
+        patch(
+            "app.core.config.settings",
+            SimpleNamespace(environment="production"),
+        ),
+    ):
+        try:
+            with pytest.raises(type(error)) as raised_error:
+                await asyncio.wait_for(provider.__anext__(), timeout=0.5)
+            assert raised_error.value is error
+        finally:
+            # If a regression yields the broker, close the generator cleanly.
+            await asyncio.wait_for(provider.aclose(), timeout=0.5)
+
+    connect.assert_awaited_once_with()

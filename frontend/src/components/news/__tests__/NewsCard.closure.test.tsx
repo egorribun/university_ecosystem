@@ -8,25 +8,51 @@ type InteractionState = {
   is_liked: boolean
 }
 
-const mocks = vi.hoisted(() => ({
-  user: null as { role: string } | null,
-  language: "en",
-  translationNamespaces: [] as unknown[],
-  interactions: undefined as InteractionState | undefined,
-  toggleLike: vi.fn(),
-  isBookmarked: vi.fn(() => false),
-  toggleBookmark: vi.fn(),
-  deleteNews: vi.fn(),
-  fetchNewsItem: vi.fn(),
-  onChange: vi.fn(),
-  sanitizeNewsText: vi.fn(async (value: string) => `sanitized:${value}`),
-  viewRender: vi.fn(),
-  interactionArgs: [] as unknown[][],
-}))
+const mocks = vi.hoisted(() => {
+  let currentUser: { role: string } | null = null
+  const authListeners = new Set<() => void>()
 
-vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: mocks.user }),
-}))
+  return {
+    get user() {
+      return currentUser
+    },
+    set user(value: { role: string } | null) {
+      currentUser = value
+      authListeners.forEach((listener) => listener())
+    },
+    subscribeAuth(listener: () => void) {
+      authListeners.add(listener)
+      return () => {
+        authListeners.delete(listener)
+      }
+    },
+    getAuthSnapshot() {
+      return currentUser
+    },
+    language: "en",
+    translationNamespaces: [] as unknown[],
+    interactions: undefined as InteractionState | undefined,
+    toggleLike: vi.fn(),
+    isBookmarked: vi.fn(() => false),
+    toggleBookmark: vi.fn(),
+    deleteNews: vi.fn(),
+    fetchNewsItem: vi.fn(),
+    onChange: vi.fn(),
+    sanitizeNewsText: vi.fn(async (value: string) => `sanitized:${value}`),
+    viewRender: vi.fn(),
+    interactionArgs: [] as unknown[][],
+  }
+})
+
+vi.mock("@/contexts/AuthContext", async () => {
+  const { useSyncExternalStore } = await import("react")
+
+  return {
+    useAuth: () => ({
+      user: useSyncExternalStore(mocks.subscribeAuth, mocks.getAuthSnapshot, mocks.getAuthSnapshot),
+    }),
+  }
+})
 
 vi.mock("@/contexts/LanguageContext", () => ({
   useLanguage: () => ({ language: mocks.language }),
@@ -92,6 +118,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/components/news/NewsCardView", () => ({
   NewsCardView: (props: {
     id: string
+    editTargetId?: string
     title: string
     previewText: string
     isAdmin: boolean
@@ -142,9 +169,11 @@ vi.mock("@/components/news/NewsCardView", () => ({
         <button type="button" onClick={props.onToggleBookmark}>
           toggle bookmark
         </button>
-        <button type="button" onClick={props.onEditOpen}>
-          open edit
-        </button>
+        {props.isAdmin && (
+          <button type="button" onClick={props.onEditOpen}>
+            open edit
+          </button>
+        )}
         {props.editOpen && (
           <div role="dialog">
             <button type="button" onClick={props.onEditClose}>
@@ -416,6 +445,87 @@ describe("NewsCard — state orchestration", () => {
     })
   })
 
+  it("keeps an open edit session bound to its original article and data", async () => {
+    mocks.user = { role: "admin" }
+    const { rerender } = render(<NewsCard {...baseProps} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    const original = mocks.viewRender.mock.calls.at(-1)?.[0] as {
+      id: string
+      editTargetId?: string
+      editOpen: boolean
+      editData: Record<string, string>
+    }
+    expect(original.editTargetId).toBe("news-1")
+    expect(original.editData.title).toBe("Русский оригинал")
+
+    mocks.language = "ru"
+    rerender(<NewsCard {...baseProps} />)
+    const localeChanged = mocks.viewRender.mock.calls.at(-1)?.[0] as typeof original
+    expect(localeChanged.editOpen).toBe(true)
+    expect(localeChanged.editTargetId).toBe("news-1")
+    expect(localeChanged.editData).toEqual(original.editData)
+
+    rerender(
+      <NewsCard
+        {...baseProps}
+        id="news-2"
+        title="Different article"
+        content="Different article body"
+        image_url="/different.png"
+      />
+    )
+
+    const retained = mocks.viewRender.mock.calls.at(-1)?.[0] as typeof original
+    expect(retained.id).toBe("news-2")
+    expect(retained.editOpen).toBe(true)
+    expect(retained.editTargetId).toBe("news-1")
+    expect(retained.editData).toEqual(original.editData)
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "close edit" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+
+    const next = mocks.viewRender.mock.calls.at(-1)?.[0] as typeof original
+    expect(next.editOpen).toBe(true)
+    expect(next.editTargetId).toBe("news-2")
+    expect(next.editData).toMatchObject({
+      title: "Different article",
+      content: "Different article body",
+      image_url: "/different.png",
+    })
+  })
+
+  it("closes an edit session immediately when admin access is lost", async () => {
+    mocks.user = { role: "admin" }
+    render(<NewsCard {...baseProps} />)
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+
+    act(() => {
+      mocks.user = null
+    })
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "open edit" })).not.toBeInTheDocument()
+    const currentView = mocks.viewRender.mock.calls.at(-1)?.[0] as {
+      isAdmin: boolean
+      editOpen: boolean
+      onEditOpen: () => void
+    }
+    expect(currentView.isAdmin).toBe(false)
+    expect(currentView.editOpen).toBe(false)
+
+    act(() => {
+      currentView.onEditOpen()
+    })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(mocks.viewRender.mock.calls.at(-1)?.[0].editOpen).toBe(false)
+  })
+
   it("coalesces English source requests and ignores a late locale response", async () => {
     mocks.user = { role: "admin" }
     let resolveSource!: (value: { status: number; data: Record<string, string> }) => void
@@ -643,6 +753,7 @@ describe("NewsCard — derived state follows props", () => {
   })
 
   it("recomputes title, preview, category, reading time and edit data on prop changes", async () => {
+    mocks.user = { role: "admin" }
     mocks.language = "ru"
     const { rerender } = render(<NewsCard {...baseProps} />)
     await waitFor(() =>
@@ -714,6 +825,7 @@ describe("NewsCard — derived state follows props", () => {
   })
 
   it("closes the edit dialog when the view asks to", async () => {
+    mocks.user = { role: "admin" }
     const user = userEvent.setup()
     render(<NewsCard {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))

@@ -96,16 +96,18 @@ vi.mock("@/components/news/NewsCardActions", () => ({
 
 vi.mock("@/components/news/NewsCardEditDialog", () => ({
   NewsCardEditDialog: ({
+    id,
     open,
     onClose,
     onSuccess,
   }: {
+    id: string
     open: boolean
     onClose: () => void
     onSuccess: () => void
   }) =>
     open ? (
-      <div role="dialog">
+      <div role="dialog" data-target-id={id}>
         <button type="button" onClick={onClose}>
           close edit
         </button>
@@ -118,7 +120,7 @@ vi.mock("@/components/news/NewsCardEditDialog", () => ({
 
 import { NewsCardView, type NewsCardViewProps } from "@/components/news/NewsCardView"
 
-const createProps = (): NewsCardViewProps => ({
+const createProps = (): NewsCardViewProps & { editTargetId?: string } => ({
   id: "news-1",
   title: "Campus news",
   created_at: "2026-08-03T12:00:00Z",
@@ -166,6 +168,21 @@ afterEach(() => {
 })
 
 describe("NewsCardView — interactions and optional overlays", () => {
+  it("keeps the editor target separate from the current card identity", async () => {
+    const props = createProps()
+    props.id = "news-current"
+    props.editTargetId = "news-session-target"
+    props.editOpen = true
+    props.isAdmin = true
+
+    render(<NewsCardView {...props} />)
+
+    expect(await screen.findByRole("dialog")).toHaveAttribute(
+      "data-target-id",
+      "news-session-target"
+    )
+  })
+
   it("shows the bottom quick view near the viewport top and resets transitions", async () => {
     const props = createProps()
     const view = render(<NewsCardView {...props} />)

@@ -75,6 +75,9 @@ _DEFAULT_TASK_TIMEOUT_S = float(os.environ.get("NATS_TASK_TIMEOUT_SECONDS", "30"
 _MAX_DELIVERIES = max(1, int(os.environ.get("NATS_TASK_MAX_DELIVERIES", "5")))
 _RETRY_BASE_DELAY_S = float(os.environ.get("NATS_TASK_RETRY_BASE_DELAY_SECONDS", "5"))
 _RETRY_MAX_DELAY_S = 300.0
+_CONNECT_TIMEOUT_S = 5.0
+_CLIENT_CLOSE_TIMEOUT_S = 2.0
+_WORKER_RETRY_DELAY_S = 1.0
 
 
 def _serialize_task_uuid(value: Any) -> str:
@@ -115,6 +118,7 @@ class NatsTaskBroker:
     def __init__(self) -> None:
         self._nc: NATS | None = None
         self._js: JetStreamContext | None = None
+        self._connect_lock = asyncio.Lock()
         self._tasks: dict[str, Callable[..., Any]] = {}
         self._stream_name = "TASK_QUEUE"
         self._subject_prefix = "tasks"
@@ -145,116 +149,148 @@ class NatsTaskBroker:
 
     async def connect(self) -> None:
         """Connect to NATS and ensure JetStream is initialized."""
-        if self._nc is not None:
-            return
-
-        # HIGH-W19: Callbacks for reconnect/disconnect logging so that connection
-        # lifecycle events are visible in the application log.
-        async def _on_reconnected() -> None:
-            _logger.warning("NATS reconnected to server")
-
-        async def _on_disconnected() -> None:
-            _logger.warning("NATS disconnected from server")
+        deadline = asyncio.get_running_loop().time() + _CONNECT_TIMEOUT_S
+        async with asyncio.timeout_at(deadline):
+            await self._connect_lock.acquire()
 
         try:
-            self._nc = await nats.connect(
-                settings.nats_url,
-                token=settings.nats_auth_token,
-                # HIGH-W19: Use max_reconnect_attempts=-1 (unlimited) so that after
-                # a successful initial connection the client automatically reconnects
-                # on transient network failures. The connect_timeout still applies to
-                # the INITIAL connect attempt, guarding lifespan startup.
-                max_reconnect_attempts=-1,
-                connect_timeout=2,
-                reconnected_cb=_on_reconnected,
-                disconnected_cb=_on_disconnected,
-            )
-            self._js = self._nc.jetstream()
+            if self._nc is not None and self._js is not None:
+                return
 
-            # Provision file-backed streams with 7-day retention policy (604,800s)
-            streams = [
-                StreamConfig(
-                    name=self._stream_name,
-                    subjects=[f"{self._subject_prefix}.>"],
-                    storage=StorageType.FILE,
-                    retention=RetentionPolicy.LIMITS,
-                    max_age=_SEVEN_DAYS_SECONDS,
-                ),
-                StreamConfig(
-                    name=self._files_process_stream_name,
-                    subjects=[self._files_process_subject],
-                    storage=StorageType.FILE,
-                    retention=RetentionPolicy.LIMITS,
-                    max_age=_SEVEN_DAYS_SECONDS,
-                ),
-                StreamConfig(
-                    name=self._chat_events_stream_name,
-                    subjects=[self._chat_events_subject],
-                    storage=StorageType.FILE,
-                    retention=RetentionPolicy.LIMITS,
-                    max_age=_SEVEN_DAYS_SECONDS,
-                ),
-                StreamConfig(
-                    name=self._notifications_events_stream_name,
-                    subjects=[self._notifications_events_subject],
-                    storage=StorageType.FILE,
-                    retention=RetentionPolicy.LIMITS,
-                    max_age=_SEVEN_DAYS_SECONDS,
-                ),
-                StreamConfig(
-                    name=self._outbox_events_stream_name,
-                    subjects=[self._outbox_events_subject],
-                    storage=StorageType.FILE,
-                    retention=RetentionPolicy.LIMITS,
-                    max_age=_SEVEN_DAYS_SECONDS,
-                ),
-                StreamConfig(
-                    name=self._cache_invalidations_stream_name,
-                    subjects=[self._cache_invalidations_subject],
-                    storage=StorageType.FILE,
-                    retention=RetentionPolicy.LIMITS,
-                    max_age=_SEVEN_DAYS_SECONDS,
-                ),
-            ]
+            # Keep a client reference before awaiting its initial connection so
+            # cancellation can close its socket and any reconnect machinery.
+            client = NATS()
+            self._nc = client
 
-            for stream_cfg in streams:
-                try:
-                    await self._js.add_stream(config=stream_cfg)
-                except BadRequestError as exc:
-                    if exc.err_code != 10058:
-                        raise
-                    # JetStream CREATE is idempotent only while the requested
-                    # configuration matches the durable stream. Existing local
-                    # volumes can legitimately carry an older configuration;
-                    # reconcile that drift without deleting messages or volumes.
-                    await self._js.update_stream(config=stream_cfg)
-                    _logger.info(
-                        "Reconciled existing NATS JetStream stream %s",
-                        stream_cfg.name,
-                    )
+            # HIGH-W19: callbacks make connection lifecycle changes visible.
+            async def _on_reconnected() -> None:
+                _logger.warning("NATS reconnected to server")
 
-            _logger.info(
-                "Connected to NATS JetStream (6 file-backed streams provisioned)"
-            )
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)
-            _logger.error("Failed to connect to NATS: %s", exc)
-            try:
-                await self.close()
-            except Exception as cleanup_exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — preserve original provisioning failure
-                _logger.warning(
-                    "Failed to close partial NATS connection: %s", cleanup_exc
+            async def _on_disconnected() -> None:
+                _logger.warning("NATS disconnected from server")
+
+            initial_handshake = True
+
+            async def _on_error(exc: Exception) -> None:
+                permanent_protocol_error = type(exc) is nats.errors.Error or isinstance(
+                    exc,
+                    (
+                        nats.errors.AuthorizationError,
+                        nats.errors.InvalidUserCredentialsError,
+                    ),
                 )
-            raise
+                if initial_handshake and permanent_protocol_error:
+                    raise exc
+                _logger.warning("NATS connection event: %s", exc)
+
+            try:
+                async with asyncio.timeout_at(deadline):
+                    await client.connect(
+                        settings.nats_url,
+                        token=settings.nats_auth_token,
+                        max_reconnect_attempts=-1,
+                        connect_timeout=2,
+                        reconnected_cb=_on_reconnected,
+                        disconnected_cb=_on_disconnected,
+                        error_cb=_on_error,
+                    )
+                    initial_handshake = False
+                    js = client.jetstream()
+
+                    # Provision file-backed streams with 7-day retention policy.
+                    streams = [
+                        StreamConfig(
+                            name=self._stream_name,
+                            subjects=[f"{self._subject_prefix}.>"],
+                            storage=StorageType.FILE,
+                            retention=RetentionPolicy.LIMITS,
+                            max_age=_SEVEN_DAYS_SECONDS,
+                        ),
+                        StreamConfig(
+                            name=self._files_process_stream_name,
+                            subjects=[self._files_process_subject],
+                            storage=StorageType.FILE,
+                            retention=RetentionPolicy.LIMITS,
+                            max_age=_SEVEN_DAYS_SECONDS,
+                        ),
+                        StreamConfig(
+                            name=self._chat_events_stream_name,
+                            subjects=[self._chat_events_subject],
+                            storage=StorageType.FILE,
+                            retention=RetentionPolicy.LIMITS,
+                            max_age=_SEVEN_DAYS_SECONDS,
+                        ),
+                        StreamConfig(
+                            name=self._notifications_events_stream_name,
+                            subjects=[self._notifications_events_subject],
+                            storage=StorageType.FILE,
+                            retention=RetentionPolicy.LIMITS,
+                            max_age=_SEVEN_DAYS_SECONDS,
+                        ),
+                        StreamConfig(
+                            name=self._outbox_events_stream_name,
+                            subjects=[self._outbox_events_subject],
+                            storage=StorageType.FILE,
+                            retention=RetentionPolicy.LIMITS,
+                            max_age=_SEVEN_DAYS_SECONDS,
+                        ),
+                        StreamConfig(
+                            name=self._cache_invalidations_stream_name,
+                            subjects=[self._cache_invalidations_subject],
+                            storage=StorageType.FILE,
+                            retention=RetentionPolicy.LIMITS,
+                            max_age=_SEVEN_DAYS_SECONDS,
+                        ),
+                    ]
+
+                    for stream_cfg in streams:
+                        try:
+                            await js.add_stream(config=stream_cfg)
+                        except BadRequestError as exc:
+                            if exc.err_code != 10058:
+                                raise
+                            # Reconcile existing streams without deleting messages.
+                            await js.update_stream(config=stream_cfg)
+                            _logger.info(
+                                "Reconciled existing NATS JetStream stream %s",
+                                stream_cfg.name,
+                            )
+
+                    # Publish the initialized context only after every stream is ready.
+                    self._js = js
+                    _logger.info(
+                        "Connected to NATS JetStream (6 file-backed streams provisioned)"
+                    )
+            except asyncio.CancelledError:
+                await self._cleanup_after_connect_failure()
+                raise
+            except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — preserves connection/provisioning failure
+                _logger.error("Failed to connect to NATS: %s", exc)
+                await self._cleanup_after_connect_failure()
+                raise
+        finally:
+            self._connect_lock.release()
+
+    async def _cleanup_after_connect_failure(self) -> None:
+        try:
+            await self._close_unlocked()
+        except Exception as cleanup_exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — preserves original connection failure
+            _logger.warning("Failed to close partial NATS connection: %s", cleanup_exc)
+            self._nc = None
+            self._js = None
 
     async def close(self) -> None:
-        """Close NATS connection."""
+        """Close NATS connection without racing an in-flight initialization."""
+        async with self._connect_lock:
+            await self._close_unlocked()
+
+    async def _close_unlocked(self) -> None:
+        client = self._nc
         try:
-            if self._nc and self._nc.is_connected:
-                await self._nc.close()
-        except (
-            OSError,
-            ConnectionError,
-        ) as exc:  # RZ-22-01: narrowed — network errors during close
+            if client is not None:
+                async with asyncio.timeout(_CLIENT_CLOSE_TIMEOUT_S):
+                    await client.close()
+        except (OSError, ConnectionError, TimeoutError, nats.errors.Error) as exc:
             _logger.warning("Error during NATS closure: %s", exc)
         finally:
             self._nc = None
@@ -517,16 +553,27 @@ class NatsTaskBroker:
 
     async def run_worker(self) -> None:
         """Run the worker to process tasks from JetStream with trace continuation."""
-        if self._js is None:
-            await self.connect()
-
-        # Create/use a pull-based durable consumer
-        js = self._js
-        assert js is not None  # noqa: S101
-        sub = await js.pull_subscribe(
-            subject=f"{self._subject_prefix}.>",
-            durable="python-worker",
-        )
+        while True:
+            try:
+                if self._js is None:
+                    await self.connect()
+                js = self._js
+                assert js is not None  # noqa: S101
+                sub = await js.pull_subscribe(
+                    subject=f"{self._subject_prefix}.>",
+                    durable="python-worker",
+                )
+                break
+            except asyncio.CancelledError:
+                raise
+            except (
+                OSError,
+                ConnectionError,
+                TimeoutError,
+                nats.errors.NoServersError,
+            ) as exc:
+                _logger.warning("NATS task worker connection failed; retrying: %s", exc)
+                await asyncio.sleep(_WORKER_RETRY_DELAY_S)
 
         # PERF-4 (audit 2026-03): Batch-fetch instead of fetch(1).
         # fetch(1) issues a separate JetStream FETCH request to the server for
@@ -589,7 +636,11 @@ class NatsTaskBroker:
                                 _logger.error(
                                     "No handler registered for task: %s", task_name
                                 )
-                                await msg.term()  # Terminal failure
+                                await self._retry_or_dead_letter(
+                                    msg,
+                                    payload,
+                                    f"no handler registered for task: {task_name}",
+                                )
                                 continue
 
                             # HIGH-W19: Use the module-level _app reference set via

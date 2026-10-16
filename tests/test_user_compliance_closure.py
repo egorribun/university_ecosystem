@@ -65,7 +65,7 @@ def _user_create(**overrides):
 async def test_delete_user_data_success_anonymizes_revokes_logs_and_refreshes():
     repo = _repo()
     user_id = uuid4()
-    orm_user = SimpleNamespace(id=user_id)
+    orm_user = SimpleNamespace(id=user_id, profile=None)
     updated = SimpleNamespace(email=f"deleted+{user_id}@deleted.example.com")
     repo.get_orm_for_anonymization.return_value = orm_user
     repo.get.return_value = updated
@@ -126,6 +126,8 @@ async def test_create_user_accepts_valid_invite_and_runs_hibp_check():
     repo.create.return_value = SimpleNamespace(id=uuid4())
     service = UserComplianceService(_Uow(repo), audit=MagicMock())
     admin = SimpleNamespace(role="admin")
+    untrusted_avatar = "https://media.example.invalid/avatars/other-owner.png"
+    untrusted_cover = "https://media.example.invalid/covers/other-owner.png"
 
     with (
         patch(
@@ -141,10 +143,189 @@ async def test_create_user_accepts_valid_invite_and_runs_hibp_check():
             new=AsyncMock(return_value="hashed"),
         ),
     ):
-        await service.create_user(_user_create(invite_code="INVITE"), _request(), admin)
+        await service.create_user(
+            _user_create(
+                invite_code="INVITE",
+                avatar_url=untrusted_avatar,
+                cover_url=untrusted_cover,
+            ),
+            _request(),
+            admin,
+        )
 
     repo.get_invite_code.assert_awaited_once_with("INVITE")
     hibp.assert_awaited_once_with("Password-123!")
+    created_user = repo.create.await_args.args[0]
+    assert "avatar_url" not in created_user
+    assert "cover_url" not in created_user
+
+
+@pytest.mark.asyncio
+async def test_anonymization_retains_owned_media_referenced_by_another_profile(
+    tmp_path, monkeypatch, user_factory, db_session
+):
+    import app.utils.files as file_utils
+    from app.services.storage import StaticFSStorage
+
+    owner = await user_factory()
+    other_user = await user_factory()
+    owner_id = owner.id
+    other_user_id = other_user.id
+    admin = await user_factory(role="admin")
+    storage = StaticFSStorage(tmp_path, "/static")
+    file_url = await storage.save_file(
+        f"avatars/user_{owner_id}_avatar_{secrets.token_hex(16)}.png",
+        b"synthetic profile image",
+    )
+    owner.profile.avatar_url = file_url
+    other_user.profile.cover_url = file_url
+    await db_session.commit()
+    monkeypatch.setattr(file_utils, "_get_storage_backend", lambda: storage)
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    with patch.object(service, "_revoke_user_sessions", new=AsyncMock(return_value=0)):
+        await service.admin_delete_user(owner_id, _request(), admin)
+
+    assert await storage.exists(file_url)
+    db_session.expire_all()
+    owner_profile = await db_session.get(models.UserProfile, owner_id)
+    other_profile = await db_session.get(models.UserProfile, other_user_id)
+    assert owner_profile is not None and owner_profile.avatar_url is None
+    assert other_profile is not None and other_profile.cover_url == file_url
+
+
+@pytest.mark.asyncio
+async def test_anonymization_deletes_unshared_media_only_after_commit(
+    tmp_path, monkeypatch, user_factory, db_session
+):
+    import app.utils.files as file_utils
+    from app.services.storage import StaticFSStorage
+
+    owner = await user_factory()
+    admin = await user_factory(role="admin")
+    storage = StaticFSStorage(tmp_path, "/static")
+    file_url = await storage.save_file(
+        f"avatars/user_{owner.id}_avatar_{secrets.token_hex(16)}.png",
+        b"synthetic profile image",
+    )
+    owner.profile.avatar_url = file_url
+    await db_session.commit()
+    monkeypatch.setattr(file_utils, "_get_storage_backend", lambda: storage)
+
+    events = []
+    original_delete = storage.delete_file
+
+    async def record_delete(url):
+        events.append("delete")
+        await original_delete(url)
+
+    def record_commit(_session):
+        events.append("commit")
+
+    monkeypatch.setattr(storage, "delete_file", record_delete)
+    event.listen(db_session.sync_session, "after_commit", record_commit)
+    try:
+        service = UserComplianceService(uow_from_session(db_session), AuditService())
+        with patch.object(
+            service, "_revoke_user_sessions", new=AsyncMock(return_value=0)
+        ):
+            await service.admin_delete_user(owner.id, _request(), admin)
+    finally:
+        event.remove(db_session.sync_session, "after_commit", record_commit)
+
+    assert events == ["commit", "delete"]
+    assert not await storage.exists(file_url)
+
+
+@pytest.mark.asyncio
+async def test_anonymization_commit_failure_preserves_media_and_reference(
+    tmp_path, monkeypatch, user_factory, db_session
+):
+    import app.utils.files as file_utils
+    from app.services.storage import StaticFSStorage
+
+    owner = await user_factory()
+    owner_id = owner.id
+    admin = await user_factory(role="admin")
+    storage = StaticFSStorage(tmp_path, "/static")
+    file_url = await storage.save_file(
+        f"avatars/user_{owner_id}_avatar_{secrets.token_hex(16)}.png",
+        b"synthetic profile image",
+    )
+    owner.profile.avatar_url = file_url
+    await db_session.commit()
+    monkeypatch.setattr(file_utils, "_get_storage_backend", lambda: storage)
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+
+    async def fail_commit():
+        raise RuntimeError("synthetic commit failure")
+
+    monkeypatch.setattr(service.uow, "commit", fail_commit)
+    with patch.object(service, "_revoke_user_sessions", new=AsyncMock(return_value=0)):
+        with pytest.raises(RuntimeError, match="synthetic commit failure"):
+            await service.admin_delete_user(owner_id, _request(), admin)
+
+    assert await storage.exists(file_url)
+    db_session.expire_all()
+    persisted_profile = await db_session.get(models.UserProfile, owner_id)
+    assert persisted_profile is not None and persisted_profile.avatar_url == file_url
+
+
+@pytest.mark.asyncio
+async def test_anonymization_retains_owned_media_when_reference_query_fails(
+    tmp_path, monkeypatch, user_factory, db_session
+):
+    import re
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    import app.utils.files as file_utils
+    from app.services.storage import StaticFSStorage
+
+    owner = await user_factory()
+    admin = await user_factory(role="admin")
+    storage = StaticFSStorage(tmp_path, "/static")
+    file_url = await storage.save_file(
+        f"avatars/user_{owner.id}_avatar_{secrets.token_hex(16)}.png",
+        b"synthetic profile image",
+    )
+    owner.profile.avatar_url = file_url
+    await db_session.commit()
+    monkeypatch.setattr(file_utils, "_get_storage_backend", lambda: storage)
+
+    service = UserComplianceService(uow_from_session(db_session), AuditService())
+    failed_reference_queries = []
+
+    # Inject at the real session's statement boundary; this is not a real
+    # connection or network failure.
+    def fail_profile_media_reference_query(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ):
+        normalized = " ".join(str(statement).lower().split())
+        where_clause = normalized.partition(" where ")[2]
+        if re.search(r"\bavatar_url\b\s*=", where_clause) and re.search(
+            r"\bcover_url\b\s*=", where_clause
+        ):
+            failed_reference_queries.append(normalized)
+            raise SQLAlchemyError("synthetic profile media reference lookup failure")
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", fail_profile_media_reference_query)
+    try:
+        with patch.object(
+            service, "_revoke_user_sessions", new=AsyncMock(return_value=0)
+        ):
+            await service.admin_delete_user(owner.id, _request(), admin)
+    finally:
+        event.remove(
+            engine, "before_cursor_execute", fail_profile_media_reference_query
+        )
+
+    assert await storage.exists(file_url)
+    assert len(failed_reference_queries) == 1, (
+        "admin anonymization did not attempt the owner-media reference query"
+    )
 
 
 @pytest.mark.asyncio

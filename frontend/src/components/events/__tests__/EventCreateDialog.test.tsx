@@ -94,6 +94,7 @@ describe("EventCreateDialog", () => {
       endsAt: "2026-01-15T11:00",
       normalizedLocation: "Room",
       imageUploading: false,
+      imageUploadFailed: false,
       dateError: false,
     } as const
     expect(canSubmitEventDraft(valid)).toBe(true)
@@ -101,6 +102,8 @@ describe("EventCreateDialog", () => {
       expect(canSubmitEventDraft({ ...valid, [key]: "" })).toBe(false)
     }
     expect(canSubmitEventDraft({ ...valid, imageUploading: true })).toBe(false)
+    const failedUpload = { ...valid, imageUploadFailed: true }
+    expect(canSubmitEventDraft(failedUpload)).toBe(false)
     expect(canSubmitEventDraft({ ...valid, dateError: true })).toBe(false)
   })
 
@@ -283,6 +286,186 @@ describe("EventCreateDialog", () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it("blocks event creation after an image upload fails", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    uploadEventImage.mockRejectedValueOnce(new Error("upload failed"))
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:failed-upload")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      render(<EventCreateDialog {...baseProps} onCreated={onCreated} />)
+      await user.type(fieldByLabel("events:form.title"), "Needs a cover")
+      await user.type(fieldByLabel("events:form.location"), "Campus hall")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.upload(
+        document.querySelector<HTMLInputElement>('input[type="file"]')!,
+        new File(["image"], "cover.png", { type: "image/png" })
+      )
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "events:detail.upload.errors.failed"
+      )
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+      expect(onCreated).not.toHaveBeenCalled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("keeps the required-image failure after the parent hides and reopens the dialog", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    uploadEventImage.mockRejectedValueOnce(new Error("upload failed"))
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:reopened-failed-upload")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      const props = { ...baseProps, onCreated }
+      const { rerender } = render(<EventCreateDialog {...props} />)
+      await user.type(fieldByLabel("events:form.title"), "Keep the failed-upload state")
+      await user.type(fieldByLabel("events:form.location"), "Campus hall")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.upload(
+        document.querySelector<HTMLInputElement>('input[type="file"]')!,
+        new File(["image"], "cover.png", { type: "image/png" })
+      )
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "events:detail.upload.errors.failed"
+      )
+      rerender(<EventCreateDialog {...props} open={false} />)
+      rerender(<EventCreateDialog {...props} open />)
+
+      expect(fieldByLabel("events:form.title")).toHaveValue("Keep the failed-upload state")
+      expect(screen.getByRole("alert")).toHaveTextContent("events:detail.upload.errors.failed")
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+      expect(onCreated).not.toHaveBeenCalled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("rejects an empty upload URL as a missing event picture", async () => {
+    const user = userEvent.setup()
+    uploadEventImage.mockResolvedValueOnce(" ")
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:empty-upload-url")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      render(<EventCreateDialog {...baseProps} />)
+      await user.type(fieldByLabel("events:form.title"), "Needs a usable picture")
+      await user.type(fieldByLabel("events:form.location"), "Campus hall")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.upload(
+        document.querySelector<HTMLInputElement>('input[type="file"]')!,
+        new File(["image"], "cover.png", { type: "image/png" })
+      )
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "events:detail.upload.errors.failed"
+      )
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("describes the event dialog for assistive technology", () => {
+    render(<EventCreateDialog {...baseProps} />)
+
+    const dialog = screen.getByRole("dialog")
+    const descriptionId = dialog.getAttribute("aria-describedby")
+    expect(descriptionId).toBe("event-create-dialog-description")
+    expect(document.getElementById(descriptionId!)).toHaveTextContent(
+      "events:dialogs.create.description"
+    )
+  })
+
+  it("keeps the event draft open while asynchronous creation is pending", async () => {
+    const user = userEvent.setup()
+    let resolveCreate!: (value: void | PromiseLike<void>) => void
+    const onCreated = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCreate = resolve
+        })
+    )
+    const onClose = vi.fn()
+    render(<EventCreateDialog {...baseProps} onCreated={onCreated} onClose={onClose} />)
+    await user.type(fieldByLabel("events:form.title"), "Wait for event creation")
+    await user.type(fieldByLabel("events:form.location"), "Campus hall")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce())
+
+    const createButton = screen.getByRole("button", { name: "common:buttons.create" })
+    expect(createButton).toBeDisabled()
+    await user.click(createButton)
+    expect(onCreated).toHaveBeenCalledOnce()
+    expect(fieldByLabel("events:form.title")).toBeDisabled()
+    await user.keyboard("{Escape}")
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await act(async () => resolveCreate(undefined))
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+  })
+
+  it("keeps the event draft and reports asynchronous creation failures", async () => {
+    const user = userEvent.setup()
+    const failure = new Error("event creation failed")
+    const rejectedCreate = Promise.reject(failure)
+    // Attach a handler so the baseline implementation can report the missing
+    // UI behavior without creating an unhandled-rejection warning.
+    void rejectedCreate.catch(() => undefined)
+    const onCreated = vi.fn(() => rejectedCreate)
+    const onClose = vi.fn()
+    render(<EventCreateDialog {...baseProps} onCreated={onCreated} onClose={onClose} />)
+    await user.type(fieldByLabel("events:form.title"), "Retry event creation")
+    await user.type(fieldByLabel("events:form.location"), "Campus hall")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(fieldByLabel("events:form.title")).toHaveValue("Retry event creation")
+    expect(onClose).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toHaveFocus()
+    })
+  })
+
   it("uploads an image and stores the returned URL on the draft", async () => {
     // jsdom's URL lacks createObjectURL/revokeObjectURL — assign directly so
     // the component's synchronous preview path doesn't throw before the upload.
@@ -420,6 +603,7 @@ describe("EventCreateDialog", () => {
       expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:stale-preview")
 
       await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      await user.click(screen.getByRole("button", { name: "common:buttons.discardChanges" }))
       expect(screen.queryByAltText("events:alt.preview")).not.toBeInTheDocument()
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:stale-preview")
 
@@ -472,6 +656,7 @@ describe("EventCreateDialog", () => {
       expect(await screen.findByText("common:statuses.uploading")).toBeInTheDocument()
 
       await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      await user.click(screen.getByRole("button", { name: "common:buttons.discardChanges" }))
       await act(async () => {
         resolveUpload("https://cdn.example.com/late.png")
         await pendingUpload
@@ -545,6 +730,55 @@ describe("EventCreateDialog", () => {
       resolveUpload("https://cdn.example.com/editing.png")
       await waitFor(() => expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument())
       expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("keeps the last uploaded image usable when a replacement upload fails", async () => {
+    const user = userEvent.setup()
+    const firstImageUrl = "https://cdn.example.com/first-image.png"
+    uploadEventImage
+      .mockResolvedValueOnce(firstImageUrl)
+      .mockRejectedValueOnce(new Error("replacement upload failed"))
+    const onCreated = vi.fn()
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi
+      .fn<(obj: unknown) => string>()
+      .mockReturnValueOnce("blob:first-image")
+      .mockReturnValueOnce("blob:replacement-image")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      render(<EventCreateDialog {...baseProps} onCreated={onCreated} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(fileInput, new File(["first"], "first.png", { type: "image/png" }))
+      await waitFor(() => expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument())
+
+      await user.upload(
+        fileInput,
+        new File(["replacement"], "replacement.png", { type: "image/png" })
+      )
+      await waitFor(() => expect(uploadEventImage).toHaveBeenCalledTimes(2))
+      await waitFor(() =>
+        expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+      )
+
+      expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument()
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      await user.type(fieldByLabel("events:form.title"), "Use last successful image")
+      await user.type(fieldByLabel("events:form.location"), "Hall M")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+
+      expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ image_url: firstImageUrl }))
     } finally {
       urlCtor.createObjectURL = previousCreate
       urlCtor.revokeObjectURL = previousRevoke
@@ -671,6 +905,7 @@ describe("EventCreateDialog", () => {
       await user.upload(input, new File(["x"], "close.png", { type: "image/png" }))
       expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
       await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      await user.click(screen.getByRole("button", { name: "common:buttons.discardChanges" }))
 
       rerender(<EventCreateDialog {...baseProps} open />)
       expect(screen.getByText("events:form.uploadImage")).toBeInTheDocument()
@@ -723,7 +958,7 @@ describe("EventCreateDialog", () => {
     expect(fieldByLabel("events:form.type_en")).toHaveValue("Lecture")
   })
 
-  it("resets the draft immediately when the dialog is closed", async () => {
+  it("confirms before discarding a dirty draft from Cancel, Escape, or the backdrop", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     render(<EventCreateDialog {...baseProps} onClose={onClose} />)
@@ -732,6 +967,22 @@ describe("EventCreateDialog", () => {
     await user.type(fieldByLabel("events:form.location"), "Temporary hall")
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
 
+    expect(screen.getByText("common:dialogs.unsavedChanges.description")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "common:buttons.keepEditing" }))
+    expect(fieldByLabel("events:form.title")).toHaveValue("Temporary title")
+
+    await user.keyboard("{Escape}")
+    expect(screen.getByText("common:dialogs.unsavedChanges.description")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "common:buttons.keepEditing" }))
+
+    const backdrop = document.querySelector('[role="presentation"] > div')
+    if (!(backdrop instanceof HTMLElement)) throw new Error("Dialog backdrop not found")
+    fireEvent.click(backdrop)
+    expect(screen.getByText("common:dialogs.unsavedChanges.description")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.discardChanges" }))
     expect(onClose).toHaveBeenCalledOnce()
     expect(fieldByLabel("events:form.title")).toHaveValue("")
     expect(fieldByLabel("events:form.location")).toHaveValue("")
@@ -933,6 +1184,7 @@ describe("EventCreateDialog", () => {
       await user.upload(fileInput, new File(["old"], "old.png", { type: "image/png" }))
       expect(await screen.findByText("common:statuses.uploading")).toBeInTheDocument()
       await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      await user.click(screen.getByRole("button", { name: "common:buttons.discardChanges" }))
       await user.upload(
         document.querySelector<HTMLInputElement>('input[type="file"]')!,
         new File(["new"], "new.png", { type: "image/png" })
@@ -989,5 +1241,49 @@ describe("EventCreateDialog", () => {
 
     expect(onCreated).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("reactivates focus containment after Escape during pending creation", async () => {
+    const user = userEvent.setup()
+    let resolveCreate!: (value: void | PromiseLike<void>) => void
+    const onCreated = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCreate = resolve
+        })
+    )
+    const onClose = vi.fn()
+    const outsideAction = document.createElement("button")
+    outsideAction.type = "button"
+    outsideAction.textContent = "Outside action"
+    document.body.append(outsideAction)
+
+    try {
+      render(<EventCreateDialog {...baseProps} onCreated={onCreated} onClose={onClose} />)
+      await user.type(fieldByLabel("events:form.title"), "Keep focus trapped")
+      await user.type(fieldByLabel("events:form.location"), "Campus hall")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+      await waitFor(() => expect(onCreated).toHaveBeenCalledOnce())
+
+      await user.keyboard("{Escape}")
+      expect(screen.getByRole("dialog")).toBeInTheDocument()
+      expect(fieldByLabel("events:form.title")).toHaveValue("Keep focus trapped")
+      expect(onClose).not.toHaveBeenCalled()
+
+      outsideAction.focus()
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement)
+        expect(outsideAction).not.toHaveFocus()
+      })
+      await user.keyboard("{Tab}")
+      expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement)
+
+      await act(async () => resolveCreate(undefined))
+      await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    } finally {
+      outsideAction.remove()
+    }
   })
 })

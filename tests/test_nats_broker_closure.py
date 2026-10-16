@@ -36,10 +36,20 @@ async def test_connect_registers_streams_and_lifecycle_callbacks() -> None:
     mock_js = AsyncMock()
     mock_nc.jetstream = MagicMock(return_value=mock_js)
 
-    with patch("nats.connect", new_callable=AsyncMock, return_value=mock_nc) as connect:
+    legacy_connect = AsyncMock(return_value=mock_nc)
+    with (
+        patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+        patch("app.core.nats_broker.NATS", return_value=mock_nc) as client_factory,
+    ):
         await broker.connect()
 
-        kwargs = connect.call_args.kwargs
+        kwargs = (
+            legacy_connect.await_args.kwargs
+            if legacy_connect.await_count
+            else mock_nc.connect.call_args.kwargs
+        )
+        assert client_factory.call_count + legacy_connect.await_count == 1
+        assert mock_nc.connect.await_count + legacy_connect.await_count == 1
         assert kwargs["connect_timeout"] == 2
         await kwargs["reconnected_cb"]()
         await kwargs["disconnected_cb"]()
@@ -60,6 +70,137 @@ async def test_connect_registers_streams_and_lifecycle_callbacks() -> None:
     assert configs[5].subjects == ["cache.invalidate"]
 
 
+async def test_concurrent_connects_share_one_initialization() -> None:
+    broker = NatsTaskBroker()
+    mock_nc = AsyncMock()
+    mock_js = AsyncMock()
+    mock_nc.jetstream = MagicMock(return_value=mock_js)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def add_stream(**kwargs: object) -> None:
+        del kwargs
+        started.set()
+        await asyncio.wait_for(release.wait(), timeout=1)
+
+    mock_js.add_stream.side_effect = add_stream
+    legacy_connect = AsyncMock(return_value=mock_nc)
+    first: asyncio.Task[None] | None = None
+    second: asyncio.Task[None] | None = None
+    try:
+        with (
+            patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+            patch("app.core.nats_broker.NATS", return_value=mock_nc) as client_factory,
+        ):
+            first = asyncio.create_task(broker.connect())
+            await asyncio.wait_for(started.wait(), timeout=1)
+            assert broker._js is None
+            second = asyncio.create_task(broker.connect())
+            await asyncio.sleep(0)
+            assert not second.done()
+            release.set()
+            await asyncio.wait_for(asyncio.gather(first, second), timeout=1)
+            assert client_factory.call_count + legacy_connect.await_count == 1
+            assert mock_nc.connect.await_count + legacy_connect.await_count == 1
+            assert mock_js.add_stream.await_count == 6
+    finally:
+        release.set()
+        tasks = [task for task in (first, second) if task is not None]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=1
+            )
+
+
+async def test_connect_cancellation_closes_partial_client() -> None:
+    broker = NatsTaskBroker()
+    mock_nc = AsyncMock()
+    started = asyncio.Event()
+    wait_forever = asyncio.Event()
+
+    async def connect(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        started.set()
+        await wait_forever.wait()
+
+    async def legacy_connect_impl(*args: object, **kwargs: object) -> AsyncMock:
+        await mock_nc.connect(*args, **kwargs)
+        return mock_nc
+
+    mock_nc.connect.side_effect = connect
+    legacy_connect = AsyncMock(side_effect=legacy_connect_impl)
+    task: asyncio.Task[None] | None = None
+    with (
+        patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+        patch("app.core.nats_broker.NATS", return_value=mock_nc),
+    ):
+        try:
+            task = asyncio.create_task(broker.connect())
+            await asyncio.wait_for(started.wait(), timeout=1)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=1)
+        finally:
+            if task is not None and not task.done():
+                task.cancel()
+            if task is not None:
+                await asyncio.wait_for(
+                    asyncio.gather(task, return_exceptions=True), timeout=1
+                )
+
+    assert mock_nc.close.await_count == 1
+    assert broker._nc is None
+    assert broker._js is None
+
+
+async def test_connect_has_a_total_deadline_and_cleans_up() -> None:
+    broker = NatsTaskBroker()
+    mock_nc = AsyncMock()
+    wait_forever = asyncio.Event()
+
+    async def connect(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        await wait_forever.wait()
+
+    async def legacy_connect_impl(*args: object, **kwargs: object) -> AsyncMock:
+        await mock_nc.connect(*args, **kwargs)
+        return mock_nc
+
+    mock_nc.connect.side_effect = connect
+    legacy_connect = AsyncMock(side_effect=legacy_connect_impl)
+
+    deadline_guard = asyncio.Event()
+
+    async def expire_outer_guard() -> None:
+        await asyncio.sleep(0.4)
+        deadline_guard.set()
+
+    outer_guard = asyncio.create_task(expire_outer_guard())
+    try:
+        with (
+            patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+            patch("app.core.nats_broker.NATS", return_value=mock_nc),
+            patch("app.core.nats_broker._CONNECT_TIMEOUT_S", 0.01, create=True),
+            pytest.raises(TimeoutError),
+        ):
+            await asyncio.wait_for(broker.connect(), timeout=0.5)
+        assert not deadline_guard.is_set()
+    finally:
+        if not outer_guard.done():
+            outer_guard.cancel()
+        await asyncio.wait_for(
+            asyncio.gather(outer_guard, return_exceptions=True), timeout=1
+        )
+
+    assert legacy_connect.await_count + mock_nc.connect.await_count >= 1
+    assert mock_nc.close.await_count == 1
+    assert broker._nc is None
+    assert broker._js is None
+
+
 @pytest.mark.asyncio
 async def test_connect_preserves_cleanup_failure_detail_when_provisioning_fails() -> (
     None
@@ -68,19 +209,24 @@ async def test_connect_preserves_cleanup_failure_detail_when_provisioning_fails(
     mock_js = MagicMock()
     mock_js.add_stream = AsyncMock(side_effect=RuntimeError("provisioning failed"))
     mock_nc = MagicMock()
+    mock_nc.connect = AsyncMock()
     mock_nc.jetstream.return_value = mock_js
 
+    legacy_connect = AsyncMock(return_value=mock_nc)
+    close_legacy = AsyncMock(side_effect=RuntimeError("cleanup failed"))
+    close_unlocked = AsyncMock(side_effect=RuntimeError("cleanup failed"))
     with (
-        patch("app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)),
-        patch.object(
-            broker, "close", new=AsyncMock(side_effect=RuntimeError("cleanup failed"))
-        ) as close,
+        patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+        patch("app.core.nats_broker.NATS", return_value=mock_nc) as client_factory,
+        patch.object(broker, "close", new=close_legacy),
+        patch.object(broker, "_close_unlocked", new=close_unlocked, create=True),
         patch.object(nats_broker_module._logger, "warning") as warning,
         pytest.raises(RuntimeError, match="provisioning failed"),
     ):
         await broker.connect()
 
-    close.assert_awaited_once()
+    assert client_factory.call_count + legacy_connect.await_count == 1
+    assert close_legacy.await_count + close_unlocked.await_count == 1
     assert warning.call_args.args[0] == "Failed to close partial NATS connection: %s"
     assert isinstance(warning.call_args.args[1], RuntimeError)
     assert str(warning.call_args.args[1]) == "cleanup failed"
@@ -95,7 +241,7 @@ async def test_close_clears_disconnected_client_without_close_call() -> None:
 
     await broker.close()
 
-    mock_nc.close.assert_not_awaited()
+    mock_nc.close.assert_awaited_once()
     assert broker._nc is None
     assert broker._js is None
 
@@ -183,6 +329,119 @@ async def test_publish_core_swallows_network_error() -> None:
     await broker.publish_core("chat.direct", {"value": 1})
 
     mock_nc.publish.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_connect_cancellation_while_waiting_for_lock_preserves_lock_owner() -> (
+    None
+):
+    broker = NatsTaskBroker()
+    await broker._connect_lock.acquire()
+    task: asyncio.Task[None] | None = None
+
+    try:
+        with patch("app.core.nats_broker.NATS") as client_factory:
+            task = asyncio.create_task(broker.connect())
+            await asyncio.sleep(0)
+            assert not task.done()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=1)
+            client_factory.assert_not_called()
+
+        assert broker._nc is None
+        assert broker._js is None
+        assert broker._connect_lock.locked()
+    finally:
+        if task is not None and not task.done():
+            task.cancel()
+        if task is not None:
+            await asyncio.wait_for(
+                asyncio.gather(task, return_exceptions=True), timeout=1
+            )
+        broker._connect_lock.release()
+
+
+@pytest.mark.asyncio
+async def test_connect_timeout_while_waiting_for_lock_preserves_lock_owner() -> None:
+    broker = NatsTaskBroker()
+    await broker._connect_lock.acquire()
+
+    try:
+        with (
+            patch("app.core.nats_broker._CONNECT_TIMEOUT_S", 0.01),
+            patch("app.core.nats_broker.NATS") as client_factory,
+            pytest.raises(TimeoutError),
+        ):
+            await broker.connect()
+
+        client_factory.assert_not_called()
+        assert broker._nc is None
+        assert broker._js is None
+        assert broker._connect_lock.locked()
+    finally:
+        broker._connect_lock.release()
+
+
+@pytest.mark.asyncio
+async def test_run_worker_propagates_cancellation_during_initial_connect() -> None:
+    broker = NatsTaskBroker()
+    connect_started = asyncio.Event()
+    never_ready = asyncio.Event()
+
+    async def wait_for_connection() -> None:
+        connect_started.set()
+        await never_ready.wait()
+
+    broker._js = None
+    task: asyncio.Task[None] | None = None
+    with (
+        patch.object(broker, "connect", side_effect=wait_for_connection),
+        patch("app.core.nats_broker.asyncio.sleep", new_callable=AsyncMock) as sleep,
+    ):
+        try:
+            task = asyncio.create_task(broker.run_worker())
+            await asyncio.wait_for(connect_started.wait(), timeout=1)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=1)
+        finally:
+            if task is not None and not task.done():
+                task.cancel()
+            if task is not None:
+                await asyncio.wait_for(
+                    asyncio.gather(task, return_exceptions=True), timeout=1
+                )
+
+    sleep.assert_not_awaited()
+
+
+async def test_run_worker_retries_initial_nats_outage() -> None:
+    broker = NatsTaskBroker()
+    mock_js = AsyncMock()
+    mock_sub = AsyncMock()
+    mock_js.pull_subscribe.return_value = mock_sub
+    mock_sub.fetch.side_effect = asyncio.CancelledError()
+    attempts = 0
+
+    async def connect() -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise nats.errors.NoServersError()
+        broker._js = mock_js
+
+    with (
+        patch.object(broker, "connect", side_effect=connect),
+        patch("app.core.nats_broker.asyncio.sleep", new=AsyncMock()),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await broker.run_worker()
+
+    assert attempts == 2
+    mock_js.pull_subscribe.assert_awaited_once_with(
+        subject="tasks.>", durable="python-worker"
+    )
 
 
 async def test_run_worker_connects_before_subscribing() -> None:
@@ -485,3 +744,168 @@ async def test_run_worker_dead_letters_task_after_max_deliveries() -> None:
     broker._dead_letter.assert_awaited_once()
     message.term.assert_awaited_once()
     message.nak.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("persistence_succeeds", [True, False])
+async def test_run_worker_unknown_handler_at_limit_persists_before_term_or_naks(
+    persistence_succeeds: bool,
+) -> None:
+    """Persist real DLQ rows before termination; retain delivery on commit failure."""
+    from sqlalchemy.exc import OperationalError
+
+    from app.models.dead_letter import DeadLetterJob
+
+    broker = NatsTaskBroker()
+    mock_js = AsyncMock()
+    mock_sub = AsyncMock()
+    mock_js.pull_subscribe.return_value = mock_sub
+    task_name = "closure.unregistered"
+    message = _message(_payload(task_name, args=[7]))
+    deliveries = nats_broker_module._MAX_DELIVERIES
+    message.metadata = SimpleNamespace(num_delivered=deliveries)
+    mock_sub.fetch.side_effect = [[message], asyncio.CancelledError()]
+    broker._js = mock_js
+
+    events: list[str] = []
+    persisted_jobs: list[DeadLetterJob] = []
+    session = AsyncMock()
+    context = MagicMock()
+
+    async def enter_session() -> AsyncMock:
+        events.append("dlq.session_open")
+        return session
+
+    async def exit_session(*_args: object) -> bool:
+        events.append("dlq.session_close")
+        return False
+
+    async def find_existing_job(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        events.append("dlq.query")
+        return SimpleNamespace(scalar_one_or_none=MagicMock(return_value=None))
+
+    def add_job(job: DeadLetterJob) -> None:
+        events.append("dlq.add")
+        persisted_jobs.append(job)
+
+    async def flush() -> None:
+        events.append("dlq.flush")
+
+    async def commit() -> None:
+        if persistence_succeeds:
+            events.append("dlq.commit")
+            return
+        events.append("dlq.commit_failed")
+        raise OperationalError("insert", {}, OSError("database unavailable"))
+
+    async def terminate() -> None:
+        events.append("message.term")
+
+    async def negative_ack(*, delay: float) -> None:
+        del delay
+        events.append("message.nak")
+
+    context.__aenter__ = AsyncMock(side_effect=enter_session)
+    context.__aexit__ = AsyncMock(side_effect=exit_session)
+    session.execute.side_effect = find_existing_job
+    session.add = MagicMock(side_effect=add_job)
+    session.flush.side_effect = flush
+    session.commit.side_effect = commit
+    message.term.side_effect = terminate
+    message.nak.side_effect = negative_ack
+
+    with (
+        patch("app.core.database.async_session", return_value=context),
+        patch.object(nats_broker_module, "_RETRY_BASE_DELAY_S", 0.125),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await broker.run_worker()
+
+    assert len(persisted_jobs) == 1
+    row = persisted_jobs[0]
+    assert isinstance(row, DeadLetterJob)
+    assert row.job_type == task_name
+    assert json.loads(row.payload) == {"args": [7], "kwargs": {}}
+    assert row.error_message == f"no handler registered for task: {task_name}"
+    assert len(row.job_hash) == 64
+    assert row.next_retry_at is not None
+    session.execute.assert_awaited_once()
+    session.add.assert_called_once_with(row)
+    session.flush.assert_awaited_once()
+    session.commit.assert_awaited_once()
+    message.ack.assert_not_awaited()
+
+    if persistence_succeeds:
+        assert events == [
+            "dlq.session_open",
+            "dlq.query",
+            "dlq.add",
+            "dlq.flush",
+            "dlq.commit",
+            "dlq.session_close",
+            "message.term",
+        ]
+        message.term.assert_awaited_once()
+        message.nak.assert_not_awaited()
+    else:
+        assert events == [
+            "dlq.session_open",
+            "dlq.query",
+            "dlq.add",
+            "dlq.flush",
+            "dlq.commit_failed",
+            "dlq.session_close",
+            "message.nak",
+        ]
+        message.term.assert_not_awaited()
+        expected_delay = min(
+            0.125 * 2 ** (deliveries - 1), nats_broker_module._RETRY_MAX_DELAY_S
+        )
+        message.nak.assert_awaited_once_with(delay=expected_delay)
+
+
+@pytest.mark.parametrize(
+    "error_kind",
+    ["invalid_url", "authorization", "invalid_credentials", "bad_subject"],
+)
+async def test_run_worker_propagates_permanent_connect_errors_without_retry(
+    error_kind: str,
+) -> None:
+    """Only transient broker outages should enter the reconnect backoff."""
+    from nats.aio.client import Client
+    from nats.errors import (
+        AuthorizationError,
+        BadSubjectError,
+        Error,
+        InvalidUserCredentialsError,
+    )
+
+    if error_kind == "invalid_url":
+        with pytest.raises(Error) as parsed_error:
+            Client._parse_server_uri("nats://example.invalid:not-a-port")
+        assert type(parsed_error.value) is Error
+        error = parsed_error.value
+    else:
+        error_type = {
+            "authorization": AuthorizationError,
+            "invalid_credentials": InvalidUserCredentialsError,
+            "bad_subject": BadSubjectError,
+        }[error_kind]
+        error = error_type()
+
+    broker = NatsTaskBroker()
+    connect = AsyncMock(side_effect=error)
+    retry_sleep = AsyncMock(
+        side_effect=AssertionError("permanent NATS error entered retry backoff")
+    )
+
+    with (
+        patch.object(broker, "connect", new=connect),
+        patch("app.core.nats_broker.asyncio.sleep", new=retry_sleep),
+        pytest.raises(type(error)) as raised_error,
+    ):
+        await broker.run_worker()
+
+    assert raised_error.value is error
+    connect.assert_awaited_once_with()
+    retry_sleep.assert_not_awaited()

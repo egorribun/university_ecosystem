@@ -484,7 +484,9 @@ async def test_update_event_success_permissions_and_errors() -> None:
     db.execute.side_effect = [_result(rows=[]), _result(scalar=3)]
     with (
         patch.object(api, "resolve_locale", return_value="en"),
-        patch.object(api, "delete_owned_event_image", AsyncMock()) as delete_owned,
+        patch.object(
+            api, "delete_unreferenced_owned_event_image", AsyncMock()
+        ) as delete_owned,
         patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(
@@ -497,7 +499,7 @@ async def test_update_event_success_permissions_and_errors() -> None:
             provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
-    delete_owned.assert_awaited_once_with("/old.png", event_id=event_id)
+    delete_owned.assert_awaited_once_with("/old.png", event_id=event_id, db_session=db)
     delete_generic.assert_not_awaited()
     assert service.serialize_event.call_args.kwargs["participant_count"] == 3
 
@@ -510,7 +512,9 @@ async def test_update_event_success_permissions_and_errors() -> None:
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
-        patch.object(api, "delete_owned_event_image", AsyncMock()) as delete_owned,
+        patch.object(
+            api, "delete_unreferenced_owned_event_image", AsyncMock()
+        ) as delete_owned,
         patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(

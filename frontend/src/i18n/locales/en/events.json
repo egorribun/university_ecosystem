@@ -54,7 +54,8 @@
   },
   "dialogs": {
     "create": {
-      "title": "Create an event"
+      "title": "Create an event",
+      "description": "Add event details and an image for the university calendar."
     }
   },
   "form": {
