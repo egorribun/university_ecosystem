@@ -1,48 +1,56 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-17 (Europe/Istanbul). Действующий порядок — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-18 (Europe/Istanbul). Действующий порядок — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 ## Текущий приоритет
 
 После dependency checkpoint C8 выполняется полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 AUD IDs, включая 507 исторически открытых находок и наблюдений (18 P1, 122 P2, 234 P3, 133 ниже P3) и пять исторически закрытых. Исторический статус не заменяет verdict для текущего source. Для каждого пункта нужны regression/runtime evidence либо обоснованный disposition; приёмка и выпуск MVP продолжаются после этого приоритета.
 
-### Последний проверенный hosted checkpoint: b05d987
+### Зафиксированный hosted checkpoint: 780ef932
 
-На [b05d987](https://github.com/egorribun/university_ecosystem/commit/b05d9873102aac9c01053e05d5731e7623a02f46)
-[полная matrix 39048495555](https://github.com/egorribun/university_ecosystem/actions/runs/39048495555),
-Coverage & Quality Policy Gate и CI Success — SUCCESS. Сверены все 78
-required context/app pairs: 77 SUCCESS, один отдельно проверенный Checkov
-code-scanning NEUTRAL из-за несовпадения прежней main configuration;
-missing/failures — 0. Checkov Actions и CodeQL прошли.
+На [780ef932](https://github.com/egorribun/university_ecosystem/commit/780ef9323cd032c3a44e3cb386d8d5955f1754f5)
+все 23 workflow runs terminal: 21 SUCCESS, два штатных SKIPPED, failures 0.
+[Matrix 39069496976](https://github.com/egorribun/university_ecosystem/actions/runs/39069496976),
+Coverage & Quality Policy Gate и CI Success — SUCCESS.
+Все 78 required context/app pairs найдены: 77 SUCCESS и Checkov
+code-scanning NEUTRAL из-за отсутствующей main configuration сравнения.
+NEUTRAL не доказывает отсутствие alerts; отдельные Checkov Actions и
+CodeQL прошли. Owned live Core acceptance прошёл: 221 contracts,
+18 browser tests / 2 штатных skips, cleanup и metadata receipt успешны.
 
-Подтверждены реальный NATS → PostgreSQL/outbox/ACK и scheduler tick с
-campus timezone/parity без дублирования; интегрированы безопасное
-registration-error logging (AUD-179), отсутствие deny-cache при outage
-(AUD-182) и narrow empty-KV handling (AUD-491). Event-count regression
-закрывает прежние три строки и одну ветку без ослабления coverage policy.
-Ammonia 4.2.4 согласована в основном/fuzz lock graph; WASM реально
-пересобран в GitHub Actions, bytes/source provenance проверены, временный
-recovery workflow удалён. Подробности и ссылки:
-[hosted audit checkpoint](../../audits/AUDIT-2026-10.md#hosted-closure-checkpoint-2026-10-17-b05d987).
+AUD-201 backend guard и messenger UI проверены на этом source:
+неадминистратор ищет минимум по двум Unicode code points после trim,
+admin/internal и существующий выбор query aliases сохранены.
+Это узкий согласованный v1 security-fix, не полная защита от scraping.
+Прежний [b05d987 checkpoint](../../audits/AUDIT-2026-10.md#hosted-closure-checkpoint-2026-10-17-b05d987)
+сохраняет source-bound evidence NATS/scheduler, AUD-179/182/491,
+event-count coverage и реальной пересборки WASM с ammonia 4.2.4.
 
-Это evidence для b05d987, не автоматический PASS для следующих SHA.
-Sender-profile публикация после отменённой операции ожидает отдельного
+На предыдущем source был flaky первый login в password-reset live-сценарии.
+На 780ef932 сбой не повторился; причина не объявлена исправленной.
+Сохранена проверенная закрытая диагностика без raw URL или секретов.
+[Подробности текущего checkpoint](../../audits/AUDIT-2026-10.md#hosted-closure-checkpoint-2026-10-18-780ef932).
+
+Это evidence только для 780ef932, не автоматический PASS следующего SHA.
+AUD-195 sender-profile после отменённой операции ожидает отдельного
 подтверждения; AUD-189 source fix ещё не внедрён. Staging/production не
-развёрнуты, поэтому реальные trusted proxy/CNI/PVC/CSI проверки отложены,
-а не зачтены. Все 512 AUD IDs и MVP/release acceptance ещё не закрыты.
+развёрнуты, реальные trusted proxy/CNI/PVC/CSI проверки отложены.
+Все 512 AUD IDs, MVP/visual acceptance и release ещё не закрыты.
 Baseline319, 261 dispositions, finite131, 78 required contexts и
-blocking CodeQL сохранены.
+blocking CodeQL сохранены. Merge/deploy не выполнялись.
 
-### Следующий source change: AUD-201
+### Текущий source batch: AUD-219 / AUD-206
 
-Владелец одобрил узкий v1 security-fix: неадминистратор ищет пользователей
-минимум по двум Unicode code points после trim, как уже требует add-member
-UI; admin/internal поведение сохранено. Семь ожидаемых regression failures
-воспроизведены на tests-only `cce8c266` до production guard. Guard и
-[границы доказательства](../../audits/AUDIT-2026-10.md#aud-201-owner-approved-bounded-v1-hardening-2026-10-17)
-интегрированы; текущий исправленный source ожидает собственного hosted GREEN.
-Это не полная защита от scraping и не разрешение менять другие v1 contracts.
-Последний полный проверенный checkpoint выше остаётся b05d987.
+На tests-only `78f421c7` получены два ожидаемых frontend RED для
+автоповтора TOTP и один backend RED для UUID-valued metric label.
+Исправления ограничивают автоматическую попытку текущим pending/account
+и фиксируют metric channel как `chat`; ручной повтор, step-up, session
+guard, chat routing/payload и backend MFA budgets сохранены.
+[Границы и RED evidence](../../audits/AUDIT-2026-10.md#aud-219--aud-206-bounded-automatic-work-and-metrics-2026-10-18).
+
+На момент публикации этого batch собственный hosted GREEN ещё требуется.
+Результат 780ef932 выше не является автоматическим PASS нового source;
+актуальный результат проверяется по exact head в PR #1306 и Actions.
 
 ### Исторические C12/C11 checkpoints (superseded by hosted evidence above)
 

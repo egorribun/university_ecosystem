@@ -300,7 +300,7 @@ async def notify_new_message(
     Returns the number of successful notifications sent.
     """
     presence = await build_presence_map([message.sender_id])
-    metrics.record_chat_message(channel=str(message.chat_id))
+    metrics.record_chat_message(channel="chat")
     return await manager.broadcast_to_chat(
         message.chat_id,
         {
