@@ -6077,6 +6077,43 @@ def _live_playwright_auth_http_diagnostics(output: str) -> list[dict[str, object
     return records
 
 
+_PLAYWRIGHT_LOGIN_FAILURE_LINE = re.compile(
+    r"UE_LIVE_LOGIN_FAILURE_V1 project=(?P<project>desktop|mobile) "
+    r"stage=(?P<stage>submit|navigation) "
+    r"requests=(?P<requests>0|1|many) responses=(?P<responses>0|1|many) "
+    r"status=(?P<status>none|[1-5][0-9]{2}) "
+    r"route=(?P<route>login|dashboard|register|other|unavailable)"
+)
+_PLAYWRIGHT_LOGIN_FAILURE_LIMIT = 16
+_PlaywrightLoginFailure = tuple[str, str, str, str, str, str]
+
+
+def _live_playwright_login_failures(output: str) -> list[_PlaywrightLoginFailure]:
+    """Accept only complete, closed login observations without raw URLs or errors."""
+    records: list[_PlaywrightLoginFailure] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 192 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_LOGIN_FAILURE_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record: _PlaywrightLoginFailure = (
+            match["project"],
+            match["stage"],
+            match["requests"],
+            match["responses"],
+            match["status"],
+            match["route"],
+        )
+        if record in records:
+            continue
+        records.append(record)
+        if len(records) >= _PLAYWRIGHT_LOGIN_FAILURE_LIMIT:
+            break
+    return records
+
+
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
@@ -7154,6 +7191,7 @@ def _run_live_playwright(
     story_setup_diagnostics = (
         _live_playwright_story_setup_diagnostics(stdout) if return_code != 0 else []
     )
+    login_failures = _live_playwright_login_failures(stdout) if return_code != 0 else []
     auth_ui_diagnostics = (
         _live_playwright_auth_ui_diagnostics(stdout) if return_code != 0 else []
     )
@@ -7287,6 +7325,12 @@ def _run_live_playwright(
         print(
             "live E2E story memory cycle trace "
             + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for project, stage, requests, responses, status, route in login_failures:
+        print(
+            f"live E2E login failure project={project} stage={stage} "
+            f"requests={requests} responses={responses} status={status} route={route}",
             flush=True,
         )
     for record in auth_ui_diagnostics:
