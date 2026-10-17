@@ -217,6 +217,10 @@ describe("GroupInfoPanel (W211 G4)", () => {
   it("enables add-member search only for an open panel, active search and a long query", () => {
     expect(shouldSearchGroupUsers(true, true, "Ni")).toBe(true)
     expect(shouldSearchGroupUsers(true, true, "N")).toBe(false)
+    expect(shouldSearchGroupUsers(true, true, " N ")).toBe(false)
+    expect(shouldSearchGroupUsers(true, true, "😀")).toBe(false)
+    expect(shouldSearchGroupUsers(true, true, "😀a")).toBe(true)
+    expect(shouldSearchGroupUsers(true, true, " Ni ")).toBe(true)
     expect(shouldSearchGroupUsers(false, true, "Nina")).toBe(false)
     expect(shouldSearchGroupUsers(true, false, "Nina")).toBe(false)
   })
@@ -274,22 +278,28 @@ describe("GroupInfoPanel (W211 G4)", () => {
     expect(onAddMember).toHaveBeenCalledWith("new-user")
   })
 
-  it("does not issue a user search until the minimum query length is exceeded", async () => {
-    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
-      wrapper,
-    })
+  it.each(["N", " N ", "😀"])(
+    "does not search or show empty results for one trimmed code point: %s",
+    async (query) => {
+      render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+        wrapper,
+      })
 
-    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
-    const search = screen.getByRole("textbox", { name: "messenger:searchUsers" })
-    fireEvent.change(search, { target: { value: "N" } })
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 250))
-    })
-    expect(mocks.apiGet).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      const search = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+      fireEvent.change(search, { target: { value: query } })
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 250))
+      })
+      expect(mocks.apiGet).not.toHaveBeenCalled()
+      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
 
-    fireEvent.change(search, { target: { value: "Ni" } })
-    await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=Ni"))
-  })
+      fireEvent.change(search, { target: { value: "Ni" } })
+      await waitFor(() =>
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=Ni")
+      )
+    }
+  )
 
   it("resets transient rename and add-search state when closed", () => {
     const { rerender } = render(

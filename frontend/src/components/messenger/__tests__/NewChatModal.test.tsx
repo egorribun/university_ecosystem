@@ -415,14 +415,20 @@ describe("NewChatModal", () => {
       }
     })
 
-    it("does not query or show empty state for a one-character search", async () => {
-      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
-      const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    it.each(["a", " a ", "😀"])(
+      "does not query or show empty state for one trimmed code point: %s",
+      async (query) => {
+        render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+        const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
 
-      fireEvent.change(searchInput, { target: { value: "a" } })
-      await waitFor(() => expect(mocks.apiGet).not.toHaveBeenCalled())
-      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
-    })
+        fireEvent.change(searchInput, { target: { value: query } })
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        })
+        expect(mocks.apiGet).not.toHaveBeenCalled()
+        expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+      }
+    )
 
     it("uses and URL-encodes the backend-supported full_name filter", async () => {
       render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
