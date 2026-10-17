@@ -101,6 +101,7 @@ it("keeps every server-rendered form control disabled before handlers attach", (
 
 it("hydrates without recovery and handles the first credential click exactly once", async () => {
   const onValid = vi.fn<SubmitHandler<LoginValues>>()
+  const submittedPassword = crypto.randomUUID()
   const recoverableErrors: unknown[] = []
   container = document.createElement("div")
   container.innerHTML = renderServerMarkup(onValid)
@@ -126,13 +127,13 @@ it("hydrates without recovery and handles the first credential click exactly onc
   await user.type(ui.getByRole("textbox", { name: "auth:fields.email" }), "person@example.test")
   await user.type(
     ui.getByLabelText("auth:fields.password", { selector: "input" }),
-    "first-password"
+    submittedPassword
   )
   await user.click(ui.getByRole("button", { name: "auth:actions.signIn" }))
   await waitFor(() => expect(onValid).toHaveBeenCalledOnce())
   expect(onValid.mock.calls[0]?.[0]).toEqual({
     email: "person@example.test",
-    password: "first-password", // pragma: allowlist secret (synthetic form-test value)
+    password: submittedPassword,
     rememberEmail: false,
     trustDevice: false,
   })
