@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MIN_NON_ADMIN_NAME_QUERY_LENGTH = 2
+
 
 class UserProfileService:
     def __init__(
@@ -103,7 +105,16 @@ class UserProfileService:
             name_query = filters.search
         name_query = (name_query.strip() or None) if name_query else None
 
-        if current_user and current_user.role != "admin" and name_query is None:
+        # AUD-201: match the add-member UI's two-character minimum before
+        # any repository query, including cursor-based continuation requests.
+        if (
+            current_user
+            and current_user.role != "admin"
+            and (
+                name_query is None
+                or len(name_query) < _MIN_NON_ADMIN_NAME_QUERY_LENGTH
+            )
+        ):
             raise PermissionDenied()
 
         filters.full_name = name_query

@@ -33,6 +33,17 @@ Sender-profile публикация после отменённой операц
 Baseline319, 261 dispositions, finite131, 78 required contexts и
 blocking CodeQL сохранены.
 
+### Следующий source change: AUD-201
+
+Владелец одобрил узкий v1 security-fix: неадминистратор ищет пользователей
+минимум по двум Unicode code points после trim, как уже требует add-member
+UI; admin/internal поведение сохранено. Семь ожидаемых regression failures
+воспроизведены на tests-only `cce8c266` до production guard. Guard и
+[границы доказательства](../../audits/AUDIT-2026-10.md#aud-201-owner-approved-bounded-v1-hardening-2026-10-17)
+интегрированы; текущий исправленный source ожидает собственного hosted GREEN.
+Это не полная защита от scraping и не разрешение менять другие v1 contracts.
+Последний полный проверенный checkpoint выше остаётся b05d987.
+
 ### Исторические C12/C11 checkpoints (superseded by hosted evidence above)
 
 C12 опубликован 2026-10-17 в ветке `egorribun` коммитом [939e9ba7](https://github.com/egorribun/university_ecosystem/commit/939e9ba7d37eb0606a2ffe7ec43ed90118f690e4), поверх C11 `450a7cfe`, в существующем [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). В коммите 40 изменённых файлов: общий TOTP budget, IP-key middleware, защита reset-token и CSP reports, безопасные display names, operational-secret validation и regression tests. Упоминание 37 незакоммиченных файлов относится к прежнему локальному checkpoint, а не к опубликованному состоянию. Приватные кандидаты, не вошедшие в Git, по-прежнему не считаются интегрированными исправлениями.
